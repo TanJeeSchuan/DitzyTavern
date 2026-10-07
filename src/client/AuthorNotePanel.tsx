@@ -1,16 +1,32 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { applyConversationCommand, type ConversationSummary } from "./conversation";
+import { applyConversationCommand, loadConversationPromptPreset, type ConversationSummary } from "./conversation";
 import { runConversationCommand } from "./conversation-command-runner";
 import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/command-outcome";
 import { ProseEditor } from "./editor/ProseEditor";
 import { useSaveGuard } from "./SaveGuard";
+import { addPromptPresetReference, setPromptPresetBlockEnabled } from "./prompt-preset-library";
 
 export function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
 	conversation: ConversationSummary;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	disabled: boolean;
 }) {
+	const client = useQueryClient();
+	const preset = useQuery({ queryKey: ["conversation-preset", conversation.id], queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal) });
+	const selectedPreset = preset.data;
+	const slot = selectedPreset?.slots.find((slot) => slot.reference === "author-note");
+	const activate = useMutation({
+		mutationFn: async () => {
+			if (!selectedPreset) return;
+			const outcome = slot === undefined
+				? await addPromptPresetReference(selectedPreset.id, "author-note")
+				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
+			if (outcome.status !== "applied") throw new Error(outcome.status === "invalid" ? outcome.reason : "The Author Note block could not be updated.");
+		},
+		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
+	});
 	const [draft, setDraft] = useState(conversation.authorNote);
 	const [expectedRevision, setExpectedRevision] = useState(conversation.revision);
 	const [saved, setSaved] = useState(conversation.authorNote);
@@ -42,6 +58,12 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	useSaveGuard({ dirty, saving: pending, save, discard });
 	return <div className="panel-fill overflow-y-auto p-5">
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
+		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <div className="mb-4 flex flex-col gap-2 rounded-lg bg-muted/50 px-3 py-3 text-sm text-muted-foreground">
+			<p>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</p>
+			<Button type="button" size="sm" variant="outline" className="self-start" disabled={pending || disabled || activate.isPending} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
+		</div>}
+		{preset.isError && <p className="mb-3 text-sm text-destructive" role="alert">The selected Prompt Preset could not be loaded.</p>}
+		{activate.isError && <p className="mb-3 text-sm text-destructive" role="alert">{activate.error.message}</p>}
 		<ProseEditor value={draft} onChange={setDraft} ariaLabel="Author Note text" placeholder="Write guidance for future Generations…" disabled={pending || disabled} className="prose-editor-field h-56" />
 		{notice !== null && <div className="mt-3 text-sm" role="alert">
 			<p>{notice}</p>
