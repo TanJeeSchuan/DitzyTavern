@@ -96,6 +96,7 @@ describe("staged SillyTavern chat import commit", () => {
 		module = createChatImportModule(database, { artifactDirectory });
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});

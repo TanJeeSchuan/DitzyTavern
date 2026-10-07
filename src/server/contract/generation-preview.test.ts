@@ -78,6 +78,7 @@ describe("Prompt Plan inspection", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => {
 		setSystemTime();
+		processStateFor(database).dispose();
 		database.close();
 	});
 

@@ -45,13 +45,28 @@ const createProcessState = (database: Database): ProcessState => {
 	const generationPreviews = createGenerationPreviewStore();
 	const stagedImports = createStagedImportStore();
 	const memoryWork = new Map<number, Set<RunningWork>>();
+	let timer: ReturnType<typeof setInterval> | undefined;
+	// ==[HUMAN APPROVED]== The one teardown path. The sweep reaps a container whose
+	// database has closed: bun:sqlite exposes no open flag and `inTransaction`
+	// throws on the closed handle, so a test that skips dispose() and any
+	// close path that skips shutdownApplication cannot keep a timer past one
+	// sweep.
+	const dispose = (): void => {
+		if (timer !== undefined) clearInterval(timer);
+		timer = undefined;
+		generationPreviews.dispose();
+		stagedImports.dispose();
+		memoryWork.clear();
+		states.delete(database);
+	};
 	const sweep = (now: number = Date.now()): void => {
+		try { void database.inTransaction; } catch { dispose(); return; }
 		generationRuntimes.cleanup(now);
 		generationPreviews.sweep(now);
 		stagedImports.sweep(now);
 	};
 	// Unref'd: the sweep must never keep a process (or a test run) alive. ==[HUMAN APPROVED]==
-	const timer = setInterval(() => sweep(), PROCESS_STATE_SWEEP_INTERVAL_MS);
+	timer = setInterval(() => sweep(), PROCESS_STATE_SWEEP_INTERVAL_MS);
 	timer.unref();
 	return {
 		generationRuntimes,
@@ -59,12 +74,6 @@ const createProcessState = (database: Database): ProcessState => {
 		memoryWork,
 		stagedImports,
 		sweep,
-		dispose: () => {
-			clearInterval(timer);
-			generationPreviews.dispose();
-			stagedImports.dispose();
-			memoryWork.clear();
-			states.delete(database);
-		},
+		dispose,
 	};
 };

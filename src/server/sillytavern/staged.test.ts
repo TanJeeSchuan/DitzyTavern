@@ -65,6 +65,7 @@ describe("staged SillyTavern chat import", () => {
 		// server process: the store is keyed to this test's database.
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});

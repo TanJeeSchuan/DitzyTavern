@@ -10,6 +10,21 @@ import { StagedChatImportExpiredError } from "../sillytavern/errors";
 import { processStateFor } from "./process-state";
 import { shutdownApplication } from "./shutdown";
 
+test("the sweep reaps a container whose database has closed", () => {
+	const directory = mkdtempSync(join(tmpdir(), "process-state-reap-"));
+	try {
+		const database = openInitializedDatabase({ path: ":memory:" });
+		const state = processStateFor(database);
+		database.close();
+		// The closed database's tick: the container reaps itself, so a test
+		// that skips dispose() cannot keep a timer past one sweep.
+		state.sweep();
+		const replacement = processStateFor(database);
+		expect(replacement).not.toBe(state);
+		replacement.dispose();
+	} finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("shutdown starts worker cancellation while joining HTTP handlers and closes the database last", async () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
 	const entered = Promise.withResolvers<void>();

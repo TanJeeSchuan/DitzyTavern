@@ -167,6 +167,7 @@ describe("Generation runtime", () => {
 
 		expect(expired).toBe(1);
 		expect(registry.get(12)).toBeUndefined();
+		processStateFor(database).dispose();
 		database.close();
 	});
 
@@ -254,7 +255,8 @@ describe("Generation runtime", () => {
 			expect(runtime.signal.aborted).toBe(true);
 		} finally {
 			registry.remove(generationId);
-			database.close();
+			processStateFor(database).dispose();
+		database.close();
 		}
 	});
 
@@ -274,6 +276,7 @@ describe("Generation runtime", () => {
 		work.resolve();
 		await shutdown;
 		expect(released).toBe(true);
+		processStateFor(database).dispose();
 		database.close();
 	});
 
