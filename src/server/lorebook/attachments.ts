@@ -12,7 +12,7 @@ import {
 	lorebookTable,
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
-import { readActiveCast, readControlAssignment } from "../conversation/internal";
+import { findConversation, readActiveCast, readControlAssignment } from "../conversation/internal";
 import {
 	attachConversationLorebook,
 	saveConversationLoreSettings,
@@ -121,8 +121,7 @@ export const readLorebookAttachmentState = (
 	conversationId: number,
 ) => {
 	const db = connect(database);
-	const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable)
-		.where(eq(conversationTable.id, conversationId)).get();
+	const conversation = findConversation(db, conversationId);
 	if (conversation === undefined) return undefined;
 	const settings = readLoreSettings(database, conversationId);
 	return {
@@ -181,7 +180,7 @@ export const readParticipantLorebookAttachments = (database: Database, participa
 	const db = connect(database);
 	const participant = db.select({ id: participantTable.id, conversationId: participantTable.conversation_id }).from(participantTable).where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get();
 	if (participant === undefined) return undefined;
-	const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, participant.conversationId)).get();
+	const conversation = findConversation(db, participant.conversationId);
 	if (conversation === undefined) return undefined;
 	return {
 		owner: "participant" as const,
