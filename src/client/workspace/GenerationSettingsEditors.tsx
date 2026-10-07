@@ -53,17 +53,42 @@ export function SamplingEditor({
 							<span className="flex items-center justify-end @sm:order-last">
 								<input
 									id={`generation-${field}`}
-									className={`h-7 min-w-0 rounded-md border border-transparent bg-transparent px-1.5 text-right text-[13px] tabular-nums outline-none placeholder:text-muted-foreground hover:border-border focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 ${set || parsed.status === "invalid" ? "w-14" : "w-20"}`}
+									className={`h-7 min-w-0 rounded-md border border-transparent bg-transparent px-1.5 text-right text-[13px] tabular-nums
+										outline-none placeholder:text-muted-foreground hover:border-border focus-visible:border-ring
+										focus-visible:ring-3 focus-visible:ring-ring/30 ${
+											set || parsed.status === "invalid" ? "w-14" : "w-20"
+										}`}
 									inputMode="decimal"
 									autoComplete="off"
 									placeholder="Default"
 									value={drafts[field]}
 									onChange={(event) => onChange(field, event.target.value)}
 								/>
-								{parsed.status !== "empty" && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" title="Use provider default" aria-label={`Use provider default for ${label}`} onClick={() => onChange(field, "")}><X aria-hidden="true" /></Button>}
+								{parsed.status !== "empty" && (
+										<Button
+											type="button"
+											size="icon-xs"
+											variant="ghost"
+											className="text-muted-foreground"
+											title="Use provider default"
+											aria-label={`Use provider default for ${label}`}
+											onClick={() => onChange(field, "")}
+										>
+											<X aria-hidden="true" />
+										</Button>
+									)}
 							</span>
 							{parsed.status === "empty" ? (
-								<Button type="button" size="sm" variant="outline" className="col-span-2 justify-self-start @sm:col-span-1" aria-label={`Set ${label}`} onClick={() => onChange(field, String(slider.neutral))}>Set</Button>
+								<Button
+										type="button"
+										size="sm"
+										variant="outline"
+										className="col-span-2 justify-self-start @sm:col-span-1"
+										aria-label={`Set ${label}`}
+										onClick={() => onChange(field, String(slider.neutral))}
+									>
+										Set
+									</Button>
 							) : (
 								<Slider
 									className="col-span-2 py-1.5 @sm:col-span-1 [&_[data-slot=slider-track]]:bg-foreground/15"
@@ -220,7 +245,15 @@ export function RequestOverridesEditor({
 	transmittingNamespace: GenerationSettingsDraftController["transmittingNamespace"];
 }) {
 	const transmitting = transmittingNamespace.status === "known" ? transmittingNamespace.namespace : null;
-	const namespace = (key: OverridesNamespace) => <OverridesNamespaceEditor key={key} namespace={key} draft={drafts[key]} onChange={(value) => onChange(key, value)} transmitting={key === transmitting} />;
+	const namespace = (key: OverridesNamespace) => (
+		<OverridesNamespaceEditor
+			key={key}
+			namespace={key}
+			draft={drafts[key]}
+			onChange={(value) => onChange(key, value)}
+			transmitting={key === transmitting}
+		/>
+	);
 	return (
 		<section aria-labelledby="generation-overrides-title">
 			<h3 id="generation-overrides-title" className="sr-only">Request Overrides</h3>
