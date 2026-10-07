@@ -7,11 +7,12 @@ import { saveMemoryNote, type ConversationMemoryAllowance } from "../memories";
 const LIMIT = 2_000;
 const COUNT_AT = 1_800;
 
-export function MemoryNoteDialog({ conversationId, settings, onClose, onSaved }: {
+export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings, onSaved }: {
 	conversationId: number;
 	settings: ConversationMemoryAllowance;
 	onClose: () => void;
-	onSaved: (settings: ConversationMemoryAllowance) => void;
+	onSettings: (settings: ConversationMemoryAllowance) => void;
+	onSaved: () => void;
 }) {
 	const [note, setNote] = useState(settings.note);
 	const [revision, setRevision] = useState(settings.revision);
@@ -26,9 +27,9 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSaved }:
 			const result = await saveMemoryNote(conversationId, revision, note);
 			if (result.outcome === "invalid") setError(result.reason);
 			else if (result.outcome === "conflict") {
-				onSaved(result.currentSettings); setRevision(result.currentSettings.revision); setNote(result.currentSettings.note);
-				setError("Memory settings changed elsewhere. Review the current note before saving again.");
-			} else onSaved(result.settings);
+				onSettings(result.currentSettings); setRevision(result.currentSettings.revision);
+				setError(result.currentSettings.note === settings.note ? "Memory settings changed elsewhere. Save again to keep this note." : "The note changed elsewhere. Saving again replaces it with this text.");
+			} else { onSettings(result.settings); onSaved(); }
 		} catch { setError("The Memory note could not be saved. Try again."); }
 		finally { setPending(false); }
 	};

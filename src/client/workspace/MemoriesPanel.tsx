@@ -59,7 +59,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 		return [...groups].sort(([a, x], [b, y]) => order(x) - order(y) || x.people.length - y.people.length || y.entries.length - x.entries.length || a.localeCompare(b));
 	};
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={`${key}:${needle !== "" || focus !== null}`} people={people} cast={memoryCast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])} onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}>
+	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={key} people={people} cast={memoryCast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])} onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}>
 		{({ source, index }) => <MemoryClaimRow
 			key={`${source.variantId}:${index}`}
 			source={source}
@@ -119,7 +119,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 		</div>
 		{merging && memories && <MemoryLabelMergeDialog conversationId={conversationId} memories={memories} initialLabels={merging} onClose={() => setMerging(null)} onMerged={(updated, destination) => { labelsMerged(updated, destination); setMerging(null); }} />}
 		{identityTarget && memories && <MemoryIdentityDialog conversationId={conversationId} participant={identityTarget.participant} memories={memories} initialKind={identityTarget.kind} onClose={() => setIdentityTarget(null)} onSaved={(updated) => { void identitySaved(updated); setIdentityTarget(null); }} />}
-		{noteOpen && settings && <MemoryNoteDialog conversationId={conversationId} settings={settings} onClose={() => setNoteOpen(false)} onSaved={(updated) => { settingsSaved(updated); setNoteOpen(false); }} />}
+		{noteOpen && settings && <MemoryNoteDialog conversationId={conversationId} settings={settings} onClose={() => setNoteOpen(false)} onSettings={settingsSaved} onSaved={() => setNoteOpen(false)} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) cancelReset(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
@@ -136,7 +136,8 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 }
 
 function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children }: { people: string[]; cast: (CastMember & { names: string[] })[]; entries: Entry[]; cap: number; onMerge: (person: string) => void; onIdentity: (participant: CastMember, kind: MemoryIdentity["kind"]) => void; children: (entry: Entry) => ReactNode }) {
-	const [shown, setShown] = useState(entries.length <= cap + 3 ? entries.length : cap);
+	const [more, setMore] = useState(0);
+	const shown = (entries.length <= cap + 3 ? entries.length : cap) + more;
 	const name = people.length ? people.join(" & ") : "Unlabelled";
 	const participants = cast.filter((participant) => participant.names.some((name) => people.includes(name)));
 	return <Collapsible.Root defaultOpen asChild><section className="memory-person" aria-label={name}>
@@ -158,7 +159,7 @@ function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children
 		</header>
 		<Collapsible.Content className="grid gap-[0.1rem]">
 			{entries.slice(0, shown).map(children)}
-			{entries.length > shown && <Button type="button" size="xs" variant="ghost" className="justify-self-start" onClick={() => setShown(shown + 50)}>Show {Math.min(50, entries.length - shown)} older</Button>}
+			{entries.length > shown && <Button type="button" size="xs" variant="ghost" className="justify-self-start" onClick={() => setMore(more + 50)}>Show {Math.min(50, entries.length - shown)} older</Button>}
 		</Collapsible.Content>
 	</section></Collapsible.Root>;
 }
