@@ -5,9 +5,6 @@ import {
 	InvalidConversationCommandError,
 	createConversationModule,
 	removeRetainedGenerationInspection,
-	type AcceptedContinuationGeneration,
-	type AcceptedSiblingGeneration,
-	type AcceptedTailGeneration,
 	type ConversationSummary,
 	type StopGenerationInput,
 	type StopGenerationsInput,
@@ -30,22 +27,14 @@ import {
 } from "../model-client";
 import {
 	generationRuntimeFor,
+	startServerOwnedGeneration,
+	type AcceptedGenerationRecord,
+	type GenerationStartInput,
 	type GenerationRuntime,
 	type GenerationRuntimeState,
+	type ServerOwnedGenerationControl,
 } from "../workflows";
 import type { GenerationCheckpointOptions } from "../workflows/generation-runtime";
-import {
-	startServerOwnedContinuationGeneration,
-	startServerOwnedSendGeneration,
-	startServerOwnedSiblingGeneration,
-	type ContinueGenerationInput,
-	type ServerOwnedGenerationControl,
-	type SendThroughProvisionalTailGenerationInput,
-	type GenerateSiblingVariantInput,
-	type ContinueGenerationResult,
-	type SendThroughProvisionalTailGenerationResult,
-	type SiblingGenerationResult,
-} from "../workflows";
 
 /** ==[HUMAN APPROVED]== Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
@@ -166,9 +155,10 @@ interface AcceptedGeneration {
 /**
  * ==[HUMAN APPROVED]== The attempt fields the Coordinator resolves itself: the transport it builds
  * from the Conversation-selected Profile, the detached signal and observers the runtime
- * owns, and the terminal checkpoint flush. A caller supplies only the rest.
+ * owns, and the terminal checkpoint flush. A caller supplies only the rest. The omission
+ * distributes so a union start input keeps its per-kind fields.
  */
-export type GenerationStartRequest<TInput> = Omit<
+export type GenerationStartRequest<TInput> = TInput extends unknown ? Omit<
 	TInput,
 	| "modelClient"
 	| "connection"
@@ -177,7 +167,7 @@ export type GenerationStartRequest<TInput> = Omit<
 	| "onEvent"
 	| "onBeforeTerminal"
 	| "onAccepted"
->;
+> : never;
 
 interface GenerationStartCallbacks<TAccepted extends AcceptedGeneration> {
 	onAccepted: (
@@ -226,47 +216,18 @@ export class GenerationCoordinator {
 		private readonly options: GenerationCoordinatorOptions = {},
 	) {}
 
-	startSendGeneration(
-		input: GenerationStartRequest<SendThroughProvisionalTailGenerationInput>,
-	): Promise<CoordinatedGeneration<AcceptedTailGeneration, SendThroughProvisionalTailGenerationResult>> {
-		return this.startGeneration({
+	/**
+	 * ==[HUMAN APPROVED]== Start one server-owned Generation of any attempt kind. The attempt
+	 * input's own fields select the lifecycle: Send carries the submitted text,
+	 * Sibling the target Message, and Continue neither.
+	 */
+	startGeneration(
+		input: GenerationStartRequest<GenerationStartInput>,
+	): Promise<CoordinatedGeneration<AcceptedGenerationRecord, AcceptedGenerationRecord>> {
+		return this.coordinate({
 			conversationId: input.conversationId,
 			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
-				startServerOwnedSendGeneration(database, {
-					...input,
-					modelClient,
-					connection,
-					preparationFetch: this.options.fetch,
-					connectionSettings: this.options,
-					onBeforeTerminal,
-				}, callbacks),
-		});
-	}
-
-	startContinuationGeneration(
-		input: GenerationStartRequest<ContinueGenerationInput>,
-	): Promise<CoordinatedGeneration<AcceptedContinuationGeneration, ContinueGenerationResult>> {
-		return this.startGeneration({
-			conversationId: input.conversationId,
-			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
-				startServerOwnedContinuationGeneration(database, {
-					...input,
-					modelClient,
-					connection,
-					preparationFetch: this.options.fetch,
-					connectionSettings: this.options,
-					onBeforeTerminal,
-				}, callbacks),
-		});
-	}
-
-	startSiblingGeneration(
-		input: GenerationStartRequest<GenerateSiblingVariantInput>,
-	): Promise<CoordinatedGeneration<AcceptedSiblingGeneration, SiblingGenerationResult>> {
-		return this.startGeneration({
-			conversationId: input.conversationId,
-			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
-				startServerOwnedSiblingGeneration(database, {
+				startServerOwnedGeneration(database, {
 					...input,
 					modelClient,
 					connection,
@@ -400,7 +361,7 @@ export class GenerationCoordinator {
 		return generationRuntimeFor(this.database);
 	}
 
-	private async startGeneration<
+	private async coordinate<
 		TAccepted extends AcceptedGeneration,
 		TResult,
 	>(

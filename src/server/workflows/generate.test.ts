@@ -67,13 +67,13 @@ const sendPreview = async (
 		tokenEstimator: options.tokenEstimator,
 	});
 	if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
-	return preview.capture.capture;
+	return preview.capture;
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
 	const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
 	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
-	return preview.capture.capture;
+	return preview.capture;
 };
 
 describe("Generation runtime behavior", () => {

@@ -82,7 +82,7 @@ describe("GenerationCoordinator", () => {
 			fetch: async () => streamResponse(),
 		});
 
-		const first = await coordinator.startSendGeneration({
+		const first = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			content: "Start the scene.",
@@ -91,7 +91,7 @@ describe("GenerationCoordinator", () => {
 		expect(first.runtime.state.status).toBe("complete");
 		expect(currentSnapshot(conversation.id).messages).toHaveLength(2);
 
-		const continuation = await coordinator.startContinuationGeneration({
+		const continuation = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			expectedRevision: firstResult.conversation.revision,
 		});
@@ -100,7 +100,7 @@ describe("GenerationCoordinator", () => {
 		expect(currentSnapshot(conversation.id).messages).toHaveLength(3);
 
 		const targetMessageId = firstResult.messageId;
-		const sibling = await coordinator.startSiblingGeneration({
+		const sibling = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			messageId: targetMessageId,
 		});
@@ -116,7 +116,7 @@ describe("GenerationCoordinator", () => {
 	test("rejects a missing conversation before resolving transport", async () => {
 		const coordinator = createGenerationCoordinator(database);
 
-		await expect(coordinator.startSendGeneration({
+		await expect(coordinator.startGeneration({
 			conversationId: 404,
 			expectedRevision: 0,
 			content: "Start the scene.",
@@ -141,7 +141,7 @@ describe("GenerationCoordinator", () => {
 			masterKey: key,
 			fetch: () => { requested.resolve(); return response.promise; },
 		});
-		const started = await coordinator.startSendGeneration({
+		const started = await coordinator.startGeneration({
 			conversationId: conversation.id, expectedRevision: conversation.revision, content: "Stop on shutdown.",
 		});
 		await requested.promise;
@@ -195,7 +195,7 @@ describe("GenerationCoordinator", () => {
 			},
 		});
 
-		const started = await coordinator.startSendGeneration({
+		const started = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			content: "Stop me.",

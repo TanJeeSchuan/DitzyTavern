@@ -21,22 +21,22 @@ export {
 } from "./native-chat";
 export {
 	continueGeneration,
+	type AcceptedGenerationRecord,
 	type ContinueGenerationInput,
 	type ContinueGenerationResult,
 	generateSiblingVariant,
 	type GenerateSiblingVariantInput,
 	type GenerationAttemptInput,
+	type GenerationStartInput,
 	type ParticipantPreview,
 	sendThroughProvisionalTailGeneration,
 	type SendThroughProvisionalTailGenerationInput,
 	type SendThroughProvisionalTailGenerationResult,
+	startServerOwnedGeneration,
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 	type ServerOwnedGenerationControl,
 	type SiblingGenerationResult,
-	startServerOwnedContinuationGeneration,
-	startServerOwnedSendGeneration,
-	startServerOwnedSiblingGeneration,
 } from "./generate";
 export {
 	GenerationRuntime,

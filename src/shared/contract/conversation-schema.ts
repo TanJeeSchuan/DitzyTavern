@@ -737,6 +737,19 @@ export const generationPreviewBody = Type.Union([
 	}),
 ]);
 
+// ==[HUMAN APPROVED]== The one Generation attempt vocabulary: the kind discriminant of the
+// Preview body above. Every capture, preview record, lifecycle policy, and
+// server-owned wrapper dispatches on this union instead of restating the
+// kinds, so the wire vocabulary and the server vocabulary cannot drift.
+export type GenerationTarget =
+	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "continuation" }
+	| { readonly kind: "sibling"; readonly messageId: number };
+
+export type GenerationTargetKind = GenerationTarget["kind"];
+
+export type GenerationTargetFor<K extends GenerationTargetKind> = Extract<GenerationTarget, { kind: K }>;
+
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
 	responseBudget: Type.Integer(),
