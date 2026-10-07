@@ -17,6 +17,8 @@ import {
 } from "../../shared/contract/macro-variables";
 import type { GenerationJsonObject } from "../../shared/generation-json";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -37,7 +39,10 @@ const createChat = (database: Database) => createConversationModule(database).cr
 describe("Macro Variables transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("reads initial values, records Variant provenance, and masks inherited values on delete", async () => {

@@ -5,6 +5,8 @@ import { openInitializedDatabase } from "../database/database";
 import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -24,6 +26,7 @@ describe("Generation Stop route mapping", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());

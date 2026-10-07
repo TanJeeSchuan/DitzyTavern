@@ -15,6 +15,8 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import { processStateFor } from "../application/process-state";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -75,7 +77,10 @@ const readVariantData = (database: Database) => {
 describe("Prompt Plan inspection", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => {
 		setSystemTime();
 		processStateFor(database).dispose();

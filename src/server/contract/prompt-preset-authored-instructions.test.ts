@@ -23,6 +23,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Authored instruction coverage through the public routes and captured
 // Generation requests: recipe operations on authored instruction blocks,
 // and the shared-and-copied recipe lifecycle. The authored instruction
@@ -30,7 +32,10 @@ import {
 describe("Prompt Preset authored instructions", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
@@ -153,7 +158,10 @@ describe("Prompt Preset authored instructions", () => {
 describe("Prompt Preset authored instructions, shared and copied", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	const presetRevision = async (presetId: number): Promise<number> => {

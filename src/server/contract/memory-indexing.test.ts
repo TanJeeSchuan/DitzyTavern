@@ -107,7 +107,7 @@ describe("Memory indexing public lifecycle", () => {
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 		memories = createMemoryRoutes(database);
 		// The test composition installs Memory's sync on Conversation's write stream.
-		observeConversationWrites(syncMemorySources);
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());

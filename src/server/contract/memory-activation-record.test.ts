@@ -6,6 +6,8 @@ import { createConversationRoutes } from "./conversation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationJsonObject } from "../../shared/generation-provenance";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -102,7 +104,10 @@ const acceptedInput = (conversation: ReturnType<typeof createChat>, memory: Memo
 describe("permanent Memory Activation Records", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("retain the exact attempt after source changes and replay expiry", async () => {

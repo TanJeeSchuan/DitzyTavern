@@ -18,6 +18,8 @@ import {
 import { requireSnapshot } from "./test-fixtures";
 import { recoverActiveGenerations } from "../workflows";
 
+import { observeConversationWrites } from "./commands/transaction";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -31,6 +33,7 @@ describe("explicit Conversation Generation Stop", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());

@@ -47,7 +47,7 @@ describe("Memory source lifecycle public operations", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		// The test composition installs Memory's sync on Conversation's write stream.
-		observeConversationWrites(syncMemorySources);
+		observeConversationWrites(database, syncMemorySources);
 	});
 	afterEach(() => database.close());
 

@@ -4,6 +4,7 @@ import { conversationTable } from "../../database/schema";
 import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import {
 	ConversationNotFoundError,
+	ConversationWriteObserverMissingError,
 	StaleConversationRevisionError,
 } from "../errors";
 import {
@@ -29,18 +30,26 @@ const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 
 /**
  * ==[HUMAN APPROVED]== The application-installed consumer of Conversation's reported write
- * changes. The deep Conversation module never imports Memory: the application
- * layer (app.ts) installs the sync here, and every committed write delivers
- * its ConversationMemoryChange through this seam.
+ * changes, registered per database. The deep Conversation module never
+ * imports Memory: the composition owning each database (app.ts for the
+ * application database, each test composition for its own database) installs
+ * the sync here, and every committed write delivers its
+ * ConversationMemoryChange through this seam. Registration is keyed by
+ * database so parallel compositions in one process never observe one
+ * another's writes.
  */
-let conversationWriteObserver:
-	| ((database: Database, change: ConversationMemoryChange) => void)
-	| undefined;
+type ConversationWriteObserver = (
+	database: Database,
+	change: ConversationMemoryChange,
+) => void;
+
+const writeObservers = new WeakMap<Database, ConversationWriteObserver>();
 
 export function observeConversationWrites(
-	observer: (database: Database, change: ConversationMemoryChange) => void,
+	database: Database,
+	observer: ConversationWriteObserver,
 ): void {
-	conversationWriteObserver = observer;
+	writeObservers.set(database, observer);
 }
 
 /**
@@ -72,7 +81,11 @@ export function runConversationTransaction<T>(
 					reported = change;
 				},
 			);
-			if (reported !== undefined) conversationWriteObserver?.(database, reported);
+			if (reported !== undefined) {
+				const observer = writeObservers.get(database);
+				if (observer === undefined) throw new ConversationWriteObserverMissingError();
+				observer(database, reported);
+			}
 			return result;
 		})
 		.immediate();

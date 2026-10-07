@@ -9,6 +9,8 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from "..";
 
+import { observeConversationWrites } from "../../conversation";
+import { syncMemorySources } from "../../memory";
 // Sequence coverage: configuration that changes between commands. Every case
 // here reassigns a Control seat and then starts a Generation, asserting on the
 // generation input the transport receives. Role assignment is only observable
@@ -75,6 +77,7 @@ describe("Control reassignment between commands", () => {
 
 	beforeEach(async () => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		conversation = createConversationModule(database);
 		const created = conversation.create({
 			name: "Cast change",

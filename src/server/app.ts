@@ -21,7 +21,7 @@ export async function createApp(options: AppOptions) {
 	// ==[HUMAN APPROVED]== The application layer consumes Conversation's reported changes:
 	// Memory sync runs as the last statement of the Conversation transaction
 	// wrapper, so its reads see exactly the committed write.
-	observeConversationWrites(syncMemorySources);
+	observeConversationWrites(database, syncMemorySources);
 	sweepOrphanedImages(database);
 	const stopMemoryWorker = startMemoryWorker(database, {
 		process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, fetch, signal, trace),

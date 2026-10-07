@@ -12,6 +12,9 @@ import {
 	InvalidConversationCommandError,
 } from ".";
 
+import { observeConversationWrites } from "./commands/transaction";
+import { syncMemorySources } from "../memory";
+import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 // Regression tests for canonical Generation removal. The Active Generation
 // row is the only authority for which mutation a removal performs: a Sibling
 // Generation loses its provisional Variant, while Tail and Continuation
@@ -23,6 +26,7 @@ describe("canonical Conversation Generation removal", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());
@@ -144,7 +148,50 @@ describe("canonical Conversation Generation removal", () => {
 		expect(after.revision).toBe(accepted.conversation.revision + 1);
 	});
 
-	test("removing a Continuation Generation removes only its provisional Message", () => {
+	test("removals report their removed Variant ids so Memory can abandon the work the write deleted", () => {
+	const input = setup();
+	const delivered: ConversationMemoryChange[] = [];
+	// The per-database registration is the same seam the application or the
+	// test composition installs once; a specific case may scope a finer
+	// observer for the write it inspects.
+	observeConversationWrites(database, (_observedDatabase, change: ConversationMemoryChange) => {
+		delivered.push(change);
+	});
+
+	// A Sibling Generation loses exactly its provisional Variant.
+	const sibling = acceptSibling(input);
+	delivered.splice(0);
+	input.module.removeGeneration({ conversationId: input.created.id, generationId: sibling.generationId });
+	expect(delivered).toHaveLength(1);
+	expect([...delivered[0]?.removedVariantIds ?? []]).toEqual([sibling.provisionalVariantId]);
+	expect(delivered[0]?.touchedVariantIds).toEqual([]);
+
+	// A Tail Generation loses its whole provisional Message: one Variant. The
+	// acceptance seam reports the accepted human source separately; the
+	// removal report is drained and asserted on its own.
+	const revision = input.module.getRevision(input.created.id);
+	if (revision === undefined) throw new Error("Conversation missing.");
+	const tail = acceptConversationTailGeneration(database, {
+		conversationId: input.created.id,
+		expectedRevision: revision,
+		timestamp: "2026-08-27T00:00:02.000Z",
+		humanContent: "Keep my input.",
+		humanParticipantId: input.humanId,
+		modelParticipantId: input.modelId,
+		capturedModelName: input.modelName,
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		promptContext: [],
+		generationSettings: {},
+		connection: {},
+	});
+	delivered.splice(0);
+	input.module.removeGeneration({ conversationId: input.created.id, generationId: tail.generationId });
+	expect(delivered).toHaveLength(1);
+	expect([...delivered[0]?.removedVariantIds ?? []]).toEqual([tail.provisionalVariantId]);
+	expect(delivered[0]?.touchedVariantIds).toEqual([]);
+});
+
+test("removing a Continuation Generation removes only its provisional Message", () => {
 		const input = setup();
 		const opening = input.created.messages[0];
 		const openingVariant = opening?.variants[0];

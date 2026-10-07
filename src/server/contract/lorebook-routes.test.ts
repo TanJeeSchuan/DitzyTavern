@@ -6,6 +6,8 @@ import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
 import { createConversationModule } from "../conversation";
 import { createCharacterLibraryModule } from "../character-library";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const request = (path: string, init?: RequestInit) =>
 	new Request(`http://localhost${path}`, {
 		headers: { "content-type": "application/json", ...init?.headers },
@@ -24,6 +26,7 @@ describe("Lorebook library transport", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		app = createLorebookRoutes(database);
 	});
 	afterEach(() => database.close());

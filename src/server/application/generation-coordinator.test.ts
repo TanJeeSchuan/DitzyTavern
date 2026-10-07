@@ -21,6 +21,8 @@ import {
 	type GenerationStopOutcome,
 } from "./generation-coordinator";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const key = new Uint8Array(32).fill(31);
 const prompt = {
 	systemInstruction: "Write briefly.",
@@ -51,6 +53,7 @@ describe("GenerationCoordinator", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
@@ -254,6 +257,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
@@ -515,6 +519,7 @@ describe("Generation Coordinator terminal races", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
