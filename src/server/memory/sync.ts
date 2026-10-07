@@ -26,13 +26,21 @@ export function syncMemorySources(database: Database, change: ConversationMemory
 		abortMemoryWork(database, registeredMemoryVariants(database).filter((id) => removed.has(id)));
 	}
 	if (change.touchedVariantIds.length > 0) {
-		const rows = new Map(drizzle(database)
-			.select({ id: messageVariantTable.id, messageId: messageVariantTable.message_id, selected: messageVariantTable.selected, content: messageVariantTable.content, sourceHash: memoryCollectionTable.source_hash })
-			.from(messageVariantTable)
-			.leftJoin(memoryCollectionTable, eq(memoryCollectionTable.variant_id, messageVariantTable.id))
-			.where(inArray(messageVariantTable.id, [...change.touchedVariantIds]))
-			.all()
-			.map((row) => [row.id, row] as const));
+		const rows = new Map(
+			drizzle(database)
+				.select({
+					id: messageVariantTable.id,
+					messageId: messageVariantTable.message_id,
+					selected: messageVariantTable.selected,
+					content: messageVariantTable.content,
+					sourceHash: memoryCollectionTable.source_hash,
+				})
+				.from(messageVariantTable)
+				.leftJoin(memoryCollectionTable, eq(memoryCollectionTable.variant_id, messageVariantTable.id))
+				.where(inArray(messageVariantTable.id, [...change.touchedVariantIds]))
+				.all()
+				.map((row) => [row.id, row] as const),
+		);
 		for (const id of change.touchedVariantIds) {
 			const row = rows.get(id);
 			if (!row) continue;

@@ -12,7 +12,13 @@ export const registerMemoryWork = (database: Database, variantId: number, indexS
 	const byVariant = running(database);
 	const entries = byVariant.get(variantId) ?? new Set<RunningWork>();
 	byVariant.set(variantId, entries.add(work));
-	return { signal: work.controller.signal, unregister: () => { entries.delete(work); if (entries.size === 0) byVariant.delete(variantId); } };
+	return {
+		signal: work.controller.signal,
+		unregister: () => {
+			entries.delete(work);
+			if (entries.size === 0) byVariant.delete(variantId);
+		},
+	};
 };
 
 export const abortMemoryWork = (database: Database, variantIds: Iterable<number>): void => {

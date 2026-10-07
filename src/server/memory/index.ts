@@ -1,5 +1,17 @@
 export { createMemorySettingsModule } from "./settings";
-export { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryWorker, startMemoryCatchup, StaleMemoryCollectionError } from "./collections";
+export {
+	cancelMemoryCatchup,
+	correctMemorySource,
+	readConversationMemories,
+	readLatestMemoryCatchup,
+	readMemoryAllowance,
+	resetAndReextractMemorySource,
+	retryMemorySourceIndex,
+	setMemoryAllowance,
+	startMemoryWorker,
+	startMemoryCatchup,
+	StaleMemoryCollectionError,
+} from "./collections";
 export type { MemoryWorkerOptions } from "./collections";
 export { embedMemoryTexts } from "./indexing";
 export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
