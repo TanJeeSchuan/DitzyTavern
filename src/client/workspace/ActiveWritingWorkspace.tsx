@@ -34,7 +34,7 @@ import type {
 	ThemePreference,
 	Workspace,
 } from "../workspace";
-import { NavigationRail } from "./NavigationRail";
+import { NavigationDrawer, NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
 import { PrimaryPanelView } from "./PrimaryPanelView";
 import { useConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
@@ -85,6 +85,7 @@ export function ActiveWritingWorkspace({
 	const [inspectPromptPlanBeforeGenerating, setInspectPromptPlanBeforeGenerating] = useState(
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
+	const [navigationOpen, setNavigationOpen] = useState(false);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
 	const [marking, setMarking] = useState(false);
@@ -271,6 +272,7 @@ export function ActiveWritingWorkspace({
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
 			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
+			<NavigationDrawer open={navigationOpen} onOpenChange={setNavigationOpen} activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
 
 			<SaveGuardContext.Provider value={registerSaveGuard}>
 			<SaveNavigationContext.Provider value={requestNavigation}>
@@ -302,7 +304,8 @@ export function ActiveWritingWorkspace({
 			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={session.activeChat}
-						onOpenCast={() => requestNavigation(() => togglePanel("characters"))}
+					onOpenNavigation={() => setNavigationOpen(true)}
+					onOpenCast={() => requestNavigation(() => togglePanel("characters"))}
 					onOpenInfo={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
@@ -392,7 +395,6 @@ export function ActiveWritingWorkspace({
 									<GenerationControls
 										showStopAll={generation.activeGenerationTargets.length > 1}
 										pending={generation.stopPending}
-										onStop={() => void generation.stopGeneration(generation.selectedGenerationTarget!.generationId)}
 										onStopAll={() => void generation.stopAllGenerations()}
 										onInspect={openActiveGenerationDetails}
 									/>

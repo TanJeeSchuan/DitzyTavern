@@ -8,6 +8,7 @@ import {
 	SlidersHorizontal,
 	Users,
 } from "lucide-react";
+import { Dialog } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import type { PrimaryPanel } from "./types";
 
@@ -82,6 +83,37 @@ export function NavigationRail({
 				<Settings aria-hidden="true" />
 			</RailButton>
 		</nav>
+	);
+}
+
+// Below the desktop breakpoint the rail leaves the frame and drops down as a row under the Story header.
+export function NavigationDrawer({
+	open,
+	onOpenChange,
+	activePanel,
+	onOpenPanel,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	activePanel: PrimaryPanel;
+	onOpenPanel: (panel: Exclude<PrimaryPanel, null>) => void;
+}) {
+	return (
+		<Dialog.Root open={open} onOpenChange={onOpenChange}>
+			<Dialog.Portal>
+				<Dialog.Overlay className="rail-drawer-overlay" />
+				<Dialog.Content className="rail-drawer" aria-describedby={undefined}>
+					<Dialog.Title className="sr-only">Workspace navigation</Dialog.Title>
+					<NavigationRail
+						activePanel={activePanel}
+						onOpenPanel={(panel) => {
+							onOpenChange(false);
+							onOpenPanel(panel);
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Portal>
+		</Dialog.Root>
 	);
 }
 

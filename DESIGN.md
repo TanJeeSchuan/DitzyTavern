@@ -132,7 +132,7 @@ The ambient field responds to the current composer identity:
 
 ### Narrow desktop and mobile frame
 
-- The left navigation rail becomes a top rail.
+- The left navigation rail leaves the frame and opens as a labelled drawer from a menu button at the start of the Story header, so the Story keeps a single header bar.
 - Tool panels become nested full-screen layers rather than compressed sidebars or small floating cards.
 - Each layer needs an obvious back path and visible nesting context.
 - Closing a layer returns the user to the same story position.
@@ -204,7 +204,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Application shell
 
 - Slim icon-only desktop rail with immediate hover and keyboard-focus labels.
-- Top rail on narrow desktop and mobile.
+- Labelled navigation drawer, opened from the Story header, on narrow desktop and mobile.
 - Abstract ambient field visible mainly around the fixed story canvas and unused utility bays.
 - No decorative status dots or ornamental navigation treatments.
 
@@ -270,7 +270,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - While the user is at the bottom, the view follows new content with a smooth scroll. A new Swipe or Regenerate on the latest Message returns the view to the bottom.
 - Keep line wrapping and paragraph positions stable.
 - Place a restrained generation-state indicator near the author header.
-- Inspect and Stop sit in the Message's action row, the slot Continue takes when the Generation ends, so finishing does not shift the story.
+- Inspect sits in the Message's action row as a quiet action like Edit, in the slot Continue takes when the Generation ends, so finishing does not shift the story. Stop is the Composer's send button.
 - Avoid blinking cursors, fake keystroke timing, or other theatrical effects.
 
 ### Panels and details
@@ -306,7 +306,7 @@ Do not use Sticky-Stack Sections, Horizontal Scroll Hijack, kinetic marquees, pa
 - Preserve the central reading measure on wide displays instead of stretching prose to fill available space.
 - Reserve desktop utility bays so opening panels does not reflow the Chat.
 - Replace side-by-side tools with full-screen nested layers when the viewport cannot support the complete frame.
-- Convert the left rail to a top rail on narrow desktop and mobile.
+- Convert the left rail to a Story header drawer on narrow desktop and mobile.
 - Keep identity selection, Message submission, Swipe navigation, Edit, and author details fully operable on touch.
 - Do not rely on hover for information or actions. Every hover state needs focus and touch equivalents.
 - Preserve scroll position when opening and closing panels or changing Swipes.

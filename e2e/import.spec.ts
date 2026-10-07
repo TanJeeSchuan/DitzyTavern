@@ -26,6 +26,7 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 			const filename = `import-${layout.name}.jsonl`;
 			const source = exportFile(`e2e-${layout.name}`);
 			await page.goto("/");
+			if (layout.name === "narrow") await page.getByRole("button", { name: "Open navigation" }).click();
 			await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Chats", exact: true }).click();
 			await page.getByRole("button", { name: "Import", exact: true }).click();
 			await page.getByRole("complementary").locator('input[type="file"]').setInputFiles({ name: filename, mimeType: "application/jsonl", buffer: source });
@@ -54,7 +55,12 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 			await expect(message.getByText("2 of 3", { exact: true })).toBeVisible();
 
 
-			await page.getByRole("button", { name: "Chat information", exact: true }).click();
+			if (layout.name === "narrow") {
+				await story(page).getByRole("heading", { name: "Lantern House Import" }).getByRole("button").click();
+				await page.getByRole("menuitem", { name: "Chat information" }).click();
+			} else {
+				await page.getByRole("button", { name: "Chat information", exact: true }).click();
+			}
 			await expect(page.getByRole("heading", { name: "Import Details", exact: true })).toBeVisible();
 			const download = page.waitForEvent("download");
 			await page.getByRole("button", { name: "Download original file", exact: true }).click();

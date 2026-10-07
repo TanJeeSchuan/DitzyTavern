@@ -34,13 +34,21 @@
 	background: color-mix(in oklch, var(--surface) 96%, var(--accent-soft));
 }
 
+.navigation-button {
+	display: none;
+	width: 2.35rem;
+	height: 2.35rem;
+	border: 0;
+	border-radius: 0.75rem;
+}
+
 .story-title {
 	display: grid;
 	min-width: 0;
 	gap: 0.08rem;
 }
 
-.story-title span {
+.story-title > span {
 	color: var(--text-muted);
 	font-size: 0.66rem;
 	font-weight: 620;
@@ -48,13 +56,44 @@
 }
 
 .story-title h1 {
-	overflow: hidden;
+	display: flex;
+	min-width: 0;
 	margin: 0;
 	font-size: 1rem;
 	font-weight: 690;
 	letter-spacing: -0.025em;
+}
+
+.story-title-trigger {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	letter-spacing: inherit;
+	text-align: left;
+}
+
+.story-title-trigger > span {
+	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.story-title-trigger svg {
+	flex: none;
+	width: 0.9rem;
+	height: 0.9rem;
+	color: var(--text-muted);
+	transition: transform 150ms ease;
+}
+
+.story-title-trigger[data-state="open"] svg {
+	transform: rotate(180deg);
 }
 
 .cast-control {
@@ -135,7 +174,7 @@
 	width: min(100%, 44rem);
 	min-height: 100%;
 	margin: 0 auto;
-	padding: 3rem clamp(1.6rem, 5vw, 3.4rem) 10rem;
+	padding: 3rem clamp(1.6rem, 5vw, 3.4rem) 13rem;
 }
 
 .empty-chat {
@@ -838,31 +877,6 @@
 
 .generation-controls {
 	display: contents;
-}
-
-.generation-controls .secondary-button {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	min-height: 2.2rem;
-	padding: 0 0.68rem;
-	border-color: color-mix(in oklch, var(--border) 72%, transparent);
-	background: color-mix(in oklch, var(--surface-raised) 66%, transparent);
-	color: var(--text-muted);
-	font-size: 0.71rem;
-}
-
-.generation-controls .secondary-button:hover,
-.generation-controls .secondary-button:focus-visible {
-	border-color: var(--border-strong);
-	background: var(--surface-muted);
-	color: var(--foreground);
-}
-
-.generation-controls svg {
-	width: 0.82rem;
-	height: 0.82rem;
-	stroke-width: 2;
 }
 
 .placeholder-header {
