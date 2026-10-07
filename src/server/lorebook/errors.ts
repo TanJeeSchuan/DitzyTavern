@@ -40,3 +40,19 @@ export class StaleLorebookRevisionError extends Error {
 		this.name = "StaleLorebookRevisionError";
 	}
 }
+
+// ==[HUMAN APPROVED]== Typed revision conflict for the two Character-owned Lore attachment
+// commands: the Character whose Lore attachments the command mutates moved
+// elsewhere between the client's read and this write. The recovery payload
+// re-reads the owner's attachment state, so the error carries only the
+// identifiers the route needs.
+export class StaleLoreAttachmentOwnerRevisionError extends Error {
+	constructor(
+		readonly characterId: number,
+		readonly expectedRevision: number,
+		readonly actualRevision: number,
+	) {
+		super(`Expected Character ${characterId} revision ${expectedRevision}, but the current revision is ${actualRevision}.`);
+		this.name = "StaleLoreAttachmentOwnerRevisionError";
+	}
+}

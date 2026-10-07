@@ -367,8 +367,14 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
-			if (result.outcome === "conflict" && "conversationId" in result.currentState) client.setQueryData(["lorebook-attachments", requestConversationId], result.currentState);
-			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
+			if (result.outcome !== "available") {
+				// ==[HUMAN APPROVED]== A conflict names a newer Conversation revision, not a state
+				// snapshot: refetching the attachment read puts the fresh revision
+				// in the cache before the notice shows, so an unchanged retry
+				// succeeds without leaving the panel.
+				if (result.outcome === "conflict") await client.invalidateQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
+				throw new Error(result.outcome === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
+			}
 			await client.invalidateQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
 			return true;
 		} catch (error) { if (isCurrentRequest()) setNotice(error instanceof Error ? error.message : "Lorebook attachment settings could not be saved."); return false; }
