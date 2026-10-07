@@ -3,6 +3,7 @@ export {
 	cancelMemoryCatchup,
 	correctMemorySource,
 	readConversationMemories,
+	readConversationMemoryChanges,
 	readLatestMemoryCatchup,
 	readMemoryAllowance,
 	resetAndReextractMemorySource,

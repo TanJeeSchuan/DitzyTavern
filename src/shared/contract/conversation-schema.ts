@@ -852,6 +852,7 @@ export const participantIdParams = Type.Object({
 });
 
 export const historyPageQuery = Type.Object({
+	aroundMessageId: Type.Optional(numericWire),
 	page: Type.Optional(numericWire),
 	pageSize: Type.Optional(numericWire),
 });

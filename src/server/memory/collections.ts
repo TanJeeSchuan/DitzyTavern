@@ -1,14 +1,15 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
+import { readConversationRevision } from "../conversation/snapshot";
 import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
-import { claimMemoryIndexJob, embedMemoryTexts, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, runMemoryIndexJob, type MemoryEmbed } from "./indexing";
+import { claimMemoryIndexJob, embedMemoryTexts, readMemoryEmbeddingConfiguration, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, runMemoryIndexJob, type MemoryEmbed } from "./indexing";
 import { isMemoryEnabledForConversation } from "./settings";
 import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryCorrectionCommand } from "../../shared/contract/memory";
 import type { MemoryIndexReadiness, MemoryTraceStep } from "../../shared/contract/memory";
-import { abortMemoryWork, registerMemoryWork } from "./work";
+import { abortMemoryWork, indexingVariants, registerMemoryWork, registeredMemoryVariants } from "./work";
 import { sha256 } from "./hash";
 import { projectImageAnchors } from "../../shared/image-reference";
 import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState } from "./labels";
@@ -287,6 +288,7 @@ export function cancelMemoryCatchup(database: Database, conversationId: number, 
 }
 
 export function readConversationMemories(database: Database, conversationId: number) {
+	const cursor = new Date().toISOString();
 	const db = drizzle(database);
 	const state = readMemoryLabelState(database, conversationId);
 	const path = db
@@ -322,7 +324,51 @@ export function readConversationMemories(database: Database, conversationId: num
 		if (collection) return [toView(collection, variant, readiness.get(variant.variantId)!)];
 		return variant.content.trim().length === 0 ? [] : [unprocessedView(variant, enabled)];
 	});
-	return { sources, path, identities: state.identities, cast: state.cast, labelMerges: state.merges, labelRevision: state.revision };
+	return {
+		revision: readConversationRevision(database, conversationId) ?? 0,
+		cursor,
+		sources,
+		path,
+		identities: state.identities,
+		cast: state.cast,
+		labelMerges: state.merges,
+		labelRevision: state.revision,
+	};
+}
+
+export function readConversationMemoryChanges(database: Database, conversationId: number, since: string) {
+	const cursor = new Date().toISOString();
+	const db = drizzle(database);
+	const configuration = readMemoryEmbeddingConfiguration(database);
+	const running = [...new Set([...registeredMemoryVariants(database), ...indexingVariants(database, configuration.spaceKey)])];
+	const rows = db
+		.select({
+			messageId: messageTable.id,
+			authorParticipantId: messageTable.author_participant_id,
+			variantId: messageVariantTable.id,
+			selected: messageVariantTable.selected,
+			content: messageVariantTable.content,
+			collection: memoryCollectionTable,
+		})
+		.from(memoryCollectionTable)
+		.innerJoin(messageVariantTable, eq(messageVariantTable.id, memoryCollectionTable.variant_id))
+		.innerJoin(messageTable, eq(messageTable.id, memoryCollectionTable.message_id))
+		.where(and(
+			eq(memoryCollectionTable.conversation_id, conversationId),
+			or(
+				gte(memoryCollectionTable.updated_at, since),
+				sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`,
+				running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running),
+			),
+		))
+		.orderBy(desc(messageVariantTable.selected), asc(messageTable.position), asc(messageVariantTable.position))
+		.all();
+	const enabled = isMemoryEnabledForConversation(database, conversationId);
+	const state = readMemoryLabelState(database, conversationId);
+	const readiness = readMemoryIndexReadinessBatch(database, rows.map(({ collection }) => collection), enabled, configuration);
+	const excluded = (participantId: number | null) => participantId !== null && state.identities[participantId]?.kind === "excluded";
+	const sources = rows.flatMap(({ collection, ...variant }): MemoryCollectionView[] => excluded(variant.authorParticipantId) ? [] : [toView(collection, variant, readiness.get(variant.variantId)!)]);
+	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {
@@ -376,7 +422,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
 		const updated = drizzle(database)
 			.update(memoryCollectionTable)
-			.set({ index_attempt_json: null })
+			.set({ index_attempt_json: null, updated_at: new Date().toISOString() })
 			.where(eq(memoryCollectionTable.variant_id, variantId))
 			.returning()
 			.get()!;
@@ -505,7 +551,7 @@ const runMemoryExtraction = async (database: Database, job: CollectionRow, proce
 		if (signal.aborted || shutdown.aborted) return;
 		steps.push({ label, at: new Date().toISOString(), fields });
 		db.update(memoryCollectionTable)
-			.set({ trace_json: JSON.stringify(steps) })
+			.set({ trace_json: JSON.stringify(steps), updated_at: new Date().toISOString() })
 			.where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.work_epoch, job.work_epoch)))
 			.run();
 	};
@@ -547,7 +593,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 	};
 	drizzle(database)
 		.update(memoryCollectionTable)
-		.set({ status: "pending" })
+		.set({ status: "pending", updated_at: new Date().toISOString() })
 		.where(and(eq(memoryCollectionTable.status, "running"), eq(memoryCollectionTable.ownership, "automatic")))
 		.run();
 	const workers = Array.from({ length: Math.min(2, Math.max(1, options.concurrency ?? 2)) }, loop);

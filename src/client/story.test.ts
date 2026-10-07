@@ -236,7 +236,8 @@ describe("story reading state", () => {
 		expect(deleted.messages.map((entry) => entry.id)).toEqual([12, 13, 15]);
 		expect(deleted.revision).toBe(4);
 		expect(deleted.page).toEqual({
-			index: 1,
+			index: 2,
+			newestIndex: 1,
 			pageSize: 2,
 			totalMessages: 5,
 			totalPages: 3,
@@ -257,7 +258,7 @@ describe("story reading state", () => {
 			},
 		);
 		const deleted = reduceStory(state, { type: "message-deleted", messageId: 15, revision: 4 });
-		expect(deleted.page?.index).toBe(0);
+		expect(deleted.page?.index).toBe(1);
 
 		const shiftedPage = reduceStory(deleted, {
 			type: "next-page-arrived",
@@ -776,3 +777,83 @@ describe("streaming Provisional Variant content", () => {
 type StoryStateForPreview = ReturnType<typeof createStoryState> & {
 	messages: StoryMessage[];
 };
+
+
+describe("detached story windows", () => {
+	const history = (index: number, positions: number[], totalMessages = 8) => page({
+		page: { index, pageSize: 2, totalMessages, totalPages: Math.ceil(totalMessages / 2), hasOlder: index < Math.ceil(totalMessages / 2), hasNewer: index > 1 },
+		messages: positions.map((position) => message({ id: position, position, variants: [
+			{ id: position * 10, position: 1, content: `Message ${position}`, timestamp: "", selected: true },
+			{ id: position * 10 + 1, position: 2, content: "Alternative", timestamp: "", selected: false },
+		] })),
+	});
+	const open = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), { type: "first-page", page: history(1, [7, 8]) });
+	const detach = () => reduceStory(open(), { type: "first-page", page: history(3, [3, 4]) });
+
+	test("a source jump replaces the latest window with one page", () => {
+		const state = detach();
+		expect(state.messages.map(({ id }) => id)).toEqual([3, 4]);
+		expect(state.page).toMatchObject({ newestIndex: 3, index: 3, hasNewer: true, hasOlder: true });
+	});
+
+	test("older and newer pages extend a single window until page one reattaches it", () => {
+		const older = reduceStory(detach(), { type: "next-page-arrived", page: history(4, [1, 2]) });
+		expect(older.page).toMatchObject({ newestIndex: 3, index: 4, hasNewer: true, hasOlder: false });
+		const loading = reduceStory(older, { type: "load-more-started" });
+		expect(loading.status).toBe("loading-more");
+		const newer = reduceStory(loading, { type: "next-page-arrived", page: history(2, [5, 6]) });
+		expect(newer.messages.map(({ id }) => id)).toEqual([1, 2, 3, 4, 5, 6]);
+		expect(newer.page).toMatchObject({ newestIndex: 2, index: 4, hasNewer: true, hasOlder: false });
+		const latest = reduceStory(newer, { type: "next-page-arrived", page: history(1, [7, 8]) });
+		expect(latest.messages.map(({ id }) => id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+		expect(latest.page).toMatchObject({ newestIndex: 1, index: 4, hasNewer: false, hasOlder: false });
+	});
+
+	test("shifted overlapping pages stay chronological without duplicates", () => {
+		const state = reduceStory(detach(), { type: "next-page-arrived", page: history(3, [4, 5], 9) });
+		expect(state.messages.map(({ id }) => id)).toEqual([3, 4, 5]);
+		expect(state.page).toMatchObject({ newestIndex: 3, index: 4, hasNewer: true });
+	});
+
+	test("a Message added elsewhere before an older page keeps the window detached until it is loaded", () => {
+		const older = reduceStory(open(), { type: "next-page-arrived", page: history(2, [6, 7], 9) });
+		expect(older.messages.map(({ id }) => id)).toEqual([6, 7, 8]);
+		expect(older.page).toMatchObject({ hasNewer: true });
+		const latest = reduceStory(older, { type: "next-page-arrived", page: history(1, [8, 9], 9) });
+		expect(latest.messages.map(({ id }) => id)).toEqual([6, 7, 8, 9]);
+		expect(latest.page).toMatchObject({ newestIndex: 1, hasNewer: false });
+	});
+
+	test("live observations outside the window never insert Messages and visible observations still apply", () => {
+		const state = detach();
+		const outside = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });
+		expect(outside.messages).toEqual(state.messages);
+		const inside = reduceStory(outside, { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 1, text: " continues" });
+		expect(inside.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 continues");
+		expect(inside.messages).toHaveLength(2);
+	});
+
+	test("authoritative refreshes update only loaded Messages and preserve a newer live checkpoint", () => {
+		const state = reduceStory(detach(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
+		const refreshed = reduceStory(state, { type: "history-refreshed", page: history(2, [4, 5], 7), activeGenerationIds: [2] });
+		expect(refreshed.messages.map(({ id }) => id)).toEqual([3, 4]);
+		expect(refreshed.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 streaming");
+		const final = history(2, [4, 5], 7);
+		final.messages[0]!.variants[0]!.content = "Finished";
+		const settled = reduceStory(refreshed, { type: "history-refreshed", page: final });
+		expect(settled.messages.at(-1)?.swipes[0]?.content).toBe("Finished");
+		expect(settled.page?.hasNewer).toBe(true);
+	});
+
+	test("a detached final visible Message needs Swipe preview and deletion keeps the window detached", () => {
+		const state = detach();
+		expect(classifyVariantSelection(state, 4, 41).kind).toBe("preview");
+		const deleted = reduceStory(state, { type: "message-deleted", messageId: 4, revision: 4 });
+		expect(deleted.messages.map(({ id }) => id)).toEqual([3]);
+		expect(deleted.page).toMatchObject({ newestIndex: 3, hasNewer: true, totalMessages: 7 });
+		const latest = reduceStory(deleted, { type: "first-page", page: history(1, [7, 8], 7) });
+		expect(latest.messages.map(({ id }) => id)).toEqual([7, 8]);
+		expect(latest.page).toMatchObject({ newestIndex: 1, index: 1, hasNewer: false });
+		expect(classifyVariantSelection(latest, 8, 81).kind).toBe("immediate");
+	});
+});

@@ -56,3 +56,25 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 	expect(prompt).toContain("Theodora hid the brass key under the third map.");
 	expect(prompt).not.toContain("Theodora fears the dark.");
 });
+
+test("a Message's Memories action remembers it on demand", async ({ page, request, llm }) => {
+	await enableDecisionModels(request);
+	await llm.embeddings("lantern");
+	await llm.memories({ claim: "Theodora keeps the lantern lit all night.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "I keep the lantern lit all night." });
+	await llm.decisions(...judge("lantern", { support: "supported", attribution: "correct", usefulness: "retain" }));
+	await llm.chat({ chunks: ["She nods. \"I keep the lantern lit all night.\""] }, { chunks: ["She turns back to the map."] });
+
+	await page.goto("/");
+	await send(page, "Why is the light on?");
+	const reply = story(page).locator("article", { hasText: "She nods." });
+	await expect(reply).toBeVisible();
+	await send(page, "Go on.");
+	await expect(story(page).getByText("She turns back to the map.")).toBeVisible();
+	await enableMemory(request);
+
+	await reply.hover();
+	await reply.getByRole("button", { name: "Memories" }).click();
+	const memories = page.getByRole("complementary", { name: "Memories" });
+	await memories.getByRole("button", { name: "Remember this Message" }).click();
+	await expect(memories.getByText("Theodora keeps the lantern lit all night.")).toBeVisible({ timeout: 15_000 });
+});

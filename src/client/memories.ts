@@ -1,4 +1,4 @@
-import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryIdentityCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, ConversationMemoryChanges, MemoryCatchup, MemoryCorrectionCommand, MemoryIdentityCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
 import { api, domainOutcome } from "./lib/eden";
 
 const conversation = (conversationId: number) => api.api.conversations({ id: String(conversationId) });
@@ -16,6 +16,12 @@ export async function mergeMemoryLabels(conversationId: number, command: MemoryL
 export async function loadConversationMemories(conversationId: number, signal?: AbortSignal): Promise<ConversationMemories> {
 	const { data, error } = await conversation(conversationId).memories.get({ fetch: { signal } });
 	if (error || data === undefined) throw new Error("Memories could not be loaded.");
+	return data;
+}
+
+export async function loadMemoryChanges(conversationId: number, since: string, signal?: AbortSignal): Promise<ConversationMemoryChanges> {
+	const { data, error } = await conversation(conversationId).memories.changes.get({ query: { since }, fetch: { signal } });
+	if (error || data === undefined) throw new Error("Memory changes could not be loaded.");
 	return data;
 }
 
@@ -72,4 +78,4 @@ export async function saveMemoryNote(conversationId: number, expectedRevision: n
 	return error === null ? data : domainOutcome(error.value, "The Memory note could not be saved.");
 }
 
-export type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup };
+export type { ConversationMemories, ConversationMemoryAllowance, ConversationMemoryChanges, MemoryCatchup };

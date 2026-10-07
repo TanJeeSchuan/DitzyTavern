@@ -43,7 +43,7 @@ type StoryMessageActionsOptions = {
  * never diverges the two state owners. This hook owns the server command,
  * and the runner owns revision acquisition, exception normalization, and
  * common reconciliation. The edit command keeps its operation-specific
- * first-page history refresh.
+ * history refresh for the edited Message without replacing the reading window.
  */
 export function useStoryMessageActions({
 	story,
@@ -153,13 +153,13 @@ export function useStoryMessageActions({
 			notices: STORY_COMMAND_NOTICES,
 			callbacks: {
 				onApplied: () => {
-					// ==[HUMAN APPROVED]== Reload the first page so authoritative content replaces the
+					// ==[HUMAN APPROVED]== Reload the edited Message's page so authoritative content replaces the
 					// local edit without drifting from the server's read model.
 					void chatHistoryTransport
-						.loadHistory(conversationId, { page: 1 })
+						.loadHistory(conversationId, { aroundMessageId: messageId })
 						.then((freshHistory) => {
 							if (freshHistory.status === "available") {
-								dispatchStory({ type: "first-page", page: freshHistory.page });
+								dispatchStory({ type: "history-refreshed", page: freshHistory.page });
 							}
 						});
 				},

@@ -481,6 +481,7 @@ export const createConversationRoutes = (
 				readConversationOr404(database, (conversationModule) =>
 					conversationModule.readHistory(params.id, {
 						page: query.page,
+						aroundMessageId: query.aroundMessageId,
 						pageSize: query.pageSize,
 					}),
 				),

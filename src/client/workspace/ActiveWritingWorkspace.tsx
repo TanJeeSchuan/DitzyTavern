@@ -78,6 +78,7 @@ export function ActiveWritingWorkspace({
 		createPanelCoordinationState,
 	);
 	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
+	const [memoryFocus, setMemoryFocus] = useState<{ messageId: number } | null>(null);
 	const [theme, setTheme] = useState<ThemePreference>(() => {
 		const saved = window.localStorage.getItem("ditzytavern-theme");
 		return saved === "daylight" || saved === "evening" ? saved : "system";
@@ -129,6 +130,7 @@ export function ActiveWritingWorkspace({
 		dispatchStory,
 		activeChatIdRef: session.activeChatIdRef,
 		refreshStory: session.refreshStory,
+		ensureLatest: session.ensureLatest,
 		inspectPromptPlanBeforeGenerating,
 	});
 	const assembly = generation.assembly;
@@ -171,6 +173,7 @@ export function ActiveWritingWorkspace({
 	const viewport = useStoryViewport({
 		messages: story.messages,
 		conversationId: story.conversationId,
+		hasNewer: story.page?.hasNewer === true,
 	});
 	const preview = usePreviewController({
 		story,
@@ -237,7 +240,7 @@ export function ActiveWritingWorkspace({
 		},
 	});
 
-	const latestStoryMessage = story.messages.at(-1);
+	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
 	const conversation = session.conversation;
 	const modelParticipant = conversation === null
 		? null
@@ -252,6 +255,13 @@ export function ActiveWritingWorkspace({
 			conversationId: session.conversation.id,
 			generationId: generation.selectedGenerationTarget.generationId,
 		});
+	};
+
+	const openMessageMemories = (messageId: number) => {
+		if (assemblyActive) return;
+		setGenerationDetailsTarget(null);
+		dispatchPanel({ type: "memories-opened" });
+		setMemoryFocus({ messageId });
 	};
 
 	const openVariantDetails = (messageId: number, variantId: number) => {
@@ -320,6 +330,7 @@ export function ActiveWritingWorkspace({
 					onOpenMemories={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
+						setMemoryFocus(null);
 						dispatchPanel({ type: "memories-opened" });
 					}}
 				/>
@@ -337,7 +348,11 @@ export function ActiveWritingWorkspace({
 					{preview.previewError !== null && <p className="preview-error" role="alert">{preview.previewError}</p>}
 				</div>
 			)}
-				<div className="story-scroll" ref={viewport.storyScrollRef} onScroll={viewport.onStoryScroll}>
+				<div className="story-scroll" ref={viewport.storyScrollRef} onScroll={(event) => {
+					viewport.onStoryScroll();
+					const root = event.currentTarget;
+					if (root.scrollHeight - root.scrollTop - root.clientHeight < 48) void session.loadMoreHistory("newer");
+				}}>
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
 							<div className="history-load-more">
@@ -392,6 +407,7 @@ export function ActiveWritingWorkspace({
 									generation.regenerateResponse(messageId);
 								}}
 								onInspect={openVariantDetails}
+								onMemories={openMessageMemories}
 								generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 									<GenerationControls
 										showStopAll={generation.activeGenerationTargets.length > 1}
@@ -407,6 +423,13 @@ export function ActiveWritingWorkspace({
 									: undefined}
 							/>
 						))}
+						{story.page?.hasNewer === true && (
+							<div className="history-load-more">
+								<button className="secondary-button" type="button" disabled={story.status === "loading-more"} onClick={() => void session.loadMoreHistory("newer")}>
+									{story.status === "loading-more" ? "Loading newer Messages…" : "Load newer Messages"}
+								</button>
+							</div>
+						)}
 						{story.status === "loading-first" && <HistoryLoading />}
 						{story.status === "error" && (
 							<p className="history-error" role="alert">
@@ -416,6 +439,9 @@ export function ActiveWritingWorkspace({
 					</div>
 				</div>
 
+				{story.page?.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+					<button className="secondary-button" type="button" disabled={previewMode} onClick={() => void session.jumpToLatest().catch(() => dispatchStory({ type: "history-failed" }))}>Jump to latest</button>
+				</div>}
 				<Composer
 					draft={generation.draft}
 					isGenerating={generation.isGenerating}
@@ -465,6 +491,7 @@ export function ActiveWritingWorkspace({
 					conversationId={session.conversation.id}
 					conversationRevision={session.conversation.revision}
 					cast={session.conversation.cast}
+					focusRequest={memoryFocus}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
 					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}

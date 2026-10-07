@@ -86,7 +86,7 @@ describe("Memory label merging", () => {
 		expect((await merge(database, chat.id, ["Assistant"], "Alice", 0)).status).toBe(409);
 		expect((await merge(database, chat.id, ["Assistant"], "   ")).status).toBe(422);
 		expect((await merge(database, chat.id, ["Assistant"], "Assistant")).status).toBe(422);
-		expect(readConversationMemories(database, chat.id)).toEqual(before);
+		expect(readConversationMemories(database, chat.id)).toEqual({ ...before, cursor: expect.any(String) });
 	});
 
 	test("normalizes an extraction already running at merge time and preserves captured speakers", async () => {

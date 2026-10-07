@@ -46,7 +46,7 @@ function Preview() {
 	const generating = streamed < prose.length;
 	const reply = message(run, "Theodora Kline", prose.slice(0, streamed));
 	const messages = [...history, reply];
-	const viewport = useStoryViewport({ messages, conversationId: 1 });
+	const viewport = useStoryViewport({ messages, conversationId: 1, hasNewer: false });
 
 	useEffect(() => {
 		document.documentElement.dataset.theme = theme;

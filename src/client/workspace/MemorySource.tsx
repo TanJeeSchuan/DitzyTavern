@@ -1,8 +1,7 @@
-import { Check, ChevronLeft, ChevronRight, Ellipsis, Pencil, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatJudgment, formatTimestamp } from "../lib/format";
 import { loadMemoryTrace, type ConversationMemories } from "../memories";
 import type { MemoryTraceStep } from "../../shared/contract/memory";
@@ -12,11 +11,13 @@ import type { ClaimDraft, ConversationMemoryActions } from "./useConversationMem
 type Source = ConversationMemories["sources"][number];
 type Claim = Source["claims"][number];
 
-export function MemorySourceCard({ conversationId, source, label, busy, actions, onNavigate, onStep, onClear }: {
+export function MemorySourceCard({ conversationId, source, label, busy, enabled, excluded, actions, onNavigate, onStep, onClear }: {
 	conversationId: number;
 	source: Source | undefined;
 	label: string;
 	busy: boolean;
+	enabled: boolean;
+	excluded: boolean;
 	actions: ConversationMemoryActions;
 	onNavigate: () => void;
 	onStep: ((offset: -1 | 1) => void) | null;
@@ -24,7 +25,7 @@ export function MemorySourceCard({ conversationId, source, label, busy, actions,
 }) {
 	const [traceOpen, setTraceOpen] = useState(false);
 	const { kind, text } = memorySourceState(source);
-	const notes = [text, source?.ownership === "writer" && "Writer-maintained", source?.sourceChanged && "Source changed"].filter(Boolean).join(" · ");
+	const notes = [excluded ? "Author isn't in the story" : text, source?.ownership === "writer" && "Writer-maintained", source?.sourceChanged && "Source changed"].filter(Boolean).join(" · ");
 	const error = source?.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? "Memory indexing failed." : source?.error;
 	return <section className="memory-source-card" aria-label={`Memories from ${label}`} data-kind={kind}>
 		<header>
@@ -32,24 +33,21 @@ export function MemorySourceCard({ conversationId, source, label, busy, actions,
 			<button type="button" className="memory-source-link" onClick={onNavigate}>{label}</button>
 			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Next Message" onClick={() => onStep(1)}><ChevronRight aria-hidden="true" /></Button>}
 			<span className="memory-source-notes" data-working={kind === "working"}>{notes}</span>
-			{source && <DropdownMenu>
-				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${label}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="min-w-48">
-					{source.status !== "unprocessed" && <DropdownMenuItem onSelect={() => setTraceOpen(!traceOpen)}>{traceOpen ? "Hide pipeline trace" : "Show pipeline trace"}</DropdownMenuItem>}
-					{source.indexing.status === "failed" && <DropdownMenuItem disabled={busy} onSelect={() => actions.retryIndex(source)}>Retry indexing</DropdownMenuItem>}
-					<DropdownMenuSeparator />
-					<DropdownMenuItem disabled={busy || kind === "working"} onSelect={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset and re-extract…" : "Retry extraction"}</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>}
 			<Button type="button" variant="ghost" size="icon-xs" aria-label="Show every Message" onClick={onClear}><X aria-hidden="true" /></Button>
 		</header>
 		{kind === "failed" && source && <div className="memory-source-error">
 			<p>{error ?? "Memory extraction failed."}</p>
 			{source.indexing.status === "failed" && source.status !== "failed"
 				? <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.retryIndex(source)}>Retry indexing</Button>
-				: <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
+				: <Button type="button" size="xs" variant="outline" disabled={busy || !enabled} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
 		</div>}
 		{source?.status === "complete" && source.ownership === "writer" && source.claims.length === 0 && <p className="memory-source-empty">All Memories were removed. Automatic updates are paused for this source.</p>}
+		{source && <div className="memory-source-actions">
+			{kind !== "failed" && <Button type="button" size="xs" variant="outline" disabled={busy || !enabled || kind === "working"} title={enabled ? undefined : "Memory is off for this Chat."} onClick={() => actions.retry(source)}>
+				{kind === "working" ? "Remembering…" : source.status === "unprocessed" ? "Remember this Message" : source.ownership === "writer" ? "Reset and re-extract…" : "Re-extract"}
+			</Button>}
+			{source.status !== "unprocessed" && <Button type="button" size="xs" variant="ghost" aria-expanded={traceOpen} onClick={() => setTraceOpen(!traceOpen)}>Pipeline trace</Button>}
+		</div>}
 		{traceOpen && source && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={kind === "working"} onClose={() => setTraceOpen(false)} />}
 	</section>;
 }

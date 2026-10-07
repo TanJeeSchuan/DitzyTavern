@@ -110,7 +110,7 @@ export interface MemoryIndexJob {
 const markIndexed = (database: Database, job: Pick<MemoryIndexJob, "variantId" | "workEpoch" | "configuration">, error: string | null) =>
 	drizzle(database)
 		.update(memoryCollectionTable)
-		.set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }) })
+		.set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }), updated_at: new Date().toISOString() })
 		.where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch)))
 		.run();
 

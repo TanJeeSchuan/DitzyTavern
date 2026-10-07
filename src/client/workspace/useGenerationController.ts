@@ -90,6 +90,7 @@ type GenerationControllerOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number, signal?: AbortSignal) => Promise<ConversationSummary | null>;
+	ensureLatest: () => Promise<ConversationSummary | null>;
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
@@ -106,6 +107,7 @@ export function useGenerationController({
 	dispatchStory,
 	activeChatIdRef,
 	refreshStory,
+	ensureLatest,
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
@@ -199,6 +201,7 @@ export function useGenerationController({
 		conversation,
 		activeChatIdRef,
 		refreshStory,
+		ensureLatest,
 		isGenerating,
 		variantPreviewActive: story.preview !== null,
 		inspectPromptPlanBeforeGenerating,
@@ -269,7 +272,7 @@ export function useGenerationController({
 
 	const continueMessage = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.messages.at(-1);
+		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
@@ -280,7 +283,7 @@ export function useGenerationController({
 
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.messages.at(-1);
+		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
 		const content = latest?.swipes[latest.activeSwipe]?.content;
 		if (
 			latest?.id !== messageId ||
