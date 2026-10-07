@@ -2,17 +2,19 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { conversationTable, messageTable, messageVariantTable } from "../database/schema";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "./errors";
-import { hasActiveGeneration } from "./internal";
+import { hasActiveGenerationFromConnection } from "./internal";
 import { runConversationTransaction } from "./commands/transaction";
 
 // ==[HUMAN APPROVED]== Deletes a Chat and, through foreign-key cascades, everything it owns. A
 // running Generation must be stopped first so no attempt writes into a
-// Conversation that no longer exists.
+// Conversation that no longer exists. The guard reads the shared Active
+// Generation existence probe inside the write transaction so a Generation
+// starting between the probe and the delete cannot commit into a vanished Chat.
 export function deleteConversation(database: Database, conversationId: number) {
-	if (hasActiveGeneration(database, conversationId)) {
-		throw new InvalidConversationCommandError("Stop the running Generation before deleting this Chat.");
-	}
 	return runConversationTransaction(database, (db, reportChange) => {
+		if (hasActiveGenerationFromConnection(db, conversationId)) {
+			throw new InvalidConversationCommandError("Stop the running Generation before deleting this Chat.");
+		}
 		// ==[HUMAN APPROVED]== The Variant ids are enumerated before the cascading delete so
 		// Memory can abandon their in-flight work when the write commits.
 		const removedVariantIds = db
