@@ -39,6 +39,7 @@ import {
 	lorebookOwnerAttachmentQuery,
 	lorebookOwnerAttachmentState,
 } from "../../shared/contract/lorebook";
+import type { LoreMatchTestResponse } from "../../shared/contract/lorebook";
 import {
 	executeLorebookAttachmentCommand,
 	LoreAttachmentOwnerNotFoundError,
@@ -49,7 +50,6 @@ import {
 	readParticipantConversationId,
 } from "../lorebook/attachments";
 import {
-	createConversationModule,
 	executeConversationCommand,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -57,7 +57,7 @@ import {
 	StaleConversationRevisionError,
 	type ConversationCommand,
 } from "../conversation";
-import { toConversationSummary } from "./projections";
+import { staleConversationResponse } from "./conversation";
 import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -133,53 +133,24 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 			settings: captureSemanticSettings(database, options),
 			fetch: options.fetch,
 		});
-		const result = {
+		return respond(200, {
 			mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
 			fallbackReason: semantic.fallbackReason,
 			scan,
-			matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
-		};
-		return respond(200, {
-			mode: result.mode,
-			fallbackReason: result.fallbackReason,
-			scan: result.scan.map((message) => ({ id: message.id ?? null, content: message.content })),
-			matches: result.matches.map(({ bookId, bookName, entryId, title, match }) => ({
-				bookId, bookName, entryId, title,
-				active: match.active,
-				skipped: match.skipped,
-				fallback: match.fallback,
-				primary: { ...match.primary, matchedExpressions: [...match.primary.matchedExpressions], missingExpressions: [...match.primary.missingExpressions] },
-				secondary: {
-					requireAny: { ...match.secondary.requireAny, matchedExpressions: [...match.secondary.requireAny.matchedExpressions], missingExpressions: [...match.secondary.requireAny.missingExpressions] },
-					requireAll: { ...match.secondary.requireAll, matchedExpressions: [...match.secondary.requireAll.matchedExpressions], missingExpressions: [...match.secondary.requireAll.missingExpressions] },
-					excludeAny: { ...match.secondary.excludeAny, matchedExpressions: [...match.secondary.excludeAny.matchedExpressions], missingExpressions: [...match.secondary.excludeAny.missingExpressions] },
-					excludeAll: { ...match.secondary.excludeAll, matchedExpressions: [...match.secondary.excludeAll.matchedExpressions], missingExpressions: [...match.secondary.excludeAll.missingExpressions] },
-				},
-				semantic: { ...match.semantic, matches: match.semantic.matches.map((semanticMatch) => ({ ...semanticMatch })) },
-				reasons: [...match.reasons],
-			})),
+			// ==[HUMAN APPROVED]== SAFETY: the match flattens onto the entry item (the schema owns
+			// the item shape, not a nested `match` envelope) and the wire schema
+			// owns mutable expression arrays, so the closed JSON projection is the
+			// one cast validated by the declared response schema.
+			matches: book.entries.map((entry) => ({
+				bookId: book.id,
+				bookName: book.name,
+				entryId: entry.id,
+				title: entry.title,
+				...matchLoreEntry(entry, scan, semantic),
+			}) as LoreMatchTestResponse["matches"][number]),
 		});
 	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
-
-// ==[HUMAN APPROVED]== Maps a stale Conversation revision from a Conversation-owned Lore
-// attachment command onto the canonical Conversation conflict response: the
-// authoritative summary rides inside the 409, or a 404 when the
-// Conversation disappeared between the conflict and the recovery read.
-const staleConversationConflictResponse = (
-	database: Database,
-	conversationId: number,
-	error: StaleConversationRevisionError,
-) => {
-	const current = createConversationModule(database).getSummary(conversationId);
-	if (current === undefined) return notFoundResponse();
-	return status(409, {
-		outcome: "conflict" as const,
-		expectedRevision: error.expectedRevision,
-		actualRevision: error.actualRevision,
-		currentConversation: toConversationSummary(current),
-	});
-};
 
 // ==[HUMAN APPROVED]== The Conversation-owned Lore attachment commands dispatch through the
 // canonical Conversation command seam, inheriting its revision guard,
@@ -192,7 +163,7 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 		executeConversationCommand(database, command);
 		return { outcome: "applied" as const };
 	} catch (error) {
-		if (error instanceof StaleConversationRevisionError) return staleConversationConflictResponse(database, command.conversationId, error);
+		if (error instanceof StaleConversationRevisionError) return staleConversationResponse(database, command.conversationId, error);
 		if (error instanceof ConversationNotFoundError || error instanceof ParticipantNotFoundError) return notFoundResponse();
 		if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
 		throw error;

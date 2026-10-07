@@ -134,8 +134,10 @@ const staleConversationConflict = (
 
 // ==[HUMAN APPROVED]== Maps a stale Conversation revision onto the typed recovery response: the
 // authoritative summary rides inside the 409, or a 404 when the Conversation
-// disappeared between the conflict and the recovery read.
-const staleConversationResponse = (
+// disappeared between the conflict and the recovery read. Exported for the
+// Conversation-owned Lore attachment routes, which inherit the canonical
+// Conversation conflict shape through the same builder.
+export const staleConversationResponse = (
 	database: Database,
 	conversationId: number,
 	error: StaleConversationRevisionError,

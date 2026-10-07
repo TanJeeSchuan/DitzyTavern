@@ -39,6 +39,25 @@ type StoredPromptPresetBlock = {
 		}
 );
 
+/** ==[HUMAN APPROVED]== The one stored-block column selection without the occurrence id,
+ * for callers that copy blocks to a fresh preset; the recipe reader's
+ * selection derives from it and adds the occurrence id back. */
+export const promptPresetBlockSelection = {
+	position: promptPresetBlockTable.position,
+	reference: promptPresetBlockTable.reference,
+	enabled: promptPresetBlockTable.enabled,
+	role: promptPresetBlockTable.role,
+	name: promptPresetBlockTable.name,
+	content: promptPresetBlockTable.content,
+};
+
+// ==[HUMAN APPROVED]== The recipe reader's row shape: the shared selection plus the
+// occurrence id it addresses slots by.
+const storedPromptPresetBlockSelection = {
+	id: promptPresetBlockTable.id,
+	...promptPresetBlockSelection,
+};
+
 /** ==[HUMAN APPROVED]== The identifier of the one Default preset every Conversation starts on. */
 export const readDefaultPromptPresetId = (db: PromptPresetDatabase): number => {
 	const row = db
@@ -98,26 +117,21 @@ const storedOccurrences = (
 	// ==[HUMAN APPROVED]== SAFETY: prompt_preset_block_shape_check enforces this discriminated row
 	// shape for every insert and update.
 	const slots = db
-		.select({
-			id: promptPresetBlockTable.id,
-			reference: promptPresetBlockTable.reference,
-			enabled: promptPresetBlockTable.enabled,
-			role: promptPresetBlockTable.role,
-			name: promptPresetBlockTable.name,
-			content: promptPresetBlockTable.content,
-		})
+		.select(storedPromptPresetBlockSelection)
 		.from(promptPresetBlockTable)
 		.where(eq(promptPresetBlockTable.preset_id, presetId))
 		.orderBy(asc(promptPresetBlockTable.position))
 		.all() as StoredPromptPresetBlock[];
+	// ==[HUMAN APPROVED]== An authored instruction always stores its composed name, text,
+	// and outgoing role. The stored value is never normalized or flattened,
+	// including when its content is legitimately empty. The three members are
+	// the stored row's own discriminant; every other projection of it (the
+	// native export) derives from this one instead of restating it.
 	return slots.map((slot) => {
 		if (slot.reference === "history") {
 			return { id: slot.id, reference: slot.reference, enabled: slot.enabled };
 		}
 		if (slot.reference === "instruction") {
-			// ==[HUMAN APPROVED]== An authored instruction always stores its composed name, text,
-			// and outgoing role. The stored value is never normalized or
-			// flattened, including when its content is legitimately empty.
 			return {
 				id: slot.id,
 				reference: slot.reference,
