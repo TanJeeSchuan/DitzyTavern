@@ -7,6 +7,7 @@ import {
 	characterLorebookAttachmentTable,
 	characterTable,
 	conversationControlTable,
+	conversationTable,
 	messageTable,
 	messageVariantTable,
 	participantOpeningTable,
@@ -20,10 +21,11 @@ import type { Portrait } from "../../shared/contract/image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
-import type { GenerationJsonValue } from "../../shared/generation-json";
 import { isMacroDataNamespace } from "../prompt-macros";
 import {
+	ConversationNotFoundError,
 	InvalidConversationCommandError,
+	StaleConversationRevisionError,
 } from "./errors";
 
 export const connectConversationDatabase = (database: Database) => drizzle(database);
@@ -147,18 +149,28 @@ export const groupVariantsByMessage = <
 // ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
 // treat a running Generation as mutually exclusive reads this predicate, so
 // the probe query and its existence rule are written once for the module.
-// Like every public entry point it takes the raw Database and connects
-// internally, so no caller — including the workflows layer — ever
-// constructs the module's Drizzle handle.
-export const hasActiveGeneration = (
-	database: Database,
+// Commands inside an open transaction read the open connection so the probe
+// never reconnects mid-transaction; the public entry point keeps the
+// module's raw-Database policy — no caller, including the workflows layer,
+// ever constructs the module's Drizzle handle.
+export const hasActiveGenerationFromConnection = (
+	db: ConversationDatabase,
 	conversationId: number,
 ): boolean =>
-	connectConversationDatabase(database)
+	db
 		.select({ id: activeGenerationTable.id })
 		.from(activeGenerationTable)
 		.where(eq(activeGenerationTable.conversation_id, conversationId))
 		.get() !== undefined;
+
+export const hasActiveGeneration = (
+	database: Database,
+	conversationId: number,
+): boolean =>
+	hasActiveGenerationFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+	);
 
 // ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
@@ -258,6 +270,52 @@ export const requireParticipant = (
 	}
 
 	return participant;
+};
+
+// ==[HUMAN APPROVED]== The one Conversation existence/revision probe: every site that must
+// answer "is this Conversation still there, and at which revision" reads
+// this projection, so the probe query is written once. Undefined means the
+// Conversation is gone; requireConversation turns that into the typed
+// not-found throw and requireConversationRevision adds the stale-revision
+// check, keeping every revisioned prelude in the same reject order.
+export interface ConversationProbe {
+	id: number;
+	revision: number;
+}
+
+export const findConversation = (
+	db: ConversationDatabase,
+	conversationId: number,
+): ConversationProbe | undefined =>
+	db
+		.select({ id: conversationTable.id, revision: conversationTable.revision })
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
+		.get();
+
+export const requireConversation = (
+	db: ConversationDatabase,
+	conversationId: number,
+): ConversationProbe => {
+	const conversation = findConversation(db, conversationId);
+	if (conversation === undefined) {
+		throw new ConversationNotFoundError(conversationId);
+	}
+	return conversation;
+};
+
+// ==[HUMAN APPROVED]== The shared revision prelude every revisioned command runs first:
+// existence, then the stale check, both as the module's typed errors.
+export const requireConversationRevision = (
+	db: ConversationDatabase,
+	conversationId: number,
+	expectedRevision: number,
+): ConversationProbe => {
+	const conversation = requireConversation(db, conversationId);
+	if (conversation.revision !== expectedRevision) {
+		throw new StaleConversationRevisionError(expectedRevision, conversation.revision);
+	}
+	return conversation;
 };
 
 // ==[HUMAN APPROVED]== The reference columns a Message uses to refer to a Participant: its

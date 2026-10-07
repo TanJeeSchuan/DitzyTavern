@@ -13,6 +13,7 @@ import {
 } from "../database/schema";
 import {
 	connectConversationDatabase,
+	findConversation,
 	groupRowsByNumber,
 	groupVariantsByMessage,
 	readActiveCast,
@@ -182,14 +183,10 @@ export function conversationExists(
 	database: Database,
 	conversationId: number,
 ): boolean {
-	const db = connectConversationDatabase(database);
-	return (
-		db
-			.select({ id: conversationTable.id })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, conversationId))
-			.get() !== undefined
-	);
+	return findConversation(
+		connectConversationDatabase(database),
+		conversationId,
+	) !== undefined;
 }
 
 // ==[HUMAN APPROVED]== Narrow revision read for server-owned preview sends. The
@@ -199,11 +196,10 @@ export function readConversationRevision(
 	database: Database,
 	conversationId: number,
 ): number | undefined {
-	return connectConversationDatabase(database)
-		.select({ revision: conversationTable.revision })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get()?.revision;
+	return findConversation(
+		connectConversationDatabase(database),
+		conversationId,
+	)?.revision;
 }
 
 export function readConversationSnapshot(

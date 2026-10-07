@@ -1,6 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { conversationTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
@@ -32,14 +30,13 @@ import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
 import {
 	ConversationNotPlayableError,
-	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from "./errors";
 import {
-	hasActiveGeneration,
+	hasActiveGenerationFromConnection,
 	isPlayable,
 	readControlAssignment,
+	requireConversationRevision,
 	type ConversationDatabase,
 } from "./internal";
 import {
@@ -223,24 +220,15 @@ function executeConversationCommandWithResult<T>(
 	readResult: (db: ConversationDatabase, conversationId: number) => T,
 ): T {
 	return runConversationTransaction(database, (db, reportChange) => {
-		const conversation = db
-			.select({ revision: conversationTable.revision })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, command.conversationId))
-			.get();
-		if (conversation === undefined) {
-			throw new ConversationNotFoundError(command.conversationId);
-		}
-		if (conversation.revision !== command.expectedRevision) {
-			throw new StaleConversationRevisionError(
-				command.expectedRevision,
-				conversation.revision,
-			);
-		}
+		const conversation = requireConversationRevision(
+			db,
+			command.conversationId,
+			command.expectedRevision,
+		);
 		const policy = conversationCommandPolicy[command.action.type];
 		if (
 			policy.blockedByActiveGeneration &&
-			hasActiveGeneration(database, command.conversationId)
+			hasActiveGenerationFromConnection(db, command.conversationId)
 		) {
 			throw new InvalidConversationCommandError(
 				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",

@@ -2,17 +2,15 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
-	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
-import type { ConversationDatabase } from "../internal";
+import { requireConversation, type ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
@@ -42,7 +40,6 @@ import {
 	MEMORY_ACTIVATION_NAMESPACE,
 	parseMemoryActivationRecord,
 } from "../../../shared/contract/memory-recall";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -629,12 +626,7 @@ export function stopConversationGenerations(
 	input: StopGenerationsInput,
 ): StoppedGenerations {
 	return runConversationTransaction(database, (db, reportChange) => {
-		const conversation = db
-			.select({ id: conversationTable.id })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, input.conversationId))
-			.get();
-		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+		requireConversation(db, input.conversationId);
 		const activeRows = db
 			.select()
 			.from(activeGenerationTable)
