@@ -101,7 +101,14 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{panel === "author-note" && conversation !== null && <AuthorNotePanel key={conversation.id} conversation={conversation} onConversationChange={onConversationChange} disabled={mutationsDisabled} />}
+					{panel === "author-note" && conversation !== null && (
+						<AuthorNotePanel
+							key={conversation.id}
+							conversation={conversation}
+							onConversationChange={onConversationChange}
+							disabled={mutationsDisabled}
+						/>
+					)}
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharactersPanel
