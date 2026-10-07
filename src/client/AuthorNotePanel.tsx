@@ -45,7 +45,11 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 				revision: () => expectedRevision,
 				send: (revision) => applyConversationCommand(conversation.id, revision, { type: "set-author-note", content: draft }),
 				reconciliation: { adoptSnapshot: onConversationChange, showNotice: setNotice },
-				notices: { conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
+				notices: {
+					conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
+					notFound: CONVERSATION_UNREACHABLE_NOTICE,
+					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
+				},
 				callbacks: {
 					onApplied: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); applied = true; },
 					onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); },
@@ -62,11 +66,27 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
 		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
 			<AlertDescription>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</AlertDescription>
-			<Button type="button" size="sm" variant="outline" className="mt-2 w-fit" disabled={pending || disabled || activate.isPending || preset.isFetching || preset.isError} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
+			<Button
+				type="button"
+				size="sm"
+				variant="outline"
+				className="mt-2 w-fit"
+				disabled={pending || disabled || activate.isPending || preset.isFetching || preset.isError}
+				onClick={() => activate.mutate()}
+			>
+				{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}
+			</Button>
 		</Alert>}
 		{preset.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>The selected Prompt Preset could not be loaded.</AlertDescription></Alert>}
 		{activate.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>{activate.error.message}</AlertDescription></Alert>}
-		<ProseEditor value={draft} onChange={setDraft} ariaLabel="Author Note text" placeholder="Write guidance for future Generations…" disabled={pending || disabled} className="prose-editor-field h-56" />
+		<ProseEditor
+			value={draft}
+			onChange={setDraft}
+			ariaLabel="Author Note text"
+			placeholder="Write guidance for future Generations…"
+			disabled={pending || disabled}
+			className="prose-editor-field h-56"
+		/>
 		{notice !== null && <Alert className="mt-3"><AlertDescription>
 			<p>{notice}</p>
 			{saved !== draft && <><p className="mt-2 text-muted-foreground">Current saved note</p><pre className="mt-1 whitespace-pre-wrap font-inherit">{saved || "Empty"}</pre></>}

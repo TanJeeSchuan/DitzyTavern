@@ -54,7 +54,15 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 
 	return (
 		<div className="model-selector">
-			<ProfileModelPicker settings={settings} onSettingsChange={setSettings} selected={selected} onSelect={updateSelection} disabled={disabled || pending} side="top" emptyLabel="Add a connection in Connections to choose a model.">
+			<ProfileModelPicker
+			settings={settings}
+			onSettingsChange={setSettings}
+			selected={selected}
+			onSelect={updateSelection}
+			disabled={disabled || pending}
+			side="top"
+			emptyLabel="Add a connection in Connections to choose a model."
+		>
 				<button className="model-selector-trigger" type="button" disabled={disabled || pending || selected === null}
 					aria-label={`Model: ${selected?.modelId || "Choose a model"}`}
 					aria-describedby={disabledReason ? reasonId : undefined}

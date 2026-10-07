@@ -94,7 +94,20 @@ export function CharactersPanel({
 				</DialogHeader>
 				<DialogFooter>
 					<Button type="button" variant="ghost" disabled={castActions.pending} onClick={() => setRemoveTargetId(null)}>Cancel</Button>
-					{removeCopy?.confirmLabel !== "Close" && <Button type="button" variant="destructive" disabled={castActions.pending} onClick={() => { if (removeTarget !== null) { void castActions.applyRemove(removeTarget).then(openList); } }}>{removeCopy?.confirmLabel}</Button>}
+					{removeCopy?.confirmLabel !== "Close" && (
+						<Button
+							type="button"
+							variant="destructive"
+							disabled={castActions.pending}
+							onClick={() => {
+								if (removeTarget !== null) {
+									void castActions.applyRemove(removeTarget).then(openList);
+								}
+							}}
+						>
+							{removeCopy?.confirmLabel}
+						</Button>
+					)}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -137,13 +150,29 @@ export function CharactersPanel({
 			<section className="flex flex-col gap-3" aria-labelledby="cast-title">
 				<div className="flex items-center justify-between gap-2">
 					<h2 id="cast-title" className="text-sm font-semibold">In this chat</h2>
-					<AddParticipantMenu entries={pickerEntries} pending={castActions.pending} onAddCharacter={(id, revision) => void castActions.applyAddCharacter(id, revision)} onAddBlank={(name) => void addBlank(name)} />
+					<AddParticipantMenu
+						entries={pickerEntries}
+						pending={castActions.pending}
+						onAddCharacter={(id, revision) => void castActions.applyAddCharacter(id, revision)}
+						onAddBlank={(name) => void addBlank(name)}
+					/>
 				</div>
 				{castActions.notice !== null && <p role="status" className="text-sm text-muted-foreground">{castActions.notice}</p>}
 				{castActions.saveConfirmation !== null && (
 					<div role="status" className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
 						<p className="flex-1">Saved {castActions.saveConfirmation.participantLabel} to the Library as <strong className="text-foreground">{castActions.saveConfirmation.character.name}</strong>.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => { const { id } = castActions.saveConfirmation!.character; castActions.setSaveConfirmation(null); setView({ kind: "character", id, fresh: false }); }}>Open</Button>
+						<Button
+							type="button"
+							size="xs"
+							variant="outline"
+							onClick={() => {
+								const { id } = castActions.saveConfirmation!.character;
+								castActions.setSaveConfirmation(null);
+								setView({ kind: "character", id, fresh: false });
+							}}
+							>
+								Open
+							</Button>
 					</div>
 				)}
 				{cast.length === 0
@@ -154,9 +183,19 @@ export function CharactersPanel({
 						return (
 							<li key={participant.id} className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40">
 								<Portrait name={participant.name} portrait={participant.portrait} size="medium" />
-								<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "participant", id: participant.id, fresh: false })}>
+								<button
+								type="button"
+								className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+								onClick={() => setView({ kind: "participant", id: participant.id, fresh: false })}
+								>
 									<span className="block truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{participant.duplicateLabel}</span>
-									{(seat !== null || preview !== "") && <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">{seat !== null && <span className="shrink-0"><SeatLabel seat={seat} /></span>}{seat !== null && preview !== "" && " · "}{preview !== "" && <span className="truncate">{preview}</span>}</span>}
+									{(seat !== null || preview !== "") && (
+										<span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+											{seat !== null && <span className="shrink-0"><SeatLabel seat={seat} /></span>}
+											{seat !== null && preview !== "" && " · "}
+											{preview !== "" && <span className="truncate">{preview}</span>}
+										</span>
+										)}
 								</button>
 								{menuFor(participant, "relative z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-100")}
 							</li>
@@ -169,21 +208,50 @@ export function CharactersPanel({
 					<h2 id="character-library-title" className="text-sm font-semibold">Library</h2>
 					<Button type="button" size="sm" disabled={creating} onClick={() => void createCharacter()}><Plus aria-hidden="true" /> New</Button>
 				</div>
-				<label className="search-field"><Search aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Characters" aria-label="Search Characters" /></label>
+				<label className="search-field">
+					<Search aria-hidden="true" />
+					<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Characters" aria-label="Search Characters" />
+				</label>
 				{libraryNotice !== null && <p role="status" className="text-sm text-muted-foreground">{libraryNotice}</p>}
 				<ul className="-mx-3 flex flex-col gap-0.5" aria-label="Character Library" aria-busy={characters === null}>
 					{characters === null ? <li className="px-3 py-3 text-sm text-muted-foreground">Loading the Library…</li>
-					: libraryRows.length === 0 ? <li className="px-3 py-3 text-sm text-muted-foreground">{characters.length === 0 ? "No Characters yet. Create one to reuse it across Chats." : "No Characters match this search."}</li>
+					: libraryRows.length === 0 ? (
+						<li className="px-3 py-3 text-sm text-muted-foreground">
+							{characters.length === 0
+								? "No Characters yet. Create one to reuse it across Chats."
+								: "No Characters match this search."}
+						</li>
+						)
 					: libraryRows.map((entry) => (
 						<li key={entry.character.id} className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40">
 							<Portrait name={entry.label} portrait={entry.character.portrait} size="medium" />
-							<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "character", id: entry.character.id, fresh: false })}>
-								<span className="flex items-center gap-1.5 truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{entry.label}{entry.character.pinned && <Pin aria-label="Pinned" className="size-3 shrink-0 fill-current text-muted-foreground" />}</span>
+							<button
+								type="button"
+								className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+								onClick={() => setView({ kind: "character", id: entry.character.id, fresh: false })}
+								>
+								<span className="flex items-center gap-1.5 truncate text-[0.9rem] font-semibold tracking-[-0.01em]">
+								{entry.label}
+								{entry.character.pinned && <Pin aria-label="Pinned" className="size-3 shrink-0 fill-current text-muted-foreground" />}
+							</span>
 								{entry.preview !== "" && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{entry.preview}</span>}
 							</button>
 							{entry.usedCount > 0
 								? <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Check className="size-3.5" aria-hidden="true" /> In chat</span>
-								: <span className="relative z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"><Button type="button" size="xs" variant="ghost" disabled={castActions.pending} aria-label={`Add ${entry.label} to this Chat`} onClick={() => void castActions.applyAddCharacter(entry.character.id, entry.character.revision)}><Plus aria-hidden="true" /> Add</Button></span>}
+								: (
+								<span className="relative z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
+									<Button
+										type="button"
+										size="xs"
+										variant="ghost"
+										disabled={castActions.pending}
+										aria-label={`Add ${entry.label} to this Chat`}
+										onClick={() => void castActions.applyAddCharacter(entry.character.id, entry.character.revision)}
+										>
+											<Plus aria-hidden="true" /> Add
+										</Button>
+								</span>
+								)}
 						</li>
 					))}
 				</ul>

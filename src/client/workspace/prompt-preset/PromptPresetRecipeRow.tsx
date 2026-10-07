@@ -97,8 +97,28 @@ const InstructionFieldEditor = ({
 		: { name: slot.name, content: slot.content, role: slot.role };
 	const warnings = unknownMacrosOf(fields.content, slot.name === "" ? "instruction" : slot.name);
 	return <div className="flex flex-col gap-3">
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Name</span><input type="text" className={nameInputClass} value={fields.name} disabled={disabled} onChange={(event) => onChange({ ...fields, name: event.target.value })} /></label>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Instruction text</span><textarea className={textInputClass} rows={8} spellCheck={false} value={fields.content} disabled={disabled} placeholder="Write the reusable instruction…" onChange={(event) => onChange({ ...fields, content: event.target.value })} /></label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
+			<span>Name</span>
+			<input
+				type="text"
+				className={nameInputClass}
+				value={fields.name}
+				disabled={disabled}
+				onChange={(event) => onChange({ ...fields, name: event.target.value })}
+			/>
+		</label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
+			<span>Instruction text</span>
+			<textarea
+				className={textInputClass}
+				rows={8}
+				spellCheck={false}
+				value={fields.content}
+				disabled={disabled}
+				placeholder="Write the reusable instruction…"
+				onChange={(event) => onChange({ ...fields, content: event.target.value })}
+			/>
+		</label>
 		<div className="flex flex-wrap items-center gap-2">
 			<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
 			<OutgoingRoleSelect id={`slot-role-${slot.id}`} value={fields.role} disabled={disabled} onChange={(role) => onChange({ ...fields, role })} />
@@ -168,7 +188,13 @@ export function PromptPresetRecipeRow({
 	};
 	return <li
 		ref={ref}
-		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${isDragging ? " z-10 bg-background shadow-lg ring-1 ring-border" : isDropTarget ? " bg-muted/60" : ""}`}
+		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${
+			isDragging
+				? " z-10 bg-background shadow-lg ring-1 ring-border"
+				: isDropTarget
+					? " bg-muted/60"
+					: ""
+			}`}
 	>
 		<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 			<div className="flex min-w-0 items-center gap-1">
@@ -176,7 +202,10 @@ export function PromptPresetRecipeRow({
 					ref={handleRef}
 					type="button"
 					disabled={pending}
-					className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
+					className={[
+					"grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none",
+					"hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
+				].join(" ")}
 					aria-label={`Reorder ${title}`}
 				>
 					<GripVertical aria-hidden="true" className="size-4" />
@@ -253,14 +282,62 @@ export function PromptPresetRecipeRow({
 							<>
 								<span className="mr-1 text-xs text-muted-foreground">Delete block?</span>
 								<Button title="Keep block" variant="ghost" size="icon-sm" disabled={pending} aria-label="Keep block" onClick={() => setConfirmingRemove(false)}><X aria-hidden="true" /></Button>
-								<Button title="Confirm delete" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Delete ${title}`} onClick={() => { setEditing(false); onOperation(() => removePromptPresetBlock(presetId, slot.id)); }}><Trash2 aria-hidden="true" /></Button>
+								<Button
+									title="Confirm delete"
+									variant="destructive"
+									size="icon-sm"
+									disabled={pending}
+									aria-label={`Delete ${title}`}
+									onClick={() => {
+										setEditing(false);
+										onOperation(() => removePromptPresetBlock(presetId, slot.id));
+									}}
+									>
+										<Trash2 aria-hidden="true" />
+									</Button>
 							</>
 						) : (
 							<>
-								<Button title="Move up" variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
-								<Button title="Move down" variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
-								<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending || isSingleUseReference(slot.reference)} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
-								<Button title="Delete block" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Delete ${title}`} onClick={() => setConfirmingRemove(true)}><Trash2 aria-hidden="true" /></Button>
+								<Button
+									title="Move up"
+									variant="ghost"
+									size="icon-sm"
+									disabled={pending || index === 0}
+									aria-label={`Move ${title} up`}
+									onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}
+									>
+										<ChevronUp aria-hidden="true" />
+									</Button>
+								<Button
+									title="Move down"
+									variant="ghost"
+									size="icon-sm"
+									disabled={pending || index === slotCount - 1}
+									aria-label={`Move ${title} down`}
+									onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}
+									>
+										<ChevronDown aria-hidden="true" />
+									</Button>
+								<Button
+									title="Duplicate block"
+									variant="ghost"
+									size="icon-sm"
+									disabled={pending || isSingleUseReference(slot.reference)}
+									aria-label={`Duplicate ${title}`}
+									onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}
+									>
+										<Copy aria-hidden="true" />
+									</Button>
+								<Button
+									title="Delete block"
+									variant="destructive"
+									size="icon-sm"
+									disabled={pending}
+									aria-label={`Delete ${title}`}
+									onClick={() => setConfirmingRemove(true)}
+									>
+										<Trash2 aria-hidden="true" />
+									</Button>
 							</>
 						)}
 					</div>

@@ -33,7 +33,15 @@ export function AddParticipantMenu({
 						{entries.length > 0 && (
 							<CommandGroup heading="From the Library">
 								{entries.map((entry) => (
-									<CommandItem key={entry.character.id} value={`${entry.label} ${entry.character.id}`} keywords={[entry.preview]} onSelect={() => { close(); onAddCharacter(entry.character.id, entry.character.revision); }}>
+									<CommandItem
+										key={entry.character.id}
+										value={`${entry.label} ${entry.character.id}`}
+										keywords={[entry.preview]}
+										onSelect={() => {
+											close();
+											onAddCharacter(entry.character.id, entry.character.revision);
+										}}
+									>
 										<Portrait name={entry.label} portrait={entry.character.portrait} size="small" />
 										<span className="min-w-0 flex-1">
 											<span className="flex items-center gap-1 truncate font-medium">{entry.label}{entry.character.pinned && <Pin aria-label="Pinned" className="size-3 text-muted-foreground" />}</span>

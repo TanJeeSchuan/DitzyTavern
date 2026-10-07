@@ -36,7 +36,11 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 			<section aria-labelledby="embeddings-title">
 				<div className="flex items-center justify-between gap-3">
 					<h3 id="embeddings-title">Embeddings</h3>
-					{embeddingsPreset && <Button type="button" size="sm" variant="outline" aria-label="Add embeddings endpoint" onClick={() => controller.choosePreset(embeddingsPreset)}><Plus aria-hidden="true" /> Add</Button>}
+					{embeddingsPreset && (
+						<Button type="button" size="sm" variant="outline" aria-label="Add embeddings endpoint" onClick={() => controller.choosePreset(embeddingsPreset)}>
+							<Plus aria-hidden="true" /> Add
+						</Button>
+					)}
 				</div>
 				<p>Shortlist saved Memories for recall. The Memory tab picks which one recall uses.</p>
 				<ProfileRows label="Embeddings endpoints" profiles={settings.profiles.filter(isEmbeddingsProfile)} controller={controller}
@@ -52,7 +56,16 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
 				</div>
 				<p>Judge Memory and Semantic Triggers. Each role chooses its own model.</p>
-				<ProfileRows label="Decision Model connections" profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")} controller={controller} describe={profile => hostOf(profile.requestUrl)} badge={() => null} empty={<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory or Semantic Triggers.</EmptyProfiles>} />
+				<ProfileRows
+				label="Decision Model connections"
+				profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")}
+				controller={controller}
+				describe={profile => hostOf(profile.requestUrl)}
+				badge={() => null}
+				empty={
+					<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory or Semantic Triggers.</EmptyProfiles>
+				}
+			/>
 			</section>
 			<section aria-labelledby="semanticTriggers-title">
 				<h3 id="semanticTriggers-title">Semantic Triggers</h3>
@@ -67,7 +80,13 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
 					<DialogHeader>
 						<DialogTitle>Delete {pending?.displayName}?</DialogTitle>
-						<DialogDescription>{pending?.apiFormat === "system-one" ? "Memory and Semantic Triggers using it will need another Decision Model." : pending?.apiFormat === "embeddings" ? "Memory recall stops until you choose another embedding model." : "Chats using it will need another connection before they can generate."}</DialogDescription>
+						<DialogDescription>
+							{pending?.apiFormat === "system-one"
+								? "Memory and Semantic Triggers using it will need another Decision Model."
+								: pending?.apiFormat === "embeddings"
+									? "Memory recall stops until you choose another embedding model."
+									: "Chats using it will need another connection before they can generate."}
+						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button type="button" variant="ghost" onClick={() => controller.setPendingDeletionProfileId(null)}>Cancel</Button>
@@ -130,11 +149,22 @@ function ProfileRows({ label, profiles, controller, describe, badge, empty }: {
 
 function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: SemanticTriggerSettingsController }) {
 	const { settings } = semanticTriggers;
-	if (settings === null) return <span className={rowClass}><span className="text-[0.86rem] font-semibold">{semanticTriggers.loading ? "Loading…" : "Unavailable"}</span><span className="text-xs text-muted-foreground">{semanticTriggers.loading ? "Reading Semantic Trigger settings" : "Open to retry"}</span></span>;
+	if (settings === null) {
+		return (
+			<span className={rowClass}>
+				<span className="text-[0.86rem] font-semibold">{semanticTriggers.loading ? "Loading…" : "Unavailable"}</span>
+				<span className="text-xs text-muted-foreground">{semanticTriggers.loading ? "Reading Semantic Trigger settings" : "Open to retry"}</span>
+			</span>
+		);
+	}
 	return (
 		<span className={rowClass}>
 			<span className="truncate font-mono text-[0.8rem] font-semibold">{settings.decisionModel || "Off"}</span>
-			<span className="truncate text-xs text-muted-foreground">{settings.decisionProfileId === null ? "Keyword-only matching" : `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`}</span>
+			<span className="truncate text-xs text-muted-foreground">
+			{settings.decisionProfileId === null
+				? "Keyword-only matching"
+				: `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`}
+		</span>
 		</span>
 	);
 }
@@ -145,7 +175,14 @@ function PresetMenu({ controller, apiFormat, label }: { controller: ConnectionSe
 	return <DropdownMenu>
 		<DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" aria-label={label}><Plus aria-hidden="true" /> Add</Button></DropdownMenuTrigger>
 		<DropdownMenuContent align="end" className="w-64">
-			{controller.presets.filter(preset => preset.profile.apiFormat === apiFormat).map(preset => <DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}><span className="font-medium">{preset.label}</span><span className="text-xs text-muted-foreground">{preset.description}</span></DropdownMenuItem>)}
+			{controller.presets
+				.filter(preset => preset.profile.apiFormat === apiFormat)
+				.map(preset => (
+					<DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}>
+						<span className="font-medium">{preset.label}</span>
+						<span className="text-xs text-muted-foreground">{preset.description}</span>
+					</DropdownMenuItem>
+				))}
 		</DropdownMenuContent>
 	</DropdownMenu>;
 }

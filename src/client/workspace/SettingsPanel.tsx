@@ -41,7 +41,12 @@ export function SettingsPanel({
 						<strong id="prompt-plan-inspection-label">Inspect Prompt Plan before generating</strong>
 						<span id="prompt-plan-inspection-description">Review and edit the exact plan before sending it to the model.</span>
 					</div>
-					<Switch checked={inspectPromptPlanBeforeGenerating} onCheckedChange={onInspectPromptPlanBeforeGeneratingChange} aria-labelledby="prompt-plan-inspection-label" aria-describedby="prompt-plan-inspection-description" />
+					<Switch
+						checked={inspectPromptPlanBeforeGenerating}
+						onCheckedChange={onInspectPromptPlanBeforeGeneratingChange}
+						aria-labelledby="prompt-plan-inspection-label"
+						aria-describedby="prompt-plan-inspection-description"
+					/>
 				</div>
 			</section>
 			<p className="text-xs text-muted-foreground" role="status">Saved</p>
