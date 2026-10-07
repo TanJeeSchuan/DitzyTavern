@@ -398,7 +398,9 @@ describe("Lorebook library transport", () => {
 		expect(attached.status).toBe(200);
 		const staleSettings = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, expectedRevision: initialChatState.revision, scanDepth: 1, allowance: 1 }) }));
 		expect(staleSettings.status).toBe(409);
-		expect(await staleSettings.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentState: { revision: 1, scanDepth: 4, allowance: 2048, attachments: [{ bookId: 1 }] } });
+		expect(await staleSettings.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentConversation: { id: conversation.id, name: "Story", revision: 1 } });
+		const missingParticipant = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant", participantId: 9999, bookId: 1, expectedRevision: 1, scope: "cast" }) }));
+		expect(missingParticipant.status).toBe(404);
 
 		const staleCharacter = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast" }) }));
 		expect(staleCharacter.status).toBe(200);

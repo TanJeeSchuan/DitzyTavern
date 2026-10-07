@@ -16,7 +16,7 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -62,7 +62,6 @@ describe("Generation capture and provenance", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 
@@ -245,7 +244,7 @@ describe("Generation capture and provenance", () => {
 			connectionSettings: { masterKey: key },
 		});
 		if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
-		const effectiveSettings = preview.capture.capture.plan.effectiveSettings;
+		const effectiveSettings = preview.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
 		await sendThroughProvisionalTailGeneration(database, {

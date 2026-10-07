@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import {
-	conversationTable,
 	conversationGenerationSettingsTable,
 } from "../database/schema";
 import {
 	connectConversationDatabase,
+	findConversation,
 	type ConversationDatabase,
 } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
@@ -113,12 +113,7 @@ export function readConversationGenerationSettings(
 	conversationId: number,
 ): ConversationGenerationSettings | undefined {
 	const db = connectConversationDatabase(database);
-	const conversation = db
-		.select({ id: conversationTable.id })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get();
-	if (conversation === undefined) return undefined;
+	if (findConversation(db, conversationId) === undefined) return undefined;
 	return readConversationGenerationSettingsFromConnection(db, conversationId);
 }
 

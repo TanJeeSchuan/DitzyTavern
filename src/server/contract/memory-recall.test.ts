@@ -9,7 +9,6 @@ import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
 import { captureModelFetch, configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
-import { clearGenerationPreviewRegistry } from "../workflows/generation-preview";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
@@ -103,7 +102,6 @@ describe("Memory recall in Generation preparation", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

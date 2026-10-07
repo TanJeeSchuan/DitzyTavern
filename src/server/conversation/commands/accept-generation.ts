@@ -2,26 +2,25 @@ import type { Database } from "bun:sqlite";
 import { and, eq, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
-	ConversationNotFoundError,
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
-	StaleConversationRevisionError,
 } from "../errors";
 import {
 	appendSelectedVariant,
-	hasActiveGeneration,
+	hasActiveGenerationFromConnection,
 	insertMessage,
 	insertVariant,
 	readActiveCast,
 	readControlAssignment,
+	requireConversation,
+	requireConversationRevision,
 	requireMessage,
 	requireParticipant,
 	type ConversationDatabase,
@@ -51,7 +50,7 @@ import type {
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
-import { syncSelectedMemorySource } from "../../memory";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -71,23 +70,6 @@ const jsonText = (
 			`The captured ${label} could not be persisted as JSON.`,
 		);
 	}
-};
-
-const ensureConversationRevision = (
-	db: ConversationDatabase,
-	conversationId: number,
-	expectedRevision: number,
-) => {
-	const conversation = db
-		.select({ id: conversationTable.id, revision: conversationTable.revision })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get();
-	if (conversation === undefined) throw new ConversationNotFoundError(conversationId);
-	if (conversation.revision !== expectedRevision) {
-		throw new StaleConversationRevisionError(expectedRevision, conversation.revision);
-	}
-	return conversation;
 };
 
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
@@ -166,8 +148,8 @@ interface ProvisionalModelTargetInput {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
-	/** ==[HUMAN APPROVED]== Supply the next position when it was already read as part of validation. */
-	position?: number;
+	/** ==[HUMAN APPROVED]== The next Message position, read once by the lifecycle's validation. */
+	position: number;
 }
 
 interface ProvisionalModelTarget {
@@ -185,15 +167,10 @@ const createProvisionalModelTarget = (
 	db: ConversationDatabase,
 	input: ProvisionalModelTargetInput,
 ): ProvisionalModelTarget => {
-	const nextPosition = input.position ?? ((db
-		.select({ value: max(messageTable.position) })
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, input.conversationId))
-		.get()?.value ?? 0) + 1);
 	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
 	const modelMessageId = insertMessage(db, {
 		conversationId: input.conversationId,
-		position: nextPosition,
+		position: input.position,
 		timestamp: input.timestamp,
 		author: { participantId: model.id, name: model.name },
 		context: {
@@ -261,7 +238,7 @@ function hasReasoningData(
 // the current tail).
 interface AcceptGenerationValidation {
 	humanMessageId: number | null;
-	position?: number | undefined;
+	position: number;
 }
 
 type AcceptGenerationParticipant = ReturnType<typeof requireParticipant>;
@@ -293,6 +270,30 @@ interface AcceptedGenerationTarget<Validation extends AcceptGenerationValidation
 	validation: Validation;
 }
 
+// ==[HUMAN APPROVED]== One Human Message's selected Variants as the Memory change record
+// for Tail acceptance; the replace-or-create Human Message is the only
+// accepted state Memory re-derives.
+const tailHumanChange = (
+	db: ConversationDatabase,
+	conversationId: number,
+	humanMessageId: number,
+): ConversationMemoryChange => ({
+	conversationId,
+	touchedVariantIds: db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.message_id, humanMessageId),
+				eq(messageVariantTable.selected, true),
+			),
+		)
+		.all()
+		.map(({ id }) => id),
+	removedVariantIds: [],
+	promptPresetChanged: false,
+});
+
 /**
  * ==[HUMAN APPROVED]== Shared middle of Tail and Continuation acceptance: the revision guard,
  * the lifecycle preflight, the distinct-seat requirement, the captured
@@ -307,8 +308,8 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 	database: Database,
 	input: AcceptGenerationTargetInput<Validation>,
 ): AcceptedGenerationTarget<Validation> {
-	return runConversationTransaction(database, (db) => {
-		ensureConversationRevision(db, input.conversationId, input.expectedRevision);
+	return runConversationTransaction(database, (db, reportChange) => {
+		requireConversationRevision(db, input.conversationId, input.expectedRevision);
 		input.preflight?.();
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(
@@ -331,7 +332,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 				"The captured model Author Stamp is no longer authoritative.",
 			);
 		}
-		if (hasActiveGeneration(database, input.conversationId)) {
+		if (hasActiveGenerationFromConnection(db, input.conversationId)) {
 			throw new InvalidConversationCommandError(
 				"This Conversation already has an Active Generation.",
 			);
@@ -362,7 +363,9 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 		);
 		const conversation = requireConversationSummary(db, input.conversationId);
 		if (input.lifecycle === "Tail" && validation.humanMessageId !== null) {
-			syncSelectedMemorySource(db.$client, input.conversationId, validation.humanMessageId);
+			// ==[HUMAN APPROVED]== The accepted Human Message is reported through its selected
+			// Variants so Memory re-derives the Human source after the commit.
+			reportChange(tailHumanChange(db, input.conversationId, validation.humanMessageId));
 		}
 		return {
 			generationId: activeGenerationId,
@@ -421,7 +424,7 @@ export function acceptConversationTailGeneration(
 						"The unanswered human Message cannot be reused for this Send.",
 					);
 				}
-				return { humanMessageId: reused.id };
+				return { humanMessageId: reused.id, position: (latestPosition ?? 0) + 1 };
 			}
 			const humanMessageId = insertMessage(db, {
 		conversationId: input.conversationId,
@@ -437,7 +440,10 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
-			return { humanMessageId };
+			// ==[HUMAN APPROVED]== The provisional model target follows the just-inserted Human
+			// Message, so its position is the one this validation created plus one —
+			// derived from the position read here instead of re-reading max(position).
+			return { humanMessageId, position: (latestPosition ?? 0) + 2 };
 		},
 	});
 	return {
@@ -519,12 +525,7 @@ export function acceptConversationSiblingGeneration(
 	input: AcceptSiblingGenerationInput,
 ): AcceptedSiblingGeneration {
 	return runConversationTransaction(database, (db) => {
-		const conversation = db
-			.select({ id: conversationTable.id })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, input.conversationId))
-			.get();
-		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+		requireConversation(db, input.conversationId);
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(
 				"A Sibling Generation requires distinct historical Participants.",

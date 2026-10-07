@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, sql } from "drizzle-orm";
 import { conversationTable } from "../../database/schema";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import {
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
@@ -26,13 +27,54 @@ const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 				last_message_time: lastMessageTime,
 		};
 
-/** ==[HUMAN APPROVED]== Run one Conversation write as a single immediate transaction. */
+/**
+ * ==[HUMAN APPROVED]== The application-installed consumer of Conversation's reported write
+ * changes. The deep Conversation module never imports Memory: the application
+ * layer (app.ts) installs the sync here, and every committed write delivers
+ * its ConversationMemoryChange through this seam.
+ */
+let conversationWriteObserver:
+	| ((database: Database, change: ConversationMemoryChange) => void)
+	| undefined;
+
+export function observeConversationWrites(
+	observer: (database: Database, change: ConversationMemoryChange) => void,
+): void {
+	conversationWriteObserver = observer;
+}
+
+/**
+ * ==[HUMAN APPROVED]== Run one Conversation write as a single immediate transaction. The
+ * work reports the change it made through the transaction-scoped reporter and
+ * the observer runs as this wrapper's last statement, so Memory sees exactly
+ * the state this transaction commits, with the writes still uncommitted to
+ * other transactions — identical ordering to the pre-refactor per-handler
+ * calls without the deep module ever calling Memory itself.
+ */
 export function runConversationTransaction<T>(
 	database: Database,
-	work: (db: ConversationDatabase) => T,
+	work: (
+		db: ConversationDatabase,
+		reportChange: (change: ConversationMemoryChange) => void,
+	) => T,
 ): T {
+	let reported: ConversationMemoryChange | undefined;
 	return database
-		.transaction(() => work(connectConversationDatabase(database)))
+		.transaction(() => {
+			const result = work(
+				connectConversationDatabase(database),
+				(change) => {
+					if (reported !== undefined) {
+						throw new Error(
+							"One Conversation write reports exactly one change record.",
+						);
+					}
+					reported = change;
+				},
+			);
+			if (reported !== undefined) conversationWriteObserver?.(database, reported);
+			return result;
+		})
 		.immediate();
 }
 

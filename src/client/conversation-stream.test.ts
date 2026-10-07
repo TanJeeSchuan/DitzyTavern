@@ -119,11 +119,14 @@ describe("server-owned Generation client", () => {
 		expect(requestUrl).toBe("http://localhost/api/conversations/42/generations");
 		expect(requestBody).toBe(JSON.stringify({ expectedRevision: 3, content: "Keep going." }));
 		expect(result).toEqual({
-			outcome: "accepted",
-			generationId: 7,
-			conversationId: 42,
-			messageId: 9,
-			variantId: 10,
+			outcome: "available",
+			value: {
+				outcome: "accepted",
+				generationId: 7,
+				conversationId: 42,
+				messageId: 9,
+				variantId: 10,
+			},
 		});
 	});
 

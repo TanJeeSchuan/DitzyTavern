@@ -5,21 +5,16 @@ import {
 	PromptBudgetExceededError,
 	resolvePromptImages,
 	type PromptPlan,
-	type TokenEstimator,
 } from "../prompt-compiler";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
-import type { ModelFetch } from "../model-client/types";
 import {
-	captureContinuationGenerationAsync,
-	captureSendGenerationAsync,
-	captureSiblingGenerationAsync,
+	captureGeneration,
 	prepareGenerationInputsSnapshot,
-	type ContinuationGenerationCapture,
+	type CapturedGenerationFor,
+	type GenerationCaptureOptions,
 	type PrepareGenerationInputs,
-	type SendGenerationCapture,
-	type CapturedGeneration,
 } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { promptPlan } from "../../shared/contract/conversation-schema";
@@ -27,19 +22,14 @@ import { InvalidConversationCommandError } from "../conversation";
 import { estimateDynamicBlockTokens } from "../generation-plan";
 import type {
 	GenerationFormattingContext,
-	GenerationPreviewBody,
+	GenerationTarget,
+	GenerationTargetKind,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { processStateFor } from "../application/process-state";
 
-export type GenerationPreviewCapture =
-	| { kind: "send"; capture: SendGenerationCapture; content: string }
-	| { kind: "continuation"; capture: ContinuationGenerationCapture }
-	| { kind: "sibling"; capture: CapturedGeneration; messageId: number };
-
-export type GenerationPreviewKind = GenerationPreviewCapture["kind"];
-
-interface GenerationPreviewRecordFields {
+export interface GenerationPreviewRecordFields {
 	readonly id: string;
 	readonly conversationId: number;
 	readonly fingerprint: string;
@@ -47,89 +37,53 @@ interface GenerationPreviewRecordFields {
 	readonly expiresAt: number;
 }
 
-export type GenerationPreviewRecord = GenerationPreviewRecordFields & {
-	readonly capture: GenerationPreviewCapture;
+// ==[HUMAN APPROVED]== The preview record retains the captured Generation of one attempt kind;
+// the kind lives on the capture itself, riding the one Generation Target
+// union.
+export type GenerationPreviewRecordFor<K extends GenerationTargetKind> = GenerationPreviewRecordFields & {
+	readonly capture: CapturedGenerationFor<K>;
 };
 
-export type GenerationPreviewRecordFor<K extends GenerationPreviewKind> = GenerationPreviewRecordFields & {
-	readonly capture: Extract<GenerationPreviewCapture, { kind: K }>;
-};
+export type GenerationPreviewRecord = GenerationPreviewRecordFor<GenerationTargetKind>;
 
-export type GenerationPreviewAcceptanceFor<K extends GenerationPreviewKind> = {
-	readonly kind: K;
+export type GenerationPreviewAcceptanceFor<K extends GenerationTargetKind> = {
 	readonly record: GenerationPreviewRecordFor<K>;
 	readonly editedPlan: PromptPlan;
 };
 
-export type GenerationPreviewAcceptance =
-	| GenerationPreviewAcceptanceFor<"send">
-	| GenerationPreviewAcceptanceFor<"continuation">
-	| GenerationPreviewAcceptanceFor<"sibling">;
+export type GenerationPreviewAcceptance = GenerationPreviewAcceptanceFor<GenerationTargetKind>;
 
-type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale"> : never;
-
-export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> & {
-	readonly conversationId: number;
-	readonly formatting?: GenerationFormattingContext;
-	readonly connection?: ModelClientConnectionSnapshot | null;
-	readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	readonly preparationFetch?: ModelFetch;
-	readonly tokenEstimator?: TokenEstimator;
-};
-
-const buildPreviewCaptureAsync = async (
-	database: Database,
-	request: GenerationPreviewRequest,
-): Promise<GenerationPreviewCapture> => {
-	const captureInput = {
-		database,
-		conversationId: request.conversationId,
-		connection: request.connection,
-		connectionSettings: request.connectionSettings,
-		tokenEstimator: request.tokenEstimator,
-		formatting: request.formatting,
-		preparationFetch: request.preparationFetch,
-	};
-	switch (request.kind) {
-		case "send":
-			return { kind: "send", capture: await captureSendGenerationAsync({ ...captureInput, content: request.content }), content: request.content };
-		case "continuation":
-			return { kind: "continuation", capture: await captureContinuationGenerationAsync(captureInput) };
-		case "sibling":
-			return { kind: "sibling", capture: await captureSiblingGenerationAsync({ ...captureInput, messageId: request.messageId }), messageId: request.messageId };
-	}
-};
+/** ==[HUMAN APPROVED]== One preview request is one attempt target carrying its own capture
+ * configuration, so the inspected Prompt Plan dispatches on the same union
+ * the lifecycles do. */
+export type GenerationPreviewRequest = GenerationCaptureOptions & GenerationTarget;
 
 export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
-const stores = new WeakMap<Database, ReturnType<typeof createPreviewStore>>();
 
-const createPreviewStore = () => {
+export interface GenerationPreviewStore {
+	previews: Map<number, GenerationPreviewRecord>;
+	versions: Map<number, number>;
+	/** Evicts preview records past their expiry; the process-state tick drives this while idle. */
+	sweep(now?: number): void;
+	dispose(): void;
+}
+
+// ==[HUMAN APPROVED]== The expiring per-conversation inspection store. The process-state
+// container owns its lifecycle; this factory owns only the store's behavior.
+export const createGenerationPreviewStore = (): GenerationPreviewStore => {
 	const previews = new Map<number, GenerationPreviewRecord>();
 	const versions = new Map<number, number>();
-	const sweep = () => {
-		for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
-	};
-	const timer = setInterval(sweep, 60_000);
-	timer.unref();
 	return {
 		previews,
 		versions,
-		sweep,
-		dispose: () => { clearInterval(timer); previews.clear(); versions.clear(); },
+		sweep: (now: number = Date.now()) => {
+			for (const [conversationId, preview] of previews) if (preview.expiresAt <= now) previews.delete(conversationId);
+		},
+		dispose: () => { previews.clear(); versions.clear(); },
 	};
 };
 
-const previewStore = (database: Database) => {
-	let store = stores.get(database);
-	if (store === undefined) { store = createPreviewStore(); stores.set(database, store); }
-	return store;
-};
-
-/** Dispose and forget this database's preview store; no-op if it never created one. */
-export const clearGenerationPreviewRegistry = (database: Database): void => {
-	stores.get(database)?.dispose();
-	stores.delete(database);
-};
+const previewStore = (database: Database): GenerationPreviewStore => processStateFor(database).generationPreviews;
 
 const ensureRecord = (database: Database, id: string, conversationId: number): GenerationPreviewRecord => {
 	const store = previewStore(database);
@@ -143,22 +97,19 @@ const ensureRecord = (database: Database, id: string, conversationId: number): G
 	return record;
 };
 
-const isPreviewRecordFor = <K extends GenerationPreviewKind>(
-	record: GenerationPreviewRecord,
-	kind: K,
-): record is GenerationPreviewRecordFor<K> => record.capture.kind === kind;
-
-export const previewRecordFor = <K extends GenerationPreviewKind>(
+export const previewRecordFor = <K extends GenerationTargetKind>(
 	database: Database,
 	id: string,
 	conversationId: number,
 	kind: K,
 ): GenerationPreviewRecordFor<K> => {
 	const record = ensureRecord(database, id, conversationId);
-	if (!isPreviewRecordFor(record, kind)) {
+	if (record.capture.kind !== kind) {
 		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
 	}
-	return record;
+	// ==[HUMAN APPROVED]== SAFETY: the capture's kind discriminant was just compared against the
+	// caller's kind, so the record holds that kind's captured Generation.
+	return record as GenerationPreviewRecordFor<K>;
 };
 
 export const consumeGenerationPreview = (
@@ -203,12 +154,12 @@ export const createGenerationPreviewAsync = async (
 	store.sweep();
 	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
 	store.versions.set(input.conversationId, requestVersion);
-	const capture = await buildPreviewCaptureAsync(database, input);
+	const capture = await captureGeneration<GenerationTargetKind>(database, input, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
 		conversationId: input.conversationId,
-		fingerprint: capture.capture.preparation.fingerprint,
+		fingerprint: capture.preparation.fingerprint,
 		capture,
 		createdAt: now,
 		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
@@ -225,10 +176,10 @@ const acceptedEditedPlan = (
 	if (!Value.Check(promptPlan, submittedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
 	}
-	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, submittedPlan);
-	const settings = record.capture.capture.plan.effectiveSettings;
-	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.capture.connection, settings));
-	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
+	assertEditedPlanStructure(record.capture.plan.promptPlan, submittedPlan);
+	const settings = record.capture.plan.effectiveSettings;
+	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.connection, settings));
+	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
 	const budget = budgetEditedPromptPlan({
@@ -238,11 +189,11 @@ const acceptedEditedPlan = (
 		safetyAllowance: settings.safetyAllowance,
 	});
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
-	const sourceLore = record.capture.capture.plan.loreActivation;
+	const sourceLore = record.capture.plan.loreActivation;
 	const loreActivation = sourceLore === null
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
-	const sourceMemory = record.capture.capture.plan.memoryActivation;
+	const sourceMemory = record.capture.plan.memoryActivation;
 	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
 	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
 		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
@@ -251,7 +202,7 @@ const acceptedEditedPlan = (
 	const memoryActivation = sourceMemory === null
 		? null
 		: editedMemoryActivation(sourceMemory, editedPlan);
-	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
+	return { ...record.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
 };
 
 const editedLoreActivation = (
@@ -282,15 +233,10 @@ interface PreviewAcceptanceContext {
 	readonly formatting: GenerationFormattingContext | undefined;
 }
 
-type PreviewSnapshotKind =
-	| { readonly kind: "send"; readonly content: string }
-	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number };
-
 const assertPreviewCurrent = (
 	context: PreviewAcceptanceContext,
-	record: GenerationPreviewRecord,
-	kind: PreviewSnapshotKind,
+	fingerprint: string,
+	target: GenerationTarget,
 ): void => {
 	const input: PrepareGenerationInputs = {
 		database: context.database,
@@ -298,64 +244,45 @@ const assertPreviewCurrent = (
 		connection: context.connection,
 		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
-		...kind,
+		...target,
 	};
-	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== record.fingerprint) {
+	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
 	}
 };
 
-export const captureSendGenerationPreview = (
-	context: PreviewAcceptanceContext & {
-		readonly preview: GenerationPreviewAcceptanceFor<"send">;
-		readonly content: string;
-	},
-): SendGenerationCapture => {
-	const { preview, content } = context;
-	ensureRecord(context.database, preview.record.id, context.conversationId);
-	if (content !== preview.record.capture.content) {
-		throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
+const assertSubmittedTargetUnchanged = (
+	recorded: GenerationTarget,
+	submitted: GenerationTarget,
+): void => {
+	switch (recorded.kind) {
+		case "send":
+			if (submitted.kind !== "send" || recorded.content !== submitted.content) {
+				throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
+			}
+			return;
+		case "sibling":
+			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId) {
+				throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
+			}
+			return;
+		case "continuation":
+			return;
 	}
-	assertPreviewCurrent(context, preview.record, { kind: "send", content });
-	const recorded = preview.record.capture.capture;
-	return { ...recorded, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
 };
 
-export const captureContinuationGenerationPreview = (
-	context: PreviewAcceptanceContext & {
-		readonly preview: GenerationPreviewAcceptanceFor<"continuation">;
-	},
-): ContinuationGenerationCapture => {
-	const { preview } = context;
-	ensureRecord(context.database, preview.record.id, context.conversationId);
-	assertPreviewCurrent(context, preview.record, { kind: "continuation" });
-	const recorded = preview.record.capture.capture;
-	const assistantPrefill = recorded.assistantPrefill === undefined
-		? undefined
-		: {
-			...recorded.assistantPrefill,
-			prefix: [...preview.editedPlan.blocks].reverse().find(
-				(block) => block.kind === "history" && block.role === "model",
-			)?.content ?? recorded.assistantPrefill.prefix,
-		};
-	return {
-		...recorded,
-		plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan),
-		assistantPrefill,
-	};
-};
-
-export const captureSiblingGenerationPreview = (
-	context: PreviewAcceptanceContext & {
-		readonly preview: GenerationPreviewAcceptanceFor<"sibling">;
-		readonly messageId: number;
-	},
-): CapturedGeneration => {
-	const { preview, messageId } = context;
-	ensureRecord(context.database, preview.record.id, context.conversationId);
-	if (messageId !== preview.record.capture.messageId) {
-		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
-	}
-	assertPreviewCurrent(context, preview.record, { kind: "sibling", messageId });
-	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
+/** ==[HUMAN APPROVED]== Capture the accepted Generation from an inspected Prompt Plan: the
+ * submitted attempt target must still match the recorded capture, the
+ * preparation must still be current, and the retained capture returns with
+ * the edited plan in place of the compiled one. */
+export const captureGenerationPreview = (
+	context: PreviewAcceptanceContext,
+	preview: GenerationPreviewAcceptance,
+	target: GenerationTarget,
+): CapturedGenerationFor<GenerationTargetKind> => {
+	const { record } = preview;
+	ensureRecord(context.database, record.id, context.conversationId);
+	assertSubmittedTargetUnchanged(record.capture, target);
+	assertPreviewCurrent(context, record.fingerprint, target);
+	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };

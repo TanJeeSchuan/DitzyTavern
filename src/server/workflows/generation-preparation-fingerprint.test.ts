@@ -107,6 +107,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			recent: [], kind: "off",
 		},
 		content: "Hello",
+		reuseHumanMessageId: undefined,
 	};
 };
 

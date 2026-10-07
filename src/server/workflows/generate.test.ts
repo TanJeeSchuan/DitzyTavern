@@ -22,7 +22,7 @@ import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
 } from ".";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
@@ -67,13 +67,13 @@ const sendPreview = async (
 		tokenEstimator: options.tokenEstimator,
 	});
 	if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
-	return preview.capture.capture;
+	return preview.capture;
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
 	const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
 	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
-	return preview.capture.capture;
+	return preview.capture;
 };
 
 describe("Generation runtime behavior", () => {
@@ -103,7 +103,6 @@ describe("Generation runtime behavior", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

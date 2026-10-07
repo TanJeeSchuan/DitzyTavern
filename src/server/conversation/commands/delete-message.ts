@@ -1,7 +1,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { collectReleasedCharacterTombstones } from "../../character-library";
-import { messageTable, participantTable } from "../../database/schema";
-import { abandonMemoryWorkForRemovedVariants } from "../../memory";
+import { messageTable, messageVariantTable, participantTable } from "../../database/schema";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import type { ConversationDatabase } from "../internal";
 import { messageReferencesParticipant } from "../internal";
 import { requireMessage } from "../internal";
@@ -72,9 +72,25 @@ const collectReleasedTombstones = (
 	collectReleasedCharacterTombstones(db, releasedSourceCharacterIds);
 };
 
-export function deleteMessage(db: ConversationDatabase, input: DeleteMessageInput) {
+export function deleteMessage(
+	db: ConversationDatabase,
+	input: DeleteMessageInput,
+): ConversationMemoryChange {
 	requireMessage(db, input.conversationId, input.messageId);
+	// ==[HUMAN APPROVED]== The Message deletion cascades to its Variants; the ids are
+	// enumerated before the delete so Memory can abandon their in-flight work.
+	const removedVariantIds = db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(eq(messageVariantTable.message_id, input.messageId))
+		.all()
+		.map(({ id }) => id);
 	db.delete(messageTable).where(eq(messageTable.id, input.messageId)).run();
-	abandonMemoryWorkForRemovedVariants(db.$client);
 	collectReleasedTombstones(db, input.conversationId);
+	return {
+		conversationId: input.conversationId,
+		touchedVariantIds: [],
+		removedVariantIds,
+		promptPresetChanged: false,
+	};
 }

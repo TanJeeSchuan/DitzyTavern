@@ -11,13 +11,8 @@ import {
 } from "../prompt-preset";
 import { importNativeLorebook, executeLorebookCommand } from "../lorebook/library";
 import { attachLorebookToConversation } from "../lorebook/attachments";
+import { captureGeneration } from "./generate-capture";
 import {
-	captureContinuationGenerationAsync,
-	captureSendGenerationAsync,
-	captureSiblingGenerationAsync,
-} from "./generate-capture";
-import {
-	clearGenerationPreviewRegistry,
 	createGenerationPreviewAsync,
 	previewRecordFor,
 } from "./generation-preview";
@@ -86,7 +81,7 @@ const loreText = (plan: PromptPlan): string =>
 describe("generation capture coherence", () => {
 	let databases: Database[] = [];
 	afterEach(() => {
-		for (const database of databases) { clearGenerationPreviewRegistry(database); database.close(); }
+		for (const database of databases) database.close();
 		databases = [];
 	});
 
@@ -111,16 +106,16 @@ describe("generation capture coherence", () => {
 				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 			};
 
-			const input = { database: state.database, conversationId: state.conversationId, preparationFetch };
-			const pending = (() => {
-				if (kind === "send") {
-					return captureSendGenerationAsync({ ...input, content: "signal" });
-				}
-				if (kind === "continuation") {
-					return captureContinuationGenerationAsync(input);
-				}
-				return captureSiblingGenerationAsync({ ...input, messageId: targetMessageId });
-			})();
+			const database = state.database;
+			const pending = captureGeneration(
+				database,
+				kind === "send"
+					? { kind: "send", content: "signal" }
+					: kind === "continuation"
+						? { kind: "continuation" }
+						: { kind: "sibling", messageId: targetMessageId },
+				{ conversationId: state.conversationId, preparationFetch },
+			);
 
 			await semanticStarted;
 			executeLorebookCommand(state.database, {
@@ -172,7 +167,7 @@ describe("generation capture coherence", () => {
 			},
 		});
 		const snapshot = createConversationModule(state.database).getSnapshot(state.conversationId)!;
-		const pending = coordinator.startSendGeneration({
+		const pending = coordinator.startGeneration({
 			conversationId: state.conversationId, expectedRevision: snapshot.revision, content: "signal",
 		});
 		await requested.promise;

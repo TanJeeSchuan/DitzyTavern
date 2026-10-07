@@ -12,7 +12,6 @@ import {
 	stopAllConversationGenerations,
 	stopConversationGeneration,
 	type ConversationSummary,
-	type StopConversationGenerationResult,
 } from "../conversation";
 import { generationStreamAdapter } from "../conversation-stream";
 import {
@@ -40,51 +39,48 @@ import {
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
-// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
-// deltas append into the story read model (the one accumulated story owner)
-// and authoritative snapshots reconcile its current window. Reasoning Content follows a
-// separate action path so it remains visible without joining authored prose.
+// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's single observation
+// vocabulary. An authoritative snapshot replaces both accumulated fields
+// atomically; content and reasoning deltas each append to the stream they
+// belong to, so Reasoning Content stays visible without joining authored
+// prose.
 export function generationSessionStoryAction(
 	effect: GenerationSessionStoryEffect,
-): StoryAction | null {
-	switch (effect.kind) {
-		case "story-content-delta":
-			return {
-				type: "generation-content-delta",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				text: effect.text,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
-		case "story-state":
-			return {
-				type: "generation-state",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				content: effect.content,
-				reasoning: effect.reasoning,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
-		case "story-reasoning-delta":
-			return {
-				type: "generation-reasoning-delta",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				text: effect.text,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
+): StoryAction {
+	const shared = {
+		messageId: effect.messageId,
+		variantId: effect.variantId,
+		generationId: effect.generationId,
+		eventId: effect.eventId,
+	} as const;
+	if (effect.kind === "story-state") {
+		return {
+			type: "generation-observed",
+			mode: "replace",
+			content: effect.content,
+			reasoning: effect.reasoning,
+			...shared,
+		};
 	}
+	return {
+		type: "generation-observed",
+		stream: effect.kind === "story-content-delta" ? "content" : "reasoning",
+		mode: "append",
+		text: effect.text,
+		...shared,
+	};
 }
 
 // ==[HUMAN APPROVED]== Maps a transport Stop outcome onto the machine's stop-command vocabulary.
+// The transport's network outcome is the machine's failed stop; the reason is
+// owned here because the transport no longer words per-route failures.
 const stopCommandOutcome = (
-	result: StopConversationGenerationResult,
+	result:
+		| Awaited<ReturnType<typeof stopConversationGeneration>>
+		| Awaited<ReturnType<typeof stopAllConversationGenerations>>,
 ): GenerationStopCommandOutcome => {
-	if (result.outcome === "failed") return { outcome: "failed", reason: result.reason };
 	if (result.outcome === "not-found") return { outcome: "not-found" };
+	if (result.outcome === "network") return { outcome: "failed", reason: "Generation could not be stopped." };
 	return { outcome: "stopped" };
 };
 
@@ -127,8 +123,7 @@ export function useGenerationController({
 		runnerRef.current = createGenerationSessionRunner({
 			adapter: generationStreamAdapter,
 			applyStoryEffect: (effect) => {
-				const action = generationSessionStoryAction(effect);
-				if (action !== null) dispatchStory(action);
+				dispatchStory(generationSessionStoryAction(effect));
 			},
 			refreshConversation: async (conversationId, signal) => {
 				await refreshStory(conversationId, signal);
@@ -249,16 +244,9 @@ export function useGenerationController({
 		if (conversationId === undefined || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		try {
-			const outcome = await stopConversationGeneration(conversationId, generationId);
-			runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
-		} catch {
-			runner.dispatch({
-				type: "stop-settled",
-				generationId,
-				outcome: { outcome: "failed", reason: "Generation could not be stopped." },
-			});
-		}
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		const outcome = await stopConversationGeneration(conversationId, generationId);
+		runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
 	};
 
 	const stopAllGenerations = async () => {
@@ -266,15 +254,9 @@ export function useGenerationController({
 		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		try {
-			const outcome = await stopAllConversationGenerations(conversationId);
-			runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
-		} catch {
-			runner.dispatch({
-				type: "stop-all-settled",
-				outcome: { outcome: "failed", reason: "Generations could not be stopped." },
-			});
-		}
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		const outcome = await stopAllConversationGenerations(conversationId);
+		runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
 	};
 
 	const cancelGeneration = () => {

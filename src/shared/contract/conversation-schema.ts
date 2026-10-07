@@ -737,6 +737,19 @@ export const generationPreviewBody = Type.Union([
 	}),
 ]);
 
+// ==[HUMAN APPROVED]== The one Generation attempt vocabulary: the kind discriminant of the
+// Preview body above. Every capture, preview record, lifecycle policy, and
+// server-owned wrapper dispatches on this union instead of restating the
+// kinds, so the wire vocabulary and the server vocabulary cannot drift.
+export type GenerationTarget =
+	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "continuation" }
+	| { readonly kind: "sibling"; readonly messageId: number };
+
+export type GenerationTargetKind = GenerationTarget["kind"];
+
+export type GenerationTargetFor<K extends GenerationTargetKind> = Extract<GenerationTarget, { kind: K }>;
+
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
 	responseBudget: Type.Integer(),
@@ -872,6 +885,39 @@ export const conversationCommandConflict = Type.Union([
 export const castCharacterConflict = Type.Union([
 	characterConflict,
 	conversationConflict,
+]);
+
+// ==[HUMAN APPROVED]== The Conversation route families' modeled error unions: the composed
+// 409/404/422 envelopes each family declares, so the client decodes an error
+// body against exactly the union its route models.
+export const conversationConflictErrors = Type.Union([
+	conversationConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const conversationCommandErrors = Type.Union([
+	conversationCommandConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const castCharacterErrors = Type.Union([
+	castCharacterConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const generationPreviewErrors = Type.Union([
+	notFoundOutcome,
+	notPlayableOutcome,
+	invalidOutcome,
+]);
+
+export const generationStartErrors = Type.Union([
+	generationConflictResponse,
+	notFoundOutcome,
+	invalidOutcome,
 ]);
 
 export const addCharacterToCastBody = Type.Object({

@@ -7,13 +7,12 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, like, lte, max } from "drizzle-orm";
 import {
 	conversationDataTable,
-	conversationTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import { findConversation, type ConversationDatabase } from "./internal";
 import { toAuthorStamp, toHistoricalContext } from "./message-read-projection";
 import { runConversationReadTransaction } from "./commands/transaction";
 import type {
@@ -63,11 +62,7 @@ const readSelectedHistoryFromConnection = (
 	conversationId: number,
 	request: SelectedHistoryReadRequest,
 ): SelectedHistoryRead | undefined => {
-	const conversation = db
-		.select({ id: conversationTable.id, revision: conversationTable.revision })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get();
+	const conversation = findConversation(db, conversationId);
 	if (conversation === undefined) return undefined;
 
 	const lastPosition = db

@@ -188,22 +188,19 @@ const provenanceSettings = (
 	value: GenerationJsonValue | undefined,
 ): GenerationProvenanceSettings => {
 	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
-	// decoder then resolves its own intentional null.
+	// decoder then resolves its own intentional null. The projection maps the
+	// decoder table itself, so the table's declaration order is the field
+	// order and a new field cannot be forgotten in the projection.
 	const source = generationJsonObject(value) ?? {};
-	return {
-		temperature: decodeProvenanceSettingsField.temperature(source),
-		topP: decodeProvenanceSettingsField.topP(source),
-		frequencyPenalty: decodeProvenanceSettingsField.frequencyPenalty(source),
-		presencePenalty: decodeProvenanceSettingsField.presencePenalty(source),
-		contextLimit: decodeProvenanceSettingsField.contextLimit(source),
-		responseBudget: decodeProvenanceSettingsField.responseBudget(source),
-		safetyAllowance: decodeProvenanceSettingsField.safetyAllowance(source),
-		siblingGenerationLimit: decodeProvenanceSettingsField.siblingGenerationLimit(source),
-		continuationStrategy: decodeProvenanceSettingsField.continuationStrategy(source),
-		continuationInstruction: decodeProvenanceSettingsField.continuationInstruction(source),
-		continuationPrefillSuffix: decodeProvenanceSettingsField.continuationPrefillSuffix(source),
-		repeatedImagePlacement: decodeProvenanceSettingsField.repeatedImagePlacement(source),
-	};
+	// ==[HUMAN APPROVED]== SAFETY: the key list is the decoder table's own keys in declared
+	// order and every value is that table's decode of the same field, so the
+	// record is exactly the mapped GenerationProvenanceSettings shape.
+	return Object.fromEntries(
+		(Object.keys(decodeProvenanceSettingsField) as ProvenanceSettingsField[]).map((field) => [
+			field,
+			decodeProvenanceSettingsField[field](source),
+		]),
+	) as GenerationProvenanceSettings;
 };
 
 const generationUsage = (value: GenerationJsonValue | undefined): GenerationUsage | null => {

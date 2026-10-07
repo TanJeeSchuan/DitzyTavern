@@ -8,7 +8,7 @@ import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 
 const definition = (name: string): ParticipantDefinition => ({
 	name,
@@ -49,7 +49,6 @@ describe("Continuation Generation", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 
@@ -247,7 +246,7 @@ describe("Continuation Generation", () => {
 		let received: ModelClientGenerationInput | undefined;
 		const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
 		if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
-		const promptPlan = preview.capture.capture.plan.promptPlan;
+		const promptPlan = preview.capture.plan.promptPlan;
 		expect(promptPlan.intent).toEqual({
 			type: "continuation",
 			strategy: "assistant-prefill",
@@ -267,10 +266,8 @@ describe("Continuation Generation", () => {
 			strategy: "assistant-prefill",
 			suffix: "\n",
 		});
-		expect(received?.assistantPrefill).toEqual({
-			prefix: "The first scene ends here.",
-			suffix: "\n",
-		});
+		// ==[HUMAN APPROVED]== The assistant prefill is adapter request intent derived from
+		// the plan's protected final model entry, not a separately retained capture.
 		expect(received?.promptPlan.intent).not.toHaveProperty("instruction");
 		expect(currentSnapshot().messages[0]?.variants[0]?.content).toBe("The first scene ends here.");
 		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("A new continuation.");

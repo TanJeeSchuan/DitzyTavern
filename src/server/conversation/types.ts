@@ -31,6 +31,7 @@ import type {
 } from "../../shared/contract/macro-variables";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
+import type { LoreAttachmentCommand } from "../../shared/contract/lorebook";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -296,11 +297,31 @@ export type ConversationDataScope =
 // transaction.
 type WireConversationAction = SharedConversationAction;
 
+// ==[HUMAN APPROVED]== Extension (b): the Conversation-owned Lore attachment commands
+// (Chat Lore settings, Chat and Participant Lorebook attachments) are
+// revisioned Conversation mutations whose canonical wire declaration lives
+// in the Lorebook command schema — they ride the Lorebook attachment route,
+// so the Conversation command route never accepts them. The domain strips
+// the route envelope (conversation id and expected revision live on
+// ConversationCommand) from the shared schema, so the shapes cannot drift.
+type LoreAttachmentConversationActionType = Extract<
+	LoreAttachmentCommand["type"],
+	"attach-chat" | "detach-chat" | "attach-participant" | "detach-participant" | "save-settings"
+>;
+
+type LoreAttachmentConversationAction = {
+	[Type in LoreAttachmentConversationActionType]: Omit<
+		Extract<LoreAttachmentCommand, { type: Type }>,
+		"conversationId" | "expectedRevision"
+	>;
+}[LoreAttachmentConversationActionType];
+
 export type ConversationAction =
 	| Exclude<WireConversationAction, { type: "add-participant" }>
 	| (Extract<WireConversationAction, { type: "add-participant" }> & {
 			sourceCharacterId?: number | undefined;
-	  });
+	  })
+	| LoreAttachmentConversationAction;
 
 export interface ConversationCommand {
 	conversationId: number;

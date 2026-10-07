@@ -39,7 +39,7 @@ import type {
 	GenerationIntent,
 	PromptBudgetResult,
 	PromptContextEntry,
-
+	PromptPlan,
 	TokenEstimator,
 } from "../prompt-compiler";
 import {
@@ -48,7 +48,6 @@ import {
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
 import {
-	type AssistantPrefill,
 	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
 } from "../model-client";
@@ -60,7 +59,6 @@ import {
 	type GenerationProvenanceRecord,
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
-import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import {
 	createAttemptEnvironment,
@@ -69,6 +67,11 @@ import {
 import {
 	conversationGenerationSettings,
 	type GenerationFormattingContext,
+} from "../../shared/contract/conversation-schema";
+import type {
+	GenerationTarget,
+	GenerationTargetFor,
+	GenerationTargetKind,
 } from "../../shared/contract/conversation-schema";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import {
@@ -92,20 +95,18 @@ export interface ParticipantPreview {
 	name: string;
 }
 
-export interface GenerationDerivation {
+interface GenerationDerivation {
 	human: CastParticipantSnapshot;
 	model: CastParticipantSnapshot;
 	context: readonly PromptContextEntry[];
 }
 
-export type GenerationAttemptKind = "send" | "continuation" | "sibling";
-
-export interface ParticipatingHistory {
+interface ParticipatingHistory {
 	readonly messages: readonly ParticipatingHistoryMessage[];
 	readonly control: ConversationSnapshot["control"];
 }
 
-export type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
+type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
 
 const participatingHistoryFromRead = (
 	read: SelectedHistoryRead,
@@ -176,7 +177,7 @@ const selectedHistoryFrom = (
  * and the estimator differ, so those are the only arguments a call site
  * states.
  */
-export const compilePlanFrom = (
+const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
 		authorNote: string;
@@ -223,7 +224,7 @@ export const compilePlanFrom = (
 	};
 };
 
-export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
+const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	name: participant.name,
 	prompt: {
 		systemInstruction: participant.prompt.systemInstruction,
@@ -260,12 +261,26 @@ interface GenerationPreparationBase {
 	readonly lore: ScopedLoreEvaluation;
 }
 
-type PreparationKind =
-	| { readonly kind: "send"; readonly content: string }
-	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number };
+// ==[HUMAN APPROVED]== The lifecycle facts of one captured preparation ride on the one
+// Generation Target union: each kind retains exactly the facts its own
+// capture needs, taken once where they are validated.
+type GenerationPreparationMember<K extends GenerationTargetKind, Facts> =
+	GenerationPreparationBase & GenerationTargetFor<K> & Facts & { readonly memory: MemoryRecallSnapshot };
 
-export type GenerationPreparationSnapshot = GenerationPreparationBase & PreparationKind & { readonly memory: MemoryRecallSnapshot };
+export type GenerationPreparationSnapshot<K extends GenerationTargetKind = GenerationTargetKind> = {
+	send: GenerationPreparationMember<"send", { readonly reuseHumanMessageId: number | undefined }>;
+	continuation: GenerationPreparationMember<"continuation", {
+		readonly precedingMessageId: number;
+		readonly precedingVariantId: number;
+	}>;
+	sibling: GenerationPreparationMember<"sibling", unknown>;
+}[K];
+
+type GenerationPreparation<K extends GenerationTargetKind = GenerationTargetKind> = {
+	send: Omit<GenerationPreparationSnapshot<"send">, "memory"> & { readonly memory: MemoryActivationRecord; readonly fingerprint: string };
+	continuation: Omit<GenerationPreparationSnapshot<"continuation">, "memory"> & { readonly memory: MemoryActivationRecord; readonly fingerprint: string };
+	sibling: Omit<GenerationPreparationSnapshot<"sibling">, "memory"> & { readonly memory: MemoryActivationRecord; readonly fingerprint: string };
+}[K];
 
 const connectionIdentityOf = (
 	connection: ModelClientConnectionSnapshot | null,
@@ -278,16 +293,6 @@ const connectionIdentityOf = (
 			adapter: connection.adapter,
 			apiFormat: connection.apiFormat,
 		};
-
-export type GenerationPreparation = GenerationPreparationBase & PreparationKind & {
-	readonly memory: MemoryActivationRecord;
-	readonly fingerprint: string;
-};
-
-export interface SendReuseTarget {
-	messageId: number;
-	variantId: number;
-}
 
 const reusableHumanMessageId = (
 	messages: readonly ParticipatingHistoryMessage[],
@@ -305,49 +310,38 @@ const reusableHumanMessageId = (
 		: undefined;
 };
 
-export const sendReuseTargetOf = (
-	preparation: GenerationPreparation,
-): SendReuseTarget | undefined => {
-	if (preparation.kind !== "send") return undefined;
-	const messageId = reusableHumanMessageId(
-		preparation.participation.messages,
-		preparation.derivation.human.id,
-		preparation.content,
-	);
-	if (messageId === undefined) return undefined;
-	const variant = preparation.participation.messages.at(-1)?.variant;
-	if (variant === null || variant === undefined) return undefined;
-	return { messageId, variantId: variant.id };
-};
-
-const effectiveSettingsForPreparation = (input: {
-	readonly settings: ConversationGenerationSettings;
-	readonly connection: ModelClientConnectionSnapshot | null;
-	readonly kind: GenerationAttemptKind;
-}): EffectiveGenerationSettings => {
-	const intent = input.kind === "continuation"
-		? continuationIntentFor(input.settings)
-		: input.kind === "sibling"
+// ==[HUMAN APPROVED]== The one kind-to-intent mapping. Effective settings and plan compilation
+// must agree on the intent one attempt carries, so both read this ladder.
+function generationIntentFor(kind: "continuation", settings: ConversationGenerationSettings): GenerationIntent;
+function generationIntentFor(kind: GenerationTargetKind, settings: ConversationGenerationSettings): GenerationIntent | undefined;
+function generationIntentFor(
+	kind: GenerationTargetKind,
+	settings: ConversationGenerationSettings,
+): GenerationIntent | undefined {
+	return kind === "continuation"
+		? continuationIntentFor(settings)
+		: kind === "sibling"
 			? { type: "sibling" as const }
 			: undefined;
-	return effectiveGenerationSettingsFor(input.settings, intent, input.connection);
-};
-
-interface PrepareGenerationInputsBase {
-	readonly database: Database;
-	readonly conversationId: number;
-	readonly connection?: ModelClientConnectionSnapshot | null;
-	readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	readonly formatting?: GenerationFormattingContext;
-	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
-	readonly preparationFetch?: ModelFetch;
 }
 
-export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
-	| { readonly kind: "send"; readonly content: string }
-	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number }
-);
+/** ==[HUMAN APPROVED]== The capture configuration every attempt states: the safe connection
+ * identity, its settings seam, the initiating-client formatting context, the
+ * optional embedding transport, and the project-owned token estimator. */
+export interface GenerationCaptureOptions {
+	readonly conversationId: number;
+	readonly connection?: ModelClientConnectionSnapshot | null | undefined;
+	readonly connectionSettings?: ConnectionSettingsModuleOptions | undefined;
+	readonly tokenEstimator?: TokenEstimator | undefined;
+	readonly formatting?: GenerationFormattingContext | undefined;
+	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
+	readonly preparationFetch?: ModelFetch | undefined;
+}
+
+/** ==[HUMAN APPROVED]== The one preparation input: the focused Conversation seams' arguments and
+ * the attempt's capture configuration, dispatched on the one Generation
+ * Target union. */
+export type PrepareGenerationInputs = { readonly database: Database } & GenerationCaptureOptions & GenerationTarget;
 
 /** ==[HUMAN APPROVED]==
  * Read the deterministic inputs for one attempt through the focused Conversation seams. The
@@ -420,36 +414,20 @@ export function prepareGenerationInputsSnapshot(
 	const reuseHumanMessageId = input.kind === "send"
 		? reusableHumanMessageId(participation.messages, human.id, input.content)
 		: undefined;
+	// ==[HUMAN APPROVED]== The pending-human invariant, evaluated once for both semantic
+	// passes: when the submitted text is already the last selected Message, it
+	// is not pending writing and must not join the scan windows a second time.
+	const pendingHumanText = input.kind === "send" && reuseHumanMessageId === undefined ? input.content : undefined;
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
 			conversationId: input.conversationId,
 			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-			pendingHumanText: input.kind === "send" && reuseHumanMessageId === undefined ? input.content : undefined,
+			pendingHumanText,
 			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
-	if (input.kind === "continuation") {
-		const latest = participation.messages.at(-1);
-		const selectedVariant = latest?.variant;
-		const latestWasModelAuthored = latest !== undefined &&
-			roleForMessage(latest, human.id, model.id) === "model";
-		const hasUsableOutput = selectedVariant !== null && selectedVariant !== undefined &&
-			(selectedVariant.content.length > 0 || selectedVariant.data.some(
-				(entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0,
-			));
-		if (latest === undefined || !latestWasModelAuthored || !hasUsableOutput) {
-			throw new ContinuationUnavailableError("not-terminal-model-message");
-		}
-		if (settings.continuationStrategy === "assistant-prefill" && selectedVariant.content.length === 0) {
-			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-		}
-	}
-	const formatting = {
-		timeZone: input.formatting?.timeZone,
-		locale: input.formatting?.locale,
-	};
-	const effectiveSettings = effectiveSettingsForPreparation({ kind: input.kind, settings, connection });
+	const effectiveSettings = effectiveGenerationSettingsFor(settings, generationIntentFor(input.kind, settings), connection);
 	const macroState = new Map(deriveMacroState({
 		initialData: selected.initialData,
 		presetId: recipe.id,
@@ -459,7 +437,7 @@ export function prepareGenerationInputsSnapshot(
 		})),
 	}));
 	const memoryEnabled = createMemorySettingsModule(input.database).get().enabled && hasEnabledMemorySlot(recipe.slots);
-	const memory = captureMemoryRecallSnapshot({
+	const captureMemory = () => captureMemoryRecallSnapshot({
 		database: input.database,
 		conversationId: input.conversationId,
 		enabled: memoryEnabled,
@@ -471,14 +449,17 @@ export function prepareGenerationInputsSnapshot(
 			role: roleForMessage(message, human.id, model.id),
 			content: message.variant.content,
 		}]),
-		pendingHumanText: input.kind === "send" ? input.content : undefined,
+		pendingHumanText,
 		humanName: human.name,
 	});
 	const preparation = {
 		conversationId: input.conversationId,
 		authorNote: summary.authorNote,
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
-		formatting,
+		formatting: {
+			timeZone: input.formatting?.timeZone,
+			locale: input.formatting?.locale,
+		},
 		derivation,
 		participation,
 		settings,
@@ -487,11 +468,38 @@ export function prepareGenerationInputsSnapshot(
 		connection,
 		macroState,
 		lore,
-		memory,
 	};
-	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
-	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
-	return { ...preparation, kind: input.kind };
+	switch (input.kind) {
+		case "send":
+			return { ...preparation, kind: "send", content: input.content, reuseHumanMessageId, memory: captureMemory() };
+		case "continuation": {
+			// ==[HUMAN APPROVED]== The one Continuation eligibility validation, at the point the
+			// terminal entry is in hand and before the semantic memory pass.
+			const latest = participation.messages.at(-1);
+			const selectedVariant = latest?.variant;
+			const latestWasModelAuthored = latest !== undefined &&
+				roleForMessage(latest, human.id, model.id) === "model";
+			const hasUsableOutput = selectedVariant !== null && selectedVariant !== undefined &&
+				(selectedVariant.content.length > 0 || selectedVariant.data.some(
+					(entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0,
+				));
+			if (latest === undefined || !latestWasModelAuthored || !hasUsableOutput) {
+				throw new ContinuationUnavailableError("not-terminal-model-message");
+			}
+			if (settings.continuationStrategy === "assistant-prefill" && selectedVariant.content.length === 0) {
+				throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
+			}
+			return {
+				...preparation,
+				kind: "continuation",
+				precedingMessageId: latest.id,
+				precedingVariantId: selectedVariant.id,
+				memory: captureMemory(),
+			};
+		}
+		case "sibling":
+			return { ...preparation, kind: "sibling", messageId: input.messageId, memory: captureMemory() };
+	}
 }
 
 /** ==[HUMAN APPROVED]==
@@ -531,7 +539,7 @@ export async function prepareGenerationInputsAsync(
 	return { ...preparation, lore, memory, fingerprint: generationPreparationFingerprint(snapshot) };
 }
 
-export const captureConfigurationFromPreparation = (
+const captureConfigurationFromPreparation = (
 	preparation: GenerationPreparation,
 ): AttemptConfiguration => {
 	const attempt = createAttemptEnvironment({
@@ -598,7 +606,13 @@ const generationProvenanceEntry = (
 	} satisfies ConversationDataEntry;
 };
 
-export interface CapturedGeneration {
+/**
+ * ==[HUMAN APPROVED]== The shared Generation-start capture every lifecycle builds: the
+ * complete compiled Generation Plan, the retained writing context, the Control
+ * pair, the model author stamp, and the provenance capture. The lifecycle
+ * facts of one kind ride on the same Generation Target union.
+ */
+interface CapturedGeneration {
 	readonly preparation: GenerationPreparation;
 	readonly plan: GenerationPlan;
 	readonly context: readonly PromptContextEntry[];
@@ -617,9 +631,21 @@ export interface CapturedGeneration {
 	readonly provenance: ConversationDataEntry;
 }
 
+/** ==[HUMAN APPROVED]== The captured Generation of one attempt kind: the shared projection plus
+ * exactly the lifecycle facts that kind's acceptance commands read. */
+export type CapturedGenerationFor<K extends GenerationTargetKind = GenerationTargetKind> = {
+	send: CapturedGeneration & GenerationTargetFor<"send"> & { readonly reuseHumanMessageId: number | undefined };
+	continuation: CapturedGeneration & GenerationTargetFor<"continuation"> & {
+		readonly precedingMessageId: number;
+		readonly precedingVariantId: number;
+		readonly intent: GenerationIntent;
+	};
+	sibling: CapturedGeneration & GenerationTargetFor<"sibling">;
+}[K];
+
 /**
  * ==[HUMAN APPROVED]== Project one captured Generation into the fields shared by every acceptance
- * command. Each workflow spreads this projection alongside its lifecycle-
+ * command. Each lifecycle spreads this projection alongside its lifecycle-
  * specific target fields, keeping those differences visible at the callsite.
  */
 export function capturedAcceptanceFields(
@@ -635,9 +661,9 @@ export function capturedAcceptanceFields(
 		capturedModelName: capture.author.capturedName,
 		promptPlan: capture.plan.promptPlan,
 		promptInspection: promptInspectionJson(capture.plan.budget),
-		promptContext: promptContextJson(capture.context),
-		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
-		connection: connectionJson(capture.connection),
+		promptContext: capture.context,
+		generationSettings: capture.plan.effectiveSettings,
+		connection: connectionIdentityOf(capture.connection),
 		loreActivation: capture.plan.loreActivation,
 		memoryActivation: capture.plan.memoryActivation,
 		provenance: capture.provenance,
@@ -652,24 +678,43 @@ export function capturedAcceptanceFields(
 	>;
 }
 
-/** ==[HUMAN APPROVED]== Build the common provider-neutral request for an accepted Generation. */
+/** ==[HUMAN APPROVED]== Build the common provider-neutral request for an accepted Generation.
+ * The assistant prefill of a Continuation is request intent, derived from the
+ * compiled plan instead of retained separately: the compiler protects the
+ * prefixed model entry for an assistant-prefill Continuation, so the plan's
+ * final model history block is the prefix and the plan's own intent carries
+ * the suffix. */
 export function modelRequestFor(
 	capture: CapturedGeneration,
 	input: Pick<GenerationAttemptInput, "signal">,
 ): ModelClientGenerationInput {
+	const continuationIntent = capture.plan.promptPlan.intent?.type === "continuation"
+		? capture.plan.promptPlan.intent
+		: undefined;
 	return {
 		promptPlan: capture.plan.promptPlan,
 		modelId: capture.plan.effectiveSettings.modelId,
 		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
 		connection: capture.connection,
+		assistantPrefill: continuationIntent?.strategy === "assistant-prefill"
+			? { prefix: finalModelHistoryContent(capture.plan.promptPlan), suffix: continuationIntent.suffix }
+			: undefined,
 		signal: input.signal,
 	};
 }
 
+const finalModelHistoryContent = (plan: PromptPlan): string => {
+	let content = "";
+	for (const block of plan.blocks) {
+		if (block.kind === "history" && block.role === "model") content = block.content;
+	}
+	return content;
+};
+
 /**
- * ==[HUMAN APPROVED]== Assemble the shared Generation-start capture every lifecycle builds: the
- * complete compiled Generation Plan, the retained writing context, the Control
- * pair, the model author stamp, and the provenance capture.
+ * ==[HUMAN APPROVED]== Assemble the shared Generation-start capture: the complete compiled
+ * Generation Plan, the retained writing context, the Control pair, the model
+ * author stamp, and the provenance capture.
  */
 const toCapturedGeneration = (
 	preparation: GenerationPreparation,
@@ -707,156 +752,77 @@ function resolveConnectionSnapshot(
 	return connectionSnapshotOf(settings, profile);
 }
 
-// ==[HUMAN APPROVED]== The persisted writing context: one closed JSON projection of the ordered
-// entries, each carrying its own role. Nothing aligns a second list against
-// it, so a stored context cannot be read back misaligned.
-export const promptContextJson = (
-	context: readonly PromptContextEntry[],
-): ConversationJsonValue => context.map((entry) => ({
-	kind: entry.kind,
-	speakerName: entry.speakerName,
-	content: entry.content,
-	role: entry.role,
-}));
-
-// ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
-// provider-neutral captures. These explicit projections keep provider and
-// class instances out of the Conversation domain boundary.
-export type PersistedGenerationSettings = {
-	readonly [K in GenerationSettingsField]: ConversationJsonValue;
-};
-
-export function generationSettingsJson(
-	effective: EffectiveGenerationSettings,
-): PersistedGenerationSettings {
-	return effective;
-}
-
-export const connectionJson = (
-	connection: ModelClientConnectionSnapshot | null,
-): ConversationJsonValue => connectionIdentityOf(connection);
-
 // ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
-// start, including the whole history entries omitted during preflight. It is
-// deliberately not copied into terminal Variant provenance.
-export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
+// start, including the whole history entries omitted during preflight. The
+// retained writing context and the Effective Generation Settings pass
+// through as the closed JSON values they already are, and the connection
+// identity projection strips the provider snapshot's runtime-only model
+// list at the Conversation domain boundary. Inspection is deliberately not
+// copied into terminal Variant provenance.
+const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
 	tokenEstimate: budget.tokenEstimate,
 	responseBudget: budget.responseBudget,
 	safetyAllowance: budget.safetyAllowance,
 	contextLimit: budget.contextLimit,
 	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedContext: budget.omittedContext.map((entry) => ({
-		kind: entry.kind,
-		speakerName: entry.speakerName,
-		content: entry.content,
-		role: entry.role,
-	})),
+	omittedContext: budget.omittedContext,
 });
 
-export interface SendGenerationCapture extends CapturedGeneration {
-	humanContent: string;
-	reuseHumanMessageId: number | undefined;
-}
-
-export interface GenerationCaptureInput {
-	database: Database;
-	conversationId: number;
-	content?: string | undefined;
-	messageId?: number | undefined;
-	connection?: ModelClientConnectionSnapshot | null | undefined;
-	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
-	tokenEstimator?: TokenEstimator | undefined;
-	formatting?: GenerationFormattingContext | undefined;
-	preparationFetch?: ModelFetch | undefined;
-}
-
-export type SendGenerationCaptureInput = GenerationCaptureInput & { content: string };
-export type SiblingGenerationCaptureInput = GenerationCaptureInput & { messageId: number };
-
-// ==[HUMAN APPROVED]== Build the candidate Prompt Plan without writing it. A retry reuses the
-// already accepted trailing human Message; a fresh Send appends the submitted
-// human writing to the selected narrative path before budgeting.
-export interface ContinuationGenerationCapture extends CapturedGeneration {
-	precedingMessageId: number;
-	precedingVariantId: number;
-	intent: GenerationIntent;
-	assistantPrefill?: AssistantPrefill;
-}
-
-/** ==[HUMAN APPROVED]== Semantic counterparts used by Generation/inspection entry points. */
-export async function captureSendGenerationAsync(
-	input: SendGenerationCaptureInput,
-): Promise<SendGenerationCapture> {
-	const { conversationId } = input;
-	const content = input.content;
-	const preparation = await prepareGenerationInputsAsync({
-		database: input.database,
-		conversationId,
-		kind: "send",
-		content,
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-		preparationFetch: input.preparationFetch,
-	});
+/** ==[HUMAN APPROVED]==
+ * Capture one Generation attempt: prepare the immutable inputs, compile the
+ * one Generation Plan, and assemble the shared capture whose lifecycle facts
+ * ride on the attempt's own target. The three former per-kind capture
+ * functions were the same preparation, compilation, and assembly with the
+ * target's kind selecting only the intent, the submitted-writing context, and
+ * the acceptance facts.
+ */
+export async function captureGeneration<K extends GenerationTargetKind>(
+	database: Database,
+	target: GenerationTargetFor<K>,
+	options: GenerationCaptureOptions,
+): Promise<CapturedGenerationFor<K>> {
+	const preparation = await prepareGenerationInputsAsync({ database, ...target, ...options });
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
-	const submitted = reuseHumanMessageId === undefined
-		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
-		: derivation;
-	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator, database: input.database });
-	return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
-}
-
-export async function captureContinuationGenerationAsync(
-	input: GenerationCaptureInput,
-): Promise<ContinuationGenerationCapture> {
-	const preparation = await prepareGenerationInputsAsync({
-		database: input.database,
-		conversationId: input.conversationId,
-		kind: "continuation",
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-		preparationFetch: input.preparationFetch,
-	});
-	const { derivation } = preparation;
-	const latest = preparation.participation.messages.at(-1);
-	const selected = latest?.variant;
-	if (latest === undefined || selected === null || selected === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
-	const configuration = captureConfigurationFromPreparation(preparation);
-	if (configuration.settings.continuationStrategy !== "instruction" && selected.content.length === 0) {
-		throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-	}
-	const intent = continuationIntentFor(configuration.settings);
-	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator, database: input.database });
-	return {
-		...toCapturedGeneration(preparation, derivation, configuration, plan),
-		precedingMessageId: latest.id,
-		precedingVariantId: selected.id,
+	const intent = generationIntentFor(preparation.kind, configuration.settings);
+	// ==[HUMAN APPROVED]== A retry reuses the already accepted trailing human Message; a fresh
+	// Send appends the submitted human writing to the selected narrative path
+	// before budgeting. Continuation and Sibling compile the selected history
+	// as captured.
+	const context = preparation.kind === "send" && preparation.reuseHumanMessageId === undefined
+		? [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content: preparation.content, role: "human" as const }]
+		: derivation.context;
+	const plan = compilePlanFrom({ ...derivation, context }, configuration, {
 		intent,
-		assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
-			? { prefix: selected.content, suffix: configuration.settings.continuationPrefillSuffix }
-			: undefined,
-	};
-}
-
-export async function captureSiblingGenerationAsync(
-	input: SiblingGenerationCaptureInput,
-): Promise<CapturedGeneration> {
-	const preparation = await prepareGenerationInputsAsync({
-		database: input.database,
-		conversationId: input.conversationId,
-		kind: "sibling",
-		messageId: input.messageId,
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-		preparationFetch: input.preparationFetch,
+		estimator: options.tokenEstimator,
+		database,
 	});
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator, database: input.database });
-	return toCapturedGeneration(preparation, derivation, configuration, plan);
+	const shared = toCapturedGeneration(preparation, derivation, configuration, plan);
+	let captured: CapturedGenerationFor<GenerationTargetKind>;
+	switch (preparation.kind) {
+		case "send":
+			captured = {
+				...shared,
+				kind: "send",
+				content: preparation.content,
+				reuseHumanMessageId: preparation.reuseHumanMessageId,
+			};
+			break;
+		case "continuation":
+			captured = {
+				...shared,
+				kind: "continuation",
+				precedingMessageId: preparation.precedingMessageId,
+				precedingVariantId: preparation.precedingVariantId,
+				intent: generationIntentFor("continuation", configuration.settings),
+			};
+			break;
+		case "sibling":
+			captured = { ...shared, kind: "sibling", messageId: preparation.messageId };
+			break;
+	}
+	// ==[HUMAN APPROVED]== SAFETY: the attempt's target and its preparation carry the same kind by
+	// construction (the preparation is captured from that target), so each
+	// assembled member above is the CapturedGenerationFor<K> member of K.
+	return captured as CapturedGenerationFor<K>;
 }

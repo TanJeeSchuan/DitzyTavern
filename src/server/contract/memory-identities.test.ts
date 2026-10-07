@@ -6,7 +6,7 @@ import { openInitializedDatabase } from "../database/database";
 import { memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import { createChat, key, profile } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
-import { correctMemorySource, queueMemorySource, queueMemoryTail, readConversationMemories, resetAndReextractMemorySource, startMemoryCatchup, startMemoryWorker, StaleMemoryCollectionError } from "../memory/collections";
+import { correctMemorySource, queueMemorySource, queueMemoryTail, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker, StaleMemoryCollectionError } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/labels";
 import { extractAndJudgeMemorySource } from "../memory/extraction";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -14,7 +14,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createMemorySettingsModule } from "../memory/settings";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { sha256 } from "../memory/hash";
-import { conversationMemories, memoryLabelsConflict, memoryLabelsMerged, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryIdentity } from "../../shared/contract/memory";
+import { conversationMemories, memoryCatchupQueued, memoryLabelsConflict, memoryLabelsMerged, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryIdentity } from "../../shared/contract/memory";
 
 const claim = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Maren promised a key.", attribution: "Narrated event", people, evidence: [{ messageId, excerpt: "I promised a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} } });
 const source = (database: Database, conversationId: number, position: number, author: { id: number; name: string }, people?: string[], selected = true) => {
@@ -24,6 +24,7 @@ const source = (database: Database, conversationId: number, position: number, au
 	if (people) db.insert(memoryCollectionTable).values({ conversation_id: conversationId, message_id: message.id, variant_id: variant.id, revision: 1, status: "complete", source_hash: sha256(variant.content), source_snapshot_json: JSON.stringify({ source: { messageId: message.id, variantId: variant.id, speaker: author.name, content: variant.content }, context: [] }), claims_json: JSON.stringify([claim(message.id, people)]), updated_at: message.timestamp }).run();
 	return { messageId: message.id, variantId: variant.id };
 };
+const catchup = async (database: Database, conversationId: number) => Value.Parse(memoryCatchupQueued, await (await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/catchup`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }))).json()).run;
 const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4000;
@@ -58,7 +59,7 @@ describe("Cast Memory identities", () => {
 		const guidance = source(database, chat.id, 1, writer);
 		const story = source(database, chat.id, 2, maren);
 		expect((await save(database, chat.id, writer.id, { kind: "excluded" })).status).toBe(200);
-		expect(startMemoryCatchup(database, chat.id).pending).toBe(1);
+		expect((await catchup(database, chat.id)).pending).toBe(1);
 		expect(queueMemorySource(database, chat.id, guidance.messageId)).toBe(false);
 		const tail = source(database, chat.id, 3, writer);
 		expect(queueMemoryTail(database, chat.id)).toBe(false);
@@ -98,7 +99,7 @@ describe("Cast Memory identities", () => {
 		expect((await save(database, chat.id, writer.id, { kind: "themselves" })).status).toBe(200);
 		expect(readConversationMemories(database, chat.id).identities).toEqual({});
 		expect(readConversationMemories(database, chat.id).sources[0]).toMatchObject({ status: "unprocessed", claims: [] });
-		expect(startMemoryCatchup(database, chat.id).pending).toBe(1);
+		expect((await catchup(database, chat.id)).pending).toBe(1);
 	});
 
 	test("Plays rewrites and deduplicates saved labels and corrections across participant renames", async () => {
@@ -192,7 +193,7 @@ describe("Cast Memory identities", () => {
 			await started[0]!.promise;
 			await save(database, chat.id, writer.id, { kind: "excluded" });
 			await save(database, chat.id, writer.id, { kind: "themselves" });
-			startMemoryCatchup(database, chat.id);
+			await catchup(database, chat.id);
 			await started[1]!.promise;
 			release[0]!.resolve(); await finished.promise;
 			await new Promise((resolve) => setTimeout(resolve, 10));

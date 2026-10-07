@@ -632,8 +632,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
 		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Once upon ", generationId: 55, eventId: 1 });
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "a time", generationId: 55, eventId: 2 });
+		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "Once upon ", generationId: 55, eventId: 1 });
+		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "a time", generationId: 55, eventId: 2 });
 
 		const variant = variantContent(state, 100);
 		expect(variant?.content).toBe("Once upon a time");
@@ -642,8 +642,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("an authoritative Content replace overwrites the accumulated text", () => {
 		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Stale tail", generationId: 55, eventId: 1 });
-		state = reduceStory(state, { type: "generation-state", messageId: 10, variantId: 100, content: "Authoritative", reasoning: "", generationId: 55, eventId: 2 });
+		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "Stale tail", generationId: 55, eventId: 1 });
+		state = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 10, variantId: 100, content: "Authoritative", reasoning: "", generationId: 55, eventId: 2 });
 
 		expect(variantContent(state, 100)?.content).toBe("Authoritative");
 	});
@@ -651,7 +651,9 @@ describe("streaming Provisional Variant content", () => {
 	test("Reasoning Content streams separately and survives an authoritative history refresh", () => {
 		let state = stateWithProvisional();
 		state = reduceStory(state, {
-			type: "generation-reasoning-delta",
+			type: "generation-observed",
+			stream: "reasoning",
+			mode: "append",
 			messageId: 10,
 			variantId: 100,
 			text: "First thought. ",
@@ -659,7 +661,8 @@ describe("streaming Provisional Variant content", () => {
 			eventId: 1,
 		});
 		state = reduceStory(state, {
-			type: "generation-state",
+			type: "generation-observed",
+			mode: "replace",
 			messageId: 10,
 			variantId: 100,
 			reasoning: "Authoritative thought.",
@@ -712,7 +715,9 @@ describe("streaming Provisional Variant content", () => {
 			activeGenerationIds: [55],
 		});
 		state = reduceStory(state, {
-			type: "generation-content-delta",
+			type: "generation-observed",
+			stream: "content",
+			mode: "append",
 			messageId: 10,
 			variantId: 100,
 			generationId: 55,
@@ -722,7 +727,9 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.content).toBe("Saved");
 
 		state = reduceStory(state, {
-			type: "generation-content-delta",
+			type: "generation-observed",
+			stream: "content",
+			mode: "append",
 			messageId: 10,
 			variantId: 100,
 			generationId: 55,
@@ -759,8 +766,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("deltas ignore Variants and Messages that are not in the current read model", () => {
 		const state = stateWithProvisional();
-		const untouched = reduceStory(state, { type: "generation-content-delta", messageId: 999, variantId: 100, text: "x", generationId: 55, eventId: 1 });
-		const unknownVariant = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 999, text: "x", generationId: 55, eventId: 1 });
+		const untouched = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 999, variantId: 100, text: "x", generationId: 55, eventId: 1 });
+		const unknownVariant = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 999, text: "x", generationId: 55, eventId: 1 });
 
 		expect(variantContent(untouched, 100)?.content).toBe("");
 		expect(variantContent(unknownVariant, 100)?.content).toBe("");
@@ -819,15 +826,15 @@ describe("detached story windows", () => {
 
 	test("live observations outside the window never insert Messages and visible observations still apply", () => {
 		const state = detach();
-		const outside = reduceStory(state, { type: "generation-state", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });
+		const outside = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });
 		expect(outside.messages).toEqual(state.messages);
-		const inside = reduceStory(outside, { type: "generation-content-delta", messageId: 4, variantId: 40, generationId: 2, eventId: 1, text: " continues" });
+		const inside = reduceStory(outside, { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 1, text: " continues" });
 		expect(inside.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 continues");
 		expect(inside.messages).toHaveLength(2);
 	});
 
 	test("authoritative refreshes update only loaded Messages and preserve a newer live checkpoint", () => {
-		const state = reduceStory(detach(), { type: "generation-content-delta", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
+		const state = reduceStory(detach(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
 		const refreshed = reduceStory(state, { type: "history-refreshed", page: history(2, [4, 5], 7), activeGenerationIds: [2] });
 		expect(refreshed.messages.map(({ id }) => id)).toEqual([3, 4]);
 		expect(refreshed.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 streaming");

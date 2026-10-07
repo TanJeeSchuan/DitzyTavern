@@ -30,9 +30,15 @@ export const createMemorySettingsModule = (database: Database) => {
 			if (model.length > 0) throw new InvalidSettingsError(`Choose a Connection Profile before setting an ${role} model.`);
 			return;
 		}
-		const profile = db.select({ apiFormat: connectionProfileTable.api_format }).from(connectionProfileTable).where(eq(connectionProfileTable.id, profileId)).get();
+		const profile = db
+			.select({ apiFormat: connectionProfileTable.api_format })
+			.from(connectionProfileTable)
+			.where(eq(connectionProfileTable.id, profileId))
+			.get();
 		if (profile === undefined) throw new InvalidSettingsError(`The selected ${role} Connection Profile no longer exists. Choose an available profile.`);
-		if (profile.apiFormat !== (role === "embedding" ? "embeddings" : "chat-completions")) throw new InvalidSettingsError(role === "embedding" ? "Choose an Embeddings connection for the embedding model." : "Choose a chat connection for the extraction model.");
+		if (profile.apiFormat !== (role === "embedding" ? "embeddings" : "chat-completions")) {
+			throw new InvalidSettingsError(role === "embedding" ? "Choose an Embeddings connection for the embedding model." : "Choose a chat connection for the extraction model.");
+		}
 		if (model.length === 0) throw new InvalidSettingsError(`Choose an ${role} model for the selected Connection Profile.`);
 	};
 	const apply = (command: MemorySettingsCommand) => database.transaction(() => {
@@ -41,17 +47,42 @@ export const createMemorySettingsModule = (database: Database) => {
 		checkChoice("extraction", command.extractionProfileId, model);
 		checkChoice("embedding", command.embeddingProfileId, embeddingModel);
 		validateDecisionSelection(database, command);
-		if (![command.contextLimit, command.outputReserve].every((limit) => Number.isSafeInteger(limit) && limit > 0 && limit <= 1_000_000)) throw new InvalidSettingsError("Extraction context and output limits must be positive whole numbers no greater than 1,000,000.");
-		if (!Number.isSafeInteger(command.safetyAllowance) || command.safetyAllowance < 0 || command.safetyAllowance > 1_000_000) throw new InvalidSettingsError("The safety allowance must be a non-negative whole number no greater than 1,000,000.");
+		if (![command.contextLimit, command.outputReserve].every((limit) => Number.isSafeInteger(limit) && limit > 0 && limit <= 1_000_000)) {
+			throw new InvalidSettingsError("Extraction context and output limits must be positive whole numbers no greater than 1,000,000.");
+		}
+		if (!Number.isSafeInteger(command.safetyAllowance) || command.safetyAllowance < 0 || command.safetyAllowance > 1_000_000) {
+			throw new InvalidSettingsError("The safety allowance must be a non-negative whole number no greater than 1,000,000.");
+		}
 		if (!(command.retainProbabilityMinimum >= 0 && command.retainProbabilityMinimum <= 1)) throw new InvalidSettingsError("The retain probability minimum must be between 0 and 1.");
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidSettingsError("The recall relevance minimum must be between 0 and 3.");
 		const toggled = settings.get().enabled !== command.enabled;
-		const applied = settings.commit(command.expectedRevision, { enabled: command.enabled, extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, retain_probability_minimum: command.retainProbabilityMinimum, decision_profile_id: command.decisionProfileId, decision_model: command.decisionModel.trim(), decision_state_token_limit: command.decisionStateTokenLimit, recall_relevance_minimum: command.recallRelevanceMinimum, embedding_profile_id: command.embeddingProfileId, embedding_model: embeddingModel });
-		if (toggled) for (const { id } of db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all()) refreshMemoryForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
+		const applied = settings.commit(command.expectedRevision, {
+			enabled: command.enabled,
+			extraction_profile_id: command.extractionProfileId,
+			extraction_model: model,
+			context_limit: command.contextLimit,
+			output_reserve: command.outputReserve,
+			safety_allowance: command.safetyAllowance,
+			retain_probability_minimum: command.retainProbabilityMinimum,
+			decision_profile_id: command.decisionProfileId,
+			decision_model: command.decisionModel.trim(),
+			decision_state_token_limit: command.decisionStateTokenLimit,
+			recall_relevance_minimum: command.recallRelevanceMinimum,
+			embedding_profile_id: command.embeddingProfileId,
+			embedding_model: embeddingModel,
+		});
+		if (toggled) {
+			const conversations = db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all();
+			for (const { id } of conversations) {
+				refreshMemoryForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
+			}
+		}
 		return applied;
 	}).immediate();
 	return { get: settings.get, apply };
 };
 
 export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean =>
-	createMemorySettingsModule(database).get().enabled && database.query<{ enabled: number }, [number]>("SELECT 1 AS enabled FROM conversation_prompt_preset p JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id WHERE p.conversation_id = ? AND b.reference = 'memory' AND b.enabled = 1").get(conversationId) !== null;
+	createMemorySettingsModule(database).get().enabled && database
+		.query<{ enabled: number }, [number]>("SELECT 1 AS enabled FROM conversation_prompt_preset p JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id WHERE p.conversation_id = ? AND b.reference = 'memory' AND b.enabled = 1")
+		.get(conversationId) !== null;

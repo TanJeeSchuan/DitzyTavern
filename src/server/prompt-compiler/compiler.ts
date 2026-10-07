@@ -131,18 +131,19 @@ export function compileOpening(
 	);
 }
 
-const expandInto = (
-	blocks: PromptBlock[],
-	warnings: PromptWarning[],
-	block: DefinitionBlockFraming,
-	role: "system" | "human" | "model",
-	text: string,
-	context: MacroContext,
-	blockLabel: string,
-	macroEnvironment: MacroEnvironment | undefined,
-	macroAttemptState: MacroAttemptState,
-	cacheKey: string,
-) => {
+const expandInto = (request: {
+	blocks: PromptBlock[];
+	warnings: PromptWarning[];
+	block: DefinitionBlockFraming;
+	role: "system" | "human" | "model";
+	text: string;
+	context: MacroContext;
+	blockLabel: string;
+	macroEnvironment: MacroEnvironment | undefined;
+	macroAttemptState: MacroAttemptState;
+	cacheKey: string;
+}) => {
+	const { blocks, warnings, block, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey } = request;
 	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
 	let expanded: MacroExpansionResult;
@@ -219,7 +220,18 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		}
 		if (slot.reference === "author-note") {
 			const start = blocks.length;
-			expandInto(blocks, warnings, { kind: "author-note" }, planRoleFor[slot.role], input.authorNote, { self: input.human.name, other: input.model.name }, singleUseReferenceLabels[slot.reference], macroEnvironment, macroAttemptState, `slot:${slotIndex}`);
+			expandInto({
+				blocks,
+				warnings,
+				block: { kind: "author-note" },
+				role: planRoleFor[slot.role],
+				text: input.authorNote,
+				context: { self: input.human.name, other: input.model.name },
+				blockLabel: singleUseReferenceLabels[slot.reference],
+				macroEnvironment,
+				macroAttemptState,
+				cacheKey: `slot:${slotIndex}`,
+			});
 			if (blocks[start]?.content.trim() === "") blocks.splice(start, 1);
 			continue;
 		}
@@ -230,34 +242,34 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			// presents with — the role never changes either perspective. The
 			// expansion uses the shared processor, so Prompt Comments and
 			// escaping behave exactly as they do in Participant fields.
-			expandInto(
+			expandInto({
 				blocks,
 				warnings,
-				{ kind: "instruction" },
-				planRoleFor[slot.role],
-				slot.content,
-				{ self: input.human.name, other: input.model.name },
-				slot.name === "" ? "instruction" : slot.name,
+				block: { kind: "instruction" },
+				role: planRoleFor[slot.role],
+				text: slot.content,
+				context: { self: input.human.name, other: input.model.name },
+				blockLabel: slot.name === "" ? "instruction" : slot.name,
 				macroEnvironment,
 				macroAttemptState,
-				`slot:${slotIndex}`,
-			);
+				cacheKey: `slot:${slotIndex}`,
+			});
 			continue;
 		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = definitions[referenced.owner];
-		expandInto(
+		expandInto({
 			blocks,
 			warnings,
-			referenced.block,
-			planRoleFor[slot.role],
-			owner.definition.prompt[referenced.channel],
-			owner.context,
-			referenced.label,
+			block: referenced.block,
+			role: planRoleFor[slot.role],
+			text: owner.definition.prompt[referenced.channel],
+			context: owner.context,
+			blockLabel: referenced.label,
 			macroEnvironment,
 			macroAttemptState,
-			`slot:${slotIndex}`,
-		);
+			cacheKey: `slot:${slotIndex}`,
+		});
 	}
 
 	return resolvePromptImages({ blocks, warnings }, input.images);

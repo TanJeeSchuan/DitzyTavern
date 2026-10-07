@@ -97,29 +97,22 @@ export function useAssemblyController({
 			request,
 			preview: preservedPreview,
 		});
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
 		void previewConversationGeneration(conversationId, request)
 			.then((outcome) => {
 				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-				if (outcome.status === "available") {
-					dispatchAssembly({ type: "preview-available", requestId, preview: outcome.preview });
+				if (outcome.outcome === "available") {
+					dispatchAssembly({ type: "preview-available", requestId, preview: outcome.value });
 					return;
 				}
 				dispatchAssembly({
 					type: "preview-failed",
 					requestId,
-					error: outcome.status === "invalid" || outcome.status === "not-playable"
+					error: outcome.outcome === "invalid" || outcome.outcome === "not-playable"
 						? outcome.reason
-						: outcome.status === "not-found"
+						: outcome.outcome === "not-found"
 							? "The Conversation no longer exists."
 							: "The Prompt Plan could not be assembled.",
-				});
-			})
-			.catch(() => {
-				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-				dispatchAssembly({
-					type: "preview-failed",
-					requestId,
-					error: "The Prompt Plan could not be assembled.",
 				});
 			});
 	};
@@ -169,21 +162,16 @@ export function useAssemblyController({
 		onFailure: (message: string) => void,
 		onAccepted: () => void,
 	) => {
-		let outcome: Awaited<ReturnType<typeof startConversationGeneration>>;
-		try {
-			outcome = await request;
-		} catch {
-			if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-			generationStart.settle(startId);
-			onFailure("Generation could not be started.");
-			return;
-		}
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		const outcome = await request;
 		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-		if (outcome.outcome !== "accepted") {
+		if (outcome.outcome !== "available") {
 			generationStart.settle(startId);
 			onFailure(outcome.outcome === "not-found"
 				? "The Conversation no longer exists."
-				: (outcome.reason ?? "Generation could not be started."));
+				: outcome.outcome === "network"
+					? "Generation could not be started."
+					: outcome.reason);
 			return;
 		}
 
@@ -191,7 +179,7 @@ export function useAssemblyController({
 		if (clearDraftOnAccepted) clearDraft();
 		await refreshStory(conversationId).catch(() => null);
 		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-		generationStart.accepted(startId, outcome);
+		generationStart.accepted(startId, outcome.value);
 	};
 
 	const sendPromptPlanPreview = () => {

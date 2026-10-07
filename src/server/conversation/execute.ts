@@ -1,6 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { conversationTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
@@ -19,20 +17,26 @@ import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { setAuthorNote } from "./commands/set-author-note";
 import { renameConversation } from "./commands/rename-conversation";
+import {
+	attachConversationLorebook,
+	attachParticipantLorebook,
+	detachConversationLorebook,
+	detachParticipantLorebook,
+	saveConversationLoreSettings,
+} from "./commands/lore-attachments";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
 import {
 	ConversationNotPlayableError,
-	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from "./errors";
 import {
-	hasActiveGeneration,
+	hasActiveGenerationFromConnection,
 	isPlayable,
 	readControlAssignment,
+	requireConversationRevision,
 	type ConversationDatabase,
 } from "./internal";
 import {
@@ -45,6 +49,7 @@ import type {
 	ConversationCommand,
 	ConversationSummary,
 } from "./types";
+import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 
 // ==[HUMAN APPROVED]== The per-command gate policy: each command declares whether it
 // requires a playable Conversation and whether an Active Generation blocks
@@ -55,7 +60,10 @@ import type {
 // one place a command's gates are stated, so a new command cannot silently
 // skip the shared gates.
 export interface ConversationCommandPolicy<K extends ConversationAction["type"]> {
-	handler: (db: ConversationDatabase, input: ConversationCommandInput<K>) => void;
+	handler: (
+		db: ConversationDatabase,
+		input: ConversationCommandInput<K>,
+	) => ConversationMemoryChange | void;
 	requiresPlayable: boolean;
 	blockedByActiveGeneration: boolean;
 }
@@ -148,7 +156,9 @@ export const conversationCommandPolicy = {
 		blockedByActiveGeneration: false,
 	},
 	"set-generation-model": {
-		handler: setGenerationModel,
+		handler: (db, input) => {
+			setGenerationModel(db, input);
+		},
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
@@ -170,6 +180,36 @@ export const conversationCommandPolicy = {
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
+	// ==[HUMAN APPROVED]== Lore attachment and Chat Lore settings changes are configuration
+	// writes. The Lorebook attachment seam they replace enforced only the
+	// revision guard, so they need no playable Conversation (an incomplete
+	// Chat can still select its Lorebooks) and never disturb an Active
+	// Generation's captured plan (like select-prompt-preset).
+	"attach-chat": {
+		handler: attachConversationLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"detach-chat": {
+		handler: detachConversationLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"attach-participant": {
+		handler: attachParticipantLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"detach-participant": {
+		handler: detachParticipantLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"save-settings": {
+		handler: saveConversationLoreSettings,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
 } satisfies {
 	[K in ConversationAction["type"]]: ConversationCommandPolicy<K>;
 };
@@ -179,25 +219,16 @@ function executeConversationCommandWithResult<T>(
 	command: ConversationCommand,
 	readResult: (db: ConversationDatabase, conversationId: number) => T,
 ): T {
-	return runConversationTransaction(database, (db) => {
-		const conversation = db
-			.select({ revision: conversationTable.revision })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, command.conversationId))
-			.get();
-		if (conversation === undefined) {
-			throw new ConversationNotFoundError(command.conversationId);
-		}
-		if (conversation.revision !== command.expectedRevision) {
-			throw new StaleConversationRevisionError(
-				command.expectedRevision,
-				conversation.revision,
-			);
-		}
+	return runConversationTransaction(database, (db, reportChange) => {
+		const conversation = requireConversationRevision(
+			db,
+			command.conversationId,
+			command.expectedRevision,
+		);
 		const policy = conversationCommandPolicy[command.action.type];
 		if (
 			policy.blockedByActiveGeneration &&
-			hasActiveGeneration(database, command.conversationId)
+			hasActiveGenerationFromConnection(db, command.conversationId)
 		) {
 			throw new InvalidConversationCommandError(
 				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
@@ -215,7 +246,7 @@ function executeConversationCommandWithResult<T>(
 		// guarantees each entry's handler accepts exactly its own command's
 		// input shape, so indexing the table by input.type is sound; the cast
 		// only recovers that correlation for the compiler.
-		(
+		const reportedChange = (
 			conversationCommandPolicy[input.type] as ConversationCommandPolicy<
 				typeof input.type
 			>
@@ -227,6 +258,7 @@ function executeConversationCommandWithResult<T>(
 			command.expectedRevision,
 			conversation.revision,
 		);
+		if (reportedChange !== undefined) reportChange(reportedChange);
 		return readResult(db, command.conversationId);
 	});
 }

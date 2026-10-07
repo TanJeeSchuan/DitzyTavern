@@ -15,7 +15,7 @@ import { acceptConversationTailGeneration } from "../conversation/commands/accep
 import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation/commands/active-generation";
 import { removeRetainedGenerationInspection } from "../conversation/generation-retention";
 import { createNativeConversation } from ".";
-import { captureSendGenerationAsync, capturedAcceptanceFields } from "./generate-capture";
+import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const writer = { name: "Writer", prompt, openings: [] };
@@ -374,7 +374,7 @@ describe("Image Reference lifetime", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision,
@@ -403,7 +403,7 @@ describe("Image Reference lifetime", () => {
 	test("a Generation holds the Images its plan references until its retained inspection is removed", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
 		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
 		const accepted = acceptConversationTailGeneration(database, {
 			...fields,
@@ -490,7 +490,7 @@ describe("Image Reference lifetime", () => {
 	test("a checkpointed Variant adopts References and releases them when checkpoint text changes", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision, humanContent: "Hello",

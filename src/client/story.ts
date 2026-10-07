@@ -109,38 +109,27 @@ export type StoryAction =
 	// select-variant command; the server response is authoritative but the
 	// local position updates immediately so reading never waits.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
+	// ==[HUMAN APPROVED]== One observation of an Active Generation's stream for the Provisional
+	// Variant. An authoritative snapshot replaces both accumulated fields
+	// atomically — the wire snapshot carries content and reasoning together
+	// under one event id — and a streaming delta appends to the stream it
+	// belongs to. The Generation session machine is the only producer.
 	| {
-			type: "generation-state";
+			type: "generation-observed";
 			messageId: number;
 			variantId: number;
+			mode: "replace";
 			content: string;
 			reasoning: string;
 			generationId: number;
 			eventId: number;
 		}
-	// ==[HUMAN APPROVED]== A Content delta from an Active Generation's stream: it appends to the
-	// Provisional Variant's visible content, which the story read model
-	// accumulates. The authoritative replace and the page reads stay above.
 	| {
-			type: "generation-content-delta";
+			type: "generation-observed";
 			messageId: number;
 			variantId: number;
-			text: string;
-			generationId: number;
-			eventId: number;
-		}
-	| {
-			type: "generation-reasoning";
-			messageId: number;
-			variantId: number;
-			reasoning: string;
-			generationId: number;
-			eventId: number;
-		}
-	| {
-			type: "generation-reasoning-delta";
-			messageId: number;
-			variantId: number;
+			stream: "content" | "reasoning";
+			mode: "append";
 			text: string;
 			generationId: number;
 			eventId: number;
@@ -382,43 +371,29 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					return { ...message, activeSwipe: index };
 				}),
 			};
-		case "generation-state":
+		case "generation-observed":
 			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
 				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
-				return {
-					...variant,
-					content: action.content,
-					reasoning: action.reasoning,
-					empty: action.content === "",
-					generationId: action.generationId,
-					lastEventId: action.eventId,
-				};
-			});
-		case "generation-content-delta":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
-				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
-				const content = variant.content + action.text;
-				return {
-					...variant,
-					content,
-					empty: content === "",
-					generationId: action.generationId,
-					lastEventId: action.eventId,
-				};
-			});
-		case "generation-reasoning":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
-				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
-				return {
-					...variant,
-					reasoning: action.reasoning,
-					generationId: action.generationId,
-					lastEventId: action.eventId,
-				};
-			});
-		case "generation-reasoning-delta":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
-				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
+				if (action.mode === "replace") {
+					return {
+						...variant,
+						content: action.content,
+						reasoning: action.reasoning,
+						empty: action.content === "",
+						generationId: action.generationId,
+						lastEventId: action.eventId,
+					};
+				}
+				if (action.stream === "content") {
+					const content = variant.content + action.text;
+					return {
+						...variant,
+						content,
+						empty: content === "",
+						generationId: action.generationId,
+						lastEventId: action.eventId,
+					};
+				}
 				return {
 					...variant,
 					reasoning: (variant.reasoning ?? "") + action.text,

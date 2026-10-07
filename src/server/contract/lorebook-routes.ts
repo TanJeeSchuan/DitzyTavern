@@ -15,6 +15,7 @@ import {
 	InvalidLorebookCommandError,
 	LorebookEntryNotFoundError,
 	LorebookNotFoundError,
+	StaleLoreAttachmentOwnerRevisionError,
 	StaleLorebookRevisionError,
 } from "../lorebook/errors";
 import {
@@ -31,23 +32,32 @@ import {
 	sillyTavernLorebookImportBody,
 	loreAttachmentCommandBody,
 	loreAttachmentCommandResponse,
-	loreAttachmentConflict,
+	loreAttachmentCommandConflict,
 	loreAttachmentQuery,
 	loreAttachmentState,
 	lorebookAttachmentImpact,
 	lorebookOwnerAttachmentQuery,
 	lorebookOwnerAttachmentState,
 } from "../../shared/contract/lorebook";
+import type { LoreMatchTestResponse } from "../../shared/contract/lorebook";
 import {
 	executeLorebookAttachmentCommand,
-	StaleLoreAttachmentRevisionError,
 	LoreAttachmentOwnerNotFoundError,
-	InvalidLoreAttachmentCommandError,
 	readLorebookAttachmentState,
 	readLorebookAttachmentImpact,
 	readCharacterLorebookAttachments,
 	readParticipantLorebookAttachments,
+	readParticipantConversationId,
 } from "../lorebook/attachments";
+import {
+	executeConversationCommand,
+	ConversationNotFoundError,
+	InvalidConversationCommandError,
+	ParticipantNotFoundError,
+	StaleConversationRevisionError,
+	type ConversationCommand,
+} from "../conversation";
+import { staleConversationResponse } from "./conversation";
 import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -123,34 +133,42 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 			settings: captureSemanticSettings(database, options),
 			fetch: options.fetch,
 		});
-		const result = {
+		return respond(200, {
 			mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
 			fallbackReason: semantic.fallbackReason,
 			scan,
-			matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
-		};
-		return respond(200, {
-			mode: result.mode,
-			fallbackReason: result.fallbackReason,
-			scan: result.scan.map((message) => ({ id: message.id ?? null, content: message.content })),
-			matches: result.matches.map(({ bookId, bookName, entryId, title, match }) => ({
-				bookId, bookName, entryId, title,
-				active: match.active,
-				skipped: match.skipped,
-				fallback: match.fallback,
-				primary: { ...match.primary, matchedExpressions: [...match.primary.matchedExpressions], missingExpressions: [...match.primary.missingExpressions] },
-				secondary: {
-					requireAny: { ...match.secondary.requireAny, matchedExpressions: [...match.secondary.requireAny.matchedExpressions], missingExpressions: [...match.secondary.requireAny.missingExpressions] },
-					requireAll: { ...match.secondary.requireAll, matchedExpressions: [...match.secondary.requireAll.matchedExpressions], missingExpressions: [...match.secondary.requireAll.missingExpressions] },
-					excludeAny: { ...match.secondary.excludeAny, matchedExpressions: [...match.secondary.excludeAny.matchedExpressions], missingExpressions: [...match.secondary.excludeAny.missingExpressions] },
-					excludeAll: { ...match.secondary.excludeAll, matchedExpressions: [...match.secondary.excludeAll.matchedExpressions], missingExpressions: [...match.secondary.excludeAll.missingExpressions] },
-				},
-				semantic: { ...match.semantic, matches: match.semantic.matches.map((semanticMatch) => ({ ...semanticMatch })) },
-				reasons: [...match.reasons],
-			})),
+			// ==[HUMAN APPROVED]== SAFETY: the match flattens onto the entry item (the schema owns
+			// the item shape, not a nested `match` envelope) and the wire schema
+			// owns mutable expression arrays, so the closed JSON projection is the
+			// one cast validated by the declared response schema.
+			matches: book.entries.map((entry) => ({
+				bookId: book.id,
+				bookName: book.name,
+				entryId: entry.id,
+				title: entry.title,
+				...matchLoreEntry(entry, scan, semantic),
+			}) as LoreMatchTestResponse["matches"][number]),
 		});
 	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
+
+// ==[HUMAN APPROVED]== The Conversation-owned Lore attachment commands dispatch through the
+// canonical Conversation command seam, inheriting its revision guard,
+// post-write summary, and conflict shape. Chat-targeted commands carry the
+// conversation id on the wire; Participant commands derive it from the
+// Participant's own Chat reference, so the dispatch can never target a
+// foreign Chat.
+const executeConversationOwnedLoreAttachment = (database: Database, command: ConversationCommand) => {
+	try {
+		executeConversationCommand(database, command);
+		return { outcome: "applied" as const };
+	} catch (error) {
+		if (error instanceof StaleConversationRevisionError) return staleConversationResponse(database, command.conversationId, error);
+		if (error instanceof ConversationNotFoundError || error instanceof ParticipantNotFoundError) return notFoundResponse();
+		if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
+		throw error;
+	}
+};
 
 export const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments", ({ query }) => {
@@ -170,30 +188,58 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 		return state ?? notFoundResponse();
 	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
-		try {
-			executeLorebookAttachmentCommand(database, body);
-			return { outcome: "applied" as const };
-		} catch (error) {
-			if (error instanceof StaleLoreAttachmentRevisionError) {
-				let currentState: ReturnType<typeof readLorebookAttachmentState | typeof readCharacterLorebookAttachments | typeof readParticipantLorebookAttachments>;
-				switch (error.command.type) {
-					case "attach-character":
-					case "detach-character": currentState = readCharacterLorebookAttachments(database, error.command.characterId); break;
-					case "attach-participant":
-					case "detach-participant": currentState = readParticipantLorebookAttachments(database, error.command.participantId); break;
-					default: currentState = readLorebookAttachmentState(database, error.command.conversationId);
+		if (body.type === "attach-character" || body.type === "detach-character") {
+			try {
+				executeLorebookAttachmentCommand(database, body);
+				return { outcome: "applied" as const };
+			} catch (error) {
+				if (error instanceof StaleLoreAttachmentOwnerRevisionError) {
+					const currentState = readCharacterLorebookAttachments(database, error.characterId);
+					if (currentState === undefined) return notFoundResponse();
+					return status(409, {
+						outcome: "conflict" as const,
+						reason: "stale-revision" as const,
+						expectedRevision: error.expectedRevision,
+						actualRevision: error.actualRevision,
+						currentState,
+					});
 				}
-				if (currentState === undefined) return notFoundResponse();
-				return status(409, {
-					outcome: "conflict" as const,
-					reason: "stale-revision" as const,
-					expectedRevision: error.expectedRevision,
-					actualRevision: error.actualRevision,
-					currentState,
-				});
+				if (error instanceof LoreAttachmentOwnerNotFoundError) return notFoundResponse();
+				throw error;
 			}
-			if (error instanceof LoreAttachmentOwnerNotFoundError) return notFoundResponse();
-			if (error instanceof InvalidLoreAttachmentCommandError) return invalidResponse(error.message);
-			throw error;
 		}
-	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentConflict, 422: invalidOutcome } });
+		if (body.type === "attach-participant" || body.type === "detach-participant") {
+			const conversationId = readParticipantConversationId(database, body.participantId);
+			if (conversationId === undefined) return notFoundResponse();
+			return body.type === "attach-participant"
+				? executeConversationOwnedLoreAttachment(database, {
+					conversationId,
+					expectedRevision: body.expectedRevision,
+					action: { type: "attach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope, enabled: body.enabled },
+				})
+				: executeConversationOwnedLoreAttachment(database, {
+					conversationId,
+					expectedRevision: body.expectedRevision,
+					action: { type: "detach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope },
+				});
+		}
+		if (body.type === "attach-chat") {
+			return executeConversationOwnedLoreAttachment(database, {
+				conversationId: body.conversationId,
+				expectedRevision: body.expectedRevision,
+				action: { type: "attach-chat", bookId: body.bookId, enabled: body.enabled },
+			});
+		}
+		if (body.type === "detach-chat") {
+			return executeConversationOwnedLoreAttachment(database, {
+				conversationId: body.conversationId,
+				expectedRevision: body.expectedRevision,
+				action: { type: "detach-chat", bookId: body.bookId },
+			});
+		}
+		return executeConversationOwnedLoreAttachment(database, {
+			conversationId: body.conversationId,
+			expectedRevision: body.expectedRevision,
+			action: { type: "save-settings", scanDepth: body.scanDepth, allowance: body.allowance },
+		});
+	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentCommandConflict, 422: invalidOutcome } });

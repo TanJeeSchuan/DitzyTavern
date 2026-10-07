@@ -24,3 +24,7 @@ export const conflictReasonOutcome = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.String(),
 });
+
+// ==[HUMAN APPROVED]== The read family's modeled error union: every typed read route declares
+// the shared not-found and invalid envelopes as its only error responses.
+export const readOutcomeErrors = Type.Union([notFoundOutcome, invalidOutcome]);

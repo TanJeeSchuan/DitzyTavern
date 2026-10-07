@@ -36,3 +36,4 @@ export const nativeConversationResponse = Type.Object({
 	outcome: Type.Literal("created"),
 	conversation: conversationSummary,
 });
+

@@ -47,17 +47,17 @@ export function handleMacroVariableOutcome(
 		onNotice: (notice: string) => void;
 	},
 ): boolean {
-	if (outcome.status === "applied") {
-		callbacks.onApplied(outcome.variables, outcome.conversation);
+	if (outcome.outcome === "available") {
+		callbacks.onApplied(outcome.value.variables, outcome.value.conversation);
 		return true;
 	}
-	if (outcome.status === "conflict") callbacks.onConflict(outcome.currentConversation);
+	if (outcome.outcome === "conflict") callbacks.onConflict(outcome.currentConversation);
 	callbacks.onNotice(
-		outcome.status === "invalid"
+		outcome.outcome === "invalid"
 			? outcome.reason
-			: outcome.status === "conflict"
+			: outcome.outcome === "conflict"
 				? "The Conversation changed elsewhere; reopen this panel to continue."
-				: outcome.status === "not-found"
+				: outcome.outcome === "not-found"
 					? "Macro Variables are no longer available for this Chat."
 					: "Macro Variables could not be changed.",
 	);
@@ -90,11 +90,11 @@ export function MacroVariablesPanel({
 		setNotice(null);
 		void loadMacroVariables(conversationId, { position }).then((outcome) => {
 			if (isCancelled()) return;
-			if (outcome.status === "available") {
-				setState({ status: "ready", variables: outcome.variables });
+			if (outcome.outcome === "available") {
+				setState({ status: "ready", variables: outcome.value });
 				return;
 			}
-			setState({ status: "error", message: errorText(outcome.status) });
+			setState({ status: "error", message: errorText(outcome.outcome) });
 		});
 	}, [conversationId, position]);
 

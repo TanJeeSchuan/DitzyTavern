@@ -6,6 +6,7 @@ import type {
 	ModelClientFailureKind,
 } from "../model-client";
 import { GENERATION_REPLAY_RETENTION_MS } from "../conversation/generation-retention";
+import { processStateFor } from "../application/process-state";
 
 /**
  * ==[HUMAN APPROVED]== A normalized event with an application-owned position. Provider streams do
@@ -63,32 +64,20 @@ export interface StartGenerationRuntimeInput {
 	checkpoint?: GenerationCheckpointOptions;
 }
 
-export interface GenerationRuntimeScheduleHandle {
-	cancel(): void;
-}
-
 export interface GenerationRuntimeScheduler {
+	/** ==[HUMAN APPROVED]== Injectable clock for deterministic lifecycle tests. */
 	readonly now?: () => number;
-	readonly schedule?: (callback: () => void, delayMs: number) => GenerationRuntimeScheduleHandle;
-	readonly cancel?: (handle: GenerationRuntimeScheduleHandle) => void;
 }
 
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
-interface MutableRuntimeState {
-	generationId: number;
-	conversationId: number;
-	messageId: number;
-	variantId: number;
-	startedAt: string;
-	content: string;
-	reasoning: string;
-	latestEventId: number;
-	status: GenerationRuntimeState["status"];
-	terminalReason: string | null;
-	imageModel?: GenerationImageModel;
-}
+// ==[HUMAN APPROVED]== The runtime's own mutable view of GenerationRuntimeState: one field
+// derivation from the published state, so a field addition touches one
+// declaration and cannot drift between the two.
+type MutableRuntimeState = {
+	-readonly [K in keyof GenerationRuntimeState]: GenerationRuntimeState[K];
+};
 
 interface GenerationRuntimeFailure {
 	readonly reason: string;
@@ -104,8 +93,8 @@ type PendingProviderTerminal =
 /**
  * ==[HUMAN APPROVED]== Process-local fan-out for one database. Event history is deliberately
  * bounded: it is a reconnect aid, not a second copy of Conversation history.
- * The WeakMap registry below prevents in-memory test databases with reused
- * integer IDs from sharing generations.
+ * One registry instance is owned by the process-state container per database,
+ * so in-memory test databases with reused integer IDs never share generations.
  */
 export class GenerationRuntimeRegistry {
 	static readonly MAX_RETAINED_EVENTS = 256;
@@ -113,20 +102,11 @@ export class GenerationRuntimeRegistry {
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
 	private readonly now: () => number;
-	private readonly schedule: (callback: () => void, delayMs: number) => GenerationRuntimeScheduleHandle;
-	private readonly cancel: (handle: GenerationRuntimeScheduleHandle) => void;
 	private readonly pending = new Set<Promise<unknown>>();
 	private readonly shutdown = new AbortController();
-	private cleanupHandle: GenerationRuntimeScheduleHandle | undefined;
 
 	constructor(scheduler: GenerationRuntimeScheduler = {}) {
 		this.now = scheduler.now ?? Date.now;
-		this.schedule = scheduler.schedule ?? ((callback, delayMs) => {
-			const handle = setTimeout(callback, delayMs);
-			handle.unref?.();
-			return { cancel: () => clearTimeout(handle) };
-		});
-		this.cancel = scheduler.cancel ?? ((handle) => handle.cancel());
 	}
 
 	assertAccepting(): void {
@@ -150,7 +130,7 @@ export class GenerationRuntimeRegistry {
 				`Generation runtime id ${input.generationId} is already active; duplicate start is an invariant violation.`,
 			);
 		}
-		const runtime = new GenerationRuntime(input, () => this.scheduleCleanup());
+		const runtime = new GenerationRuntime(input);
 		this.runtimes.set(input.generationId, runtime);
 		return runtime;
 	}
@@ -166,8 +146,6 @@ export class GenerationRuntimeRegistry {
 		this.beginShutdown();
 		this.stopAll();
 		while (this.pending.size > 0) await Promise.allSettled(this.pending);
-		if (this.cleanupHandle !== undefined) this.cancel(this.cleanupHandle);
-		this.cleanupHandle = undefined;
 		for (const runtime of this.runtimes.values()) { runtime.markStopped(); runtime.expireRetention(); }
 		this.runtimes.clear();
 	}
@@ -179,7 +157,6 @@ export class GenerationRuntimeRegistry {
 
 	remove(generationId: number): void {
 		this.runtimes.delete(generationId);
-		this.scheduleCleanup();
 	}
 
 	/** ==[HUMAN APPROVED]== Request cancellation for one Generation without touching subscribers. */
@@ -192,7 +169,10 @@ export class GenerationRuntimeRegistry {
 		return runtime;
 	}
 
-	/** ==[HUMAN APPROVED]== Drop terminal runtime state after the bounded reconnect/replay window. */
+	/** ==[HUMAN APPROVED]== Drop terminal runtime state after the bounded reconnect/replay window.
+	 * Called lazily on registry access and by the process-state sweep tick
+	 * while the process is idle; retention is also enforced independently by
+	 * the persisted expiry boundary in Conversation. */
 	cleanup(now = this.now()): void {
 		for (const [generationId, runtime] of this.runtimes) {
 			const terminalAt = runtime.terminalTime;
@@ -201,26 +181,6 @@ export class GenerationRuntimeRegistry {
 				this.runtimes.delete(generationId);
 			}
 		}
-		this.scheduleCleanup();
-	}
-
-	private scheduleCleanup(): void {
-		if (this.cleanupHandle !== undefined) {
-			this.cancel(this.cleanupHandle);
-			this.cleanupHandle = undefined;
-		}
-		if (this.shutdownSignal.aborted) return;
-		let nextExpiry: number | undefined;
-		for (const runtime of this.runtimes.values()) {
-			if (runtime.terminalTime === null) continue;
-			const expiry = runtime.terminalTime + GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS;
-			nextExpiry = nextExpiry === undefined ? expiry : Math.min(nextExpiry, expiry);
-		}
-		if (nextExpiry === undefined) return;
-		this.cleanupHandle = this.schedule(() => {
-			this.cleanupHandle = undefined;
-			this.cleanup();
-		}, Math.max(0, nextExpiry - this.now()));
 	}
 
 	flushAll(conversationId?: number): void {
@@ -257,7 +217,7 @@ export class GenerationRuntime {
 	private pendingProviderTerminal: PendingProviderTerminal | null = null;
 	private terminalAt: number | null = null;
 
-	constructor(input: StartGenerationRuntimeInput, private readonly onTerminal?: () => void) {
+	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
 		this.onStop = input.onStop;
 		this.onRetentionExpired = input.onRetentionExpired;
@@ -342,7 +302,6 @@ export class GenerationRuntime {
 		this.stateValue.status = "complete";
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
-		this.onTerminal?.();
 	}
 
 	fail(failure: GenerationRuntimeFailure): void {
@@ -366,7 +325,6 @@ export class GenerationRuntime {
 		if (imageModel !== undefined) this.stateValue.imageModel = imageModel;
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
-		this.onTerminal?.();
 	}
 
 	/** ==[HUMAN APPROVED]== Persist the latest accumulated output immediately, including its event position. */
@@ -431,7 +389,6 @@ export class GenerationRuntime {
 		this.stateValue.status = "stopped";
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
-		this.onTerminal?.();
 	}
 
 	subscribe(afterEventId: number, onEvent: Subscriber, onState?: StateSubscriber): GenerationRuntimeSubscription {
@@ -492,17 +449,11 @@ export class GenerationRuntime {
 	}
 }
 
-const registries = new WeakMap<Database, GenerationRuntimeRegistry>();
-
-
 /**
  * ==[HUMAN APPROVED]== Resolve the process-owned runtime registry for one database scope. HTTP
- * callers and background work share the application database.
+ * callers and background work share the application database; the registry
+ * itself is owned by the process-state container and dies with it.
  */
 export function generationRuntimeFor(database: Database): GenerationRuntimeRegistry {
-	const existing = registries.get(database);
-	if (existing !== undefined) return existing;
-	const created = new GenerationRuntimeRegistry();
-	registries.set(database, created);
-	return created;
+	return processStateFor(database).generationRuntimes;
 }

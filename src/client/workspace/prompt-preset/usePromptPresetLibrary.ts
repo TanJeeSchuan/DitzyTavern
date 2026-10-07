@@ -18,7 +18,7 @@ import { downloadNativePromptPreset } from "../../prompt-preset-download";
 import {
 	CONVERSATION_UNREACHABLE_NOTICE,
 	LIBRARY_UNREACHABLE_NOTICE,
-} from "../../lib/command-outcome";
+} from "../../lib/notices";
 import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
 import {
 	conversationOperationApplies,
@@ -110,11 +110,11 @@ export function usePromptPresetLibrary({
 		return false;
 	};
 	const reportImportFailure = (
-		outcome: { status: "invalid"; reason: string } | { status: "network" },
+		outcome: { outcome: "invalid"; reason: string } | { outcome: "network" },
 	): void => {
 		dispatch({
 			type: "notice-changed",
-			notice: outcome.status === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
+			notice: outcome.outcome === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
 		});
 	};
 	// ==[HUMAN APPROVED]== The shared import epilogue: reload the library and the selected recipe,
@@ -193,9 +193,12 @@ export function usePromptPresetLibrary({
 			try {
 				const outcome = await applyPromptPresetCommand(command);
 				if (!ownsOperation(claim)) return;
-				switch (outcome.status) {
-					case "applied":
-					case "deleted": {
+				switch (outcome.outcome) {
+					case "available": {
+						if (outcome.value.outcome !== "applied" && outcome.value.outcome !== "deleted") {
+							dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+							break;
+						}
 						const refresh = await load();
 						if (!ownsOperation(claim)) return;
 						if (reportRefreshFailure(refresh)) break;
@@ -203,7 +206,7 @@ export function usePromptPresetLibrary({
 						break;
 					}
 					case "conflict": {
-						let message = `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`;
+						let message = `That preset changed elsewhere. It is now "${outcome.currentPreset.name}".`;
 						const refresh = await load();
 						if (!ownsOperation(claim)) return;
 						if (reportRefreshFailure(refresh)) break;
@@ -211,10 +214,10 @@ export function usePromptPresetLibrary({
 							// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before
 							// the notice so a renewed confirmation shows the current name, revision
 							// and impact instead of the values the author already confirmed.
-							if (outcome.conflict.reason === "deletion-impact") {
+							if (outcome.reason === "deletion-impact") {
 								message = presetDeletionImpactChangedNotice(
-									outcome.conflict.currentPreset.name,
-									outcome.conflict.currentPreset.conversationCount,
+									outcome.currentPreset.name,
+									outcome.currentPreset.conversationCount,
 								);
 							}
 						}
@@ -275,11 +278,15 @@ export function usePromptPresetLibrary({
 				if (native !== null) {
 					const outcome = await importNativePromptPreset(native);
 					if (!ownsOperation(claim)) return;
-					if (outcome.status !== "applied") {
-						reportImportFailure(outcome);
+					if (outcome.outcome === "available") {
+						if (outcome.value.outcome !== "applied") {
+							reportImportFailure({ outcome: "network" });
+							return;
+						}
+						await reloadAfterImport(claim, `Imported "${outcome.value.preset.name}" as a new preset.`);
 						return;
 					}
-					await reloadAfterImport(claim, `Imported "${outcome.preset.name}" as a new preset.`);
+					reportImportFailure(outcome);
 					return;
 				}
 				const reviewOutcome = await reviewSillyTavernPromptPreset(
@@ -287,16 +294,16 @@ export function usePromptPresetLibrary({
 					file.name.replace(/\.json$/i, ""),
 				);
 				if (!ownsOperation(claim)) return;
-				if (reviewOutcome.status !== "review") {
+				if (reviewOutcome.outcome !== "available") {
 					reportImportFailure(reviewOutcome);
 					return;
 				}
 				dispatch({
 					type: "review-changed",
 					review: {
-						request: { source, name: reviewOutcome.preview.name },
-						preview: reviewOutcome.preview,
-						orderListId: reviewOutcome.preview.selectedOrderId,
+						request: { source, name: reviewOutcome.value.name },
+						preview: reviewOutcome.value,
+						orderListId: reviewOutcome.value.selectedOrderId,
 					},
 				});
 			} catch {
@@ -324,12 +331,12 @@ export function usePromptPresetLibrary({
 				currentReview.orderListId ?? undefined,
 			);
 			if (!ownsOperation(claim)) return;
-			if (outcome.status !== "applied") {
+			if (outcome.outcome !== "available") {
 				reportImportFailure(outcome);
 				return;
 			}
 			dispatch({ type: "review-changed", review: null });
-			await reloadAfterImport(claim, `Imported "${outcome.preview.preset.name}" as a new preset.`);
+			await reloadAfterImport(claim, `Imported "${outcome.value.preset.name}" as a new preset.`);
 		});
 	};
 
@@ -344,10 +351,10 @@ export function usePromptPresetLibrary({
 				orderListId,
 			);
 			if (!ownsOperation(claim)) return;
-			if (outcome.status === "review") {
+			if (outcome.outcome === "available") {
 				dispatch({
 					type: "review-changed",
-					review: { ...currentReview, preview: outcome.preview, orderListId },
+					review: { ...currentReview, preview: outcome.value, orderListId },
 				});
 			} else {
 				reportImportFailure(outcome);

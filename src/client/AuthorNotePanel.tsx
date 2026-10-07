@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { applyConversationCommand, loadConversationPromptPreset, type ConversationSummary } from "./conversation";
 import { runConversationCommand } from "./conversation-command-runner";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/command-outcome";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
 import { ProseEditor } from "./editor/ProseEditor";
 import { useSaveGuard } from "./SaveGuard";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "./prompt-preset-library";
@@ -24,7 +24,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 			const outcome = slot === undefined
 				? await addPromptPresetReference(selectedPreset.id, "author-note")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
-			if (outcome.status !== "applied") throw new Error(outcome.status === "invalid" ? outcome.reason : "The Author Note block could not be updated.");
+			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" ? outcome.reason : "The Author Note block could not be updated.");
 		},
 		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	});

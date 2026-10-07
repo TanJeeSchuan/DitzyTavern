@@ -1,14 +1,17 @@
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
+import { requestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import {
 	lorebook,
-	lorebookCommandApplied,
-	lorebookDeleted,
+	lorebookCommandErrors,
+	lorebookCommandResponse,
 	lorebookImportApplied,
 	lorebookListResponse,
 	loreMatchTestResponse,
 	loreAttachmentState,
+	loreAttachmentCommandErrors,
+	loreAttachmentCommandResponse,
 	lorebookAttachmentImpact,
 	lorebookOwnerAttachmentState,
 	type LoreAttachmentState,
@@ -22,6 +25,7 @@ import {
 	type Lorebook as LorebookValue,
 	type LorebookListResponse,
 } from "../shared/contract/lorebook";
+import { readOutcomeErrors } from "../shared/contract/outcomes";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
@@ -38,35 +42,12 @@ export async function getLorebookAttachmentState(conversationId: number, signal?
 	return decodeWirePayload(loreAttachmentState, data);
 }
 
-export type LoreAttachmentCommandOutcome =
-	| { status: "applied" }
-	| { status: "conflict"; expectedRevision: number; actualRevision: number; currentState: LoreAttachmentState | LorebookOwnerAttachmentState }
-	| { status: "invalid"; reason: string }
-	| { status: "not-found" }
-	| { status: "network" };
-
-export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand): Promise<LoreAttachmentCommandOutcome> {
-	try {
-		const { error } = await api.api.lorebooks.attachments.commands.post(command);
-		if (error) {
-			// ==[HUMAN APPROVED]== SAFETY: Eden exposes the typed public error union; this assertion names only its shared outcome fields.
-			const value = error.value as { outcome?: string; reason?: string; expectedRevision?: number; actualRevision?: number; currentState?: LoreAttachmentState | LorebookOwnerAttachmentState } | null;
-			if (value?.outcome === "conflict" && value.currentState !== undefined) {
-				return {
-					status: "conflict",
-					expectedRevision: value.expectedRevision ?? command.expectedRevision,
-					actualRevision: value.actualRevision ?? value.currentState.revision,
-					currentState: value.currentState,
-				};
-			}
-			if (value?.outcome === "invalid") return { status: "invalid", reason: value.reason ?? "Invalid Lorebook attachment command." };
-			if (error.status === 404) return { status: "not-found" };
-			return { status: "network" };
-		}
-		return { status: "applied" };
-	} catch {
-		return { status: "network" };
-	}
+export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand) {
+	return requestOutcome(
+		api.api.lorebooks.attachments.commands.post(command),
+		loreAttachmentCommandResponse,
+		loreAttachmentCommandErrors,
+	);
 }
 
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
@@ -124,35 +105,12 @@ export async function testLorebookMatch(bookId: number, writing: string): Promis
 	return decoded;
 }
 
-export type LorebookCommandOutcome =
-	| { status: "applied"; book: LorebookValue }
-	| { status: "deleted"; bookId: number }
-	| { status: "conflict"; expectedRevision: number; actualRevision: number; currentBook: LorebookValue }
-	| { status: "invalid"; reason: string }
-	| { status: "not-found" }
-	| { status: "network" };
-
-export async function applyLorebookCommand(command: LorebookCommand): Promise<LorebookCommandOutcome> {
-	try {
-		const { data, error } = await api.api.lorebooks.commands.post(command);
-		if (error) {
-			// ==[HUMAN APPROVED]== SAFETY: Eden's typed error union is narrowed by the outcome tag before values are read.
-			const value = error.value as { outcome?: string; reason?: string; expectedRevision?: number; actualRevision?: number; currentBook?: LorebookValue } | null;
-			if (value?.outcome === "conflict" && value.currentBook !== undefined) {
-				const expectedRevision = "expectedRevision" in command ? command.expectedRevision : 0;
-				return { status: "conflict", expectedRevision: value.expectedRevision ?? expectedRevision, actualRevision: value.actualRevision ?? value.currentBook.revision, currentBook: value.currentBook };
-			}
-			if (value?.outcome === "invalid") return { status: "invalid", reason: value.reason ?? "Invalid Lorebook command." };
-			if (error.status === 404) return { status: "not-found" };
-			return { status: "network" };
-		}
-		const deleted = decodeWirePayload(lorebookDeleted, data);
-		if (deleted !== null) return { status: "deleted", bookId: deleted.bookId };
-		const applied = decodeWirePayload(lorebookCommandApplied, data);
-		return applied === null ? { status: "network" } : { status: "applied", book: applied.book };
-	} catch {
-		return { status: "network" };
-	}
+export async function applyLorebookCommand(command: LorebookCommand) {
+	return requestOutcome(
+		api.api.lorebooks.commands.post(command),
+		lorebookCommandResponse,
+		lorebookCommandErrors,
+	);
 }
 
 export function parseNativeLorebook(text: string): NativeLorebook | null {
@@ -163,34 +121,20 @@ export function parseNativeLorebook(text: string): NativeLorebook | null {
 	}
 }
 
-export async function importNativeLorebook(native: NativeLorebook): Promise<{ status: "applied"; book: LorebookValue; warnings: string[] } | { status: "invalid"; reason: string } | { status: "network" }> {
-	try {
-		const { data, error } = await api.api.lorebooks.import.post(native);
-		if (error) {
-			// ==[HUMAN APPROVED]== SAFETY: invalid transport errors carry only the public reason string.
-			const value = error.value as { reason?: string } | null;
-			return error.status === 422 ? { status: "invalid", reason: value?.reason ?? "Invalid Lorebook JSON." } : { status: "network" };
-		}
-		const applied = decodeWirePayload(lorebookImportApplied, data);
-		return applied === null ? { status: "network" } : { status: "applied", book: applied.book, warnings: applied.warnings };
-	} catch {
-		return { status: "network" };
-	}
+export async function importNativeLorebook(native: NativeLorebook) {
+	return requestOutcome(
+		api.api.lorebooks.import.post(native),
+		lorebookImportApplied,
+		readOutcomeErrors,
+	);
 }
 
-export async function importSillyTavernLorebook(source: SillyTavernJsonValue): Promise<{ status: "applied"; book: LorebookValue; warnings: string[] } | { status: "invalid"; reason: string } | { status: "network" }> {
-	try {
-		const { data, error } = await api.api.lorebooks.import.sillytavern.post({ source });
-		if (error) {
-			// ==[HUMAN APPROVED]== SAFETY: invalid transport errors carry only the public reason string.
-			const value = error.value as { reason?: string } | null;
-			return error.status === 422 ? { status: "invalid", reason: value?.reason ?? "Invalid Lorebook JSON." } : { status: "network" };
-		}
-		const applied = decodeWirePayload(lorebookImportApplied, data);
-		return applied === null ? { status: "network" } : { status: "applied", book: applied.book, warnings: applied.warnings };
-	} catch {
-		return { status: "network" };
-	}
+export async function importSillyTavernLorebook(source: SillyTavernJsonValue) {
+	return requestOutcome(
+		api.api.lorebooks.import.sillytavern.post({ source }),
+		lorebookImportApplied,
+		readOutcomeErrors,
+	);
 }
 
 export async function exportNativeLorebook(bookId: number): Promise<NativeLorebook> {

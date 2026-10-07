@@ -2,17 +2,15 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
-	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
-import type { ConversationDatabase } from "../internal";
+import { requireConversation, type ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
@@ -42,7 +40,6 @@ import {
 	MEMORY_ACTIVATION_NAMESPACE,
 	parseMemoryActivationRecord,
 } from "../../../shared/contract/memory-recall";
-import { syncMemorySources } from "../../memory";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -63,6 +60,21 @@ const readActiveGeneration = (
 		),
 	)
 	.get();
+
+// ==[HUMAN APPROVED]== The one Active Generation read-or-throw prelude: every terminal
+// transaction resolves the same (conversation, generation) pair and rejects
+// a vanished record with the same typed error.
+const requireActiveGeneration = (
+	db: ConversationDatabase,
+	conversationId: number,
+	generationId: number,
+): ActiveGenerationRow => {
+	const active = readActiveGeneration(db, conversationId, generationId);
+	if (active === undefined) {
+		throw new InvalidConversationCommandError("The Active Generation is no longer available.");
+	}
+	return active;
+};
 
 export const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolean => {
 	let parsed: ReturnType<typeof generationJsonObject>;
@@ -86,6 +98,24 @@ export const isSiblingGenerationRow = (row: { generation_intent_json: string }):
 	return parsed.type === "sibling";
 };
 
+// ==[HUMAN APPROVED]== The one provisional Variant existence read: terminal persistence and
+// the stop transition both validate the same (variant_id, message_id) pair,
+// and the stop transition additionally reads the selected mark.
+const provisionalVariantRow = (
+	db: ConversationDatabase,
+	active: ActiveGenerationRow,
+): { id: number; selected: boolean } | undefined =>
+	db
+		.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.get();
+
 type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
 
 type CheckpointVariantValues = { content: string; timestamp?: string };
@@ -103,46 +133,24 @@ const terminalStatusFrom = (
 // verbatim. The exclusions are the active-only bookkeeping the durable
 // Variant or the running attempt owns (provenance, human Message, prior
 // Variant) and the two checkpoint columns the terminal outcome supplies
-// below. Because every other column is named, adding one to
-// `active_generation` fails typecheck here until this projection states
-// whether the replay row keeps it; spreading the row instead suppressed the
-// excess-property check and let both directions of drift pass silently.
-type ReplayCarriedColumn = Exclude<
-	keyof ActiveGenerationRow,
-	| "human_message_id"
-	| "prior_variant_id"
-	| "provenance_namespace"
-	| "provenance_key"
-	| "provenance_value"
-	| "macro_preset_id"
-	| "macro_writes_json"
-	| "checkpoint_content"
-	| "checkpoint_reasoning"
->;
-
-const replayCarriedColumns = (
-	active: ActiveGenerationRow,
-): Pick<ActiveGenerationRow, ReplayCarriedColumn> => ({
-	id: active.id,
-	conversation_id: active.conversation_id,
-	message_id: active.message_id,
-	variant_id: active.variant_id,
-	human_participant_id: active.human_participant_id,
-	model_participant_id: active.model_participant_id,
-	captured_human_name: active.captured_human_name,
-	captured_model_name: active.captured_model_name,
-	started_at: active.started_at,
-	prompt_plan_json: active.prompt_plan_json,
-	prompt_inspection_json: active.prompt_inspection_json,
-	prompt_context_json: active.prompt_context_json,
-	lore_activation_json: active.lore_activation_json,
-	memory_activation_json: active.memory_activation_json,
-	generation_settings_json: active.generation_settings_json,
-	connection_json: active.connection_json,
-	generation_intent_json: active.generation_intent_json,
-	checkpoint_event_id: active.checkpoint_event_id,
-	checkpointed_at: active.checkpointed_at,
-});
+// below. Every other active_generation column carries, so a new column
+// defaults to carried and the exclusion names are type-checked against the
+// row here.
+const replayCarriedColumns = (active: ActiveGenerationRow) => {
+	const {
+		human_message_id: _humanMessageId,
+		prior_variant_id: _priorVariantId,
+		provenance_namespace: _provenanceNamespace,
+		provenance_key: _provenanceKey,
+		provenance_value: _provenanceValue,
+		macro_preset_id: _macroPresetId,
+		macro_writes_json: _macroWritesJson,
+		checkpoint_content: _checkpointContent,
+		checkpoint_reasoning: _checkpointReasoning,
+		...carried
+	} = active;
+	return carried;
+};
 
 const retainTerminalInspection = (
 	db: ConversationDatabase,
@@ -278,16 +286,7 @@ function commitDurableTerminalGenerationInTransaction(
 		suppliedData: readonly ConversationDataEntry[];
 	},
 ): void {
-	const variant = db
-		.select({ id: messageVariantTable.id })
-		.from(messageVariantTable)
-		.where(
-			and(
-				eq(messageVariantTable.id, active.variant_id),
-				eq(messageVariantTable.message_id, active.message_id),
-			),
-		)
-		.get();
+	const variant = provisionalVariantRow(db, active);
 	if (variant === undefined) {
 		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
 	}
@@ -320,18 +319,22 @@ export function resolveConversationGeneration(
 	database: Database,
 	input: ResolveGenerationInput,
 ): ConversationSummary {
-	return runConversationTransaction(database, (db) => {
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) {
-			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-		}
+	return runConversationTransaction(database, (db, reportChange) => {
+		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
 		commitDurableTerminalGenerationInTransaction(db, active, {
 			content: input.content,
 			reasoning: input.reasoning,
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
-		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
+		// ==[HUMAN APPROVED]== The terminal Variant content is committed; Memory re-derives
+		// its collection from the resolved source.
+		reportChange({
+			conversationId: input.conversationId,
+			touchedVariantIds: [active.variant_id],
+			removedVariantIds: [],
+			promptPresetChanged: false,
+		});
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -352,12 +355,7 @@ export const removeConversationGeneration = (
 	input: RemoveGenerationInput,
 ): ConversationSummary => {
 	return runConversationTransaction(database, (db) => {
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) {
-			throw new InvalidConversationCommandError(
-				"The Active Generation is no longer available.",
-			);
-		}
+		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
 		if (active.checkpoint_content.length > 0 || active.checkpoint_reasoning.length > 0) {
 			throw new InvalidConversationCommandError("A Generation with durable output must be resolved or stopped.");
 		}
@@ -463,16 +461,7 @@ function removeActiveGenerationTargetInTransaction(
 	active: ActiveGenerationRow,
 ): StopTransition {
 	if (isSiblingGenerationRow(active)) {
-		const variant = db
-			.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
-			.from(messageVariantTable)
-			.where(
-				and(
-					eq(messageVariantTable.id, active.variant_id),
-					eq(messageVariantTable.message_id, active.message_id),
-				),
-			)
-			.get();
+		const variant = provisionalVariantRow(db, active);
 		if (variant === undefined) {
 			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
 		}
@@ -577,11 +566,8 @@ export function stopConversationGeneration(
 	input: StopGenerationInput,
 ): ConversationSummary {
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	return runConversationTransaction(database, (db) => {
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) {
-			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-		}
+	return runConversationTransaction(database, (db, reportChange) => {
+		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
 		const transition = stopActiveGenerationInTransaction(
 			db,
 			active,
@@ -590,7 +576,20 @@ export function stopConversationGeneration(
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
+		// ==[HUMAN APPROVED]== A durable Stop commits the terminal Variant content; a
+		// zero-output Stop deletes the target whole, so its in-flight Memory
+		// work is abandoned through the removed record.
+		reportChange(transition.durableOutput ? {
+			conversationId: input.conversationId,
+			touchedVariantIds: [active.variant_id],
+			removedVariantIds: [],
+			promptPresetChanged: false,
+		} : {
+			conversationId: input.conversationId,
+			touchedVariantIds: [],
+			removedVariantIds: [active.variant_id],
+			promptPresetChanged: false,
+		});
 		return advanceConversationRevision(
 			db,
 			input.conversationId,
@@ -608,13 +607,8 @@ export function stopConversationGenerations(
 	database: Database,
 	input: StopGenerationsInput,
 ): StoppedGenerations {
-	return runConversationTransaction(database, (db) => {
-		const conversation = db
-			.select({ id: conversationTable.id })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, input.conversationId))
-			.get();
-		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+	return runConversationTransaction(database, (db, reportChange) => {
+		requireConversation(db, input.conversationId);
 		const activeRows = db
 			.select()
 			.from(activeGenerationTable)
@@ -626,14 +620,23 @@ export function stopConversationGenerations(
 		}
 		const timestamp = input.timestamp ?? new Date().toISOString();
 		const removedSiblings: StoppedSiblingTarget[] = [];
+		const touchedVariantIds: number[] = [];
+		const removedVariantIds: number[] = [];
 		let durableOutput = false;
 		for (const active of activeRows) {
 			const transition = stopActiveGenerationInTransaction(db, active, timestamp);
 			durableOutput ||= transition.durableOutput;
 			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
+			if (transition.durableOutput) touchedVariantIds.push(active.variant_id);
+			else removedVariantIds.push(active.variant_id);
 		}
 		restoreStoppedSiblingSelection(db, removedSiblings);
-		syncMemorySources(db.$client, input.conversationId, activeRows.map((active) => active.variant_id));
+		reportChange({
+			conversationId: input.conversationId,
+			touchedVariantIds,
+			removedVariantIds,
+			promptPresetChanged: false,
+		});
 		const snapshot = advanceConversationRevision(
 			db,
 			input.conversationId,
