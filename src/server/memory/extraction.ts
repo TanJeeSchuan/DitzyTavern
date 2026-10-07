@@ -35,7 +35,7 @@ const identityInstructions = (database: Database, messageId: number) => {
 
 const noteInstructions = (database: Database, messageId: number) => {
 	const note = database.query<{ memory_note: string }, [number]>("SELECT s.memory_note FROM messages m JOIN conversation_memory_settings s ON s.conversation_id = m.conversation_id WHERE m.id = ?").get(messageId)?.memory_note ?? "";
-	return note ? `Writer's note for this Chat (guidance only, never a source of facts):\n${note}` : "";
+	return note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
 };
 
 const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {

@@ -112,8 +112,8 @@ describe("Conversation Memory note", () => {
 			await reextract(3);
 
 			expect(requests.extraction).toHaveLength(3);
-			expect(promptOf(requests.extraction[1]!)).toContain(`First person in Maren's Messages refers to Tanjs.\n\nWriter's note for this Chat (guidance only, never a source of facts):\n${guidance}\n\nCaptured source and reference context:`);
-			expect(promptOf(requests.extraction[0]!)).not.toContain("Writer's note for this Chat");
+			expect(promptOf(requests.extraction[1]!)).toContain(`First person in Maren's Messages refers to Tanjs.\n\nChat note (guidance only, never a source of facts):\n${guidance}\n\nCaptured source and reference context:`);
+			expect(promptOf(requests.extraction[0]!)).not.toContain("Chat note (guidance only");
 			expect(promptOf(requests.extraction[2]!)).toBe(promptOf(requests.extraction[0]!));
 			expect(requests.decisions).toHaveLength(3);
 			for (const body of requests.decisions) expect(body).not.toContain(guidance);
