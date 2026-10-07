@@ -1,4 +1,4 @@
-import { Square } from "lucide-react";
+import { ScanSearch, SquareStack } from "lucide-react";
 
 export function EmptyChat() {
 	return (
@@ -29,29 +29,24 @@ export function HistoryLoading() {
 export function GenerationControls({
 	showStopAll,
 	pending = false,
-	onStop,
 	onStopAll,
 	onInspect,
 }: {
 	showStopAll: boolean;
 	pending?: boolean;
-	onStop: () => void;
 	onStopAll: () => void;
 	onInspect?: () => void;
 }) {
 	return (
 		<div className="generation-controls" aria-label="Generation controls">
 			{onInspect !== undefined && (
-				<button className="secondary-button" type="button" onClick={onInspect}>
-					Inspect Generation
+				<button className="edit-action" type="button" onClick={onInspect}>
+					<ScanSearch aria-hidden="true" /> Inspect Generation
 				</button>
 			)}
-			<button className="secondary-button" type="button" onClick={onStop} disabled={pending}>
-				<Square aria-hidden="true" />
-				{pending ? "Stopping…" : "Stop Generation"}
-			</button>
 			{showStopAll && (
-				<button className="secondary-button" type="button" onClick={onStopAll} disabled={pending}>
+				<button className="edit-action" type="button" onClick={onStopAll} disabled={pending}>
+					<SquareStack aria-hidden="true" />
 					Stop All
 				</button>
 			)}

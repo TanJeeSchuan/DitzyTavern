@@ -1,4 +1,5 @@
-import { RefreshCw, Send, X } from "lucide-react";
+import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
+import { RefreshCw, Send, Settings, X } from "lucide-react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
@@ -20,6 +21,7 @@ export function PromptPlanPreviewPanel({
 	onSend,
 	onNavigateSource,
 	onClose,
+	onOpenSettings,
 }: {
 	assembly: AssemblySession;
 	onPlanChange: (plan: PromptPlan) => void;
@@ -27,6 +29,7 @@ export function PromptPlanPreviewPanel({
 	onSend: () => void;
 	onNavigateSource?: (messageId: number) => void;
 	onClose: () => void;
+	onOpenSettings: () => void;
 }) {
 	const preview = assembly.preview;
 	const pending = isAssemblyPending(assembly);
@@ -40,7 +43,11 @@ export function PromptPlanPreviewPanel({
 		);
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">
-			<PanelHeader title="Prompt Plan preview" onClose={onClose} />
+			<PanelHeader
+				title="Prompt Plan preview"
+				onClose={onClose}
+				actions={<button className="icon-button" type="button" onClick={onOpenSettings} aria-label="Open Settings"><Settings aria-hidden="true" /></button>}
+			/>
 			<div className="panel-body generation-details-body">
 				{preview === null && pending && <p className="generation-detail-status">Assembling the Prompt Plan…</p>}
 				{preview === null && !pending && <p className="generation-detail-status">Prompt Plan assembly failed. Retry or cancel.</p>}
@@ -78,7 +85,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const fields = run.map(({ block, index }) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabels[block.kind] : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}

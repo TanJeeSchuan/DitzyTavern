@@ -183,6 +183,7 @@ const duplicateCopyWarnings = (
 // duplicate gating, and artifact storage never enter this module.
 export interface ProjectedImport {
 	input: {
+		authorNote: string;
 		participants: (ConversationParticipantSeed & {
 			createCharacter?: boolean | undefined;
 		})[];
@@ -282,6 +283,7 @@ export function projectImport(
 
 	return {
 		input: {
+			authorNote: decoded.authorNote,
 			participants: resolution.participants.map((participant) => ({
 				definition: participant.definition,
 				sourceCharacterId: participant.sourceCharacterId,

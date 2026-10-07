@@ -82,6 +82,10 @@ _Avoid_: continue postfix, message separator
 Editable Conversation guidance used by the instruction Continuation strategy to request more writing without repetition. It is part of the Prompt Plan but not Conversation history.
 _Avoid_: continue nudge, synthetic Message
 
+**Author Note**:
+A Chat's single block of writer-authored text and Image References that enters every subsequent Generation through its Prompt Preset's Author Note slot. It has one current value for the whole Chat, never varies by branch, is never dropped to make room, and is not Conversation history.
+_Avoid_: Author's Note when naming DitzyTavern's concept, chat memo, Macro Variable
+
 **Generation Settings**:
 The Conversation-owned configuration a new Generation starts from: model selection, sampling parameters, budget fields, Continuation strategy, and Request Overrides. Endpoints, credentials, and transport details belong to Connection Profiles instead.
 _Avoid_: connection settings, generation config, Model Settings

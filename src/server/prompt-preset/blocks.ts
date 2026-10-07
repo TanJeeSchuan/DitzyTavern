@@ -4,6 +4,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
+	isSingleUseReference,
+	singleUseReferenceLabels,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
 	type PromptPresetBlockOccurrence,
@@ -33,12 +35,8 @@ export class InvalidPromptPresetOperationError extends Error {
 	}
 }
 
-const uniqueBlockName = (reference: string) =>
-	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : null;
-
 const assertNoSecondUniqueBlock = (reference: string, exists: boolean) => {
-	const name = uniqueBlockName(reference);
-	if (name !== null && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${name} block.`);
+	if (isSingleUseReference(reference) && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${singleUseReferenceLabels[reference]} block.`);
 };
 
 const validateBlockPatches = (
@@ -194,7 +192,7 @@ const writePromptPresetBlock = (
 	}).immediate();
 };
 
-/** ==[HUMAN APPROVED]== Appends one reference occurrence with its default outgoing role. */
+/** Adds one reference with its default role; Author Note follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
@@ -204,16 +202,21 @@ export const addPromptPresetBlock = (
 	return database.transaction(() => {
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
-		const count = orderedIdsOf(db, presetId).length;
-		db.insert(promptPresetBlockTable)
+		const ordered = orderedIdsOf(db, presetId);
+		const inserted = db.insert(promptPresetBlockTable)
 			.values({
 				preset_id: presetId,
-				position: count + 1,
+				position: ordered.length + 1,
 				reference,
 				enabled: true,
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
-			.run();
+			.returning({ id: promptPresetBlockTable.id }).get()!;
+		if (reference === "author-note") {
+			const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
+			ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted.id);
+			renumber(db, presetId, ordered);
+		}
 		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
@@ -290,7 +293,7 @@ export const duplicatePromptPresetBlock = (
 	blockId: number,
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
-		assertNoSecondUniqueBlock(original.reference, uniqueBlockName(original.reference) !== null);
+		assertNoSecondUniqueBlock(original.reference, true);
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.

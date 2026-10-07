@@ -14,6 +14,7 @@ import type { ConversationSummary } from "../shared/contract/conversation-schema
 // A minimal authoritative snapshot: the runner only forwards snapshots, so
 // the fixture carries the contract shape without populating Cast details.
 const summary = (overrides: Partial<ConversationSummary> = {}): ConversationSummary => ({
+	authorNote: "",
 	id: 1,
 	name: "Seaside Letters",
 	revision: 7,

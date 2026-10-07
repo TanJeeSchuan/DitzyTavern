@@ -92,6 +92,13 @@
       "when": 1791278562497,
       "tag": "0012_flat_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791345537990,
+      "tag": "0013_bitter_scalphunter",
+      "breakpoints": true
     }
   ]
 }

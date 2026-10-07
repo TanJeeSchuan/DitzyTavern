@@ -100,6 +100,7 @@ export interface SillyTavernChatInspection {
 	authors: SillyTavernExactAuthor[];
 }
 export interface SillyTavernDecodedImportSource {
+	authorNote: string;
 	// One native Message per retained record in source order. The exact raw
 	// captured author value stays in each Message's `author.name` data entry
 	// so preserved source values never depend on later merge, split, or
@@ -115,4 +116,3 @@ export interface SillyTavernDecodedImportSource {
 	data: ConversationDataEntry[];
 	report: SillyTavernImportReport;
 }
-

@@ -11,7 +11,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
-import type { PromptOutgoingRole, ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
+import { isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -75,6 +75,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 			source: "Conversation Memories",
 		};
 	}
+	if (slot.reference === "author-note") return { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" };
 	return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
@@ -258,7 +259,7 @@ export function PromptPresetRecipeRow({
 							<>
 								<Button title="Move up" variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
 								<Button title="Move down" variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
-								<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
+								<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending || isSingleUseReference(slot.reference)} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
 								<Button title="Delete block" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Delete ${title}`} onClick={() => setConfirmingRemove(true)}><Trash2 aria-hidden="true" /></Button>
 							</>
 						)}

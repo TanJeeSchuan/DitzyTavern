@@ -117,6 +117,7 @@ describe("Prompt Preset transport", () => {
 			"lore",
 			"memory",
 			"history",
+			"author-note",
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -259,6 +260,7 @@ describe("Prompt Preset transport", () => {
 			"memory",
 			"history",
 			"history",
+			"author-note",
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -285,6 +287,7 @@ describe("Prompt Preset transport", () => {
 			["memory", true],
 			["history", true],
 			["history", true],
+			["author-note", true],
 			["model-scenario", true],
 		]);
 
@@ -329,6 +332,7 @@ describe("Prompt Preset transport", () => {
 			["memory", true],
 			["history", true],
 			["history", true],
+			["author-note", true],
 		]);
 	});
 
@@ -414,6 +418,7 @@ describe("Prompt Preset transport", () => {
 			["lore", true],
 			["memory", true],
 			["history", true],
+			["author-note", true],
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

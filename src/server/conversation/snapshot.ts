@@ -427,6 +427,7 @@ export function readConversationSummaryFromConnection(
 	// enforces, so clients never reconstruct the rule.
 	return {
 		id: conversation.id,
+		authorNote: conversation.author_note,
 		name: conversation.name,
 		revision: conversation.revision,
 		cast: cast.map((participant) => ({

@@ -47,6 +47,7 @@ const compile = (
 	overrides: Partial<CanonicalGenerationSettings> = {},
 	extra: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ) => compileGenerationPlan({
+	authorNote: "",
 	human,
 	model,
 	recipe: [{ reference: "history", enabled: true }],

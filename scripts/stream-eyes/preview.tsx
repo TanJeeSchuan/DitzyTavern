@@ -119,7 +119,6 @@ function Preview() {
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls
 										showStopAll={false}
-										onStop={() => setStreamed(prose.length)}
 										onStopAll={() => {}}
 										onInspect={() => {}}
 									/>

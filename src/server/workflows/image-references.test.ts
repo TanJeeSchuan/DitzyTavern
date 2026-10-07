@@ -129,7 +129,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? conversations().create({ name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? conversations().create({ authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());

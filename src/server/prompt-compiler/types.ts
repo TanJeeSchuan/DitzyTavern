@@ -68,6 +68,7 @@ export type PromptContextEntry = {
 };
 
 export interface CompilePromptInput {
+	authorNote: string;
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];

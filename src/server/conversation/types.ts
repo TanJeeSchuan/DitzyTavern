@@ -229,6 +229,7 @@ export interface ConversationMessageSnapshot {
 // capabilities, active generations) derives from the canonical schemas, so
 // the two shapes cannot drift apart.
 export interface ConversationSnapshot {
+	authorNote: string;
 	id: number;
 	name: string;
 	revision: number;
@@ -580,6 +581,7 @@ export interface ConversationControlSeed {
 
 export interface ConversationCreationInput {
 	name: string;
+	authorNote?: string;
 	participants?: readonly ConversationParticipantSeed[];
 	control?: ConversationControlSeed | undefined;
 	messages?: readonly ConversationCreationMessage[];

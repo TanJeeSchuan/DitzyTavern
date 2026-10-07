@@ -110,3 +110,35 @@ test("an edited Prompt Plan is sent exactly as edited", async ({ page, llm }) =>
 	expect(JSON.stringify(call.body.messages)).toContain("Rewritten guidance.");
 	expect(JSON.stringify(call.body.messages)).not.toContain("Original guidance.");
 });
+
+for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } }, { name: "narrow", viewport: { width: 390, height: 844 } }]) {
+	test.describe(layout.name, () => {
+		test.use({ viewport: layout.viewport });
+
+		test("Settings opens during Prompt Plan inspection and keeps the edited plan", async ({ page, llm }) => {
+			await llm.chat({ chunks: ["Edited reply."] });
+			await page.goto("/");
+			const draft = page.getByRole("textbox", { name: "Message draft" });
+			await expect(draft).toHaveAttribute("contenteditable", "true");
+			await draft.fill("Original guidance.");
+			await page.getByRole("button", { name: "Generate Variant" }).click();
+			const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
+			await preview.getByText(/^History ·/).click();
+			await preview.getByRole("textbox").filter({ hasText: "Original guidance." }).fill("Rewritten guidance.");
+
+			if (layout.name === "desktop") await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Settings" }).click();
+			else await preview.getByRole("button", { name: "Open Settings" }).click();
+			const inspection = page.getByRole("switch", { name: "Inspect Prompt Plan before generating" });
+			await expect(inspection).toBeVisible();
+			// The click also proves Settings layers above the Prompt Plan on narrow screens.
+			await page.getByRole("complementary").filter({ has: inspection }).getByRole("button", { name: layout.name === "desktop" ? "Close Settings" : "Back to Chat" }).click();
+			await expect(inspection).toBeHidden();
+
+			await preview.getByRole("button", { name: "Send exact plan" }).click();
+			await expect(story(page).getByText("Edited reply.")).toBeVisible();
+			const calls = (await llm.log()).calls.filter((entry) => entry.kind === "chat");
+			expect(calls).toHaveLength(1);
+			expect(JSON.stringify(calls[0].body.messages)).toContain("Rewritten guidance.");
+		});
+	});
+}

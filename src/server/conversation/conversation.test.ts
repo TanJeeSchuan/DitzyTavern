@@ -223,7 +223,7 @@ describe("Conversation module", () => {
 
 	test("keeps a captured author name without a Participant ID in public reads", () => {
 		const module = createConversationModule(database);
-		const conversation = module.create({ name: "Captured Name" });
+		const conversation = module.create({ authorNote: "", name: "Captured Name" });
 		const db = drizzle(database);
 		const insertedMessage = db
 			.insert(messageTable)

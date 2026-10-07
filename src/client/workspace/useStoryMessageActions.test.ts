@@ -26,6 +26,7 @@ afterEach(() => {
 // still applies from the already loaded Variants with no extra read.
 
 const summary = (revision: number): ConversationSummary => ({
+	authorNote: "",
 	id: 1,
 	name: "Seaside Letters",
 	revision,

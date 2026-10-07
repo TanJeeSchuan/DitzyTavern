@@ -25,6 +25,7 @@ import {
 import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
+	singleUseReferenceLabels,
 	type PromptOutgoingRole,
 	type ReferencedDefinitionBlock,
 } from "../../shared/contract/prompt-preset";
@@ -163,11 +164,8 @@ const expandInto = (
 };
 
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
-	if (input.recipe.filter((slot) => slot.reference === "lore").length > 1) {
-		throw new Error("A Prompt Preset may contain at most one Lore block.");
-	}
-	if (input.recipe.filter((slot) => slot.reference === "memory").length > 1) {
-		throw new Error("A Prompt Preset may contain at most one Memory block.");
+	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
+		if (input.recipe.filter((slot) => slot.reference === reference).length > 1) throw new Error(`A Prompt Preset may contain at most one ${label} block.`);
 	}
 	const memory = input.memory ?? [];
 	const blocks: PromptBlock[] = [];
@@ -217,6 +215,12 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			if (content.length > 0) {
 				blocks.push({ kind: "memory", role: planRoleFor[slot.role], content });
 			}
+			continue;
+		}
+		if (slot.reference === "author-note") {
+			const start = blocks.length;
+			expandInto(blocks, warnings, { kind: "author-note" }, planRoleFor[slot.role], input.authorNote, { self: input.human.name, other: input.model.name }, singleUseReferenceLabels[slot.reference], macroEnvironment, macroAttemptState, `slot:${slotIndex}`);
+			if (blocks[start]?.content.trim() === "") blocks.splice(start, 1);
 			continue;
 		}
 		if (slot.reference === "instruction") {

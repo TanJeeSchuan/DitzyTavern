@@ -8,6 +8,7 @@ import {
 } from "../database/schema";
 import {
 	nativePromptPreset,
+	singleUseReferenceLabels,
 	type SillyTavernImportPreview,
 	type SillyTavernJsonValue,
 	type NativePromptPreset,
@@ -149,11 +150,8 @@ export const importNativePromptPreset = (
 		throw new InvalidPromptPresetCommandError("The native Prompt Preset JSON is invalid.");
 	}
 	const name = requireCommandName(native.name);
-	if (native.slots.filter((slot) => slot.reference === "lore").length > 1) {
-		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Lore block.");
-	}
-	if (native.slots.filter((slot) => slot.reference === "memory").length > 1) {
-		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Memory block.");
+	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
+		if (native.slots.filter((slot) => slot.reference === reference).length > 1) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${label} block.`);
 	}
 	const db = connect(database);
 	const execute = database.transaction(() => {

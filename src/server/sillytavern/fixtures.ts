@@ -3,7 +3,14 @@
 // archiving.
 
 export const headerFixture = {
-	chat_metadata: { integrity: "9543f21f-8aab-42c8-92a4-1f6453d4b63c" },
+	chat_metadata: {
+		integrity: "9543f21f-8aab-42c8-92a4-1f6453d4b63c",
+		note_prompt: '  *Keep the story quiet.* {{user}} guides {{char}}; {{user}} listens to {{char}}.\n',
+		note_position: 1,
+		note_depth: 0,
+		note_role: 0,
+		note_interval: 1,
+	},
 	user_name: "TANJS",
 	character_name: "Rulership",
 };
