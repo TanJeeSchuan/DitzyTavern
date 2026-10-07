@@ -8,6 +8,7 @@ export type BuildMetadata = Static<typeof buildIdentity>;
 
 export const updateStatus = Type.Object({
 	build: buildIdentity,
+	automaticChecks: Type.Boolean(),
 	result: Type.Union([Type.Null(), Type.Object({
 		comparison: Type.Union([Type.Literal("current"), Type.Literal("update_available"), Type.Literal("ahead")]),
 		buildNumber: Type.Integer({ minimum: 1 }), revision: Type.String(), checkedAt: Type.String(),
@@ -18,3 +19,5 @@ export const updateStatus = Type.Object({
 	})]),
 });
 export type UpdateStatus = Static<typeof updateStatus>;
+
+export const automaticUpdateChecksCommand = Type.Object({ enabled: Type.Boolean() });

@@ -28,11 +28,12 @@ let unscripted: string[] = [];
 let held = Promise.withResolvers<void>();
 let updateScenario: UpdateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
 let registryCalls: string[] = [];
+let updateDirectory: string;
 const fakeRegistryFetch = async (url: string, init?: RequestInit) => {
 	registryCalls.push(url);
 	if (url.startsWith("https://ghcr.io/token?")) return Response.json({ token: "e2e-public" });
 	const reply = updateScenario.replies.shift();
-	writeFileSync(join(current!.directory, "updates.json"), JSON.stringify(updateScenario));
+	writeFileSync(join(updateDirectory, "updates.json"), JSON.stringify(updateScenario));
 	if (!reply) { unscripted.push(`registry ${url}`); return new Response("Unscripted registry request", { status: 500 }); }
 	if ("status" in reply) return new Response("Scripted registry failure", { status: reply.status });
 	if (reply.hold) {
@@ -179,6 +180,7 @@ const reset = async () => {
 };
 
 const open = async (directory: string, database: ReturnType<typeof provision>) => {
+	updateDirectory = directory;
 	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
 };
 
@@ -216,6 +218,7 @@ const server = Bun.serve({
 			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
 			case "/__e2e/updates": {
 				updateScenario = await request.json();
+				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
 				const directory = current!.directory;
 				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
 				await current!.close();

@@ -27,13 +27,14 @@ export async function createApp(options: AppOptions) {
 	reportRecovery("Startup", recoverActiveGenerations(database));
 
 	const serveIndex = () => Bun.file("dist/index.html");
-	const updates = createUpdateChecker(options.updates);
+	const updates = createUpdateChecker(database, options.updates);
 	const app = createContract(database, options, artifactDirectory, updates)
 		.get("/", serveIndex)
 		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true }))
 		.onError(({ code, path }) => {
 			if (code === "NOT_FOUND" && !path.startsWith("/api/")) return serveIndex();
 		});
+	updates.start();
 
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
 		shutdownApplication(database, async () => { await updates.stop(); await stopHttp(); }, stopMemoryWorker);

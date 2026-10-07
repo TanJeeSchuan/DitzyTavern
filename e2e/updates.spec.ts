@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 
 test("Settings shares manual checks and keeps update instructions after a failed refresh", async ({ page, llm, context }) => {
 	const revision = "a".repeat(40);
-	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ buildNumber: 10, revision, hold: true }, { status: 503 }] });
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ buildNumber: 10, revision, hold: true }, { status: 503 }] });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await expect(page.getByText("Not checked", { exact: true })).toBeVisible();
@@ -26,7 +26,7 @@ test("Settings shares manual checks and keeps update instructions after a failed
 
 test("Settings retries an initial failure and shows changes only for a newer differing revision", async ({ page, llm }) => {
 	const revision = "a".repeat(40);
-	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ status: 503 }, { buildNumber: 9, revision }, { buildNumber: 8, revision }, { buildNumber: 10, revision: "b".repeat(40) }] });
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ status: 503 }, { buildNumber: 9, revision }, { buildNumber: 8, revision }, { buildNumber: 10, revision: "b".repeat(40) }] });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await page.getByRole("button", { name: "Check now", exact: true }).click();
@@ -54,7 +54,7 @@ test("custom builds show unavailable checks in narrow Settings without registry 
 
 test("server restart cancels an in-flight refresh and clears the cached comparison", async ({ page, llm, context }) => {
 	const revision = "a".repeat(40);
-	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ buildNumber: 10, revision }, { buildNumber: 11, revision, hold: true }] });
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ buildNumber: 10, revision }, { buildNumber: 11, revision, hold: true }] });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await page.getByRole("button", { name: "Check now", exact: true }).click();
@@ -68,5 +68,41 @@ test("server restart cancels an in-flight refresh and clears the cached comparis
 	await reopened.getByRole("button", { name: "Settings", exact: true }).click();
 	await expect(reopened.getByText("Not checked", { exact: true })).toBeVisible();
 	await expect(reopened.getByText("Build 10 available", { exact: true })).toHaveCount(0);
+	await reopened.close();
+});
+
+for (const mode of ["crash", "graceful"] as const) test(`Settings controls shared automatic checks and retains the preference after ${mode} restart`, async ({ page, llm, context }) => {
+	const revision = "a".repeat(40);
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ buildNumber: 10, revision, hold: true }, { buildNumber: 11, revision }, { buildNumber: 12, revision }] });
+	await page.goto("/");
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const toggle = page.getByRole("switch", { name: "Automatic update checks" });
+	await expect(toggle).toBeChecked();
+	await expect(page.getByText("Checking…", { exact: true })).toBeVisible();
+	const other = await context.newPage();
+	await other.goto("/");
+	await other.getByRole("button", { name: "Settings", exact: true }).click();
+	await toggle.click();
+	await expect(other.getByRole("switch", { name: "Automatic update checks" })).not.toBeChecked();
+	await llm.release();
+	await expect(other.getByText("Build 10 available", { exact: true })).toBeVisible();
+	expect((await llm.log()).registryCalls).toHaveLength(2);
+	await other.getByRole("switch", { name: "Automatic update checks" }).click();
+	await expect(toggle).toBeChecked();
+	await expect(page.getByText("Build 11 available", { exact: true })).toBeVisible();
+	await toggle.click();
+	await expect(other.getByRole("switch", { name: "Automatic update checks" })).not.toBeChecked();
+	await expect(page.getByText("Build 11 available", { exact: true })).toBeVisible();
+	await page.close();
+	await other.close();
+	await llm.restart(mode);
+	const reopened = await context.newPage();
+	await reopened.goto("/");
+	await reopened.getByRole("button", { name: "Settings", exact: true }).click();
+	await expect(reopened.getByRole("switch", { name: "Automatic update checks" })).not.toBeChecked();
+	await expect(reopened.getByText("Not checked", { exact: true })).toBeVisible();
+	expect((await llm.log()).registryCalls).toHaveLength(0);
+	await reopened.getByRole("button", { name: "Check now", exact: true }).click();
+	await expect(reopened.getByText("Build 12 available", { exact: true })).toBeVisible();
 	await reopened.close();
 });

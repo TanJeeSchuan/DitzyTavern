@@ -8,6 +8,12 @@ export async function checkUpdates(): Promise<UpdateStatus> {
 	return data;
 }
 
+export async function setAutomaticUpdateChecks(enabled: boolean): Promise<UpdateStatus> {
+	const { data, error } = await api.api.updates.automatic.post({ enabled });
+	if (error || !data) throw new Error("Automatic update checks could not be saved.");
+	return data;
+}
+
 export function observeUpdates(onStatus: (state: UpdateStatus) => void, onError: () => void) {
 	const source = new EventSource("/api/updates/events");
 	source.addEventListener("status", (event) => {
