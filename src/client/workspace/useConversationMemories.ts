@@ -1,13 +1,15 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MemorySourceTarget } from "../../shared/contract/memory";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance } from "../memories";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryChanges, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
 
 type Source = ConversationMemories["sources"][number];
+type MemoryData = { memories: ConversationMemories; catchup: MemoryCatchup | null; settings: ConversationMemoryAllowance };
 export type ClaimDraft = { claim: string; attribution: string; people: string[] };
 const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
 const targetOf = ({ messageId, variantId, revision }: Source): MemorySourceTarget => ({ messageId, variantId, expectedRevision: revision });
 const inFlight = (status: string) => status === "pending" || status === "running";
+const workInFlight = (data: MemoryData | undefined) => data !== undefined && (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
 
 export function useConversationMemories(conversationId: number, conversationRevision: number) {
 	const client = useQueryClient();
@@ -18,17 +20,40 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			const [memories, catchup, settings] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryCatchup(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
 			return { memories, catchup, settings };
 		},
-		refetchInterval: ({ state: { data } }) => data?.catchup?.state === "running" || data?.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)) ? 5000 : false,
+	});
+	// ==[HUMAN APPROVED]== While background work is in flight, poll the bounded change feed instead of the full
+	// collection view. The feed request carries the cached cursor, and its result is merged only when that
+	// cursor is still the cached one: a full reload that landed meanwhile is always newer, so a stale
+	// response cannot overwrite it. Inside one cursor generation a feed view is never older than the cache.
+	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
+	useQuery({
+		queryKey: ["memory-changes", conversationId],
+		enabled: workInFlight(query.data),
+		refetchInterval: 5000,
+		queryFn: async ({ signal }) => {
+			const cached = client.getQueryData<MemoryData>(queryKey);
+			if (!cached) return null;
+			const since = cached.memories.cursor;
+			const [changes, catchup] = await Promise.all([
+				loadMemoryChanges(conversationId, since, signal),
+				cached.catchup?.state === "running" ? loadMemoryCatchup(conversationId, signal) : cached.catchup,
+			]);
+			const current = client.getQueryData<MemoryData>(queryKey);
+			if (current?.memories.cursor !== since) return null;
+			if (changes.revision !== current.memories.revision || changes.labelRevision !== current.memories.labelRevision) { await refresh(); return null; }
+			const sources = [...new Map([...current.memories.sources, ...changes.sources].map((source) => [source.variantId, source])).values()];
+			client.setQueryData<MemoryData>(queryKey, { ...current, catchup, memories: { ...current.memories, cursor: changes.cursor, sources } });
+			return null;
+		},
 	});
 	const memories = query.data?.memories ?? null;
 	const catchup = query.data?.catchup ?? null;
 	const settings = query.data?.settings ?? null;
 	const status = query.isPending ? "loading" : query.isError ? query.data === undefined ? "failed" : "stale" : "ready";
-	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
 	useEffect(() => { void refresh(); }, [conversationRevision, refresh]);
-	const update = useCallback(async (change: (current: NonNullable<typeof query.data>) => NonNullable<typeof query.data>) => {
+	const update = useCallback(async (change: (current: MemoryData) => MemoryData) => {
 		await client.cancelQueries({ queryKey });
-		client.setQueryData<NonNullable<typeof query.data>>(queryKey, (current) => current && change(current));
+		client.setQueryData<MemoryData>(queryKey, (current) => current && change(current));
 	}, [client, queryKey]);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
