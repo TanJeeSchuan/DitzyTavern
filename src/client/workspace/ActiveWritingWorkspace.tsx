@@ -78,6 +78,7 @@ export function ActiveWritingWorkspace({
 		createPanelCoordinationState,
 	);
 	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
+	const [memoryFocus, setMemoryFocus] = useState<{ messageId: number } | null>(null);
 	const [theme, setTheme] = useState<ThemePreference>(() => {
 		const saved = window.localStorage.getItem("ditzytavern-theme");
 		return saved === "daylight" || saved === "evening" ? saved : "system";
@@ -254,6 +255,13 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
+	const openMessageMemories = (messageId: number) => {
+		if (assemblyActive) return;
+		setGenerationDetailsTarget(null);
+		dispatchPanel({ type: "memories-opened" });
+		setMemoryFocus({ messageId });
+	};
+
 	const openVariantDetails = (messageId: number, variantId: number) => {
 		if (assemblyActive || session.conversation === null) return;
 		dispatchPanel({ type: "generation-details-opened" });
@@ -320,6 +328,7 @@ export function ActiveWritingWorkspace({
 					onOpenMemories={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
+						setMemoryFocus(null);
 						dispatchPanel({ type: "memories-opened" });
 					}}
 				/>
@@ -392,6 +401,7 @@ export function ActiveWritingWorkspace({
 									generation.regenerateResponse(messageId);
 								}}
 								onInspect={openVariantDetails}
+								onMemories={openMessageMemories}
 								generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 									<GenerationControls
 										showStopAll={generation.activeGenerationTargets.length > 1}
@@ -465,6 +475,7 @@ export function ActiveWritingWorkspace({
 					conversationId={session.conversation.id}
 					conversationRevision={session.conversation.revision}
 					cast={session.conversation.cast}
+					focusRequest={memoryFocus}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
 					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}

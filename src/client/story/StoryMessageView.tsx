@@ -1,4 +1,5 @@
 import {
+	Brain,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -44,6 +45,7 @@ export function StoryMessageView({
 	onRegenerate,
 	onSibling,
 	onInspect,
+	onMemories,
 	onDelete,
 	generationControls,
 }: {
@@ -72,6 +74,7 @@ export function StoryMessageView({
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onInspect?: (messageId: number, variantId: number) => void;
+	onMemories?: (messageId: number) => void;
 	onDelete?: (messageId: number) => void;
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
 	// takes when it ends, so the story does not jump.
@@ -177,6 +180,15 @@ export function StoryMessageView({
 							onClick={() => onInspect(message.id, active.id)}
 						>
 							<Info aria-hidden="true" /> Details
+						</button>
+					)}
+					{onMemories !== undefined && (
+						<button
+							className="edit-action"
+							type="button"
+							onClick={() => onMemories(message.id)}
+						>
+							<Brain aria-hidden="true" /> Memories
 						</button>
 					)}
 					{onDelete !== undefined && (
