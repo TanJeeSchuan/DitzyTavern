@@ -7,7 +7,7 @@ import { checkpointConversationGeneration, resolveConversationGeneration } from 
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import {
-	captureSendGenerationAsync,
+	captureGeneration,
 	capturedAcceptanceFields,
 } from "./generate-capture";
 import { recoverActiveGenerations } from "./generation-recovery";
@@ -53,7 +53,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
 		});
 
-		const first = await captureSendGenerationAsync({ database, conversationId: conversation.id, content: "Hello" });
+		const first = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: conversation.id });
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");
 		expect(first.macroWrites).toEqual([
 			{ name: "turn", value: 6, operation: "set" },
@@ -80,7 +80,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const second = await captureSendGenerationAsync({ database, conversationId: after.id, content: "Again" });
+		const second = await captureGeneration(database, { kind: "send", content: "Again" }, { conversationId: after.id });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
 	});
 
@@ -113,7 +113,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
-		const capture = await captureSendGenerationAsync({ database, conversationId: snapshot.id, content: "Again" });
+		const capture = await captureGeneration(database, { kind: "send", content: "Again" }, { conversationId: snapshot.id });
 		expect(capture.plan.promptPlan.blocks.map((block) => block.content)).toContain("greeted=yes");
 	});
 
@@ -138,7 +138,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const capture = await captureSendGenerationAsync({ database, conversationId: conversation.id, content: "Hello" });
+		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: conversation.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,

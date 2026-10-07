@@ -59,6 +59,7 @@ import {
 	generationIdParams,
 	generationStopped,
 	generationsStopped,
+	type GenerationTargetKind,
 	historyPageQuery,
 	messageIdParams,
 	participantIdParams,
@@ -70,7 +71,6 @@ import {
 	createGenerationPreviewAsync,
 	previewRecordFor,
 	type GenerationPreviewAcceptanceFor,
-	type GenerationPreviewKind,
 } from "../workflows/generation-preview";
 import { readMemorySourceAvailability } from "../conversation/generation-details";
 import {
@@ -154,7 +154,7 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
-const previewUseFor = <K extends GenerationPreviewKind>(
+const previewUseFor = <K extends GenerationTargetKind>(
 	database: Database,
 	conversationId: number,
 	kind: K,
@@ -169,9 +169,8 @@ const previewUseFor = <K extends GenerationPreviewKind>(
 	}
 	const record = previewRecordFor(database, previewId, conversationId, kind);
 	return {
-		kind,
 		record,
-		editedPlan: promptPlan ?? record.capture.capture.plan.promptPlan,
+		editedPlan: promptPlan ?? record.capture.plan.promptPlan,
 	};
 };
 
@@ -264,7 +263,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/continue/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				() => generationCoordinator.startContinuationGeneration({
+				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
@@ -295,7 +294,7 @@ export const createConversationRoutes = (
 							? { ...common, kind: body.kind, messageId: body.messageId }
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
-					const capture = preview.capture.capture;
+					const capture = preview.capture;
 					const memoryActivation = capture.plan.memoryActivation;
 					const memorySources = readMemorySourceAvailability(database, params.id, memoryActivation);
 					return {
@@ -515,7 +514,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				() => generationCoordinator.startSendGeneration({
+				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
@@ -554,7 +553,7 @@ export const createConversationRoutes = (
 			async ({ params, body }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
-					() => generationCoordinator.startSiblingGeneration({
+					() => generationCoordinator.startGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },

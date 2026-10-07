@@ -16,7 +16,7 @@ import { createFakeModelClient } from "../model-client";
 import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
-	startServerOwnedSiblingGeneration,
+	startServerOwnedGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
@@ -639,13 +639,13 @@ describe("Historical sibling Variant generation", () => {
 			yield { type: "finished" as const, finishReason: "stop" as const };
 		})());
 
-		const first = startServerOwnedSiblingGeneration(database, {
+		const first = startServerOwnedGeneration(database, {
 			conversationId: conversation.id,
 			messageId: greeting.id,
 			modelClient: held("First sibling", firstGate),
 		});
 		const firstAccepted = await first.accepted;
-		const second = startServerOwnedSiblingGeneration(database, {
+		const second = startServerOwnedGeneration(database, {
 			conversationId: conversation.id,
 			messageId: greeting.id,
 			modelClient: held("Second sibling", secondGate),

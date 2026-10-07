@@ -30,15 +30,9 @@ import {
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 } from "../conversation";
-import type { TokenEstimator } from "../prompt-compiler";
 import type {
-	ModelClient,
-	ModelClientConnectionSnapshot,
 	ModelClientGenerationInput,
-	ModelClientEvent,
 } from "../model-client";
-import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import { generationRuntimeFor } from "./generation-runtime";
 import {
 	runAcceptedGeneration,
@@ -49,24 +43,23 @@ import {
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
 import {
-	captureSendGenerationAsync,
-	captureContinuationGenerationAsync,
-	captureSiblingGenerationAsync,
+	captureGeneration,
 	capturedAcceptanceFields,
 	modelRequestFor,
-	type CapturedGeneration,
+	type CapturedGenerationFor,
 } from "./generate-capture";
 import {
 	consumeGenerationPreview,
-	captureContinuationGenerationPreview,
-	captureSendGenerationPreview,
-	captureSiblingGenerationPreview,
-	type GenerationPreviewAcceptance,
+	captureGenerationPreview,
 	type GenerationPreviewAcceptanceFor,
 } from "./generation-preview";
 import {
 	assertGenerationPlan,
 } from "../generation-plan";
+import type {
+	GenerationTargetFor,
+	GenerationTargetKind,
+} from "../../shared/contract/conversation-schema";
 
 export type {
 	GenerationAttemptInput,
@@ -94,51 +87,51 @@ interface AcceptedGenerationTarget {
 	conversation: ConversationSummary;
 }
 
+/**
+ * ==[HUMAN APPROVED]== The one lifecycle policy of one attempt kind: what its capture targets,
+ * how it accepts into the Conversation, and what it asks the provider for.
+ * The runner owns everything else, so the rows differ only where Send,
+ * Continue, and Sibling genuinely differ.
+ */
 interface GenerationLifecyclePolicy<
+	K extends GenerationTargetKind,
 	Input extends GenerationAttemptInput,
-	Capture extends CapturedGeneration,
 	Accepted extends AcceptedGenerationTarget,
 > {
-	capture: (
-		database: Database,
-		conversationId: number,
-		input: Input,
-	) => Promise<Capture>;
+	// ==[HUMAN APPROVED]== The attempt target this lifecycle starts, on the one Generation
+	// Target union.
+	target: (input: Input) => GenerationTargetFor<K>;
 	accept: (
 		conversation: ConversationModule,
 		input: Input,
-		capture: Capture,
+		capture: CapturedGenerationFor<K>,
 		timestamp: string,
 	) => Accepted;
 	request: (
-		capture: Capture,
+		capture: CapturedGenerationFor<K>,
 		input: Input,
 	) => ModelClientGenerationInput;
 	// ==[HUMAN APPROVED]== Terminal Conversation data particular to this lifecycle, recorded
 	// ahead of the shared outcome entries. Only Continue has any.
-	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
+	terminalData?: (capture: CapturedGenerationFor<K>) => readonly ConversationDataEntry[];
 }
-
-type PreviewableGenerationAttemptInput = GenerationAttemptInput & {
-	readonly preview?: GenerationPreviewAcceptance;
-};
 
 /**
  * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
- * What differs between Send, Continue, and Sibling is what they capture, how
- * they accept, and what they ask the provider for. Resolution does not
- * differ: the runner commits the terminal outcome and reports the acceptance
- * record against the Conversation as it stands afterwards.
+ * What differs between Send, Continue, and Sibling is in the lifecycle
+ * policy; the runner owns the rest. Resolution does not differ: the runner
+ * commits the terminal outcome and reports the acceptance record against the
+ * Conversation as it stands afterwards.
  */
 async function runGenerationLifecycle<
+	K extends GenerationTargetKind,
+	Input extends GenerationAttemptInput & { readonly preview?: GenerationPreviewAcceptanceFor<K> },
 	Accepted extends AcceptedGenerationTarget,
-	Input extends PreviewableGenerationAttemptInput,
-	Capture extends CapturedGeneration,
 >(
 	database: Database,
 	input: Input,
 	onAccepted: ((accepted: Accepted) => void | Promise<void>) | undefined,
-	policy: GenerationLifecyclePolicy<Input, Capture, Accepted>,
+	policy: GenerationLifecyclePolicy<K, Input, Accepted>,
 ): Promise<Accepted> {
 	const conversation = createConversationModule(database);
 	const revision = conversation.getRevision(input.conversationId);
@@ -153,7 +146,26 @@ async function runGenerationLifecycle<
 	) {
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const capture = await policy.capture(database, input.conversationId, input);
+	const target = policy.target(input);
+	let capture: CapturedGenerationFor<K>;
+	if (input.preview === undefined) {
+		capture = await captureGeneration(database, target, input);
+	} else {
+		// ==[HUMAN APPROVED]== SAFETY: each lifecycle entry point binds its preview
+		// acceptance and its target to the same attempt kind, so the captured
+		// Generation of the accepted preview is the capture member of that kind.
+		capture = captureGenerationPreview(
+			{
+				database,
+				conversationId: input.conversationId,
+				connection: input.connection,
+				connectionSettings: input.connectionSettings,
+				formatting: input.formatting,
+			},
+			input.preview,
+			target,
+		) as CapturedGenerationFor<K>;
+	}
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
@@ -210,69 +222,32 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
  */
 export type SendThroughProvisionalTailGenerationResult = AcceptedTailGeneration;
 
-// ==[HUMAN APPROVED]== Starts Send as a detached server-owned attempt. The caller receives an
-// acceptance promise separately from the terminal result and may attach zero
-// or more observers to the generation runtime in between. In particular, the
-// caller's HTTP AbortSignal is intentionally not forwarded to the provider.
-// The three entry points below exist to name their Accepted and Result types:
-// the generic seam cannot infer them from an input literal alone.
-export function startServerOwnedSendGeneration(
-	database: Database,
-	input: SendThroughProvisionalTailGenerationInput,
-	callbacks: ServerOwnedGenerationCallbacks<AcceptedTailGeneration> = {},
-): ServerOwnedGeneration<AcceptedTailGeneration, SendThroughProvisionalTailGenerationResult> {
-	return startServerOwnedGenerationFrom(
-		database,
-		input,
-		sendThroughProvisionalTailGeneration,
-		callbacks,
-	);
-}
+const sendLifecycle: GenerationLifecyclePolicy<"send", SendThroughProvisionalTailGenerationInput, AcceptedTailGeneration> = {
+	target: (input) => ({ kind: "send", content: input.content }),
+	// ==[HUMAN APPROVED]== Send's accepted lifecycle: preflight is entirely read-only; only
+	// after it succeeds does the Conversation seam atomically create the human
+	// input, provisional model target, and Active Generation before this
+	// workflow contacts a Model Client.
+	accept: (conversation, input, capture, timestamp) => conversation.acceptTailGeneration({
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
+		expectedRevision: input.expectedRevision,
+		humanContent: capture.content,
+		reuseHumanMessageId: capture.reuseHumanMessageId,
+	}),
+	request: modelRequestFor,
+};
 
-// ==[HUMAN APPROVED]== Send's accepted lifecycle is intentionally separate from the legacy
-// Generate wrapper. Preflight is entirely read-only; only after it succeeds
-// does the Conversation seam atomically create the human input, provisional
-// model target, and Active Generation before this function contacts a Model
-// Client.
+// ==[HUMAN APPROVED]== Send workflow: the accepted human/provisional target is committed
+// atomically and the provider attempt runs detached from any observing
+// request.
 export async function sendThroughProvisionalTailGeneration(
 	database: Database,
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
-	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, conversationId, current) => {
-			if (current.preview !== undefined) {
-				return Promise.resolve(captureSendGenerationPreview({
-					database: currentDatabase,
-					conversationId,
-					preview: current.preview,
-					content: current.content,
-					connection: current.connection,
-					connectionSettings: current.connectionSettings,
-					formatting: current.formatting,
-				}));
-			}
-			return captureSendGenerationAsync({
-				database: currentDatabase,
-				conversationId,
-				content: current.content,
-				connection: current.connection,
-				connectionSettings: current.connectionSettings,
-				tokenEstimator: current.tokenEstimator,
-				formatting: current.formatting,
-				preparationFetch: current.preparationFetch,
-			});
-		},
-		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
-			...capturedAcceptanceFields(capture, {
-				conversationId: current.conversationId,
-				timestamp,
-			}),
-			expectedRevision: current.expectedRevision,
-			humanContent: capture.humanContent,
-			reuseHumanMessageId: capture.reuseHumanMessageId,
-		}),
-		request: modelRequestFor,
-	});
+	return runGenerationLifecycle(database, input, input.onAccepted, sendLifecycle);
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
@@ -291,67 +266,32 @@ export type ContinueGenerationResult = AcceptedContinuationGeneration;
 // model-authored Message. It shares the same normalized stream, terminal
 // outcome, and provisional cleanup behavior as Send, but never inserts a
 // Human-authored Message.
+const continuationLifecycle: GenerationLifecyclePolicy<"continuation", ContinueGenerationInput, AcceptedContinuationGeneration> = {
+	target: () => ({ kind: "continuation" }),
+	accept: (conversation, input, capture, timestamp) => conversation.acceptContinuationGeneration({
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
+		expectedRevision: input.expectedRevision,
+		precedingMessageId: capture.precedingMessageId,
+		precedingVariantId: capture.precedingVariantId,
+		generationIntent: capture.intent,
+	}),
+	request: modelRequestFor,
+	terminalData: (capture) => [
+		{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
+	],
+};
+
 export async function continueGeneration(
 	database: Database,
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
-	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, conversationId, current) => {
-			if (current.preview !== undefined) {
-				return Promise.resolve(captureContinuationGenerationPreview({
-					database: currentDatabase,
-					conversationId,
-					preview: current.preview,
-					connection: current.connection,
-					connectionSettings: current.connectionSettings,
-					formatting: current.formatting,
-				}));
-			}
-			return captureContinuationGenerationAsync({
-				database: currentDatabase,
-				conversationId,
-				connection: current.connection,
-				connectionSettings: current.connectionSettings,
-				tokenEstimator: current.tokenEstimator,
-				formatting: current.formatting,
-				preparationFetch: current.preparationFetch,
-			});
-		},
-		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
-			...capturedAcceptanceFields(capture, {
-				conversationId: current.conversationId,
-				timestamp,
-			}),
-			expectedRevision: current.expectedRevision,
-			precedingMessageId: capture.precedingMessageId,
-			precedingVariantId: capture.precedingVariantId,
-			generationIntent: capture.intent,
-		}),
-		request: (capture, current) => ({
-			...modelRequestFor(capture, current),
-			assistantPrefill: capture.assistantPrefill,
-		}),
-		terminalData: (capture) => [
-			{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
-		],
-	});
+	return runGenerationLifecycle(database, input, input.onAccepted, continuationLifecycle);
 }
 
-export function startServerOwnedContinuationGeneration(
-	database: Database,
-	input: ContinueGenerationInput,
-	callbacks: ServerOwnedGenerationCallbacks<AcceptedContinuationGeneration> = {},
-): ServerOwnedGeneration<AcceptedContinuationGeneration, ContinueGenerationResult> {
-	return startServerOwnedGenerationFrom(
-		database,
-		input,
-		continueGeneration,
-		callbacks,
-	);
-}
-
-export interface GenerateSiblingVariantInput {
-	conversationId: number;
+export interface GenerateSiblingVariantInput extends GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== The target Message whose captured historical Control pair governs this
 	// sibling generation. Current Control is deliberately ignored: Swiping an
 	// older Message reproduces the participants who were playing when it was
@@ -359,21 +299,9 @@ export interface GenerateSiblingVariantInput {
 	messageId: number;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
 	preview?: GenerationPreviewAcceptanceFor<"sibling">;
-	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
-	// returns normalized asynchronous events for the sibling Variant.
-	modelClient: ModelClient;
-	connection?: ModelClientConnectionSnapshot | null;
-	connectionSettings?: ConnectionSettingsModuleOptions;
-	signal?: AbortSignal;
-	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-	onBeforeTerminal?: () => void | Promise<void>;
+	// ==[HUMAN APPROVED]== Fired immediately after the accepted sibling target transaction
+	// commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
-	tokenEstimator?: TokenEstimator;
-	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
-	timestamp?: string | undefined;
-	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
-	formatting?: GenerationFormattingContext;
-	preparationFetch?: import("../model-client/types").ModelFetch;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -384,54 +312,66 @@ export type SiblingGenerationResult = AcceptedSiblingGeneration;
 // Definitions and names compile the plan; current generation settings and
 // the selected history preceding the target Message complete it. The commit
 // appends the sibling without changing current Control or the Author Stamp.
+const siblingLifecycle: GenerationLifecyclePolicy<"sibling", GenerateSiblingVariantInput, AcceptedSiblingGeneration> = {
+	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
+	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
+	target: (input) => ({ kind: "sibling", messageId: input.messageId }),
+	accept: (conversation, input, capture, timestamp) => conversation.acceptSiblingGeneration({
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
+		messageId: capture.messageId,
+		generationIntent: { type: "sibling" },
+	}),
+	request: modelRequestFor,
+};
+
 export async function generateSiblingVariant(
 	database: Database,
 	input: GenerateSiblingVariantInput,
 ): Promise<SiblingGenerationResult> {
-	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
-	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
-	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, conversationId, current) => {
-			if (current.preview !== undefined) {
-				return Promise.resolve(captureSiblingGenerationPreview({
-					database: currentDatabase,
-					conversationId,
-					preview: current.preview,
-					messageId: current.messageId,
-					connection: current.connection,
-					connectionSettings: current.connectionSettings,
-					formatting: current.formatting,
-				}));
-			}
-			return captureSiblingGenerationAsync({
-				database: currentDatabase,
-				...current,
-			});
-		},
-		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
-			...capturedAcceptanceFields(capture, {
-				conversationId: current.conversationId,
-				timestamp,
-			}),
-			messageId: current.messageId,
-			generationIntent: { type: "sibling" },
-		}),
-		request: modelRequestFor,
-	});
+	return runGenerationLifecycle(database, input, input.onAccepted, siblingLifecycle);
 }
 
-// ==[HUMAN APPROVED]== Detached server-owned Sibling Generation. The acceptance promise resolves
-// before provider contact so several attempts can be started and observed
-// independently without coupling work to one HTTP subscriber.
-export function startServerOwnedSiblingGeneration(
+/**
+ * ==[HUMAN APPROVED]== The one detached server-owned start. Acceptance is exposed separately so
+ * an HTTP caller can return as soon as the provisional target exists; the
+ * caller's HTTP AbortSignal is intentionally not forwarded to the provider.
+ * The attempt kind dispatches on the attempt input's own fields: Send carries
+ * the submitted text, Sibling the target Message, and Continue neither.
+ */
+export function startServerOwnedGeneration(
 	database: Database,
-	input: GenerateSiblingVariantInput,
-	callbacks: ServerOwnedGenerationCallbacks<AcceptedSiblingGeneration> = {},
-): ServerOwnedGeneration<AcceptedSiblingGeneration, SiblingGenerationResult> {
+	input: GenerationStartInput,
+	callbacks: ServerOwnedGenerationCallbacks<AcceptedGenerationRecord> = {},
+): ServerOwnedGeneration<AcceptedGenerationRecord, AcceptedGenerationRecord> {
 	return startServerOwnedGenerationFrom(
 		database,
-		input,
-		generateSiblingVariant,
+		// ==[HUMAN APPROVED]== SAFETY: the dispatch below routes the whole input to exactly one
+		// lifecycle, and that lifecycle invokes acceptance only with its own
+		// accepted record, so the union input's narrower acceptance callback is
+		// sound by construction.
+		input as GenerationStartInput & {
+			onAccepted?: (accepted: AcceptedGenerationRecord) => void | Promise<void>;
+		},
+		async (currentDatabase, current) => {
+			if ("content" in current) return sendThroughProvisionalTailGeneration(currentDatabase, current);
+			if ("messageId" in current) return generateSiblingVariant(currentDatabase, current);
+			return continueGeneration(currentDatabase, current);
+		},
 		callbacks,
 	);
 }
+
+/** ==[HUMAN APPROVED]== The one Generation start input every detached attempt takes. */
+export type GenerationStartInput =
+	| SendThroughProvisionalTailGenerationInput
+	| ContinueGenerationInput
+	| GenerateSiblingVariantInput;
+
+/** ==[HUMAN APPROVED]== The accepted record every detached attempt exposes, whatever its kind. */
+export type AcceptedGenerationRecord =
+	| AcceptedTailGeneration
+	| AcceptedContinuationGeneration
+	| AcceptedSiblingGeneration;
