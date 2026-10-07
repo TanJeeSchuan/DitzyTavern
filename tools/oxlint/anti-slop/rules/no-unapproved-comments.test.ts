@@ -27,6 +27,18 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 		// block approves the whole block.
 		"// ==[HUMAN APPROVED]== lead\n// middle\n// tail",
 		"// lead\n// middle\n// tail ==[HUMAN APPROVED]==",
+		// The `// @approved` directive line: the second spelling of the one
+		// approval mechanism, as the first line of a standalone block.
+		"// @approved\n// prose the directive approves",
+		"// @approved\n// lead\n// middle\n// tail",
+		// The directive spelling is fixed and independent of the marker option.
+		{
+			code: "// @approved\n// note",
+			options: [{ marker: "[APPROVED]" }],
+		},
+		// The directive line is itself an approved comment; the prose it
+		// approves follows it in the same block.
+		"// @approved",
 		// A directive line inside a run blesses its block.
 		"// oxlint-disable-next-line no-console\n// prose follows the directive",
 		// Custom marker via options.
@@ -51,9 +63,10 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 			errors: [{ line: 1, messageId: "unapprovedComment" }],
 		},
 		{
-			// Rendered message includes the comment preview and the marker.
+			// Rendered message includes the comment preview and both approval
+			// spellings.
 			code: "// prose\nconst x = 1;",
-			errors: [{ message: /not marked as human-approved \("prose"\)\. Add "==\[HUMAN APPROVED\]=="/ }],
+			errors: [{ message: /not marked as human-approved \("prose"\)\. Add "==\[HUMAN APPROVED\]==" inline, or a "\/\/ @approved" line directly above the block/ }],
 		},
 		{
 			code: "// one\nconst x = 1;\n// two",
@@ -82,6 +95,37 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 		{
 			// Marker-like text without the exact delimiters does not count.
 			code: "// =HUMAN APPROVED=",
+			errors: [{ messageId: "unapprovedComment" }],
+		},
+		{
+			// The directive must IMMEDIATELY precede its comment: a blank line
+			// breaks the block, so the prose is unapproved.
+			code: "// @approved\n\n// prose",
+			errors: [{ line: 3, messageId: "unapprovedComment" }],
+		},
+		{
+			// The directive is not leading; mid-block it approves nothing and
+			// the whole run is reported.
+			code: "// lead prose\n// @approved",
+			errors: [{ line: 1, messageId: "unapprovedComment" }],
+		},
+		{
+			// `@approved` above code approves nothing — the trailing comment on
+			// the next line still needs the inline marker (mirrors the
+			// trailing-comment block test above with the marker spelling).
+			code: "// @approved\nconst x = 1; // trailing note",
+			errors: [{ line: 2, messageId: "unapprovedComment" }],
+		},
+		{
+			// The directive spelling only blesses standalone line-comment
+			// blocks; a block comment still carries the inline marker.
+			code: "// @approved\n/* doc */",
+			errors: [{ line: 2, messageId: "unapprovedComment" }],
+		},
+		{
+			// The directive must be the entire line — trailing words make it
+			// prose (mirrors the marker delimiter test).
+			code: "// @approved and here is why",
 			errors: [{ messageId: "unapprovedComment" }],
 		},
 	],

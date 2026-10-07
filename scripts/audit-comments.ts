@@ -41,7 +41,7 @@ for (const finding of findings) {
 const rows = [...perFile.entries()].sort((a, b) => b[1] - a[1]);
 
 console.log(`unapproved comments: ${findings.length} across ${rows.length} of ${report.number_of_files} files`);
-console.log(`approval marker: "${MARKER}" — add it to a comment you want to keep, otherwise trim or remove the comment.`);
+console.log(`approval marker: "${MARKER}" inline, or a "// @approved" line directly above a standalone comment block — add either spelling to a comment you want to keep, otherwise trim or remove the comment.`);
 console.log("");
 for (const [file, count] of rows) {
 	console.log(`${String(count).padStart(5)}  ${file}`);

@@ -3,6 +3,7 @@ import { defineRule } from "@oxlint/plugins";
 import { repositoryPath } from "../../ditzy/path.ts";
 
 const DEFAULT_MARKER = "==[HUMAN APPROVED]==";
+const APPROVED_DIRECTIVE = "@approved";
 const PREVIEW_LIMIT = 160;
 
 interface Options {
@@ -21,11 +22,18 @@ const singleLineValue = (value: string): string => value.replaceAll(/\s+/g, " ")
 
 /** Audit rule: every comment must carry an explicit human-approval marker.
  *
- *  Line comments that stand alone on their line group into one logical
- *  block across adjacent lines and are reported once; a marker anywhere in
- *  the block approves the whole block. A line comment trailing code on its
- *  line is its own block and also breaks the surrounding runs, so an inline
- *  remark can never be approved as a side effect of its neighbors. */
+ *  Two spellings of the one approval mechanism are accepted: the inline
+ *  `==[HUMAN APPROVED]==` marker anywhere in the comment, or a leading
+ *  `// @approved` directive line whose entire value is exactly "@approved"
+ *  and that stands as the first line of a standalone block, approving the
+ *  comment lines that follow it in that block. Line comments that stand
+ *  alone on their line group into one logical block across adjacent lines
+ *  and are reported once. A line comment trailing code on its line is its
+ *  own block and also breaks the surrounding runs, so an inline remark can
+ *  never be approved as a side effect of its neighbors; the directive
+ *  spelling likewise never reaches a trailing comment — `@approved` above
+ *  code approves nothing, and the trailing comment itself still needs the
+ *  inline marker. */
 export const noUnapprovedCommentsRule = defineRule({
 	meta: {
 		type: "suggestion",
@@ -35,7 +43,7 @@ export const noUnapprovedCommentsRule = defineRule({
 		},
 		messages: {
 			unapprovedComment:
-				'Comment is not marked as human-approved ("{{preview}}"). Add "{{marker}}" to approve it, or trim/remove it.',
+				'Comment is not marked as human-approved ("{{preview}}"). Add "{{marker}}" inline, or a "// @approved" line directly above the block, or trim/remove it.',
 		},
 		schema: [
 			{
@@ -61,6 +69,7 @@ export const noUnapprovedCommentsRule = defineRule({
 				}
 				const commentPatterns = options.ignoreCommentPatterns.map((pattern) => new RegExp(pattern));
 				const approved = (value: string): boolean => value.includes(options.marker);
+				const approvedDirective = (value: string): boolean => value.trim() === APPROVED_DIRECTIVE;
 				const ignored = (value: string): boolean => commentPatterns.some((pattern) => pattern.test(value));
 				const sourceLines = context.sourceCode.text.split("\n");
 				const standalone = (comment: { loc: { start: { line: number; column: number } } }): boolean =>
@@ -96,7 +105,10 @@ export const noUnapprovedCommentsRule = defineRule({
 						block.push(comments[index]);
 						index += 1;
 					}
-					if (block.some((member) => approved(member.value) || ignored(member.value))) continue;
+					// A leading `// @approved` line is the second approval spelling:
+					// it must be the first line of the block so it immediately precedes
+					// the comment it approves.
+					if (approvedDirective(block[0].value) || block.some((member) => approved(member.value) || ignored(member.value))) continue;
 					report(block[0], singleLineValue(block.map((member) => member.value).join(" ")));
 				}
 			},
