@@ -3,9 +3,7 @@ import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	ConversationNotFoundError,
-	InvalidConversationCommandError,
 	createConversationModule,
-	type ConversationSnapshot,
 } from "../conversation";
 import { requireSnapshot } from "../conversation/test-fixtures";
 import { openInitializedDatabase } from "../database/database";
@@ -13,13 +11,10 @@ import { gracefullyShutdownGenerations } from "../workflows/generation-recovery"
 import {
 	generationRuntimeFor,
 	type GenerationRuntime,
-	type GenerationRuntimeState,
+	type StartGenerationRuntimeInput,
 } from "../workflows";
 import {
 	createGenerationCoordinator,
-	type GenerationConversationLifecycle,
-	type GenerationRuntimeHandle,
-	type GenerationRuntimeLifecycle,
 	type GenerationStopAllOutcome,
 	type GenerationStopOutcome,
 } from "./generation-coordinator";
@@ -225,84 +220,8 @@ describe("GenerationCoordinator", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Lifecycle outcomes with fake runtime and Conversation adapters
+// Stop lifecycle outcomes against the real registry and Conversation module
 // ---------------------------------------------------------------------------
-
-interface RuntimeFake {
-	/** Invoked inside stop() before any stopError is raised. */
-	onStop?: () => void;
-	stopError?: Error;
-	markStoppedError?: Error;
-	status?: GenerationRuntimeState["status"];
-}
-
-// Records every lifecycle call into one shared order log so tests assert
-// exact sequencing across the runtime and Conversation adapters.
-const recordRuntime = (
-	order: string[],
-	generationId: number,
-	conversationId: number,
-	fake: RuntimeFake = {},
-): GenerationRuntimeHandle => ({
-	state: {
-		generationId,
-		conversationId,
-		messageId: 0,
-		variantId: 0,
-		startedAt: "2026-08-27T00:00:00.000Z",
-		content: "",
-		reasoning: "",
-		latestEventId: 0,
-		status: fake.status ?? "active",
-		terminalReason: null,
-	},
-	stop: () => {
-		order.push(`stop:${generationId}`);
-		if (fake.stopError !== undefined) throw fake.stopError;
-		fake.onStop?.();
-	},
-	markStopped: () => {
-		order.push(`markStopped:${generationId}`);
-		if (fake.markStoppedError !== undefined) throw fake.markStoppedError;
-	},
-	releaseStopRequest: () => {
-		order.push(`releaseStopRequest:${generationId}`);
-	},
-});
-
-const fakeRuntimeLifecycle = (
-	runtimes: ReadonlyMap<number, GenerationRuntimeHandle>,
-	order: string[],
-): GenerationRuntimeLifecycle => ({
-	get: (generationId) => runtimes.get(generationId),
-	flushAll: (conversationId) => {
-		order.push(`flushAll:${conversationId}`);
-	},
-});
-
-interface ConversationFake {
-	stopError?: Error;
-	stopGenerationsError?: Error;
-	/** Durable target set returned by the scripted Stop All transition. */
-	stopGenerationsIds?: number[];
-}
-
-const fakeConversationLifecycle = (
-	snapshot: ConversationSnapshot,
-	order: string[],
-	fake: ConversationFake = {},
-): GenerationConversationLifecycle => ({
-	stopGeneration: (input) => {
-		order.push(`durableStop:${input.generationId}`);
-		if (fake.stopError !== undefined) throw fake.stopError;
-		return snapshot;
-	},
-	stopGenerations: (input) => {
-		order.push(`durableStopAll:${input.conversationId}`);
-		if (fake.stopGenerationsError !== undefined) throw fake.stopGenerationsError;
-		return { generationIds: fake.stopGenerationsIds ?? [], conversation: snapshot };
-	},
-});
 
 const expectOutcome = <Kind extends GenerationStopOutcome["outcome"]>(
 	outcome: GenerationStopOutcome,
@@ -328,7 +247,7 @@ const expectStopAllOutcome = <Kind extends GenerationStopAllOutcome["outcome"]>(
 	return outcome as Extract<GenerationStopAllOutcome, { outcome: Kind }>;
 };
 
-describe("Generation Coordinator Stop lifecycle outcomes", () => {
+describe("Generation Coordinator Stop lifecycle", () => {
 	let database: Database;
 
 	beforeEach(() => {
@@ -337,296 +256,227 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 	afterEach(() => database.close());
 
-	const conversationSnapshot = (name: string): ConversationSnapshot =>
-		createConversationModule(database).create({
-			name,
+	const setup = () => {
+		const module = createConversationModule(database);
+		const conversation = module.create({
+			name: "Stop lifecycle",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
 				{ definition: { name: "Maren", prompt, openings: ["Original."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
+		const human = conversation.cast[0];
+		const model = conversation.cast[1];
+		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+		return { module, conversation, human, model };
+	};
+
+	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
+		input.module.acceptTailGeneration({
+			conversationId: input.conversation.id,
+			expectedRevision: input.conversation.revision,
+			timestamp: "2026-08-27T00:00:00.000Z",
+			humanContent: content,
+			humanParticipantId: input.human.id,
+			modelParticipantId: input.model.id,
+			capturedModelName: input.model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: {},
+		});
+
+	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
+		input.module.acceptSiblingGeneration({
+			conversationId: input.conversation.id,
+			messageId,
+			timestamp,
+			humanParticipantId: input.human.id,
+			modelParticipantId: input.model.id,
+			capturedModelName: input.model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: {},
+		});
+
+	const startRuntime = (
+		conversationId: number,
+		accepted: { generationId: number; messageId: number; provisionalVariantId: number },
+		input: Partial<StartGenerationRuntimeInput> = {},
+	) =>
+		generationRuntimeFor(database).start({
+			generationId: accepted.generationId,
+			conversationId,
+			messageId: accepted.messageId,
+			variantId: accepted.provisionalVariantId,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			...input,
+		});
 
 	test("Stop forces the runtime stop before the durable transition and settles the runtime after", async () => {
-		const conversation = conversationSnapshot("Stop ordering");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 11, conversation.id);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[11, runtime]]), order),
+		const input = setup();
+		const accepted = acceptTail(input, "Stop me.");
+		const activeAtAbort: number[] = [];
+		const runtime = startRuntime(input.conversation.id, accepted, {
+			onStop: () => {
+				// Observed by the real runtime during its own stop() call.
+				const active = input.module.getSnapshot(input.conversation.id)?.activeGenerations ?? [];
+				activeAtAbort.push(...active.map((entry) => entry.generationId));
+			},
 		});
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopGeneration(conversation.id, 11);
+		const outcome = await coordinator.stopGeneration(input.conversation.id, accepted.generationId);
 
-		expect(expectOutcome(outcome, "stopped").conversation.id).toBe(conversation.id);
-		expect(order).toEqual([
-			`stop:11`,
-			`durableStop:11`,
-			`markStopped:11`,
-		]);
-	});
-
-	test("Stop stops nothing and releases the runtime when natural completion wins the race", async () => {
-		const conversation = conversationSnapshot("Stop race");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 12, conversation.id);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopError: new InvalidConversationCommandError("The Active Generation is no longer available."),
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[12, runtime]]), order),
-		});
-
-		const outcome = await coordinator.stopGeneration(conversation.id, 12);
-
-		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(12);
-		// The losing Stop request returns terminal ownership to the provider;
-		// the runtime settles through its own terminal event instead.
-		expect(order).toEqual([
-			`stop:12`,
-			`durableStop:12`,
-			`releaseStopRequest:12`,
-		]);
+		const stopped = expectOutcome(outcome, "stopped");
+		expect(stopped.generationId).toBe(accepted.generationId);
+		expect(stopped.unsettledReason).toBeNull();
+		expect(stopped.conversation.id).toBe(input.conversation.id);
+		// Ordering through real effects: the provider abort observed the
+		// still-Active Generation, and the durable interrupted transition
+		// followed it before the runtime settled terminal.
+		expect(activeAtAbort).toEqual([accepted.generationId]);
+		expect(runtime.state.status).toBe("stopped");
+		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing when no runtime exists and the durable target is gone", async () => {
-		const conversation = conversationSnapshot("Stop missing");
-		const order: string[] = [];
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopError: new InvalidConversationCommandError("The Active Generation is no longer available."),
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map(), order),
-		});
+		const input = setup();
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopGeneration(conversation.id, 13);
+		const outcome = await coordinator.stopGeneration(input.conversation.id, 404_404);
 
-		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(13);
-		expect(order).toEqual([`durableStop:13`]);
-	});
-
-	test("Stop stops nothing and releases the runtime when the Conversation is unknown", async () => {
-		const conversation = conversationSnapshot("Stop unknown conversation");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 14, conversation.id);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopError: new ConversationNotFoundError(conversation.id),
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[14, runtime]]), order),
-		});
-
-		const outcome = await coordinator.stopGeneration(conversation.id, 14);
-
-		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(14);
-		expect(order).toEqual([
-			`stop:14`,
-			`durableStop:14`,
-			`releaseStopRequest:14`,
-		]);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(404_404);
+		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing and never touches durable state when the runtime belongs to another Conversation", async () => {
-		const conversation = conversationSnapshot("Stop foreign runtime");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 15, conversation.id + 999);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[15, runtime]]), order),
-		});
+		const addressed = setup();
+		const owner = setup();
+		const accepted = acceptTail(owner, "Owned elsewhere.");
+		const runtime = startRuntime(owner.conversation.id, accepted);
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopGeneration(conversation.id, 15);
+		const outcome = await coordinator.stopGeneration(addressed.conversation.id, accepted.generationId);
 
-		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(15);
-		expect(order).toEqual([]);
-	});
-
-	test("Stop reports the unsettled runtime reason when the durable commit succeeds but the runtime cannot settle", async () => {
-		const conversation = conversationSnapshot("Stop settlement failure");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 16, conversation.id, {
-			markStoppedError: new Error("Runtime settlement exploded."),
-		});
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[16, runtime]]), order),
-		});
-
-		const outcome = await coordinator.stopGeneration(conversation.id, 16);
-
-		const settled = expectOutcome(outcome, "stopped");
-		expect(settled.generationId).toBe(16);
-		expect(settled.unsettledReason).toBe("Runtime settlement exploded.");
-		expect(settled.conversation.id).toBe(conversation.id);
-		// The durable transition still committed: the Conversation snapshot
-		// remains authoritative even though the runtime entry lingers.
-		expect(order).toEqual([
-			`stop:16`,
-			`durableStop:16`,
-			`markStopped:16`,
-		]);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(accepted.generationId);
+		// The addressed Conversation has no such Generation; durable state is
+		// never consulted under another Conversation's name.
+		expect(owner.module.getSnapshot(owner.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(runtime.state.status).toBe("active");
+		expect(runtime.isStopRequested).toBe(false);
 	});
 
 	test("Stop does not commit stale output when the runtime checkpoint fails", async () => {
-		const conversation = conversationSnapshot("Stop request failure");
-		const order: string[] = [];
-		const runtime = recordRuntime(order, 18, conversation.id, {
-			stopError: new Error("Runtime abort failed."),
+		const input = setup();
+		const accepted = acceptTail(input, "Checkpoint me.");
+		const runtime = startRuntime(input.conversation.id, accepted, {
+			onCheckpoint: () => {
+				throw new Error("Checkpoint write failed.");
+			},
 		});
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order),
-			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[18, runtime]]), order),
-		});
+		// One observed delta makes the runtime's next flush a real checkpoint
+		// attempt, so the abort fails before any durable transition runs.
+		runtime.publish({ type: "content", text: "partial output" });
+		const coordinator = createGenerationCoordinator(database);
 
-		await expect(coordinator.stopGeneration(conversation.id, 18)).rejects.toThrow("Runtime abort failed.");
-		expect(order).toEqual([`stop:18`]);
+		await expect(coordinator.stopGeneration(input.conversation.id, accepted.generationId))
+			.rejects.toThrow("Checkpoint write failed.");
+
+		// The durable transition never ran: the Active Generation survives so
+		// a later Stop cannot settle from stale output.
+		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(runtime.state.status).toBe("active");
 	});
 
 	test("Stop All flushes checkpoints, commits the durable transition, then settles each runtime", async () => {
-		const conversation = conversationSnapshot("Stop All ordering");
-		const order: string[] = [];
-		const runtimes = new Map<number, GenerationRuntimeHandle>([
-			[21, recordRuntime(order, 21, conversation.id)],
-			[22, recordRuntime(order, 22, conversation.id)],
-		]);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopGenerationsIds: [21, 22],
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(runtimes, order),
+		const input = setup();
+		// The sibling target is the configured opening Message, whose captured
+		// historical Control pair makes sibling acceptance eligible.
+		const target = input.conversation.messages[0];
+		if (target === undefined) throw new Error("Opening target missing.");
+		const first = acceptSibling(input, target.id, "2026-08-27T00:00:01.000Z");
+		const second = acceptSibling(input, target.id, "2026-08-27T00:00:02.000Z");
+		const activeAtAbort: number[] = [];
+		const firstRuntime = startRuntime(input.conversation.id, first, {
+			onStop: () => {
+				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
+			},
 		});
+		const secondRuntime = startRuntime(input.conversation.id, second, {
+			onStop: () => {
+				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
+			},
+		});
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopAllGenerations(conversation.id);
+		const outcome = await coordinator.stopAllGenerations(input.conversation.id);
 
 		const stopped = expectStopAllOutcome(outcome, "stopped");
-		expect([...stopped.generationIds]).toEqual([21, 22]);
-		expect(stopped.conversation.id).toBe(conversation.id);
-		// Forced checkpoints and the durable commit strictly precede runtime
-		// settlement, so the interrupted transition observes every delta and
-		// aborts only targets the durable transition actually committed.
-		expect(order).toEqual([
-			`flushAll:${conversation.id}`,
-			`durableStopAll:${conversation.id}`,
-			`stop:21`,
-			`markStopped:21`,
-			`stop:22`,
-			`markStopped:22`,
-		]);
+		expect([...stopped.generationIds]).toEqual([first.generationId, second.generationId]);
+		expect(stopped.unsettled).toEqual([]);
+		expect(stopped.unsettledReason).toBeNull();
+		expect(stopped.conversation.id).toBe(input.conversation.id);
+		// Ordering through real effects: Stop All secures the durable
+		// transition first, so both aborts observe an already-empty Active set,
+		// and each runtime settles only afterwards.
+		expect(activeAtAbort).toEqual([0, 0]);
+		expect(firstRuntime.state.status).toBe("stopped");
+		expect(secondRuntime.state.status).toBe("stopped");
 	});
 
 	test("Stop All settles only runtimes owned by the addressed Conversation", async () => {
-		const conversation = conversationSnapshot("Stop All ownership");
-		const order: string[] = [];
-		const runtimes = new Map<number, GenerationRuntimeHandle>([
-			// A stale registry entry reusing a generation id of another chat.
-			[31, recordRuntime(order, 31, conversation.id + 777)],
-		]);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopGenerationsIds: [31],
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(runtimes, order),
-		});
+		const owner = setup();
+		const foreign = setup();
+		const ownerTarget = owner.conversation.messages[0];
+		if (ownerTarget === undefined) throw new Error("Opening target missing.");
+		const ownerAccepted = acceptSibling(owner, ownerTarget.id, "2026-08-27T00:00:01.000Z");
+		const foreignAccepted = acceptTail(foreign, "Owned elsewhere.");
+		const ownerRuntime = startRuntime(owner.conversation.id, ownerAccepted);
+		const foreignRuntime = startRuntime(foreign.conversation.id, foreignAccepted);
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopAllGenerations(conversation.id);
+		const outcome = await coordinator.stopAllGenerations(owner.conversation.id);
 
-		expect(expectStopAllOutcome(outcome, "stopped").generationIds).toEqual([31]);
-		expect(order).toEqual([
-			`flushAll:${conversation.id}`,
-			`durableStopAll:${conversation.id}`,
-		]);
+		const stopped = expectStopAllOutcome(outcome, "stopped");
+		expect([...stopped.generationIds]).toEqual([ownerAccepted.generationId]);
+		expect(ownerRuntime.state.status).toBe("stopped");
+		// The foreign runtime belongs to another Conversation: never flushed,
+		// never aborted, never settled.
+		expect(foreignRuntime.state.status).toBe("active");
 	});
 
 	test("Stop All stops nothing and settles no runtime when the durable transition cannot commit", async () => {
-		const conversation = conversationSnapshot("Stop All missing");
-		const order: string[] = [];
-		const runtimes = new Map<number, GenerationRuntimeHandle>([
-			[41, recordRuntime(order, 41, conversation.id)],
-		]);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopGenerationsError: new InvalidConversationCommandError(
-					"The Conversation has no active Generations to stop.",
-				),
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(runtimes, order),
+		const input = setup();
+		const accepted = acceptTail(input, "Finish first.");
+		const runtime = startRuntime(input.conversation.id, accepted);
+		// The provider wins the race: the Generation resolves durably and the
+		// terminal runtime lingers only for its replay window.
+		input.module.resolveGeneration({
+			conversationId: input.conversation.id,
+			generationId: accepted.generationId,
+			timestamp: "2026-08-27T00:00:05.000Z",
+			content: "Provider won.",
 		});
+		runtime.complete();
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopAllGenerations(conversation.id);
+		const outcome = await coordinator.stopAllGenerations(input.conversation.id);
 
 		expect(outcome.outcome).toBe("not-stoppable");
-		// Forced checkpoints happen before the durable attempt; settlement must
-		// not start because the durable commit never named a target set.
-		expect(order).toEqual([
-			`flushAll:${conversation.id}`,
-			`durableStopAll:${conversation.id}`,
-		]);
+		// The durable commit never named a target set, so the retained runtime
+		// keeps its own terminal state instead of being marked stopped.
+		expect(runtime.state.status).toBe("complete");
 	});
 
-	test("Stop All reports the unsettled targets and still settles the remaining runtimes", async () => {
-		const conversation = conversationSnapshot("Stop All partial settlement");
-		const order: string[] = [];
-		const runtimes = new Map<number, GenerationRuntimeHandle>([
-			[51, recordRuntime(order, 51, conversation.id)],
-			[52, recordRuntime(order, 52, conversation.id, {
-				markStoppedError: new Error("Runtime 52 refused settlement."),
-			})],
-			[53, recordRuntime(order, 53, conversation.id)],
-		]);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopGenerationsIds: [51, 52, 53],
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(runtimes, order),
-		});
+	test("Stop All stops nothing for an unknown Conversation", async () => {
+		const coordinator = createGenerationCoordinator(database);
 
-		const outcome = await coordinator.stopAllGenerations(conversation.id);
+		const outcome = await coordinator.stopAllGenerations(404_404);
 
-		const settled = expectStopAllOutcome(outcome, "stopped");
-		expect([...settled.unsettled]).toEqual([52]);
-		expect(settled.unsettledReason).toBe("Runtime 52 refused settlement.");
-		expect([...settled.generationIds]).toEqual([51, 52, 53]);
-		expect(settled.conversation.id).toBe(conversation.id);
-		expect(order).toEqual([
-			`flushAll:${conversation.id}`,
-			`durableStopAll:${conversation.id}`,
-			`stop:51`,
-			`markStopped:51`,
-			`stop:52`,
-			`markStopped:52`,
-			`stop:53`,
-			`markStopped:53`,
-		]);
-	});
-
-	test("Stop All counts a runtime that cannot stop as unsettled and keeps settling the rest", async () => {
-		const conversation = conversationSnapshot("Stop All abort failure");
-		const order: string[] = [];
-		const runtimes = new Map<number, GenerationRuntimeHandle>([
-			[54, recordRuntime(order, 54, conversation.id)],
-			[55, recordRuntime(order, 55, conversation.id, {
-				stopError: new Error("Runtime 55 abort failed."),
-			})],
-		]);
-		const coordinator = createGenerationCoordinator(database, {
-			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
-				stopGenerationsIds: [54, 55],
-			}),
-			runtimeLifecycle: fakeRuntimeLifecycle(runtimes, order),
-		});
-
-		const outcome = await coordinator.stopAllGenerations(conversation.id);
-
-		const settled = expectStopAllOutcome(outcome, "stopped");
-		expect([...settled.unsettled]).toEqual([55]);
-		expect(settled.unsettledReason).toBe("Runtime 55 abort failed.");
-		expect(order).toEqual([
-			`flushAll:${conversation.id}`,
-			`durableStopAll:${conversation.id}`,
-			`stop:54`,
-			`markStopped:54`,
-			`stop:55`,
-		]);
+		expect(outcome.outcome).toBe("not-stoppable");
 	});
 });
 

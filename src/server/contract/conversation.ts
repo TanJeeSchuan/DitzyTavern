@@ -183,9 +183,10 @@ const currentConversationRevision = (
 	return revision;
 };
 
-// ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so transport
-// tests can inject the Coordinator's Conversation and runtime lifecycle seams
-// while production resolves the deep adapters itself.
+// ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so the
+// transport layer and the application share one options shape (transport
+// fetch, checkpoint cadence, master key); the Coordinator resolves the deep
+// Conversation module and the process runtime registry itself.
 export interface ConversationRouteOptions extends GenerationCoordinatorOptions {}
 
 export const createConversationRoutes = (
