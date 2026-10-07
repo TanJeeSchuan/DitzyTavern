@@ -96,6 +96,39 @@ Lorebook module.
   `contract/lorebook-routes.ts` because the equivalent helper in
   `contract/conversation.ts` is file-private and outside this finding's
   ownership; a later pass can hoist one shared builder.
-- The client's Lore panel still words attachment-command conflicts with its
+- ~~The client's Lore panel still words attachment-command conflicts with its
   generic notice until the client adopts the Conversation conflict payload
-  (`client` is out of scope here).
+  (`client` is out of scope here).~~ Resolved by the follow-up below: the
+  generic notice wording stays, and the stale-revision recovery now works.
+
+## Follow-up (post-rebase P1): Lore conflict retries stayed stale
+
+The F8 client-transport canonicalization (base `a9edc0f`) modeled the
+Lorebook attachment command error union without the Conversation conflict
+shape, so the route's actual 409 for the five Conversation-owned commands
+failed the error decode and surfaced as `network` — the Lore editors skipped
+their conflict reload and kept submitting the stale revision until the
+surface was reopened.
+
+**Changed**
+
+- `loreAttachmentCommandErrors` now composes the route's exact 409 union
+  (`loreAttachmentCommandConflict`: the Character-attachment conflict plus
+  the Conversation conflict shape) with the shared 404/422 envelopes; the
+  requestOutcome two-directional pin makes any future mismatch a compile
+  error.
+- `LorebookPanel.updateAttachment` recognizes the modeled conflict outcome:
+  it refetches the `lorebook-attachments` query (awaited, so the fresh
+  revision is in the cache before the notice shows) and no longer seeds the
+  cache from a `currentState` payload that no longer exists.
+- `LoreAttachmentEditor` needed no new machinery — its reload-on-conflict
+  reuses the owner attachment reader and now compiles against the modeled
+  union for both conflict shapes.
+- `e2e/lore.spec.ts` covers both surfaces: an API-side Chat edit advances the
+  revision → submit conflicts → the surface reloads → the same unchanged
+  action retried succeeds without reopening (panel detach, participant
+  attach).
+
+**Verification** — `bun run typecheck`, `bun run lint` (exit 0, same 39
+pre-existing warnings as base), `bun run test` (1309 pass / 0 fail),
+`bun run check:contracts` (exit 0), `bun run test:e2e` (34 passed) all green.

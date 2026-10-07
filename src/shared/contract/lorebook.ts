@@ -253,7 +253,11 @@ export type LorebookListResponse = Static<typeof lorebookListResponse>;
 
 // ==[HUMAN APPROVED]== The Lorebook command families' modeled error unions: the composed
 // 409/404/422 envelopes each family declares, so the client decodes an error
-// body against exactly the union its route models.
+// body against exactly the union its route models. The attachment command
+// family's 409 is the two-shape conflict union: Character-owned commands
+// recover through the Lorebook attachment state, while the five
+// Conversation-owned commands recover through the Conversation conflict
+// shape.
 export const lorebookCommandErrors = Type.Union([
 	lorebookConflict,
 	notFoundOutcome,
@@ -261,7 +265,7 @@ export const lorebookCommandErrors = Type.Union([
 ]);
 
 export const loreAttachmentCommandErrors = Type.Union([
-	loreAttachmentConflict,
+	loreAttachmentCommandConflict,
 	notFoundOutcome,
 	invalidOutcome,
 ]);
