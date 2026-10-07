@@ -2,9 +2,9 @@ import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 
 import { mergeMemoryLabels, setMemoryIdentity, StaleMemoryLabelsError } from "../memory/labels";
-import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup, StaleMemoryCollectionError, StaleMemorySettingsError } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup, StaleMemoryCollectionError, StaleMemorySettingsError } from "../memory/collections";
 import {
-	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
+	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, conversationMemoryChanges, memoryChangesQuery, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryNoteCommand,
 	memoryQueued, memoryCollectionConflict, memorySourceTarget,
 	memoryCorrectionCommand, memoryCorrectionApplied,
@@ -15,6 +15,7 @@ import { invalidOutcome } from "../../shared/contract/outcomes";
 
 export const createMemoryRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, Number(params.id)), { params: memoryConversationIdParams, response: conversationMemories })
+	.get("/api/conversations/:id/memories/changes", ({ params, query }) => readConversationMemoryChanges(database, Number(params.id), query.since), { params: memoryConversationIdParams, query: memoryChangesQuery, response: conversationMemoryChanges })
 	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
 		try {
 			setMemoryIdentity(database, Number(params.id), body);
