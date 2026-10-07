@@ -13,6 +13,7 @@ import { MemoryAllowancePopover } from "./MemoryAllowancePopover";
 import { MemoryCoverage } from "./MemoryCoverage";
 import { MemoryLabelMergeDialog } from "./MemoryLabelMergeDialog";
 import { MemoryIdentityDialog } from "./MemoryIdentityDialog";
+import { MemoryNoteDialog } from "./MemoryNoteDialog";
 import { MemoryClaimRow, MemorySourceCard } from "./MemorySource";
 import { useConversationMemories } from "./useConversationMemories";
 
@@ -28,11 +29,12 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 	onNavigateSource: (messageId: number) => void;
 	onOpenPanel: (panel: "memory" | "prompts") => void;
 }) {
-	const { status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, setAllowance, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversationRevision);
+	const { status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, settingsSaved, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversationRevision);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<number | null>(null);
 	const [merging, setMerging] = useState<string[] | null>(null);
 	const [identityTarget, setIdentityTarget] = useState<{ participant: CastMember; kind: MemoryIdentity["kind"] } | null>(null);
+	const [noteOpen, setNoteOpen] = useState(false);
 	const [alternativesOpen, setAlternativesOpen] = useState(false);
 
 	const position = new Map(memories?.path.map((entry, index) => [entry.messageId, index]));
@@ -77,11 +79,12 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 
 	return <aside className="details-panel" data-open="true" aria-label="Memories">
 		<PanelHeader title="Memories" onClose={onClose} actions={<>
-			{allowance && <MemoryAllowancePopover conversationId={conversationId} settings={allowance} onSaved={setAllowance} />}
+			{settings && <MemoryAllowancePopover conversationId={conversationId} settings={settings} onSaved={settingsSaved} />}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild><button type="button" className="icon-button" aria-label="More Memory actions"><Ellipsis aria-hidden="true" /></button></DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="min-w-44">
 					<DropdownMenuItem disabled={!hasPeople} onSelect={() => setMerging([])}>Merge labels…</DropdownMenuItem>
+					<DropdownMenuItem onSelect={() => setNoteOpen(true)}>Memory note…</DropdownMenuItem>
 					<DropdownMenuItem onSelect={() => onOpenPanel("memory")}>Memory Settings</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
@@ -91,9 +94,9 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 			{status === "stale" && <div className="memory-callout" role="status"><p>Could not refresh Memories. Showing the last loaded view.</p><Button type="button" size="xs" variant="outline" onClick={() => void refresh()}>Try again</Button></div>}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{allowance?.enabled === false && <div className="memory-callout"><p>Memory is off for this Chat. Add a Memory Block to its Prompt Preset to start remembering. Saved Memories stay here.</p><Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("prompts")}>Open Prompt Presets</Button></div>}
+				{settings?.enabled === false && <div className="memory-callout"><p>Memory is off for this Chat. Add a Memory Block to its Prompt Preset to start remembering. Saved Memories stay here.</p><Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("prompts")}>Open Prompt Presets</Button></div>}
 				{awaitingEmbedding > 0 && <div className="memory-callout"><p>{awaitingEmbedding} {awaitingEmbedding === 1 ? "Message is" : "Messages are"} waiting for embedding settings before their Memories can be recalled.</p><Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button></div>}
-				{memories.path.length > 0 && <MemoryCoverage path={memories.path} sources={new Map(selected.map((source) => [source.messageId, source]))} catchup={catchup} enabled={allowance?.enabled ?? false} busy={catchupBusy} selected={focus} label={actions.label} onStart={() => void startCatchup()} onCancel={() => void cancelCatchup()} onSelect={select} />}
+				{memories.path.length > 0 && <MemoryCoverage path={memories.path} sources={new Map(selected.map((source) => [source.messageId, source]))} catchup={catchup} enabled={settings?.enabled ?? false} busy={catchupBusy} selected={focus} label={actions.label} onStart={() => void startCatchup()} onCancel={() => void cancelCatchup()} onSelect={select} />}
 				{focus !== null && <MemorySourceCard
 					conversationId={conversationId}
 					source={selected.find((source) => source.messageId === focus)}
@@ -116,6 +119,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 		</div>
 		{merging && memories && <MemoryLabelMergeDialog conversationId={conversationId} memories={memories} initialLabels={merging} onClose={() => setMerging(null)} onMerged={(updated, destination) => { labelsMerged(updated, destination); setMerging(null); }} />}
 		{identityTarget && memories && <MemoryIdentityDialog conversationId={conversationId} participant={identityTarget.participant} memories={memories} initialKind={identityTarget.kind} onClose={() => setIdentityTarget(null)} onSaved={(updated) => { void identitySaved(updated); setIdentityTarget(null); }} />}
+		{noteOpen && settings && <MemoryNoteDialog conversationId={conversationId} settings={settings} onClose={() => setNoteOpen(false)} onSaved={(updated) => { settingsSaved(updated); setNoteOpen(false); }} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) cancelReset(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

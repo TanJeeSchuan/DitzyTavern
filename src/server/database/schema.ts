@@ -360,6 +360,7 @@ export const messageVariantTable = sqliteTable(
 export const conversationMemorySettingsTable = sqliteTable("conversation_memory_settings", {
 	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
 	allowance: int().notNull().default(2048),
+	memory_note: text().notNull().default(""),
 	revision: int().notNull().default(0),
 	label_revision: int().notNull().default(0),
 	label_merges: text().notNull().default("[]"),

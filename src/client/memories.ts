@@ -67,4 +67,9 @@ export async function saveMemoryAllowance(conversationId: number, expectedRevisi
 	return error === null ? data : domainOutcome(error.value, "Memory Allowance could not be saved.");
 }
 
+export async function saveMemoryNote(conversationId: number, expectedRevision: number, note: string) {
+	const { data, error } = await conversation(conversationId)["memory-note"].post({ expectedRevision, note });
+	return error === null ? data : domainOutcome(error.value, "The Memory note could not be saved.");
+}
+
 export type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup };

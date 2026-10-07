@@ -15,14 +15,14 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	const query = useQuery({
 		queryKey,
 		queryFn: async ({ signal }) => {
-			const [memories, catchup, allowance] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryCatchup(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
-			return { memories, catchup, allowance };
+			const [memories, catchup, settings] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryCatchup(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
+			return { memories, catchup, settings };
 		},
 		refetchInterval: ({ state: { data } }) => data?.catchup?.state === "running" || data?.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)) ? 5000 : false,
 	});
 	const memories = query.data?.memories ?? null;
 	const catchup = query.data?.catchup ?? null;
-	const allowance = query.data?.allowance ?? null;
+	const settings = query.data?.settings ?? null;
 	const status = query.isPending ? "loading" : query.isError ? query.data === undefined ? "failed" : "stale" : "ready";
 	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
 	useEffect(() => { void refresh(); }, [conversationRevision, refresh]);
@@ -84,8 +84,8 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	}), [act, conversationId, editing, labels, reextract, refresh, replace]);
 
 	return {
-		status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,
-		setAllowance: (settings: ConversationMemoryAllowance) => update((current) => ({ ...current, allowance: settings })),
+		status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,
+		settingsSaved: (saved: ConversationMemoryAllowance) => update((current) => ({ ...current, settings: saved })),
 		startCatchup: () => catchupAction(() => startMemoryCatchup(conversationId)),
 		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
 		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },

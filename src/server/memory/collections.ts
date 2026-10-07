@@ -223,10 +223,10 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 	}).immediate();
 }
 
-export class StaleMemoryAllowanceError extends Error {
-	constructor(readonly expectedRevision: number, readonly actualRevision: number, readonly currentSettings: { revision: number; allowance: number; enabled: boolean }) {
-		super("Memory Allowance changed in another session.");
-		this.name = "StaleMemoryAllowanceError";
+export class StaleMemorySettingsError extends Error {
+	constructor(readonly expectedRevision: number, readonly actualRevision: number, readonly currentSettings: { revision: number; allowance: number; note: string; enabled: boolean }) {
+		super("Memory settings changed in another session.");
+		this.name = "StaleMemorySettingsError";
 	}
 }
 
@@ -247,19 +247,34 @@ const ensureChatState = (database: Database, conversationId: number) => {
 	return state;
 };
 
+const memorySettingsView = (database: Database, conversationId: number, state: typeof conversationMemorySettingsTable.$inferSelect) => ({
+	revision: state.revision, allowance: state.allowance, note: state.memory_note, enabled: isMemoryEnabledForConversation(database, conversationId),
+});
+
 export function readMemoryAllowance(database: Database, conversationId: number) {
-	const state = ensureChatState(database, conversationId);
-	return { revision: state.revision, allowance: state.allowance, enabled: isMemoryEnabledForConversation(database, conversationId) };
+	return memorySettingsView(database, conversationId, ensureChatState(database, conversationId));
 }
 
 export function setMemoryAllowance(database: Database, conversationId: number, expectedRevision: number, allowance: number) {
 	if (!Number.isSafeInteger(allowance) || allowance < 0) throw new InvalidMemorySourceError("Memory Allowance must be a non-negative whole number of estimated tokens.");
 	return database.transaction(() => {
 		const current = ensureChatState(database, conversationId);
-		if (current.revision !== expectedRevision) throw new StaleMemoryAllowanceError(expectedRevision, current.revision, { revision: current.revision, allowance: current.allowance, enabled: isMemoryEnabledForConversation(database, conversationId) });
+		if (current.revision !== expectedRevision) throw new StaleMemorySettingsError(expectedRevision, current.revision, memorySettingsView(database, conversationId, current));
 		const next = current.revision + 1;
 		drizzle(database).update(conversationMemorySettingsTable).set({ allowance, revision: next }).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).run();
-		return { revision: next, allowance, enabled: isMemoryEnabledForConversation(database, conversationId) };
+		return memorySettingsView(database, conversationId, { ...current, allowance, revision: next });
+	}).immediate();
+}
+
+export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {
+	const memoryNote = note.trim();
+	if (memoryNote.length > 2_000) throw new InvalidMemorySourceError("The Memory note is limited to 2,000 characters.");
+	return database.transaction(() => {
+		const current = ensureChatState(database, conversationId);
+		if (current.revision !== expectedRevision) throw new StaleMemorySettingsError(expectedRevision, current.revision, memorySettingsView(database, conversationId, current));
+		const next = current.revision + 1;
+		drizzle(database).update(conversationMemorySettingsTable).set({ memory_note: memoryNote, revision: next }).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).run();
+		return memorySettingsView(database, conversationId, { ...current, memory_note: memoryNote, revision: next });
 	}).immediate();
 }
 

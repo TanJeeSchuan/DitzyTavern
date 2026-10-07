@@ -33,6 +33,11 @@ const identityInstructions = (database: Database, messageId: number) => {
 	}).join("\n");
 };
 
+const noteInstructions = (database: Database, messageId: number) => {
+	const note = database.query<{ memory_note: string }, [number]>("SELECT s.memory_note FROM messages m JOIN conversation_memory_settings s ON s.conversation_id = m.conversation_id WHERE m.id = ?").get(messageId)?.memory_note ?? "";
+	return note ? `Writer's note for this Chat (guidance only, never a source of facts):\n${note}` : "";
+};
+
 const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {
 	if (!hasValidMemoryClaimText(candidate.claim, candidate.attribution)) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
 	if (!hasValidMemoryPeople(candidate.people)) return "has invalid person labels";
@@ -75,7 +80,8 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
 	const instructions = `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${source.messageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
 	const identities = identityInstructions(database, source.messageId);
-	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}${identities ? `\n${identities}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
+	const note = noteInstructions(database, source.messageId);
+	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}${identities ? `\n${identities}` : ""}${note ? `\n\n${note}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
 	const retainedContext = [...context];
 	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) retainedContext.shift();
