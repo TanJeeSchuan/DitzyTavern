@@ -20,10 +20,10 @@ type PanelState =
 	| { status: "ready"; variables: MacroVariables }
 	| { status: "error"; message: string };
 
-const errorText = (status: "not-found" | "network" | "invalid") =>
-	status === "not-found"
+const errorText = (outcome: "not-found" | "network" | "invalid") =>
+	outcome === "not-found"
 		? "Macro Variables are no longer available for this Chat."
-		: status === "invalid"
+		: outcome === "invalid"
 			? "This history position is not available."
 			: "Macro Variables could not be loaded.";
 

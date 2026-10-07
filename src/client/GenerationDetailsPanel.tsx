@@ -42,13 +42,13 @@ export function GenerationDetailsPanel({
 
 	useAsyncEffect((isCancelled) => {
 		setState({ status: "loading" });
-		const showError = (status: "not-found" | "invalid" | "network", reason?: string) => {
+		const showError = (outcome: "not-found" | "invalid" | "network", reason?: string) => {
 			if (isCancelled()) return;
 			setState({
 				status: "error",
-				message: status === "not-found"
+				message: outcome === "not-found"
 					? "These Generation details are no longer available."
-					: status === "invalid"
+					: outcome === "invalid"
 						? reason ?? "Stored Generation details are invalid."
 						: "Generation details could not be loaded.",
 			});
