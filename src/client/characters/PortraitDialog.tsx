@@ -53,11 +53,23 @@ export function PortraitDialog({
 					<DialogDescription>PNG, JPEG, WebP, or GIF up to 20 MB. The Portrait is shown wherever this identity appears and is never sent to the model.</DialogDescription>
 				</DialogHeader>
 				{portrait === undefined
-					? <button type="button" className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:bg-muted/40" onClick={() => picker.current?.click()}><ImagePlus aria-hidden="true" /> Choose an image</button>
+					? (
+						<button
+							type="button"
+							className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:bg-muted/40"
+							onClick={() => picker.current?.click()}
+						>
+							<ImagePlus aria-hidden="true" /> Choose an image
+						</button>
+					)
 					: <>
 						<div className="relative mx-auto w-fit cursor-crosshair touch-none select-none" onPointerDown={aim} onPointerMove={aim} aria-label="Set the focal point">
 							<img src={imageSrc(portrait.hash)} alt="" draggable={false} className="max-h-64 max-w-full rounded-lg" />
-							<span aria-hidden="true" className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.5)]" style={{ left: `${portrait.focalX * 100}%`, top: `${portrait.focalY * 100}%` }} />
+							<span
+								aria-hidden="true"
+								className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.5)]"
+								style={{ left: `${portrait.focalX * 100}%`, top: `${portrait.focalY * 100}%` }}
+							/>
 						</div>
 						<p className="text-center text-xs text-muted-foreground">Click or drag to keep the important part in frame.</p>
 						<div className="flex items-end justify-center gap-4">
