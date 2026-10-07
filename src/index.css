@@ -2,6 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource/alegreya-sans/400.css";
+@import "@fontsource/alegreya-sans/400-italic.css";
+@import "@fontsource/alegreya-sans/500.css";
+@import "@fontsource/alegreya-sans/500-italic.css";
+@import "@fontsource/alegreya-sans/700.css";
+@import "@fontsource/alegreya-sans/700-italic.css";
 
 @import "./styles/theme.css";
 @import "./styles/workspace.css";

@@ -39,7 +39,7 @@
 :root {
 	color-scheme: light;
 	--font-control: "Geist Variable", "Segoe UI", sans-serif;
-	--font-reading: ui-rounded, "Avenir Next", "Segoe UI", sans-serif;
+	--font-reading: "Alegreya Sans", sans-serif;
 	--background: oklch(0.93 0.012 48);
 	--foreground: oklch(0.22 0.014 38);
 	--surface: oklch(0.985 0.006 55);

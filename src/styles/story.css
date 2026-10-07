@@ -234,7 +234,7 @@
 	margin: 0;
 	color: color-mix(in oklch, var(--foreground) 88%, var(--accent));
 	font-family: var(--font-reading);
-	font-size: 0.92rem;
+	font-size: 1.25rem;
 	line-height: 1.62;
 }
 
@@ -345,8 +345,8 @@
 .prose {
 	color: color-mix(in oklch, var(--foreground) 97%, var(--surface));
 	font-family: var(--font-reading);
-	font-size: clamp(1rem, 1.3vw, 1.085rem);
-	line-height: 1.78;
+	font-size: 1.25rem;
+	line-height: 1.65;
 	letter-spacing: -0.006em;
 }
 
@@ -371,7 +371,7 @@
 }
 
 .prose-block + .prose-block {
-	margin-top: 1.15em;
+	margin-top: 0.9em;
 }
 
 .prose .prose-dialogue {
@@ -386,6 +386,15 @@
 
 .prose :is(ul, ol) {
 	padding-left: 1.4em;
+	line-height: 1.5;
+}
+
+.prose li > p {
+	margin-block: 0.25em;
+}
+
+.prose li > :is(ul, ol) {
+	margin-block: 0.15em;
 }
 
 .prose ul {
@@ -397,8 +406,25 @@
 }
 
 .prose :is(h1, h2, h3, h4, h5, h6) {
+	font-size: 1em;
+	font-weight: 500;
+	line-height: 1.25;
+}
+
+.prose :is(h1, h2) {
+	font-weight: 700;
+}
+
+.prose h1 {
+	font-size: 1.6em;
+}
+
+.prose h2 {
+	font-size: 1.3em;
+}
+
+.prose h3 {
 	font-size: 1.1em;
-	font-weight: 650;
 }
 
 .prose hr {
@@ -583,7 +609,7 @@
 	background: var(--surface-raised);
 	color: var(--foreground);
 	font-family: var(--font-reading);
-	font-size: 1rem;
+	font-size: 1.25rem;
 	line-height: 1.65;
 }
 
@@ -684,7 +710,7 @@
 	padding: 0.8rem 0.2rem 0.65rem;
 	color: var(--foreground);
 	font-family: var(--font-reading);
-	font-size: 0.92rem;
+	font-size: 1.25rem;
 	line-height: 1.5;
 }
 
