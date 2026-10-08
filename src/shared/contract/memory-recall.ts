@@ -92,6 +92,8 @@ export const memoryActivationWithFinalText = (
 });
 
 export class MemoryActivationRecordParseError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "MemoryActivationRecordParseError";

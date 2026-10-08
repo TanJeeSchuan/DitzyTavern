@@ -1,6 +1,8 @@
 import type { PromptPresetSummary } from "../../shared/contract/prompt-preset";
 
 export class PromptPresetNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	readonly presetId: number;
 
 	constructor(presetId: number) {
@@ -14,6 +16,9 @@ export class PromptPresetNotFoundError extends Error {
 //  Typed revision conflict. Carries the authoritative current preset
 // so callers can recover without overwriting their local draft.
 export class StalePromptPresetRevisionError extends Error {
+	readonly outcome = "conflict" as const;
+	get details() { return { reason: "stale-revision" }; }
+
 	readonly presetId: number;
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
@@ -37,6 +42,8 @@ export class StalePromptPresetRevisionError extends Error {
 }
 
 export class InvalidPromptPresetCommandError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidPromptPresetCommandError";
@@ -49,6 +56,9 @@ export class InvalidPromptPresetCommandError extends Error {
 // revision did not; carries the authoritative current preset so the
 // confirmation can be renewed with the exact impact.
 export class PromptPresetDeletionImpactChangedError extends Error {
+	readonly outcome = "conflict" as const;
+	get details() { return { reason: "deletion-impact" }; }
+
 	readonly currentPreset: PromptPresetSummary;
 
 	constructor(expectedConversationCount: number, currentPreset: PromptPresetSummary) {
@@ -65,6 +75,8 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 // of new Conversations and preset deletions, so removing it is refused no
 // matter which revision the caller saw.
 export class DefaultPromptPresetNotRemovableError extends Error {
+	readonly outcome = "not-removable" as const;
+
 	constructor() {
 		super("The Default Prompt Preset cannot be deleted.");
 		this.name = "DefaultPromptPresetNotRemovableError";

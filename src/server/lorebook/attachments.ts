@@ -41,6 +41,8 @@ export interface LoreSettings {
 }
 
 export class LoreAttachmentOwnerNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor() {
 		super("The Lore attachment owner was not found.");
 		this.name = "LoreAttachmentOwnerNotFoundError";

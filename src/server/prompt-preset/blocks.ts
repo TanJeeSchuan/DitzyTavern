@@ -23,6 +23,8 @@ import { refreshMemoryForConversation } from "../memory";
 // ordering or toggles — there is no whole-recipe write to do it with.
 
 export class PromptPresetBlockNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor(presetId: number, blockId: number) {
 		super(`Prompt Preset ${presetId} has no block ${blockId}.`);
 		this.name = "PromptPresetBlockNotFoundError";
@@ -30,6 +32,8 @@ export class PromptPresetBlockNotFoundError extends Error {
 }
 
 export class InvalidPromptPresetOperationError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(readonly reason: string) {
 		super(reason);
 		this.name = "InvalidPromptPresetOperationError";

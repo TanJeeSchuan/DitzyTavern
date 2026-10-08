@@ -1,6 +1,8 @@
 import type { Lorebook } from "../../shared/contract/lorebook";
 
 export class LorebookNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor(readonly bookId: number) {
 		super(`Lorebook ${bookId} was not found.`);
 		this.name = "LorebookNotFoundError";
@@ -8,6 +10,8 @@ export class LorebookNotFoundError extends Error {
 }
 
 export class LorebookEntryNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor(readonly entryId: number) {
 		super(`Lorebook entry ${entryId} was not found.`);
 		this.name = "LorebookEntryNotFoundError";
@@ -15,6 +19,8 @@ export class LorebookEntryNotFoundError extends Error {
 }
 
 export class InvalidLorebookCommandError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidLorebookCommandError";
@@ -30,6 +36,9 @@ export class InvalidLorebookExpressionError extends Error {
 }
 
 export class StaleLorebookRevisionError extends Error {
+	readonly outcome = "conflict" as const;
+	get details() { return { reason: "stale-revision" }; }
+
 	constructor(
 		readonly bookId: number,
 		readonly expectedRevision: number,
@@ -48,6 +57,9 @@ export class StaleLorebookRevisionError extends Error {
 // re-reads the owner's attachment state, so the error carries only the
 // identifiers the route needs.
 export class StaleLoreAttachmentOwnerRevisionError extends Error {
+	readonly outcome = "stale-lore-owner" as const;
+	get details() { return { reason: "stale-revision" }; }
+
 	constructor(
 		readonly characterId: number,
 		readonly expectedRevision: number,

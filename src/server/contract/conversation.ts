@@ -1,21 +1,14 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
-import { InvalidImageError } from "../image";
-import { Elysia, status, t } from "elysia";
+
+import { Elysia, t } from "elysia";
 import { Type } from "@sinclair/typebox";
-import {
-	CharacterNotFoundError,
-	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
-} from "../character-library";
+
 import {
 	ConversationNotFoundError,
-	ConversationNotPlayableError,
 	InvalidConversationCommandError,
-	ParticipantNotFoundError,
-	ParticipantNotRemovableError,
 	createConversationModule,
 	deleteConversation,
-	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationModule,
 } from "../conversation";
@@ -31,7 +24,7 @@ import {
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
-import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+import { notFoundResponse } from "./responses";
 import { toConversationSummary } from "./projections";
 import {
 	activeGenerationDetails,
@@ -80,7 +73,6 @@ import {
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
 import {
-	classifyGenerationFailure,
 	generationAcceptanceResponse,
 	siblingGenerationAcceptanceResponse,
 } from "./generation-error-mapping";
@@ -90,8 +82,6 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
-import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
-import { MemoryActivationRecordParseError } from "../../shared/contract/memory-recall";
 
 const readConversationOr404 = <T>(
 	database: Database,
@@ -99,56 +89,6 @@ const readConversationOr404 = <T>(
 ): T | ReturnType<typeof notFoundResponse> => {
 	const value = read(createConversationModule(database));
 	return value === undefined ? notFoundResponse() : value;
-};
-
-// @approved
-//  Builds the typed stale-revision recovery shared by every Conversation
-// route: the authoritative summary is re-read and returned inside the 409
-// conflict payload, or a 404 when the Conversation disappeared in the
-// meantime. One helper keeps error mapping from drifting between the
-// command, fork, and save-as-Character workflow routes.
-const staleConversationConflict = (
-	database: Database,
-	conversationId: number,
-	error: StaleConversationRevisionError,
-):
-	| { outcome: "not-found" }
-	| {
-			outcome: "conflict";
-			expectedRevision: number;
-			actualRevision: number;
-			currentConversation: ReturnType<typeof toConversationSummary>;
-	  } => {
-	const current = createConversationModule(database).getSummary(conversationId);
-	if (current === undefined) {
-		// @approved
-		//  The Conversation disappeared between the conflict and the recovery
-		// read; never fabricate authoritative state.
-		return { outcome: "not-found" as const };
-	}
-	return {
-		outcome: "conflict" as const,
-		expectedRevision: error.expectedRevision,
-		actualRevision: error.actualRevision,
-		currentConversation: toConversationSummary(current),
-	};
-};
-
-// @approved
-//  Maps a stale Conversation revision onto the typed recovery response: the
-// authoritative summary rides inside the 409, or a 404 when the Conversation
-// disappeared between the conflict and the recovery read. Exported for the
-// Conversation-owned Lore attachment routes, which inherit the canonical
-// Conversation conflict shape through the same builder.
-export const staleConversationResponse = (
-	database: Database,
-	conversationId: number,
-	error: StaleConversationRevisionError,
-) => {
-	const conflict = staleConversationConflict(database, conversationId, error);
-	return conflict.outcome === "not-found"
-		? status(404, { outcome: "not-found" as const })
-		: status(409, conflict);
 };
 
 // @approved
@@ -210,9 +150,7 @@ export const createConversationRoutes = (
 					deleteConversation(database, params.id);
 					return { outcome: "deleted" as const };
 				} catch (error) {
-					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, { 404: notFoundOutcome, 422: invalidOutcome });
 				}
 			},
 			{
@@ -331,12 +269,7 @@ export const createConversationRoutes = (
 						},
 					};
 				} catch (error) {
-					if (!(error instanceof Error)) throw error;
-					const failure = classifyGenerationFailure(error);
-					if (failure === undefined || failure.body.outcome === "conflict") throw error;
-					if (failure.status === 404) return status(404, failure.body);
-					if (failure.status === 409) return status(409, failure.body);
-					return status(422, failure.body);
+					return presentDomainError(error, { 404: notFoundOutcome, 409: notPlayableOutcome, 422: invalidOutcome });
 				}
 			},
 			{
@@ -361,8 +294,7 @@ export const createConversationRoutes = (
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, { 422: invalidOutcome });
 				}
 			},
 			{
@@ -382,8 +314,7 @@ export const createConversationRoutes = (
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, { 422: invalidOutcome });
 				}
 			},
 			{
@@ -429,10 +360,7 @@ export const createConversationRoutes = (
 						});
 					return variables ?? status(404, { outcome: "not-found" as const });
 				} catch (error) {
-					if (error instanceof InvalidConversationCommandError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error, { 422: invalidOutcome });
 				}
 			},
 			{
@@ -447,7 +375,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/macro-variables",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					const edited = createConversationModule(database).editMacroVariables({
 							conversationId: params.id,
@@ -460,14 +388,11 @@ export const createConversationRoutes = (
 						});
 					return { outcome: "applied" as const, ...edited };
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
-					}
-					throw error;
+					return presentDomainError(error,
+						{ 404: notFoundOutcome,
+							409: conversationConflict,
+							422: invalidOutcome },
+						{ currentConversation: () => createConversationModule(database).getSummary(params.id) });
 				}
 			},
 			{
@@ -590,7 +515,7 @@ export const createConversationRoutes = (
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
@@ -607,31 +532,11 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (error instanceof ConversationNotFoundError) {
-						return notFoundResponse();
-					}
-					if (error instanceof ConversationNotPlayableError) {
-						return status(409, {
-							outcome: "not-playable" as const,
-							reason: error.message,
-						});
-					}
-					if (error instanceof ParticipantNotRemovableError) {
-						return status(409, {
-							outcome: "not-removable" as const,
-							reason: error.reason,
-						});
-					}
-					if (
-						error instanceof InvalidConversationCommandError ||
-						error instanceof InvalidImageError
-					) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						{ 404: notFoundOutcome,
+							409: conversationCommandConflict,
+							422: invalidOutcome },
+						{ currentConversation: () => createConversationModule(database).getSummary(params.id) });
 				}
 			},
 			{
@@ -660,22 +565,11 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					if (error instanceof StaleCharacterRevisionError) {
-						return staleCharacterConflictResponse(error);
-					}
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (
-						error instanceof ConversationNotFoundError ||
-						error instanceof CharacterNotFoundError
-					) {
-						return notFoundResponse();
-					}
-					if (error instanceof InvalidConversationCommandError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						{ 404: notFoundOutcome,
+							409: castCharacterConflict,
+							422: invalidOutcome },
+						{ currentConversation: () => createConversationModule(database).getSummary(params.id) });
 				}
 			},
 			{
@@ -704,19 +598,11 @@ export const createConversationRoutes = (
 						character: toCharacterPayload(character),
 					};
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (
-						error instanceof ConversationNotFoundError ||
-						error instanceof ParticipantNotFoundError
-					) {
-						return notFoundResponse();
-					}
-					if (error instanceof InvalidCharacterDefinitionError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						{ 404: notFoundOutcome,
+							409: conversationConflict,
+							422: invalidOutcome },
+						{ currentConversation: () => createConversationModule(database).getSummary(params.id) });
 				}
 			},
 			{

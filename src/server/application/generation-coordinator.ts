@@ -85,6 +85,8 @@ export type GenerationStopAllOutcome =
 
 /** ==[HUMAN APPROVED]== A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
 export class GenerationConfigurationError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "GenerationConfigurationError";

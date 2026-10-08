@@ -16,6 +16,8 @@ import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState } f
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
 export class StaleMemoryCollectionError extends Error {
+	readonly outcome = "conflict" as const;
+
 	constructor(readonly collection: MemoryCollectionView) {
 		super("This Memory collection changed in another session.");
 		this.name = "StaleMemoryCollectionError";
@@ -23,6 +25,8 @@ export class StaleMemoryCollectionError extends Error {
 }
 
 export class InvalidMemorySourceError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidMemorySourceError";
@@ -434,6 +438,8 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 }
 
 export class StaleMemorySettingsError extends Error {
+	readonly outcome = "conflict" as const;
+
 	constructor(
 		readonly expectedRevision: number,
 		readonly actualRevision: number,

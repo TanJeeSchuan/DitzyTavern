@@ -1,7 +1,7 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
-import { Elysia, status } from "elysia";
+import { Elysia } from "elysia";
 import { isSillyTavernJsonValue } from "../prompt-preset";
-import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 
 import {
 	executeLorebookCommand,
@@ -11,13 +11,7 @@ import {
 	readLorebook,
 	readNativeLorebook,
 } from "../lorebook/library";
-import {
-	InvalidLorebookCommandError,
-	LorebookEntryNotFoundError,
-	LorebookNotFoundError,
-	StaleLoreAttachmentOwnerRevisionError,
-	StaleLorebookRevisionError,
-} from "../lorebook/errors";
+
 import {
 	bookIdParams,
 	lorebook,
@@ -42,7 +36,6 @@ import {
 import type { LoreMatchTestResponse } from "../../shared/contract/lorebook";
 import {
 	executeLorebookAttachmentCommand,
-	LoreAttachmentOwnerNotFoundError,
 	readLorebookAttachmentState,
 	readLorebookAttachmentImpact,
 	readCharacterLorebookAttachments,
@@ -50,14 +43,10 @@ import {
 	readParticipantConversationId,
 } from "../lorebook/attachments";
 import {
+	createConversationModule,
 	executeConversationCommand,
-	ConversationNotFoundError,
-	InvalidConversationCommandError,
-	ParticipantNotFoundError,
-	StaleConversationRevisionError,
 	type ConversationCommand,
 } from "../conversation";
-import { staleConversationResponse } from "./conversation";
 import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -68,27 +57,6 @@ import type { ModelFetch } from "../model-client/types";
 export interface LorebookRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
-
-const classify = (cause: unknown) => {
-	if (cause instanceof LorebookNotFoundError || cause instanceof LorebookEntryNotFoundError) return { outcome: "not-found" as const };
-	if (cause instanceof InvalidLorebookCommandError) return { outcome: "invalid" as const, reason: cause.message };
-	if (cause instanceof StaleLorebookRevisionError) return {
-		outcome: "conflict" as const,
-		reason: "stale-revision" as const,
-		expectedRevision: cause.expectedRevision,
-		actualRevision: cause.actualRevision,
-		currentBook: cause.currentBook,
-	};
-	return null;
-};
-
-const execute = <T>(operation: () => T) => {
-	try { return { ok: true as const, value: operation() }; } catch (cause) {
-		const failure = classify(cause);
-		if (failure !== null) return { ok: false as const, failure };
-		throw cause;
-	}
-};
 
 export const createLorebookRoutes = (database: Database, options: LorebookRouteOptions = {}) => new Elysia()
 	.get("/api/lorebooks", () => ({ books: listLorebooks(database) }), { response: lorebookListResponse })
@@ -101,28 +69,30 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 		return book ?? notFoundResponse();
 	}, { params: bookIdParams, response: { 200: nativeLorebook, 404: notFoundOutcome } })
 	.post("/api/lorebooks/import", ({ body }) => {
-		const result = execute(() => importNativeLorebook(database, body));
-		if (!result.ok) return result.failure.outcome === "invalid" ? invalidResponse(result.failure.reason) : notFoundResponse();
-		return { outcome: "applied" as const, book: result.value, warnings: [] };
+		try {
+			return { outcome: "applied" as const, book: importNativeLorebook(database, body), warnings: [] };
+		} catch (error) {
+			return presentDomainError(error, { 404: notFoundOutcome, 422: invalidOutcome });
+		}
 	}, { body: nativeLorebook, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
 	.post("/api/lorebooks/import/sillytavern", ({ body }) => {
 		if (!isSillyTavernJsonValue(body.source)) return invalidResponse("SillyTavern lorebook JSON must be valid JSON.");
-		// @approved
-		//  SAFETY: the guard above proves the opaque request value is valid JSON at this boundary.
-		const result = execute(() => importSillyTavernLorebook(database, body.source as SillyTavernJsonValue));
-		if (!result.ok) return result.failure.outcome === "invalid" ? invalidResponse(result.failure.reason) : notFoundResponse();
-		return { outcome: "applied" as const, book: result.value.book, warnings: result.value.warnings };
+		try {
+			const { book, warnings } = importSillyTavernLorebook(database, body.source);
+			return { outcome: "applied" as const, book, warnings };
+		} catch (error) {
+			return presentDomainError(error, { 404: notFoundOutcome, 422: invalidOutcome });
+		}
 	}, { body: sillyTavernLorebookImportBody, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
 	.post("/api/lorebooks/commands", ({ body }) => {
-		const result = execute(() => executeLorebookCommand(database, body));
-		if (!result.ok) {
-			if (result.failure.outcome === "not-found") return notFoundResponse();
-			if (result.failure.outcome === "invalid") return invalidResponse(result.failure.reason);
-			return status(409, result.failure);
+		try {
+			const value = executeLorebookCommand(database, body);
+			return "deleted" in value
+				? { outcome: "deleted" as const, bookId: value.deleted }
+				: { outcome: "applied" as const, book: value };
+		} catch (error) {
+			return presentDomainError(error, { 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome });
 		}
-		return "deleted" in result.value
-			? { outcome: "deleted" as const, bookId: result.value.deleted }
-			: { outcome: "applied" as const, book: result.value };
 	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
 	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
 		const book = readLorebook(database, body.bookId);
@@ -166,10 +136,11 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 		executeConversationCommand(database, command);
 		return { outcome: "applied" as const };
 	} catch (error) {
-		if (error instanceof StaleConversationRevisionError) return staleConversationResponse(database, command.conversationId, error);
-		if (error instanceof ConversationNotFoundError || error instanceof ParticipantNotFoundError) return notFoundResponse();
-		if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
-		throw error;
+		return presentDomainError(error,
+			{ 404: notFoundOutcome,
+				409: loreAttachmentCommandConflict,
+				422: invalidOutcome },
+			{ currentConversation: () => createConversationModule(database).getSummary(command.conversationId) });
 	}
 };
 
@@ -196,19 +167,10 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 				executeLorebookAttachmentCommand(database, body);
 				return { outcome: "applied" as const };
 			} catch (error) {
-				if (error instanceof StaleLoreAttachmentOwnerRevisionError) {
-					const currentState = readCharacterLorebookAttachments(database, error.characterId);
-					if (currentState === undefined) return notFoundResponse();
-					return status(409, {
-						outcome: "conflict" as const,
-						reason: "stale-revision" as const,
-						expectedRevision: error.expectedRevision,
-						actualRevision: error.actualRevision,
-						currentState,
-					});
-				}
-				if (error instanceof LoreAttachmentOwnerNotFoundError) return notFoundResponse();
-				throw error;
+				return presentDomainError(error,
+					{ 404: notFoundOutcome,
+						409: loreAttachmentCommandConflict },
+					{ currentState: (cause) => "characterId" in cause ? readCharacterLorebookAttachments(database, Number(cause.characterId)) : undefined });
 			}
 		}
 		if (body.type === "attach-participant" || body.type === "detach-participant") {

@@ -40,6 +40,8 @@ export const isLoreActivationRecord = (value: GenerationJsonValue): value is Lor
 	Value.Check(loreActivationRecord, value);
 
 export class LoreActivationRecordParseError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "LoreActivationRecordParseError";

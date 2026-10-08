@@ -7,7 +7,13 @@ import { memoryCandidates, memoryIdentities, memoryLabelMerges, type MemoryCandi
 import { applyMemoryPeople } from "../../shared/memory-identity";
 import { abortMemoryWork } from "./work";
 
-export class StaleMemoryLabelsError extends Error {}
+export class StaleMemoryLabelsError extends Error {
+	readonly outcome = "stale-memory-labels" as const;
+}
+
+export class InvalidMemoryLabelsError extends Error {
+	readonly outcome = "invalid" as const;
+}
 
 const parseMerges = (json: string): MemoryLabelMerge[] => {
 	try { return Value.Parse(memoryLabelMerges, JSON.parse(json)); } catch { return []; }
@@ -70,9 +76,9 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 			.from(participantTable)
 			.where(and(eq(participantTable.id, command.participantId), eq(participantTable.conversation_id, conversationId), isNull(participantTable.deleted_at)))
 			.get();
-		if (!participant) throw new Error("This Participant is no longer in the Cast.");
+		if (!participant) throw new InvalidMemoryLabelsError("This Participant is no longer in the Cast.");
 		const identity = command.identity.kind === "plays" ? { ...command.identity, person: command.identity.person.trim() } : command.identity;
-		if (identity.kind === "plays" && !identity.person) throw new Error("Choose a nonblank person name.");
+		if (identity.kind === "plays" && !identity.person) throw new InvalidMemoryLabelsError("Choose a nonblank person name.");
 		if (identity.kind === "themselves") delete state.identities[command.participantId]; else state.identities[command.participantId] = identity;
 		const values = { identities: JSON.stringify(state.identities), label_revision: state.revision + 1 };
 		db.insert(conversationMemorySettingsTable)
@@ -98,13 +104,13 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 export function mergeMemoryLabels(database: Database, conversationId: number, command: MemoryLabelMergeCommand): void {
 	database.transaction(() => {
 		const db = drizzle(database);
-		if (!db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get()) throw new Error("This Chat no longer exists.");
+		if (!db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get()) throw new InvalidMemoryLabelsError("This Chat no longer exists.");
 		const state = readMemoryLabelState(database, conversationId);
 		if (state.revision !== command.expectedRevision) throw new StaleMemoryLabelsError();
 		const destination = command.destination.trim();
 		const labels = new Set(command.labels);
-		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels].every((label) => label === destination)) throw new Error("Choose labels and a different destination name.");
-		if (state.merges.some(({ from, to }) => labels.has(from) || (from === destination && !labels.has(to)))) throw new Error("A selected name has already been merged. Refresh Memories and choose its current label.");
+		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels].every((label) => label === destination)) throw new InvalidMemoryLabelsError("Choose labels and a different destination name.");
+		if (state.merges.some(({ from, to }) => labels.has(from) || (from === destination && !labels.has(to)))) throw new InvalidMemoryLabelsError("A selected name has already been merged. Refresh Memories and choose its current label.");
 		const merges = new Map(state.merges.map(({ from, to }) => [from, labels.has(to) ? destination : to]));
 		for (const label of labels) merges.set(label, destination);
 		merges.delete(destination);

@@ -1,14 +1,9 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import {
-	CharacterNotFoundError,
-	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
-} from "../character-library";
-import { InvalidConversationCreationError } from "../conversation";
-import { InvalidImageError } from "../image";
+
 import { createNativeConversation } from "../workflows";
-import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+
 import { toConversationSummary } from "./projections";
 import { characterConflict } from "../../shared/contract/character-library";
 import {
@@ -34,20 +29,7 @@ export const createNativeConversationRoutes = (database: Database) =>
 					conversation: toConversationSummary(conversation),
 				};
 			} catch (error) {
-				if (error instanceof StaleCharacterRevisionError) {
-					return staleCharacterConflictResponse(error);
-				}
-				if (error instanceof CharacterNotFoundError) {
-					return notFoundResponse();
-				}
-				if (
-					error instanceof InvalidCharacterDefinitionError ||
-					error instanceof InvalidConversationCreationError ||
-					error instanceof InvalidImageError
-				) {
-					return invalidResponse(error.message);
-				}
-				throw error;
+				return presentDomainError(error, { 404: notFoundOutcome, 409: characterConflict, 422: invalidOutcome });
 			}
 		},
 		{

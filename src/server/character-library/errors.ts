@@ -1,6 +1,8 @@
 import type { CharacterSnapshot } from "./types";
 
 export class CharacterNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	readonly characterId: number;
 
 	constructor(characterId: number) {
@@ -14,6 +16,8 @@ export class CharacterNotFoundError extends Error {
 //  Typed revision conflict. Carries the authoritative current Character so
 // callers can recover without overwriting their local draft.
 export class StaleCharacterRevisionError extends Error {
+	readonly outcome = "conflict" as const;
+
 	readonly characterId: number;
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
@@ -37,6 +41,8 @@ export class StaleCharacterRevisionError extends Error {
 }
 
 export class InvalidCharacterDefinitionError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidCharacterDefinitionError";
@@ -44,6 +50,8 @@ export class InvalidCharacterDefinitionError extends Error {
 }
 
 export class InvalidCharacterCommandError extends Error {
+	readonly outcome = "invalid" as const;
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidCharacterCommandError";
