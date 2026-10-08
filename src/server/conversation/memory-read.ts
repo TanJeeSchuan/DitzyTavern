@@ -72,3 +72,16 @@ export function readSelectedPathForMemory(database: Database, conversationId: nu
 		},
 	}));
 }
+
+export const readMessageAuthorsForMemory = (database: Database, conversationId: number) =>
+	connectConversationDatabase(database).select({
+		messageId: messageTable.id,
+		author: messageTable.author_name,
+		authorParticipantId: messageTable.author_participant_id,
+	}).from(messageTable).where(eq(messageTable.conversation_id, conversationId))
+		.orderBy(asc(messageTable.position)).all();
+
+export const readMemoryTailMessageId = (database: Database, conversationId: number): number | undefined =>
+	connectConversationDatabase(database).select({ id: messageTable.id }).from(messageTable)
+		.where(eq(messageTable.conversation_id, conversationId))
+		.orderBy(desc(messageTable.position)).limit(1).get()?.id;

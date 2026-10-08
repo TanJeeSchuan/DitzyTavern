@@ -1,4 +1,4 @@
-import { readSelectedPathForMemory } from "../conversation";
+import { readMessageAuthorsForMemory, readSelectedPathForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -33,7 +33,7 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 	const db = drizzle(database);
 	const row = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
 	const cast = new Map<number, { id: number; names: string[] }>();
-	const path = readSelectedPathForMemory(database, conversationId) ?? [];
+	const path = readMessageAuthorsForMemory(database, conversationId);
 	const names = db.select({ id: participantTable.id, name: participantTable.name }).from(participantTable)
 		.where(eq(participantTable.conversation_id, conversationId)).orderBy(asc(participantTable.position), asc(participantTable.id)).all();
 	for (const { id, name } of names) {
@@ -91,7 +91,7 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 			.onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: values })
 			.run();
 		const excluded = Object.entries(state.identities).flatMap(([id, value]) => value.kind === "excluded" ? [Number(id)] : []);
-		const messages = (readSelectedPathForMemory(database, conversationId) ?? []).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
+		const messages = readMessageAuthorsForMemory(database, conversationId).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
 		const removed = messages.length === 0 ? [] : db
 			.delete(memoryCollectionTable)
 			.where(and(eq(memoryCollectionTable.conversation_id, conversationId), inArray(memoryCollectionTable.message_id, messages)))

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readConversationRevision, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
+import { readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
 import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import {
@@ -189,8 +189,8 @@ export function queueMemorySource(database: Database, conversationId: number, me
 }
 
 export function queueMemoryTail(database: Database, conversationId: number): boolean {
-	const tail = readSelectedPathForMemory(database, conversationId)?.at(-1);
-	return tail ? queueMemorySource(database, conversationId, tail.messageId) : false;
+	const messageId = readMemoryTailMessageId(database, conversationId);
+	return messageId === undefined ? false : queueMemorySource(database, conversationId, messageId);
 }
 
 // @approved
@@ -284,8 +284,7 @@ interface MemoryCollectionSource {
 	collection: CollectionRow | undefined;
 }
 
-const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
-	const state = readMemoryLabelState(database, conversationId);
+const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: ReturnType<typeof readMemoryLabelState>, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
 	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
 	return rows.flatMap(({ variant, collection }) => {
@@ -306,12 +305,12 @@ const collectionSources = (database: Database, conversationId: number, collectio
 export function readConversationMemories(database: Database, conversationId: number) {
 	const cursor = new Date().toISOString();
 	const state = readMemoryLabelState(database, conversationId);
-	const path = (readSelectedPathForMemory(database, conversationId) ?? []).map(({ messageId, author, authorParticipantId }) => ({ messageId, author, authorParticipantId }));
+	const path = readMessageAuthorsForMemory(database, conversationId);
 	const collections = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
 	return {
 		revision: readConversationRevision(database, conversationId) ?? 0,
 		cursor,
-		sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections)),
+		sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections), state),
 		path,
 		identities: state.identities,
 		cast: state.cast,
@@ -329,7 +328,7 @@ export function readConversationMemoryChanges(database: Database, conversationId
 		or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`, running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running)),
 	)).all();
 	const state = readMemoryLabelState(database, conversationId);
-	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections, true), configuration) };
+	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections, true), state, configuration) };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {
