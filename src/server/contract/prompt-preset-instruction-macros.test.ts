@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import {
 	createMacroAttemptState,
@@ -29,8 +29,6 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
 	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
 
@@ -38,8 +36,7 @@ describe("Prompt Preset authored instruction macros", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

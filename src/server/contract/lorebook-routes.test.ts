@@ -1,13 +1,11 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createLorebookRoutes } from "./lorebook-routes";
 import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
 import { createConversationModule } from "../conversation";
 import { createCharacterLibraryModule } from "../character-library";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const request = (path: string, init?: RequestInit) =>
 	new Request(`http://localhost${path}`, {
 		headers: { "content-type": "application/json", ...init?.headers },
@@ -25,8 +23,7 @@ describe("Lorebook library transport", () => {
 	let app: ReturnType<typeof createLorebookRoutes>;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		app = createLorebookRoutes(database);
 	});
 	afterEach(() => database.close());

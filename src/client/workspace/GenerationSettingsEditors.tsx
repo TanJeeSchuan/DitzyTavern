@@ -53,11 +53,12 @@ export function SamplingEditor({
 							<span className="flex items-center justify-end @sm:order-last">
 								<input
 									id={`generation-${field}`}
-									className={`h-7 min-w-0 rounded-md border border-transparent bg-transparent px-1.5 text-right text-[13px] tabular-nums
-										outline-none placeholder:text-muted-foreground hover:border-border focus-visible:border-ring
-										focus-visible:ring-3 focus-visible:ring-ring/30 ${
-											set || parsed.status === "invalid" ? "w-14" : "w-20"
-										}`}
+									className={[
+										"h-7 min-w-0 rounded-md border border-transparent bg-transparent px-1.5 text-right text-[13px] tabular-nums",
+										"outline-none placeholder:text-muted-foreground hover:border-border focus-visible:border-ring",
+										"focus-visible:ring-3 focus-visible:ring-ring/30",
+										set || parsed.status === "invalid" ? "w-14" : "w-20",
+									].join(" ")}
 									inputMode="decimal"
 									autoComplete="off"
 									placeholder="Default"

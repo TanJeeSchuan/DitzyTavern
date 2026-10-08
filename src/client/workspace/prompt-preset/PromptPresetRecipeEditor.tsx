@@ -51,9 +51,11 @@ const AddBlockMenu = ({
 				<DropdownMenu.Content
 					align="start"
 					sideOffset={6}
-					className={`z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))]
-							min-w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto rounded-lg border border-border
-							bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none`}
+					className={[
+						"z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))]",
+						"min-w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto rounded-lg border border-border",
+						"bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+					].join(" ")}
 				>
 					<DropdownMenu.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Reference</DropdownMenu.Label>
 					{addableReferences.filter((reference) => !(isSingleUseReference(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (

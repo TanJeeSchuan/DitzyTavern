@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
-import { requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
 import type { PromptPlan } from "../prompt-compiler";
 import {
 	createFakeModelClient,
@@ -18,8 +17,6 @@ import {
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
@@ -51,8 +48,7 @@ describe("Generation capture and provenance", () => {
 	let conversationId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const snapshot = createConversationModule(database).create({
 			name: "Generating Chat",
 			participants: [

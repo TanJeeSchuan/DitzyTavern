@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationRoutes } from "./conversation";
 import {
@@ -26,8 +26,6 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Generation capture coverage: an Active Generation keeps the Prompt Plan
 // it captured, whatever the shared recipe or the Conversation selection does
 // while the attempt streams, and later attempts compile the latest saved
@@ -36,8 +34,7 @@ describe("Prompt Preset capture", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -114,8 +111,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

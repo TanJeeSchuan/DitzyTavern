@@ -1,7 +1,7 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import {
@@ -17,8 +17,6 @@ import {
 } from "../../shared/contract/macro-variables";
 import type { GenerationJsonObject } from "../../shared/generation-json";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -40,8 +38,7 @@ describe("Macro Variables transport", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

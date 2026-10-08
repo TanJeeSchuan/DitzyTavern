@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import { createConversationModule, deleteConversation, InvalidConversationCommandError } from "../conversation";
 import { createConversationRoutes } from "../contract/conversation";
@@ -17,8 +17,6 @@ import { removeRetainedGenerationInspection } from "../conversation/generation-r
 import { createNativeConversation } from ".";
 import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const writer = { name: "Writer", prompt, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
@@ -27,8 +25,7 @@ describe("Image Reference lifetime", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => { database.close(); });
 

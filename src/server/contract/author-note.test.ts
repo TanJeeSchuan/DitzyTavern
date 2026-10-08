@@ -1,3 +1,4 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { createLorebookRoutes } from "./lorebook-routes";
 import { Value } from "@sinclair/typebox/value";
 import { createConversationModule } from "../conversation";
@@ -7,17 +8,13 @@ import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import { generationPreview, chatHistoryPage, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { createChat, readConversation, readPreset, toggleBlock, saveBlockRole, readOperation, withProfile, key, captureModelFetch, startGeneration, completeGeneration, gatedProvider, readInspection, moveBlock } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 let database: Database;
 beforeEach(() => {
-	database = openInitializedDatabase({ path: ":memory:" });
-	observeConversationWrites(database, syncMemorySources);
+	database = openObservedDatabase();
 });
 afterEach(() => database.close());
 

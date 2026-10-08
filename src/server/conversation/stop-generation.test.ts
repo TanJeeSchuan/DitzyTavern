@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import {
 	acceptConversationSiblingGeneration,
 	acceptConversationTailGeneration,
@@ -15,11 +14,9 @@ import {
 	stopConversationGeneration,
 	stopConversationGenerations,
 } from "./commands/active-generation";
-import { requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, requireSnapshot } from "./test-fixtures";
 import { recoverActiveGenerations } from "../workflows";
 
-import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -32,8 +29,7 @@ describe("explicit Conversation Generation Stop", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => database.close());

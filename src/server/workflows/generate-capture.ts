@@ -282,7 +282,7 @@ export type GenerationCaptureFacts<K extends GenerationTargetKind = GenerationTa
 // Recall snapshot, the carried intent, and the pending-human decision.
 type GenerationPreparationCarried = {
 	readonly memory: MemoryRecallSnapshot;
-	readonly intent: GenerationIntent | undefined;
+	readonly intent: GenerationIntentFor<GenerationTargetKind>;
 	readonly pendingHumanText: string | undefined;
 };
 
@@ -707,7 +707,7 @@ const generationProvenanceEntry = (
  * pair, the model author stamp, and the provenance capture. The lifecycle
  * facts of one kind ride on the same Generation Target union.
  */
-interface CapturedGeneration {
+interface CapturedGeneration extends Pick<GenerationPreparationCarried, "intent"> {
 	readonly preparation: GenerationPreparation;
 	readonly plan: GenerationPlan;
 	readonly context: readonly PromptContextEntry[];
@@ -730,9 +730,9 @@ interface CapturedGeneration {
  * exactly the lifecycle facts that kind's acceptance commands read and the
  * attempt's carried intent. */
 export type CapturedGenerationFor<K extends GenerationTargetKind = GenerationTargetKind> = {
-	send: CapturedGeneration & GenerationTargetFor<"send"> & GenerationCaptureFacts<"send"> & { readonly intent: GenerationIntent | undefined };
-	continuation: CapturedGeneration & GenerationTargetFor<"continuation"> & GenerationCaptureFacts<"continuation"> & { readonly intent: GenerationIntent | undefined };
-	sibling: CapturedGeneration & GenerationTargetFor<"sibling"> & GenerationCaptureFacts<"sibling"> & { readonly intent: GenerationIntent | undefined };
+	send: CapturedGeneration & GenerationTargetFor<"send"> & GenerationCaptureFacts<"send">;
+	continuation: CapturedGeneration & GenerationTargetFor<"continuation"> & GenerationCaptureFacts<"continuation">;
+	sibling: CapturedGeneration & GenerationTargetFor<"sibling"> & GenerationCaptureFacts<"sibling">;
 }[K];
 
 /**
@@ -814,6 +814,7 @@ const toCapturedGeneration = (
 	configuration: AttemptConfiguration,
 	plan: GenerationPlan,
 ): CapturedGeneration => ({
+	intent: preparation.intent,
 	preparation,
 	plan,
 	context: plan.budget.retainedContext,
@@ -860,6 +861,14 @@ const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue
 	omittedContext: budget.omittedContext,
 });
 
+const memberFactsOf = (preparation: GenerationPreparation): { [K in GenerationTargetKind]: GenerationTargetFor<K> & GenerationCaptureFacts<K> }[GenerationTargetKind] => {
+	switch (preparation.kind) {
+		case "send": return { kind: preparation.kind, content: preparation.content, reuseHumanMessageId: preparation.reuseHumanMessageId };
+		case "continuation": return { kind: preparation.kind, precedingMessageId: preparation.precedingMessageId, precedingVariantId: preparation.precedingVariantId, intent: preparation.intent };
+		case "sibling": return { kind: preparation.kind, messageId: preparation.messageId };
+	}
+};
+
 /** ==[HUMAN APPROVED]==
  * Capture one Generation attempt: prepare the immutable inputs, compile the
  * one Generation Plan, and assemble the shared capture whose lifecycle facts
@@ -889,7 +898,7 @@ export async function captureGeneration<K extends GenerationTargetKind>(
 		database,
 	});
 	const shared = toCapturedGeneration(preparation, derivation, configuration, plan);
-	const captured: CapturedGenerationFor = { ...shared, ...preparation };
+	const captured: CapturedGenerationFor = { ...shared, ...memberFactsOf(preparation) };
 	// ==[HUMAN APPROVED]== SAFETY: the attempt's target and its preparation carry the same kind
 	// by construction (the preparation is captured from that target), so the
 	// spread's member fields and facts are the CapturedGenerationFor<K>

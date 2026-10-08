@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationRoutes } from "./conversation";
 import type { NativePromptPreset } from "../../shared/contract/prompt-preset";
@@ -21,8 +21,6 @@ import {
 	startGeneration,
 } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Native interchange exercises export and reimport of the stored recipe
 // through the public library routes: references stay references, authored
 // text travels untouched, and a reimported recipe drives a selected
@@ -31,8 +29,7 @@ describe("Native Prompt Preset interchange", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

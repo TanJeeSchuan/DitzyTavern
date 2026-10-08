@@ -1,7 +1,7 @@
+import { openObservedDatabase } from "../../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule, type ConversationModule, type ParticipantDefinition } from "../../conversation";
-import { openInitializedDatabase } from "../../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../../model-client";
 import {
 	continueGeneration,
@@ -9,8 +9,6 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from "..";
 
-import { observeConversationWrites } from "../../conversation";
-import { syncMemorySources } from "../../memory";
 // Sequence coverage: configuration that changes between commands. Every case
 // here reassigns a Control seat and then starts a Generation, asserting on the
 // generation input the transport receives. Role assignment is only observable
@@ -76,8 +74,7 @@ describe("Control reassignment between commands", () => {
 	};
 
 	beforeEach(async () => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		conversation = createConversationModule(database);
 		const created = conversation.create({
 			name: "Cast change",

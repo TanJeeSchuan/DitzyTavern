@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import {
 	addPromptPresetInstruction,
@@ -32,16 +32,13 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== The owning module guards a move target the transport schema cannot
 // deliver, so a direct caller cannot displace an occurrence either.
 describe("Prompt Preset move bounds", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -57,8 +54,7 @@ describe("Prompt Preset stored contract boundary", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -107,8 +103,7 @@ describe("Prompt Preset transport", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -488,8 +483,7 @@ describe("Prompt Preset block patch batch", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -640,8 +634,7 @@ describe("Prompt Preset shared Default", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

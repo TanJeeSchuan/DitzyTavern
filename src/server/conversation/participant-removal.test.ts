@@ -8,7 +8,6 @@ import {
 	participantPromptTable,
 	participantTable,
 } from "../database/schema";
-import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import {
 	createConversationModule,
@@ -21,12 +20,10 @@ import {
 	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
-import { applyCommand } from "./test-fixtures";
+import { openObservedDatabase, applyCommand } from "./test-fixtures";
 import { generateSiblingVariant } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
-import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 const emptyPrompt = () => ({
 	systemInstruction: "",
 	identity: "",
@@ -51,8 +48,7 @@ describe("Participant removal", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => {
 		database.close();

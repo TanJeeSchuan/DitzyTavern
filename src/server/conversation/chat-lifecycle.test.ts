@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { messageTable, participantTable } from "../database/schema";
 import { createConversationRoutes } from "../contract/conversation";
 import {
@@ -15,10 +14,8 @@ import {
 	type ConversationModule,
 	type ConversationSnapshot,
 } from ".";
-import { applyCommand } from "./test-fixtures";
+import { openObservedDatabase, applyCommand } from "./test-fixtures";
 
-import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -32,8 +29,7 @@ describe("Chat rename and deletion", () => {
 	let module: ConversationModule;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		module = createConversationModule(database);
 	});
 	afterEach(() => database.close());

@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
@@ -15,8 +15,6 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import { processStateFor } from "../application/process-state";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -78,8 +76,7 @@ describe("Prompt Plan inspection", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => {
 		setSystemTime();
