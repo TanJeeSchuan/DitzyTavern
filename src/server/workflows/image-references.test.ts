@@ -376,7 +376,7 @@ describe("Image Reference lifetime", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision,
@@ -405,7 +405,7 @@ describe("Image Reference lifetime", () => {
 	test("a Generation holds the Images its plan references until its retained inspection is removed", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
 		const accepted = acceptConversationTailGeneration(database, {
 			...fields,
@@ -459,6 +459,7 @@ describe("Image Reference lifetime", () => {
 			blocks: preview.promptPlan.blocks.map((block, index) => index === last ? { ...block, content: `${block.content} ${art.token} ${ghost}` } : block),
 		};
 		const sent = await post("/generations", {
+			kind: "send",
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			content: "Hello",
 			previewId: preview.previewId,
@@ -492,7 +493,7 @@ describe("Image Reference lifetime", () => {
 	test("a checkpointed Variant adopts References and releases them when checkpoint text changes", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision, humanContent: "Hello",

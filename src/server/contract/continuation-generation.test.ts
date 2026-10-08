@@ -74,7 +74,7 @@ describe("Continuation transport contract", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision }),
+				body: JSON.stringify({ kind: "continuation",  expectedRevision: conversation.revision }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.

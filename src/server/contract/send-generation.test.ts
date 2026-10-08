@@ -96,7 +96,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Open the door." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Open the door." }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -142,7 +142,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Write through the failure." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Write through the failure." }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -199,7 +199,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision, content: "Please answer once." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision, content: "Please answer once." }),
 			},
 		));
 
@@ -262,7 +262,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Fail safely." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Fail safely." }),
 			},
 		));
 		const acceptedBody = await acceptedResponse.text();
@@ -310,7 +310,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Finish safely." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Finish safely." }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -354,7 +354,7 @@ describe("Send generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Use the full response budget." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Use the full response budget." }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.

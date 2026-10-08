@@ -12,7 +12,7 @@ import type { ModelClientConnectionSnapshot } from "../model-client";
 import {
 	captureGeneration,
 	prepareGenerationInputsSnapshot,
-	type CapturedGenerationFor,
+	type CapturedGeneration,
 	type GenerationCaptureOptions,
 	type PrepareGenerationInputs,
 } from "./generate-capture";
@@ -41,18 +41,14 @@ export interface GenerationPreviewRecordFields {
 //  The preview record retains the captured Generation of one attempt kind;
 // the kind lives on the capture itself, riding the one Generation Target
 // union.
-export type GenerationPreviewRecordFor<K extends GenerationTargetKind> = GenerationPreviewRecordFields & {
-	readonly capture: CapturedGenerationFor<K>;
-};
+export interface GenerationPreviewRecord extends GenerationPreviewRecordFields {
+	readonly capture: CapturedGeneration;
+}
 
-export type GenerationPreviewRecord = GenerationPreviewRecordFor<GenerationTargetKind>;
-
-export type GenerationPreviewAcceptanceFor<K extends GenerationTargetKind> = {
-	readonly record: GenerationPreviewRecordFor<K>;
+export interface GenerationPreviewAcceptance {
+	readonly record: GenerationPreviewRecord;
 	readonly editedPlan: PromptPlan;
-};
-
-export type GenerationPreviewAcceptance = GenerationPreviewAcceptanceFor<GenerationTargetKind>;
+}
 
 /** ==[HUMAN APPROVED]== One preview request is one attempt target carrying its own capture
  * configuration, so the inspected Prompt Plan dispatches on the same union
@@ -99,20 +95,17 @@ const ensureRecord = (database: Database, id: string, conversationId: number): G
 	return record;
 };
 
-export const previewRecordFor = <K extends GenerationTargetKind>(
+export const previewRecordFor = (
 	database: Database,
 	id: string,
 	conversationId: number,
-	kind: K,
-): GenerationPreviewRecordFor<K> => {
+	kind: GenerationTargetKind,
+): GenerationPreviewRecord => {
 	const record = ensureRecord(database, id, conversationId);
-	if (record.capture.kind !== kind) {
+	if (record.capture.target.kind !== kind) {
 		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
 	}
-	// @approved
-	//  SAFETY: the capture's kind discriminant was just compared against the
-	// caller's kind, so the record holds that kind's captured Generation.
-	return record as GenerationPreviewRecordFor<K>;
+	return record;
 };
 
 export const consumeGenerationPreview = (
@@ -157,7 +150,10 @@ export const createGenerationPreviewAsync = async (
 	store.sweep();
 	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
 	store.versions.set(input.conversationId, requestVersion);
-	const capture = await captureGeneration<GenerationTargetKind>(database, input, input);
+	const target: GenerationTarget = input.kind === "send"
+		? { kind: input.kind, content: input.content }
+		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId } : { kind: input.kind };
+	const capture = await captureGeneration(database, target, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
@@ -231,9 +227,9 @@ const editedMemoryActivation = (
 interface PreviewAcceptanceContext {
 	readonly database: Database;
 	readonly conversationId: number;
-	readonly connection: ModelClientConnectionSnapshot | null | undefined;
-	readonly connectionSettings: ConnectionSettingsModuleOptions | undefined;
-	readonly formatting: GenerationFormattingContext | undefined;
+	readonly connection: ModelClientConnectionSnapshot | null;
+	readonly connectionSettings?: ConnectionSettingsModuleOptions | undefined;
+	readonly formatting?: GenerationFormattingContext | undefined;
 }
 
 const assertPreviewCurrent = (
@@ -247,7 +243,7 @@ const assertPreviewCurrent = (
 		connection: context.connection,
 		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
-		...target,
+		target,
 	};
 	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
@@ -282,10 +278,10 @@ export const captureGenerationPreview = (
 	context: PreviewAcceptanceContext,
 	preview: GenerationPreviewAcceptance,
 	target: GenerationTarget,
-): CapturedGenerationFor<GenerationTargetKind> => {
+): CapturedGeneration => {
 	const { record } = preview;
 	ensureRecord(context.database, record.id, context.conversationId);
-	assertSubmittedTargetUnchanged(record.capture, target);
+	assertSubmittedTargetUnchanged(record.capture.target, target);
 	assertPreviewCurrent(context, record.fingerprint, target);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };

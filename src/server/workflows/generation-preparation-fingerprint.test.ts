@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation/generation-settings";
 import { effectiveGenerationSettingsFor } from "../generation-plan";
-import type { GenerationPreparationSnapshot } from "./generate-capture";
+import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 
@@ -30,10 +30,11 @@ const participant = (id: number, name: string) => ({
 	},
 });
 
-const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): GenerationPreparationSnapshot => {
+const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): PreparationSnapshot => {
 	const settings = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	return {
-		kind: "send",
+		target: { kind: "send", content: "" },
+		facts: { kind: "send", reuseHumanMessageId: undefined },
 		conversationId: 1,
 		authorNote: "",
 		semanticTriggerRevision: 0,
@@ -108,8 +109,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			indexed: [],
 			recent: [], kind: "off",
 		},
-		content: "Hello",
-		reuseHumanMessageId: undefined,
 	};
 };
 

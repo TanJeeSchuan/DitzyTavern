@@ -21,7 +21,7 @@ import {
 	type ParticipantDefinition,
 } from ".";
 import { openObservedDatabase, applyCommand } from "./test-fixtures";
-import { generateSiblingVariant } from "../workflows/generate";
+import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
 const emptyPrompt = () => ({
@@ -491,9 +491,9 @@ describe("Participant removal", () => {
 		// reason before any transport is contacted.
 		const greetingId = removed.messages[0]?.id ?? 0;
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: removed.id,
-				messageId: greetingId,
+				target: { kind: "sibling", messageId: greetingId },
 				modelClient: createFakeModelClient(() => "Never produced"),
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);

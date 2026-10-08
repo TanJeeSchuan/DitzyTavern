@@ -3,7 +3,6 @@ import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import type { Database } from "bun:sqlite";
 
 import { Elysia, t } from "elysia";
-import { Type } from "@sinclair/typebox";
 
 import {
 	ConversationNotFoundError,
@@ -64,7 +63,7 @@ import {
 import {
 	createGenerationPreviewAsync,
 	previewRecordFor,
-	type GenerationPreviewAcceptanceFor,
+	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
 import { readMemorySourceAvailability } from "../conversation/generation-details";
 import {
@@ -184,7 +183,7 @@ const previewUseFor = <K extends GenerationTargetKind>(
 	kind: K,
 	previewId: string | undefined,
 	promptPlan: PromptPlan | undefined,
-): GenerationPreviewAcceptanceFor<K> | undefined => {
+): GenerationPreviewAcceptance | undefined => {
 	if (previewId === undefined) {
 		if (promptPlan !== undefined) {
 			throw new InvalidConversationCommandError("An edited Prompt Plan requires a preview token.");
@@ -290,6 +289,7 @@ export const createConversationRoutes = (
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
 					formatting: { timeZone: body.timeZone, locale: body.locale },
+					target: { kind: body.kind },
 					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
 				}),
 				generationStartRouteResponse,
@@ -304,7 +304,10 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/preview",
 			async ({ params, body }) => {
 				try {
+					const settings = createConversationModule(database).getGenerationSettings(params.id);
+					if (settings === undefined) throw new ConversationNotFoundError(params.id);
 					const common = {
+						connection: generationCoordinator.resolveTransport(database, settings.connectionProfileId, true)?.connection ?? null,
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
@@ -323,7 +326,7 @@ export const createConversationRoutes = (
 						outcome: "available" as const,
 						previewId: preview.id,
 						conversationId: preview.conversationId,
-						kind: preview.capture.kind,
+						kind: preview.capture.target.kind,
 						promptPlan: capture.plan.promptPlan,
 						participants: {
 							human: capture.humanParticipant,
@@ -514,7 +517,7 @@ export const createConversationRoutes = (
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
-					content: body.content,
+					target: { kind: body.kind, content: body.content },
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
 				}),
@@ -552,9 +555,9 @@ export const createConversationRoutes = (
 					params.id,
 					() => generationCoordinator.startGeneration({
 						conversationId: params.id,
-						messageId: params.messageId,
-						formatting: { timeZone: body?.timeZone, locale: body?.locale },
-						preview: body?.previewId === undefined
+						target: { kind: body.kind, messageId: params.messageId },
+						formatting: { timeZone: body.timeZone, locale: body.locale },
+						preview: body.previewId === undefined
 							? undefined
 							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
 					}),
@@ -562,7 +565,7 @@ export const createConversationRoutes = (
 				),
 				{
 					params: messageIdParams,
-					body: Type.Optional(siblingGenerationBody),
+					body: siblingGenerationBody,
 					response: siblingGenerationResponse,
 				},
 		)

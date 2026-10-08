@@ -457,7 +457,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const accepted = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
 			}));
 			expect(accepted.status).toBe(200);
 			// @approved

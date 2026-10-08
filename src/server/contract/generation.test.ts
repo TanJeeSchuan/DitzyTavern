@@ -152,7 +152,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: updatedPayload.conversation.revision, content: "Generate this." }),
+			body: JSON.stringify({ kind: "send",  expectedRevision: updatedPayload.conversation.revision, content: "Generate this." }),
 		}),
 		);
 		expect(generated.status).toBe(200);
@@ -277,7 +277,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+			body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 		}),
 		);
 		expect(response.status).toBe(422);
@@ -312,7 +312,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 
@@ -350,7 +350,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 
@@ -381,7 +381,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -435,7 +435,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
@@ -485,7 +485,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
@@ -525,7 +525,7 @@ describe("Generation transport contract", () => {
 		});
 		const response = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
 		const accepted = await response.json() as { generationId: number };
@@ -571,7 +571,7 @@ describe("Generation transport contract", () => {
 		});
 		const startSibling = () => app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		const firstResponse = await startSibling();
 		const secondResponse = await startSibling();

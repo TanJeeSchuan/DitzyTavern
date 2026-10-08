@@ -26,7 +26,7 @@ import {
 	generationRuntimeFor,
 	startServerOwnedGeneration,
 	type AcceptedGenerationRecord,
-	type GenerationStartInput,
+	type GenerationInput,
 	type GenerationRuntime,
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationControl,
@@ -94,66 +94,40 @@ export class GenerationConfigurationError extends Error {
 	}
 }
 
-export interface CoordinatedGeneration<TAccepted, TResult> {
+export interface CoordinatedGeneration {
 	/** ==[HUMAN APPROVED]== The authoritative acceptance returned after the provisional target exists. */
-	readonly accepted: TAccepted;
+	readonly accepted: AcceptedGenerationRecord;
 	/** ==[HUMAN APPROVED]== The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
 	/** ==[HUMAN APPROVED]== Settles after terminal Conversation state has been committed. */
-	readonly result: Promise<TResult>;
+	readonly result: Promise<AcceptedGenerationRecord>;
 }
 
-/**
- * ==[HUMAN APPROVED]== What every accepted Generation tells the Coordinator: the Provisional
- * Variant and the Message it belongs to. Send additionally reports the human
- * Message it wrote and Sibling the previously selected Variant, but the
- * runtime target is the same question for all three, so this is a shape they
- * satisfy rather than a union that has to name them.
- */
-interface AcceptedGeneration {
-	readonly generationId: number;
-	readonly messageId: number;
-	readonly provisionalVariantId: number;
-}
+export type GenerationStartRequest = Omit<GenerationInput,
+	"modelClient" | "connection" | "connectionSettings" | "signal" | "onEvent" | "onBeforeTerminal" | "onAccepted"
+>;
 
-/**
- * ==[HUMAN APPROVED]== The attempt fields the Coordinator resolves itself: the transport it builds
- * from the Conversation-selected Profile, the detached signal and observers the runtime
- * owns, and the terminal checkpoint flush. A caller supplies only the rest. The omission
- * distributes so a union start input keeps its per-kind fields.
- */
-export type GenerationStartRequest<TInput> = TInput extends unknown ? Omit<
-	TInput,
-	| "modelClient"
-	| "connection"
-	| "connectionSettings"
-	| "signal"
-	| "onEvent"
-	| "onBeforeTerminal"
-	| "onAccepted"
-> : never;
-
-interface GenerationStartCallbacks<TAccepted extends AcceptedGeneration> {
+interface GenerationStartCallbacks {
 	onAccepted: (
-		accepted: TAccepted,
+		accepted: AcceptedGenerationRecord,
 		control: ServerOwnedGenerationControl,
 	) => void | Promise<void>;
 	onEvent: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-interface GenerationStartContext<TAccepted extends AcceptedGeneration> {
+interface GenerationStartContext {
 	database: Database;
 	modelClient: ModelClient;
 	connection: ModelClientConnectionSnapshot;
 	onBeforeTerminal: () => void;
-	callbacks: GenerationStartCallbacks<TAccepted>;
+	callbacks: GenerationStartCallbacks;
 }
 
-interface ManagedGenerationInput<TAccepted extends AcceptedGeneration, TResult> {
+interface ManagedGenerationInput {
 	conversationId: number;
 	start: (
-		context: GenerationStartContext<TAccepted>,
-	) => ServerOwnedGeneration<TAccepted, TResult>;
+		context: GenerationStartContext,
+	) => ServerOwnedGeneration;
 }
 
 interface ResolvedGenerationTransport {
@@ -181,8 +155,8 @@ export class GenerationCoordinator {
 	 * Sibling the target Message, and Continue neither.
 	 */
 	startGeneration(
-		input: GenerationStartRequest<GenerationStartInput>,
-	): Promise<CoordinatedGeneration<AcceptedGenerationRecord, AcceptedGenerationRecord>> {
+		input: GenerationStartRequest,
+	): Promise<CoordinatedGeneration> {
 		return this.coordinate({
 			conversationId: input.conversationId,
 			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
@@ -308,12 +282,9 @@ export class GenerationCoordinator {
 		return { outcome: "stopped", generationId, conversation: snapshot, unsettledReason };
 	}
 
-	private async coordinate<
-		TAccepted extends AcceptedGeneration,
-		TResult,
-	>(
-		input: ManagedGenerationInput<TAccepted, TResult>,
-	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
+	private async coordinate(
+		input: ManagedGenerationInput,
+	): Promise<CoordinatedGeneration> {
 		const database = this.database;
 		const runtimeRegistry = generationRuntimeFor(database);
 		runtimeRegistry.assertAccepting();
@@ -357,19 +328,15 @@ export class GenerationCoordinator {
 				onEvent: (event) => { runtime?.publish(event); },
 			},
 		});
-		runtimeRegistry.track(started.result);
-		const accepted = await started.accepted;
-		if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-		const activeRuntime = runtime;
 		const result = started.result
 			.then((value) => {
-				activeRuntime.complete();
+				runtime?.complete();
 				return value;
 			})
 			.catch((error) => {
 				const kind = error instanceof ModelClientGenerationError ? error.kind : "transport";
 				try {
-					activeRuntime.fail({
+					runtime?.fail({
 						reason: error instanceof Error ? error.message : "Generation failed.",
 						kind,
 						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
@@ -389,17 +356,23 @@ export class GenerationCoordinator {
 		// detached rejection here while exposing the terminal Promise to tests
 		// and non-HTTP callers that want to await it.
 		runtimeRegistry.track(result);
-		return { accepted, runtime: activeRuntime, result };
+		const accepted = await started.accepted;
+		if (runtime === undefined) throw new Error("Generation runtime could not be started.");
+		return { accepted, runtime, result };
 	}
 
-	private resolveTransport(database: Database, profileId: number | null): ResolvedGenerationTransport {
+	resolveTransport(database: Database, profileId: number | null, preview: true): ResolvedGenerationTransport | null;
+	resolveTransport(database: Database, profileId: number | null, preview?: false): ResolvedGenerationTransport;
+	resolveTransport(database: Database, profileId: number | null, preview = false): ResolvedGenerationTransport | null {
 		const settingsModule = createConnectionSettingsModule(database, this.options);
 		const settings = settingsModule.get();
 		if (profileId === null) {
+			if (preview) return null;
 			throw new GenerationConfigurationError("Choose a model and connection before generating.");
 		}
 		const profile = settings.profiles.find((entry) => entry.id === profileId);
 		if (profile === undefined) {
+			if (preview) return null;
 			throw new GenerationConfigurationError("The selected Connection Profile is unavailable.");
 		}
 		return {

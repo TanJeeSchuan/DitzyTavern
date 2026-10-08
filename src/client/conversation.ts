@@ -241,7 +241,7 @@ export async function startConversationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, ...formatting, ...preview }),
 		generationAccepted,
 		generationStartErrors,
 	);
@@ -255,6 +255,7 @@ export async function startConversationSiblingGeneration(
 ) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+			kind: "sibling",
 			...formatting,
 			...preview,
 		}),
@@ -270,7 +271,7 @@ export async function startConversationContinuationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }),
 		generationAccepted,
 		generationStartErrors,
 	);

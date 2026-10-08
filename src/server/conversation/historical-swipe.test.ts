@@ -83,7 +83,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 		});
 		expect(greeting.swipe).toEqual({ eligible: true, reason: null });
 
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId: snapshot.id,
 			modelClient: createFakeModelClient(() => "The fog answers."),
 		});

@@ -1,3 +1,4 @@
+import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule } from "../conversation";
@@ -11,8 +12,7 @@ import {
 } from "../model-client";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
-	generateSiblingVariant,
-	sendThroughProvisionalTailGeneration,
+	runGenerationLifecycle,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { createGenerationPreviewAsync } from "./generation-preview";
@@ -126,7 +126,7 @@ describe("Generation capture and provenance", () => {
 			release = resolve;
 		});
 		let receivedInput: { modelId?: string; generationSettings?: unknown } | undefined;
-		const generation = generateTerminalTailFixture(database, {
+		const generation = generateTerminalTailFixture(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			connectionSettings: { masterKey: key },
 			modelClient: {
@@ -236,20 +236,20 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 
-		const preview = await createGenerationPreviewAsync(database, {
+		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			kind: "send",
 			content: "Send with narrowed overrides.",
 			connectionSettings: { masterKey: key },
 		});
-		if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
+		if (preview.capture.target.kind !== "send") throw new Error("Expected a Send preview.");
 		const effectiveSettings = preview.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			expectedRevision: 2,
-			content: "Send with narrowed overrides.",
+			target: { kind: "send", content: "Send with narrowed overrides." },
 			connectionSettings: { masterKey: key },
 			modelClient: createFakeModelClient((input) => {
 				receivedSettings = input.generationSettings;
@@ -316,7 +316,7 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
-		const first = await generateTerminalTailFixture(database, {
+		const first = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: fakeModelClient(() => "first generation"),
 		});
@@ -349,9 +349,9 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
-			messageId: targetId,
+			target: { kind: "sibling", messageId: targetId },
 			modelClient: fakeModelClient(() => "sibling generation"),
 		});
 		const target = requireSnapshot(createConversationModule(database), conversationId).messages.find((message) => message.id === targetId);

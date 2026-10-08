@@ -325,7 +325,7 @@ export const startGeneration = async (
 		new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision, content: "Set the scene." }),
+			body: JSON.stringify({ kind: "send", expectedRevision, content: "Set the scene." }),
 		}),
 	);
 	expect(response.status).toBe(200);

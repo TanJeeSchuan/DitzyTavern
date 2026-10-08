@@ -259,7 +259,7 @@ test("the preparation fingerprint excludes both Memory and Lore Decision Model c
 	const memory = createMemorySettingsModule(database);
 	memory.apply({ ...memory.get(), ...memorySelection, expectedRevision: memory.get().revision });
 	const conversation = createChat(database);
-	const snapshot = prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, kind: "send", content: "A ship arrives." });
+	const snapshot = prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, connection: null, target: { kind: "send", content: "A ship arrives." } });
 	expect(snapshot.memory).toMatchObject({ kind: "ready", decision: { credential: memoryCredential } });
 	expect(snapshot.lore.sources?.semanticSettings).toMatchObject({ kind: "ready", decision: { credential: loreCredential } });
 	const fingerprint = generationPreparationFingerprint(snapshot);

@@ -55,7 +55,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
 		});
 
-		const first = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: conversation.id });
+		const first = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");
 		expect(first.macroWrites).toEqual([
 			{ name: "turn", value: 6, operation: "set" },
@@ -82,7 +82,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const second = await captureGeneration(database, { kind: "send", content: "Again" }, { conversationId: after.id });
+		const second = await captureGeneration(database, { kind: "send", content: "Again" }, {connection: null, conversationId: after.id });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
 	});
 
@@ -115,7 +115,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
-		const capture = await captureGeneration(database, { kind: "send", content: "Again" }, { conversationId: snapshot.id });
+		const capture = await captureGeneration(database, { kind: "send", content: "Again" }, {connection: null, conversationId: snapshot.id });
 		expect(capture.plan.promptPlan.blocks.map((block) => block.content)).toContain("greeted=yes");
 	});
 
@@ -140,7 +140,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: conversation.id });
+		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,

@@ -4,9 +4,7 @@ import type { Database } from "bun:sqlite";
 import { createConversationModule, type ConversationModule, type ParticipantDefinition } from "../../conversation";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../../model-client";
 import {
-	continueGeneration,
-	generateSiblingVariant,
-	sendThroughProvisionalTailGeneration,
+	runGenerationLifecycle,
 } from "..";
 
 // Sequence coverage: configuration that changes between commands. Every case
@@ -53,10 +51,10 @@ describe("Control reassignment between commands", () => {
 
 	const send = async (content: string) => {
 		let received: ModelClientGenerationInput | undefined;
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: revision(),
-			content,
+			target: { kind: "send", content: content },
 			modelClient: createFakeModelClient((input) => {
 				received = input;
 				return `Reply to ${content}`;
@@ -110,7 +108,7 @@ describe("Control reassignment between commands", () => {
 		reassignModelSeatToKestrel();
 
 		let received: ModelClientGenerationInput | undefined;
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: revision(),
 			modelClient: createFakeModelClient((input) => {
@@ -136,9 +134,9 @@ describe("Control reassignment between commands", () => {
 		if (target === undefined) throw new Error("Missing target Message.");
 
 		let received: ModelClientGenerationInput | undefined;
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
-			messageId: target.id,
+			target: { kind: "sibling", messageId: target.id },
 			modelClient: createFakeModelClient((input) => {
 				received = input;
 				return "An alternative.";

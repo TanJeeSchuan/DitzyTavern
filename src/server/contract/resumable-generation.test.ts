@@ -75,7 +75,7 @@ describe("Resumable generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Start." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Start." }),
 			},
 		));
 		// SAFETY: this contract test controls the start endpoint and checks the
@@ -209,7 +209,7 @@ describe("Resumable generation transport", () => {
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ expectedRevision: conversation.revision, content: "Start." }),
+					body: JSON.stringify({ kind: "send", expectedRevision: conversation.revision, content: "Start." }),
 				},
 			), "Generation acceptance");
 			const probeResponse = await deadline(fetch(`${origin}/probe`), "Unrelated route");
@@ -265,7 +265,7 @@ describe("Resumable generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Stop me." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Stop me." }),
 			},
 		));
 		// SAFETY: this contract test controls the accepted response shape.
@@ -337,7 +337,7 @@ describe("Resumable generation transport", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Keep running." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Keep running." }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.

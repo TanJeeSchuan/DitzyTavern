@@ -29,8 +29,7 @@ import {
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createFakeModelClient } from "../model-client";
 import {
-	generateSiblingVariant,
-	sendThroughProvisionalTailGeneration,
+	runGenerationLifecycle,
 } from "../workflows";
 import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
@@ -555,15 +554,15 @@ describe("SillyTavern chat import", () => {
 		// The workflow seams deny Generate and targeted Swipe before any
 		// transport is contacted, with the identical typed outcome.
 		await expect(
-			generateTerminalTailFixture(database, {
+			generateTerminalTailFixture(database, {connection: null,
 				conversationId: conversation.id,
 				modelClient: createFakeModelClient(() => "never called"),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: conversation.id,
-				messageId,
+				target: { kind: "sibling", messageId: messageId },
 				modelClient: createFakeModelClient(() => "never called"),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
@@ -664,9 +663,9 @@ describe("SillyTavern chat import", () => {
 		// never contacted.
 		let contacted = false;
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: conversation.id,
-				messageId: targetId,
+				target: { kind: "sibling", messageId: targetId },
 				modelClient: createFakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
@@ -743,10 +742,10 @@ describe("SillyTavern chat import", () => {
 		const model = completed.cast[1];
 		expect(human).toBeDefined();
 		expect(model).toBeDefined();
-		const { messageId } = await sendThroughProvisionalTailGeneration(database, {
+		const { messageId } = await runGenerationLifecycle(database, {connection: null,
 			conversationId: completed.id,
 			expectedRevision: completed.revision,
-			content: "The lamp is lit again.",
+			target: { kind: "send", content: "The lamp is lit again." },
 			timestamp: "2026-08-08T14:30:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers at last."),
 		});
@@ -768,9 +767,9 @@ describe("SillyTavern chat import", () => {
 		// native Message: targeted Swipe generation works and leaves current
 		// Control and the Author Stamp untouched.
 		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId: completed.id,
-			messageId,
+			target: { kind: "sibling", messageId: messageId },
 			timestamp: "2026-08-08T14:31:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers differently."),
 		});

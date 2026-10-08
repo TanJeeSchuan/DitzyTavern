@@ -178,7 +178,7 @@ describe("Prompt Plan inspection", () => {
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
+					body: JSON.stringify({ kind: "send", 
 						expectedRevision: conversation.revision,
 						content: "hello",
 						previewId: plan.previewId,
@@ -238,7 +238,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: createConversationModule(database).getRevision(conversation.id),
 					content: body.content,
 					previewId,
@@ -287,7 +287,7 @@ describe("Prompt Plan inspection", () => {
 				headers: { "content-type": "application/json" },
 				// Preview sends use the server's narrow revision read; the client may still hold
 				// the revision from before an unrelated edit.
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
 			},
 		));
 		expect(accepted.status).toBe(200);
@@ -310,7 +310,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId, promptPlan: edited }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId, promptPlan: edited }),
 			},
 		));
 		expect(rejected.status).toBe(422);
@@ -356,7 +356,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: module.getSummary(conversation.id)!.revision,
 					content,
 
@@ -386,7 +386,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -411,7 +411,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -438,7 +438,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -473,7 +473,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -492,7 +492,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -532,7 +532,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
 			},
 		));
 		const accepted = await request();
@@ -589,7 +589,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const occupied = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		expect(occupied.status).toBe(200);
 		const plan = await preview(app, conversation.id, {
@@ -601,7 +601,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
 			},
 		));
 		const rejected = await request();
@@ -635,7 +635,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "first",
 					previewId: first.previewId,
@@ -648,7 +648,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: conversation.revision,
 					content: "second",
 					previewId: second.previewId,
@@ -684,7 +684,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -725,7 +725,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -765,7 +765,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send", 
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -790,7 +790,7 @@ describe("Prompt Plan inspection", () => {
 			const rejected = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
 			}));
 			expect(rejected.status).toBe(422);
 			expect(await rejected.json()).toEqual({ outcome: "invalid", reason: "The Prompt Plan is stale. Refresh it before sending." });

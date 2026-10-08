@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { AcceptedGenerationRecord, GenerationInput } from "./generate";
 import {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
@@ -35,12 +36,7 @@ export interface GenerationAttemptInput {
 	// returns normalized asynchronous events. The workflow never calls a
 	// provider or interprets a provider request shape directly.
 	modelClient: ModelClient;
-	// @approved
-	//  HTTP adapters provide the same start-time capture used to construct the
-	// client. Direct workflow callers may omit it; the workflow resolves the
-	// current safe Profile identity itself, preserving the original fake-client
-	// seam used by domain tests.
-	connection?: ModelClientConnectionSnapshot | null;
+	connection: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	// @approved
 	//  The signal belongs to this one Generation. A cancelled attempt never
@@ -71,17 +67,17 @@ export interface ServerOwnedGenerationControl {
 }
 
 /** ==[HUMAN APPROVED]== The detached server-owned Generation handle shared by every lifecycle. */
-export interface ServerOwnedGeneration<Accepted, Result> {
+export interface ServerOwnedGeneration {
 	/** ==[HUMAN APPROVED]== Resolves as soon as the provisional target is committed. */
-	readonly accepted: Promise<Accepted>;
+	readonly accepted: Promise<AcceptedGenerationRecord>;
 	/** ==[HUMAN APPROVED]== Resolves/rejects when the provider attempt and terminal commit finish. */
-	readonly result: Promise<Result>;
+	readonly result: Promise<AcceptedGenerationRecord>;
 	/** ==[HUMAN APPROVED]== Cancellation owned by the generation, never by an observing request. */
 	readonly signal: AbortSignal;
 }
 
-export interface ServerOwnedGenerationCallbacks<Accepted> {
-	onAccepted?: (accepted: Accepted, control: ServerOwnedGenerationControl) => void | Promise<void>;
+export interface ServerOwnedGenerationCallbacks {
+	onAccepted?: (accepted: AcceptedGenerationRecord, control: ServerOwnedGenerationControl) => void | Promise<void>;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
@@ -95,25 +91,17 @@ export interface ServerOwnedGenerationCallbacks<Accepted> {
  * caller's own callbacks fire first, then the detached observer callbacks,
  * and the provider signal replaces whatever the observing request owned.
  */
-export function startServerOwnedGenerationFrom<
-	Accepted,
-	Result,
-	Input extends {
-		signal?: AbortSignal;
-		onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-		onAccepted?: (accepted: Accepted) => void | Promise<void>;
-	},
->(
+export function startServerOwnedGenerationFrom(
 	database: Database,
-	input: Input,
-	start: (database: Database, input: Input) => Promise<Result>,
-	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
-): ServerOwnedGeneration<Accepted, Result> {
+	input: GenerationInput,
+	start: (database: Database, input: GenerationInput) => Promise<AcceptedGenerationRecord>,
+	callbacks: ServerOwnedGenerationCallbacks = {},
+): ServerOwnedGeneration {
 	const controller = new AbortController();
 	let accepted = false;
-	let resolveAccepted!: (value: Accepted) => void;
+	let resolveAccepted!: (value: AcceptedGenerationRecord) => void;
 	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<Accepted>((resolve, reject) => {
+	const acceptedPromise = new Promise<AcceptedGenerationRecord>((resolve, reject) => {
 		resolveAccepted = resolve;
 		rejectAccepted = reject;
 	});

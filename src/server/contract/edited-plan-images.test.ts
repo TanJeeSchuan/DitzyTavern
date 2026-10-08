@@ -55,7 +55,7 @@ describe("Edited Prompt Plan Images", () => {
 		const preview = await inspect(app, chat.id);
 		expect(preview.promptPlan.images).toEqual([]);
 		const edited = addImage(preview.promptPlan, `Look ${reference}`);
-		const accepted = await post(app, `/conversations/${chat.id}/generations`, { expectedRevision: chat.revision, content: "Look", previewId: preview.previewId, promptPlan: edited });
+		const accepted = await post(app, `/conversations/${chat.id}/generations`, { kind: "send",  expectedRevision: chat.revision, content: "Look", previewId: preview.previewId, promptPlan: edited });
 		expect(accepted.status).toBe(200);
 		const { generationId } = Value.Decode(generationAccepted, await accepted.json());
 		await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/${generationId}/events`))).text();

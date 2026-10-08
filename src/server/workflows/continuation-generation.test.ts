@@ -4,7 +4,7 @@ import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
-import { continueGeneration } from ".";
+import { runGenerationLifecycle } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createGenerationPreviewAsync } from "./generation-preview";
@@ -61,7 +61,7 @@ describe("Continuation Generation", () => {
 		const before = module.getSnapshot(conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		database.exec("CREATE TRIGGER fail_terminal BEFORE INSERT ON generation_replay BEGIN SELECT RAISE(ABORT, 'terminal unavailable'); END");
-		await expect(continueGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient(() => "Keep the generated output."),
@@ -81,7 +81,7 @@ describe("Continuation Generation", () => {
 		let received: ModelClientGenerationInput | undefined;
 		const before = createConversationModule(database).getSnapshot(conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient((input) => {
@@ -127,7 +127,7 @@ describe("Continuation Generation", () => {
 		const current = module.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Missing Conversation.");
 		let received: PromptPlan | undefined;
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: current.revision,
 			modelClient: createFakeModelClient(({ promptPlan }) => {
@@ -143,7 +143,7 @@ describe("Continuation Generation", () => {
 		const module = createConversationModule(database);
 		const seed = module.getSnapshot(conversationId);
 		if (seed === undefined) throw new Error("Missing Conversation.");
-		const _generated = await generateTerminalTailFixture(database, {
+		const _generated = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => "The generated terminal Message."),
 		});
@@ -164,7 +164,7 @@ describe("Continuation Generation", () => {
 			expectedRevision: withCast.revision,
 			action: { type: "assign-control", seat: "model", participantId: newModelId },
 		});
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: reassigned.revision,
 			modelClient: createFakeModelClient(() => "Authored by the new model."),
@@ -186,7 +186,7 @@ describe("Continuation Generation", () => {
 				authorParticipantId: humanId,
 			},
 		});
-		await expect(continueGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: latest.revision,
 			modelClient: createFakeModelClient(() => "not called"),
@@ -199,7 +199,7 @@ describe("Continuation Generation", () => {
 		const before = module.getSnapshot(conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		let transcript = "";
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient(() => "done"),
@@ -243,8 +243,8 @@ describe("Continuation Generation", () => {
 			},
 		});
 		let received: ModelClientGenerationInput | undefined;
-		const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
-		if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+		const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
+		if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 		const promptPlan = preview.capture.plan.promptPlan;
 		expect(promptPlan.intent).toEqual({
 			type: "continuation",
@@ -252,7 +252,7 @@ describe("Continuation Generation", () => {
 			suffix: "\n",
 		});
 		expect(promptPlan.blocks.filter((block) => block.kind === "history")).toHaveLength(1);
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: configured.revision,
 			modelClient: createFakeModelClient((input) => {
@@ -278,7 +278,7 @@ describe("Continuation Generation", () => {
 		// suffix never applies.
 		const before = createConversationModule(database).getSnapshot(conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient(() => "The next scene begins."),
@@ -330,7 +330,7 @@ describe("Continuation Generation", () => {
 				},
 			},
 		});
-		await continueGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: configured.revision,
 			modelClient: createFakeModelClient(() => "A prefilled continuation."),
@@ -404,7 +404,7 @@ describe("Continuation Generation", () => {
 				},
 			},
 		});
-		await expect(continueGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
 			expectedRevision: configured.revision,
 			modelClient: createFakeModelClient(() => "not called"),

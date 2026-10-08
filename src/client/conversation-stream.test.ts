@@ -117,7 +117,7 @@ describe("server-owned Generation client", () => {
 
 		const result = await startConversationGeneration(42, 3, "Keep going.");
 		expect(requestUrl).toBe("http://localhost/api/conversations/42/generations");
-		expect(requestBody).toBe(JSON.stringify({ expectedRevision: 3, content: "Keep going." }));
+		expect(requestBody).toBe(JSON.stringify({ kind: "send", expectedRevision: 3, content: "Keep going." }));
 		expect(result).toEqual({
 			outcome: "available",
 			value: {

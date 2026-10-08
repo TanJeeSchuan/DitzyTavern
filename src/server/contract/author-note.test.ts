@@ -124,7 +124,7 @@ test("oversized Author Note refuses sending instead of dropping the note", async
 	expect(planned.budget.budgetFits).toBe(false);
 	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe(note);
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: chat.revision + 1, content: "Open the door." }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: chat.revision + 1, content: "Open the door." }),
 	}));
 	expect(response.status).toBe(422);
 	expect(requests).toEqual([]);

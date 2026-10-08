@@ -85,7 +85,7 @@ describe("Text-only Models", () => {
 		const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: revision, content: `Look ${formatImageReference("map", hash)}` }),
+			body: JSON.stringify({ kind: "send",  expectedRevision: revision, content: `Look ${formatImageReference("map", hash)}` }),
 		}));
 		expect(response.status).toBe(200);
 		// SAFETY: the route's accepted response is this typed shape.
@@ -137,7 +137,7 @@ describe("Text-only Models", () => {
 			const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: revision, content }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: revision, content }),
 			}));
 			// SAFETY: the route's accepted response is this typed shape.
 			const accepted = await response.json() as { generationId: number };
@@ -170,7 +170,7 @@ describe("Text-only Models", () => {
 		const started = await coordinator.startGeneration({
 			conversationId,
 			expectedRevision: createConversationModule(database).getRevision(conversationId)!,
-			content: formatImageReference("map", art.hash),
+			target: { kind: "send", content: formatImageReference("map", art.hash) },
 		});
 		await requested.promise;
 		started.runtime.stop();
@@ -209,7 +209,7 @@ describe("Text-only Models", () => {
 		const started = await createGenerationCoordinator(database, {
 			masterKey: key,
 			fetch: async () => { requests += 1; return stream(); },
-		}).startGeneration({ conversationId, expectedRevision: configured.revision });
+		}).startGeneration({target: { kind: "continuation" }, conversationId, expectedRevision: configured.revision });
 		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
 		expect(requests).toBe(0);
 		expect(started.runtime.state.imageModel).toBeUndefined();

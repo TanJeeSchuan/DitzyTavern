@@ -81,13 +81,13 @@ describe("GenerationCoordinator", () => {
 		const first = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
-			content: "Start the scene.",
+			target: { kind: "send", content: "Start the scene." },
 		});
 		const firstResult = await first.result;
 		expect(first.runtime.state.status).toBe("complete");
 		expect(currentSnapshot(conversation.id).messages).toHaveLength(2);
 
-		const continuation = await coordinator.startGeneration({
+		const continuation = await coordinator.startGeneration({target: { kind: "continuation" },
 			conversationId: conversation.id,
 			expectedRevision: firstResult.conversation.revision,
 		});
@@ -96,9 +96,8 @@ describe("GenerationCoordinator", () => {
 		expect(currentSnapshot(conversation.id).messages).toHaveLength(3);
 
 		const targetMessageId = firstResult.messageId;
-		const sibling = await coordinator.startGeneration({
+		const sibling = await coordinator.startGeneration({target: { kind: "sibling", messageId: targetMessageId },
 			conversationId: conversation.id,
-			messageId: targetMessageId,
 		});
 		const siblingResult = await sibling.result;
 		expect(sibling.runtime.state.status).toBe("complete");
@@ -115,7 +114,7 @@ describe("GenerationCoordinator", () => {
 		await expect(coordinator.startGeneration({
 			conversationId: 404,
 			expectedRevision: 0,
-			content: "Start the scene.",
+			target: { kind: "send", content: "Start the scene." },
 		})).rejects.toBeInstanceOf(ConversationNotFoundError);
 	});
 
@@ -138,7 +137,7 @@ describe("GenerationCoordinator", () => {
 			fetch: () => { requested.resolve(); return response.promise; },
 		});
 		const started = await coordinator.startGeneration({
-			conversationId: conversation.id, expectedRevision: conversation.revision, content: "Stop on shutdown.",
+			conversationId: conversation.id, expectedRevision: conversation.revision, target: { kind: "send", content: "Stop on shutdown." },
 		});
 		await requested.promise;
 		let drained = false;
@@ -194,7 +193,7 @@ describe("GenerationCoordinator", () => {
 		const started = await coordinator.startGeneration({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
-			content: "Stop me.",
+			target: { kind: "send", content: "Stop me." },
 		});
 		for (let attempt = 0; attempt < 20 && providerSignal === undefined; attempt += 1) {
 			await new Promise((resolve) => setTimeout(resolve, 0));

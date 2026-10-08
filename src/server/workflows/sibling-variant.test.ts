@@ -13,8 +13,7 @@ import {
 import type { PromptPlan } from "../prompt-compiler";
 import { createFakeModelClient } from "../model-client";
 import {
-	generateSiblingVariant,
-	sendThroughProvisionalTailGeneration,
+	runGenerationLifecycle,
 	startServerOwnedGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
@@ -87,7 +86,7 @@ describe("Historical sibling Variant generation", () => {
 	const generateOnce = async (contents: string[], timestamp?: string) => {
 		const plans: PromptPlan[] = [];
 		for (const [index, content] of contents.entries()) {
-			conversation = await generateTerminalTailFixture(database, {
+			conversation = await generateTerminalTailFixture(database, {connection: null,
 				conversationId: conversation.id,
 				timestamp:
 					timestamp ??
@@ -124,9 +123,9 @@ describe("Historical sibling Variant generation", () => {
 		content: string,
 		options: { timestamp?: string; capture: (plan: PromptPlan) => void },
 	) => {
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId: conversation.id,
-			messageId,
+			target: { kind: "sibling", messageId: messageId },
 			timestamp: options.timestamp ?? "2026-08-20T14:00:00Z",
 			modelClient: fakeModelClient((plan) => {
 				options.capture(plan);
@@ -438,9 +437,9 @@ describe("Historical sibling Variant generation", () => {
 
 		let contacted = false;
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: imported.id,
-				messageId: message.id,
+				target: { kind: "sibling", messageId: message.id },
 				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
@@ -465,9 +464,9 @@ describe("Historical sibling Variant generation", () => {
 
 		let contacted = false;
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: conversation.id,
-				messageId: greeting.id,
+				target: { kind: "sibling", messageId: greeting.id },
 				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
@@ -498,9 +497,9 @@ describe("Historical sibling Variant generation", () => {
 
 		let contacted = false;
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: incomplete.id,
-				messageId: message.id,
+				target: { kind: "sibling", messageId: message.id },
 				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
@@ -517,9 +516,9 @@ describe("Historical sibling Variant generation", () => {
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
-			generateSiblingVariant(database, {
+			runGenerationLifecycle(database, {connection: null,
 				conversationId: conversation.id,
-				messageId: greeting.id,
+				target: { kind: "sibling", messageId: greeting.id },
 				modelClient: fakeModelClient(() => {
 					throw new Error("Transport down.");
 				}),
@@ -562,18 +561,18 @@ describe("Historical sibling Variant generation", () => {
 				},
 			},
 		});
-		const { messageId: targetId } = await sendThroughProvisionalTailGeneration(
+		const { messageId: targetId } = await runGenerationLifecycle(
 			database,
-			{
+			{connection: null,
 				conversationId: conversation.id,
 				expectedRevision: configured.revision,
-				content: "Human context before target.",
+				target: { kind: "send", content: "Human context before target." },
 				modelClient: fakeModelClient(() => "Target model output."),
 			},
 		);
-		const siblingResult = await generateSiblingVariant(database, {
+		const siblingResult = await runGenerationLifecycle(database, {connection: null,
 			conversationId: conversation.id,
-			messageId: targetId,
+			target: { kind: "sibling", messageId: targetId },
 			modelClient: fakeModelClient(() => "Sibling model output."),
 		});
 		expect(siblingResult).toEqual(expect.objectContaining({
@@ -603,9 +602,9 @@ describe("Historical sibling Variant generation", () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
 
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId: conversation.id,
-			messageId: greeting.id,
+			target: { kind: "sibling", messageId: greeting.id },
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Partial sibling." },
 				{ type: "failed", kind: "transport", message: "Connection dropped." },
@@ -638,15 +637,15 @@ describe("Historical sibling Variant generation", () => {
 			yield { type: "finished" as const, finishReason: "stop" as const };
 		})());
 
-		const first = startServerOwnedGeneration(database, {
+		const first = startServerOwnedGeneration(database, {connection: null,
 			conversationId: conversation.id,
-			messageId: greeting.id,
+			target: { kind: "sibling", messageId: greeting.id },
 			modelClient: held("First sibling", firstGate),
 		});
 		const firstAccepted = await first.accepted;
-		const second = startServerOwnedGeneration(database, {
+		const second = startServerOwnedGeneration(database, {connection: null,
 			conversationId: conversation.id,
-			messageId: greeting.id,
+			target: { kind: "sibling", messageId: greeting.id },
 			modelClient: held("Second sibling", secondGate),
 		});
 		const secondAccepted = await second.accepted;

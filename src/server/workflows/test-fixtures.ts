@@ -4,7 +4,7 @@ import {
 	ConversationNotFoundError,
 	type ConversationSnapshot,
 } from "../conversation";
-import { continueGeneration } from "./generate";
+import { runGenerationLifecycle } from "./generate";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 
 /**
@@ -24,7 +24,7 @@ export async function generateTerminalTailFixture(
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	await continueGeneration(database, {
+	await runGenerationLifecycle(database, {target: { kind: "continuation" },
 		...input,
 		expectedRevision: snapshot.revision,
 	});
