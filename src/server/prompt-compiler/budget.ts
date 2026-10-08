@@ -48,18 +48,10 @@ export interface PromptBudgetInput {
 	protectedHistoryIndex?: number | undefined;
 }
 
-export interface PromptBudgetResult {
-	readonly fits: boolean;
+export interface PromptBudgetResult extends PromptBudgetMeasurement {
 	readonly plan: PromptPlan;
 	readonly retainedContext: readonly PromptContextEntry[];
 	readonly omittedContext: readonly PromptContextEntry[];
-	readonly tokenEstimate: number;
-	readonly responseBudget: number;
-	readonly safetyAllowance: number;
-	readonly contextLimit: number;
-	readonly totalRequiredTokens: number;
-	readonly breakdown: PromptBudgetBreakdown;
-	readonly failure: PromptBudgetFailure | null;
 }
 
 export interface PromptBudgetMeasurementInput {

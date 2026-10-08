@@ -217,16 +217,11 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 		ownerId: characterId,
 		revision: character.revision,
 		attachments: db
-			.select({
-				id: characterLorebookAttachmentTable.id,
-				bookId: characterLorebookAttachmentTable.lorebook_id,
-				scope: characterLorebookAttachmentTable.scope,
-				enabled: characterLorebookAttachmentTable.enabled,
-			})
+			.select(ownerAttachmentSelection(characterLorebookAttachmentTable))
 			.from(characterLorebookAttachmentTable)
 			.where(eq(characterLorebookAttachmentTable.character_id, characterId))
 			.all()
-			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
+			.map(ownerAttachmentOf),
 	};
 };
 
@@ -254,16 +249,11 @@ export const readParticipantLorebookAttachments = (database: Database, participa
 		ownerId: participantId,
 		revision: conversation.revision,
 		attachments: db
-			.select({
-				id: participantLorebookAttachmentTable.id,
-				bookId: participantLorebookAttachmentTable.lorebook_id,
-				scope: participantLorebookAttachmentTable.scope,
-				enabled: participantLorebookAttachmentTable.enabled,
-			})
+			.select(ownerAttachmentSelection(participantLorebookAttachmentTable))
 			.from(participantLorebookAttachmentTable)
 			.where(eq(participantLorebookAttachmentTable.participant_id, participantId))
 			.all()
-			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
+			.map(ownerAttachmentOf),
 	};
 };
 
@@ -322,3 +312,15 @@ export const executeLorebookAttachmentCommand = (
 		advanceCharacterRevision(db, command.characterId, command.expectedRevision);
 	}).immediate();
 };
+
+const ownerAttachmentSelection = (table: typeof characterLorebookAttachmentTable | typeof participantLorebookAttachmentTable) => ({
+	id: table.id,
+	bookId: table.lorebook_id,
+	scope: table.scope,
+	enabled: table.enabled,
+});
+
+const ownerAttachmentOf = (row: { id: number; bookId: number; scope: string; enabled: boolean }) => ({
+	...row,
+	scope: participantScope(row.scope),
+});
