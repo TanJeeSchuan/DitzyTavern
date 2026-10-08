@@ -10,7 +10,8 @@ export class ConversationNotFoundError extends Error {
 }
 
 export class StaleConversationRevisionError extends Error {
-	readonly outcome = "stale-conversation" as const;
+	readonly outcome = "conflict" as const;
+	readonly details = { reason: this.message };
 
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
@@ -49,6 +50,7 @@ export class ParticipantNotFoundError extends Error {
 
 export class InvalidConversationCommandError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -58,6 +60,7 @@ export class InvalidConversationCommandError extends Error {
 
 export class InvalidConversationCreationError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -73,6 +76,7 @@ export class InvalidConversationCreationError extends Error {
 // remain selectable and editable; only new sibling generation is blocked.
 export class SiblingVariantUnavailableError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	readonly reason: Exclude<MessageSwipeBlockReason, "conversation-not-playable">;
 
@@ -96,7 +100,7 @@ export class SiblingVariantUnavailableError extends Error {
 // be reassigned first) without inventing rules transport-side.
 export class ParticipantNotRemovableError extends Error {
 	readonly outcome = "not-removable" as const;
-	get details() { return { reason: this.reason }; }
+	readonly details;
 
 	readonly reason: ParticipantRemovalBlockReason;
 	readonly conversationId: number;
@@ -110,6 +114,7 @@ export class ParticipantNotRemovableError extends Error {
 		this.reason = "control-assigned";
 		this.conversationId = conversationId;
 		this.participantId = participantId;
+		this.details = { reason: this.reason };
 	}
 }
 
@@ -118,6 +123,7 @@ export class ParticipantNotRemovableError extends Error {
 // Conversation whose two Control seats are not both occupied.
 export class ConversationNotPlayableError extends Error {
 	readonly outcome = "not-playable" as const;
+	readonly details = { reason: this.message };
 
 	constructor(conversationId: number) {
 		super(
@@ -154,6 +160,7 @@ export class ConversationWriteObserverMissingError extends Error {
 // can present the reason without reproducing the terminal-position rule.
 export class ContinuationUnavailableError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	readonly reason: ContinuationUnavailableReason;
 

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { recoverConversationConflict } from "./domain-error-recovery";
 import { presentDomainError } from "./domain-error";
 import { InvalidConversationCommandError, StaleConversationRevisionError } from "../conversation";
 import { PromptPresetDeletionImpactChangedError } from "../prompt-preset";
-import { conversationConflict } from "../../shared/contract/conversation-schema";
+import { conversationConflict, generationConflictResponse } from "../../shared/contract/conversation-schema";
 import { promptPresetCommandConflict } from "../../shared/contract/prompt-preset";
-import { notFoundOutcome } from "../../shared/contract/outcomes";
+import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
 
 describe("domain error presentation", () => {
 	test("keeps unexpected throws and undeclared outcomes outside the route contract", () => {
@@ -31,12 +32,25 @@ describe("domain error presentation", () => {
 
 	test("reports disappearance during stale recovery only when the route declares not-found", () => {
 		const stale = new StaleConversationRevisionError(1, 2);
-		expect(presentDomainError(stale, { 404: notFoundOutcome, 409: conversationConflict }, {
-			currentConversation: () => undefined,
-		})).toMatchObject({ code: 404, response: { outcome: "not-found" } });
-		expect(() => presentDomainError(stale, { 409: conversationConflict }, {
-			currentConversation: () => undefined,
-		})).toThrow(stale);
+		expect(presentDomainError(stale, { 404: notFoundOutcome, 409: conversationConflict }, recoverConversationConflict(() => undefined))).toMatchObject({ code: 404, response: { outcome: "not-found" } });
+		expect(() => presentDomainError(stale, { 409: conversationConflict }, recoverConversationConflict(() => undefined))).toThrow(stale);
+	});
+
+	test("generation starts report stale revisions while sibling starts rethrow them", () => {
+		const stale = new StaleConversationRevisionError(2, 3);
+		expect(presentDomainError(stale, { 409: generationConflictResponse })).toMatchObject({
+			code: 409, response: { outcome: "conflict", reason: stale.message },
+		});
+		expect(() => presentDomainError(stale, { 409: notPlayableOutcome })).toThrow(stale);
+	});
+
+	test("only declared details enter the payload", () => {
+		const error = new InvalidConversationCommandError("Declared reason");
+		Object.assign(error, { reason: "Incidental field", currentConversation: { id: 1 } });
+		expect(presentDomainError(error, { 200: notFoundOutcome, 422: invalidOutcome })).toMatchObject({
+			code: 422, response: { outcome: "invalid", reason: "Declared reason" },
+		});
+		expect(Object.keys(presentDomainError(error, { 422: invalidOutcome }).response)).toEqual(["outcome", "reason"]);
 	});
 
 });

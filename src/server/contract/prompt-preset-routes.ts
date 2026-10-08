@@ -1,5 +1,4 @@
-import type { TSchema } from "@sinclair/typebox";
-import { presentDomainError } from "./domain-error";
+import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import {
@@ -39,28 +38,36 @@ import {
 	sillyTavernImportRequest,
 } from "../../shared/contract/prompt-preset";
 
+const commandResponse = {
+	200: promptPresetCommandApplied,
+	409: promptPresetCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const nativeImportResponse = { 200: promptPresetCommandApplied, 422: invalidOutcome };
+
+const sillyTavernImportResponse = { 200: sillyTavernImportApplied, 422: invalidOutcome };
+
+const sillyTavernReviewResponse = { 200: sillyTavernImportPreview, 422: invalidOutcome };
+
 const recipeResponseSchema = {
 	200: promptPresetRecipeApplied,
 	404: notFoundOutcome,
 	422: invalidOutcome,
 };
-const commandErrors = { 404: notFoundOutcome, 409: promptPresetCommandConflict, 422: invalidOutcome };
 
-const respond = <T, R, S extends Partial<Record<404 | 409 | 410 | 422, TSchema>>>(
+const respond = <T, R, S extends ResponseSchemas>(
 	operation: () => T,
-	errors: S,
+	responses: S,
 	applied: (value: T) => R,
 ) => {
 	try { return applied(operation()); }
-	catch (error) { return presentDomainError(error, errors); }
+	catch (error) { return presentDomainError(error, responses); }
 };
 
 const recipeResponse = <T>(operation: () => T) =>
 	respond(operation, recipeResponseSchema, () => ({ outcome: "applied" as const }));
-const importResponse = <T, R>(operation: () => T, applied: (value: T) => R) =>
-	respond(operation, { 422: invalidOutcome }, applied);
-const commandResponse = <T, R>(operation: () => T, applied: (value: T) => R) =>
-	respond(operation, commandErrors, applied);
 
 export const createPromptPresetRoutes = (database: Database) =>
 	new Elysia()
@@ -70,14 +77,15 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return importResponse(
+				return respond(
 					() => reviewSillyTavernPromptPreset(body),
+					sillyTavernReviewResponse,
 					(preview) => preview,
 				);
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: { 200: sillyTavernImportPreview, 422: invalidOutcome },
+				response: sillyTavernReviewResponse,
 			},
 		)
 		.post(
@@ -86,15 +94,15 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return importResponse(
-					() =>
-						importSillyTavernPromptPreset(database, body),
+				return respond(
+					() => importSillyTavernPromptPreset(database, body),
+					sillyTavernImportResponse,
 					(imported) => imported,
 				);
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: { 200: sillyTavernImportApplied, 422: invalidOutcome },
+				response: sillyTavernImportResponse,
 			},
 		)
 		.get(
@@ -111,14 +119,14 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/import",
 			({ body }) =>
-				importResponse(
-					() =>
-						importNativePromptPreset(database, body),
+				respond(
+					() => importNativePromptPreset(database, body),
+					nativeImportResponse,
 					(preset) => ({ outcome: "applied" as const, preset }),
 				),
 			{
 				body: nativePromptPreset,
-				response: { 200: promptPresetCommandApplied, 422: invalidOutcome },
+				response: nativeImportResponse,
 			},
 		)
 		.get(
@@ -131,25 +139,20 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/commands",
 			({ body }) =>
-				commandResponse(
+				respond(
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the library then guards the revision and derives the
 					// deletion impact from the selections present in the transaction.
-					() =>
-						executePromptPresetCommand(database, body),
+					() => executePromptPresetCommand(database, body),
+					commandResponse,
 					(outcome) => outcome.kind === "deleted"
 						? { outcome: "deleted" as const, result: outcome.result }
 						: { outcome: "applied" as const, preset: outcome.preset },
 				),
 			{
 				body: promptPresetCommandBody,
-				response: {
-					200: promptPresetCommandApplied,
-					409: promptPresetCommandConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: commandResponse,
 			},
 		)
 		.post(

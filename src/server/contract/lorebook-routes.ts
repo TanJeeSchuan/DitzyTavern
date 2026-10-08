@@ -1,3 +1,4 @@
+import { recoverConversationConflict, recoverLoreOwnerConflict } from "./domain-error-recovery";
 import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
@@ -54,6 +55,12 @@ import { invalidResponse, notFoundResponse } from "./responses";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client/types";
 
+const commandResponse = { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome };
+
+const importResponse = { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome };
+
+const attachmentCommandResponse = { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentCommandConflict, 422: invalidOutcome };
+
 export interface LorebookRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
@@ -72,18 +79,18 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 		try {
 			return { outcome: "applied" as const, book: importNativeLorebook(database, body), warnings: [] };
 		} catch (error) {
-			return presentDomainError(error, { 404: notFoundOutcome, 422: invalidOutcome });
+			return presentDomainError(error, importResponse);
 		}
-	}, { body: nativeLorebook, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
+	}, { body: nativeLorebook, response: importResponse })
 	.post("/api/lorebooks/import/sillytavern", ({ body }) => {
 		if (!isSillyTavernJsonValue(body.source)) return invalidResponse("SillyTavern lorebook JSON must be valid JSON.");
 		try {
 			const { book, warnings } = importSillyTavernLorebook(database, body.source);
 			return { outcome: "applied" as const, book, warnings };
 		} catch (error) {
-			return presentDomainError(error, { 404: notFoundOutcome, 422: invalidOutcome });
+			return presentDomainError(error, importResponse);
 		}
-	}, { body: sillyTavernLorebookImportBody, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
+	}, { body: sillyTavernLorebookImportBody, response: importResponse })
 	.post("/api/lorebooks/commands", ({ body }) => {
 		try {
 			const value = executeLorebookCommand(database, body);
@@ -91,9 +98,9 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 				? { outcome: "deleted" as const, bookId: value.deleted }
 				: { outcome: "applied" as const, book: value };
 		} catch (error) {
-			return presentDomainError(error, { 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome });
+			return presentDomainError(error, commandResponse);
 		}
-	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
+	}, { body: lorebookCommandBody, response: commandResponse })
 	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
 		const book = readLorebook(database, body.bookId);
 		if (book === undefined) return respond(404, { outcome: "not-found" as const });
@@ -137,10 +144,8 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 		return { outcome: "applied" as const };
 	} catch (error) {
 		return presentDomainError(error,
-			{ 404: notFoundOutcome,
-				409: loreAttachmentCommandConflict,
-				422: invalidOutcome },
-			{ currentConversation: () => createConversationModule(database).getSummary(command.conversationId) });
+			attachmentCommandResponse,
+			recoverConversationConflict(() => createConversationModule(database).getSummary(command.conversationId)));
 	}
 };
 
@@ -168,9 +173,8 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 				return { outcome: "applied" as const };
 			} catch (error) {
 				return presentDomainError(error,
-					{ 404: notFoundOutcome,
-						409: loreAttachmentCommandConflict },
-					{ currentState: (cause) => "characterId" in cause ? readCharacterLorebookAttachments(database, Number(cause.characterId)) : undefined });
+					attachmentCommandResponse,
+					recoverLoreOwnerConflict((characterId) => readCharacterLorebookAttachments(database, characterId)));
 			}
 		}
 		if (body.type === "attach-participant" || body.type === "detach-participant") {
@@ -207,4 +211,4 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 			expectedRevision: body.expectedRevision,
 			action: { type: "save-settings", scanDepth: body.scanDepth, allowance: body.allowance },
 		});
-	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentCommandConflict, 422: invalidOutcome } });
+	}, { body: loreAttachmentCommandBody, response: attachmentCommandResponse });

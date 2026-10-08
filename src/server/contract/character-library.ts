@@ -21,6 +21,13 @@ import { toCharacterPayload } from "./projections";
 //  Keep this adapter export stable for sibling route adapters that use the
 // Character transport projection while the implementation lives below the
 // route-adapter layer.
+const commandResponse = {
+	200: characterCommandApplied,
+	409: characterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
 export { toCharacterPayload };
 
 // @approved
@@ -72,16 +79,11 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 						character: toCharacterPayload(outcome),
 					};
 				} catch (error) {
-					return presentDomainError(error, { 404: notFoundOutcome, 409: characterConflict, 422: invalidOutcome });
+					return presentDomainError(error, commandResponse);
 				}
 			},
 			{
 				body: commandBodySchema,
-				response: {
-					200: characterCommandApplied,
-					409: characterConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: commandResponse,
 			},
 		);

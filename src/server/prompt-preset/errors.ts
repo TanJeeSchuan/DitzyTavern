@@ -17,7 +17,7 @@ export class PromptPresetNotFoundError extends Error {
 // so callers can recover without overwriting their local draft.
 export class StalePromptPresetRevisionError extends Error {
 	readonly outcome = "conflict" as const;
-	get details() { return { reason: "stale-revision" }; }
+	readonly details;
 
 	readonly presetId: number;
 	readonly expectedRevision: number;
@@ -38,11 +38,13 @@ export class StalePromptPresetRevisionError extends Error {
 		this.expectedRevision = expectedRevision;
 		this.actualRevision = actualRevision;
 		this.currentPreset = currentPreset;
+		this.details = { reason: "stale-revision" as const, expectedRevision, actualRevision, currentPreset };
 	}
 }
 
 export class InvalidPromptPresetCommandError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -57,7 +59,7 @@ export class InvalidPromptPresetCommandError extends Error {
 // confirmation can be renewed with the exact impact.
 export class PromptPresetDeletionImpactChangedError extends Error {
 	readonly outcome = "conflict" as const;
-	get details() { return { reason: "deletion-impact" }; }
+	readonly details;
 
 	readonly currentPreset: PromptPresetSummary;
 
@@ -67,6 +69,7 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 		);
 		this.name = "PromptPresetDeletionImpactChangedError";
 		this.currentPreset = currentPreset;
+		this.details = { reason: "deletion-impact" as const, currentPreset };
 	}
 }
 
@@ -76,6 +79,7 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 // matter which revision the caller saw.
 export class DefaultPromptPresetNotRemovableError extends Error {
 	readonly outcome = "not-removable" as const;
+	readonly details = { reason: this.message };
 
 	constructor() {
 		super("The Default Prompt Preset cannot be deleted.");

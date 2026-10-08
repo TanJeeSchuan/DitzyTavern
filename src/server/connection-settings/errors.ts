@@ -2,6 +2,7 @@ import type { ConnectionSettingsSnapshot } from "./types";
 
 export class InvalidConnectionProfileError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -27,6 +28,7 @@ export class ConnectionProfileNameConflictError extends InvalidConnectionProfile
 
 export class ConnectionCredentialConfirmationError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor() {
 		super("Resetting a Connection Credential requires explicit confirmation.");
@@ -36,6 +38,7 @@ export class ConnectionCredentialConfirmationError extends Error {
 
 export class StaleConnectionSettingsRevisionError extends Error {
 	readonly outcome = "conflict" as const;
+	readonly details;
 
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
@@ -53,5 +56,6 @@ export class StaleConnectionSettingsRevisionError extends Error {
 		this.expectedRevision = expectedRevision;
 		this.actualRevision = actualRevision;
 		this.currentSettings = currentSettings;
+		this.details = { expectedRevision, actualRevision, currentSettings };
 	}
 }

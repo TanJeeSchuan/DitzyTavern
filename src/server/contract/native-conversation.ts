@@ -12,6 +12,13 @@ import {
 } from "../../shared/contract/native-conversation";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
+const createResponse = {
+	200: nativeConversationResponse,
+	409: characterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
 export const createNativeConversationRoutes = (database: Database) =>
 	new Elysia().post(
 		"/api/conversations/native",
@@ -29,16 +36,11 @@ export const createNativeConversationRoutes = (database: Database) =>
 					conversation: toConversationSummary(conversation),
 				};
 			} catch (error) {
-				return presentDomainError(error, { 404: notFoundOutcome, 409: characterConflict, 422: invalidOutcome });
+				return presentDomainError(error, createResponse);
 			}
 		},
 		{
 			body: nativeConversationBody,
-			response: {
-				200: nativeConversationResponse,
-				409: characterConflict,
-				404: notFoundOutcome,
-				422: invalidOutcome,
-			},
+			response: createResponse,
 		},
 	);

@@ -274,6 +274,7 @@ const validateBudgetFields = (
 
 export class PromptBudgetExceededError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	readonly result: PromptBudgetResult;
 	readonly breakdown: PromptBudgetBreakdown;

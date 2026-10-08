@@ -17,6 +17,7 @@ export class CharacterNotFoundError extends Error {
 // callers can recover without overwriting their local draft.
 export class StaleCharacterRevisionError extends Error {
 	readonly outcome = "conflict" as const;
+	readonly details;
 
 	readonly characterId: number;
 	readonly expectedRevision: number;
@@ -37,11 +38,13 @@ export class StaleCharacterRevisionError extends Error {
 		this.expectedRevision = expectedRevision;
 		this.actualRevision = actualRevision;
 		this.currentCharacter = currentCharacter;
+		this.details = { expectedRevision, actualRevision, currentCharacter };
 	}
 }
 
 export class InvalidCharacterDefinitionError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -51,6 +54,7 @@ export class InvalidCharacterDefinitionError extends Error {
 
 export class InvalidCharacterCommandError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);

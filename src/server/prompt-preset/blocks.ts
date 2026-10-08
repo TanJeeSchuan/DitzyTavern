@@ -33,6 +33,7 @@ export class PromptPresetBlockNotFoundError extends Error {
 
 export class InvalidPromptPresetOperationError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(readonly reason: string) {
 		super(reason);

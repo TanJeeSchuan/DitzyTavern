@@ -17,15 +17,18 @@ import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validatio
 
 export class StaleMemoryCollectionError extends Error {
 	readonly outcome = "conflict" as const;
+	readonly details;
 
 	constructor(readonly collection: MemoryCollectionView) {
 		super("This Memory collection changed in another session.");
 		this.name = "StaleMemoryCollectionError";
+		this.details = { collection };
 	}
 }
 
 export class InvalidMemorySourceError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
@@ -439,6 +442,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 
 export class StaleMemorySettingsError extends Error {
 	readonly outcome = "conflict" as const;
+	readonly details;
 
 	constructor(
 		readonly expectedRevision: number,
@@ -447,6 +451,7 @@ export class StaleMemorySettingsError extends Error {
 	) {
 		super("Memory settings changed in another session.");
 		this.name = "StaleMemorySettingsError";
+		this.details = { expectedRevision, actualRevision, currentSettings };
 	}
 }
 

@@ -8,11 +8,12 @@ import { applyMemoryPeople } from "../../shared/memory-identity";
 import { abortMemoryWork } from "./work";
 
 export class StaleMemoryLabelsError extends Error {
-	readonly outcome = "stale-memory-labels" as const;
+	readonly outcome = "conflict" as const;
 }
 
 export class InvalidMemoryLabelsError extends Error {
 	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
 }
 
 const parseMerges = (json: string): MemoryLabelMerge[] => {

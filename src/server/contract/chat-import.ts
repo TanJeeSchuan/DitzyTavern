@@ -29,6 +29,23 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 // request stream untouched so the module can stream the uploaded bytes into
 // managed temporary storage exactly once instead of buffering the artifact.
 // The preview and discard routes stay tiny mappings of typed outcomes.
+const commitResponse = {
+	200: importCommittedResponse,
+	410: importGoneResponse,
+	422: invalidOutcome,
+};
+
+const previewResponse = {
+	200: importPreviewResponse,
+	410: importGoneResponse,
+	422: invalidOutcome,
+};
+
+const stageResponse = {
+	200: importStagedResponse,
+	422: invalidOutcome,
+};
+
 export const createChatImportRoutes = (
 	database: Database,
 	artifactDirectory: string,
@@ -59,14 +76,11 @@ export const createChatImportRoutes = (
 							});
 					return { outcome: "staged" as const, ...result };
 				} catch (error) {
-					return presentDomainError(error, { 422: invalidOutcome });
+					return presentDomainError(error, stageResponse);
 				}
 			},
 			{
-				response: {
-					200: importStagedResponse,
-					422: invalidOutcome,
-				},
+				response: stageResponse,
 			},
 		)
 		.post(
@@ -76,17 +90,13 @@ export const createChatImportRoutes = (
 					const preview = createChatImportModule(database, { artifactDirectory: artifactDirectory }).preview(params.token, body.sha256);
 					return { outcome: "available" as const, preview };
 				} catch (error) {
-					return presentDomainError(error, { 410: importGoneResponse, 422: invalidOutcome });
+					return presentDomainError(error, previewResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: importPreviewBody,
-				response: {
-					200: importPreviewResponse,
-					410: importGoneResponse,
-					422: invalidOutcome,
-				},
+				response: previewResponse,
 			},
 		)
 		.post(
@@ -105,17 +115,13 @@ export const createChatImportRoutes = (
 						receipt: result.receipt,
 					};
 				} catch (error) {
-					return presentDomainError(error, { 410: importGoneResponse, 422: invalidOutcome }, {}, { "not-found": "invalid" });
+					return presentDomainError(error, commitResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: chatImportCommitBody,
-				response: {
-					200: importCommittedResponse,
-					410: importGoneResponse,
-					422: invalidOutcome,
-				},
+				response: commitResponse,
 			},
 		)
 		.post(
