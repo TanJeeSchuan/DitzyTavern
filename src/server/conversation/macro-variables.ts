@@ -1,4 +1,4 @@
-import { MACRO_DATA_NAMESPACE, macroWritesKey } from "../../shared/variant-data-codecs";
+import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
 import { and, eq, max } from "drizzle-orm";
 import {
@@ -21,6 +21,7 @@ import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
 import type { ConversationDatabase } from "./internal";
 import { readSelectedHistoryFromConnection } from "./selected-history";
+import { readVariantData } from "./variant-data";
 import {
 	advanceConversationRevisionGuarded,
 	requireConversationSummary,
@@ -106,13 +107,13 @@ const readMacroVariablesFromConnection = (
 		position: requestedPosition,
 		conversationDataNamespace: MACRO_DATA_NAMESPACE,
 		conversationDataKeyPrefix: macroInitialValuePrefix(presetId),
-		variantDataNamespace: MACRO_DATA_NAMESPACE,
-		variantDataKeys: [macroWritesKey(presetId)],
+		variantData: false,
 	});
 	if (history === undefined) return undefined;
+	const macroWrites = readVariantData(db, history.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]), ["macroWrites"]);
 	const selectedVariants = history.messages.flatMap((message) => message.variant === null ? [] : [{
 			selected: true as const,
-			data: message.variant.data,
+			macroWrites: macroWrites.get(message.variant.id)?.macroWrites ?? [],
 			messageId: message.id,
 			messagePosition: message.position,
 			variantId: message.variant.id,
@@ -222,19 +223,8 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 				.where(and(eq(messageVariantTable.message_id, message.id), eq(messageVariantTable.selected, true)))
 				.get();
 			if (variant === undefined) throw new InvalidConversationCommandError("The selected history position has no selected Variant.");
-			const row = db
-				.select({ namespace: messageVariantDataTable.namespace, key: messageVariantDataTable.key, value: messageVariantDataTable.value })
-				.from(messageVariantDataTable)
-				.where(and(
-					eq(messageVariantDataTable.message_variant_id, variant.id),
-					eq(messageVariantDataTable.namespace, MACRO_DATA_NAMESPACE),
-					eq(messageVariantDataTable.key, macroWritesKey(input.promptPresetId)),
-				))
-				.get();
-			const entries = macroWritesToData(
-				input.promptPresetId,
-				[...readMacroWrites(row === undefined ? [] : [row], input.promptPresetId), write],
-			);
+			const stored = readVariantData(db, [variant.id], ["macroWrites"]).get(variant.id)?.macroWrites ?? [];
+			const entries = macroWritesToData(input.promptPresetId, [...readMacroWrites(stored, input.promptPresetId), write]);
 			db.insert(messageVariantDataTable)
 				.values(entries.map((entry) => ({ message_variant_id: variant.id, ...entry })))
 				.onConflictDoUpdate({

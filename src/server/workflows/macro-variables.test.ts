@@ -2,9 +2,11 @@ import { readTestConversationSnapshot, createConversationWithHistory } from "../
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { acceptConversationTailGeneration } from "../conversation";
 import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation";
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
+import { readVariantData } from "../conversation";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import {
 	captureGeneration,
@@ -14,6 +16,7 @@ import { recoverActiveGenerations } from "./generation-recovery";
 
 describe("Conversation-persistent prompt macro variables", () => {
 	let database: Database;
+	const macroWritesOf = (variantId: number) => readMacroWrites(readVariantData(drizzle(database), [variantId], ["macroWrites"]).get(variantId)?.macroWrites ?? [], 1);
 
 	beforeEach(() => {
 		database = openObservedDatabase();
@@ -78,7 +81,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		if (after === undefined) throw new Error("Conversation disappeared.");
 		const generated = after.messages.at(-1)?.variants.find((variant) => variant.selected);
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
-		expect(readMacroWrites(generated.data, 1)).toEqual([
+		expect(macroWritesOf(generated.id)).toEqual([
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
@@ -112,7 +115,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const greetingVariant = snapshot.messages[0]?.variants[0];
 		if (greetingVariant === undefined) throw new Error("Greeting Variant disappeared.");
 		expect(greetingVariant.content).toBe("Hello");
-		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
+		expect(macroWritesOf(greetingVariant.id)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
 		const capture = await captureGeneration(database, { kind: "send", content: "Again" }, {connection: null, conversationId: snapshot.id });
@@ -158,7 +161,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const variant = snapshot.messages.at(-1)?.variants.find((candidate) => candidate.selected);
 		if (variant === undefined) throw new Error("Recovered Variant disappeared.");
 		expect(variant.content).toBe("Partial");
-		expect(readMacroWrites(variant.data, 1)).toEqual([
+		expect(macroWritesOf(variant.id)).toEqual([
 			{ name: "recovered", operation: "set", value: "yes" },
 		]);
 	});

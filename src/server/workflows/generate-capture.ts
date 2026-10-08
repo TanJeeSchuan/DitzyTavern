@@ -1,5 +1,4 @@
-import { MACRO_DATA_NAMESPACE, macroWritesKey } from "../../shared/variant-data-codecs";
-import { variantDataCodecs } from "../../shared/variant-data-codecs";
+import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { generationProvenanceEntry } from "./generate-capture-projections";
 export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
 import type { Database } from "bun:sqlite";
@@ -24,6 +23,7 @@ import type { CastParticipantSnapshot } from "../conversation";
 import { readConversationSummaryFromConnection } from "../conversation";
 import { readConversationGenerationSettingsFromConnection } from "../conversation";
 import { readSelectedHistoryFromConnection } from "../conversation";
+import { readVariantData, type VariantDataRecords } from "../conversation";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
@@ -262,6 +262,7 @@ function captureFacts(
 	human: CastParticipantSnapshot,
 	model: CastParticipantSnapshot,
 	settings: ConversationGenerationSettings,
+	variantData: ReadonlyMap<number, VariantDataRecords>,
 ): GenerationCaptureFacts {
 	switch (target.kind) {
 		case "send": return { kind: "send", reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target.content) };
@@ -273,7 +274,7 @@ function captureFacts(
 			const reason = continuationEligibility({
 				authorRole: authorRoleOf(latest, { humanParticipantId: human.id, modelParticipantId: model.id }),
 				content: variant.content,
-				hasReasoning: variant.data.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key && entry.value.length > 0),
+				hasReasoning: (variantData.get(variant.id)?.reasoning?.length ?? 0) > 0,
 			}, settings.continuationStrategy);
 			if (reason !== null) throw new ContinuationUnavailableError(reason);
 			return { kind: "continuation", precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
@@ -310,7 +311,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -324,10 +325,11 @@ export function prepareGenerationInputsSnapshot(
 				targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
 				conversationDataNamespace: MACRO_DATA_NAMESPACE,
 				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
-				variantDataKeys: [macroWritesKey(recipe.id), variantDataCodecs.reasoning.key],
+				variantData: false,
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
-			return { summary, recipe, settings, selected };
+			const variantData = readVariantData(db, selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]), ["reasoning", "macroWrites"]);
+			return { summary, recipe, settings, selected, variantData };
 		},
 	);
 	if (!Value.Check(conversationGenerationSettings, settings)) {
@@ -359,7 +361,7 @@ export function prepareGenerationInputsSnapshot(
 		model,
 		context: selectedHistoryFrom(participation.messages, human.id, model.id),
 	};
-	const facts = captureFacts(target, participation, human, model, settings);
+	const facts = captureFacts(target, participation, human, model, settings, variantData);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? target.content : undefined;
 	const lore = hasEnabledLoreSlot(recipe.slots)
@@ -377,7 +379,7 @@ export function prepareGenerationInputsSnapshot(
 		presetId: recipe.id,
 		selectedVariants: participation.messages.map((message) => ({
 			selected: message.variant !== null,
-			data: message.variant?.data ?? [],
+			macroWrites: message.variant === null ? [] : variantData.get(message.variant.id)?.macroWrites ?? [],
 		})),
 	}));
 	const memoryEnabled = createMemorySettingsModule(input.database).get().enabled && hasEnabledMemorySlot(recipe.slots);

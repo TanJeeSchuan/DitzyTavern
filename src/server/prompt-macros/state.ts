@@ -76,18 +76,17 @@ export const readMacroInitialValues = (
 	return values;
 };
 
+type MacroWriteRecord = { key: string; writes: MacroVariableWrite[] };
+
 /** @approved Read ordered resolved writes stored on one Variant for one originating preset. */
 export const readMacroWrites = (
-	entries: readonly ConversationDataEntry[],
+	records: readonly MacroWriteRecord[],
 	presetId: number,
-): MacroVariableWrite[] => {
-	const entry = entries.find((candidate) => candidate.namespace === MACRO_DATA_NAMESPACE && candidate.key === macroWritesKey(presetId));
-	return entry === undefined ? [] : variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [];
-};
+): MacroVariableWrite[] => records.find((record) => record.key === macroWritesKey(presetId))?.writes ?? [];
 
 type SelectedVariant = {
 	selected: boolean;
-	data: readonly ConversationDataEntry[];
+	macroWrites: readonly MacroWriteRecord[];
 };
 
 const forEachSelectedWrite = <Variant extends SelectedVariant>(
@@ -97,7 +96,7 @@ const forEachSelectedWrite = <Variant extends SelectedVariant>(
 ): void => {
 	for (const variant of variants) {
 		if (!variant.selected) continue;
-		for (const write of readMacroWrites(variant.data, presetId)) visit(write, variant);
+		for (const write of readMacroWrites(variant.macroWrites, presetId)) visit(write, variant);
 	}
 };
 
@@ -124,7 +123,7 @@ export const deriveMacroVariables = (input: {
 	presetId: number;
 	selectedVariants: readonly {
 		selected: boolean;
-		data: readonly ConversationDataEntry[];
+		macroWrites: readonly MacroWriteRecord[];
 		messageId: number;
 		messagePosition: number;
 		variantId: number;
