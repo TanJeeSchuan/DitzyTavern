@@ -1,0 +1,29 @@
+.loading-rail,
+.loading-stage {
+	height: calc(100dvh - 2rem);
+	border: 1px solid var(--border);
+	background: var(--surface);
+	box-shadow: 0 1rem 3rem var(--shadow-soft);
+}
+
+.loading-rail {
+	width: 4.25rem;
+	border-radius: 1.35rem;
+}
+
+.loading-stage {
+	position: relative;
+	width: min(100%, 48rem);
+	border-radius: 1.5rem;
+}
+
+.loading-header {
+	height: 4.5rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.loading-copy {
+	width: min(80%, 38rem);
+	margin: 8rem auto 0;
+}
+

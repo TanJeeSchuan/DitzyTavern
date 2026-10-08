@@ -1,0 +1,110 @@
+.prose {
+	color: color-mix(in oklch, var(--foreground) 97%, var(--surface));
+	font-family: var(--font-reading);
+	font-size: 1.25rem;
+	line-height: 1.65;
+	letter-spacing: -0.006em;
+}
+
+.variant-content[data-swipe-direction="next"] {
+	animation: variant-swipe-next 160ms ease-out;
+}
+
+.variant-content[data-swipe-direction="previous"] {
+	animation: variant-swipe-previous 160ms ease-out;
+}
+
+@keyframes variant-swipe-next {
+	from { opacity: 0.72; transform: translateX(0.4rem); }
+}
+
+@keyframes variant-swipe-previous {
+	from { opacity: 0.72; transform: translateX(-0.4rem); }
+}
+
+.prose-block > * {
+	margin: 0;
+}
+
+.prose-block + .prose-block {
+	margin-top: 0.9em;
+}
+
+.prose .prose-dialogue {
+	color: light-dark(oklch(0.46 0.07 195), oklch(0.8 0.05 195));
+}
+
+.prose blockquote {
+	padding-left: 0.9em;
+	border-left: 2px solid var(--border-strong);
+	color: var(--text-muted);
+}
+
+.prose :is(ul, ol) {
+	padding-left: 1.4em;
+	line-height: 1.5;
+}
+
+.prose li > p {
+	margin-block: 0.25em;
+}
+
+.prose li > :is(ul, ol) {
+	margin-block: 0.15em;
+}
+
+.prose ul {
+	list-style: disc;
+}
+
+.prose ol {
+	list-style: decimal;
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6) {
+	font-size: 1em;
+	font-weight: 500;
+	line-height: 1.25;
+}
+
+.prose :is(h1, h2) {
+	font-weight: 700;
+}
+
+.prose h1 {
+	font-size: 1.6em;
+}
+
+.prose h2 {
+	font-size: 1.3em;
+}
+
+.prose h3 {
+	font-size: 1.1em;
+}
+
+.prose hr {
+	border: 0;
+	border-top: 1px solid var(--border);
+}
+
+.prose code {
+	padding: 0.1em 0.3em;
+	border-radius: 0.3em;
+	background: var(--surface-muted);
+	font-family: ui-monospace, monospace;
+	font-size: 0.88em;
+}
+
+.prose pre {
+	overflow-x: auto;
+	padding: 0.8em 1em;
+	border-radius: 0.5rem;
+	background: var(--surface-muted);
+}
+
+.prose pre code {
+	padding: 0;
+	background: none;
+}
+
