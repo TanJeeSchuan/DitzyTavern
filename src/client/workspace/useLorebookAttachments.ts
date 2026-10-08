@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { applyLorebookAttachmentCommand, getLorebookAttachmentState } from "../lorebook-library";
+import { applyLorebookAttachmentCommand, getLorebookAttachmentState, type LoreAttachmentCommand } from "../lorebook-library";
 import { loadConversationPromptPreset } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
@@ -11,7 +11,7 @@ export function useLorebookAttachments(conversationId: number) {
 	const selectedPreset = preset.data ?? null;
 	const write = useMutation({
 		mutationKey: ["lorebook-attachments", conversationId],
-		mutationFn: async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => {
+		mutationFn: async (command: LoreAttachmentCommand) => {
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", conversationId] });
 			await client.invalidateQueries({ queryKey: ["lorebook-attachments", conversationId] });
@@ -35,7 +35,9 @@ export function useLorebookAttachments(conversationId: number) {
 		loreBlockMissing: selectedPreset !== null && !hasEnabledLoreSlot(selectedPreset.slots),
 		attachmentPending: write.isPending || enable.isPending,
 		notice: write.error?.message ?? enable.error?.message ?? enable.data ?? attachments.error?.message ?? preset.error?.message ?? null,
-		updateAttachment: async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => { try { return await write.mutateAsync(command); } catch { return false; } },
+		updateAttachment: async (command: LoreAttachmentCommand) => { try { return await write.mutateAsync(command); } catch { return false; } },
 		enableLoreSlot: () => enable.mutate(),
 	};
 }
+
+export type LorebookAttachmentsController = ReturnType<typeof useLorebookAttachments>;

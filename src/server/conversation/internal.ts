@@ -245,11 +245,13 @@ export const requireParticipantDefinition = (
 	portrait: definition.portrait,
 });
 
+export type ParticipantRow = typeof participantTable.$inferSelect;
+
 export const requireParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
 	participantId: number,
-) => {
+): ParticipantRow => {
 	const participant = db
 		.select()
 		.from(participantTable)

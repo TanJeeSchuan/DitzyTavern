@@ -8,14 +8,14 @@ import { useSaveGuard } from "../SaveGuard";
 import type { LorebookCommand } from "../lorebook-library";
 import { EntryEditor, MatchTester, UnsavedLorebookDialog } from "./LorebookPanelEditors";
 import { useLorebookEditor } from "./useLorebookEditor";
-import type { useLoreMatchTester } from "./useLoreMatchTester";
+import type { LoreMatchTesterController } from "./useLoreMatchTester";
 import type { LeaveIntent } from "./lorebook-editor-state";
-import type { useLorebookAttachments } from "./useLorebookAttachments";
+import type { LorebookAttachmentsController } from "./useLorebookAttachments";
 
 export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selectName, mutationsDisabled, attachments, tester }: {
 	bookId: number; conversationId: number; onOpenBook: (id: number | null, notice?: string) => void;
-	selectName: boolean; mutationsDisabled: boolean; attachments: ReturnType<typeof useLorebookAttachments>;
-	tester: ReturnType<typeof useLoreMatchTester>;
+	selectName: boolean; mutationsDisabled: boolean; attachments: LorebookAttachmentsController;
+	tester: LoreMatchTesterController;
 }) {
 	const editor = useLorebookEditor(bookId);
 	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, pending, notice, leaveIntent,

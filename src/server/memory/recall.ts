@@ -1,3 +1,4 @@
+import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
 import { readVariantsForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -180,7 +181,7 @@ interface ReadRecallInputs {
 	readonly allowance: number;
 	readonly allowanceRevision: number;
 	readonly recallRelevanceMinimum: number;
-	readonly memorySettings: ReturnType<ReturnType<typeof createMemorySettingsModule>["get"]>;
+	readonly memorySettings: MemorySettingsPayload;
 	readonly embedding: MemoryEmbeddingConfiguration;
 	readonly resolution: DecisionSelectionResolution;
 }

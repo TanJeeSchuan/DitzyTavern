@@ -14,6 +14,7 @@ import type {
 import type {
 	GenerationRuntime,
 	GenerationRuntimeState,
+	GenerationRuntimeSubscription,
 } from "../workflows/generation-runtime";
 
 type GenerationSsePayload =
@@ -82,7 +83,7 @@ export function createGenerationSubscriptionResponse(
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			let closed = false;
-			let subscription: ReturnType<typeof runtime.subscribe> | undefined;
+			let subscription: GenerationRuntimeSubscription | undefined;
 			let removeStateListener: (() => void) | undefined;
 			let removeAbortListener: (() => void) | undefined;
 			const cleanup = () => {

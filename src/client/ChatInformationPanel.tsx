@@ -6,6 +6,8 @@ import {
 	reduceChatInformation,
 	sourceDownloadAvailable,
 	type ChatInformationState,
+	type ArtifactAvailabilityLabel,
+	type SourceDownloadAvailability,
 } from "./chat-info";
 import {
 	downloadExactSource,
@@ -141,8 +143,8 @@ function ImportDetailsSection({
 	onDownload,
 }: {
 	state: Extract<ChatInformationState, { status: "available" }>;
-	availability: ReturnType<typeof artifactAvailabilityLabel>;
-	download: ReturnType<typeof sourceDownloadAvailable>;
+	availability: ArtifactAvailabilityLabel;
+	download: SourceDownloadAvailability;
 	downloadOutcome: { outcome: "idle" } | { outcome: "downloading" } | ChatSourceDownloadOutcome;
 	onDownload: () => void;
 }) {

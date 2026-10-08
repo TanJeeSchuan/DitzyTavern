@@ -9,6 +9,7 @@ import {
 	memoryIdentities,
 	memoryLabelMerges,
 	type MemoryCandidateJudgment,
+	type MemoryIdentities,
 	type MemoryIdentityCommand,
 	type MemoryLabelMerge,
 	type MemoryLabelMergeCommand,
@@ -29,7 +30,14 @@ const parseMerges = (json: string): MemoryLabelMerge[] => {
 	try { return Value.Parse(memoryLabelMerges, JSON.parse(json)); } catch { return []; }
 };
 
-export const readMemoryLabelState = (database: Database, conversationId: number) => {
+export interface MemoryLabelState {
+	revision: number;
+	merges: MemoryLabelMerge[];
+	identities: MemoryIdentities;
+	cast: { id: number; names: string[] }[];
+}
+
+export const readMemoryLabelState = (database: Database, conversationId: number): MemoryLabelState => {
 	const db = drizzle(database);
 	const row = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
 	const cast = new Map<number, { id: number; names: string[] }>();
@@ -47,7 +55,7 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 	};
 };
 
-export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[], state: ReturnType<typeof readMemoryLabelState>): MemoryCandidateJudgment[] =>
+export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[], state: MemoryLabelState): MemoryCandidateJudgment[] =>
 	claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, state.cast, state.identities, state.merges) }));
 
 export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
@@ -58,7 +66,7 @@ export const isExcludedMemorySource = (database: Database, conversationId: numbe
 	return Value.Parse(memoryIdentities, JSON.parse(settings?.identities ?? "{}"))[author]?.kind === "excluded";
 };
 
-const rewriteCollections = (database: Database, conversationId: number, state: ReturnType<typeof readMemoryLabelState>) => {
+const rewriteCollections = (database: Database, conversationId: number, state: MemoryLabelState) => {
 	const db = drizzle(database);
 	for (const row of db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all()) {
 		const claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json));

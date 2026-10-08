@@ -6,6 +6,7 @@ import {
 	loadMacroVariables,
 	type ConversationSummary,
 	type MacroVariable,
+	type MacroVariableEditResult,
 	type MacroVariables,
 } from "./conversation";
 import { isMacroValue } from "../shared/contract/macro-variables";
@@ -37,10 +38,8 @@ const sourceLabel = (variable: MacroVariable): string =>
 		? "Initial value"
 		: `Message ${variable.source.messagePosition} · Variant ${variable.source.variantPosition}`;
 
-type MutationOutcome = Awaited<ReturnType<typeof editMacroVariable>>;
-
 export function handleMacroVariableOutcome(
-	outcome: MutationOutcome,
+	outcome: MacroVariableEditResult,
 	callbacks: {
 		onApplied: (variables: MacroVariables, conversation: ConversationSummary) => void;
 		onConflict: (conversation: ConversationSummary) => void;
@@ -174,7 +173,7 @@ export function MacroVariablesReadyView({
 		onNotice(null);
 	};
 
-	const settle = (outcome: MutationOutcome) => handleMacroVariableOutcome(outcome, {
+	const settle = (outcome: MacroVariableEditResult) => handleMacroVariableOutcome(outcome, {
 		onApplied: (nextVariables, nextConversation) => {
 			onConversationChange(nextConversation);
 			onVariablesChange(nextVariables);

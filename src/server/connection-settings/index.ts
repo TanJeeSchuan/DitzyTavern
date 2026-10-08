@@ -36,6 +36,7 @@ import {
 import type {
 	ConnectionProfileRow,
 	ConnectionSettingsDb,
+	ConnectionSettingsRow,
 } from "./persistence";
 import {
 	applyConnectionHeaderOperations,
@@ -59,8 +60,6 @@ import type {
 	ResetConnectionCredentialInput,
 	SetConnectionCredentialInput,
 } from "./types";
-
-type ConnectionSettingsRow = ReturnType<typeof ensureSettingsRow>;
 
 interface RevisionedWriteTx {
 	readonly db: ConnectionSettingsDb;

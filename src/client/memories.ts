@@ -58,6 +58,8 @@ export async function retryMemoryIndex(conversationId: number, target: MemorySou
 	return error === null ? data : domainOutcome(error.value, "Memory indexing could not be retried.");
 }
 
+export type MemoryCatchupResult = Awaited<ReturnType<typeof startMemoryCatchup | typeof cancelMemoryCatchup>>;
+
 export async function startMemoryCatchup(conversationId: number) {
 	const { data, error } = await conversation(conversationId).memories.catchup.post({});
 	return error === null ? data : domainOutcome(error.value, "History catch-up could not be started.");

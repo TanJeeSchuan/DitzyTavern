@@ -6,7 +6,7 @@ import type { Lorebook } from "../../shared/contract/lorebook";
 import { readLorebook } from "./library";
 import { matchLoreEntry, type LoreEntryMatch, type LoreScanMessage } from "./matching";
 import { captureLoreScanWindow, type LoreScanSourceMessage } from "./scan";
-import { readLoreSettings, readLorebookAttachmentEligibility } from "./attachments";
+import { readLoreSettings, readLorebookAttachmentEligibility, type LoreAttachmentEligibility } from "./attachments";
 import { captureSemanticSettings, evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client";
@@ -110,7 +110,7 @@ interface ScopedLoreInput {
 
 export interface ScopedLoreSources {
 	scanMessages: readonly LoreScanMessage[];
-	eligibleUses: ReturnType<typeof readLorebookAttachmentEligibility>;
+	eligibleUses: LoreAttachmentEligibility[];
 	books: readonly ScopedLoreBookSource[];
 	allowance: number;
 	semanticSettings: SemanticSettingsSnapshot;

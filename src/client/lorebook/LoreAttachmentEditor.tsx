@@ -1,3 +1,4 @@
+import type { LorebookSummary } from "../../shared/contract/lorebook";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppSelect } from "@/components/ui/select";
@@ -16,7 +17,7 @@ const ownerLabel = (owner: Owner): string => owner === "character" ? "Character"
 
 export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { owner: Owner; ownerId: number; disabled?: boolean }) {
 	const [state, setState] = useState<LorebookOwnerAttachmentState | null>(null);
-	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
+	const [books, setBooks] = useState<LorebookSummary[]>([]);
 	const [selectedBookId, setSelectedBookId] = useState("");
 	const [selectedScope, setSelectedScope] = useState<"controlled-participant" | "cast">("cast");
 	const [pending, setPending] = useState(false);

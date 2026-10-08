@@ -29,7 +29,7 @@ import type { MemoryIndexReadiness, MemoryTraceStep } from "../../shared/contrac
 import { abortMemoryWork, indexingVariants, registerMemoryWork, registeredMemoryVariants } from "./work";
 import { sha256 } from "./hash";
 import { projectImageAnchors } from "../../shared/image-reference";
-import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState } from "./labels";
+import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState, type MemoryLabelState } from "./labels";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
 export class StaleMemoryCollectionError extends Error {
@@ -284,7 +284,7 @@ interface MemoryCollectionSource {
 	collection: CollectionRow | undefined;
 }
 
-const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: ReturnType<typeof readMemoryLabelState>, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
+const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
 	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
 	return rows.flatMap(({ variant, collection }) => {

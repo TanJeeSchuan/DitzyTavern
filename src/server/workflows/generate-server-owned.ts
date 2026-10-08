@@ -7,6 +7,7 @@ import {
 	ModelClientGenerationError,
 	normalizeUsage,
 	type ModelClient,
+	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
 	type ModelClientFailureKind,
@@ -156,7 +157,7 @@ export interface GenerationOutcome {
 // commit paths only decide which Conversation operation receives the outcome.
 export async function runGeneration(
 	modelClient: ModelClient,
-	input: Parameters<typeof collectModelClientGeneration>[1],
+	input: ModelClientGenerationInput,
 	onEvent: GenerationAttemptInput["onEvent"],
 ): Promise<GenerationOutcome> {
 	try {
@@ -203,7 +204,7 @@ export interface AcceptedGenerationLifecycle<TResult> {
  */
 export async function runAcceptedGeneration<TResult>(
 	input: GenerationAttemptInput,
-	request: Parameters<typeof collectModelClientGeneration>[1],
+	request: ModelClientGenerationInput,
 	lifecycle: AcceptedGenerationLifecycle<TResult>,
 ): Promise<TResult> {
 	let outcome: GenerationOutcome;

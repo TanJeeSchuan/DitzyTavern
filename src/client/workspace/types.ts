@@ -1,4 +1,4 @@
-export type PrimaryPanel =
+export type PrimaryPanelName =
 	| "author-note"
 	| "chats"
 	| "characters"
@@ -7,5 +7,6 @@ export type PrimaryPanel =
 	| "connections"
 	| "generation"
 	| "memory"
-	| "settings"
-	| null;
+	| "settings";
+
+export type PrimaryPanel = PrimaryPanelName | null;

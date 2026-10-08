@@ -1,4 +1,4 @@
-import type { PrimaryPanel } from "./types";
+import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 export type SplitInspector = "generation";
 export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables" | "memories";
@@ -11,8 +11,8 @@ export interface PanelCoordinationState {
 }
 
 export type PanelCoordinationAction =
-	| { type: "primary-toggled"; panel: Exclude<PrimaryPanel, null> }
-	| { type: "primary-opened"; panel: Exclude<PrimaryPanel, null> }
+	| { type: "primary-toggled"; panel: PrimaryPanelName }
+	| { type: "primary-opened"; panel: PrimaryPanelName }
 	| { type: "primary-closed" }
 	| { type: "inspector-opened"; inspector: SplitInspector }
 	| { type: "inspector-closed" }

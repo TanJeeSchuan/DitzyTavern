@@ -27,6 +27,7 @@ import {
 	requireMessage,
 	requireParticipant,
 	type ConversationDatabase,
+	type ParticipantRow,
 } from "../internal";
 import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../../database/schema";
 import {
@@ -83,8 +84,10 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"provenance" | "macroPresetId" | "macroWrites"
 >;
 
+type GenerationAcceptanceContext = Omit<GenerationAcceptanceFields, "generationIntent">;
+
 interface PersistActiveGenerationInput
-	extends Omit<GenerationAcceptanceFields, "generationIntent"> {
+	extends GenerationAcceptanceContext {
 	humanMessageId: number | null;
 	messageId: number;
 	variantId: number;
@@ -227,10 +230,8 @@ interface AcceptGenerationValidation {
 	position: number;
 }
 
-type AcceptGenerationParticipant = ReturnType<typeof requireParticipant>;
-
 interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidation>
-	extends Omit<GenerationAcceptanceFields, "generationIntent"> {
+	extends GenerationAcceptanceContext {
 	expectedRevision: number;
 	// @approved
 	//  The lifecycle name spelled exactly as the shared distinct-seat denial
@@ -247,8 +248,8 @@ interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidat
 	// guards; every thrown message keeps its original precedence.
 	validate: (
 		db: ConversationDatabase,
-		human: AcceptGenerationParticipant,
-		model: AcceptGenerationParticipant,
+		human: ParticipantRow,
+		model: ParticipantRow,
 	) => Validation;
 }
 

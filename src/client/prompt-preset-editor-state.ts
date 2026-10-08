@@ -108,9 +108,11 @@ export function dirtyBlockPatches(
 	return { patches, submitted };
 }
 
+export type ReadyPresetView = { status: "ready"; presets: PromptPresetSummary[]; selected: ConversationPromptPreset };
+
 export type PresetView =
 	| { status: "loading" }
-	| { status: "ready"; presets: PromptPresetSummary[]; selected: ConversationPromptPreset }
+	| ReadyPresetView
 	| { status: "unavailable" };
 
 export type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };

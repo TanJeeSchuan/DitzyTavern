@@ -171,6 +171,8 @@ export async function loadMacroVariables(
 	);
 }
 
+export type MacroVariableEditResult = RequestOutcome<StaticDecode<typeof macroVariablesAppliedResponse>, StaticDecode<typeof conversationConflictErrors>>;
+
 export async function editMacroVariable(
 	conversationId: number,
 	input: {
@@ -233,6 +235,8 @@ export async function previewConversationGeneration(
 // Starts a server-owned generation without coupling acceptance to a browser
 //  stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
+export type GenerationStartResult = RequestOutcome<StaticDecode<typeof generationAccepted>, StaticDecode<typeof generationStartErrors>>;
+
 export async function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,

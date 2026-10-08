@@ -44,7 +44,7 @@ import {
 	reducePanelCoordination,
 	type SplitInspector,
 } from "./panel-coordination";
-import type { PrimaryPanel } from "./types";
+import type { PrimaryPanel, PrimaryPanelName } from "./types";
 import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
@@ -198,7 +198,7 @@ export function ActiveWritingWorkspace({
 	}, [theme]);
 
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
-	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
+	const togglePanel = (panel: PrimaryPanelName) => {
 		if (assemblyActive && panel !== "settings") return;
 		setGenerationDetailsTarget(null);
 		dispatchPanel({ type: "primary-toggled", panel });
