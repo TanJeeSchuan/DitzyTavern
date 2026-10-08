@@ -1,11 +1,8 @@
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "./conversation";
-import {
-	runConversationCommand,
-	type ConversationCommandReconciliation,
-} from "./conversation-command-runner";
+import type { ConversationCommandReconciliation } from "./conversation-command-runner";
+import { useConversationCommands } from "./useConversationCommands";
 
 // @approved
 //  The wording this surface shows whenever the model-selection command could
@@ -40,20 +37,11 @@ export interface CommitConversationModelOptions {
 // settings snapshot, so it structurally cannot restore another editor's
 // fields the way a second full-object writer could.
 export function commitConversationModel(options: CommitConversationModelOptions): Promise<void> {
-	return runConversationCommand({
-		revision: () => options.conversation.revision,
-		send: (expectedRevision) =>
-			applyConversationCommand(options.conversation.id, expectedRevision, {
+	return useConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
+		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
 				type: "set-generation-model",
 				connectionProfileId: options.connectionProfileId,
 				modelId: options.modelId,
-			}),
-		reconciliation: options.reconciliation,
-		notices: MODEL_COMMIT_NOTICES,
-		callbacks: {
-			onApplied: () => options.onCommitted(options.modelId),
-			onNotPlayable: options.onUnavailable,
-			onNotRemovable: options.onUnavailable,
-		},
-	});
+			}, { notices: MODEL_COMMIT_NOTICES,
+				onApplied: () => options.onCommitted(options.modelId), onNotPlayable: options.onUnavailable, onNotRemovable: options.onUnavailable });
 }

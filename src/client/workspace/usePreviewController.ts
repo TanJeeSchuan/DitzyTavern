@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "../conversation";
-import { runConversationCommand } from "../conversation-command-runner";
+import { useConversationCommands } from "../useConversationCommands";
 import {
 	confirmPreviewSelection,
 	type StoryAction,
@@ -46,6 +45,8 @@ export function usePreviewController({
 		previewConfirmInFlightRef.current = false;
 	}, [story.preview]);
 
+	const { run } = useConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: setPreviewError });
+
 	const clearPreviewError = () => setPreviewError(null);
 
 	const cancelPreview = () => {
@@ -77,31 +78,12 @@ export function usePreviewController({
 					variantId: preview.variantId,
 				},
 				async (selection) => {
-					await runConversationCommand({
-						revision: () => conversation?.revision ?? story.revision,
-						send: (expectedRevision) =>
-							applyConversationCommand(selection.conversationId, expectedRevision, {
+					await run({
 								type: "select-variant",
 								messageId: selection.messageId,
 								variantId: selection.variantId,
-							}),
-						reconciliation: {
-							adoptSnapshot: setConversation,
-							showNotice: setPreviewError,
-						},
-						notices: PREVIEW_NOTICES,
-						callbacks: {
-							// @approved
-							//  The runner adopted the applied snapshot; confirming ends
-							// the local Preview and moves the stored selection.
-							onApplied: () => dispatchStory({ type: "preview-confirmed" }),
-							// @approved
-							//  The server's precise reasons are shown as-is; nothing
-							// about this surface flattens them into a failure class.
-							onNotPlayable: setPreviewError,
-							onNotRemovable: setPreviewError,
-						},
-					});
+							}, { notices: PREVIEW_NOTICES, onNotPlayable: setPreviewError, onNotRemovable: setPreviewError,
+				onApplied: () => dispatchStory({ type: "preview-confirmed" }) });
 				},
 			);
 		} finally {

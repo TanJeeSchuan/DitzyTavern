@@ -1,5 +1,6 @@
+import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
@@ -279,6 +280,9 @@ export async function startConversationContinuationGeneration(
 // Stop is an explicit server command. The caller may separately abort its
 //  local subscription after this request; closing that subscription alone never
 // reaches this function and therefore cannot cancel provider work.
+export type GenerationStopResult =
+	RequestOutcome<StaticDecode<typeof generationStopped> | StaticDecode<typeof generationsStopped>, StaticDecode<typeof notFoundOutcome>>;
+
 export async function stopConversationGeneration(conversationId: number, generationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations({ generationId }).stop.post({}),

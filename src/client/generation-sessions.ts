@@ -107,14 +107,7 @@ export type GenerationSessionsAction =
 	//  The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-// @approved
-//  Story effects stay split by stream kind: Content appends into the story's
-// Provisional Variant, an authoritative snapshot replaces it, and Reasoning
-// Content travels separately so ordinary history never joins the two.
-export type GenerationSessionStoryEffect =
-	| { kind: "story-content-delta"; messageId: number; variantId: number; text: string; generationId: number; eventId: number }
-	| { kind: "story-state"; messageId: number; variantId: number; content: string; reasoning: string; generationId: number; eventId: number }
-	| { kind: "story-reasoning-delta"; messageId: number; variantId: number; text: string; generationId: number; eventId: number };
+export type GenerationSessionStoryEffect = { kind: "story" } & Extract<import("./story").StoryAction, { type: "generation-observed" }>;
 
 export type GenerationSessionEffect =
 	// @approved
@@ -366,7 +359,7 @@ const observeEvent = (
 	const effects: GenerationSessionEffect[] = [];
 	if (action.event.type === "content") {
 		effects.push({
-			kind: "story-content-delta",
+			kind: "story", type: "generation-observed", mode: "append", stream: "content",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -376,7 +369,7 @@ const observeEvent = (
 	}
 	if (action.event.type === "reasoning") {
 		effects.push({
-			kind: "story-reasoning-delta",
+			kind: "story", type: "generation-observed", mode: "append", stream: "reasoning",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -408,7 +401,7 @@ const observeState = (
 	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason, action.state.imageModel);
 	const effects: GenerationSessionEffect[] = [
 		{
-			kind: "story-state",
+			kind: "story", type: "generation-observed", mode: "replace",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			content: action.state.content,

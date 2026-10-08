@@ -6,12 +6,11 @@ import {
 } from "../lib/notices";
 import {
 	addCharacterToCast,
-	applyConversationCommand,
 	loadConversation,
 	saveParticipantAsCharacter,
 	type ConversationSummary,
 } from "../conversation";
-import { runConversationCommand } from "../conversation-command-runner";
+import { useConversationCommands } from "../useConversationCommands";
 import type { CharacterSnapshot } from "../character-library";
 import { controlChangeDescription } from "../cast";
 import { emptyPromptChannels } from "../../shared/definition";
@@ -93,6 +92,8 @@ export function useCastActions({
 		character: SavedCharacterReference;
 	} | null>(null);
 
+	const { run } = useConversationCommands(conversationId, { revision: () => conversation?.revision ?? null, onConversationChange, setNotice });
+
 	const refreshConversation = async () => {
 		try {
 			onConversationChange(await loadConversation(conversationId));
@@ -114,37 +115,20 @@ export function useCastActions({
 		setRemoveTargetId(null);
 		setPending(true);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversationId, expectedRevision, {
+			await run({
 						type: "remove-participant",
 						participantId: participant.id,
-					}),
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: {
+					}, { notices: {
 					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				callbacks: {
-					onApplied: () => setNotice(null),
-					// @approved
-					//  The seat was taken concurrently, so the presented Cast is
-					// stale: the precise wording is paired with an authoritative
-					// reload instead of the server reason.
-					onNotRemovable: () => {
+				onApplied: () => setNotice(null), onNotRemovable: () => {
 						setNotice(
 							`${participant.duplicateLabel} now holds a Control seat; reassign it before removing.`,
 						);
 						void refreshConversation();
-					},
-					onNotPlayable: (reason) => setNotice(reason),
-				},
-			});
+					}, onNotPlayable: (reason) => setNotice(reason) });
 		} finally {
 			setPending(false);
 		}
@@ -154,9 +138,7 @@ export function useCastActions({
 		if (conversation === null) return;
 		setPending(true);
 		try {
-			await runConversationCommand<AddCharacterOperation>({
-				revision: () => conversation.revision,
-				send: async (expectedRevision) => {
+			await run<AddCharacterOperation>(async (expectedRevision) => {
 					const outcome = await addCharacterToCast({
 						conversationId,
 						expectedConversationRevision: expectedRevision,
@@ -183,29 +165,15 @@ export function useCastActions({
 						};
 					}
 					return outcome;
-				},
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: ADD_CHARACTER_NOTICES,
-				callbacks: {
-					onApplied: () => setNotice(null),
-					// @approved
-					//  This command family cannot produce these outcomes; the
-					// drawer still words them instead of flattening them.
-					onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
-					onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
-					onOperation: (operation) => {
+				}, { notices: ADD_CHARACTER_NOTICES,
+				onApplied: () => setNotice(null), onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE), onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE), onOperation: (operation) => {
 						if (operation.kind === "character-changed") {
 							void refreshConversation();
 							setNotice(
 								`${operation.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
 							);
 						}
-					},
-				},
-			});
+					} });
 		} finally {
 			setPending(false);
 		}
@@ -216,27 +184,14 @@ export function useCastActions({
 		let added: number | null = null;
 		setPending(true);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversationId, expectedRevision, {
+			await run({
 						type: "add-participant",
 						definition: { name, prompt: emptyPromptChannels(), openings: [] },
-					}),
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: ADD_ADHOC_NOTICES,
-				callbacks: {
-					onApplied: (applied) => {
+					}, { notices: ADD_ADHOC_NOTICES, onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
+				onApplied: (applied) => {
 						added = applied.cast.at(-1)?.id ?? null;
 						setNotice(null);
-					},
-					onNotPlayable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
-					onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
-				},
-			});
+					} });
 		} finally {
 			setPending(false);
 		}
@@ -247,21 +202,8 @@ export function useCastActions({
 		if (conversation === null || controlChangeDescription(conversation, seat, participantId).kind === "no-change") return;
 		setPending(true);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversationId, expectedRevision, { type: "assign-control", seat, participantId }),
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: ADD_ADHOC_NOTICES,
-				callbacks: {
-					onApplied: () => setNotice(null),
-					onNotPlayable: (reason) => setNotice(reason),
-					onNotRemovable: (reason) => setNotice(reason),
-				},
-			});
+			await run({ type: "assign-control", seat, participantId }, { notices: ADD_ADHOC_NOTICES,
+				onApplied: () => setNotice(null), onNotPlayable: (reason) => setNotice(reason), onNotRemovable: (reason) => setNotice(reason) });
 		} finally {
 			setPending(false);
 		}
@@ -282,9 +224,7 @@ export function useCastActions({
 		setSaveConfirmation(null);
 		setPending(true);
 		try {
-			await runConversationCommand<SaveParticipantOperation>({
-				revision: () => conversation.revision,
-				send: async (expectedRevision) => {
+			await run<SaveParticipantOperation>(async (expectedRevision) => {
 					const outcome = await saveParticipantAsCharacter({
 						conversationId,
 						expectedConversationRevision: expectedRevision,
@@ -301,23 +241,11 @@ export function useCastActions({
 						};
 					}
 					return outcome;
-				},
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: {
+				}, { notices: {
 					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
 					unreachable: LIBRARY_UNREACHABLE_NOTICE,
-				},
-				callbacks: {
-					// @approved
-					//  This command family cannot produce these outcomes; the
-					// server's precise reason is kept instead of a flattened class.
-					onNotPlayable: (reason) => setNotice(reason),
-					onNotRemovable: (reason) => setNotice(reason),
-					onOperation: (operation) => {
+				}, onNotPlayable: (reason) => setNotice(reason), onNotRemovable: (reason) => setNotice(reason), onOperation: (operation) => {
 						if (operation.kind === "participant-saved") {
 							setSaveConfirmation({
 								participantLabel: participant.duplicateLabel,
@@ -327,9 +255,7 @@ export function useCastActions({
 								},
 							});
 						}
-					},
-				},
-			});
+					} });
 		} finally {
 			setPending(false);
 		}
