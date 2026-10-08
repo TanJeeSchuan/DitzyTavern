@@ -113,9 +113,8 @@ const readSelectedHistoryFromConnection = (
 		.where(and(...initialConditions))
 		.all();
 
-	const filter = request.variantData === false ? false : { namespace: request.variantDataNamespace, keys: request.variantDataKeys };
-	const rows = loadMessageRows(db, conversationId, { ids: request.ids, upToPosition: position, selectedOnly: true, variantData: filter });
-	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true, variantData: filter });
+	const rows = loadMessageRows(db, conversationId, { ids: request.ids, upToPosition: position, selectedOnly: true, variantData: request.variantData !== false });
+	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true, variantData: request.variantData !== false });
 	const messageRows = rows.messages;
 	const selectedByMessage = new Map<number, SelectedHistoryVariant>();
 	for (const loaded of [rows, ...(targetRows === undefined ? [] : [targetRows])]) {

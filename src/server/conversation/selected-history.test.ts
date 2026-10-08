@@ -52,25 +52,15 @@ describe("Conversation selected history", () => {
 		const read = readSelectedHistory(database, conversation.id, {
 			position: 2,
 			conversationDataNamespace: "prompt-macro",
-			variantDataNamespace: "prompt-macro",
-			variantDataKeys: ["write:1"],
 		});
 		expect(read?.position).toBe(2);
 		expect(read?.messages.map((message) => message.variant?.content)).toEqual([
 			"Selected 1",
 			"Selected 2",
 		]);
-		expect(read?.messages[0]?.variant?.data).toEqual([
-			{ namespace: "prompt-macro", key: "write:1", value: JSON.stringify([{ name: "turn", operation: "set", value: 1 }]) },
-		]);
-		expect(read?.messages[0]?.variant?.data).not.toContainEqual(
-			{ namespace: "unrelated", key: "large", value: "discarded" },
-		);
 
 		const target = readSelectedHistory(database, conversation.id, {
 			targetMessageId: read?.messages[1]?.id,
-			variantDataNamespace: "prompt-macro",
-			variantDataKeys: ["write:1"],
 		});
 		expect(target?.position).toBe(1);
 		expect(target?.messages.map((message) => message.variant?.content)).toEqual(["Selected 1"]);

@@ -9,7 +9,7 @@ export interface MessageRowsRequest {
 	ids?: readonly number[];
 	upToPosition?: number;
 	selectedOnly?: boolean;
-	variantData?: boolean | { namespace?: string; keys?: readonly string[] };
+	variantData?: boolean;
 	messageData?: boolean;
 }
 
@@ -25,11 +25,7 @@ export function loadMessageRows(db: ConversationDatabase, conversationId: number
 		request.selectedOnly ? eq(messageVariantTable.selected, true) : undefined,
 	)).orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position)).all();
 	const variantIds = variants.map((variant) => variant.id);
-	const filter = request.variantData !== undefined && request.variantData !== false && request.variantData !== true ? request.variantData : undefined;
-	const variantData = !request.variantData ? new Map<number, ConversationDataEntry[]>() : loadVariantDataRows(db, variantIds, and(
-		filter?.namespace === undefined ? undefined : eq(messageVariantDataTable.namespace, filter.namespace),
-		filter?.keys?.length ? inArray(messageVariantDataTable.key, [...filter.keys]) : undefined,
-	));
+	const variantData = !request.variantData ? new Map<number, ConversationDataEntry[]>() : loadVariantDataRows(db, variantIds);
 	const messageData = !request.messageData || ids.length === 0 ? [] : db.select().from(messageDataTable)
 		.where(inArray(messageDataTable.message_id, ids)).orderBy(asc(messageDataTable.message_id), asc(messageDataTable.namespace), asc(messageDataTable.key)).all();
 	return {
