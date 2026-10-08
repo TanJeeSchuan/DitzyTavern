@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NetworkError } from "../lib/network-error";
-import { createStoryState } from "../story";
+import { createStoryState, type StoryAction } from "../story";
+import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 import { adoptConversationSummary } from "./conversation-session-state";
 
@@ -43,7 +44,7 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-function historyRefresh(historyResponse: () => Promise<Response>) {
+async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
 		id: 1, name: "Chat", revision: 1, authorNote: "", cast: [],
 		control: { humanParticipantId: null, modelParticipantId: null },
@@ -60,31 +61,50 @@ function historyRefresh(historyResponse: () => Promise<Response>) {
 		String(input).includes("/history") ? historyResponse() : Response.json(conversation),
 	{ preconnect: () => {} });
 	let session: ReturnType<typeof useConversationSession> | undefined;
+	const dispatched: StoryAction[] = [];
 	const activeChat = { id: "1", title: "Chat", updatedAt: "", cast: [], excerpt: "" };
 	renderToStaticMarkup(createElement(() => {
 		session = useConversationSession({
 			initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
 			story: { ...createStoryState(), conversationId: 1 },
-			dispatchStory: () => {},
+			dispatchStory: (action) => { dispatched.push(action); },
 		});
 		return null;
 	}));
 	if (!session) throw new Error("The session hook did not render.");
-	return session.refreshStory(1);
+	const loaded = await session.refreshStory(1);
+	return { conversation: loaded, dispatched };
 }
 
 describe("history refresh error classification", () => {
 	test("a valid history page refreshes the Conversation", async () => {
-		const conversation = await historyRefresh(async () => Response.json({
-			conversationId: 1, name: "Chat", revision: 1, cast: [], messages: [],
-			page: { index: 1, pageSize: 10, totalMessages: 0, totalPages: 1, hasOlder: false, hasNewer: false },
-		}));
+		const page: ChatHistoryPage = {
+			conversationId: 1, name: "Chat", revision: 1, cast: [],
+			messages: [{
+				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
+				modelParticipantIdAtCreation: null, continuable: false,
+				swipe: { eligible: false, reason: "conversation-not-playable" },
+				author: null, variants: [],
+			}],
+			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
+		};
+		const { conversation, dispatched } = await historyRefresh(async () => Response.json(page));
 		expect(conversation?.id).toBe(1);
+		// The refresh must APPLY the returned history, not merely resolve.
+		expect(dispatched).toContainEqual({
+			type: "first-page",
+			page,
+			activeGenerationIds: [],
+		});
 	});
 
 	test("a missing history page keeps the existing not-found behavior", async () => {
-		const conversation = await historyRefresh(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
+		const { conversation, dispatched } = await historyRefresh(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
 		expect(conversation?.id).toBe(1);
+		// The existing not-found behavior: a missing page is skipped, not
+		// treated as a failure — neither page application nor failure dispatch.
+		expect(dispatched.some(({ type }) => type === "first-page")).toBe(false);
+		expect(dispatched.some(({ type }) => type === "history-failed")).toBe(false);
 	});
 
 	test("a rejected fetch stays an offline NetworkError", async () => {
