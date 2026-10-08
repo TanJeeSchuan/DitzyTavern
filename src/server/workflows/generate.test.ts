@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable, participantTable } from "../database/schema";
-import { openInitializedDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
@@ -24,13 +23,11 @@ import {
 } from ".";
 import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
 import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
@@ -85,8 +82,7 @@ describe("Generation runtime behavior", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const snapshot = createConversationModule(database).create({
 			name: "Generating Chat",
 			participants: [
@@ -922,8 +918,7 @@ describe("Prompt Comments", () => {
 	const openingComment = "{{// greet warmly, never as {{other}} }}";
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		conversationId = createConversationModule(database).create({
 			name: "Annotated Chat",
 			participants: [

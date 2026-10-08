@@ -1,15 +1,13 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initializeDatabase, openDatabase } from "../database/database";
 import { activeGenerationTable } from "../database/schema";
 import {
 	acceptConversationSiblingGeneration,
 	createConversationModule,
 } from "../conversation";
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 const prompt = {
@@ -24,9 +22,7 @@ describe("generation recovery diagnostics", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
-		initializeDatabase(database);
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => database.close());
