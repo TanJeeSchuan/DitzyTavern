@@ -3,17 +3,15 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import { sendThroughProvisionalTailGeneration } from ".";
-import { requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "../contract/conversation";
 import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";const prompt = {
+const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
 	scenario: "The room is quiet.",
@@ -27,8 +25,7 @@ describe("Send through provisional Tail Generation", () => {
 	let humanId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const created = createConversationModule(database).create({
 			name: "Send Chat",
 			participants: [

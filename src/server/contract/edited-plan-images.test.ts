@@ -1,7 +1,7 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createContract } from ".";
 import { createConversationModule } from "../conversation";
 import { uploadImage } from "../image";
@@ -11,8 +11,6 @@ import { generationPreview, generationAccepted } from "../../shared/contract/con
 import type { GenerationPreview, GenerationPreviewBody, GenerationBody, PromptPlan } from "../../shared/contract/conversation-schema";
 import { captureModelFetch, key, withProfile } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const post = (app: ReturnType<typeof createContract>, path: string, body: GenerationPreviewBody | GenerationBody) => app.handle(new Request(`http://localhost/api${path}`, {
 	method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -38,8 +36,7 @@ const createChat = (database: Database) => createConversationModule(database).cr
 describe("Edited Prompt Plan Images", () => {
 	let database: Database;
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => { database.close(); });
 

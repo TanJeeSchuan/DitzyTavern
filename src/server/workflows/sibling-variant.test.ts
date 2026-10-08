@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
-import { openInitializedDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
@@ -19,10 +18,8 @@ import {
 	startServerOwnedGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
 // pair — its current Definitions and names, the current generation settings,
@@ -62,8 +59,7 @@ describe("Historical sibling Variant generation", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const snapshot = createConversationModule(database).create({
 			name: "Sibling Chat",
 			participants: [

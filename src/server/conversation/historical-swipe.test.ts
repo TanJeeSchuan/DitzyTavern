@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
-import { openInitializedDatabase } from "../database/database";
 import { createFakeModelClient } from "../model-client";
 import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
@@ -16,10 +15,8 @@ import {
 	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
-import { applyCommand, requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "./test-fixtures";
 
-import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 // Targeted Swipe (new sibling Variant) eligibility is derived per Message
 // from its captured historical Control pair — never from current Control —
 // and is surfaced on the snapshot with the typed reason for ineligibility.
@@ -67,8 +64,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => {
 		database.close();
@@ -245,8 +241,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => {
 		database.close();

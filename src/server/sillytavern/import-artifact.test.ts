@@ -1,3 +1,4 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -7,7 +8,6 @@ import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule, deleteConversation } from "../conversation";
 import {
 	artifactTable,
@@ -34,8 +34,6 @@ import {
 	writerFixture as first,
 } from "./fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const findEntry = (
 	entries: { namespace: string; key: string; value: string }[] | undefined,
 	namespace: string,
@@ -49,8 +47,7 @@ describe("SillyTavern import artifacts", () => {
 	let artifacts: ArtifactModule;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

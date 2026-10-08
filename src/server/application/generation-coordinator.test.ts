@@ -7,8 +7,7 @@ import {
 	checkpointConversationGeneration,
 	createConversationModule,
 } from "../conversation";
-import { requireSnapshot } from "../conversation/test-fixtures";
-import { openInitializedDatabase } from "../database/database";
+import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
 import { gracefullyShutdownGenerations } from "../workflows/generation-recovery";
 import {
 	generationRuntimeFor,
@@ -21,8 +20,6 @@ import {
 	type GenerationStopOutcome,
 } from "./generation-coordinator";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const key = new Uint8Array(32).fill(31);
 const prompt = {
 	systemInstruction: "Write briefly.",
@@ -52,8 +49,7 @@ describe("GenerationCoordinator", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
@@ -256,8 +252,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
@@ -518,8 +513,7 @@ describe("Generation Coordinator terminal races", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });

@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import {
 	CapturedRequest,
 	completeGeneration,
@@ -23,8 +23,6 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Authored instruction coverage through the public routes and captured
 // Generation requests: recipe operations on authored instruction blocks,
 // and the shared-and-copied recipe lifecycle. The authored instruction
@@ -33,8 +31,7 @@ describe("Prompt Preset authored instructions", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
@@ -159,8 +156,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 
