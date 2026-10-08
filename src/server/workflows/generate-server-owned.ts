@@ -1,7 +1,6 @@
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
-import type { Database } from "bun:sqlite";
-import type { AcceptedGenerationRecord, GenerationInput } from "./generate";
+import type { AcceptedGenerationRecord } from "./generate";
 import {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
@@ -84,55 +83,6 @@ export interface ServerOwnedGenerationCallbacks {
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-/** @approved
- * Detach one Generation from its observing request.
- *
- * Acceptance is exposed separately so an HTTP caller can return as soon as
- * the provisional target exists. The provider attempt remains owned by the
- * controller until its terminal result settles, regardless of request
- * disconnects. Input composition is identical for every lifecycle: the
- * caller's own callbacks fire first, then the detached observer callbacks,
- * and the provider signal replaces whatever the observing request owned.
- */
-export function startServerOwnedGenerationFrom(
-	database: Database,
-	input: GenerationInput,
-	start: (database: Database, input: GenerationInput) => Promise<AcceptedGenerationRecord>,
-	callbacks: ServerOwnedGenerationCallbacks = {},
-): ServerOwnedGeneration {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: AcceptedGenerationRecord) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<AcceptedGenerationRecord>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const result = start(database, {
-		...input,
-		signal: controller.signal,
-		onAccepted: async (value) => {
-			await input.onAccepted?.(value);
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, {
-				signal: controller.signal,
-				stop: () => controller.abort(),
-			});
-		},
-		onEvent: async (event) => {
-			await input.onEvent?.(event);
-			await callbacks.onEvent?.(event);
-		},
-	});
-	void result.catch((error) => {
-		if (!accepted) {
-			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-		}
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
-}
-
 type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
 
 export type GenerationInterruptionCause =
@@ -186,9 +136,9 @@ export async function runGeneration(
 	}
 }
 
-export interface AcceptedGenerationLifecycle<TResult> {
+export interface AcceptedGenerationLifecycle {
 	/** @approved Commit the normalized terminal outcome to the accepted target. */
-	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
+	resolve(outcome: GenerationOutcome): AcceptedGenerationRecord | Promise<AcceptedGenerationRecord>;
 	/** @approved Remove the accepted target only after a confirmed zero-output result. */
 	remove(): void | Promise<void>;
 }
@@ -202,11 +152,11 @@ export interface AcceptedGenerationLifecycle<TResult> {
  * with visible output. Keeping that policy here makes those differences
  * explicit at the call sites instead of encoding three subtly drifting copies.
  */
-export async function runAcceptedGeneration<TResult>(
+export async function runAcceptedGeneration(
 	input: GenerationAttemptInput,
 	request: ModelClientGenerationInput,
-	lifecycle: AcceptedGenerationLifecycle<TResult>,
-): Promise<TResult> {
+	lifecycle: AcceptedGenerationLifecycle,
+): Promise<AcceptedGenerationRecord> {
 	let outcome: GenerationOutcome;
 	try {
 		outcome = await runGeneration(input.modelClient, request, input.onEvent);
