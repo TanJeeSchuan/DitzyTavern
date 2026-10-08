@@ -191,9 +191,8 @@ export class GenerationCoordinator {
 		// @approved
 		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.stop();
-		const conversation = database;
 		try {
-			const snapshot = stopConversationGeneration(conversation, { conversationId, generationId });
+			const snapshot = stopConversationGeneration(database, { conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
 			runtime?.releaseStopRequest();
@@ -228,9 +227,8 @@ export class GenerationCoordinator {
 		// below owns the complete target set; runtimes are settled only after
 		// its commit succeeds.
 		runtimes.flushAll(conversationId);
-		const conversation = database;
 		try {
-			const stopped = stopConversationGenerations(conversation, { conversationId });
+			const stopped = stopConversationGenerations(database, { conversationId });
 			const unsettled: number[] = [];
 			let unsettledReason: string | null = null;
 			for (const generationId of stopped.generationIds) {

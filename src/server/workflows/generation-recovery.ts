@@ -31,7 +31,6 @@ export function recoverActiveGenerations(
 ): GenerationRecoverySummary {
 	const cause = options.cause ?? "server-restart";
 	cleanupRetainedGenerationInspections(database);
-	const conversation = database;
 	const rows = readActiveGenerationsForRecovery(database);
 	let interrupted = 0;
 	let removed = 0;
@@ -42,7 +41,7 @@ export function recoverActiveGenerations(
 		try {
 			if (content.length > 0 || reasoning.length > 0) {
 				const data = interruptedGenerationData(cause, reasoning);
-				resolveConversationGeneration(conversation, {
+				resolveConversationGeneration(database, {
 					conversationId: row.conversationId,
 					generationId: row.id,
 					timestamp: new Date().toISOString(),
@@ -56,7 +55,7 @@ export function recoverActiveGenerations(
 				// Sibling attempts lose their provisional Variant, Tail and
 				// Continuation attempts their provisional Message. The accepted
 				// human Message of a Tail attempt is never removed here.
-				removeConversationGeneration(conversation, {
+				removeConversationGeneration(database, {
 					conversationId: row.conversationId,
 					generationId: row.id,
 				});
