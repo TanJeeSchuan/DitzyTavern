@@ -67,6 +67,7 @@ describe("Add Character to Cast workflow", () => {
 		});
 		const conversation = playableConversation();
 
+		const messagesBefore = requireSnapshot(database, conversation.id).messages;
 		const updated = addCharacterToCast(database, {
 			conversationId: conversation.id,
 			expectedConversationRevision: conversation.revision,
@@ -84,7 +85,7 @@ describe("Add Character to Cast workflow", () => {
 		// Adding a Character never inserts history or changes Control.
 		expect(
 			requireSnapshot(database, conversation.id).messages,
-		).toHaveLength(requireSnapshot(database, conversation.id).messages.length);
+		).toEqual(messagesBefore);
 		expect(updated.control).toEqual(conversation.control);
 	});
 

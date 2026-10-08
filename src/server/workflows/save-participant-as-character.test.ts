@@ -78,6 +78,7 @@ describe("Save Participant as Character workflow", () => {
 		const participant = conversation.cast.at(-1);
 		if (participant === undefined) throw new Error("Expected a model seat.");
 
+		const messagesBefore = requireSnapshot(database, conversation.id).messages;
 		const result = saveParticipantAsCharacter(database, {
 			conversationId: conversation.id,
 			expectedConversationRevision: conversation.revision,
@@ -101,7 +102,7 @@ describe("Save Participant as Character workflow", () => {
 		const reread = readTestConversationSnapshot(database, conversation.id);
 		expect(reread?.revision).toBe(conversation.revision);
 		expect(reread?.cast).toEqual(conversation.cast);
-		expect(reread?.messages).toEqual(requireSnapshot(database, conversation.id).messages);
+		expect(reread?.messages).toEqual(messagesBefore);
 	});
 
 	test("creates a new Character even when another Character already has the same name", () => {
