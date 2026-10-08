@@ -94,8 +94,8 @@ export async function getLorebook(bookId: number, signal?: AbortSignal): Promise
 	return data === null ? null : decodeWirePayload(lorebook, data);
 }
 
-export async function testLorebookMatch(bookId: number, writing: string): Promise<LoreMatchTest> {
-	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing });
+export async function testLorebookMatch(bookId: number, writing: string, signal?: AbortSignal): Promise<LoreMatchTest> {
+	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing }, { fetch: { signal } });
 	if (error || data === undefined || data === null) {
 		if (error?.status === 404) throw new Error("That Lorebook no longer exists.");
 		throw new Error("Lorebook matching could not be tested.");
