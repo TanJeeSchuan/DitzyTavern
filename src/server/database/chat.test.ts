@@ -1,7 +1,6 @@
-import { createConversation } from "../conversation";
+import { type TestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { type ConversationSnapshot } from "../conversation";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { listChatSummaries } from "./chat";
 
@@ -24,13 +23,13 @@ describe("Chat list summaries", () => {
 	afterEach(() => database.close());
 
 	const createChat = (name: string, names: string[]) =>
-		createConversation(module, {
+		createConversationWithHistory(module, {
 			name,
 			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, openings: [] } })),
 			control: { human: 0, model: 1 },
 		});
 
-	const compose = (chat: ConversationSnapshot, timestamp: string, variantContents: string[], selectedVariantIndex = 0, authorParticipantId = chat.cast[0]?.id ?? 0) =>
+	const compose = (chat: TestConversationSnapshot, timestamp: string, variantContents: string[], selectedVariantIndex = 0, authorParticipantId = chat.cast[0]?.id ?? 0) =>
 		applyCommand(module, {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
@@ -95,7 +94,7 @@ describe("Chat list summaries", () => {
 	});
 
 	test("a Chat without Participants has no Portraits", () => {
-		const chat = createConversation(module, { authorNote: "", name: "No Cast" });
+		const chat = createConversationWithHistory(module, { authorNote: "", name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

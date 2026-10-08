@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from ".";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -11,7 +11,6 @@ import {
 	deleteConversation,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
-	type ConversationSnapshot,
 } from ".";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 
@@ -34,7 +33,7 @@ describe("Chat rename and deletion", () => {
 	afterEach(() => database.close());
 
 	const createChat = (name: string) =>
-		createConversation(module, {
+		createConversationWithHistory(module, {
 			name,
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -43,7 +42,7 @@ describe("Chat rename and deletion", () => {
 			control: { human: 0, model: 1 },
 		});
 
-	const rename = (chat: ConversationSnapshot, name: string) =>
+	const rename = (chat: TestConversationSnapshot, name: string) =>
 		applyCommand(module, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "rename-conversation", name } });
 
 	test("rename stores the trimmed name and advances the revision", () => {
@@ -53,7 +52,7 @@ describe("Chat rename and deletion", () => {
 
 		expect(renamed.name).toBe("Coastal Ride");
 		expect(renamed.revision).toBe(chat.revision + 1);
-		expect(readConversationSnapshot(module, chat.id)?.name).toBe("Coastal Ride");
+		expect(readTestConversationSnapshot(module, chat.id)?.name).toBe("Coastal Ride");
 	});
 
 	test("rename rejects a blank name and a stale revision without changing the Chat", () => {
@@ -62,7 +61,7 @@ describe("Chat rename and deletion", () => {
 
 		expect(() => rename(renamed, "   ")).toThrow(InvalidConversationCommandError);
 		expect(() => rename(chat, "Stale Name")).toThrow(StaleConversationRevisionError);
-		expect(readConversationSnapshot(module, chat.id)?.name).toBe("Lantern Hall");
+		expect(readTestConversationSnapshot(module, chat.id)?.name).toBe("Lantern Hall");
 	});
 
 	test("deleting a Chat with authored history, including a tombstoned Participant, removes only that Chat", () => {
@@ -93,10 +92,10 @@ describe("Chat rename and deletion", () => {
 		deleteConversation(database, doomed.id);
 
 		const db = drizzle(database);
-		expect(readConversationSnapshot(module, doomed.id)).toBeUndefined();
+		expect(readTestConversationSnapshot(module, doomed.id)).toBeUndefined();
 		expect(db.select().from(messageTable).where(eq(messageTable.conversation_id, doomed.id)).all()).toEqual([]);
 		expect(db.select().from(participantTable).where(eq(participantTable.conversation_id, doomed.id)).all()).toEqual([]);
-		expect(readConversationSnapshot(module, kept.id)?.cast.map((participant) => participant.name)).toEqual(["Writer", "Maren"]);
+		expect(readTestConversationSnapshot(module, kept.id)?.cast.map((participant) => participant.name)).toEqual(["Writer", "Maren"]);
 	});
 
 	test("deletion refuses an unknown Chat and a Chat with an Active Generation", () => {
@@ -119,7 +118,7 @@ describe("Chat rename and deletion", () => {
 
 		expect(() => deleteConversation(database, chat.id + 100)).toThrow(ConversationNotFoundError);
 		expect(() => deleteConversation(database, chat.id)).toThrow(InvalidConversationCommandError);
-		expect(readConversationSnapshot(module, chat.id)).toBeDefined();
+		expect(readTestConversationSnapshot(module, chat.id)).toBeDefined();
 	});
 
 	test("the delete route answers deleted, not-found, and invalid outcomes", async () => {

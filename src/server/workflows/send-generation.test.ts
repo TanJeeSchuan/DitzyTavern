@@ -1,7 +1,6 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
 	readVariantDetails,
-	readConversationSnapshot,
 	executeConversationCommand,
 	readActiveGenerationDetails,
 } from "../conversation";
@@ -32,7 +31,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const created = createConversation(database, {
+		const created = createConversationWithHistory(database, {
 			name: "Send Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -192,7 +191,7 @@ describe("Send through provisional Tail Generation", () => {
 			]),
 		})).rejects.toThrow("No answer.");
 
-		const afterFailure = readConversationSnapshot(database, conversationId);
+		const afterFailure = readTestConversationSnapshot(database, conversationId);
 		expect(afterFailure?.messages).toHaveLength(1);
 		expect(afterFailure?.messages[0]?.author?.participantId).toBe(humanId);
 		expect(afterFailure?.revision).toBe(2);
@@ -251,7 +250,7 @@ describe("Send through provisional Tail Generation", () => {
 			tokenEstimator: () => 40_000,
 		})).rejects.toThrow();
 		expect(contacted).toBe(false);
-		expect(readConversationSnapshot(database, conversationId)?.messages).toHaveLength(0);
+		expect(readTestConversationSnapshot(database, conversationId)?.messages).toHaveLength(0);
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
 

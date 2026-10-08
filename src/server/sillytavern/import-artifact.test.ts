@@ -1,4 +1,6 @@
-import { readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { requireSnapshot } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -162,11 +164,11 @@ describe("SillyTavern import artifacts", () => {
 			JSON.parse(
 				findEntry(data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "",
 			);
-		expect(archiveOf(chatA.data)).toEqual({
+		expect(archiveOf(requireSnapshot(database, chatA.id).data)).toEqual({
 			header,
 			messages: [first, second],
 		});
-		expect(archiveOf(chatB.data)).toEqual({
+		expect(archiveOf(requireSnapshot(database, chatB.id).data)).toEqual({
 			header,
 			messages: [first, second],
 		});
@@ -193,13 +195,13 @@ describe("SillyTavern import artifacts", () => {
 		// The canonical parsed archive and compact report remain separate
 		// conversation-scoped data; the exact artifact lives only in the
 		// managed store behind the artifact seam.
-		expect(JSON.parse(findEntry(conversation.data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
+		expect(JSON.parse(findEntry(requireSnapshot(database, conversation.id).data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
 			header,
 			messages: [first, blankName],
 		});
 		expect(
 			JSON.parse(
-				findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
+				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
 					?.value ?? "",
 			),
 		).toEqual(report);
@@ -298,7 +300,7 @@ describe("SillyTavern import artifacts", () => {
 		).toBe("cleaned-up");
 
 		// The native Chat and its canonical archive remain fully usable.
-		const snapshot = readConversationSnapshot(module, conversation.id);
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		expect(snapshot?.id).toBe(conversation.id);
 		expect(snapshot?.playable).toBe(false);
 		expect(JSON.parse(findEntry(snapshot?.data ?? [], ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({

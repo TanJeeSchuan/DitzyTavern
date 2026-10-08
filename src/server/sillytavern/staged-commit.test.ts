@@ -1,3 +1,4 @@
+import { requireSnapshot } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -205,9 +206,9 @@ describe("staged SillyTavern chat import commit", () => {
 
 		// Native Author Stamps capture the resolved Participant identifier and
 		// name; no historical Control pair is ever fabricated.
-		expect(conversation.messages).toHaveLength(3);
+		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(3);
 		expect(
-			conversation.messages.map((message) => ({
+			requireSnapshot(database, conversation.id).messages.map((message) => ({
 				participantId: message.author?.participantId,
 				capturedName: message.author?.capturedName,
 			})),
@@ -220,11 +221,11 @@ describe("staged SillyTavern chat import commit", () => {
 			},
 		]);
 		expect(
-			conversation.messages.every((message) => message.historicalContext === null),
+			requireSnapshot(database, conversation.id).messages.every((message) => message.historicalContext === null),
 		).toBe(true);
 		// The source-selected Swipe initialized the selected Variant.
 		expect(
-			conversation.messages.every(
+			requireSnapshot(database, conversation.id).messages.every(
 				(message) => message.variants.filter((variant) => variant.selected).length === 1,
 			),
 		).toBe(true);
@@ -334,7 +335,7 @@ describe("staged SillyTavern chat import commit", () => {
 		expect(participant?.prompt.identity).toBe(
 			"A lighthouse keeper who reads the weather in birdsong.",
 		);
-		expect(conversation.messages[0]?.author).toEqual({
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author).toEqual({
 			participantId: participant?.id,
 			capturedName: "Maren Voss",
 			inCast: true,
@@ -388,7 +389,7 @@ describe("staged SillyTavern chat import commit", () => {
 			outcome: "new-character",
 			sourceCharacterId: profiles[1]?.id,
 		});
-		expect(conversation.messages[0]?.author?.capturedName).toBe("Vesper");
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.capturedName).toBe("Vesper");
 	});
 
 	test("keeps Chat-only Participants as complete native identities without Profiles", async () => {
@@ -432,7 +433,7 @@ describe("staged SillyTavern chat import commit", () => {
 			"Writer",
 		]);
 		expect(
-			conversation.messages.map((message) => ({
+			requireSnapshot(database, conversation.id).messages.map((message) => ({
 				author: message.author?.capturedName,
 				source: message.data.find((entry) => entry.key === "author.name")?.value,
 			})),
@@ -456,7 +457,7 @@ describe("staged SillyTavern chat import commit", () => {
 				chatOnly("Assistant", [2]),
 			],
 		});
-		expect(splitResult.conversation.messages.map((message) => message.author?.capturedName)).toEqual([
+		expect(requireSnapshot(database, splitResult.conversation.id).messages.map((message) => message.author?.capturedName)).toEqual([
 			"Operator",
 			"Assistant",
 		]);
@@ -540,7 +541,7 @@ describe("staged SillyTavern chat import commit", () => {
 			participants: [chatOnly("Writer", [1, 2])],
 		});
 		expect(corrected.conversation.cast[0]?.name).toBe("Writer");
-		expect(corrected.conversation.messages).toHaveLength(2);
+		expect(requireSnapshot(database, corrected.conversation.id).messages).toHaveLength(2);
 	});
 
 	test("blank captured groups require an explicitly usable Participant name", async () => {
@@ -566,7 +567,7 @@ describe("staged SillyTavern chat import commit", () => {
 		// Messages commit in source order: position 1 is the blank captured
 		// name and position 2 is "Writer".
 		expect(
-			result.conversation.messages.map((message) => message.author?.capturedName),
+			requireSnapshot(database, result.conversation.id).messages.map((message) => message.author?.capturedName),
 		).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Writer"]);
 	});
 

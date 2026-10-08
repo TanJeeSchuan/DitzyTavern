@@ -12,7 +12,6 @@ import {
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type ConversationDataEntry,
-	type ConversationSnapshot,
 	type ConversationSummary,
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
@@ -93,14 +92,14 @@ interface GenerationDerivation {
 
 interface ParticipatingHistory {
 	readonly messages: readonly ParticipatingHistoryMessage[];
-	readonly control: ConversationSnapshot["control"];
+	readonly control: ConversationSummary["control"];
 }
 
 type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
 
 const participatingHistoryFromRead = (
 	read: SelectedHistoryRead,
-	control: ConversationSnapshot["control"],
+	control: ConversationSummary["control"],
 ): ParticipatingHistory => ({
 	messages: read.messages,
 	control,

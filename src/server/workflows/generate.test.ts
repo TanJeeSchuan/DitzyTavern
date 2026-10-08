@@ -1,4 +1,5 @@
-import { createConversation, readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -79,7 +80,7 @@ describe("Generation runtime behavior", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversation(database, {
+		const snapshot = createConversationWithHistory(database, {
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -237,7 +238,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("generates through either Control order using identities, not positions", async () => {
-		const swapped = createConversation(database, {
+		const swapped = createConversationWithHistory(database, {
 			name: "Swapped Chat",
 			participants: [
 				{ definition: adHoc("Maren Voss", ["Held by the model seat."]) },
@@ -260,7 +261,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("rejects unplayable Conversations with a typed result before the transport", async () => {
-		const incomplete = createConversation(database, {
+		const incomplete = createConversationWithHistory(database, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -288,7 +289,7 @@ describe("Generation runtime behavior", () => {
 		).rejects.toThrow(ConversationNotPlayableError);
 		expect(contacted).toBe(false);
 
-		const after = readConversationSnapshot(database, incomplete.id);
+		const after = readTestConversationSnapshot(database, incomplete.id);
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
@@ -308,7 +309,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("a transport failure commits nothing", async () => {
-		const snapshot = readConversationSnapshot(database, conversationId);
+		const snapshot = readTestConversationSnapshot(database, conversationId);
 		if (snapshot === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -320,7 +321,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("Transport down.");
 
-		const after = readConversationSnapshot(database, conversationId);
+		const after = readTestConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(snapshot.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -352,7 +353,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("removes a failed zero-output attempt and keeps the prior selection", async () => {
-		const before = readConversationSnapshot(database, conversationId);
+		const before = readTestConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -364,7 +365,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("The stream became inactive.");
 
-		const after = readConversationSnapshot(database, conversationId);
+		const after = readTestConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(before.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -580,7 +581,7 @@ describe("Generation runtime behavior", () => {
 		await started;
 
 		// A concurrent client command lands while the transport streams.
-		const midFlight = readConversationSnapshot(module, conversationId);
+		const midFlight = readTestConversationSnapshot(module, conversationId);
 		if (midFlight === undefined) throw new Error("Snapshot missing.");
 		executeConversationCommand(module, {
 			conversationId,
@@ -612,7 +613,7 @@ describe("Generation runtime behavior", () => {
 
 	test("reduces Tail history by whole Messages while protecting the latest human input", async () => {
 		const conversation = database;
-		let current = readConversationSnapshot(conversation, conversationId);
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -758,7 +759,7 @@ describe("Generation runtime behavior", () => {
 
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
 		const conversation = database;
-		let current = readConversationSnapshot(conversation, conversationId);
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -787,7 +788,7 @@ describe("Generation runtime behavior", () => {
 				},
 			},
 		});
-		const before = readConversationSnapshot(conversation, conversationId);
+		const before = readTestConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		let contacted = false;
 
@@ -810,7 +811,7 @@ describe("Generation runtime behavior", () => {
 		if (failure === undefined) throw new Error("Expected a PromptBudgetExceededError.");
 
 		expect(contacted).toBe(false);
-		expect(readConversationSnapshot(conversation, conversationId)).toEqual(before);
+		expect(readTestConversationSnapshot(conversation, conversationId)).toEqual(before);
 		// The protected element is the Send candidate's own human input.
 		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
 		expect(failure.breakdown).toMatchObject({
@@ -830,7 +831,7 @@ describe("Generation runtime behavior", () => {
 
 	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
 		const conversation = database;
-		const before = readConversationSnapshot(conversation, conversationId);
+		const before = readTestConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		// The Send composes the production Tail lifecycle: its accepted human
 		// Message precedes the generated target the sibling targets.
@@ -840,7 +841,7 @@ describe("Generation runtime behavior", () => {
 			target: { kind: "send", content: "Human context before target." },
 			modelClient: fakeModelClient(() => "Target model output."),
 		});
-		let current = readConversationSnapshot(conversation, conversationId);
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -915,7 +916,7 @@ describe("Prompt Comments", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		conversationId = createConversation(database, {
+		conversationId = createConversationWithHistory(database, {
 			name: "Annotated Chat",
 			participants: [
 				{ definition: adHoc("Writer") },

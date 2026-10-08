@@ -1,4 +1,4 @@
-import { createConversation } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -215,7 +215,7 @@ describe("Lorebook library transport", () => {
 
 	test("reads attachment eligibility and Chat Lore settings", async () => {
 		const created = await postCommand(app, { type: "create", name: "World" });
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -245,7 +245,7 @@ describe("Lorebook library transport", () => {
 				priority: 0, enabled: true,
 			},
 		});
-		createConversation(database, {
+		createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -274,7 +274,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -314,7 +314,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -342,7 +342,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -384,7 +384,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

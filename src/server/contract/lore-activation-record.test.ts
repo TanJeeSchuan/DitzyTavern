@@ -1,8 +1,7 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
 	acceptConversationTailGeneration,
 	resolveConversationGeneration,
-	readConversationSnapshot,
 	readVariantDetails,
 	executeConversationCommand,
 	checkpointConversationGeneration,
@@ -42,7 +41,7 @@ describe("permanent Lore Activation Records", () => {
 	afterEach(() => database.close());
 
 	test("are copied to Variant data and remain readable after replay expiry", async () => {
-		const created = createConversation(database, {
+		const created = createConversationWithHistory(database, {
 			name: "Lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -72,7 +71,7 @@ describe("permanent Lore Activation Records", () => {
 			timestamp: "2026-09-17T10:00:01Z",
 			content: "The tower appeared.",
 		});
-		const message = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
+		const message = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const variant = message.variants.at(-1)!;
 		expect(readVariantDetails(module, created.id, message.id, variant.id)?.loreActivation).toEqual(evidence);
 
@@ -84,7 +83,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("rejects generic writes to the server-owned namespace", () => {
-		const created = createConversation(database, {
+		const created = createConversationWithHistory(database, {
 			name: "Lore namespace",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -107,7 +106,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("reports corrupt persisted records through detail contracts", async () => {
-		const created = createConversation(database, {
+		const created = createConversationWithHistory(database, {
 			name: "Corrupt lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -149,7 +148,7 @@ describe("permanent Lore Activation Records", () => {
 			timestamp: "2026-09-17T10:00:01Z",
 			content: "The tower appeared.",
 		});
-		const message = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
+		const message = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const variant = message.variants.at(-1)!;
 		database.run(
 			"UPDATE message_variant_data SET value = ? WHERE message_variant_id = ? AND namespace = ? AND key = ?",
@@ -166,7 +165,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
-		const created = createConversation(database, {
+		const created = createConversationWithHistory(database, {
 			name: "Interrupted lore",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -199,11 +198,11 @@ describe("permanent Lore Activation Records", () => {
 			content: "The tower appeared.",
 		});
 		stopConversationGeneration(module, { conversationId: created.id, generationId: accepted.generationId });
-		const interrupted = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
+		const interrupted = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const interruptedVariant = interrupted.variants.at(-1)!;
 		expect(readVariantDetails(module, created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
 
-		const fresh = readConversationSnapshot(module, created.id)!;
+		const fresh = readTestConversationSnapshot(module, created.id)!;
 		const zeroOutput = acceptConversationTailGeneration(module, {
 			conversationId: created.id,
 			expectedRevision: fresh.revision,
@@ -220,7 +219,7 @@ describe("permanent Lore Activation Records", () => {
 			loreActivation: evidence,
 		});
 		stopConversationGeneration(module, { conversationId: created.id, generationId: zeroOutput.generationId });
-		const afterCleanup = readConversationSnapshot(module, created.id)!;
+		const afterCleanup = readTestConversationSnapshot(module, created.id)!;
 		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({
 			namespace: "lore-activation",
 			key: "record",

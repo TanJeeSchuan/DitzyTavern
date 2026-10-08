@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand, readConversationSummary } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationSummary } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -25,7 +26,7 @@ const prompt = {
 	postHistoryInstruction: "",
 };
 
-const createChat = (database: Database) => createConversation(database, {
+const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Variables Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },

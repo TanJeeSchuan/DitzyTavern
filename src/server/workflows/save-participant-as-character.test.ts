@@ -1,4 +1,6 @@
-import { readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { requireSnapshot } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -96,10 +98,10 @@ describe("Save Participant as Character workflow", () => {
 		expect(library.get(result.character.id)?.revision).toBe(0);
 
 		// The Conversation and its revision are untouched by saving.
-		const reread = readConversationSnapshot(database, conversation.id);
+		const reread = readTestConversationSnapshot(database, conversation.id);
 		expect(reread?.revision).toBe(conversation.revision);
 		expect(reread?.cast).toEqual(conversation.cast);
-		expect(reread?.messages).toEqual(conversation.messages);
+		expect(reread?.messages).toEqual(requireSnapshot(database, conversation.id).messages);
 	});
 
 	test("creates a new Character even when another Character already has the same name", () => {
@@ -149,7 +151,7 @@ describe("Save Participant as Character workflow", () => {
 			participantId: participant.id,
 		});
 
-		const reread = readConversationSnapshot(database, conversation.id);
+		const reread = readTestConversationSnapshot(database, conversation.id);
 		const saved = reread?.cast.find((entry) => entry.id === participant.id);
 		// The original Participant and this Conversation did not change: same
 		// position, local Definition, no provenance, and the same revision.
@@ -206,7 +208,7 @@ describe("Save Participant as Character workflow", () => {
 		expect(saved.character.openings).toEqual(fork.openings);
 		// ... with no reference to the Participant and no change to the
 		// source Character or the Conversation.
-		const reread = readConversationSnapshot(database, conversation.id);
+		const reread = readTestConversationSnapshot(database, conversation.id);
 		const unchanged = reread?.cast.find((entry) => entry.id === fork.id);
 		expect(unchanged?.name).toBe("Local Maren");
 		expect(unchanged?.sourceCharacterId).toBe(source.id);
@@ -247,7 +249,7 @@ describe("Save Participant as Character workflow", () => {
 		// Atomic: nothing was created and the Conversation did not move again.
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.cast,
+			readTestConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 
@@ -263,7 +265,7 @@ describe("Save Participant as Character workflow", () => {
 		).toThrow(ParticipantNotFoundError);
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 	});
 
@@ -317,7 +319,7 @@ describe("Save Participant as Character workflow", () => {
 		// Atomic: the blank-name Character never leaks into the Library.
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.cast,
+			readTestConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 

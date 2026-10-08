@@ -1,8 +1,7 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
 	acceptConversationTailGeneration,
 	resolveConversationGeneration,
-	readConversationSnapshot,
 	readActiveGenerationDetails,
 	readVariantDetails,
 } from "../conversation";
@@ -29,7 +28,7 @@ describe("Generation detail transport", () => {
 	afterEach(() => database.close());
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Details Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -130,7 +129,7 @@ describe("Generation detail transport", () => {
 			expect(terminalInspectionBody).toContain("Guide the scene.");
 			expect(terminalInspectionBody).toContain("Omitted.");
 			expect(terminalInspectionBody).not.toContain("credential-do-not-expose");
-			const message = readConversationSnapshot(module, conversation.id)?.messages.at(-1);
+			const message = readTestConversationSnapshot(module, conversation.id)?.messages.at(-1);
 			const variant = message?.variants.at(-1);
 			if (variant === undefined || message === undefined) throw new Error("Variant missing.");
 			const details = await app.handle(new Request(

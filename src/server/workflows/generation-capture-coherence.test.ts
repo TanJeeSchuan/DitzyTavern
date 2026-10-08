@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -33,7 +33,7 @@ const setup = () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
 	configureDecisionModels(database);
-	const conversation = createConversation(database, {
+	const conversation = createConversationWithHistory(database, {
 		name: "Capture Coherence",
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },
@@ -166,7 +166,7 @@ describe("generation capture coherence", () => {
 				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 			},
 		});
-		const snapshot = readConversationSnapshot(state.database, state.conversationId)!;
+		const snapshot = readTestConversationSnapshot(state.database, state.conversationId)!;
 		const pending = coordinator.startGeneration({
 			conversationId: state.conversationId, expectedRevision: snapshot.revision, target: { kind: "send", content: "signal" },
 		});
@@ -177,7 +177,7 @@ describe("generation capture coherence", () => {
 		expect(await rejected).toBeInstanceOf(Error);
 		await expect(pending).rejects.toThrow("shutting down");
 		release.resolve();
-		expect(readConversationSnapshot(state.database, state.conversationId)?.messages).toEqual(snapshot.messages);
+		expect(readTestConversationSnapshot(state.database, state.conversationId)?.messages).toEqual(snapshot.messages);
 	}, 3_000);
 
 	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {

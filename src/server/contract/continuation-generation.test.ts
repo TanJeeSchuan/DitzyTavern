@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -47,7 +47,7 @@ describe("Continuation transport contract", () => {
 	afterEach(() => database.close());
 
 	test("accepts Continue without a human Message and uses the instruction strategy", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Continuation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -83,7 +83,7 @@ describe("Continuation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const body = await response.text();
-		const after = readConversationSnapshot(database, conversation.id);
+		const after = readTestConversationSnapshot(database, conversation.id);
 		expect(acceptedResponse.status).toBe(200);
 		expect(response.status).toBe(200);
 		expect(body).toContain('"outcome":"applied"');

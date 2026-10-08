@@ -1,4 +1,6 @@
-import { readChatHistory, executeConversationCommand, createConversation, readConversationSnapshot } from "../conversation";
+import { requireSnapshot } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readChatHistory, executeConversationCommand} from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -245,8 +247,8 @@ describe("graduated Chat history and Import Details", () => {
 			expectedRevision: result.conversation.revision,
 			action: {
 				type: "edit-variant",
-				messageId: result.conversation.messages[0]?.variants[0]?.id ?? 0,
-				variantId: result.conversation.messages[0]?.variants[0]?.id ?? 0,
+				messageId: requireSnapshot(database, result.conversation.id).messages[0]?.variants[0]?.id ?? 0,
+				variantId: requireSnapshot(database, result.conversation.id).messages[0]?.variants[0]?.id ?? 0,
 				content: "Edited native text",
 			},
 		});
@@ -303,7 +305,7 @@ describe("graduated Chat history and Import Details", () => {
 		});
 
 		// A Chat without import provenance has no Import Details.
-		const native = createConversation(database, {
+		const native = createConversationWithHistory(database, {
 			name: "Native Chat",
 			participants: [{ definition: { name: "Writer", prompt: {
 				systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "",
@@ -348,8 +350,8 @@ describe("graduated Chat history and Import Details", () => {
 			expectedRevision: result.conversation.revision,
 			action: {
 				type: "edit-variant",
-				messageId: result.conversation.messages[0]?.variants[0]?.id ?? 0,
-				variantId: result.conversation.messages[0]?.variants[0]?.id ?? 0,
+				messageId: requireSnapshot(database, result.conversation.id).messages[0]?.variants[0]?.id ?? 0,
+				variantId: requireSnapshot(database, result.conversation.id).messages[0]?.variants[0]?.id ?? 0,
 				content: "Still editable",
 			},
 		});
@@ -371,7 +373,7 @@ describe("graduated Chat history and Import Details", () => {
 
 	test("corrupt persisted provenance is explicit and never makes a Chat a prior import", () => {
 		const conversations = database;
-		const corrupt = createConversation(conversations, {
+		const corrupt = createConversationWithHistory(conversations, {
 			name: "Corrupt Import",
 			participants: [{
 				definition: {
@@ -451,7 +453,7 @@ describe("graduated Chat history and Import Details", () => {
 				// Chats; nothing imported-specific blocks them. Import Control set the
 		// model seat on the second Participant, so assigning the human seat to
 		// it performs the atomic seat swap.
-		const snapshot = readConversationSnapshot(conversations, result.conversation.id);
+		const snapshot = readTestConversationSnapshot(conversations, result.conversation.id);
 		expect(snapshot?.playable).toBe(true);
 		const changed = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,

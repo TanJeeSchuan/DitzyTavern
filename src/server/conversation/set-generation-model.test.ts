@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand, readConversationGenerationSettings } from ".";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationGenerationSettings } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -19,7 +20,7 @@ const prompt = {
 };
 
 const createTestConversation = (database: Database, name: string) =>
-	createConversation(database, {
+	createConversationWithHistory(database, {
 		name,
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },

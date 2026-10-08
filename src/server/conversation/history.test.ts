@@ -1,4 +1,5 @@
-import { createConversation, readChatHistory } from ".";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { readChatHistory } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -50,7 +51,7 @@ describe("Conversation paginated history", () => {
 		count: number,
 		overrides: Partial<ConversationCreationInput> = {},
 	) =>
-		createConversation(conversation, {
+		createConversationWithHistory(conversation, {
 			name: "History Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -139,7 +140,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("exposes resolved Author Stamps and preserves Variant order and selected state", () => {
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Stamped History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -196,7 +197,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("keeps empty and duplicate Variants as distinct positions with exact content", () => {
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Variant History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -223,7 +224,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("returns persisted Generation Reasoning Content in authoritative history", () => {
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Reasoning History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{
@@ -265,7 +266,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("excludes heavy provenance from ordinary reads: no message, variant, or Chat data", () => {
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Lightweight",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -317,7 +318,7 @@ describe("Conversation paginated history", () => {
 		// so the canonical rule marks it Swipe-eligible; explicit created
 		// Messages carry no pair and stay ineligible with the typed reason.
 		// The client never reconstructs either capability.
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Capability History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -339,7 +340,7 @@ describe("Conversation paginated history", () => {
 			chat.cast[1]?.id,
 		);
 
-		const unpaired = createConversation(conversation, {
+		const unpaired = createConversationWithHistory(conversation, {
 			name: "Unpaired History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -360,7 +361,7 @@ describe("Conversation paginated history", () => {
 		// Without both Control seats nothing may run; the derived reason is
 		// the canonical conversation-not-playable block, and the empty selected
 		// Variant is not continuable.
-		const chat = createConversation(conversation, {
+		const chat = createConversationWithHistory(conversation, {
 			name: "Unplayable History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{

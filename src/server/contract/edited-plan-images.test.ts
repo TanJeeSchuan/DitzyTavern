@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
@@ -26,7 +27,7 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 	return Value.Decode(generationPreview, await response.json());
 };
 
-const createChat = (database: Database) => createConversation(database, {
+const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Images", participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
 		{ definition: { name: "Maren", prompt, openings: [] } },

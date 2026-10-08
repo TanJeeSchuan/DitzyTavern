@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -69,7 +69,7 @@ describe("Send generation transport", () => {
 	afterEach(() => database.close());
 
 	test("accepts the draft with its revision and exposes the authoritative human/model pair", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -86,7 +86,7 @@ describe("Send generation transport", () => {
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(9),
 			fetch: async () => {
-				providerSawHuman = readConversationSnapshot(database, conversation.id)?.messages.at(-1)?.author?.capturedName === "Maren";
+				providerSawHuman = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1)?.author?.capturedName === "Maren";
 				return streamResponse();
 			},
 		});
@@ -105,7 +105,7 @@ describe("Send generation transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		await response.text();
-		const persisted = readConversationSnapshot(database, conversation.id);
+		const persisted = readTestConversationSnapshot(database, conversation.id);
 		expect(acceptedResponse.status).toBe(200);
 		expect(response.status).toBe(200);
 		expect(providerSawHuman).toBe(true);
@@ -115,7 +115,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("persists partial provider output as an interrupted Variant through the HTTP routes", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Partial Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -151,7 +151,7 @@ describe("Send generation transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const events = await eventsResponse.text();
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		const message = snapshot?.messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
@@ -170,7 +170,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("zero output retries only on an explicit second start and never duplicates the human Message", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Zero-output retry contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -210,7 +210,7 @@ describe("Send generation transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${first.generationId}/events`,
 		));
 		const firstEvents = await firstEventsResponse.text();
-		const afterZeroOutput = readConversationSnapshot(database, conversation.id);
+		const afterZeroOutput = readTestConversationSnapshot(database, conversation.id);
 		expect(firstEvents).toContain("event: error");
 		expect(providerRequests).toBe(1);
 		expect(afterZeroOutput?.messages).toHaveLength(1);
@@ -223,7 +223,7 @@ describe("Send generation transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${retry.generationId}/events`,
 		));
 		const retryEvents = await retryEventsResponse.text();
-		const persisted = readConversationSnapshot(database, conversation.id);
+		const persisted = readTestConversationSnapshot(database, conversation.id);
 
 		expect(retryResponse.status).toBe(200);
 		expect(retryEvents).toContain("event: complete");
@@ -234,7 +234,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("provider response bodies and request details never enter Generation HTTP or SSE errors", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Safe provider failure contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -286,7 +286,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("raw provider finish reasons are normalized before Generation SSE", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Safe finish contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -327,7 +327,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("persists a length-limited terminal outcome through the HTTP routes", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Length-limited Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -363,7 +363,7 @@ describe("Send generation transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const events = await eventsResponse.text();
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		const message = snapshot?.messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Length-limited Variant missing.");

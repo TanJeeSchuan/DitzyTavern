@@ -1,9 +1,8 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import type { ConversationAction } from "../conversation";
 import {
-	createConversation,
 	executeConversationCommand,
 	readConversationRevision,
-	readConversationSnapshot,
 	readMacroVariables,
 	editMacroVariables,
 	readConversationSummary,
@@ -55,7 +54,7 @@ describe("Image Reference lifetime", () => {
 	const conversations = () => database;
 	const library = () => createCharacterLibraryModule(database);
 
-	const chat = () => createConversation(conversations(), {
+	const chat = () => createConversationWithHistory(conversations(), {
 		name: "Chat",
 		participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }],
 		control: { human: 0, model: 1 },
@@ -69,7 +68,7 @@ describe("Image Reference lifetime", () => {
 		});
 
 	const lastMessage = (target: ReturnType<typeof chat>) => {
-		const message = readConversationSnapshot(conversations(), target.id)?.messages.at(-1);
+		const message = readTestConversationSnapshot(conversations(), target.id)?.messages.at(-1);
 		if (message === undefined) throw new Error("no message");
 		return message;
 	};
@@ -147,7 +146,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? createConversation(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
@@ -384,7 +383,7 @@ describe("Image Reference lifetime", () => {
 
 	test("Macro State written by setvar during a Generation holds its Image after the Definition lets go", async () => {
 		const art = await picture(4);
-		const target = createConversation(conversations(), {
+		const target = createConversationWithHistory(conversations(), {
 			name: "Chat",
 			participants: [
 				{ definition: writer },

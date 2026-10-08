@@ -25,7 +25,7 @@ import {
 	storeExactArtifactCopy,
 } from "../artifact";
 import type { ArtifactMetadata } from "../artifact";
-import type { ConversationSnapshot } from "../conversation";
+import type { ConversationSummary } from "../conversation";
 import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
@@ -42,7 +42,7 @@ import { SillyTavernImportError } from "./errors";
 import { findPriorImportsBySource } from "./prior-imports";
 
 export interface SillyTavernImportResult {
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 	report: SillyTavernImportReport;
 	duplicateChatIds: number[];
 	// @approved

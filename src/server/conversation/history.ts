@@ -1,3 +1,4 @@
+import { loadMessageRows } from "./message-rows";
 import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
 //  Paginated history read model: the normal Chat read seam for reading
@@ -13,14 +14,12 @@ import { authorRoleOf, continuationEligibility } from "./continuation";
 // Variant-selection command, never a second source representation.
 
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import {
 	conversationTable,
 	conversationGenerationSettingsTable,
 	activeGenerationTable,
 	messageTable,
-	messageVariantDataTable,
-	messageVariantTable,
 } from "../database/schema";
 import { DEFAULT_CONTINUATION_STRATEGY } from "../database/schema";
 import {
@@ -108,8 +107,8 @@ export function readChatHistory(
 	// when Variant selection changes or Messages are later edited. Pages are
 	// cut from the tail (newest first) and reversed so every served page is
 	// chronological while page 1 remains the latest window.
-	const messageRows = db
-		.select()
+	const pageRows = db
+		.select({ id: messageTable.id })
 		.from(messageTable)
 		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position))
@@ -117,46 +116,12 @@ export function readChatHistory(
 		.offset(offset)
 		.all()
 		.reverse();
-	const messageIds = messageRows.map((message) => message.id);
+	const messageIds = pageRows.map((message) => message.id);
 
-	// @approved
-	//  Variant order is preserved with the selected state; empty and
-	// duplicate variants remain distinct positions with their exact content.
-	const variantRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantTable)
-					.where(inArray(messageVariantTable.message_id, messageIds))
-					.orderBy(
-						asc(messageVariantTable.message_id),
-						asc(messageVariantTable.position),
-					)
-					.all();
-
-	const reasoningByVariant = new Map<number, string>(
-		variantRows.length === 0
-			? []
-			: db
-					.select({
-						variantId: messageVariantDataTable.message_variant_id,
-						value: messageVariantDataTable.value,
-					})
-					.from(messageVariantDataTable)
-					.where(
-						and(
-							inArray(
-								messageVariantDataTable.message_variant_id,
-								variantRows.map((variant) => variant.id),
-							),
-							eq(messageVariantDataTable.namespace, "generation"),
-							eq(messageVariantDataTable.key, "reasoning"),
-						),
-					)
-					.all()
-					.map((row) => [row.variantId, row.value]),
-	);
+	const rows = loadMessageRows(db, conversationId, { ids: messageIds, variantData: { namespace: "generation", keys: ["reasoning"] } });
+	const messageRows = rows.messages;
+	const variantRows = rows.variants;
+	const reasoningByVariant = new Map([...rows.variantData].map(([id, entries]) => [id, entries[0]!.value]));
 	const liveGenerationByVariant = new Map(
 		variantRows.length === 0
 			? []

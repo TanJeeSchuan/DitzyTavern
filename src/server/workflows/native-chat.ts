@@ -12,7 +12,7 @@ import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { forkCharacter } from "../character-library";
 import type {
-	ConversationSnapshot,
+	ConversationSummary,
 	ParticipantDefinition,
 } from "../conversation";
 import type {
@@ -55,7 +55,7 @@ const resolveSeat = (
 export function createNativeConversation(
 	database: Database,
 	input: CreateNativeConversationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const create = database.transaction(() => {
 		const human = resolveSeat(database, input.humanSeat);
 		const model = resolveSeat(database, input.modelSeat);

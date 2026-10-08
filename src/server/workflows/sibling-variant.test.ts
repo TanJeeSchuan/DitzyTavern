@@ -1,4 +1,5 @@
-import { createConversation, readConversationSnapshot, executeConversationCommand, readVariantDetails } from "../conversation";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readVariantDetails } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -7,7 +8,6 @@ import { participantPromptTable } from "../database/schema";
 import {
 	ConversationNotPlayableError,
 	SiblingVariantUnavailableError,
-	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
@@ -53,13 +53,13 @@ const fakeModelClient = (
 
 describe("Historical sibling Variant generation", () => {
 	let database: Database;
-	let conversation: ConversationSnapshot;
+	let conversation: TestConversationSnapshot;
 	let humanId: number;
 	let modelId: number;
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversation(database, {
+		const snapshot = createConversationWithHistory(database, {
 			name: "Sibling Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -412,7 +412,7 @@ describe("Historical sibling Variant generation", () => {
 	});
 
 	test("missing historical context denies new sibling generation with the typed reason before the transport", async () => {
-		const imported = createConversation(module(), {
+		const imported = createConversationWithHistory(module(), {
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -477,7 +477,7 @@ describe("Historical sibling Variant generation", () => {
 	});
 
 	test("an unplayable Conversation denies sibling generation with the typed playability result", async () => {
-		const incomplete = createConversation(module(), {
+		const incomplete = createConversationWithHistory(module(), {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -512,7 +512,7 @@ describe("Historical sibling Variant generation", () => {
 	test("a zero-output transport failure removes its provisional sibling and restores the prior selection", async () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
-		const before = readConversationSnapshot(module(), conversation.id);
+		const before = readTestConversationSnapshot(module(), conversation.id);
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -525,7 +525,7 @@ describe("Historical sibling Variant generation", () => {
 			}),
 		).rejects.toThrow("Transport down.");
 
-		const after = readConversationSnapshot(module(), conversation.id);
+		const after = readTestConversationSnapshot(module(), conversation.id);
 		expect(after?.messages).toEqual(before.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Variant remains.
@@ -649,7 +649,7 @@ describe("Historical sibling Variant generation", () => {
 			modelClient: held("Second sibling", secondGate),
 		});
 		const secondAccepted = await second.accepted;
-		const active = readConversationSnapshot(database, conversation.id);
+		const active = readTestConversationSnapshot(database, conversation.id);
 		expect(active?.activeGenerations.map((entry) => entry.generationId)).toEqual([
 			firstAccepted.generationId,
 			secondAccepted.generationId,
@@ -669,6 +669,6 @@ describe("Historical sibling Variant generation", () => {
 			messageId: greeting.id,
 			provisionalVariantId: secondAccepted.provisionalVariantId,
 		}));
-		expect(readConversationSnapshot(database, conversation.id)?.activeGenerations).toEqual([]);
+		expect(readTestConversationSnapshot(database, conversation.id)?.activeGenerations).toEqual([]);
 	});
 });

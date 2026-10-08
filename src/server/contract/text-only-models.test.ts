@@ -1,9 +1,8 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
 	executeConversationCommand,
 	readConversationGenerationSettings,
 	readConversationRevision,
-	readConversationSnapshot,
 } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -60,7 +59,7 @@ describe("Text-only Models", () => {
 		}));
 
 	const chat = (modelId: string) => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Chat",
 			participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
 			control: { human: 0, model: 1 },
@@ -192,7 +191,7 @@ describe("Text-only Models", () => {
 		const conversationId = chat("vision-model");
 		const art = await picture();
 		const conversations = database;
-		const snapshot = readConversationSnapshot(conversations, conversationId)!;
+		const snapshot = readTestConversationSnapshot(conversations, conversationId)!;
 		const withMessage = executeConversationCommand(conversations, {
 			conversationId,
 			expectedRevision: snapshot.revision,

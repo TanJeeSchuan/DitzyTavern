@@ -1,4 +1,5 @@
-import { createConversation, readConversationGenerationSettings, executeConversationCommand } from ".";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { readConversationGenerationSettings, executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -56,7 +57,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("persists the default and configured Safety allowance", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -81,7 +82,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("persists and validates the parallel Sibling Generation limit", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Sibling limit settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -103,7 +104,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Invalid budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -134,7 +135,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("round-trips every canonical field through the settings write and read", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Round-trip settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

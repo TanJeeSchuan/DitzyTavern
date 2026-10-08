@@ -11,8 +11,8 @@ import {
 	connectConversationDatabase,
 	type ConversationDatabase,
 } from "../internal";
-import { readConversationSnapshotFromConnection, readConversationSummaryFromConnection } from "../snapshot";
-import type { ConversationSnapshot, ConversationSummary } from "../types";
+import { readConversationSummaryFromConnection } from "../snapshot";
+import type { ConversationSummary } from "../types";
 
 // @approved
 //  Shared Conversation write seam: every server-owned write runs as one
@@ -165,14 +165,3 @@ export function advanceConversationRevisionGuarded(
 	}
 }
 
-/** ==[HUMAN APPROVED]== Read the authoritative snapshot or throw the typed not-found error. */
-export function requireConversationSnapshot(
-	db: ConversationDatabase,
-	conversationId: number,
-): ConversationSnapshot {
-	const snapshot = readConversationSnapshotFromConnection(db, conversationId);
-	if (snapshot === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-	return snapshot;
-}

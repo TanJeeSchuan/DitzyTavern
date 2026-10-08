@@ -13,6 +13,7 @@ import type {
 	ChatHistoryPage as SharedChatHistoryPage,
 	ChatHistoryVariant as SharedChatHistoryVariant,
 	ConversationAction as SharedConversationAction,
+	ConversationSummary as SharedConversationSummary,
 	ConversationCapabilities as SharedConversationCapabilities,
 	ConversationControl as SharedConversationControl,
 	ConversationControlValidity as SharedConversationControlValidity,
@@ -93,6 +94,7 @@ export interface ConversationDataRead {
 }
 
 export interface SelectedHistoryReadRequest {
+	variantData?: boolean;
 	position?: number | undefined;
 	targetMessageId?: number | undefined;
 	conversationDataNamespace?: string | undefined;
@@ -197,60 +199,7 @@ export interface HistoricalControlSnapshot {
 	modelParticipantId: number;
 }
 
-export interface ConversationVariantSnapshot {
-	id: number;
-	position: number;
-	content: string;
-	timestamp: string;
-	selected: boolean;
-	data: ConversationDataEntry[];
-}
-
-export interface ConversationMessageSnapshot {
-	id: number;
-	position: number;
-	timestamp: string;
-	author: AuthorStampSnapshot | null;
-	historicalContext: HistoricalControlSnapshot | null;
-	// Derived, never stored: whether a new sibling Variant (targeted Swipe)
-	// may be generated for this Message from its captured historical pair.
-	swipe: MessageSwipeEligibility;
-	variants: ConversationVariantSnapshot[];
-	data: ConversationDataEntry[];
-}
-
-// @approved
-//  The full deep snapshot deliberately extends the shared conversationSummary
-// contract (divergence (b), ADR-0032 pattern): it adds the heavy `messages`
-// and `data` reads that the summary transport shape intentionally omits —
-// the story reads messages through the paginated history seam, heavy
-// provenance loads only through the Import Details operations, and a
-// 92-byte Cast command must not re-serialize the entire Chat archive across
-// the wire. Every shared header field (Cast, Control, validity, playability,
-// capabilities, active generations) derives from the canonical schemas, so
-// the two shapes cannot drift apart.
-export interface ConversationSnapshot {
-	authorNote: string;
-	id: number;
-	name: string;
-	revision: number;
-	cast: CastParticipantSnapshot[];
-	control: ConversationControlSnapshot;
-	// Derived, never stored: both seats set, distinct, and in the Cast.
-	controlValidity: ConversationControlValidity;
-	playable: boolean;
-	capabilities: ConversationCapabilities;
-	// All server-owned targets at the active response position. The list is
-	// empty when no generation is active and preserves every parallel sibling.
-	activeGenerations: ActiveGenerationSnapshot[];
-	messages: ConversationMessageSnapshot[];
-	data: ConversationDataEntry[];
-}
-
-// The normal conversation header read model. It contains the state needed by
-// navigation and mutation responses while deliberately excluding the complete
-// message and conversation-data archives.
-export type ConversationSummary = Omit<ConversationSnapshot, "messages" | "data">;
+export type ConversationSummary = SharedConversationSummary;
 
 // One lightweight Variant in a paginated history read. The history read
 // models derive from the canonical shared schemas (ADR-0032): the paginated

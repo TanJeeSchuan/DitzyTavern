@@ -1,4 +1,5 @@
-import { readConversationSnapshot, executeConversationCommand, createConversation } from "../../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../../test-fixtures/conversation";
+import { executeConversationCommand} from "../../conversation";
 import { openObservedDatabase } from "../../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -45,7 +46,7 @@ describe("Control reassignment between commands", () => {
 	let kestrelId: number;
 
 	const revision = () => {
-		const snapshot = readConversationSnapshot(conversation, conversationId);
+		const snapshot = readTestConversationSnapshot(conversation, conversationId);
 		if (snapshot === undefined) throw new Error("Missing Conversation.");
 		return snapshot.revision;
 	};
@@ -75,7 +76,7 @@ describe("Control reassignment between commands", () => {
 	beforeEach(async () => {
 		database = openObservedDatabase();
 		conversation = database;
-		const created = createConversation(conversation, {
+		const created = createConversationWithHistory(conversation, {
 			name: "Cast change",
 			participants: [
 				{ definition: definition("Writer") },
@@ -130,7 +131,7 @@ describe("Control reassignment between commands", () => {
 		// pair is {Writer, Kestrel} while Maren's earlier Message remains in the
 		// preceding Selected narrative path.
 		await send("Take over the scene.");
-		const snapshot = readConversationSnapshot(conversation, conversationId);
+		const snapshot = readTestConversationSnapshot(conversation, conversationId);
 		const target = snapshot?.messages.at(-1);
 		if (target === undefined) throw new Error("Missing target Message.");
 

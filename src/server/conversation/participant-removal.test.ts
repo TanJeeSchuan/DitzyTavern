@@ -1,4 +1,5 @@
-import { createConversation, readConversationSnapshot, executeConversationCommand } from ".";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -16,7 +17,6 @@ import {
 	SiblingVariantUnavailableError,
 	StaleConversationRevisionError,
 	type ConversationAction,
-	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
@@ -36,7 +36,7 @@ const adHoc = (
 	openings: string[] = [],
 ): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
 
-const castNames = (snapshot: ConversationSnapshot) =>
+const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
 
 // Participant removal through the public Conversation seam on a real
@@ -55,7 +55,7 @@ describe("Participant removal", () => {
 
 	const append = (
 		module: Database,
-		snapshot: ConversationSnapshot,
+		snapshot: TestConversationSnapshot,
 		action: ConversationAction,
 	) =>
 		applyCommand(module, {
@@ -66,7 +66,7 @@ describe("Participant removal", () => {
 
 	const setup = () => {
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Removal Conversation",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -87,7 +87,7 @@ describe("Participant removal", () => {
 	// Conversation stays playable.
 	const unseatModel = (
 		module: Database,
-		snapshot: ConversationSnapshot,
+		snapshot: TestConversationSnapshot,
 	) => {
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
@@ -103,7 +103,7 @@ describe("Participant removal", () => {
 
 	const unseatHuman = (
 		module: Database,
-		snapshot: ConversationSnapshot,
+		snapshot: TestConversationSnapshot,
 	) => {
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
@@ -144,7 +144,7 @@ describe("Participant removal", () => {
 
 		// The rejected command committed nothing: Cast, seats, and revision
 		// are unchanged.
-		const reread = readConversationSnapshot(database, snapshot.id);
+		const reread = readTestConversationSnapshot(database, snapshot.id);
 		expect(reread?.cast).toEqual(snapshot.cast);
 		expect(reread?.revision).toBe(snapshot.revision);
 	});
@@ -159,7 +159,7 @@ describe("Participant removal", () => {
 			}),
 		).toThrow(StaleConversationRevisionError);
 
-		const other = createConversation(database, {
+		const other = createConversationWithHistory(database, {
 			name: "Other",
 			participants: [
 				{ definition: adHoc("Outsider") },
@@ -281,7 +281,7 @@ describe("Participant removal", () => {
 		});
 
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Forked Removal",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -361,7 +361,7 @@ describe("Participant removal", () => {
 		// No openings, so no greeting is created: the only reference to
 		// Writer will be the composed Message's Author Stamp.
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Composed History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -634,7 +634,7 @@ describe("Participant removal", () => {
 			},
 		});
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Source Deleted",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -665,7 +665,7 @@ describe("Participant removal", () => {
 
 		// The fork keeps its complete local Definition and its immutable
 		// provenance, and the tombstoned source still names the provenance.
-		const reread = readConversationSnapshot(database, snapshot.id);
+		const reread = readTestConversationSnapshot(database, snapshot.id);
 		const fork = reread?.cast.find((p) => p.id === modelId);
 		expect(fork?.name).toBe("Maren Voss");
 		expect(fork?.prompt).toEqual(source.prompt);
@@ -695,7 +695,7 @@ describe("Participant removal", () => {
 			},
 		});
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Final Reference",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -747,7 +747,7 @@ describe("Participant removal", () => {
 			},
 		});
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Collected Source",
 			participants: [
 				{ definition: adHoc("Writer") },

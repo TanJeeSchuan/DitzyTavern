@@ -26,14 +26,14 @@ import {
 import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
 import { macroWritesToData } from "../prompt-macros";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
-import { readConversationSnapshotFromConnection } from "./snapshot";
+import { readConversationSummaryFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
 	ConversationArtifactSeed,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationDataEntry,
-	ConversationSnapshot,
+	ConversationSummary,
 	ParticipantDefinition,
 } from "./types";
 
@@ -303,7 +303,7 @@ const expandGreetingOpenings = (
 export function createConversation(
 	database: Database,
 	input: ConversationCreationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	return runConversationTransaction(database, (db) => {
 		const seeds = input.participants ?? [];
 		seeds.forEach((seed, index) =>
@@ -531,7 +531,7 @@ export function createConversation(
 			}
 		}
 
-		const snapshot = readConversationSnapshotFromConnection(db, conversation.id);
+		const snapshot = readConversationSummaryFromConnection(db, conversation.id);
 		if (snapshot === undefined) {
 			throw new InvalidConversationCreationError(
 				"Created Conversation could not be read back.",

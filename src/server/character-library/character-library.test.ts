@@ -1,4 +1,5 @@
-import { createConversation, readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -458,7 +459,7 @@ describe("Character deletion", () => {
 		if (source === undefined) {
 			throw new Error("Expected the Character to exist before forking.");
 		}
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Deletion Cast",
 			participants: [
 				{
@@ -495,7 +496,7 @@ describe("Character deletion", () => {
 	// retains the Character provenance reference.
 	const unseatAndRemove = (conversationId: number, participantId: number) => {
 		const module = database;
-		let snapshot = readConversationSnapshot(module, conversationId);
+		let snapshot = readTestConversationSnapshot(module, conversationId);
 		if (snapshot === undefined) {
 			throw new Error("Expected the fork Conversation");
 		}

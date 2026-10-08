@@ -1,4 +1,6 @@
-import { readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { readConversationSummary } from "../conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -131,12 +133,12 @@ describe("SillyTavern chat import", () => {
 			swipe: { available: true, reason: null },
 		});
 
-		expect(conversation.messages).toHaveLength(3);
-		expect(conversation.messages.map((message) => message.position)).toEqual([
+		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(3);
+		expect(requireSnapshot(database, conversation.id).messages.map((message) => message.position)).toEqual([
 			1, 2, 3,
 		]);
 		expect(
-			conversation.messages[2]?.variants[0]?.content,
+			requireSnapshot(database, conversation.id).messages[2]?.variants[0]?.content,
 		).toBe("🔥 Wait, truly?");
 
 		// Every imported Message receives a native immutable Author Stamp
@@ -144,22 +146,22 @@ describe("SillyTavern chat import", () => {
 		// value — including the blank string — stays untouched in the
 		// message-level preserved data.
 		expect(
-			conversation.messages.map((message) => message.author?.participantId),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.participantId),
 		).toEqual([writer?.id, rulership?.id, blankAuthor?.id]);
 		expect(
-			conversation.messages.map((message) => message.author?.capturedName),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.capturedName),
 		).toEqual(["Writer", "Rulership", UNKNOWN_IMPORTED_AUTHOR_NAME]);
 		expect(
-			conversation.messages.every((message) => message.author?.inCast === true),
+			requireSnapshot(database, conversation.id).messages.every((message) => message.author?.inCast === true),
 		).toBe(true);
-		expect(conversation.messages[0]?.data).toEqual([
+		expect(requireSnapshot(database, conversation.id).messages[0]?.data).toEqual([
 			{
 				namespace: IMPORT_NAMESPACE,
 				key: IMPORT_KEYS.authorName,
 				value: "Writer",
 			},
 		]);
-		expect(conversation.messages[2]?.data).toEqual([
+		expect(requireSnapshot(database, conversation.id).messages[2]?.data).toEqual([
 			{
 				namespace: IMPORT_NAMESPACE,
 				key: IMPORT_KEYS.authorName,
@@ -171,10 +173,10 @@ describe("SillyTavern chat import", () => {
 		// Messages: deterministic current Control does not reinterpret
 		// history, so targeted Swipe reports the missing-context denial.
 		expect(
-			conversation.messages.every((message) => message.historicalContext === null),
+			requireSnapshot(database, conversation.id).messages.every((message) => message.historicalContext === null),
 		).toBe(true);
 		expect(
-			conversation.messages.every(
+			requireSnapshot(database, conversation.id).messages.every(
 				(message) =>
 					message.swipe.eligible === false &&
 					message.swipe.reason === "missing-historical-context",
@@ -192,7 +194,7 @@ describe("SillyTavern chat import", () => {
 
 		// The canonical archive round-trips the entire parsed source.
 		const archive = findEntry(
-			conversation.data,
+			requireSnapshot(database, conversation.id).data,
 			ARCHIVE_NAMESPACE,
 			ARCHIVE_KEY,
 		);
@@ -205,32 +207,32 @@ describe("SillyTavern chat import", () => {
 		// report remain separate entries in the import namespace.
 		const sha256 = sha256Of([header, first, second, blankName]);
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.sha256)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.sha256)
 				?.value,
 		).toBe(sha256);
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.integrity)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.integrity)
 				?.value,
 		).toBe("9543f21f-8aab-42c8-92a4-1f6453d4b63c");
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.filename)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.filename)
 				?.value,
 		).toBe("lantern-house.jsonl");
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.importerVersion)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.importerVersion)
 				?.value,
 		).toBe(IMPORTER_VERSION);
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.countsMessages)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsMessages)
 				?.value,
 		).toBe("3");
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
 				?.value,
 		).toBe("3");
 		expect(
 			JSON.parse(
-				findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.warnings)
+				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.warnings)
 					?.value ?? "",
 			),
 		).toEqual([
@@ -238,14 +240,14 @@ describe("SillyTavern chat import", () => {
 		]);
 		expect(
 			JSON.parse(
-				findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
+				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
 					?.value ?? "",
 			),
 		).toEqual(result.report);
 
 		// The result is readable through the public snapshot seam.
 		expect(
-			readConversationSnapshot(database, conversation.id),
+			readConversationSummary(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -255,7 +257,7 @@ describe("SillyTavern chat import", () => {
 		const conversation = result.conversation;
 
 		expect(conversation.cast).toEqual([]);
-		expect(conversation.messages).toEqual([]);
+		expect(requireSnapshot(database, conversation.id).messages).toEqual([]);
 		expect(conversation.control).toEqual({
 			humanParticipantId: null,
 			modelParticipantId: null,
@@ -280,7 +282,7 @@ describe("SillyTavern chat import", () => {
 
 		// The canonical archive and counts still preserve the source.
 		const archive = findEntry(
-			conversation.data,
+			requireSnapshot(database, conversation.id).data,
 			ARCHIVE_NAMESPACE,
 			ARCHIVE_KEY,
 		);
@@ -290,7 +292,7 @@ describe("SillyTavern chat import", () => {
 		});
 		expect(result.report.counts).toEqual({ messages: 0, variants: 0 });
 		expect(
-			readConversationSnapshot(database, conversation.id),
+			readConversationSummary(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -320,15 +322,15 @@ describe("SillyTavern chat import", () => {
 
 		// The preserved history is still readable with its resolved author
 		// stamp; no historical pair is fabricated.
-		expect(conversation.messages).toHaveLength(1);
-		expect(conversation.messages[0]?.author).toEqual({
+		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(1);
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author).toEqual({
 			participantId: writer?.id ?? null,
 			capturedName: "Writer",
 			inCast: true,
 		});
-		expect(conversation.messages[0]?.historicalContext).toBeNull();
-		expect(conversation.messages[0]?.variants).toHaveLength(1);
-		expect(conversation.messages[0]?.swipe).toEqual({
+		expect(requireSnapshot(database, conversation.id).messages[0]?.historicalContext).toBeNull();
+		expect(requireSnapshot(database, conversation.id).messages[0]?.variants).toHaveLength(1);
+		expect(requireSnapshot(database, conversation.id).messages[0]?.swipe).toEqual({
 			eligible: false,
 			reason: "conversation-not-playable",
 		});
@@ -336,7 +338,7 @@ describe("SillyTavern chat import", () => {
 		// The report promises the preserved single Message.
 		expect(result.report.counts).toEqual({ messages: 1, variants: 1 });
 		expect(
-			readConversationSnapshot(database, conversation.id),
+			readConversationSummary(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -434,10 +436,10 @@ describe("SillyTavern chat import", () => {
 		// the lowercase writer is a distinct identity. Each Message keeps its
 		// exact raw source value untouched in the preserved data.
 		expect(
-			conversation.messages.map((message) => message.author?.participantId),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.participantId),
 		).toEqual([writer?.id, writer?.id, lowercaseWriter?.id]);
 		expect(
-			conversation.messages.map((message) => message.data[0]?.value),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
 		).toEqual(["Writer", " Writer ", "writer"]);
 	});
 
@@ -460,14 +462,14 @@ describe("SillyTavern chat import", () => {
 		// Blank values resolve to one shared Participant; the native name is
 		// nonblank while each Message keeps its raw empty value.
 		expect(
-			conversation.messages.every(
+			requireSnapshot(database, conversation.id).messages.every(
 				(message) => message.author?.participantId === blankAuthor?.id,
 			),
 		).toBe(true);
 		expect(
-			conversation.messages.map((message) => message.data[0]?.value),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
 		).toEqual(["", ""]);
-		expect(conversation.messages[0]?.author?.capturedName).toBe(
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.capturedName).toBe(
 			UNKNOWN_IMPORTED_AUTHOR_NAME,
 		);
 		expect(report.warnings).toHaveLength(2);
@@ -499,14 +501,14 @@ describe("SillyTavern chat import", () => {
 		).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Blank Author"]);
 		const [blankGroup, literalGroup] = conversation.cast;
 		expect(blankGroup?.id).not.toBe(literalGroup?.id);
-		expect(conversation.messages[0]?.author?.participantId).toBe(blankGroup?.id);
-		expect(conversation.messages[1]?.author?.participantId).toBe(literalGroup?.id);
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.participantId).toBe(blankGroup?.id);
+		expect(requireSnapshot(database, conversation.id).messages[1]?.author?.participantId).toBe(literalGroup?.id);
 		// Each Message keeps its exact raw source author value untouched.
 		expect(
-			conversation.messages.map((message) => message.data[0]?.value),
+			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
 		).toEqual(["", "Blank Author"]);
-		expect(conversation.messages[0]?.author?.inCast).toBe(true);
-		expect(conversation.messages[1]?.author?.inCast).toBe(true);
+		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.inCast).toBe(true);
+		expect(requireSnapshot(database, conversation.id).messages[1]?.author?.inCast).toBe(true);
 		expect(report.warnings).toEqual([
 			"Message at position 1 has a blank captured author name.",
 		]);
@@ -517,7 +519,7 @@ describe("SillyTavern chat import", () => {
 			writeSource([header, first]),
 		);
 		const module = database;
-		const messageId = conversation.messages[0]?.id ?? 0;
+		const messageId = requireSnapshot(database, conversation.id).messages[0]?.id ?? 0;
 
 		// Every play action carries the same derived capability reason.
 		expect(conversation.capabilities).toEqual({
@@ -567,7 +569,7 @@ describe("SillyTavern chat import", () => {
 		// Incomplete imports stay editable and configurable: content edits
 		// and scoped data commands are never play-gated, and they keep
 		// storing against the preserved history.
-		const variantId = conversation.messages[0]?.variants[0]?.id ?? 0;
+		const variantId = requireSnapshot(database, conversation.id).messages[0]?.variants[0]?.id ?? 0;
 		const edited = applyCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
@@ -645,7 +647,7 @@ describe("SillyTavern chat import", () => {
 		const module = database;
 		expect(conversation.playable).toBe(true);
 
-		const swipeMessage = conversation.messages[0];
+		const swipeMessage = requireSnapshot(database, conversation.id).messages[0];
 		expect(swipeMessage).toBeDefined();
 		const targetId = swipeMessage?.id ?? 0;
 		// Imported Messages never gain fabricated historical Control context.
@@ -802,13 +804,13 @@ describe("SillyTavern chat import", () => {
 		expect(firstImport.report.warnings).toEqual([]);
 		expect(
 			findEntry(
-				firstImport.conversation.data,
+				requireSnapshot(database, firstImport.conversation.id).data,
 				IMPORT_NAMESPACE,
 				IMPORT_KEYS.sha256,
 			)?.value,
 		).toBe(
 			findEntry(
-				secondImport.conversation.data,
+				requireSnapshot(database, secondImport.conversation.id).data,
 				IMPORT_NAMESPACE,
 				IMPORT_KEYS.sha256,
 			)?.value,
@@ -823,9 +825,9 @@ describe("SillyTavern chat import", () => {
 		// 2 Messages; the Swipe record owns 4 Variants in source order and
 		// the payload-only record owns 1.
 		expect(result.report.counts).toEqual({ messages: 2, variants: 5 });
-		expect(conversation.messages).toHaveLength(2);
+		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(2);
 
-		const [swipeMessage, payloadMessage] = conversation.messages;
+		const [swipeMessage, payloadMessage] = requireSnapshot(database, conversation.id).messages;
 		expect(swipeMessage?.variants.map((variant) => variant.content)).toEqual([
 			"First alternative text",
 			"Second alternative, still saved",
@@ -881,7 +883,7 @@ describe("SillyTavern chat import", () => {
 		// The canonical archive still holds the complete parsed source,
 		// including the duplicated top-level assistant payload.
 		const archive = findEntry(
-			conversation.data,
+			requireSnapshot(database, conversation.id).data,
 			ARCHIVE_NAMESPACE,
 			ARCHIVE_KEY,
 		);
@@ -891,11 +893,11 @@ describe("SillyTavern chat import", () => {
 		});
 
 		expect(
-			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
+			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
 				?.value,
 		).toBe("5");
 		expect(
-			readConversationSnapshot(database, conversation.id),
+			readConversationSummary(database, conversation.id),
 		).toEqual(conversation);
 	});
 

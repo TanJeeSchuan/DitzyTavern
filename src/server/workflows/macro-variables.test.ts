@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -21,7 +21,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 	afterEach(() => database.close());
 
 	test("threads recipe writes and carries only the selected Variant's resolved journal", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Macro variables",
 			participants: [
 				{
@@ -74,7 +74,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			content: "Done",
 		});
 
-		const after = readConversationSnapshot(database, conversation.id);
+		const after = readTestConversationSnapshot(database, conversation.id);
 		if (after === undefined) throw new Error("Conversation disappeared.");
 		const generated = after.messages.at(-1)?.variants.find((variant) => variant.selected);
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
@@ -87,7 +87,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 	});
 
 	test("records one-time opening writes on the selected greeting Variant", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Macro greeting",
 			participants: [
 				{
@@ -107,7 +107,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		if (snapshot === undefined) throw new Error("Conversation disappeared.");
 		const greetingVariant = snapshot.messages[0]?.variants[0];
 		if (greetingVariant === undefined) throw new Error("Greeting Variant disappeared.");
@@ -120,7 +120,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 	});
 
 	test("retains pending writes when restart recovery terminalizes checkpointed output", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Recover macro writes",
 			participants: [
 				{
@@ -153,7 +153,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			reasoning: "Thinking",
 		});
 		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, failed: 0 });
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		if (snapshot === undefined) throw new Error("Conversation disappeared.");
 		const variant = snapshot.messages.at(-1)?.variants.find((candidate) => candidate.selected);
 		if (variant === undefined) throw new Error("Recovered Variant disappeared.");

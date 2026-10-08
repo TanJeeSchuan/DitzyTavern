@@ -1,5 +1,5 @@
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
 import {
-	readConversationSnapshot,
 	acceptConversationTailGeneration,
 	checkpointConversationGeneration,
 	stopConversationGeneration,
@@ -71,7 +71,7 @@ describe("Memory source lifecycle public operations", () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
 		const module = database;
-		const snapshot = readConversationSnapshot(module, conversation.id);
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		if (!snapshot || snapshot.control.humanParticipantId === null || snapshot.control.modelParticipantId === null) throw new Error("Memory fixture has no active Chat controls.");
 		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: conversation.id,
@@ -89,7 +89,7 @@ describe("Memory source lifecycle public operations", () => {
 		});
 		checkpointConversationGeneration(module, { conversationId: conversation.id, generationId: accepted.generationId, content: "Maren hides the key." });
 		stopConversationGeneration(module, { conversationId: conversation.id, generationId: accepted.generationId });
-		const generated = readConversationSnapshot(module, conversation.id)?.messages.at(-1);
+		const generated = readTestConversationSnapshot(module, conversation.id)?.messages.at(-1);
 		const selectedVariant = generated?.variants.find((variant) => variant.selected);
 		if (!selectedVariant) throw new Error("Stopped Generation did not retain a selected Variant.");
 		const response = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories`));
@@ -100,7 +100,7 @@ describe("Memory source lifecycle public operations", () => {
 	test("queues a selected Human source and selected Swipe while retaining the prior collection", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		if (!snapshot) throw new Error("Memory fixture Chat was not created.");
 		const humanId = snapshot.control.humanParticipantId;
 		if (humanId === null) throw new Error("Memory fixture has no Human Control.");

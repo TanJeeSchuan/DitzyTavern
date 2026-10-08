@@ -1,10 +1,9 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	acceptConversationTailGeneration,
 	acceptConversationSiblingGeneration,
-	readConversationSnapshot,
 	resolveConversationGeneration,
 } from "../conversation";
-import { createConversation } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -36,7 +35,7 @@ describe("Generation Stop route mapping", () => {
 
 	const setup = () => {
 		const module = database;
-		const conversation = createConversation(module, {
+		const conversation = createConversationWithHistory(module, {
 			name: "Stop mapping",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -151,7 +150,7 @@ describe("Generation Stop route mapping", () => {
 		expect(body.outcome).toBe("not-found");
 		// The foreign attempt survives untouched: durable state is never
 		// consulted under another Conversation's name.
-		expect(readConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readTestConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 	});
 
 	test("maps an already-terminal race onto the not-found transport response", async () => {

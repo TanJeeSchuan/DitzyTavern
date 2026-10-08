@@ -1,4 +1,4 @@
-import { readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -54,7 +54,7 @@ const insertAlternativeVariant = (database: Database, messageId: number) => {
 };
 
 const selectVariant = async (database: Database, conversationId: number, messageId: number, variantId: number) => {
-	const revision = readConversationSnapshot(database, conversationId)?.revision;
+	const revision = readTestConversationSnapshot(database, conversationId)?.revision;
 	if (revision === undefined) throw new Error("Memory recall selection snapshot missing.");
 	const response = await createConversationRoutes(database).handle(new Request(
 		`http://localhost/api/conversations/${conversationId}/commands`,
@@ -253,7 +253,7 @@ describe("Memory recall in Generation preparation", () => {
 			},
 		));
 		expect(correction.status).toBe(200);
-		const beforeEditRevision = readConversationSnapshot(database, conversation.id)?.revision;
+		const beforeEditRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (beforeEditRevision === undefined) throw new Error("Conversation snapshot missing before source edit.");
 		const edit = await createConversationRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/commands`,
@@ -267,7 +267,7 @@ describe("Memory recall in Generation preparation", () => {
 			},
 		));
 		expect(edit.status).toBe(200);
-		const currentRevision = readConversationSnapshot(database, conversation.id)?.revision;
+		const currentRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (currentRevision === undefined) throw new Error("Edited Conversation snapshot missing.");
 
 		let embeddingCalls = 0;
@@ -386,7 +386,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(decisionCalls).toBe(1);
 		expect(writingMessages).toContainEqual({ role: "system", content: editedMemoryText });
 		expect(writingMessages).not.toContainEqual({ role: "system", content: memoryText });
-		const firstTarget = readConversationSnapshot(database, conversation.id)?.messages.at(-1);
+		const firstTarget = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const firstVariant = firstTarget?.variants.at(-1);
 		if (!firstTarget || !firstVariant) throw new Error("The edited Memory Generation Variant was not retained.");
 		const permanentDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
@@ -410,7 +410,7 @@ describe("Memory recall in Generation preparation", () => {
 		const afterSourceCorrection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
 		expect(await afterSourceCorrection.json()).toMatchObject({ memoryActivation: { finalMemoryText: editedMemoryText, candidates: [{ claim: "Maren now holds Writer's key.", evidence: [{ excerpt: "Maren returned Writer's key." }] }] } });
 
-		const latest = readConversationSnapshot(database, conversation.id)?.messages.at(-1);
+		const latest = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const variant = latest?.variants.at(-1);
 		if (!latest || !variant) throw new Error("Memory recall Generation Variant was not retained.");
 		const targetMemory = memoryClaim(latest.id, "Maren and Writer kept their promise.", "The key stays between them.");
@@ -428,7 +428,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toContain(source.messageId);
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toContain(latest.id);
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.variantId)).not.toContain(alternativeVariantId);
-		const continuationRevision = readConversationSnapshot(database, conversation.id)?.revision;
+		const continuationRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (continuationRevision === undefined) throw new Error("Continuation revision missing.");
 		const acceptedContinuation = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/continue/generations`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation",  expectedRevision: continuationRevision, previewId: continuation.previewId }),
@@ -439,7 +439,7 @@ describe("Memory recall in Generation preparation", () => {
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${continuationGeneration.generationId}/events`))).text();
 		const continuationMemoryBlock = writingRequests.at(-1)?.find((message) => message.role === "system" && message.content.includes(memoryText));
 		expect(continuationMemoryBlock?.content).toContain(targetMemoryText);
-		const continuationTarget = readConversationSnapshot(database, conversation.id)?.messages.at(-1);
+		const continuationTarget = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const continuationVariant = continuationTarget?.variants.at(-1);
 		if (!continuationTarget || !continuationVariant) throw new Error("Continuation Memory source was not retained.");
 		const laterMemory = memoryClaim(continuationTarget.id, "Maren told Ilya the key was safe.", continuationVariant.content);
@@ -480,7 +480,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(changedCollection.status).toBe(200);
 		const staleAcceptance = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/continue/generations`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation", 
-				expectedRevision: readConversationSnapshot(database, conversation.id)?.revision,
+				expectedRevision: readTestConversationSnapshot(database, conversation.id)?.revision,
 				previewId: stalePreview.previewId,
 			}),
 		}));

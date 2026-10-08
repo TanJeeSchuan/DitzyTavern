@@ -1,4 +1,4 @@
-import { readConversationSnapshot } from "../conversation";
+import { readConversationSummary } from "../conversation";
 // @approved
 //  User-facing staged Chat import: choose one file, stream its bytes into
 // their final managed artifact path exactly once, validate the complete
@@ -431,7 +431,7 @@ export function createChatImportModule(
 			// Conversation snapshot is re-read through the Conversation seam
 			// instead of retaining the full result in memory.
 			if (session !== undefined && session.phase === "committed") {
-				const conversation = readConversationSnapshot(database, 
+				const conversation = readConversationSummary(database, 
 					session.receipt.conversationId,
 				);
 				if (conversation === undefined) {

@@ -1,3 +1,4 @@
+import { loadMessageRows, toDataEntry } from "./message-rows";
 // @approved
 //  Focused selected-history read model. Generation and Macro Variable
 // consumers need only the selected narrative path and, optionally, one
@@ -5,12 +6,10 @@
 // metadata makes those reads scale with discarded history.
 
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray, isNull, like, lte, max } from "drizzle-orm";
+import { and, eq, isNull, like, max } from "drizzle-orm";
 import {
 	conversationDataTable,
 	messageTable,
-	messageVariantDataTable,
-	messageVariantTable,
 	participantTable,
 } from "../database/schema";
 import { findConversation, type ConversationDatabase } from "./internal";
@@ -47,16 +46,6 @@ export interface SelectedHistoryRead {
 	messages: SelectedHistoryMessage[];
 	target?: SelectedHistoryMessage | undefined;
 }
-
-const dataEntry = (row: {
-	namespace: string;
-	key: string;
-	value: string;
-}): ConversationDataEntry => ({
-	namespace: row.namespace,
-	key: row.key,
-	value: row.value,
-});
 
 const readSelectedHistoryFromConnection = (
 	db: ConversationDatabase,
@@ -124,83 +113,15 @@ const readSelectedHistoryFromConnection = (
 		.where(and(...initialConditions))
 		.all();
 
-	const messageRows = db
-		.select({
-			id: messageTable.id,
-			position: messageTable.position,
-			author_participant_id: messageTable.author_participant_id,
-			author_name: messageTable.author_name,
-			context_human_participant_id: messageTable.context_human_participant_id,
-			context_model_participant_id: messageTable.context_model_participant_id,
-		})
-		.from(messageTable)
-		.where(and(
-			eq(messageTable.conversation_id, conversationId),
-			lte(messageTable.position, position),
-			...(targetRow === undefined ? [] : [lte(messageTable.position, targetRow.position - 1)]),
-		))
-		.orderBy(asc(messageTable.position))
-		.all();
-	const messageIds = [
-		...messageRows.map((message) => message.id),
-		...(targetRow === undefined ? [] : [targetRow.id]),
-	];
-	const selectedRows = messageIds.length === 0
-		? []
-		: db
-			.select({
-				messageId: messageVariantTable.message_id,
-				id: messageVariantTable.id,
-				position: messageVariantTable.position,
-				content: messageVariantTable.content,
-			})
-			.from(messageVariantTable)
-			.where(and(
-				inArray(messageVariantTable.message_id, messageIds),
-				eq(messageVariantTable.selected, true),
-			))
-			.orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position))
-			.all();
-	const selectedIds = selectedRows.map((variant) => variant.id);
-	const variantDataConditions = [
-		inArray(messageVariantDataTable.message_variant_id, selectedIds),
-	];
-	if (request.variantDataNamespace !== undefined) {
-		variantDataConditions.push(eq(messageVariantDataTable.namespace, request.variantDataNamespace));
-	}
-	if (request.variantDataKeys !== undefined && request.variantDataKeys.length > 0) {
-		variantDataConditions.push(inArray(messageVariantDataTable.key, request.variantDataKeys));
-	}
-	const variantDataRows = selectedIds.length === 0
-		? []
-		: db
-			.select({
-				variantId: messageVariantDataTable.message_variant_id,
-				namespace: messageVariantDataTable.namespace,
-				key: messageVariantDataTable.key,
-				value: messageVariantDataTable.value,
-			})
-			.from(messageVariantDataTable)
-			.where(and(...variantDataConditions))
-			.orderBy(
-				asc(messageVariantDataTable.message_variant_id),
-				asc(messageVariantDataTable.namespace),
-				asc(messageVariantDataTable.key),
-			)
-			.all();
-	const dataByVariant = new Map<number, ConversationDataEntry[]>();
-	for (const row of variantDataRows) {
-		const entries = dataByVariant.get(row.variantId) ?? [];
-		entries.push(dataEntry(row));
-		dataByVariant.set(row.variantId, entries);
-	}
+	const filter = request.variantData === false ? false : { namespace: request.variantDataNamespace, keys: request.variantDataKeys };
+	const rows = loadMessageRows(db, conversationId, { upToPosition: position, selectedOnly: true, variantData: filter });
+	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true, variantData: filter });
+	const messageRows = rows.messages;
 	const selectedByMessage = new Map<number, SelectedHistoryVariant>();
-	for (const row of selectedRows) {
-		selectedByMessage.set(row.messageId, {
-			id: row.id,
-			position: row.position,
-			content: row.content,
-			data: dataByVariant.get(row.id) ?? [],
+	for (const loaded of [rows, ...(targetRows === undefined ? [] : [targetRows])]) {
+		for (const variant of loaded.variants) selectedByMessage.set(variant.message_id, {
+			id: variant.id, position: variant.position, content: variant.content,
+			data: loaded.variantData.get(variant.id) ?? [],
 		});
 	}
 	const castIds = new Set(db
@@ -212,7 +133,7 @@ const readSelectedHistoryFromConnection = (
 		))
 		.all()
 		.map((participant) => participant.id));
-	const toMessage = (message: typeof messageRows[number]): SelectedHistoryMessage => ({
+	const toMessage = (message: Pick<typeof messageRows[number], "id" | "position" | "author_participant_id" | "author_name" | "context_human_participant_id" | "context_model_participant_id">): SelectedHistoryMessage => ({
 		id: message.id,
 		position: message.position,
 		author: toAuthorStamp(message, castIds),
@@ -224,7 +145,7 @@ const readSelectedHistoryFromConnection = (
 		conversationId,
 		revision: conversation.revision,
 		position,
-		initialData: initialRows.map(dataEntry),
+		initialData: initialRows.map(toDataEntry),
 		messages: messageRows.map(toMessage),
 	};
 	if (targetRow !== undefined) result.target = toMessage(targetRow);

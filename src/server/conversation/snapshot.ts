@@ -3,19 +3,14 @@ import { and, asc, count, eq, inArray, or } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
 	activeGenerationTable,
-	conversationDataTable,
 	conversationTable,
-	messageDataTable,
 	messageTable,
-	messageVariantDataTable,
-	messageVariantTable,
 	participantOpeningTable,
 } from "../database/schema";
 import {
 	connectConversationDatabase,
 	findConversation,
 	groupRowsByNumber,
-	groupVariantsByMessage,
 	readActiveCast,
 	readControlAssignment,
 	type ConversationDatabase,
@@ -26,25 +21,12 @@ import type {
 	ConversationCapabilities,
 	ConversationControlSnapshot,
 	ConversationControlValidity,
-	ConversationMessageSnapshot,
-	ConversationSnapshot,
 	ConversationSummary,
-	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
 	MessageSwipeEligibility,
 	ParticipantRemovalEligibility,
 } from "./types";
-import {
-	toAuthorStamp,
-	toHistoricalContext,
-} from "./message-read-projection";
-
-const toDataEntry = (row: { namespace: string; key: string; value: string }) => ({
-	namespace: row.namespace,
-	key: row.key,
-	value: row.value,
-});
 
 // @approved
 //  Play-gated capabilities share one derived reason: without two distinct
@@ -180,9 +162,7 @@ const deriveParticipantRemovalFromDatabase = (
 
 // @approved
 //  Cheap existence probe for callers that only need to know whether the
-// Conversation row is present. readConversationSnapshot runs many queries
-// to assemble the full snapshot (cast, messages, variants, data, active
-// generations), which is too costly to use as an existence check.
+// Conversation row is present.
 export function conversationExists(
 	database: Database,
 	conversationId: number,
@@ -207,16 +187,6 @@ export function readConversationRevision(
 	)?.revision;
 }
 
-export function readConversationSnapshot(
-	database: Database,
-	conversationId: number,
-): ConversationSnapshot | undefined {
-	return readConversationSnapshotFromConnection(
-		connectConversationDatabase(database),
-		conversationId,
-	);
-}
-
 export function readConversationSummary(
 	database: Database,
 	conversationId: number,
@@ -225,114 +195,6 @@ export function readConversationSummary(
 		connectConversationDatabase(database),
 		conversationId,
 	);
-}
-
-export function readConversationSnapshotFromConnection(
-	db: ConversationDatabase,
-	conversationId: number,
-): ConversationSnapshot | undefined {
-	const summary = readConversationSummaryFromConnection(db, conversationId);
-	if (summary === undefined) return undefined;
-
-	const castIds = summary.cast.map((participant) => participant.id);
-	const castIdsSet = new Set(castIds);
-
-	const messageRows = db
-		.select()
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.orderBy(asc(messageTable.position))
-		.all();
-	const messageIds = messageRows.map((message) => message.id);
-	const variantRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantTable)
-					.where(inArray(messageVariantTable.message_id, messageIds))
-					.orderBy(
-						asc(messageVariantTable.message_id),
-						asc(messageVariantTable.position),
-					)
-					.all();
-	const variantIds = variantRows.map((variant) => variant.id);
-	const messageDataRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageDataTable)
-					.where(inArray(messageDataTable.message_id, messageIds))
-					.orderBy(
-						asc(messageDataTable.message_id),
-						asc(messageDataTable.namespace),
-						asc(messageDataTable.key),
-					)
-					.all();
-	const variantDataRows =
-		variantIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantDataTable)
-					.where(inArray(messageVariantDataTable.message_variant_id, variantIds))
-					.orderBy(
-						asc(messageVariantDataTable.message_variant_id),
-						asc(messageVariantDataTable.namespace),
-						asc(messageVariantDataTable.key),
-					)
-					.all();
-
-	const variantDataByVariant = groupRowsByNumber(
-		variantDataRows,
-		(row) => row.message_variant_id,
-		toDataEntry,
-	);
-	const variantsByMessage = groupVariantsByMessage(
-		variantRows,
-		(variant): ConversationVariantSnapshot => ({
-			id: variant.id,
-			position: variant.position,
-			content: variant.content,
-			timestamp: variant.timestamp,
-			selected: variant.selected,
-			data: variantDataByVariant.get(variant.id) ?? [],
-		}),
-	);
-	const messageDataByMessage = groupRowsByNumber(
-		messageDataRows,
-		(row) => row.message_id,
-		toDataEntry,
-	);
-	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
-		const author = toAuthorStamp(message, castIdsSet);
-		const historicalContext = toHistoricalContext(message);
-		return {
-			id: message.id,
-			position: message.position,
-			timestamp: message.timestamp,
-			author,
-			historicalContext,
-			swipe: deriveMessageSwipeEligibility(
-				summary.playable,
-				historicalContext,
-				castIds,
-			),
-			variants: variantsByMessage.get(message.id) ?? [],
-			data: messageDataByMessage.get(message.id) ?? [],
-		};
-	});
-
-	const data = db
-		.select()
-		.from(conversationDataTable)
-		.where(eq(conversationDataTable.conversation_id, conversationId))
-		.orderBy(asc(conversationDataTable.namespace), asc(conversationDataTable.key))
-		.all()
-		.map(toDataEntry);
-
-	return { ...summary, messages, data };
 }
 
 export function readConversationSummaryFromConnection(

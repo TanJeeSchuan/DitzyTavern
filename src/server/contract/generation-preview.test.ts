@@ -1,10 +1,9 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
 	readConversationRevision,
 	executeConversationCommand,
 	readConversationGenerationSettings,
 	readConversationSummary,
-	readConversationSnapshot,
 } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
@@ -32,7 +31,7 @@ const prompt = {
 
 const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 
-const createChat = (database: Database) => createConversation(database, {
+const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Preview Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
@@ -95,7 +94,7 @@ describe("Prompt Plan inspection", () => {
 
 	test("presents recoverable preview failures with their domain reason", async () => {
 		const module = database;
-		const incomplete = createConversation(module, {
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Preview Chat",
 			messages: [{
 				timestamp: "2026-09-13T00:00:00.000Z",
@@ -107,7 +106,7 @@ describe("Prompt Plan inspection", () => {
 			}],
 		});
 		const playable = createChat(database);
-		const siblingUnavailable = createConversation(module, {
+		const siblingUnavailable = createConversationWithHistory(module, {
 			name: "Imported Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -515,7 +514,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("consumes a Sibling preview token after acceptance", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -558,7 +557,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("keeps a Sibling preview token retryable after acceptance fails", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Retryable Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -714,7 +713,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
 		const module = database;
-		const human = readConversationSnapshot(module, conversation.id)?.cast[0];
+		const human = readTestConversationSnapshot(module, conversation.id)?.cast[0];
 		if (human === undefined) throw new Error("Human Participant missing.");
 		executeConversationCommand(module, {
 			conversationId: conversation.id,

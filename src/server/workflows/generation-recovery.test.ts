@@ -1,4 +1,4 @@
-import { createConversation } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -27,7 +27,7 @@ describe("generation recovery diagnostics", () => {
 
 	test("continues recovering healthy rows and reports a corrupt row with its identity", () => {
 		const conversation = database;
-		const created = createConversation(conversation, {
+		const created = createConversationWithHistory(conversation, {
 			name: "Recovery Diagnostics Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

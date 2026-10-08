@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand, readConversationSummary, readConversationSnapshot } from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationSummary} from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -73,7 +74,7 @@ describe("Portraits", () => {
 		expect(library().list()).toEqual([]);
 		expect(referenced()).toEqual([]);
 
-		const chat = createConversation(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
+		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
 		expect(() => executeConversationCommand(conversations(), {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
@@ -99,7 +100,7 @@ describe("Portraits", () => {
 	test("adding a Character to the Cast copies its Portrait", async () => {
 		const carried = await art(4);
 		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: carried.portrait } });
-		const chat = createConversation(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
+		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
 		const added = addCharacterToCast(database, {
 			conversationId: chat.id,
 			expectedConversationRevision: chat.revision,
@@ -140,7 +141,7 @@ describe("Portraits", () => {
 
 	test("a removed Participant's Messages fall back to the stamped name and its Portrait is orphaned", async () => {
 		const carried = await art(4);
-		const chat = createConversation(conversations(), {
+		const chat = createConversationWithHistory(conversations(), {
 			name: "Chat",
 			participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }, { definition: { ...writer, name: "Guest", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },
@@ -153,13 +154,13 @@ describe("Portraits", () => {
 		const removed = executeConversationCommand(conversations(), { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "remove-participant", participantId: guest.id } });
 		expect(removed.cast.map((participant) => participant.name)).toEqual(["Writer", "Maren"]);
 		expect(referenced()).toEqual([]);
-		const message = readConversationSnapshot(conversations(), chat.id)?.messages[0];
+		const message = readTestConversationSnapshot(conversations(), chat.id)?.messages[0];
 		expect(message?.author).toMatchObject({ capturedName: "Guest", inCast: false });
 	});
 
 	test("a Portrait never enters a Prompt Plan", async () => {
 		const carried = await art(4);
-		const chat = createConversation(conversations(), {
+		const chat = createConversationWithHistory(conversations(), {
 			name: "Chat",
 			participants: [{ definition: { ...writer, portrait: carried.portrait } }, { definition: { ...writer, name: "Maren", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },

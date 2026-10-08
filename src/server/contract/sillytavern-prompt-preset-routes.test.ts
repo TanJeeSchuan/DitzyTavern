@@ -1,4 +1,4 @@
-import { createConversation } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -393,7 +393,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 
 	test("a committed imported recipe survives selection and reaches the captured model request", async () => {
 		const library = createPromptPresetRoutes(database);
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Imported preset chat",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

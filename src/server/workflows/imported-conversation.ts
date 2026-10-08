@@ -10,7 +10,7 @@ import { createCharacterLibraryModule } from "../character-library";
 import type {
 	ConversationCreationInput,
 	ConversationParticipantSeed,
-	ConversationSnapshot,
+	ConversationSummary,
 } from "../conversation";
 
 export interface ImportedConversationParticipantSeed
@@ -26,7 +26,7 @@ export interface CreateImportedConversationInput
 export function createImportedConversation(
 	database: Database,
 	input: CreateImportedConversationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const create = database.transaction(() => {
 		const participants: ConversationParticipantSeed[] = input.participants.map(
 			(participant) => {

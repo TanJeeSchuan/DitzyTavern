@@ -1,7 +1,5 @@
-import { readVariantDetails, readConversationSnapshot, acceptConversationSiblingGeneration } from "./index";
-import {
-	createConversation,
-} from ".";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readVariantDetails, acceptConversationSiblingGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import {
@@ -38,7 +36,7 @@ describe("explicit Conversation Generation Stop", () => {
 
 	const setup = () => {
 		const module = database;
-		const created = createConversation(module, {
+		const created = createConversationWithHistory(module, {
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -83,7 +81,7 @@ describe("explicit Conversation Generation Stop", () => {
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:01.000Z",
 		});
-		const stopped = readConversationSnapshot(database, input.created.id)!;
+		const stopped = readTestConversationSnapshot(database, input.created.id)!;
 		const modelMessage = stopped.messages.at(-1);
 		const variant = modelMessage?.variants[0];
 		if (modelMessage === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
@@ -123,7 +121,7 @@ describe("explicit Conversation Generation Stop", () => {
 			removed: 0,
 			failed: 0,
 		});
-		const recoveredMessage = readConversationSnapshot(input.module, input.created.id)?.messages.at(-1);
+		const recoveredMessage = readTestConversationSnapshot(input.module, input.created.id)?.messages.at(-1);
 		const recoveredVariant = recoveredMessage?.variants[0];
 		if (recoveredMessage === undefined || recoveredVariant === undefined) {
 			throw new Error("Recovered Variant missing.");
@@ -147,7 +145,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = readConversationSnapshot(database, input.created.id)!;
+		const stopped = readTestConversationSnapshot(database, input.created.id)!;
 
 		expect(stopped.activeGenerations).toEqual([]);
 		expect(stopped.messages).toHaveLength(2);
@@ -188,7 +186,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = readConversationSnapshot(database, input.created.id)!;
+		const stopped = readTestConversationSnapshot(database, input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 		const stoppedMessage = stopped.messages[0];
 		const stoppedVariant = variants[1];
@@ -222,7 +220,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = readConversationSnapshot(database, input.created.id)!;
+		const stopped = readTestConversationSnapshot(database, input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 
 		expect(stopped.activeGenerations).toEqual([]);
@@ -249,7 +247,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 		const first = accept("2026-08-27T00:00:01.000Z");
 		const second = accept("2026-08-27T00:00:02.000Z");
-		const revisionBeforeStop = readConversationSnapshot(input.module, input.created.id)?.revision;
+		const revisionBeforeStop = readTestConversationSnapshot(input.module, input.created.id)?.revision;
 
 		const stopped = stopConversationGenerations(database, {
 			conversationId: input.created.id,

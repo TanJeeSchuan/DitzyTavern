@@ -107,11 +107,8 @@ export type {
 	StoppedGenerations,
 	ResolveGenerationInput,
 	ConversationDataScope,
-	ConversationMessageSnapshot,
 	ConversationParticipantSeed,
-	ConversationSnapshot,
 	ConversationSummary,
-	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
 	MessageSwipeBlockReason,
@@ -130,7 +127,7 @@ export { deleteConversation } from "./delete";
 export type { EditMacroVariablesInput, EditedMacroVariables, ReadMacroVariablesInput } from "./macro-variables";
 export type { SelectedHistoryMessage, SelectedHistoryRead, SelectedHistoryReadRequest, SelectedHistoryVariant } from "./selected-history";
 export { createConversation } from "./create";
-export { conversationExists, readConversationSnapshot, readConversationSummary, readConversationSummaryFromConnection } from "./snapshot";
+export { conversationExists, readConversationSummary, readConversationSummaryFromConnection } from "./snapshot";
 export { readConversationGenerationSettings, readConversationGenerationSettingsFromConnection } from "./generation-settings";
 export { readConversationPromptPreset } from "./prompt-preset";
 export { readSelectedHistory, readSelectedHistoryFromConnection } from "./selected-history";
@@ -147,3 +144,5 @@ export { readActiveGenerationsForRecovery } from "./generation-details";
 
 export type { GenerationRequestOverrides } from "./types";
 export { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
+
+export { loadMessageRows } from "./message-rows";

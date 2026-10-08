@@ -1,6 +1,5 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
-	createConversation,
-	readConversationSnapshot,
 	executeConversationCommand,
 	readConversationGenerationSettings,
 	readChatHistory,
@@ -45,7 +44,7 @@ describe("Conversation module", () => {
 	beforeEach(() => {
 		database = openObservedDatabase();
 		const module = database;
-		const snapshot = createConversation(module, {
+		const snapshot = createConversationWithHistory(module, {
 			name: "Test Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -79,8 +78,8 @@ describe("Conversation module", () => {
 	test("rejects a stale command from another browser view", () => {
 		const firstBrowser = database;
 		const secondBrowser = database;
-		const firstSnapshot = readConversationSnapshot(firstBrowser, conversationId);
-		const secondSnapshot = readConversationSnapshot(secondBrowser, conversationId);
+		const firstSnapshot = readTestConversationSnapshot(firstBrowser, conversationId);
+		const secondSnapshot = readTestConversationSnapshot(secondBrowser, conversationId);
 		if (firstSnapshot === undefined || secondSnapshot === undefined) {
 			throw new Error("Conversation snapshot missing.");
 		}
@@ -109,7 +108,7 @@ describe("Conversation module", () => {
 				},
 			}),
 		).toThrow(StaleConversationRevisionError);
-		expect(readConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
+		expect(readTestConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
 	});
 
 	test("keeps generation-settings reads pure when the backing row is absent", () => {
@@ -184,7 +183,7 @@ describe("Conversation module", () => {
 
 	test("uses removed Cast membership in every public Message read", () => {
 		const module = database;
-		const initial = readConversationSnapshot(module, conversationId);
+		const initial = readTestConversationSnapshot(module, conversationId);
 		if (initial === undefined) throw new Error("Conversation snapshot missing.");
 
 		const withThird = applyCommand(module, {
@@ -234,7 +233,7 @@ describe("Conversation module", () => {
 
 	test("keeps a captured author name without a Participant ID in public reads", () => {
 		const module = database;
-		const conversation = createConversation(module, { authorNote: "", name: "Captured Name" });
+		const conversation = createConversationWithHistory(module, { authorNote: "", name: "Captured Name" });
 		const db = drizzle(database);
 		const insertedMessage = db
 			.insert(messageTable)
@@ -268,7 +267,7 @@ describe("Conversation module", () => {
 			capturedName: "Ghost",
 			inCast: false,
 		};
-		expect(readConversationSnapshot(module, conversation.id)?.messages[0]?.author).toEqual(
+		expect(readTestConversationSnapshot(module, conversation.id)?.messages[0]?.author).toEqual(
 			expectedAuthor,
 		);
 		expect(readChatHistory(module, conversation.id)?.messages[0]?.author).toEqual(
@@ -285,7 +284,7 @@ describe("Conversation module", () => {
 
 	test("does not fabricate historical Control from a partial persisted pair", () => {
 		const module = database;
-		const conversation = createConversation(module, {
+		const conversation = createConversationWithHistory(module, {
 			name: "Partial Context",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -337,7 +336,7 @@ describe("Conversation module", () => {
 			eligible: false,
 			reason: "missing-historical-context",
 		} as const;
-		const snapshot = readConversationSnapshot(module, conversation.id);
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		expect(snapshot?.messages[0]?.author).toBeNull();
 		expect(snapshot?.messages[0]?.historicalContext).toBeNull();
 		expect(snapshot?.messages[0]?.swipe).toEqual(expectedSwipe);
@@ -356,7 +355,7 @@ describe("Conversation module", () => {
 	});
 
 	test("rejects authorship referencing a Participant outside the Conversation", () => {
-		const other = createConversation(database, {
+		const other = createConversationWithHistory(database, {
 			name: "Other Conversation",
 			participants: [
 				{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
@@ -465,12 +464,12 @@ describe("Conversation module", () => {
 				},
 			}),
 		).toThrow(InvalidConversationCommandError);
-		expect(readConversationSnapshot(conversation, conversationId)?.revision).toBe(created.revision);
+		expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(created.revision);
 	});
 
 	test("gates Compose and Swipe behind derived playability while edits stay available", () => {
 		const module = database;
-		const incomplete = createConversation(module, {
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -584,7 +583,7 @@ describe("Conversation module", () => {
 			counts: { messages: 1, variants: 1 },
 			warnings: [],
 		});
-		const imported = createConversation(conversation, {
+		const imported = createConversationWithHistory(conversation, {
 			name: "Imported Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -761,7 +760,7 @@ describe("Conversation module", () => {
 
 	test("keeps the greeting's Author Stamp across Variant selection and sibling creation", () => {
 		const conversation = database;
-		const snapshot = readConversationSnapshot(conversation, conversationId);
+		const snapshot = readTestConversationSnapshot(conversation, conversationId);
 		if (snapshot === undefined) throw new Error("Snapshot missing.");
 		const greeting = snapshot.messages[0];
 		const variant = greeting?.variants[0];
@@ -805,7 +804,7 @@ describe("Conversation module", () => {
 			module: Database,
 			overrides: Partial<AcceptContinuationGenerationInput> = {},
 		) => {
-			const snapshot = readConversationSnapshot(module, conversationId);
+			const snapshot = readTestConversationSnapshot(module, conversationId);
 			if (snapshot === undefined) throw new Error("Snapshot missing.");
 			const greeting = snapshot.messages[0];
 			const greetingVariant = greeting?.variants[0];
@@ -896,7 +895,7 @@ describe("Conversation module", () => {
 			expect(() =>
 				accept(conversation, { humanParticipantId: modelId }),
 			).toThrow(InvalidConversationCommandError);
-			expect(readConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects a captured pair that is no longer authoritative", () => {
@@ -904,7 +903,7 @@ describe("Conversation module", () => {
 			expect(() =>
 				accept(conversation, { modelParticipantId: humanId }),
 			).toThrow(InvalidConversationCommandError);
-			expect(readConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects a captured model stamp that no longer matches the model Participant", () => {
@@ -912,11 +911,11 @@ describe("Conversation module", () => {
 			expect(() =>
 				accept(conversation, { capturedModelName: "Renamed Elsewhere" }),
 			).toThrow(InvalidConversationCommandError);
-			expect(readConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects pairs referencing Participants outside the Conversation", () => {
-			const other = createConversation(database, {
+			const other = createConversationWithHistory(database, {
 				name: "Other Conversation",
 				participants: [
 					{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },

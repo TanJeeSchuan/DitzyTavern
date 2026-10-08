@@ -1,4 +1,5 @@
-import { readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -83,7 +84,7 @@ describe("Add Character to Cast workflow", () => {
 		// Adding a Character never inserts history or changes Control.
 		expect(
 			requireSnapshot(database, conversation.id).messages,
-		).toHaveLength(conversation.messages.length);
+		).toHaveLength(requireSnapshot(database, conversation.id).messages.length);
 		expect(updated.control).toEqual(conversation.control);
 	});
 
@@ -144,7 +145,7 @@ describe("Add Character to Cast workflow", () => {
 		// Atomic: no Participant rows were appended.
 		expect(countRows(participantTable)).toBe(2);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 	});
 
@@ -181,7 +182,7 @@ describe("Add Character to Cast workflow", () => {
 		expect(conflict?.actualRevision).toBe(conversation.revision);
 		// No fork was appended and the revision did not advance again.
 		expect(
-			readConversationSnapshot(database, conversation.id)?.cast,
+			readTestConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 
@@ -204,7 +205,7 @@ describe("Add Character to Cast workflow", () => {
 		// The existing Conversation and its Cast are untouched.
 		expect(countRows(conversationTable)).toBe(1);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 		expect(countRows(participantTable)).toBe(2);
 	});
@@ -243,7 +244,7 @@ describe("Add Character to Cast workflow", () => {
 			expectedRevision: source.revision,
 		});
 
-		const snapshot = readConversationSnapshot(database, 
+		const snapshot = readTestConversationSnapshot(database, 
 			conversation.id,
 		);
 		if (snapshot === undefined) {
@@ -260,7 +261,7 @@ describe("Add Character to Cast workflow", () => {
 		// Atomically nothing changed: no additional Participant fork exists.
 		expect(countRows(participantTable)).toBe(3);
 		expect(
-			readConversationSnapshot(database, conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(snapshot.revision);
 	});
 

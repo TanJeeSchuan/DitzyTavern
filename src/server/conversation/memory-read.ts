@@ -45,14 +45,19 @@ export function readVariantsForMemory(
 }
 
 export function readSelectedPathForMemory(database: Database, conversationId: number) {
-	const read = readSelectedHistory(database, conversationId);
+	const read = readSelectedHistory(database, conversationId, { variantData: false });
 	if (read === undefined) return undefined;
-	const variants = new Map(readVariantsForMemory(database, conversationId, { includeActive: true }).map((variant) => [variant.variantId, variant]));
+	const active = new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
+		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));
 	return read.messages.map((message) => ({
 		messageId: message.id,
 		position: message.position,
 		author: message.author?.capturedName ?? null,
 		authorParticipantId: message.author?.participantId ?? null,
-		variant: message.variant === null ? null : variants.get(message.variant.id) ?? null,
+		variant: message.variant === null ? null : {
+			messageId: message.id, position: message.position, authorParticipantId: message.author?.participantId ?? null,
+			speaker: message.author?.capturedName ?? null, variantId: message.variant.id, variantPosition: message.variant.position,
+			selected: true, content: message.variant.content, active: active.has(message.variant.id),
+		},
 	}));
 }

@@ -1,4 +1,5 @@
-import { createConversation, readSelectedHistory } from "./index";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { readSelectedHistory } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -19,7 +20,7 @@ describe("Conversation selected history", () => {
 	afterEach(() => { database.close(); });
 
 	test("returns only the bounded selected path and requested Variant data", () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Focused history",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

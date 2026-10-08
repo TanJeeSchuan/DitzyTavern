@@ -1,4 +1,4 @@
-import { createConversation, readConversationSnapshot } from ".";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -33,7 +33,7 @@ describe("Conversation write observer composition contract", () => {
 
 	const createChatWithVariant = (db: Database) => {
 		const module = db;
-		const created = createConversation(module, {
+		const created = createConversationWithHistory(module, {
 			name: "Observer Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -41,7 +41,7 @@ describe("Conversation write observer composition contract", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const snapshot = readConversationSnapshot(module, created.id);
+		const snapshot = readTestConversationSnapshot(module, created.id);
 		const variantId = snapshot?.messages[0]?.variants[0]?.id;
 		if (variantId === undefined) throw new Error("Opening Variant missing.");
 		return { id: created.id, variantId };
@@ -52,7 +52,7 @@ describe("Conversation write observer composition contract", () => {
 		expect(() => deleteConversation(database, chat.id)).toThrow(
 			ConversationWriteObserverMissingError,
 		);
-		const after = readConversationSnapshot(database, chat.id);
+		const after = readTestConversationSnapshot(database, chat.id);
 		// The throwing delivery rolls the write back; the Chat still exists.
 		expect(after).not.toBeUndefined();
 		expect(after?.messages).toHaveLength(1);
@@ -73,7 +73,7 @@ describe("Conversation write observer composition contract", () => {
 		expect(report.database).toBe(database);
 		expect(report.change.conversationId).toBe(chat.id);
 		expect([...report.change.removedVariantIds]).toEqual([chat.variantId]);
-		expect(readConversationSnapshot(database, chat.id)).toBeUndefined();
+		expect(readTestConversationSnapshot(database, chat.id)).toBeUndefined();
 	});
 
 	test("compositions observe exactly their own database", () => {

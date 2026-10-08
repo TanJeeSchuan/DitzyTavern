@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand, readConversationData } from "./index";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationData } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -15,7 +16,7 @@ describe("readConversationData", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
-		const created = createConversation(module(), {
+		const created = createConversationWithHistory(module(), {
 			name: "Read Data Conversation",
 			participants: [
 				{

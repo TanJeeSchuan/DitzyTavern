@@ -1,11 +1,8 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	acceptConversationTailGeneration,
 	acceptConversationSiblingGeneration,
-	readConversationSnapshot,
 	resolveConversationGeneration,
-} from "../conversation";
-import {
-	createConversation,
 } from "../conversation";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -65,7 +62,7 @@ describe("GenerationCoordinator", () => {
 		requireSnapshot(database, conversationId);
 
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Coordinator Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -124,7 +121,7 @@ describe("GenerationCoordinator", () => {
 	});
 
 	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Shutdown Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -165,7 +162,7 @@ describe("GenerationCoordinator", () => {
 	}, 10_000);
 
 	test("stops a running attempt through one application entrance", async () => {
-		const conversation = createConversation(database, {
+		const conversation = createConversationWithHistory(database, {
 			name: "Coordinator Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -218,7 +215,7 @@ describe("GenerationCoordinator", () => {
 		expect(started.runtime.state.status).toBe("stopped");
 		expect(providerSignal?.aborted).toBe(true);
 		await expect(started.result).rejects.toThrow();
-		const snapshot = readConversationSnapshot(database, conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages).toHaveLength(1);
 	});
@@ -263,7 +260,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 	const setup = () => {
 		const module = database;
-		const conversation = createConversation(module, {
+		const conversation = createConversationWithHistory(module, {
 			name: "Stop lifecycle",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -327,7 +324,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const runtime = startRuntime(input.conversation.id, accepted, {
 			onStop: () => {
 				// Observed by the real runtime during its own stop() call.
-				const active = readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations ?? [];
+				const active = readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations ?? [];
 				activeAtAbort.push(...active.map((entry) => entry.generationId));
 			},
 		});
@@ -344,7 +341,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		// followed it before the runtime settled terminal.
 		expect(activeAtAbort).toEqual([accepted.generationId]);
 		expect(runtime.state.status).toBe("stopped");
-		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
+		expect(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing when no runtime exists and the durable target is gone", async () => {
@@ -354,7 +351,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const outcome = await coordinator.stopGeneration(input.conversation.id, 404_404);
 
 		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(404_404);
-		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
+		expect(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing and never touches durable state when the runtime belongs to another Conversation", async () => {
@@ -369,7 +366,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(accepted.generationId);
 		// The addressed Conversation has no such Generation; durable state is
 		// never consulted under another Conversation's name.
-		expect(readConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readTestConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
 		expect(runtime.isStopRequested).toBe(false);
 	});
@@ -392,7 +389,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 		// The durable transition never ran: the Active Generation survives so
 		// a later Stop cannot settle from stale output.
-		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
 	});
 
@@ -415,7 +412,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 					...output,
 				}),
 			onStop: () => {
-				activeAtAbort.push(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
+				activeAtAbort.push(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
 		const secondRuntime = startRuntime(input.conversation.id, second, {
@@ -426,7 +423,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 					...output,
 				}),
 			onStop: () => {
-				activeAtAbort.push(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
+				activeAtAbort.push(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
 		// Un-checkpointed provider output on both runtimes: Stop All's forced
@@ -450,7 +447,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(firstRuntime.state.status).toBe("stopped");
 		expect(secondRuntime.state.status).toBe("stopped");
 		// The flushed pending output survives in the stopped Variants.
-		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
+		const snapshot = readTestConversationSnapshot(input.module, input.conversation.id);
 		const contents = (snapshot?.messages ?? []).flatMap((message) => message.variants.map((variant) => variant.content));
 		expect(contents).toContain("First keeps this.");
 		expect(contents).toContain("Second keeps this.");
@@ -524,7 +521,7 @@ describe("Generation Coordinator terminal races", () => {
 
 	const setup = () => {
 		const module = database;
-		const conversation = createConversation(module, {
+		const conversation = createConversationWithHistory(module, {
 			name: "Terminal race",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -584,7 +581,7 @@ describe("Generation Coordinator terminal races", () => {
 		expect(outcome.outcome).toBe("not-stoppable");
 		expect(runtime.state.status).toBe("complete");
 		expect(terminalStates).toEqual(["complete"]);
-		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
+		const snapshot = readTestConversationSnapshot(input.module, input.conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages.at(-1)?.variants).toHaveLength(1);
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Provider won.");
@@ -623,7 +620,7 @@ describe("Generation Coordinator terminal races", () => {
 			onStop: () => {
 				// Stop All must secure the durable Conversation transition before
 				// asking this provider attempt to abort.
-				expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
+				expect(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 			},
 		});
 		const stopRuntime = generationRuntimeFor(database).start({
@@ -651,7 +648,7 @@ describe("Generation Coordinator terminal races", () => {
 		expect(stopRuntime.state.status).toBe("stopped");
 		expect(providerTerminalStates).toEqual(["stopped"]);
 		expect(stopTerminalStates).toEqual(["stopped"]);
-		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
+		const snapshot = readTestConversationSnapshot(input.module, input.conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages[0]?.variants.map((variant) => variant.content)).toEqual(["Original."]);
 		expect(snapshot?.messages[0]?.variants.filter((variant) => variant.selected)).toHaveLength(1);

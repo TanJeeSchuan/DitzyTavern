@@ -1,4 +1,5 @@
-import { createConversation, executeConversationCommand, readConversationGenerationSettings } from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationGenerationSettings } from "../conversation";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -49,7 +50,7 @@ describe("Generation capture and provenance", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversation(database, {
+		const snapshot = createConversationWithHistory(database, {
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
