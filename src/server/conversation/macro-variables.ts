@@ -107,7 +107,6 @@ const readMacroVariablesFromConnection = (
 		position: requestedPosition,
 		conversationDataNamespace: MACRO_DATA_NAMESPACE,
 		conversationDataKeyPrefix: macroInitialValuePrefix(presetId),
-		variantData: false,
 	});
 	if (history === undefined) return undefined;
 	const macroWrites = readVariantData(db, history.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]), ["macroWrites"]);

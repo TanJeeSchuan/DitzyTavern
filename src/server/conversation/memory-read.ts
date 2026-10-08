@@ -56,7 +56,7 @@ export function readSelectedPathForMemory(database: Database, conversationId: nu
 			.where(and(eq(messageTable.conversation_id, conversationId), lte(messageTable.position, source.position)))
 			.orderBy(desc(messageTable.position)).limit(5).all().map((row) => row.id);
 	}
-	const read = readSelectedHistory(database, conversationId, { ids, variantData: false, conversationData: false });
+	const read = readSelectedHistory(database, conversationId, { ids, conversationData: false });
 	if (read === undefined) return undefined;
 	const active = new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
 		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));

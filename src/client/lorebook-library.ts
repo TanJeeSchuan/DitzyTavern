@@ -1,6 +1,7 @@
+import type { StaticDecode } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import {
 	lorebook,
@@ -105,7 +106,9 @@ export async function testLorebookMatch(bookId: number, writing: string, signal?
 	return decoded;
 }
 
-export async function applyLorebookCommand(command: LorebookCommand) {
+export type LorebookCommandResult = RequestOutcome<StaticDecode<typeof lorebookCommandResponse>, StaticDecode<typeof lorebookCommandErrors>>;
+
+export async function applyLorebookCommand(command: LorebookCommand): Promise<LorebookCommandResult> {
 	return requestOutcome(
 		api.api.lorebooks.commands.post(command),
 		lorebookCommandResponse,

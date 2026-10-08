@@ -325,7 +325,6 @@ export function prepareGenerationInputsSnapshot(
 				targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
 				conversationDataNamespace: MACRO_DATA_NAMESPACE,
 				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
-				variantData: false,
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			const variantData = readVariantData(db, selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]), ["reasoning", "macroWrites"]);

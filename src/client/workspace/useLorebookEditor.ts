@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef } from "react";
-import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand } from "../lorebook-library";
+import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand, type LorebookCommandResult } from "../lorebook-library";
 import { splitList, type EntryListKey } from "./lorebook-entry-fields";
 import { editedSince, fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
 
-type LorebookResult = Awaited<ReturnType<typeof applyLorebookCommand>>;
-interface SettleFlags { notice?: string; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean }
+interface SettleFlags { notice?: string; notFoundNotice?: string; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean }
 
 export function useLorebookEditor(bookId: number) {
 	const client = useQueryClient();
@@ -44,20 +43,20 @@ export function useLorebookEditor(bookId: number) {
 			}
 		},
 	});
-	const settle = (result: LorebookResult, submitted: LorebookEditorState, flags: SettleFlags = {}) => {
+	const settle = (result: LorebookCommandResult, submitted: LorebookEditorState, flags: SettleFlags = {}) => {
 		if (result.outcome === "available" && result.value.outcome === "applied") {
 			dispatch({ type: "applied", book: result.value.book, submitted, notice: flags.notice ?? null, newEntry: flags.newEntry, enabled: flags.enabled });
 			return result.value.book;
 		}
 		if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, submitted, preserveBookDraft: flags.preserveBookDraft,
 			notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
-		else dispatch({ type: "notice", notice: result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed." });
+		else dispatch({ type: "notice", notice: result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? flags.notFoundNotice ?? "That Lorebook no longer exists." : "The Lorebook operation failed." });
 		return null;
 	};
 	const apply = async (action: LorebookCommand, submitted: LorebookEditorState) => {
 		const result = await command.mutateAsync(action);
 		if (current.current === null) return null;
-		return settle(result, submitted, { newEntry: action.type === "save-entry" && action.entryId === undefined, preserveBookDraft: true });
+		return settle(result, submitted, { newEntry: action.type === "save-entry" && action.entryId === undefined, preserveBookDraft: true, notFoundNotice: "The Lorebook operation failed." });
 	};
 	const save = useMutation({
 		onError: (error) => setNotice(error.message),

@@ -1,9 +1,9 @@
 import { loadMessageRows, toDataEntry } from "./message-rows";
 // @approved
 //  Focused selected-history read model. Generation and Macro Variable
-// consumers need only the selected narrative path and, optionally, one
-// namespace of Variant data; loading every alternative Variant or arbitrary
-// metadata makes those reads scale with discarded history.
+// consumers need only the selected narrative path; Variant data is read by
+// name through readVariantData. Loading every alternative Variant or
+// arbitrary metadata makes those reads scale with discarded history.
 
 import type { Database } from "bun:sqlite";
 import { and, eq, isNull, like, max } from "drizzle-orm";
@@ -27,7 +27,6 @@ export interface SelectedHistoryVariant {
 	id: number;
 	position: number;
 	content: string;
-	data: ConversationDataEntry[];
 }
 
 export interface SelectedHistoryMessage {
@@ -113,14 +112,13 @@ const readSelectedHistoryFromConnection = (
 		.where(and(...initialConditions))
 		.all();
 
-	const rows = loadMessageRows(db, conversationId, { ids: request.ids, upToPosition: position, selectedOnly: true, variantData: request.variantData !== false });
-	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true, variantData: request.variantData !== false });
+	const rows = loadMessageRows(db, conversationId, { ids: request.ids, upToPosition: position, selectedOnly: true });
+	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true });
 	const messageRows = rows.messages;
 	const selectedByMessage = new Map<number, SelectedHistoryVariant>();
 	for (const loaded of [rows, ...(targetRows === undefined ? [] : [targetRows])]) {
 		for (const variant of loaded.variants) selectedByMessage.set(variant.message_id, {
 			id: variant.id, position: variant.position, content: variant.content,
-			data: loaded.variantData.get(variant.id) ?? [],
 		});
 	}
 	const castIds = new Set(db
