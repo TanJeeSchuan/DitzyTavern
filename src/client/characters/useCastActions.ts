@@ -62,8 +62,8 @@ interface CastActionsOptions {
 	setRemoveTargetId: (participantId: number | null) => void;
 }
 
-/**
- * ==[HUMAN APPROVED]== Owns the Characters panel's Cast command handlers: remove, add from the
+/** @approved
+ * Owns the Characters panel's Cast command handlers: remove, add from the
  * Library, add a blank chat-only Participant, assign a seat, and
  * save-as-Character. Every handler sends through
  * the Conversation command runner, so revision acquisition, exception

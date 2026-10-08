@@ -15,8 +15,8 @@ const smooth = (): ScrollBehavior =>
 const nearBottom = (root: HTMLElement) =>
 	root.scrollHeight - root.scrollTop - root.clientHeight < FOLLOW_DISTANCE;
 
-/**
- * ==[HUMAN APPROVED]== Owns the reading surface's scroll state. The story is bottom-pinned when a
+/** @approved
+ * Owns the reading surface's scroll state. The story is bottom-pinned when a
  * Chat opens, stays anchored while older pages are prepended, and moves to a
  * switched Message when a Swipe changes. Detached windows never follow the
  * bottom; appending newer pages preserves the reading position.

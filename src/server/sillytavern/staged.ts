@@ -92,7 +92,7 @@ export const STAGED_IMPORT_SESSION_TTL_MS = 60 * 60 * 1000;
 
 export interface StagedImportStore {
 	sessions: Map<string, StagedImportSession>;
-	/** ==[HUMAN APPROVED]== Evicts every session past its expiry and deletes the staged file of each evicted staged
+	/** @approved Evicts every session past its expiry and deletes the staged file of each evicted staged
 	 * handle; an evicted committed receipt leaves nothing on disk, so only the map entry goes.
 	 * Driven lazily on module access and by the process-state sweep tick while idle. */
 	sweep(now?: number): void;

@@ -27,7 +27,7 @@ type PreviewControllerOptions = {
 	setConversation: (conversation: ConversationSummary | null) => void;
 };
 
-/** ==[HUMAN APPROVED]== Owns the local Preview transaction and its revision-guarded confirmation. */
+/** @approved Owns the local Preview transaction and its revision-guarded confirmation. */
 export function usePreviewController({
 	story,
 	conversation,

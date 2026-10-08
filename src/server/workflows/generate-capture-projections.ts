@@ -57,8 +57,8 @@ export const generationProvenanceEntry = (
 };
 
 
-/**
- * ==[HUMAN APPROVED]== Project one captured Generation into the fields shared by every acceptance
+/** @approved
+ * Project one captured Generation into the fields shared by every acceptance
  * command. Each lifecycle spreads this projection alongside its lifecycle-
  * specific target fields, keeping those differences visible at the callsite.
  */
@@ -92,7 +92,7 @@ export function capturedAcceptanceFields(
 	>;
 }
 
-/** ==[HUMAN APPROVED]== Build the common provider-neutral request for an accepted Generation.
+/** @approved Build the common provider-neutral request for an accepted Generation.
  * The assistant prefill of a Continuation is request intent, derived from the
  * compiled plan instead of retained separately: the compiler protects the
  * prefixed model entry for an assistant-prefill Continuation, so the plan's

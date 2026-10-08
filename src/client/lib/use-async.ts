@@ -19,8 +19,8 @@ export const createAsyncEffectGuard = (): AsyncEffectGuard => {
 	};
 };
 
-/**
- * ==[HUMAN APPROVED]== Shared home of the `cancelled`-flag effect pattern: an async load whose
+/** @approved
+ * Shared home of the `cancelled`-flag effect pattern: an async load whose
  * results must stop applying after the effect re-runs or the component
  * unmounts. The task receives `isCancelled` and guards every state update
  * with it; error handling stays inside the task so each caller keeps its own

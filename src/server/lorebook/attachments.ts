@@ -78,7 +78,7 @@ export const attachLorebookToCharacter = (
 	}).run();
 };
 
-/** ==[HUMAN APPROVED]== Public Lorebook seam for the Conversation-owned Chat attachment
+/** @approved Public Lorebook seam for the Conversation-owned Chat attachment
  * write; the authoritative implementation is the Conversation command
  * handler, so the seam and the revisioned command cannot drift. */
 export const attachLorebookToConversation = (
@@ -93,7 +93,7 @@ export const detachLorebookFromCharacter = (database: Database, characterId: num
 		eq(characterLorebookAttachmentTable.scope, requireScope(scope)),
 	)).run();
 
-/** ==[HUMAN APPROVED]== Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
+/** @approved Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
 export const readLorebookAttachmentEligibility = (
 	database: Database,
 	conversationId: number,
@@ -264,7 +264,7 @@ export const readLoreSettings = (database: Database, conversationId: number): Lo
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
 };
 
-/** ==[HUMAN APPROVED]== Public Lorebook seam for the Conversation-owned Chat Lore settings
+/** @approved Public Lorebook seam for the Conversation-owned Chat Lore settings
  * write; the authoritative implementation is the Conversation command
  * handler, so the seam and the revisioned command cannot drift. */
 export const saveLoreSettings = (database: Database, conversationId: number, settings: LoreSettings): LoreSettings => {

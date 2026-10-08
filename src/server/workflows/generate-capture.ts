@@ -128,8 +128,8 @@ const selectedHistoryFrom = (
 	return entries;
 };
 
-/** ==[HUMAN APPROVED]==
- * ==[HUMAN APPROVED]== The one Generation Plan compilation. Every attempt and read-only
+/** @approved
+ * The one Generation Plan compilation. Every attempt and read-only
  * inspection compiles the same way from a derived Control pair, its ordered
  * writing context, and the captured configuration; only the Generation intent
  * and the estimator differ, so those are the only arguments a call site
@@ -281,7 +281,7 @@ function captureFacts(
 	}
 }
 
-/** ==[HUMAN APPROVED]== The capture configuration every attempt states: the safe connection
+/** @approved The capture configuration every attempt states: the safe connection
  * identity, its settings seam, the initiating-client formatting context, the
  * optional embedding transport, and the project-owned token estimator. */
 export interface GenerationCaptureOptions {
@@ -290,18 +290,18 @@ export interface GenerationCaptureOptions {
 	readonly connectionSettings?: ConnectionSettingsModuleOptions | undefined;
 	readonly tokenEstimator?: TokenEstimator | undefined;
 	readonly formatting?: GenerationFormattingContext | undefined;
-	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
+	/** @approved Test/control seam for the application-wide OpenAI-compatible embedding service. */
 	readonly preparationFetch?: ModelFetch | undefined;
 }
 
-/** ==[HUMAN APPROVED]== The one preparation input: the focused Conversation seams' arguments and
+/** @approved The one preparation input: the focused Conversation seams' arguments and
  * the attempt's capture configuration around the one Generation Target. */
 export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 	readonly database: Database;
 	readonly target: GenerationTarget;
 }
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Read the deterministic inputs for one attempt through the focused Conversation seams. The
  * returned snapshot is safe to retain while the canonical async preparation completes semantic
  * evaluation: compilation and preview validation never reread mutable history or execute macros.
@@ -416,7 +416,7 @@ export function prepareGenerationInputsSnapshot(
 	return { ...preparation, target, facts, intent, pendingHumanText, memory: captureMemory() };
 }
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Capture the same immutable inputs as prepareGenerationInputsSnapshot, completing the one
  * asynchronous semantic pass before a Generation Plan is compiled. Every caller
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
@@ -491,8 +491,8 @@ const captureConfigurationFromPreparation = (
 // provenance vocabulary are retained — an intent-inapplicable Continuation
 // operand is already absent from the plan — and Request Overrides are never
 // retained.
-/**
- * ==[HUMAN APPROVED]== The shared Generation-start capture every lifecycle builds: the
+/** @approved
+ * The shared Generation-start capture every lifecycle builds: the
  * complete compiled Generation Plan, the retained writing context, the Control
  * pair, the model author stamp, and the provenance capture. The lifecycle
  * facts of one kind ride on the same Generation Target union.
@@ -519,8 +519,8 @@ export interface CapturedGeneration {
 	readonly provenance: ConversationDataEntry;
 }
 
-/**
- * ==[HUMAN APPROVED]== Assemble the shared Generation-start capture: the complete compiled
+/** @approved
+ * Assemble the shared Generation-start capture: the complete compiled
  * Generation Plan, the retained writing context, the Control pair, the model
  * author stamp, and the provenance capture.
  */
@@ -551,7 +551,7 @@ const toCapturedGeneration = (
 	provenance: generationProvenanceEntry(plan, configuration.connection),
 });
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Capture one Generation attempt: prepare the immutable inputs, compile the
  * one Generation Plan, and assemble the shared capture whose lifecycle facts
  * ride on the attempt's own target. The three former per-kind capture

@@ -79,7 +79,7 @@ export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
 }
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Creates the safe connection identity captured by runtime attempts and
  * persisted for generation inspection. Both paths use this constructor so
  * their provenance cannot disagree about the selected Profile or revision.

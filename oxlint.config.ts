@@ -37,12 +37,13 @@ export default defineConfig({
 		"anti-slop/no-unapproved-comments": [
 			"warn",
 			{
-				// ==[HUMAN APPROVED]== Repo policy: opt out file classes where comments are the deliverable.
+				// @approved
+				// Repo policy: opt out file classes where comments are the deliverable.
 				ignoreFilePatterns: [
-					"\\.(test|spec)\\.[cm]?[jt]sx?$", // test files ==[HUMAN APPROVED]==
-					"^src/shared/contract/", // wire contract modules ==[HUMAN APPROVED]==
-					"(^|/)types\\.ts$", // type-definition modules ==[HUMAN APPROVED]==
-					"^scripts/", // tooling scripts ==[HUMAN APPROVED]==
+					"\\.(test|spec)\\.[cm]?[jt]sx?$", // @approved test files
+					"^src/shared/contract/", // @approved wire contract modules
+					"(^|/)types\\.ts$", // @approved type-definition modules
+					"^scripts/", // @approved tooling scripts
 				],
 			},
 		],

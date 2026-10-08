@@ -9,7 +9,7 @@ import {
 } from "./generation-runtime";
 import { interruptedGenerationData } from "./generate-server-owned";
 
-/** ==[HUMAN APPROVED]== The only local terminal causes used by startup and graceful shutdown. */
+/** @approved The only local terminal causes used by startup and graceful shutdown. */
 export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
 
 export interface GenerationRecoverySummary {
@@ -19,8 +19,8 @@ export interface GenerationRecoverySummary {
 	readonly failed: number;
 }
 
-/**
- * ==[HUMAN APPROVED]== Resolve abandoned local execution state once, without contacting a Model
+/** @approved
+ * Resolve abandoned local execution state once, without contacting a Model
  * Client. This intentionally operates through the same typed terminal seams
  * as a live workflow so revision and sibling-selection invariants remain in
  * one place. A second sweep is harmless: terminal transitions remove rows.
@@ -74,7 +74,7 @@ export function recoverActiveGenerations(
 	return { inspected: rows.length, interrupted, removed, failed };
 }
 
-/** ==[HUMAN APPROVED]== Terminalize local Active Generations before a graceful database close. */
+/** @approved Terminalize local Active Generations before a graceful database close. */
 export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 

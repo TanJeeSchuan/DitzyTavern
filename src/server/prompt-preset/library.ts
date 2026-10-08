@@ -45,7 +45,7 @@ export const listPromptPresets = (database: Database): PromptPresetSummary[] =>
 
 const connect = (database: Database): PromptPresetDatabase => drizzle(database);
 
-/** ==[HUMAN APPROVED]== Insert one library header row and return its id; the failure message
+/** @approved Insert one library header row and return its id; the failure message
  * names the command that could not complete. */
 const insertPresetHeader = (
 	db: PromptPresetDatabase,

@@ -33,14 +33,14 @@ import {
 } from "../workflows";
 import type { GenerationCheckpointOptions } from "../workflows/generation-runtime";
 
-/** ==[HUMAN APPROVED]== Dependencies needed by the HTTP/application generation adapter. */
+/** @approved Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 	readonly checkpoint?: GenerationCheckpointOptions;
 }
 
-/**
- * ==[HUMAN APPROVED]== Typed application outcome of stopping one server-owned Generation.
+/** @approved
+ * Typed application outcome of stopping one server-owned Generation.
  *
  * The only distinction a caller can act on is whether the durable interrupted
  * transition committed. Everything that leaves nothing stopped — an unknown
@@ -56,8 +56,8 @@ export type GenerationStopOutcome =
 			readonly outcome: "stopped";
 			readonly generationId: number;
 			readonly conversation: ConversationSummary;
-			/**
-			 * ==[HUMAN APPROVED]== Why the process runtime could not be settled, or null when it
+			/** @approved
+			 * Why the process runtime could not be settled, or null when it
 			 * settled cleanly. Either way the durable transition committed and
 			 * the Conversation snapshot is the authoritative result.
 			 */
@@ -68,22 +68,22 @@ export type GenerationStopOutcome =
 			readonly generationId: number;
 	  };
 
-/** ==[HUMAN APPROVED]== Typed application outcome of stopping every Active Generation of one Conversation. */
+/** @approved Typed application outcome of stopping every Active Generation of one Conversation. */
 export type GenerationStopAllOutcome =
 	| {
 			readonly outcome: "stopped";
 			readonly generationIds: readonly number[];
 			readonly conversation: ConversationSummary;
-			/** ==[HUMAN APPROVED]== Generations whose durable transition committed but whose runtime lingers. */
+			/** @approved Generations whose durable transition committed but whose runtime lingers. */
 			readonly unsettled: readonly number[];
 			readonly unsettledReason: string | null;
 	  }
 	| {
-			/** ==[HUMAN APPROVED]== The Conversation is unknown or has no Active Generations to stop. */
+			/** @approved The Conversation is unknown or has no Active Generations to stop. */
 			readonly outcome: "not-stoppable";
 	  };
 
-/** ==[HUMAN APPROVED]== A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
+/** @approved A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
 export class GenerationConfigurationError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };
@@ -95,11 +95,11 @@ export class GenerationConfigurationError extends Error {
 }
 
 export interface CoordinatedGeneration {
-	/** ==[HUMAN APPROVED]== The authoritative acceptance returned after the provisional target exists. */
+	/** @approved The authoritative acceptance returned after the provisional target exists. */
 	readonly accepted: AcceptedGenerationRecord;
-	/** ==[HUMAN APPROVED]== The process-local runtime that fans out events to observers. */
+	/** @approved The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
-	/** ==[HUMAN APPROVED]== Settles after terminal Conversation state has been committed. */
+	/** @approved Settles after terminal Conversation state has been committed. */
 	readonly result: Promise<AcceptedGenerationRecord>;
 }
 
@@ -135,8 +135,8 @@ interface ResolvedGenerationTransport {
 	readonly connection: ModelClientConnectionSnapshot;
 }
 
-/**
- * ==[HUMAN APPROVED]== Coordinates the application concerns around one server-owned Generation.
+/** @approved
+ * Coordinates the application concerns around one server-owned Generation.
  *
  * The workflow module owns prompt capture and Conversation lifecycle rules;
  * this seam owns the concerns specific to an HTTP-started attempt: resolving
@@ -149,8 +149,8 @@ export class GenerationCoordinator {
 		private readonly options: GenerationCoordinatorOptions = {},
 	) {}
 
-	/**
-	 * ==[HUMAN APPROVED]== Start one server-owned Generation of any attempt kind. The attempt
+	/** @approved
+	 * Start one server-owned Generation of any attempt kind. The attempt
 	 * input's own fields select the lifecycle: Send carries the submitted text,
 	 * Sibling the target Message, and Continue neither.
 	 */
@@ -171,8 +171,8 @@ export class GenerationCoordinator {
 		});
 	}
 
-	/**
-	 * ==[HUMAN APPROVED]== Stop one server-owned Generation: request provider cancellation with a
+	/** @approved
+	 * Stop one server-owned Generation: request provider cancellation with a
 	 * forced final checkpoint, commit the durable interrupted transition, then
 	 * settle the process runtime. The typed outcome is the only application
 	 * result; transports map it onto their own response vocabulary.
@@ -213,8 +213,8 @@ export class GenerationCoordinator {
 		}
 	}
 
-	/**
-	 * ==[HUMAN APPROVED]== Stop every Active Generation of one Conversation: force checkpoints
+	/** @approved
+	 * Stop every Active Generation of one Conversation: force checkpoints
 	 * without aborting, commit the durable interrupted transition for the
 	 * complete target set, and only then settle the corresponding runtimes.
 	 * The Conversation stays authoritative during races: runtimes are settled
@@ -340,7 +340,8 @@ export class GenerationCoordinator {
 						reason: error instanceof Error ? error.message : "Generation failed.",
 						kind,
 						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						// ==[HUMAN APPROVED]== Protocol failures are local refusals raised before any request reaches the provider.
+						// @approved
+						// Protocol failures are local refusals raised before any request reaches the provider.
 						imageModel: kind !== "cancelled" && kind !== "protocol" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
 							? { connectionProfileId: transport.connection.profileId, modelId: capturedRequest.modelId }
 							: undefined,

@@ -4,8 +4,8 @@ import { usePromptPresetLibrary } from "./usePromptPresetLibrary";
 import { usePromptPresetLeave } from "./usePromptPresetLeave";
 import { usePromptPresetRecipe } from "./usePromptPresetRecipe";
 
-/**
- * ==[HUMAN APPROVED]== Owns the Prompt Preset panel by composing focused units over one runtime:
+/** @approved
+ * Owns the Prompt Preset panel by composing focused units over one runtime:
  * the runtime owns the session state and the single operation-settlement owner, the
  * library unit owns the shared list, selection and interchange, the recipe unit owns
  * the block drafts and recipe operations, and the leave unit owns the unsaved-drafts

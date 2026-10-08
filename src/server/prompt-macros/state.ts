@@ -41,7 +41,7 @@ const parsedInitial = (
 	return isMacroValue(value) ? { name, value } : undefined;
 };
 
-/** ==[HUMAN APPROVED]== Convert one expansion journal into durable Variant records. */
+/** @approved Convert one expansion journal into durable Variant records. */
 export const macroWritesToData = (
 	presetId: number,
 	writes: readonly MacroVariableWrite[],
@@ -50,7 +50,7 @@ export const macroWritesToData = (
 	return [{ namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey(presetId), value: variantDataCodecs.macroWrites.encode(writes) }];
 };
 
-/** ==[HUMAN APPROVED]== Convert initial preset-scoped values into Conversation records. */
+/** @approved Convert initial preset-scoped values into Conversation records. */
 export const macroInitialValuesToData = (
 	presetId: number,
 	values: ReadonlyMap<string, MacroValue> | Readonly<Record<string, MacroValue>>,
@@ -63,7 +63,7 @@ export const macroInitialValuesToData = (
 	}));
 };
 
-/** ==[HUMAN APPROVED]== Read only valid initial values for one Conversation and preset. */
+/** @approved Read only valid initial values for one Conversation and preset. */
 export const readMacroInitialValues = (
 	entries: readonly ConversationDataEntry[],
 	presetId: number,
@@ -76,7 +76,7 @@ export const readMacroInitialValues = (
 	return values;
 };
 
-/** ==[HUMAN APPROVED]== Read ordered resolved writes stored on one Variant for one originating preset. */
+/** @approved Read ordered resolved writes stored on one Variant for one originating preset. */
 export const readMacroWrites = (
 	entries: readonly ConversationDataEntry[],
 	presetId: number,
@@ -104,7 +104,7 @@ const forEachSelectedWrite = <Variant extends SelectedVariant>(
 const compareVariableNames = (left: string, right: string): number =>
 	left < right ? -1 : left > right ? 1 : 0;
 
-/** ==[HUMAN APPROVED]== Derive effective state from the baseline and selected narrative path, in Message order. */
+/** @approved Derive effective state from the baseline and selected narrative path, in Message order. */
 export const deriveMacroState = (input: {
 	initialData: readonly ConversationDataEntry[];
 	presetId: number;
@@ -118,7 +118,7 @@ export const deriveMacroState = (input: {
 	return values;
 };
 
-/** ==[HUMAN APPROVED]== Derive effective values while retaining the write that supplied each value. */
+/** @approved Derive effective values while retaining the write that supplied each value. */
 export const deriveMacroVariables = (input: {
 	initialData: readonly ConversationDataEntry[];
 	presetId: number;

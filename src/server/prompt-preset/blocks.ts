@@ -155,7 +155,7 @@ const requireRecipe = (
 	return recipe;
 };
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Saves all occurrence-addressed editor patches as one transaction. Every patch is checked
  * against the same authoritative recipe before the first write, so an invalid later patch
  * cannot leave earlier edits behind.
@@ -230,7 +230,7 @@ export const addPromptPresetBlock = (
 	}).immediate();
 };
 
-/** ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence. The name, text, and
+/** @approved Appends one blank authored instruction occurrence. The name, text, and
  * outgoing role are authored through the block editor's Save boundary; the
  * defaults are a valid, empty-contributing starting state and never a
  * whole-recipe write. */
@@ -258,7 +258,7 @@ export const addPromptPresetInstruction = (
 	}).immediate();
 };
 
-/** ==[HUMAN APPROVED]== Moves one occurrence to a one-based position, shifting the rest. */
+/** @approved Moves one occurrence to a one-based position, shifting the rest. */
 export const movePromptPresetBlock = (
 	database: Database,
 	presetId: number,
@@ -277,7 +277,7 @@ export const movePromptPresetBlock = (
 		renumber(db, presetId, without);
 	});
 
-/** ==[HUMAN APPROVED]== Enables or disables one occurrence without moving it. */
+/** @approved Enables or disables one occurrence without moving it. */
 export const setPromptPresetBlockEnabled = (
 	database: Database,
 	presetId: number,
@@ -291,7 +291,7 @@ export const setPromptPresetBlockEnabled = (
 			.run();
 	});
 
-/** ==[HUMAN APPROVED]== Duplicates one occurrence directly after it, copying reference, role,
+/** @approved Duplicates one occurrence directly after it, copying reference, role,
  * enablement, and — for an authored instruction — its name and text. The
  * copy is a separate occurrence, so its text and role can be edited
  * independently afterward. */
@@ -335,7 +335,7 @@ export const duplicatePromptPresetBlock = (
 		renumber(db, presetId, withCopy);
 	});
 
-/** ==[HUMAN APPROVED]== Removes one occurrence; no slot is forced to remain. */
+/** @approved Removes one occurrence; no slot is forced to remain. */
 export const removePromptPresetBlock = (
 	database: Database,
 	presetId: number,

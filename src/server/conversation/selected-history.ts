@@ -152,7 +152,7 @@ const readSelectedHistoryFromConnection = (
 	return result;
 };
 
-/** ==[HUMAN APPROVED]== Reads one coherent, bounded selected path and only requested Variant data. */
+/** @approved Reads one coherent, bounded selected path and only requested Variant data. */
 export const readSelectedHistory = (
 	database: Database,
 	conversationId: number,
@@ -162,6 +162,6 @@ export const readSelectedHistory = (
 	(db) => readSelectedHistoryFromConnection(db, conversationId, request),
 );
 
-/** ==[HUMAN APPROVED]== Reuses the same read model when a caller already owns a Conversation connection. */
+/** @approved Reuses the same read model when a caller already owns a Conversation connection. */
 export { readSelectedHistoryFromConnection };
 export type { SelectedHistoryReadRequest };

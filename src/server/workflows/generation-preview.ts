@@ -50,7 +50,7 @@ export interface GenerationPreviewAcceptance {
 	readonly editedPlan: PromptPlan;
 }
 
-/** ==[HUMAN APPROVED]== One preview request is one attempt target carrying its own capture
+/** @approved One preview request is one attempt target carrying its own capture
  * configuration, so the inspected Prompt Plan dispatches on the same union
  * the lifecycles do. */
 export type GenerationPreviewRequest = GenerationCaptureOptions & GenerationTarget;
@@ -140,7 +140,7 @@ const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void
 	}
 };
 
-/** ==[HUMAN APPROVED]== Asynchronous preview path used by the HTTP inspection route so semantic
+/** @approved Asynchronous preview path used by the HTTP inspection route so semantic
  * activation is captured before the inspected plan is exposed. */
 export const createGenerationPreviewAsync = async (
 	database: Database,
@@ -270,7 +270,7 @@ const assertSubmittedTargetUnchanged = (
 	}
 };
 
-/** ==[HUMAN APPROVED]== Capture the accepted Generation from an inspected Prompt Plan: the
+/** @approved Capture the accepted Generation from an inspected Prompt Plan: the
  * submitted attempt target must still match the recorded capture, the
  * preparation must still be current, and the retained capture returns with
  * the edited plan in place of the compiled one. */

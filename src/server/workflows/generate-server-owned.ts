@@ -46,7 +46,7 @@ export interface GenerationAttemptInput {
 	// changes another Conversation's model selection.
 	signal?: AbortSignal;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-	/** ==[HUMAN APPROVED]== Flush process-local output before the workflow performs a terminal write. */
+	/** @approved Flush process-local output before the workflow performs a terminal write. */
 	onBeforeTerminal?: () => void | Promise<void>;
 	// @approved
 	//  Tests and future calibration work may replace the default project-owned
@@ -59,23 +59,23 @@ export interface GenerationAttemptInput {
 	//  Initiating-client formatting context. The capture
 	// carries this one value through budgeting and send.
 	formatting?: GenerationFormattingContext;
-	/** ==[HUMAN APPROVED]== Optional embedding transport seam; production uses the standard fetch implementation. */
+	/** @approved Optional embedding transport seam; production uses the standard fetch implementation. */
 	preparationFetch?: ModelFetch;
 }
 
-/** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */
+/** @approved Provider cancellation handle passed only to the server-owned runtime seam. */
 export interface ServerOwnedGenerationControl {
 	readonly signal: AbortSignal;
 	stop(): void;
 }
 
-/** ==[HUMAN APPROVED]== The detached server-owned Generation handle shared by every lifecycle. */
+/** @approved The detached server-owned Generation handle shared by every lifecycle. */
 export interface ServerOwnedGeneration {
-	/** ==[HUMAN APPROVED]== Resolves as soon as the provisional target is committed. */
+	/** @approved Resolves as soon as the provisional target is committed. */
 	readonly accepted: Promise<AcceptedGenerationRecord>;
-	/** ==[HUMAN APPROVED]== Resolves/rejects when the provider attempt and terminal commit finish. */
+	/** @approved Resolves/rejects when the provider attempt and terminal commit finish. */
 	readonly result: Promise<AcceptedGenerationRecord>;
-	/** ==[HUMAN APPROVED]== Cancellation owned by the generation, never by an observing request. */
+	/** @approved Cancellation owned by the generation, never by an observing request. */
 	readonly signal: AbortSignal;
 }
 
@@ -84,8 +84,8 @@ export interface ServerOwnedGenerationCallbacks {
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-/**
- * ==[HUMAN APPROVED]== Detach one Generation from its observing request.
+/** @approved
+ * Detach one Generation from its observing request.
  *
  * Acceptance is exposed separately so an HTTP caller can return as soon as
  * the provisional target exists. The provider attempt remains owned by the
@@ -187,14 +187,14 @@ export async function runGeneration(
 }
 
 export interface AcceptedGenerationLifecycle<TResult> {
-	/** ==[HUMAN APPROVED]== Commit the normalized terminal outcome to the accepted target. */
+	/** @approved Commit the normalized terminal outcome to the accepted target. */
 	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
-	/** ==[HUMAN APPROVED]== Remove the accepted target only after a confirmed zero-output result. */
+	/** @approved Remove the accepted target only after a confirmed zero-output result. */
 	remove(): void | Promise<void>;
 }
 
-/**
- * ==[HUMAN APPROVED]== Run the common server-owned tail of a Generation.
+/** @approved
+ * Run the common server-owned tail of a Generation.
  *
  * Send, Continue, and Sibling all differ at acceptance and at the final
  * Conversation operation, but their provider lifecycle is identical: collect
@@ -275,8 +275,8 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	return data;
 }
 
-/**
- * ==[HUMAN APPROVED]== Encode a recovered or gracefully stopped Generation with the same terminal
+/** @approved
+ * Encode a recovered or gracefully stopped Generation with the same terminal
  * data vocabulary used by a live interrupted provider attempt.
  */
 export const interruptedGenerationData = (

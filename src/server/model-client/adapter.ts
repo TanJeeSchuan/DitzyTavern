@@ -20,8 +20,8 @@ export interface ModelAdapterOptions {
 	readonly fetch: ModelFetch;
 }
 
-/**
- * ==[HUMAN APPROVED]== The only place where an application adapter becomes an AI SDK provider.
+/** @approved
+ * The only place where an application adapter becomes an AI SDK provider.
  * Generation and Test Connection both inject their own fetch wrapper while
  * sharing this provider construction and endpoint configuration.
  */

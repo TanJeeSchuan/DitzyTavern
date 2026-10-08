@@ -29,8 +29,8 @@ export function openObservedDatabase(): Database {
 	return database;
 }
 
-/**
- * ==[HUMAN APPROVED]== Test-fixture seam for suites that assert on Messages
+/** @approved
+ * Test-fixture seam for suites that assert on Messages
  * after an edit. Mutations return the Conversation header only, so this applies
  * the command through the ordinary public seam and then re-reads the full
  * snapshot. It exists so tests keep exercising `execute` rather than a parallel

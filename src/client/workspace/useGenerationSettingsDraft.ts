@@ -131,8 +131,8 @@ interface GenerationSettingsDraftOptions {
 	connectionProfiles?: readonly ConnectionProfile[];
 }
 
-/**
- * ==[HUMAN APPROVED]== Owns the editable Generation Settings draft: the authoritative load, the
+/** @approved
+ * Owns the editable Generation Settings draft: the authoritative load, the
  * per-section drafts, and the revision-guarded save with conflict recovery
  * (a conflict refreshes the authoritative settings while every local draft
  * stays untouched). The panel renders the current draft state and wires the

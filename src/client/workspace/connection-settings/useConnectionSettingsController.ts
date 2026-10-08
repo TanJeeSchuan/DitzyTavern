@@ -86,8 +86,8 @@ export type ConnectionSettingsController = {
 	resetCredential: () => Promise<void>;
 };
 
-/**
- * ==[HUMAN APPROVED]== Owns the Connection Settings editor state. The former single patch-any-field
+/** @approved
+ * Owns the Connection Settings editor state. The former single patch-any-field
  * store is split into focused slices — server catalog, editable Profile
  * draft, selection and menus, and user-facing feedback — and the Profile
  * command handlers share one runConnectionCommand failure path.

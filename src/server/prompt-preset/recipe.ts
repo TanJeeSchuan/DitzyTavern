@@ -39,7 +39,7 @@ type StoredPromptPresetBlock = {
 		}
 );
 
-/** ==[HUMAN APPROVED]== The one stored-block column selection without the occurrence id,
+/** @approved The one stored-block column selection without the occurrence id,
  * for callers that copy blocks to a fresh preset; the recipe reader's
  * selection derives from it and adds the occurrence id back. */
 export const promptPresetBlockSelection = {
@@ -59,7 +59,7 @@ const storedPromptPresetBlockSelection = {
 	...promptPresetBlockSelection,
 };
 
-/** ==[HUMAN APPROVED]== The identifier of the one Default preset every Conversation starts on. */
+/** @approved The identifier of the one Default preset every Conversation starts on. */
 export const readDefaultPromptPresetId = (db: PromptPresetDatabase): number => {
 	const row = db
 		.select({ id: promptPresetTable.id })
@@ -70,7 +70,7 @@ export const readDefaultPromptPresetId = (db: PromptPresetDatabase): number => {
 	return row.id;
 };
 
-/** ==[HUMAN APPROVED]== Records a new Conversation's initial selection of the Default preset. */
+/** @approved Records a new Conversation's initial selection of the Default preset. */
 export const selectDefaultPromptPreset = (
 	db: PromptPresetDatabase,
 	conversationId: number,
@@ -154,8 +154,8 @@ const storedOccurrences = (
 	});
 };
 
-/**
- * ==[HUMAN APPROVED]== One preset's stored header row. Undefined when the preset does not
+/** @approved
+ * One preset's stored header row. Undefined when the preset does not
  * exist.
  */
 const readPromptPresetHeader = (
@@ -176,7 +176,7 @@ const presetRecipeOf = (
 		? undefined
 		: { id: preset.id, name: preset.name, slots: storedOccurrences(db, preset.id) };
 
-/** ==[HUMAN APPROVED]== One stored preset's recipe by identity. Undefined when the preset does not exist. */
+/** @approved One stored preset's recipe by identity. Undefined when the preset does not exist. */
 export const readPromptPresetRecipe = (
 	database: Database,
 	presetId: number,
@@ -185,8 +185,8 @@ export const readPromptPresetRecipe = (
 	return presetRecipeOf(readPromptPresetHeader(db, presetId), db);
 };
 
-/**
- * ==[HUMAN APPROVED]== The recipe a Conversation assembles through. Undefined only when the
+/** @approved
+ * The recipe a Conversation assembles through. Undefined only when the
  * Conversation itself does not exist; a Conversation always has a selection.
  */
 export const readConversationPromptPresetRecipe = (
@@ -197,7 +197,7 @@ export const readConversationPromptPresetRecipe = (
 	conversationId,
 );
 
-/** ==[HUMAN APPROVED]== Read the selected recipe through an existing coherent database view. */
+/** @approved Read the selected recipe through an existing coherent database view. */
 export const readConversationPromptPresetRecipeFromConnection = (
 	db: PromptPresetDatabase,
 	conversationId: number,

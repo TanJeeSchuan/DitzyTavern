@@ -95,7 +95,7 @@ interface PersistActiveGenerationInput
 	generationIntent: ConversationJsonValue;
 }
 
-/** ==[HUMAN APPROVED]== Persist the common server-owned Generation record after target creation. */
+/** @approved Persist the common server-owned Generation record after target creation. */
 const persistActiveGeneration = (
 	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
@@ -155,7 +155,7 @@ interface ProvisionalModelTargetInput {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
-	/** ==[HUMAN APPROVED]== The next Message position, read once by the lifecycle's validation. */
+	/** @approved The next Message position, read once by the lifecycle's validation. */
 	position: number;
 }
 
@@ -169,7 +169,7 @@ interface ProvisionalSiblingVariant {
 	priorVariantId: number | null;
 }
 
-/** ==[HUMAN APPROVED]== Create the model Message and its selected empty Variant as one target. */
+/** @approved Create the model Message and its selected empty Variant as one target. */
 const createProvisionalModelTarget = (
 	db: ConversationDatabase,
 	input: ProvisionalModelTargetInput,
@@ -285,8 +285,8 @@ const tailHumanChange = (
 	promptPresetChanged: false,
 });
 
-/**
- * ==[HUMAN APPROVED]== Shared middle of Tail and Continuation acceptance: the revision guard,
+/** @approved
+ * Shared middle of Tail and Continuation acceptance: the revision guard,
  * the lifecycle preflight, the distinct-seat requirement, the captured
  * Control-pair authority, seat membership, the captured model stamp, the
  * existing-Active check, the differing validation, provisional target

@@ -20,8 +20,8 @@ type ConversationSessionOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 };
 
-/**
- * ==[HUMAN APPROVED]== Coordinates the selected Chat's authoritative snapshot and paginated
+/** @approved
+ * Coordinates the selected Chat's authoritative snapshot and paginated
  * reading history. Conversation state and the story read model are loaded
  * together here so every caller observes the same Chat boundary.
  */

@@ -187,8 +187,8 @@ const terminalMemoryActivationData = (active: ActiveGenerationRow): Conversation
 	return [toVariantDataEntry(variantDataCodecs.memoryActivation, active.memory_activation_json)];
 };
 
-/**
- * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
+/** @approved
+ * Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
  * (unless the supplied entries already carry one), then the supplied
  * entries in order. Shared by resolve and stop so the row order and the
@@ -271,8 +271,8 @@ function commitDurableTerminalGenerationInTransaction(
 		.run();
 }
 
-/**
- * ==[HUMAN APPROVED]== Resolving replaces the provisional content, writes compact terminal
+/** @approved
+ * Resolving replaces the provisional content, writes compact terminal
  * provenance, retains inspection state, and removes the Active Generation record.
  * Tail, continuation, and sibling attempts all share this single resolution
  * seam by inspecting the target record directly. It advances the Conversation
@@ -303,8 +303,8 @@ export function resolveConversationGeneration(
 	});
 }
 
-/**
- * ==[HUMAN APPROVED]== Remove one accepted target. The persisted Active Generation row is
+/** @approved
+ * Remove one accepted target. The persisted Active Generation row is
  * the sole authority for the mutation: a Sibling Generation loses only its
  * provisional Variant (restoring the acceptance-time selection unless a
  * later explicit selection took precedence), while a Tail or Continuation
@@ -347,8 +347,8 @@ export const removeConversationGeneration = (
 	});
 };
 
-/**
- * ==[HUMAN APPROVED]== Persist one revision-neutral Generation checkpoint.
+/** @approved
+ * Persist one revision-neutral Generation checkpoint.
  *
  * The Active Generation row is the authoritative crash-recovery copy of both
  * streams and their application event position. The provisional Variant's
@@ -428,8 +428,8 @@ interface StopTransition {
 	readonly removedSibling?: StoppedSiblingTarget;
 }
 
-/**
- * ==[HUMAN APPROVED]== The destructive terminal transition: discard the provisional
+/** @approved
+ * The destructive terminal transition: discard the provisional
  * target — the sibling Variant alone, or the whole provisional Message for
  * a Tail or Continuation target (which leaves a retriable accepted Human
  * Message when Send created one) — and report the removed sibling so the
@@ -483,8 +483,8 @@ function removeActiveGenerationTargetInTransaction(
 	return { durableOutput: false };
 }
 
-/**
- * ==[HUMAN APPROVED]== Apply one Stop transition against an already-open transaction. Keeping
+/** @approved
+ * Apply one Stop transition against an already-open transaction. Keeping
  * the row mutation here lets Stop and Stop All share exactly the same terminal
  * persistence rules while Stop All can commit the complete target set once.
  */
@@ -581,8 +581,8 @@ export function stopConversationGeneration(
 	});
 }
 
-/**
- * ==[HUMAN APPROVED]== Atomically stop every Active Generation currently owned by a Conversation.
+/** @approved
+ * Atomically stop every Active Generation currently owned by a Conversation.
  * The result is the durable target set; callers must use it to settle only
  * runtimes whose Conversation transition actually committed.
  */

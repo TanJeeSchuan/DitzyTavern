@@ -37,8 +37,8 @@ type StoryMessageActionsOptions = {
 	onEnterPreview: () => void;
 };
 
-/**
- * ==[HUMAN APPROVED]== Coordinates user commands that mutate or preview a story Message. Preview
+/** @approved
+ * Coordinates user commands that mutate or preview a story Message. Preview
  * state is immediate local presentation; a selected Variant moves the story
  * read model only after the server applies the command, so a failed Swipe
  * never diverges the two state owners. This hook owns the server command,

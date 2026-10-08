@@ -58,7 +58,7 @@ const projectPromptPreset = (
 	return { id: recipe.id, name: recipe.name, slots };
 };
 
-/** ==[HUMAN APPROVED]== Undefined when the Conversation does not exist. */
+/** @approved Undefined when the Conversation does not exist. */
 export const readConversationPromptPreset = (
 	database: Database,
 	conversationId: number,

@@ -4,8 +4,8 @@ import { ConversationNotFoundError} from "../conversation";
 import { runGenerationLifecycle } from "./generate";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 
-/**
- * ==[HUMAN APPROVED]== Test-fixture seam for suites that need a terminal model Message without a
+/** @approved
+ * Test-fixture seam for suites that need a terminal model Message without a
  * user Send. It composes the production Continuation lifecycle — acceptance
  * followed by resolution — instead of a parallel commit path, so fixtures
  * exercise the same Active Generation persistence, Author Stamp capture, and

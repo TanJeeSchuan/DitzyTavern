@@ -61,8 +61,8 @@ type GenerationControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
-/**
- * ==[HUMAN APPROVED]== Thin wiring between the view, the Generation session machine, and the
+/** @approved
+ * Thin wiring between the view, the Generation session machine, and the
  * assembly controller. The session machine (generation-sessions) and its runner own
  * subscription phases, event cursors, reconnection, stop state, errors, and
  * terminal refreshes; the assembly controller owns Prompt Plan preview and
