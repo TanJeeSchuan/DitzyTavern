@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Lorebook } from "../lorebook-library";
-import { editedSince, initialEditorState, reduceLorebookEditor, type LorebookEditorState } from "./lorebook-editor-state";
+import { blankEntry, editedSince, initialEditorState, reduceLorebookEditor, type LorebookEditorState } from "./lorebook-editor-state";
 
-const book = { id: 1, name: "Old", description: "", revision: 1, entries: [] } as unknown as Lorebook;
+const book: Lorebook = { id: 1, name: "Old", description: "", revision: 1, entries: [] };
 const loaded = () => reduceLorebookEditor(initialEditorState(), { type: "loaded", book });
 
 describe("lorebook save edit detection", () => {
@@ -22,7 +22,7 @@ describe("lorebook save edit detection", () => {
 	});
 
 	test("selecting another entry after submitting marks the save as superseded", () => {
-		const withEntries = { ...book, entries: [{ id: 7, position: 0, title: "a" }, { id: 8, position: 1, title: "b" }] } as unknown as Lorebook;
+		const withEntries: Lorebook = { ...book, entries: [{ ...blankEntry(), id: 7, position: 0 }, { ...blankEntry(), id: 8, position: 1 }] };
 		const submitted: LorebookEditorState = { ...initialEditorState(), book: withEntries, entryId: 7 };
 		const moved = reduceLorebookEditor(submitted, { type: "entry-selected", id: 8 });
 		expect(editedSince(moved, submitted)).toBe(true);
