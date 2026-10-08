@@ -1,3 +1,5 @@
+import { readVariantData } from "./variant-data";
+import { variantDataCodecs } from "../../shared/variant-data-codecs";
 // @approved
 //  Deliberate Generation detail reads. These are kept out of the ordinary
 // Conversation snapshot/history paths so active prompt text is retained only
@@ -11,16 +13,9 @@ import {
 	activeGenerationTable,
 	generationReplayTable,
 	messageTable,
-	messageVariantDataTable,
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, parseLoreActivationRecord } from "../../shared/contract/lore-activation";
-import {
-	MEMORY_ACTIVATION_KEY,
-	MEMORY_ACTIVATION_NAMESPACE,
-	parseMemoryActivationRecord,
-} from "../../shared/contract/memory-recall";
 import {
 	connectConversationDatabase,
 	findConversation,
@@ -34,11 +29,9 @@ import {
 import type {
 	ActiveGenerationDetails,
 	ConversationJsonValue,
-	GenerationProvenance,
 	VariantDetails,
 } from "./types";
 import {
-	generationProvenanceCodec,
 	generationJsonInteger,
 	generationJsonNumber,
 	generationJsonObject,
@@ -140,11 +133,6 @@ const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSet
 	) as SafeGenerationSettings;
 };
 
-const safeProvenance = (
-	value: ConversationJsonValue | null,
-	data: readonly { namespace: string; key: string; value: string }[],
-): GenerationProvenance | null => generationProvenanceCodec.decodeStored(value, data);
-
 const deriveGenerationStatus = (
 	active: boolean,
 	terminalStatus: string | null | undefined,
@@ -207,8 +195,8 @@ export function readActiveGenerationDetailsFromConnection(
 	const inspectionRecord = generationJsonObject(inspection);
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
-	const loreActivation = parseLoreActivationRecord(row.lore_activation_json);
-	const memoryActivation = parseMemoryActivationRecord(row.memory_activation_json);
+	const loreActivation = variantDataCodecs.loreActivation.decode(row.lore_activation_json);
+	const memoryActivation = variantDataCodecs.memoryActivation.decode(row.memory_activation_json);
 	return {
 		conversationId,
 		generationId: row.id,
@@ -216,7 +204,7 @@ export function readActiveGenerationDetailsFromConnection(
 		variantId: row.variant_id,
 		startedAt: row.started_at,
 		status: deriveGenerationStatus(active !== undefined, retained?.terminal_status),
-		intent: parseGenerationJson(row.generation_intent_json, {}),
+		intent: variantDataCodecs.intent.decode(row.generation_intent_json),
 		participants: {
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
@@ -275,21 +263,9 @@ export function readVariantDetailsFromConnection(
 		eq(messageVariantTable.message_id, messageId),
 	)).get();
 	if (variant === undefined) return undefined;
-	const data = db.select({ namespace: messageVariantDataTable.namespace, key: messageVariantDataTable.key, value: messageVariantDataTable.value })
-		.from(messageVariantDataTable)
-		.where(eq(messageVariantDataTable.message_variant_id, variantId))
-		.all();
-	const provenanceEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "provenance");
-	const loreActivationEntry = data.find((entry) => entry.namespace === LORE_ACTIVATION_NAMESPACE && entry.key === LORE_ACTIVATION_KEY);
-	const memoryActivationEntry = data.find((entry) => entry.namespace === MEMORY_ACTIVATION_NAMESPACE && entry.key === MEMORY_ACTIVATION_KEY);
-	let provenanceValue: ConversationJsonValue | null = null;
-	if (provenanceEntry !== undefined) provenanceValue = parseGenerationJson(provenanceEntry.value, null);
-	const loreActivation = loreActivationEntry === undefined
-		? null
-		: parseLoreActivationRecord(loreActivationEntry.value);
-	const memoryActivation = memoryActivationEntry === undefined
-		? null
-		: parseMemoryActivationRecord(memoryActivationEntry.value);
+	const data = readVariantData(db, [variantId], ["provenance", "loreActivation", "memoryActivation"]).get(variantId);
+	const loreActivation = data?.loreActivation ?? null;
+	const memoryActivation = data?.memoryActivation ?? null;
 	const castIds = message.author_participant_id === null
 		? new Set<number>()
 		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));
@@ -301,7 +277,7 @@ export function readVariantDetailsFromConnection(
 		timestamp: variant.timestamp,
 		author: toAuthorStamp(message, castIds),
 		historicalContext: toHistoricalContext(message),
-		provenance: safeProvenance(provenanceValue, data),
+		provenance: data?.provenance ?? null,
 		loreActivation,
 		memoryActivation,
 		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),

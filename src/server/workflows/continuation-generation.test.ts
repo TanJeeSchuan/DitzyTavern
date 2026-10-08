@@ -291,7 +291,7 @@ describe("Continuation Generation", () => {
 		const message = currentSnapshot().messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversationId,
 			message.id,
 			variant.id,
@@ -343,7 +343,7 @@ describe("Continuation Generation", () => {
 		const message = currentSnapshot().messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversationId,
 			message.id,
 			variant.id,

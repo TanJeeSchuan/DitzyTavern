@@ -1,3 +1,4 @@
+import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "./variant-data-codecs";
 // @approved
 //  The generation-owned JSON vocabulary shared by persistence and transport.
 // Generation provenance is deliberately a small positive allow-list: it may
@@ -281,10 +282,10 @@ export const encodeGenerationProvenance = (value: GenerationProvenanceRecord | G
 export const readGenerationTerminalMetadata = (
 	data: readonly GenerationProvenanceDataEntry[],
 ): GenerationTerminalMetadata => {
-	const outcome = data.find((entry) => entry.namespace === "generation" && entry.key === "outcome")?.value;
-	const usageEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "usage");
-	const finishEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "finish");
-	const interruptionEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "interruption-cause");
+	const outcome = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.outcome)?.value;
+	const usageEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.usage);
+	const finishEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.finish);
+	const interruptionEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.interruptionCause);
 	const usage = usageEntry === undefined
 		? undefined
 		: generationUsage(parseGenerationJson(usageEntry.value, null));
@@ -306,8 +307,8 @@ export const readGenerationTerminalMetadata = (
 export const hasGenerationTerminalMetadata = (
 	data: readonly GenerationProvenanceDataEntry[],
 ): boolean => data.some((entry) =>
-		entry.namespace === "generation" &&
-		(entry.key === "outcome" || entry.key === "usage" || entry.key === "finish"),
+		entry.namespace === GENERATION_DATA_NAMESPACE &&
+		(entry.key === GENERATION_DATA_KEYS.outcome || entry.key === GENERATION_DATA_KEYS.usage || entry.key === GENERATION_DATA_KEYS.finish),
 );
 
 export const projectGenerationProvenance = (

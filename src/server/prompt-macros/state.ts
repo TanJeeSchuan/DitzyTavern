@@ -1,6 +1,5 @@
+import { variantDataCodecs, MACRO_DATA_NAMESPACE, macroWritesKey } from "../../shared/variant-data-codecs";
 import {
-	decodeMacroVariableWrite,
-	encodeMacroVariableWrite,
 	isMacroValue,
 	isMacroVariableName,
 	type MacroValue,
@@ -17,48 +16,13 @@ import { parseGenerationJson } from "../../shared/generation-provenance";
 //  Macro records have a domain-owned namespace. Generic data commands must
 // not be able to manufacture or overwrite a write because state is derived from
 // selected Variants rather than from one mutable Conversation map.
-export const MACRO_DATA_NAMESPACE = "prompt-macro";
 
-const writePrefix = (presetId: number): string => `write:${presetId}`;
 const encodedName = (name: string): string => encodeURIComponent(name);
 
 export const macroInitialValuePrefix = (presetId: number): string => `initial:${presetId}:`;
 
 export const macroInitialValueKey = (presetId: number, name: string): string =>
 	`${macroInitialValuePrefix(presetId)}${encodedName(name)}`;
-
-export const macroWritesKey = (presetId: number): string => writePrefix(presetId);
-
-const parsedWrites = (
-	entry: ConversationDataEntry,
-	presetId: number,
-): MacroVariableWrite[] | undefined => {
-	if (entry.namespace !== MACRO_DATA_NAMESPACE || entry.key !== macroWritesKey(presetId)) return undefined;
-	const parsed = parseGenerationJson(entry.value, null);
-	if (!Array.isArray(parsed)) return undefined;
-	const writes: MacroVariableWrite[] = [];
-	for (const candidate of parsed) {
-		const write = decodeMacroVariableWrite(candidate);
-		if (write === undefined) return undefined;
-		writes.push(write);
-	}
-	return writes;
-};
-
-/** ==[HUMAN APPROVED]== Decode the crash-safe pending journal persisted on an Active Generation. */
-export const parseMacroWrites = (value: string): MacroVariableWrite[] => {
-	const parsed = parseGenerationJson(value, null);
-	if (!Array.isArray(parsed)) throw new Error("The Active Generation has invalid persisted macro writes.");
-	const writes: MacroVariableWrite[] = [];
-	for (const candidate of parsed) {
-		const write = decodeMacroVariableWrite(candidate);
-		if (write === undefined) {
-			throw new Error("The Active Generation has invalid persisted macro writes.");
-		}
-		writes.push(write);
-	}
-	return writes;
-};
 
 const parsedInitial = (
 	entry: ConversationDataEntry,
@@ -83,17 +47,7 @@ export const macroWritesToData = (
 	writes: readonly MacroVariableWrite[],
 ): ConversationDataEntry[] => {
 	if (writes.length === 0) return [];
-	// @approved
-	//  The evaluator keeps every write in order so later macros observe earlier
-	// values. Durable Variant state only needs the final write for each name;
-	// retaining the tombstone is essential because it masks inherited state.
-	const finalWrites = new Map<string, MacroVariableWrite>();
-	for (const write of writes) finalWrites.set(write.name, write);
-	return [{
-		namespace: MACRO_DATA_NAMESPACE,
-		key: macroWritesKey(presetId),
-		value: JSON.stringify([...finalWrites.values()].map(encodeMacroVariableWrite)),
-	}];
+	return [{ namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey(presetId), value: variantDataCodecs.macroWrites.encode(writes) }];
 };
 
 /** ==[HUMAN APPROVED]== Convert initial preset-scoped values into Conversation records. */
@@ -128,7 +82,7 @@ export const readMacroWrites = (
 	presetId: number,
 ): MacroVariableWrite[] => {
 	const entry = entries.find((candidate) => candidate.namespace === MACRO_DATA_NAMESPACE && candidate.key === macroWritesKey(presetId));
-	return entry === undefined ? [] : parsedWrites(entry, presetId) ?? [];
+	return entry === undefined ? [] : variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [];
 };
 
 type SelectedVariant = {

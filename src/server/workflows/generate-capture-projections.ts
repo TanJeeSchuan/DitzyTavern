@@ -1,10 +1,14 @@
+import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 import type { AcceptTailGenerationInput, ConversationDataEntry, ConversationJsonValue } from "../conversation";
 import type { GenerationPlan } from "../generation-plan";
 import type { PromptBudgetResult, PromptPlan } from "../prompt-compiler";
 import { projectModelClientGenerationSettings, type ModelClientConnectionSnapshot, type ModelClientGenerationInput } from "../model-client";
-import { generationProvenanceCodec, type GenerationProvenanceRecord, type GenerationProvenanceSettings } from "../../shared/generation-provenance";
+import {
+	type GenerationProvenanceRecord,
+	type GenerationProvenanceSettings,
+} from "../../shared/generation-provenance";
 
 const connectionIdentityOf = (
 	connection: ModelClientConnectionSnapshot | null,
@@ -49,11 +53,7 @@ export const generationProvenanceEntry = (
 		status: null,
 		interruptionCause: null,
 	};
-	return {
-		namespace: "generation",
-		key: "provenance",
-		value: generationProvenanceCodec.encode(provenanceRecord),
-	} satisfies ConversationDataEntry;
+	return toVariantDataEntry(variantDataCodecs.provenance, variantDataCodecs.provenance.encode(provenanceRecord));
 };
 
 
@@ -142,4 +142,3 @@ const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue
 	totalRequiredTokens: budget.totalRequiredTokens,
 	omittedContext: budget.omittedContext,
 });
-

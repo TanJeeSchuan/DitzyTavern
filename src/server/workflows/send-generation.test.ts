@@ -92,7 +92,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (completedMessage === undefined || completedVariant === undefined) {
 			throw new Error("Completed Variant missing.");
 		}
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversationId,
 			completedMessage.id,
 			completedVariant.id,
@@ -116,7 +116,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (otherMessage === undefined || otherVariant === undefined) {
 			throw new Error("Other-finished Variant missing.");
 		}
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversationId,
 			otherMessage.id,
 			otherVariant.id,
@@ -140,7 +140,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (lengthMessage === undefined || lengthVariant === undefined) {
 			throw new Error("Length-limited Variant missing.");
 		}
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversationId,
 			lengthMessage.id,
 			lengthVariant.id,
@@ -169,7 +169,7 @@ describe("Send through provisional Tail Generation", () => {
 			if (message === undefined || variant === undefined) {
 				throw new Error(`Interrupted ${cause} Variant missing.`);
 			}
-			expect(readVariantDetails(database, 
+			expect(readVariantDetails(database,
 				conversationId,
 				message.id,
 				variant.id,
@@ -313,7 +313,7 @@ describe("Send through provisional Tail Generation", () => {
 		// Safety allowance), while the Continuation group has no applicable
 		// operand for a Tail attempt. Active inspection re-exposes only safe
 		// settings and never Request Overrides.
-		const details = readActiveGenerationDetails(database, 
+		const details = readActiveGenerationDetails(database,
 			conversationId,
 			generationId ?? -1,
 		);

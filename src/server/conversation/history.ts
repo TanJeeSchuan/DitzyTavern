@@ -1,3 +1,4 @@
+import { readVariantData } from "./variant-data";
 import { loadMessageRows } from "./message-rows";
 import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
@@ -118,10 +119,10 @@ export function readChatHistory(
 		.reverse();
 	const messageIds = pageRows.map((message) => message.id);
 
-	const rows = loadMessageRows(db, conversationId, { ids: messageIds, variantData: { namespace: "generation", keys: ["reasoning"] } });
+	const rows = loadMessageRows(db, conversationId, { ids: messageIds });
 	const messageRows = rows.messages;
 	const variantRows = rows.variants;
-	const reasoningByVariant = new Map([...rows.variantData].map(([id, entries]) => [id, entries[0]!.value]));
+	const dataByVariant = readVariantData(db, rows.variants.map((variant) => variant.id), ["reasoning"]);
 	const liveGenerationByVariant = new Map(
 		variantRows.length === 0
 			? []
@@ -157,7 +158,7 @@ export function readChatHistory(
 				timestamp: variant.timestamp,
 				selected: variant.selected,
 			};
-			const reasoning = reasoningByVariant.get(variant.id);
+			const reasoning = dataByVariant.get(variant.id)?.reasoning;
 			if (reasoning !== undefined) historyVariant.reasoning = reasoning;
 			const liveGeneration = liveGenerationByVariant.get(variant.id);
 			if (liveGeneration !== undefined) historyVariant.liveGeneration = liveGeneration;

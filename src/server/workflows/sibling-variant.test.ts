@@ -586,7 +586,7 @@ describe("Historical sibling Variant generation", () => {
 		if (target === undefined || variant === undefined) throw new Error("Variant missing.");
 		// A Sibling attempt never continues anything: the Continuation group is
 		// absent from its provenance even though the settings configured one.
-		expect(readVariantDetails(module, 
+		expect(readVariantDetails(module,
 			conversation.id,
 			target.id,
 			variant.id,

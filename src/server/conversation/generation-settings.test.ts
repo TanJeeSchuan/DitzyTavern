@@ -140,7 +140,7 @@ describe("Conversation Generation Settings", () => {
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
 				{ definition: { name: "Maren", prompt, openings: [] } },
-				
+
 			],
 			control: { human: 0, model: 1 },
 		});

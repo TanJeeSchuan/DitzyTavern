@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
@@ -44,8 +44,19 @@ export function readVariantsForMemory(
 		.all().map(({ generationId, ...row }) => ({ ...row, active: generationId !== null }));
 }
 
-export function readSelectedPathForMemory(database: Database, conversationId: number) {
-	const read = readSelectedHistory(database, conversationId, { variantData: false });
+export function readSelectedPathForMemory(database: Database, conversationId: number, sourceMessageId?: number) {
+	const db = connectConversationDatabase(database);
+	let ids: number[] | undefined;
+	if (sourceMessageId !== undefined) {
+		const source = db.select({ position: messageTable.position }).from(messageTable)
+			.where(and(eq(messageTable.id, sourceMessageId), eq(messageTable.conversation_id, conversationId))).get();
+		if (source === undefined) return [];
+		ids = db.select({ id: messageTable.id }).from(messageTable)
+			.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
+			.where(and(eq(messageTable.conversation_id, conversationId), lte(messageTable.position, source.position)))
+			.orderBy(desc(messageTable.position)).limit(5).all().map((row) => row.id);
+	}
+	const read = readSelectedHistory(database, conversationId, { ids, variantData: false, conversationData: false });
 	if (read === undefined) return undefined;
 	const active = new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
 		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));

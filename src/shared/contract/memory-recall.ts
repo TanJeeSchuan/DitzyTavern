@@ -1,8 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-export const MEMORY_ACTIVATION_NAMESPACE = "generation-memory";
-export const MEMORY_ACTIVATION_KEY = "activation";
 
 export const memoryRelevanceScore = Type.Union([
 	Type.Literal("irrelevant"),

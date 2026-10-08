@@ -175,7 +175,7 @@ describe("Generation transport contract", () => {
 			},
 		]));
 		if (message === undefined || variant === undefined) throw new Error("Generated Variant missing.");
-		expect(readVariantDetails(database, 
+		expect(readVariantDetails(database,
 			conversation.id,
 			message.id,
 			variant.id,

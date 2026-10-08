@@ -371,7 +371,7 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						readActiveGenerationDetails(conversationModule, 
+						readActiveGenerationDetails(conversationModule,
 							params.id,
 							params.generationId,
 						),
@@ -390,7 +390,7 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						readVariantDetails(conversationModule, 
+						readVariantDetails(conversationModule,
 							params.id,
 							params.messageId,
 							params.variantId,

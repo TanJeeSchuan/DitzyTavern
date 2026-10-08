@@ -184,7 +184,7 @@ describe("Prompt Plan inspection", () => {
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ kind: "send", 
+					body: JSON.stringify({ kind: "send",
 						expectedRevision: conversation.revision,
 						content: "hello",
 						previewId: plan.previewId,
@@ -244,7 +244,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: readConversationRevision(database, conversation.id),
 					content: body.content,
 					previewId,
@@ -362,7 +362,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: readConversationSummary(module, conversation.id)!.revision,
 					content,
 
@@ -392,7 +392,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -417,7 +417,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -444,7 +444,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -479,7 +479,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -498,7 +498,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -641,7 +641,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "first",
 					previewId: first.previewId,
@@ -654,7 +654,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "second",
 					previewId: second.previewId,
@@ -690,7 +690,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -731,7 +731,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -771,7 +771,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send", 
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,

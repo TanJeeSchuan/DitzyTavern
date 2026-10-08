@@ -431,7 +431,7 @@ export function createChatImportModule(
 			// Conversation snapshot is re-read through the Conversation seam
 			// instead of retaining the full result in memory.
 			if (session !== undefined && session.phase === "committed") {
-				const conversation = readConversationSummary(database, 
+				const conversation = readConversationSummary(database,
 					session.receipt.conversationId,
 				);
 				if (conversation === undefined) {

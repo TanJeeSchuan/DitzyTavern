@@ -126,7 +126,7 @@ describe("Resumable generation transport", () => {
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Buffered.");
 		expect(snapshot?.revision).toBe((acceptedRevision ?? 0) + 1);
-		const retained = readActiveGenerationDetails(database, 
+		const retained = readActiveGenerationDetails(database,
 			conversation.id,
 			accepted.generationId,
 		);

@@ -244,7 +244,7 @@ describe("Add Character to Cast workflow", () => {
 			expectedRevision: source.revision,
 		});
 
-		const snapshot = readTestConversationSnapshot(database, 
+		const snapshot = readTestConversationSnapshot(database,
 			conversation.id,
 		);
 		if (snapshot === undefined) {

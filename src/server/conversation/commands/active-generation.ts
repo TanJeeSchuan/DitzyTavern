@@ -1,3 +1,5 @@
+import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
+import { variantDataCodecs, toVariantDataEntry } from "../../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq } from "drizzle-orm";
 import {
@@ -23,23 +25,7 @@ import type {
 	ResolveGenerationInput,
 } from "../types";
 import { GENERATION_REPLAY_RETENTION_MS } from "../generation-retention";
-import {
-	generationProvenanceCodec,
-	generationJsonObject,
-	parseGenerationJson,
-	readGenerationTerminalMetadata,
-} from "../../../shared/generation-provenance";
-import { macroWritesToData, parseMacroWrites } from "../../prompt-macros";
-import {
-	LORE_ACTIVATION_KEY,
-	LORE_ACTIVATION_NAMESPACE,
-	parseLoreActivationRecord,
-} from "../../../shared/contract/lore-activation";
-import {
-	MEMORY_ACTIVATION_KEY,
-	MEMORY_ACTIVATION_NAMESPACE,
-	parseMemoryActivationRecord,
-} from "../../../shared/contract/memory-recall";
+import { macroWritesToData } from "../../prompt-macros";
 
 // @approved
 //  Terminal lifecycle of the server-owned Generations: resolve, remove,
@@ -79,25 +65,8 @@ const requireActiveGeneration = (
 };
 
 export const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolean => {
-	let parsed: ReturnType<typeof generationJsonObject>;
-	try {
-		parsed = generationJsonObject(JSON.parse(row.generation_intent_json));
-	} catch {
-		throw new InvalidConversationCommandError(
-			"The Active Generation has invalid persisted Generation intent.",
-		);
-	}
-	if (
-		parsed === null ||
-		(parsed.type !== "tail" &&
-			parsed.type !== "continuation" &&
-			parsed.type !== "sibling")
-	) {
-		throw new InvalidConversationCommandError(
-			"The Active Generation has invalid persisted Generation intent.",
-		);
-	}
-	return parsed.type === "sibling";
+ try { return variantDataCodecs.intent.parse(row.generation_intent_json).type === "sibling"; }
+ catch (error) { throw new InvalidConversationCommandError(error instanceof Error ? error.message : variantDataCodecs.intent.parseError); }
 };
 
 // @approved
@@ -127,7 +96,7 @@ const terminalStatusFrom = (
 	data: readonly ConversationDataEntry[],
 ): "complete" | "length-limited" | "interrupted" => {
 	const value = data.find(
-		(entry) => entry.namespace === "generation" && entry.key === "outcome",
+		(entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.outcome,
 	)?.value;
 	return value === "length-limited" || value === "interrupted" ? value : "complete";
 };
@@ -180,21 +149,14 @@ const terminalProvenance = (
 	data: readonly ConversationDataEntry[],
 ): ConversationDataEntry | undefined => {
 	if (active.provenance_namespace === null || active.provenance_key === null || active.provenance_value === null) return undefined;
-	return {
-		namespace: active.provenance_namespace,
-		key: active.provenance_key,
-		value: generationProvenanceCodec.encode(generationProvenanceCodec.project(
-			parseGenerationJson(active.provenance_value, null),
-			readGenerationTerminalMetadata(data),
-		)),
-	};
+	return { namespace: active.provenance_namespace, key: active.provenance_key, value: variantDataCodecs.provenance.terminal(active.provenance_value, data) };
 };
 
 const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
 	if (active.macro_preset_id === null) return [];
 	let writes;
 	try {
-		writes = parseMacroWrites(active.macro_writes_json);
+		writes = variantDataCodecs.macroWrites.decode(active.macro_writes_json);
 	} catch (error) {
 		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted macro writes.");
 	}
@@ -204,29 +166,25 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
 	let value;
 	try {
-		value = parseLoreActivationRecord(active.lore_activation_json);
+		value = variantDataCodecs.loreActivation.decode(active.lore_activation_json);
 	} catch (error) {
 		throw new InvalidConversationCommandError(
 			error instanceof Error ? error.message : "The Active Generation has invalid persisted Lore Activation evidence.",
 		);
 	}
 	if (value === null) return [];
-	return [{
-		namespace: LORE_ACTIVATION_NAMESPACE,
-		key: LORE_ACTIVATION_KEY,
-		value: active.lore_activation_json,
-	}];
+	return [toVariantDataEntry(variantDataCodecs.loreActivation, active.lore_activation_json)];
 };
 
 const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
 	let value;
 	try {
-		value = parseMemoryActivationRecord(active.memory_activation_json);
+		value = variantDataCodecs.memoryActivation.decode(active.memory_activation_json);
 	} catch (error) {
 		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Memory Activation evidence.");
 	}
 	if (value === null) return [];
-	return [{ namespace: MEMORY_ACTIVATION_NAMESPACE, key: MEMORY_ACTIVATION_KEY, value: active.memory_activation_json }];
+	return [toVariantDataEntry(variantDataCodecs.memoryActivation, active.memory_activation_json)];
 };
 
 /**
@@ -249,7 +207,7 @@ export const persistTerminalVariantData = (
 	},
 ): void => {
 	const suppliedData = input.suppliedData.filter((entry) =>
-		entry.namespace !== LORE_ACTIVATION_NAMESPACE && entry.namespace !== MEMORY_ACTIVATION_NAMESPACE,
+		entry.namespace !== variantDataCodecs.loreActivation.namespace && entry.namespace !== variantDataCodecs.memoryActivation.namespace,
 	);
 	const data = [
 		...(input.macroData ?? []),
@@ -257,8 +215,8 @@ export const persistTerminalVariantData = (
 		...(input.memoryActivationData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
-			!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
-			? [{ namespace: "generation", key: "reasoning", value: input.reasoning }]
+			!suppliedData.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key)
+			? [toVariantDataEntry(variantDataCodecs.reasoning, input.reasoning)]
 			: []),
 		...suppliedData,
 	];
@@ -546,8 +504,8 @@ function stopActiveGenerationInTransaction(
 		reasoning,
 		timestamp,
 		suppliedData: [
-			{ namespace: "generation", key: "outcome", value: "interrupted" },
-			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
+			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: "interrupted" },
+			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.interruptionCause, value: "user-stop" },
 		] satisfies ConversationDataEntry[],
 	});
 	return { durableOutput: true };

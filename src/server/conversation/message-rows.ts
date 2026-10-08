@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, type SQL } from "drizzle-orm";
 import { messageDataTable, messageTable, messageVariantDataTable, messageVariantTable } from "../database/schema";
 import { groupRowsByNumber, groupVariantsByMessage, type ConversationDatabase } from "./internal";
 import type { ConversationDataEntry } from "./types";
@@ -26,18 +26,24 @@ export function loadMessageRows(db: ConversationDatabase, conversationId: number
 	)).orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position)).all();
 	const variantIds = variants.map((variant) => variant.id);
 	const filter = request.variantData !== undefined && request.variantData !== false && request.variantData !== true ? request.variantData : undefined;
-	const data = !request.variantData || variantIds.length === 0 ? [] : db.select().from(messageVariantDataTable).where(and(
-		inArray(messageVariantDataTable.message_variant_id, variantIds),
+	const variantData = !request.variantData ? new Map<number, ConversationDataEntry[]>() : loadVariantDataRows(db, variantIds, and(
 		filter?.namespace === undefined ? undefined : eq(messageVariantDataTable.namespace, filter.namespace),
 		filter?.keys?.length ? inArray(messageVariantDataTable.key, [...filter.keys]) : undefined,
-	)).orderBy(asc(messageVariantDataTable.message_variant_id), asc(messageVariantDataTable.namespace), asc(messageVariantDataTable.key)).all();
+	));
 	const messageData = !request.messageData || ids.length === 0 ? [] : db.select().from(messageDataTable)
 		.where(inArray(messageDataTable.message_id, ids)).orderBy(asc(messageDataTable.message_id), asc(messageDataTable.namespace), asc(messageDataTable.key)).all();
 	return {
 		messages,
 		variants,
 		variantsByMessage: groupVariantsByMessage(variants, (variant) => variant),
-		variantData: groupRowsByNumber(data, (row) => row.message_variant_id, toDataEntry),
+		variantData,
 		messageData: groupRowsByNumber(messageData, (row) => row.message_id, toDataEntry),
 	};
+}
+
+export function loadVariantDataRows(db: ConversationDatabase, ids: readonly number[], filter?: SQL): Map<number, ConversationDataEntry[]> {
+ if (ids.length === 0) return new Map();
+ const rows = db.select().from(messageVariantDataTable).where(and(inArray(messageVariantDataTable.message_variant_id, [...ids]), filter))
+  .orderBy(asc(messageVariantDataTable.message_variant_id), asc(messageVariantDataTable.namespace), asc(messageVariantDataTable.key)).all();
+ return groupRowsByNumber(rows, (row) => row.message_variant_id, toDataEntry);
 }

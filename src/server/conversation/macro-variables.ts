@@ -1,3 +1,4 @@
+import { MACRO_DATA_NAMESPACE, macroWritesKey } from "../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
 import { and, eq, max } from "drizzle-orm";
 import {
@@ -9,15 +10,7 @@ import {
 	messageTable,
 	promptPresetTable,
 } from "../database/schema";
-import {
-	deriveMacroVariables,
-	MACRO_DATA_NAMESPACE,
-	macroInitialValuePrefix,
-	macroInitialValueKey,
-	macroWritesKey,
-	macroWritesToData,
-	readMacroWrites,
-} from "../prompt-macros";
+import { deriveMacroVariables, macroInitialValuePrefix, macroInitialValueKey, macroWritesToData, readMacroWrites } from "../prompt-macros";
 import {
 	isMacroValue,
 	isMacroVariableName,

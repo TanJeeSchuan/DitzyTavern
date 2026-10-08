@@ -274,7 +274,7 @@ describe("Conversation module", () => {
 			expectedAuthor,
 		);
 		expect(
-			readVariantDetails(module, 
+			readVariantDetails(module,
 				conversation.id,
 				insertedMessage.id,
 				insertedVariant.id,
@@ -345,7 +345,7 @@ describe("Conversation module", () => {
 		expect(history?.messages[0]?.author).toBeNull();
 		expect(history?.messages[0]?.swipe).toEqual(expectedSwipe);
 
-		const details = readVariantDetails(module, 
+		const details = readVariantDetails(module,
 			conversation.id,
 			messageId,
 			variantId,

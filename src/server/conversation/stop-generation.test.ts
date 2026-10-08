@@ -94,7 +94,7 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
 		]);
-		expect(readVariantDetails(input.module, 
+		expect(readVariantDetails(input.module,
 			input.created.id,
 			modelMessage.id,
 			variant.id,
@@ -126,7 +126,7 @@ describe("explicit Conversation Generation Stop", () => {
 		if (recoveredMessage === undefined || recoveredVariant === undefined) {
 			throw new Error("Recovered Variant missing.");
 		}
-		expect(readVariantDetails(input.module, 
+		expect(readVariantDetails(input.module,
 			input.created.id,
 			recoveredMessage.id,
 			recoveredVariant.id,
@@ -201,7 +201,7 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);
-		expect(readVariantDetails(input.module, 
+		expect(readVariantDetails(input.module,
 			input.created.id,
 			stoppedMessage.id,
 			stoppedVariant.id,

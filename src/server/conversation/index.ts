@@ -146,3 +146,6 @@ export type { GenerationRequestOverrides } from "./types";
 export { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 
 export { loadMessageRows } from "./message-rows";
+
+export { readVariantData } from "./variant-data";
+export type { VariantDataRecords } from "./variant-data";

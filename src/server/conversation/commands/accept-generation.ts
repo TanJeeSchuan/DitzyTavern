@@ -1,3 +1,4 @@
+import { readVariantData } from "../variant-data";
 import { generationJsonObject } from "../../../shared/generation-provenance";
 import { authorRoleOf, continuationEligibility } from "../continuation";
 import { toAuthorStamp, toHistoricalContext } from "../message-read-projection";
@@ -7,7 +8,6 @@ import {
 	activeGenerationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
-	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
@@ -214,25 +214,6 @@ const createProvisionalSiblingVariant = (
 	});
 	return { provisionalVariantId, priorVariantId };
 };
-
-function hasReasoningData(
-	db: ConversationDatabase,
-	variantId: number,
-): boolean {
-	const reasoning = db
-		.select({ value: messageVariantDataTable.value })
-		.from(messageVariantDataTable)
-		.where(
-			and(
-				eq(messageVariantDataTable.message_variant_id, variantId),
-				eq(messageVariantDataTable.namespace, "generation"),
-				eq(messageVariantDataTable.key, "reasoning"),
-			),
-		)
-		.get();
-	const value = reasoning?.value;
-	return value !== undefined && value.length > 0;
-}
 
 // @approved
 //  The differing mid-acceptance validation: Tail creates or reuses the
@@ -509,7 +490,7 @@ export function acceptConversationContinuationGeneration(
 			const reason = continuationEligibility({
 				authorRole: authorRoleOf({ author: toAuthorStamp(preceding, new Set([human.id, model.id])), historicalContext: toHistoricalContext(preceding) }, { humanParticipantId: human.id, modelParticipantId: model.id }),
 				content: selected.content,
-				hasReasoning: hasReasoningData(db, input.precedingVariantId),
+				hasReasoning: (readVariantData(db, [input.precedingVariantId], ["reasoning"]).get(input.precedingVariantId)?.reasoning?.length ?? 0) > 0,
 			}, generationJsonObject(input.generationIntent)?.strategy === "assistant-prefill" ? "assistant-prefill" : "instruction");
 			if (reason !== null) throw new InvalidConversationCommandError("Continue requires terminal model output eligible for this strategy.");
 			return { humanMessageId: null, position: latest.position + 1 };

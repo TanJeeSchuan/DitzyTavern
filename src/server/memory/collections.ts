@@ -64,7 +64,7 @@ const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemor
 };
 
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {
-	const path = readSelectedPathForMemory(database, conversationId) ?? [];
+	const path = readSelectedPathForMemory(database, conversationId, messageId) ?? [];
 	const current = path.find((message) => message.messageId === messageId);
 	const source = current?.variant;
 	if (!source) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");

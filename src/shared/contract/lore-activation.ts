@@ -16,8 +16,6 @@ export const loreActivationEvidence = Type.Unsafe<GenerationJsonValue>(Type.Recu
 
 export type LoreActivationEvidence = Static<typeof loreActivationEvidence>;
 
-export const LORE_ACTIVATION_NAMESPACE = "lore-activation";
-export const LORE_ACTIVATION_KEY = "record";
 
 export const loreActivationRecord = Type.Object({
 	version: Type.Literal(1),

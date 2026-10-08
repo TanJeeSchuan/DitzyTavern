@@ -51,8 +51,11 @@ export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[]
 	claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, state.cast, state.identities, state.merges) }));
 
 export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
-	const author = readSelectedPathForMemory(database, conversationId)?.find((message) => message.messageId === messageId)?.authorParticipantId;
-	return author !== undefined && author !== null && readMemoryLabelState(database, conversationId).identities[author]?.kind === "excluded";
+	const author = readSelectedPathForMemory(database, conversationId, messageId)?.find((message) => message.messageId === messageId)?.authorParticipantId;
+	if (author === undefined || author === null) return false;
+	const settings = drizzle(database).select({ identities: conversationMemorySettingsTable.identities }).from(conversationMemorySettingsTable)
+		.where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
+	return Value.Parse(memoryIdentities, JSON.parse(settings?.identities ?? "{}"))[author]?.kind === "excluded";
 };
 
 const rewriteCollections = (database: Database, conversationId: number, state: ReturnType<typeof readMemoryLabelState>) => {

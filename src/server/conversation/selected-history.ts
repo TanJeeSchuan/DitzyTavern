@@ -103,7 +103,7 @@ const readSelectedHistoryFromConnection = (
 			`${request.conversationDataKeyPrefix}%`,
 		));
 	}
-	const initialRows = db
+	const initialRows = request.conversationData === false ? [] : db
 		.select({
 			namespace: conversationDataTable.namespace,
 			key: conversationDataTable.key,
@@ -114,7 +114,7 @@ const readSelectedHistoryFromConnection = (
 		.all();
 
 	const filter = request.variantData === false ? false : { namespace: request.variantDataNamespace, keys: request.variantDataKeys };
-	const rows = loadMessageRows(db, conversationId, { upToPosition: position, selectedOnly: true, variantData: filter });
+	const rows = loadMessageRows(db, conversationId, { ids: request.ids, upToPosition: position, selectedOnly: true, variantData: filter });
 	const targetRows = targetRow === undefined ? undefined : loadMessageRows(db, conversationId, { ids: [targetRow.id], selectedOnly: true, variantData: filter });
 	const messageRows = rows.messages;
 	const selectedByMessage = new Map<number, SelectedHistoryVariant>();

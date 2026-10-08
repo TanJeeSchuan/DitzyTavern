@@ -76,7 +76,7 @@ describe("Conversation creation", () => {
 
 	test("creates a playable Conversation from two distinct ad-hoc Participants", () => {
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{
@@ -115,7 +115,7 @@ describe("Conversation creation", () => {
 
 	test("converts the initial model Participant's openings into one Message of ordered sibling Variants with the first selected", () => {
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer", ["Should never appear"]) },
@@ -150,7 +150,7 @@ describe("Conversation creation", () => {
 
 	test("compiles greeting openings with owner-relative macros while storing them raw", () => {
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer") },
@@ -188,7 +188,7 @@ describe("Conversation creation", () => {
 
 	test("creates no greeting Message when the model Participant has no openings", () => {
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer") },
@@ -213,7 +213,7 @@ describe("Conversation creation", () => {
 		});
 
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{
@@ -267,7 +267,7 @@ describe("Conversation creation", () => {
 		});
 
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{ definition: forkDefinition(), sourceCharacterId: source.id },
@@ -290,7 +290,7 @@ describe("Conversation creation", () => {
 
 	test("normalizes Participant names while preserving case and Unicode", () => {
 		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, 
+		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
 					{ definition: adHoc("  JUNO Åshfeld-灯台  ") },
@@ -304,14 +304,14 @@ describe("Conversation creation", () => {
 	test("rejects a blank Participant name or blank opening without partial writes", () => {
 		const conversation = database;
 		expect(() =>
-			createConversationWithHistory(conversation, 
+			createConversationWithHistory(conversation,
 				inputWith({
 					participants: [{ definition: adHoc("   ") }, { definition: adHoc("Maren") }],
 				}),
 			),
 		).toThrow(InvalidConversationCreationError);
 		expect(() =>
-			createConversationWithHistory(conversation, 
+			createConversationWithHistory(conversation,
 				inputWith({
 					participants: [
 						{ definition: adHoc("Writer") },
@@ -334,7 +334,7 @@ describe("Conversation creation", () => {
 
 		// Same instance in both seats.
 		expect(() =>
-			createConversationWithHistory(conversation, 
+			createConversationWithHistory(conversation,
 				inputWith({
 					participants: [
 						{ definition: adHoc("Solo") },

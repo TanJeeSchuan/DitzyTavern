@@ -94,6 +94,8 @@ export interface ConversationDataRead {
 }
 
 export interface SelectedHistoryReadRequest {
+	conversationData?: boolean;
+	ids?: readonly number[];
 	variantData?: boolean;
 	position?: number | undefined;
 	targetMessageId?: number | undefined;

@@ -479,7 +479,7 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		expect(changedCollection.status).toBe(200);
 		const staleAcceptance = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/continue/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation", 
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation",
 				expectedRevision: readTestConversationSnapshot(database, conversation.id)?.revision,
 				previewId: stalePreview.previewId,
 			}),

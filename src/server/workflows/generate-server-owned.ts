@@ -1,3 +1,5 @@
+import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../shared/variant-data-codecs";
+import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
 import type { AcceptedGenerationRecord, GenerationInput } from "./generate";
 import {
@@ -234,22 +236,22 @@ export async function runAcceptedGeneration<TResult>(
 export function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {
 	const data: ConversationDataEntry[] = [];
 	if (input.status !== "complete") {
-		data.push({ namespace: "generation", key: "outcome", value: input.status });
+		data.push({ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: input.status });
 	}
 	if (input.reasoning.length > 0) {
-		data.push({ namespace: "generation", key: "reasoning", value: input.reasoning });
+		data.push(toVariantDataEntry(variantDataCodecs.reasoning, variantDataCodecs.reasoning.encode(input.reasoning)));
 	}
 	if (input.usage !== null) {
 		data.push({
-			namespace: "generation",
-			key: "usage",
+			namespace: GENERATION_DATA_NAMESPACE,
+			key: GENERATION_DATA_KEYS.usage,
 			value: JSON.stringify(normalizeUsage(input.usage)),
 		});
 	}
 	if (input.finishReason !== null) {
 		data.push({
-			namespace: "generation",
-			key: "finish",
+			namespace: GENERATION_DATA_NAMESPACE,
+			key: GENERATION_DATA_KEYS.finish,
 			value: JSON.stringify({
 				reason: input.finishReason,
 			}),
@@ -257,14 +259,14 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	}
 	if (input.interruptionCause !== null) {
 		data.push({
-			namespace: "generation",
-			key: "interruption-cause",
+			namespace: GENERATION_DATA_NAMESPACE,
+			key: GENERATION_DATA_KEYS.interruptionCause,
 			value: input.interruptionCause,
 		});
 	}
 	if (input.error !== null) {
 		data.push({
-			namespace: "generation",
+			namespace: GENERATION_DATA_NAMESPACE,
 			key: "error",
 			value: input.error.slice(0, 16_384),
 		});

@@ -1,3 +1,5 @@
+import { MACRO_DATA_NAMESPACE, macroWritesKey } from "../../shared/variant-data-codecs";
+import { variantDataCodecs } from "../../shared/variant-data-codecs";
 import { generationProvenanceEntry } from "./generate-capture-projections";
 export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
 import type { Database } from "bun:sqlite";
@@ -62,12 +64,7 @@ import type {
 	GenerationTarget,
 } from "../../shared/contract/conversation-schema";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
-import {
-	deriveMacroState,
-	MACRO_DATA_NAMESPACE,
-	macroInitialValuePrefix,
-	macroWritesKey,
-} from "../prompt-macros";
+import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 
@@ -276,7 +273,7 @@ function captureFacts(
 			const reason = continuationEligibility({
 				authorRole: authorRoleOf(latest, { humanParticipantId: human.id, modelParticipantId: model.id }),
 				content: variant.content,
-				hasReasoning: variant.data.some((entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0),
+				hasReasoning: variant.data.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key && entry.value.length > 0),
 			}, settings.continuationStrategy);
 			if (reason !== null) throw new ContinuationUnavailableError(reason);
 			return { kind: "continuation", precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
@@ -327,7 +324,7 @@ export function prepareGenerationInputsSnapshot(
 				targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
 				conversationDataNamespace: MACRO_DATA_NAMESPACE,
 				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
-				variantDataKeys: [macroWritesKey(recipe.id), "reasoning"],
+				variantDataKeys: [macroWritesKey(recipe.id), variantDataCodecs.reasoning.key],
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			return { summary, recipe, settings, selected };

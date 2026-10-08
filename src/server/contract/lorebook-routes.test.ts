@@ -49,7 +49,7 @@ describe("Lorebook library transport", () => {
 			wholeWord: true,
 			keywordMode: "literal" as const,
 			regexFlags: "",
-			
+
 			priority: 4,
 			enabled: true,
 		};
@@ -102,7 +102,7 @@ describe("Lorebook library transport", () => {
 			entries: [{
 				title: "Entry", content: "Literal {{macro}}", keywords: ["key"], semanticTriggers: ["meaning"],
 				matchOperator: "or" as const, always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i", 
+				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i",
 				priority: 0, enabled: false,
 			}],
 		};
@@ -241,7 +241,7 @@ describe("Lorebook library transport", () => {
 			entry: {
 				title: "Harbor", content: "The harbor is old.", keywords: ["harbor"], semanticTriggers: ["ships arrive"],
 				matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "", 
+				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
 				priority: 0, enabled: true,
 			},
 		});
