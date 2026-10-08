@@ -187,10 +187,10 @@ async function acceptanceResponse<S extends ResponseSchemas>(
 	}
 }
 
-const previewUseFor = <K extends GenerationTargetKind>(
+const previewUseFor = (
 	database: Database,
 	conversationId: number,
-	kind: K,
+	kind: GenerationTargetKind,
 	previewId: string | undefined,
 	promptPlan: PromptPlan | undefined,
 ): GenerationPreviewAcceptance | undefined => {

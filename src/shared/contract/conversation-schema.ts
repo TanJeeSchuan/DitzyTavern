@@ -757,8 +757,6 @@ export type GenerationTarget =
 
 export type GenerationTargetKind = GenerationTarget["kind"];
 
-export type GenerationTargetFor<K extends GenerationTargetKind> = Extract<GenerationTarget, { kind: K }>;
-
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
 	responseBudget: Type.Integer(),
