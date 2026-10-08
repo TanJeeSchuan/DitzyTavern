@@ -695,6 +695,7 @@ const inspectedPlanFields = {
 // on. Generation acceptance is deliberately a complete typed operation: an
 // omitted revision or draft must never fall through to an older request shape.
 export const generationBody = Type.Object({
+	kind: Type.Literal("send"),
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
 	// A preview token carries the server-captured macro clock, random draws,
@@ -707,6 +708,7 @@ export const generationBody = Type.Object({
 //  Continue carries only the Conversation revision. The server derives the
 // selected terminal Message and current Control pair from its snapshot.
 export const continuationBody = Type.Object({
+	kind: Type.Literal("continuation"),
 	expectedRevision: Type.Integer(),
 	...inspectedPlanFields,
 });
@@ -716,6 +718,7 @@ export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
 
 export const siblingGenerationBody = Type.Object({
+	kind: Type.Literal("sibling"),
 	...inspectedPlanFields,
 });
 
@@ -753,8 +756,6 @@ export type GenerationTarget =
 	| { readonly kind: "sibling"; readonly messageId: number };
 
 export type GenerationTargetKind = GenerationTarget["kind"];
-
-export type GenerationTargetFor<K extends GenerationTargetKind> = Extract<GenerationTarget, { kind: K }>;
 
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),

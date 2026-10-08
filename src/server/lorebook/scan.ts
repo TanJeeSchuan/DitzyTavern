@@ -1,6 +1,6 @@
 import { projectImageAnchors } from "../../shared/image-reference";
 
-/** ==[HUMAN APPROVED]== The scan source is selected narrative text only. Definitions,
+/** @approved The scan source is selected narrative text only. Definitions,
  * instructions, and reasoning are excluded before this seam is called. */
 export interface LoreScanSourceMessage {
 	readonly id: number;
@@ -9,11 +9,11 @@ export interface LoreScanSourceMessage {
 
 export interface LoreScanWindowInput {
 	readonly messages: readonly LoreScanSourceMessage[];
-	/** ==[HUMAN APPROVED]== The human text submitted by a Send, before it exists as a Message. */
+	/** @approved The human text submitted by a Send, before it exists as a Message. */
 	readonly pendingHumanText?: string;
-	/** ==[HUMAN APPROVED]== A Sibling target; the target and every later Message are excluded. */
+	/** @approved A Sibling target; the target and every later Message are excluded. */
 	readonly beforeMessageId?: number;
-	/** ==[HUMAN APPROVED]== Number of individual Messages, regardless of author. Defaults to four. */
+	/** @approved Number of individual Messages, regardless of author. Defaults to four. */
 	readonly depth?: number;
 }
 
@@ -25,7 +25,7 @@ export interface LoreScanWindowMessage {
 
 export const DEFAULT_LORE_SCAN_DEPTH = 4;
 
-/** ==[HUMAN APPROVED]== Capture once for an attempt; budgeting must consume this result without rescanning. */
+/** @approved Capture once for an attempt; budgeting must consume this result without rescanning. */
 export const captureLoreScanWindow = (
 	input: LoreScanWindowInput,
 ): readonly LoreScanWindowMessage[] => {

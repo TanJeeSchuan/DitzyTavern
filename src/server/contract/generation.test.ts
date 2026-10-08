@@ -1,8 +1,9 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readVariantDetails } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const key = new Uint8Array(32).fill(23);
@@ -77,7 +78,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("persists Conversation settings and returns one streamed generated Variant with safe provenance", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -152,7 +153,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: updatedPayload.conversation.revision, content: "Generate this." }),
+			body: JSON.stringify({ kind: "send",  expectedRevision: updatedPayload.conversation.revision, content: "Generate this." }),
 		}),
 		);
 		expect(generated.status).toBe(200);
@@ -162,7 +163,7 @@ describe("Generation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const body = await observed.text();
-		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const persisted = readTestConversationSnapshot(database, conversation.id);
 		const message = persisted?.messages.at(-1);
 		const variant = message?.variants.at(-1);
 		expect(variant?.content).toBe("Contract reply.");
@@ -174,7 +175,7 @@ describe("Generation transport contract", () => {
 			},
 		]));
 		if (message === undefined || variant === undefined) throw new Error("Generated Variant missing.");
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database,
 			conversation.id,
 			message.id,
 			variant.id,
@@ -194,7 +195,7 @@ describe("Generation transport contract", () => {
 		// complete settings object the settings panel submits — including the
 		// Sibling Generation limit — persists field for field instead of
 		// being silently dropped by the transport boundary.
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Canonical Settings Update",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -257,7 +258,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("does not contact a provider when the Conversation has no selected Profile", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Unconfigured Generation",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -277,7 +278,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+			body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 		}),
 		);
 		expect(response.status).toBe(422);
@@ -286,7 +287,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("maps a known prompt budget failure to the invalid contract", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Budget-bound Generation",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -312,7 +313,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 
@@ -324,7 +325,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("does not hide malformed persisted generation settings as invalid input", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Malformed Generation Settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -350,7 +351,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 
@@ -359,7 +360,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("streams normalized generation events and completion over the live SSE route", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Live Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -381,7 +382,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -401,7 +402,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("generates through a generic exact endpoint with custom authentication", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Generic Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -435,7 +436,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
@@ -445,7 +446,7 @@ describe("Generation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const generatedBody = await events.text();
-		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
+		expect(readTestConversationSnapshot(database, conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(generatedBody).not.toContain("never returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
 		expect(request?.headers.get("authorization")).toBe("Custom auth never returned");
@@ -453,7 +454,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("generates through the dedicated OpenRouter adapter", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "OpenRouter Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -485,7 +486,7 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
@@ -495,7 +496,7 @@ describe("Generation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const generatedBody = await events.text();
-		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
+		expect(readTestConversationSnapshot(database, conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(generatedBody).not.toContain("openrouter-secret-never-returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/api/v1/chat/completions");
 		expect(request?.headers.get("authorization")).toBe("Bearer openrouter-secret-never-returned");
@@ -504,7 +505,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("streams a server-owned Sibling Generation on the target Message", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -525,7 +526,7 @@ describe("Generation transport contract", () => {
 		});
 		const response = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
 		const accepted = await response.json() as { generationId: number };
@@ -533,7 +534,7 @@ describe("Generation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const body = await events.text();
-		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const persisted = readTestConversationSnapshot(database, conversation.id);
 		const targetAfter = persisted?.messages.find((message) => message.id === target.id);
 		expect(response.status).toBe(200);
 		expect(body).toContain("event: complete");
@@ -542,7 +543,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("runs parallel Sibling Generations as independent accepted outcomes", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Parallel Sibling Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -571,7 +572,7 @@ describe("Generation transport contract", () => {
 		});
 		const startSibling = () => app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		const firstResponse = await startSibling();
 		const secondResponse = await startSibling();
@@ -583,7 +584,7 @@ describe("Generation transport contract", () => {
 		expect(secondResponse.status).toBe(200);
 		expect(first.generationId).not.toBe(second.generationId);
 		expect(first.variantId).not.toBe(second.variantId);
-		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toHaveLength(2);
+		expect(readTestConversationSnapshot(database, conversation.id)?.activeGenerations).toHaveLength(2);
 
 		const firstEvents = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${first.generationId}/events`,
@@ -597,7 +598,7 @@ describe("Generation transport contract", () => {
 		expect(await firstBody).toContain("event: complete");
 		expect(await secondBody).toContain("event: complete");
 
-		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const persisted = readTestConversationSnapshot(database, conversation.id);
 		const variants = persisted?.messages.find((message) => message.id === target.id)?.variants ?? [];
 		expect(providerRequest).toBe(2);
 		expect(variants.map((variant) => variant.content)).toEqual([

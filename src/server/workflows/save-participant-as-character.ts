@@ -1,3 +1,4 @@
+import { readConversationSummary } from "../conversation";
 // @approved
 //  Save Participant as Character workflow.
 // Composes the Conversation and Character Library seams in one transaction:
@@ -13,12 +14,7 @@
 import type { Database } from "bun:sqlite";
 import type { CharacterSnapshot } from "../character-library";
 import { createCharacterLibraryModule } from "../character-library";
-import {
-	ConversationNotFoundError,
-	ParticipantNotFoundError,
-	StaleConversationRevisionError,
-	createConversationModule,
-} from "../conversation";
+import { ConversationNotFoundError, ParticipantNotFoundError, StaleConversationRevisionError } from "../conversation";
 
 export interface SaveParticipantAsCharacterInput {
 	conversationId: number;
@@ -42,7 +38,7 @@ export function saveParticipantAsCharacter(
 ): SaveParticipantAsCharacterResult {
 	const save = database.transaction(() => {
 		const conversation =
-			createConversationModule(database).getSummary(input.conversationId);
+			readConversationSummary(database, input.conversationId);
 		if (conversation === undefined) {
 			throw new ConversationNotFoundError(input.conversationId);
 		}

@@ -8,7 +8,7 @@ import { reduceStory, type StoryAction, type StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { useAsyncEffect } from "../lib/use-async";
 import { adoptConversationSummary } from "./conversation-session-state";
-import { NetworkError } from "../lib/network-error";
+import { NetworkError } from "../lib/request-outcome";
 import { api } from "../lib/eden";
 import { decodeWirePayload } from "../lib/wire-decode";
 import { chatHistoryPage } from "../../shared/contract/conversation-schema";
@@ -20,8 +20,8 @@ type ConversationSessionOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 };
 
-/**
- * ==[HUMAN APPROVED]== Coordinates the selected Chat's authoritative snapshot and paginated
+/** @approved
+ * Coordinates the selected Chat's authoritative snapshot and paginated
  * reading history. Conversation state and the story read model are loaded
  * together here so every caller observes the same Chat boundary.
  */

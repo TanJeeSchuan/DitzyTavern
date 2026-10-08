@@ -82,8 +82,8 @@ export function PrimaryPanelView({
 			data-preview-locked={mutationsDisabled}
 			aria-hidden={!panel}
 		>
-			{/* ==[HUMAN APPROVED]== The Chats host stays mounted across panel toggles so the staged
-			    import flow survives; every other panel renders its own header. */}
+			{/* @approved The Chats host stays mounted across panel toggles so the staged
+			 import flow survives; every other panel renders its own header. */}
 			<ImportChatHost
 				open={panel === "chats"}
 				chats={workspace.chats}

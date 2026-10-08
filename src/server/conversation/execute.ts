@@ -51,186 +51,58 @@ import type {
 } from "./types";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 
-// @approved
-//  The per-command gate policy: each command declares whether it
-// requires a playable Conversation and whether an Active Generation blocks
-// it. Compose (create-message) and Swipe creation (create-variant) are play
-// actions needing both distinct Control seats; Control mutation joins them
-// behind the Active-Generation gate. Reads, edits, configuration, and
-// deletion remain available to incomplete Conversations. The table is the
-// one place a command's gates are stated, so a new command cannot silently
-// skip the shared gates.
-export interface ConversationCommandPolicy<K extends ConversationAction["type"]> {
-	handler: (
-		db: ConversationDatabase,
-		input: ConversationCommandInput<K>,
-	) => ConversationMemoryChange | void;
-	requiresPlayable: boolean;
-	blockedByActiveGeneration: boolean;
-}
-
 type ConversationCommandInput<K extends ConversationAction["type"]> = {
 	conversationId: number;
 } & Extract<ConversationAction, { type: K }>;
 
-export const conversationCommandPolicy = {
-	"create-message": {
-		handler: createMessage,
-		requiresPlayable: true,
-		blockedByActiveGeneration: true,
-	},
-	"create-variant": {
-		handler: createVariant,
-		requiresPlayable: true,
-		blockedByActiveGeneration: true,
-	},
-	"select-variant": {
-		handler: selectVariant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"edit-variant": {
-		handler: editVariant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"delete-variant": {
-		handler: deleteVariant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"delete-message": {
-		handler: deleteMessage,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"add-participant": {
-		handler: addParticipant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"rename-participant": {
-		handler: renameParticipant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"update-participant-definition": {
-		handler: updateParticipantDefinition,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"replace-participant-prompt": {
-		handler: replaceParticipantPrompt,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"replace-participant-openings": {
-		handler: replaceParticipantOpenings,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"assign-control": {
-		handler: assignControl,
-		requiresPlayable: false,
-		blockedByActiveGeneration: true,
-	},
-	"remove-participant": {
-		handler: removeParticipant,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"put-data": {
-		handler: putData,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"delete-data": {
-		handler: deleteData,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"update-generation-settings": {
-		handler: (db, input) => {
-			updateConversationGenerationSettings(db, input.conversationId, input.settings);
-		},
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"set-generation-model": {
-		handler: (db, input) => {
-			setGenerationModel(db, input);
-		},
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"select-prompt-preset": {
-		handler: selectPromptPreset,
-		// @approved
-		//  Selection needs neither seat occupied nor a quiet attempt:
-		// an Active Generation keeps the Prompt Plan it captured, so switching
-		// or reassigning its selection never disturbs the running request.
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"set-author-note": {
-		handler: setAuthorNote,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"rename-conversation": {
-		handler: renameConversation,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	// @approved
-	//  Lore attachment and Chat Lore settings changes are configuration
-	// writes. The Lorebook attachment seam they replace enforced only the
-	// revision guard, so they need no playable Conversation (an incomplete
-	// Chat can still select its Lorebooks) and never disturb an Active
-	// Generation's captured plan (like select-prompt-preset).
-	"attach-chat": {
-		handler: attachConversationLorebook,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"detach-chat": {
-		handler: detachConversationLorebook,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"attach-participant": {
-		handler: attachParticipantLorebook,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"detach-participant": {
-		handler: detachParticipantLorebook,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-	"save-settings": {
-		handler: saveConversationLoreSettings,
-		requiresPlayable: false,
-		blockedByActiveGeneration: false,
-	},
-} satisfies {
-	[K in ConversationAction["type"]]: ConversationCommandPolicy<K>;
-};
+type CommandHandler<K extends ConversationAction["type"]> = (
+	db: ConversationDatabase,
+	input: ConversationCommandInput<K>,
+) => ConversationMemoryChange | void;
 
-function executeConversationCommandWithResult<T>(
+const handlers = {
+	"create-message": createMessage,
+	"create-variant": createVariant,
+	"select-variant": selectVariant,
+	"edit-variant": editVariant,
+	"delete-variant": deleteVariant,
+	"delete-message": deleteMessage,
+	"add-participant": addParticipant,
+	"rename-participant": renameParticipant,
+	"update-participant-definition": updateParticipantDefinition,
+	"replace-participant-prompt": replaceParticipantPrompt,
+	"replace-participant-openings": replaceParticipantOpenings,
+	"assign-control": assignControl,
+	"remove-participant": removeParticipant,
+	"put-data": putData,
+	"delete-data": deleteData,
+	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
+	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
+	"select-prompt-preset": selectPromptPreset,
+	"set-author-note": setAuthorNote,
+	"rename-conversation": renameConversation,
+	"attach-chat": attachConversationLorebook,
+	"detach-chat": detachConversationLorebook,
+	"attach-participant": attachParticipantLorebook,
+	"detach-participant": detachParticipantLorebook,
+	"save-settings": saveConversationLoreSettings,
+} satisfies { [K in ConversationAction["type"]]: CommandHandler<K> };
+
+const playOnly = new Set<ConversationAction["type"]>(["create-message", "create-variant"]);
+const quietOnly = new Set<ConversationAction["type"]>([...playOnly, "assign-control"]);
+
+export function executeConversationCommand(
 	database: Database,
 	command: ConversationCommand,
-	readResult: (db: ConversationDatabase, conversationId: number) => T,
-): T {
+): ConversationSummary {
 	return runConversationTransaction(database, (db, reportChange) => {
 		const conversation = requireConversationRevision(
 			db,
 			command.conversationId,
 			command.expectedRevision,
 		);
-		const policy = conversationCommandPolicy[command.action.type];
 		if (
-			policy.blockedByActiveGeneration &&
+			quietOnly.has(command.action.type) &&
 			hasActiveGenerationFromConnection(db, command.conversationId)
 		) {
 			throw new InvalidConversationCommandError(
@@ -238,7 +110,7 @@ function executeConversationCommandWithResult<T>(
 			);
 		}
 		if (
-			policy.requiresPlayable &&
+			playOnly.has(command.action.type) &&
 			!isPlayable(readControlAssignment(db, command.conversationId))
 		) {
 			throw new ConversationNotPlayableError(command.conversationId);
@@ -246,15 +118,8 @@ function executeConversationCommandWithResult<T>(
 
 		const input = { conversationId: command.conversationId, ...command.action };
 		// @approved
-		//  SAFETY: the `satisfies` clause on conversationCommandPolicy
-		// guarantees each entry's handler accepts exactly its own command's
-		// input shape, so indexing the table by input.type is sound; the cast
-		// only recovers that correlation for the compiler.
-		const reportedChange = (
-			conversationCommandPolicy[input.type] as ConversationCommandPolicy<
-				typeof input.type
-			>
-		).handler(db, input);
+		// SAFETY: satisfies checks each handler against its action; indexing loses that correlation.
+		const reportedChange = (handlers[input.type] as CommandHandler<typeof input.type>)(db, input);
 
 		advanceConversationRevisionGuarded(
 			db,
@@ -263,19 +128,6 @@ function executeConversationCommandWithResult<T>(
 			conversation.revision,
 		);
 		if (reportedChange !== undefined) reportChange(reportedChange);
-		return readResult(db, command.conversationId);
+		return requireConversationSummary(db, command.conversationId);
 	});
-}
-
-export function executeConversationCommand(
-	database: Database,
-	command: ConversationCommand,
-): ConversationSummary {
-	return executeConversationCommandWithResult(
-		database,
-		command,
-		(db, conversationId) => {
-			return requireConversationSummary(db, conversationId);
-		},
-	);
 }

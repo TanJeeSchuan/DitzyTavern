@@ -1,3 +1,5 @@
+import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
+import { readActiveVariantIds } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -6,14 +8,27 @@ import { sliceByTokens } from "tokenx";
 import { memoryCandidates } from "../../shared/contract/memory";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { renderMemoryClaim } from "../../shared/memory-text";
-import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
+import { memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
-import { decisionRequest, largestFittingBatch, requestDecisions, tryResolveDecisionSelection, type DecisionSelectionResolution, type ResolvedDecisionModel } from "../decision-model";
+import {
+	decisionRequest,
+	largestFittingBatch,
+	requestDecisions,
+	tryResolveDecisionSelection,
+	type DecisionSelectionResolution,
+	type ResolvedDecisionModel,
+} from "../decision-model";
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import { projectImageAnchors } from "../../shared/image-reference";
 import type { ModelFetch } from "../model-client/types";
-import { embedMemoryQuery, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
+import {
+	embedMemoryQuery,
+	readCachedMemoryVectors,
+	readMemoryEmbeddingConfiguration,
+	readMemoryIndexReadinessBatch,
+	type MemoryEmbeddingConfiguration,
+} from "./indexing";
 import { readMemoryAllowance } from "./collections";
 import { readMemoryLabelState } from "./labels";
 import { sha256 } from "./hash";
@@ -166,7 +181,7 @@ interface ReadRecallInputs {
 	readonly allowance: number;
 	readonly allowanceRevision: number;
 	readonly recallRelevanceMinimum: number;
-	readonly memorySettings: ReturnType<ReturnType<typeof createMemorySettingsModule>["get"]>;
+	readonly memorySettings: MemorySettingsPayload;
 	readonly embedding: MemoryEmbeddingConfiguration;
 	readonly resolution: DecisionSelectionResolution;
 }
@@ -214,9 +229,7 @@ const readRecallInputs = (input: RecallSceneInput): ReadRecallInputs => {
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, limit);
 	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
 	const variantIds = [...new Set(input.messages.map((message) => message.variantId))];
-	const activeVariants = variantIds.length === 0
-		? new Set<number>()
-		: new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(inArray(activeGenerationTable.variant_id, variantIds)).all().map((row) => row.id));
+	const activeVariants = readActiveVariantIds(input.database, input.conversationId);
 	const collections = variantIds.length === 0
 		? []
 		: db.select().from(memoryCollectionTable)

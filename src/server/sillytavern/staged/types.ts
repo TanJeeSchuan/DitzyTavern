@@ -1,4 +1,4 @@
-import type { ConversationSnapshot } from "../../conversation/types";
+import type { ConversationSummary } from "../../conversation";
 import type {
 	ChatImportCommitBody,
 	ChatImportDuplicateMatch,
@@ -47,7 +47,7 @@ export type ChatImportCommitInput = ChatImportCommitBody;
 export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
 
 export interface ChatImportCommitResult {
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 	receipt: ChatImportReceipt;
 }
 

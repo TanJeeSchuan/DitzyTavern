@@ -1,3 +1,5 @@
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -12,13 +14,8 @@ import {
 	StaleCharacterRevisionError,
 } from "../character-library";
 import type { CharacterDefinition } from "../character-library";
-import {
-	ConversationNotFoundError,
-	createConversationModule,
-	StaleConversationRevisionError,
-	type ConversationSummary,
-} from "../conversation";
-import { requireSnapshot } from "../conversation/test-fixtures";
+import { ConversationNotFoundError, StaleConversationRevisionError, type ConversationSummary } from "../conversation";
+import { requireSnapshot } from "../test-fixtures/conversation";
 import { addCharacterToCast, createNativeConversation } from ".";
 
 const prompt = () => ({
@@ -70,6 +67,7 @@ describe("Add Character to Cast workflow", () => {
 		});
 		const conversation = playableConversation();
 
+		const messagesBefore = requireSnapshot(database, conversation.id).messages;
 		const updated = addCharacterToCast(database, {
 			conversationId: conversation.id,
 			expectedConversationRevision: conversation.revision,
@@ -86,8 +84,8 @@ describe("Add Character to Cast workflow", () => {
 		expect(updated.revision).toBe(conversation.revision + 1);
 		// Adding a Character never inserts history or changes Control.
 		expect(
-			requireSnapshot(createConversationModule(database), conversation.id).messages,
-		).toHaveLength(conversation.messages.length);
+			requireSnapshot(database, conversation.id).messages,
+		).toEqual(messagesBefore);
 		expect(updated.control).toEqual(conversation.control);
 	});
 
@@ -148,7 +146,7 @@ describe("Add Character to Cast workflow", () => {
 		// Atomic: no Participant rows were appended.
 		expect(countRows(participantTable)).toBe(2);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 	});
 
@@ -159,7 +157,7 @@ describe("Add Character to Cast workflow", () => {
 			definition: sourceDefinition(),
 		});
 		let conversation: ConversationSummary = playableConversation();
-		conversation = createConversationModule(database).execute({
+		conversation = executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -185,7 +183,7 @@ describe("Add Character to Cast workflow", () => {
 		expect(conflict?.actualRevision).toBe(conversation.revision);
 		// No fork was appended and the revision did not advance again.
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.cast,
+			readTestConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 
@@ -208,7 +206,7 @@ describe("Add Character to Cast workflow", () => {
 		// The existing Conversation and its Cast are untouched.
 		expect(countRows(conversationTable)).toBe(1);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 		expect(countRows(participantTable)).toBe(2);
 	});
@@ -247,7 +245,7 @@ describe("Add Character to Cast workflow", () => {
 			expectedRevision: source.revision,
 		});
 
-		const snapshot = createConversationModule(database).getSnapshot(
+		const snapshot = readTestConversationSnapshot(database,
 			conversation.id,
 		);
 		if (snapshot === undefined) {
@@ -264,7 +262,7 @@ describe("Add Character to Cast workflow", () => {
 		// Atomically nothing changed: no additional Participant fork exists.
 		expect(countRows(participantTable)).toBe(3);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+			readTestConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(snapshot.revision);
 	});
 
@@ -289,7 +287,7 @@ describe("Add Character to Cast workflow", () => {
 			expectedRevision: source.revision,
 			openings: ["Rewritten source opening"],
 		});
-		const edited = createConversationModule(database).execute({
+		const edited = executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: updated.revision,
 			action: {

@@ -1,8 +1,8 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const key = new Uint8Array(32).fill(31);
@@ -47,7 +47,7 @@ describe("Continuation transport contract", () => {
 	afterEach(() => database.close());
 
 	test("accepts Continue without a human Message and uses the instruction strategy", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Continuation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -74,7 +74,7 @@ describe("Continuation transport contract", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision }),
+				body: JSON.stringify({ kind: "continuation",  expectedRevision: conversation.revision }),
 			},
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
@@ -83,7 +83,7 @@ describe("Continuation transport contract", () => {
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const body = await response.text();
-		const after = createConversationModule(database).getSnapshot(conversation.id);
+		const after = readTestConversationSnapshot(database, conversation.id);
 		expect(acceptedResponse.status).toBe(200);
 		expect(response.status).toBe(200);
 		expect(body).toContain('"outcome":"applied"');

@@ -1,10 +1,9 @@
 import type { Dispatch } from "react";
 import { loadHistoryPage } from "../chat-history";
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "../conversation";
-import { runConversationCommand } from "../conversation-command-runner";
+import { createConversationCommands } from "../createConversationCommands";
 import {
 	classifyVariantSelection,
 	type StoryAction,
@@ -38,8 +37,8 @@ type StoryMessageActionsOptions = {
 	onEnterPreview: () => void;
 };
 
-/**
- * ==[HUMAN APPROVED]== Coordinates user commands that mutate or preview a story Message. Preview
+/** @approved
+ * Coordinates user commands that mutate or preview a story Message. Preview
  * state is immediate local presentation; a selected Variant moves the story
  * read model only after the server applies the command, so a failed Swipe
  * never diverges the two state owners. This hook owns the server command,
@@ -57,6 +56,8 @@ export function useStoryMessageActions({
 	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
+	const { run } = createConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: noPresentation });
+
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
@@ -100,24 +101,11 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (conversationId === null) return;
 
-		await runConversationCommand({
-			revision: () => conversation.revision,
-			send: (expectedRevision) =>
-				applyConversationCommand(conversationId, expectedRevision, {
+		await run({
 					type: "select-variant",
 					messageId: selection.messageId,
 					variantId: selection.variantId,
-				}),
-			reconciliation: {
-				adoptSnapshot: setConversation,
-				showNotice: noPresentation,
-			},
-			notices: STORY_COMMAND_NOTICES,
-			// @approved
-			//  Update-after-success: the story read model moves only once the
-			// command applied, so a failed or conflicted Swipe leaves the story
-			// exactly as the Conversation state is — nothing to roll back.
-			callbacks: {
+				}, { notices: STORY_COMMAND_NOTICES,
 				onApplied: () => {
 					queueSwipeScroll(selection.messageId);
 					dispatchStory({
@@ -125,11 +113,7 @@ export function useStoryMessageActions({
 						messageId: selection.messageId,
 						variantId: selection.variantId,
 					});
-				},
-				onNotPlayable: noPresentation,
-				onNotRemovable: noPresentation,
-			},
-		});
+				} });
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
@@ -140,21 +124,12 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (variantId === undefined || conversationId === null) return;
 
-		await runConversationCommand({
-			revision: () => conversation?.revision ?? story.revision,
-			send: (expectedRevision) =>
-				applyConversationCommand(conversationId, expectedRevision, {
+		await run({
 					type: "edit-variant",
 					messageId,
 					variantId,
 					content,
-				}),
-			reconciliation: {
-				adoptSnapshot: setConversation,
-				showNotice: noPresentation,
-			},
-			notices: STORY_COMMAND_NOTICES,
-			callbacks: {
+				}, { notices: STORY_COMMAND_NOTICES,
 				onApplied: () => {
 					// @approved
 					//  Reload the edited Message's page so authoritative content replaces the
@@ -166,11 +141,7 @@ export function useStoryMessageActions({
 							}
 						},
 					);
-				},
-				onNotPlayable: noPresentation,
-				onNotRemovable: noPresentation,
-			},
-		});
+				} });
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {
@@ -178,28 +149,15 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
 
-		await runConversationCommand({
-			revision: () => conversation?.revision ?? story.revision,
-			send: (expectedRevision) =>
-				applyConversationCommand(conversationId, expectedRevision, {
+		await run({
 					type: "delete-message",
 					messageId,
-				}),
-			reconciliation: {
-				adoptSnapshot: setConversation,
-				showNotice: noPresentation,
-			},
-			notices: STORY_COMMAND_NOTICES,
-			callbacks: {
+				}, { notices: STORY_COMMAND_NOTICES,
 				onApplied: (applied) => dispatchStory({
 					type: "message-deleted",
 					messageId,
 					revision: applied.revision,
-				}),
-				onNotPlayable: noPresentation,
-				onNotRemovable: noPresentation,
-			},
-		});
+				}) });
 	};
 
 	return { changeSwipe, editStoryMessage, deleteStoryMessage };

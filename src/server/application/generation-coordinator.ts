@@ -1,9 +1,9 @@
+import { stopConversationGeneration, stopConversationGenerations, readConversationGenerationSettings } from "../conversation";
 import type { Database } from "bun:sqlite";
 import {
 	checkpointConversationGeneration,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	createConversationModule,
 	removeRetainedGenerationInspection,
 	type ConversationSummary,
 } from "../conversation";
@@ -26,21 +26,21 @@ import {
 	generationRuntimeFor,
 	startServerOwnedGeneration,
 	type AcceptedGenerationRecord,
-	type GenerationStartInput,
+	type GenerationInput,
 	type GenerationRuntime,
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationControl,
 } from "../workflows";
 import type { GenerationCheckpointOptions } from "../workflows/generation-runtime";
 
-/** ==[HUMAN APPROVED]== Dependencies needed by the HTTP/application generation adapter. */
+/** @approved Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 	readonly checkpoint?: GenerationCheckpointOptions;
 }
 
-/**
- * ==[HUMAN APPROVED]== Typed application outcome of stopping one server-owned Generation.
+/** @approved
+ * Typed application outcome of stopping one server-owned Generation.
  *
  * The only distinction a caller can act on is whether the durable interrupted
  * transition committed. Everything that leaves nothing stopped — an unknown
@@ -56,8 +56,8 @@ export type GenerationStopOutcome =
 			readonly outcome: "stopped";
 			readonly generationId: number;
 			readonly conversation: ConversationSummary;
-			/**
-			 * ==[HUMAN APPROVED]== Why the process runtime could not be settled, or null when it
+			/** @approved
+			 * Why the process runtime could not be settled, or null when it
 			 * settled cleanly. Either way the durable transition committed and
 			 * the Conversation snapshot is the authoritative result.
 			 */
@@ -68,89 +68,66 @@ export type GenerationStopOutcome =
 			readonly generationId: number;
 	  };
 
-/** ==[HUMAN APPROVED]== Typed application outcome of stopping every Active Generation of one Conversation. */
+/** @approved Typed application outcome of stopping every Active Generation of one Conversation. */
 export type GenerationStopAllOutcome =
 	| {
 			readonly outcome: "stopped";
 			readonly generationIds: readonly number[];
 			readonly conversation: ConversationSummary;
-			/** ==[HUMAN APPROVED]== Generations whose durable transition committed but whose runtime lingers. */
+			/** @approved Generations whose durable transition committed but whose runtime lingers. */
 			readonly unsettled: readonly number[];
 			readonly unsettledReason: string | null;
 	  }
 	| {
-			/** ==[HUMAN APPROVED]== The Conversation is unknown or has no Active Generations to stop. */
+			/** @approved The Conversation is unknown or has no Active Generations to stop. */
 			readonly outcome: "not-stoppable";
 	  };
 
-/** ==[HUMAN APPROVED]== A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
+/** @approved A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
 export class GenerationConfigurationError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "GenerationConfigurationError";
 	}
 }
 
-export interface CoordinatedGeneration<TAccepted, TResult> {
-	/** ==[HUMAN APPROVED]== The authoritative acceptance returned after the provisional target exists. */
-	readonly accepted: TAccepted;
-	/** ==[HUMAN APPROVED]== The process-local runtime that fans out events to observers. */
+export interface CoordinatedGeneration {
+	/** @approved The authoritative acceptance returned after the provisional target exists. */
+	readonly accepted: AcceptedGenerationRecord;
+	/** @approved The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
-	/** ==[HUMAN APPROVED]== Settles after terminal Conversation state has been committed. */
-	readonly result: Promise<TResult>;
+	/** @approved Settles after terminal Conversation state has been committed. */
+	readonly result: Promise<AcceptedGenerationRecord>;
 }
 
-/**
- * ==[HUMAN APPROVED]== What every accepted Generation tells the Coordinator: the Provisional
- * Variant and the Message it belongs to. Send additionally reports the human
- * Message it wrote and Sibling the previously selected Variant, but the
- * runtime target is the same question for all three, so this is a shape they
- * satisfy rather than a union that has to name them.
- */
-interface AcceptedGeneration {
-	readonly generationId: number;
-	readonly messageId: number;
-	readonly provisionalVariantId: number;
-}
+export type GenerationStartRequest = Omit<GenerationInput,
+	"modelClient" | "connection" | "connectionSettings" | "signal" | "onEvent" | "onBeforeTerminal" | "onAccepted"
+>;
 
-/**
- * ==[HUMAN APPROVED]== The attempt fields the Coordinator resolves itself: the transport it builds
- * from the Conversation-selected Profile, the detached signal and observers the runtime
- * owns, and the terminal checkpoint flush. A caller supplies only the rest. The omission
- * distributes so a union start input keeps its per-kind fields.
- */
-export type GenerationStartRequest<TInput> = TInput extends unknown ? Omit<
-	TInput,
-	| "modelClient"
-	| "connection"
-	| "connectionSettings"
-	| "signal"
-	| "onEvent"
-	| "onBeforeTerminal"
-	| "onAccepted"
-> : never;
-
-interface GenerationStartCallbacks<TAccepted extends AcceptedGeneration> {
+interface GenerationStartCallbacks {
 	onAccepted: (
-		accepted: TAccepted,
+		accepted: AcceptedGenerationRecord,
 		control: ServerOwnedGenerationControl,
 	) => void | Promise<void>;
 	onEvent: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-interface GenerationStartContext<TAccepted extends AcceptedGeneration> {
+interface GenerationStartContext {
 	database: Database;
 	modelClient: ModelClient;
 	connection: ModelClientConnectionSnapshot;
 	onBeforeTerminal: () => void;
-	callbacks: GenerationStartCallbacks<TAccepted>;
+	callbacks: GenerationStartCallbacks;
 }
 
-interface ManagedGenerationInput<TAccepted extends AcceptedGeneration, TResult> {
+interface ManagedGenerationInput {
 	conversationId: number;
 	start: (
-		context: GenerationStartContext<TAccepted>,
-	) => ServerOwnedGeneration<TAccepted, TResult>;
+		context: GenerationStartContext,
+	) => ServerOwnedGeneration;
 }
 
 interface ResolvedGenerationTransport {
@@ -158,8 +135,8 @@ interface ResolvedGenerationTransport {
 	readonly connection: ModelClientConnectionSnapshot;
 }
 
-/**
- * ==[HUMAN APPROVED]== Coordinates the application concerns around one server-owned Generation.
+/** @approved
+ * Coordinates the application concerns around one server-owned Generation.
  *
  * The workflow module owns prompt capture and Conversation lifecycle rules;
  * this seam owns the concerns specific to an HTTP-started attempt: resolving
@@ -172,14 +149,14 @@ export class GenerationCoordinator {
 		private readonly options: GenerationCoordinatorOptions = {},
 	) {}
 
-	/**
-	 * ==[HUMAN APPROVED]== Start one server-owned Generation of any attempt kind. The attempt
+	/** @approved
+	 * Start one server-owned Generation of any attempt kind. The attempt
 	 * input's own fields select the lifecycle: Send carries the submitted text,
 	 * Sibling the target Message, and Continue neither.
 	 */
 	startGeneration(
-		input: GenerationStartRequest<GenerationStartInput>,
-	): Promise<CoordinatedGeneration<AcceptedGenerationRecord, AcceptedGenerationRecord>> {
+		input: GenerationStartRequest,
+	): Promise<CoordinatedGeneration> {
 		return this.coordinate({
 			conversationId: input.conversationId,
 			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
@@ -194,8 +171,8 @@ export class GenerationCoordinator {
 		});
 	}
 
-	/**
-	 * ==[HUMAN APPROVED]== Stop one server-owned Generation: request provider cancellation with a
+	/** @approved
+	 * Stop one server-owned Generation: request provider cancellation with a
 	 * forced final checkpoint, commit the durable interrupted transition, then
 	 * settle the process runtime. The typed outcome is the only application
 	 * result; transports map it onto their own response vocabulary.
@@ -214,9 +191,8 @@ export class GenerationCoordinator {
 		// @approved
 		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.stop();
-		const conversation = createConversationModule(database);
 		try {
-			const snapshot = conversation.stopGeneration({ conversationId, generationId });
+			const snapshot = stopConversationGeneration(database, { conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
 			runtime?.releaseStopRequest();
@@ -236,8 +212,8 @@ export class GenerationCoordinator {
 		}
 	}
 
-	/**
-	 * ==[HUMAN APPROVED]== Stop every Active Generation of one Conversation: force checkpoints
+	/** @approved
+	 * Stop every Active Generation of one Conversation: force checkpoints
 	 * without aborting, commit the durable interrupted transition for the
 	 * complete target set, and only then settle the corresponding runtimes.
 	 * The Conversation stays authoritative during races: runtimes are settled
@@ -251,9 +227,8 @@ export class GenerationCoordinator {
 		// below owns the complete target set; runtimes are settled only after
 		// its commit succeeds.
 		runtimes.flushAll(conversationId);
-		const conversation = createConversationModule(database);
 		try {
-			const stopped = conversation.stopGenerations({ conversationId });
+			const stopped = stopConversationGenerations(database, { conversationId });
 			const unsettled: number[] = [];
 			let unsettledReason: string | null = null;
 			for (const generationId of stopped.generationIds) {
@@ -305,16 +280,13 @@ export class GenerationCoordinator {
 		return { outcome: "stopped", generationId, conversation: snapshot, unsettledReason };
 	}
 
-	private async coordinate<
-		TAccepted extends AcceptedGeneration,
-		TResult,
-	>(
-		input: ManagedGenerationInput<TAccepted, TResult>,
-	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
+	private async coordinate(
+		input: ManagedGenerationInput,
+	): Promise<CoordinatedGeneration> {
 		const database = this.database;
 		const runtimeRegistry = generationRuntimeFor(database);
 		runtimeRegistry.assertAccepting();
-		const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
+		const generationSettings = readConversationGenerationSettings(database, input.conversationId);
 		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
 		let runtime: GenerationRuntime | undefined;
@@ -354,23 +326,20 @@ export class GenerationCoordinator {
 				onEvent: (event) => { runtime?.publish(event); },
 			},
 		});
-		runtimeRegistry.track(started.result);
-		const accepted = await started.accepted;
-		if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-		const activeRuntime = runtime;
 		const result = started.result
 			.then((value) => {
-				activeRuntime.complete();
+				runtime?.complete();
 				return value;
 			})
 			.catch((error) => {
 				const kind = error instanceof ModelClientGenerationError ? error.kind : "transport";
 				try {
-					activeRuntime.fail({
+					runtime?.fail({
 						reason: error instanceof Error ? error.message : "Generation failed.",
 						kind,
 						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						// ==[HUMAN APPROVED]== Protocol failures are local refusals raised before any request reaches the provider.
+						// @approved
+						// Protocol failures are local refusals raised before any request reaches the provider.
 						imageModel: kind !== "cancelled" && kind !== "protocol" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
 							? { connectionProfileId: transport.connection.profileId, modelId: capturedRequest.modelId }
 							: undefined,
@@ -386,19 +355,27 @@ export class GenerationCoordinator {
 		// detached rejection here while exposing the terminal Promise to tests
 		// and non-HTTP callers that want to await it.
 		runtimeRegistry.track(result);
-		return { accepted, runtime: activeRuntime, result };
+		const accepted = await started.accepted;
+		if (runtime === undefined) throw new Error("Generation runtime could not be started.");
+		return { accepted, runtime, result };
 	}
 
-	private resolveTransport(database: Database, profileId: number | null): ResolvedGenerationTransport {
+	resolveTransport(database: Database, profileId: number | null, preview: true): Pick<ResolvedGenerationTransport, "connection"> | null;
+	resolveTransport(database: Database, profileId: number | null, preview?: false): ResolvedGenerationTransport;
+	resolveTransport(database: Database, profileId: number | null, preview = false): Pick<ResolvedGenerationTransport, "connection"> | ResolvedGenerationTransport | null {
 		const settingsModule = createConnectionSettingsModule(database, this.options);
 		const settings = settingsModule.get();
 		if (profileId === null) {
+			if (preview) return null;
 			throw new GenerationConfigurationError("Choose a model and connection before generating.");
 		}
 		const profile = settings.profiles.find((entry) => entry.id === profileId);
 		if (profile === undefined) {
+			if (preview) return null;
 			throw new GenerationConfigurationError("The selected Connection Profile is unavailable.");
 		}
+		const connection = connectionSnapshotOf(settings, profile);
+		if (preview) return { connection };
 		return {
 			modelClient: createModelClient({
 				profile,
@@ -406,7 +383,7 @@ export class GenerationCoordinator {
 				fetch: this.options.fetch,
 				loadImage: imageLoader(database),
 			}),
-			connection: connectionSnapshotOf(settings, profile),
+			connection,
 		};
 	}
 }

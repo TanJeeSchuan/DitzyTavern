@@ -87,7 +87,9 @@ export interface MacroValidationResult {
 	readonly warnings: readonly PromptWarning[];
 }
 
-const evaluateNodes = (nodes: readonly MacroDocumentNode[], context: Omit<MacroDispatchContext, "evaluate">): string => {
+type MacroEvaluationContext = Omit<MacroDispatchContext, "evaluate">;
+
+const evaluateNodes = (nodes: readonly MacroDocumentNode[], context: MacroEvaluationContext): string => {
 	let output = "";
 	let trimNextLine = false;
 	const append = (value: string): void => {
@@ -123,7 +125,7 @@ export const expandMacroText = (
 	blockLabel: string,
 	options: { validationOnly?: boolean } = {},
 ): MacroExpansionResult => {
-	const context: Omit<MacroDispatchContext, "evaluate"> = {
+	const context: MacroEvaluationContext = {
 		source,
 		environment,
 		attemptState,

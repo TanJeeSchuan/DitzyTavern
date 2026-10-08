@@ -1,5 +1,6 @@
+import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
@@ -31,7 +32,7 @@ import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes"
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import { conversationPromptPreset } from "../shared/contract/prompt-preset";
 import { decodeWirePayload } from "./lib/wire-decode";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 
 export type {
 	ActiveGenerationDetails,
@@ -170,6 +171,8 @@ export async function loadMacroVariables(
 	);
 }
 
+export type MacroVariableEditResult = RequestOutcome<StaticDecode<typeof macroVariablesAppliedResponse>, StaticDecode<typeof conversationConflictErrors>>;
+
 export async function editMacroVariable(
 	conversationId: number,
 	input: {
@@ -232,6 +235,8 @@ export async function previewConversationGeneration(
 // Starts a server-owned generation without coupling acceptance to a browser
 //  stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
+export type GenerationStartResult = RequestOutcome<StaticDecode<typeof generationAccepted>, StaticDecode<typeof generationStartErrors>>;
+
 export async function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,
@@ -240,7 +245,7 @@ export async function startConversationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, ...formatting, ...preview }),
 		generationAccepted,
 		generationStartErrors,
 	);
@@ -254,6 +259,7 @@ export async function startConversationSiblingGeneration(
 ) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+			kind: "sibling",
 			...formatting,
 			...preview,
 		}),
@@ -269,7 +275,7 @@ export async function startConversationContinuationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }),
 		generationAccepted,
 		generationStartErrors,
 	);
@@ -279,6 +285,9 @@ export async function startConversationContinuationGeneration(
 // Stop is an explicit server command. The caller may separately abort its
 //  local subscription after this request; closing that subscription alone never
 // reaches this function and therefore cannot cancel provider work.
+export type GenerationStopResult =
+	RequestOutcome<StaticDecode<typeof generationStopped> | StaticDecode<typeof generationsStopped>, StaticDecode<typeof notFoundOutcome>>;
+
 export async function stopConversationGeneration(conversationId: number, generationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations({ generationId }).stop.post({}),

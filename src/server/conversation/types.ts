@@ -13,6 +13,7 @@ import type {
 	ChatHistoryPage as SharedChatHistoryPage,
 	ChatHistoryVariant as SharedChatHistoryVariant,
 	ConversationAction as SharedConversationAction,
+	ConversationSummary as SharedConversationSummary,
 	ConversationCapabilities as SharedConversationCapabilities,
 	ConversationControl as SharedConversationControl,
 	ConversationControlValidity as SharedConversationControlValidity,
@@ -24,7 +25,6 @@ import type {
 import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
-import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import type {
 	MacroVariables as SharedMacroVariables,
@@ -94,12 +94,12 @@ export interface ConversationDataRead {
 }
 
 export interface SelectedHistoryReadRequest {
+	conversationData?: boolean;
+	ids?: readonly number[];
 	position?: number | undefined;
 	targetMessageId?: number | undefined;
 	conversationDataNamespace?: string | undefined;
 	conversationDataKeyPrefix?: string | undefined;
-	variantDataNamespace?: string | undefined;
-	variantDataKeys?: readonly string[] | undefined;
 }
 
 // @approved
@@ -198,60 +198,7 @@ export interface HistoricalControlSnapshot {
 	modelParticipantId: number;
 }
 
-export interface ConversationVariantSnapshot {
-	id: number;
-	position: number;
-	content: string;
-	timestamp: string;
-	selected: boolean;
-	data: ConversationDataEntry[];
-}
-
-export interface ConversationMessageSnapshot {
-	id: number;
-	position: number;
-	timestamp: string;
-	author: AuthorStampSnapshot | null;
-	historicalContext: HistoricalControlSnapshot | null;
-	// Derived, never stored: whether a new sibling Variant (targeted Swipe)
-	// may be generated for this Message from its captured historical pair.
-	swipe: MessageSwipeEligibility;
-	variants: ConversationVariantSnapshot[];
-	data: ConversationDataEntry[];
-}
-
-// @approved
-//  The full deep snapshot deliberately extends the shared conversationSummary
-// contract (divergence (b), ADR-0032 pattern): it adds the heavy `messages`
-// and `data` reads that the summary transport shape intentionally omits —
-// the story reads messages through the paginated history seam, heavy
-// provenance loads only through the Import Details operations, and a
-// 92-byte Cast command must not re-serialize the entire Chat archive across
-// the wire. Every shared header field (Cast, Control, validity, playability,
-// capabilities, active generations) derives from the canonical schemas, so
-// the two shapes cannot drift apart.
-export interface ConversationSnapshot {
-	authorNote: string;
-	id: number;
-	name: string;
-	revision: number;
-	cast: CastParticipantSnapshot[];
-	control: ConversationControlSnapshot;
-	// Derived, never stored: both seats set, distinct, and in the Cast.
-	controlValidity: ConversationControlValidity;
-	playable: boolean;
-	capabilities: ConversationCapabilities;
-	// All server-owned targets at the active response position. The list is
-	// empty when no generation is active and preserves every parallel sibling.
-	activeGenerations: ActiveGenerationSnapshot[];
-	messages: ConversationMessageSnapshot[];
-	data: ConversationDataEntry[];
-}
-
-// The normal conversation header read model. It contains the state needed by
-// navigation and mutation responses while deliberately excluding the complete
-// message and conversation-data archives.
-export type ConversationSummary = Omit<ConversationSnapshot, "messages" | "data">;
+export type ConversationSummary = SharedConversationSummary;
 
 // One lightweight Variant in a paginated history read. The history read
 // models derive from the canonical shared schemas (ADR-0032): the paginated
@@ -329,89 +276,6 @@ export interface ConversationCommand {
 	conversationId: number;
 	expectedRevision: number;
 	action: ConversationAction;
-}
-
-export interface ConversationModule {
-	create(input: ConversationCreationInput): ConversationSnapshot;
-	exists(conversationId: number): boolean;
-	// Narrow authoritative revision read used when a preview send ignores the
-	// client's stale revision; it does not load Conversation history.
-	getRevision(conversationId: number): number | undefined;
-	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
-	getSummary(conversationId: number): ConversationSummary | undefined;
-	getGenerationSettings(
-		conversationId: number,
-	): ConversationGenerationSettings | undefined;
-	// The Chat's selected recipe with each Referenced Prompt Block resolved
-	// against this Chat's own Participant Definitions and selected history.
-	// Undefined for a missing Conversation.
-	getPromptPreset(conversationId: number): ConversationPromptPreset | undefined;
-	// Reads one stable chronological page of the normal Chat history read
-	// model. Pages carry the lightweight Participant identity, immutable
-	// Author Stamp names, Message chronology, Variant order, and selected
-	// Variant state needed for rendering; heavy provenance loads only
-	// through deliberate detail operations. Undefined for a missing
-	// Conversation.
-	readHistory(
-		conversationId: number,
-		request?: ChatHistoryPageRequest,
-	): ChatHistoryPage | undefined;
-	// Narrow on-demand read of Conversation-scoped structured data. Returns
-	// the Conversation's name and its (namespace, key) entries, optionally
-	// filtered by namespace and/or keys. Undefined for a missing
-	// Conversation; a present Conversation with no matching entries returns
-	// an empty entries array. Vocabulary-free: namespace and key strings pass
-	// through uninterpreted, so the owning domain keeps the meaning.
-	readConversationData(
-		conversationId: number,
-		filter?: ConversationDataReadFilter,
-	): ConversationDataRead | undefined;
-	readSelectedHistory(
-		conversationId: number,
-		request?: SelectedHistoryReadRequest,
-	): import("./selected-history").SelectedHistoryRead | undefined;
-	readMacroVariables(
-		conversationId: number,
-		input?: { promptPresetId?: number; position?: number },
-	): MacroVariables | undefined;
-	editMacroVariables(input: import("./macro-variables").EditMacroVariablesInput): {
-		conversation: ConversationSummary;
-		variables: MacroVariables;
-	};
-	// Deliberate detail reads. Active inspection is available only while the
-	// server-owned row is retained; compact Variant provenance survives that
-	// cleanup and is loaded separately from ordinary history.
-	readActiveGenerationDetails(
-		conversationId: number,
-		generationId: number,
-	): ActiveGenerationDetails | undefined;
-	readVariantDetails(
-		conversationId: number,
-		messageId: number,
-		variantId: number,
-	): VariantDetails | undefined;
-	execute(command: ConversationCommand): ConversationSummary;
-	// Server-owned Send lifecycle. Acceptance creates the ordinary human
-	// Message and provisional model target in one revisioned transaction;
-	// terminal transitions resolve or remove only that target.
-	acceptTailGeneration(
-		input: AcceptTailGenerationInput,
-	): AcceptedTailGeneration;
-	resolveGeneration(
-		input: ResolveGenerationInput,
-	): ConversationSummary;
-	removeGeneration(
-		input: RemoveGenerationInput,
-	): ConversationSummary;
-	stopGeneration(input: StopGenerationInput): ConversationSummary;
-	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
-	acceptContinuationGeneration(
-		input: AcceptContinuationGenerationInput,
-	): AcceptedContinuationGeneration;
-	checkpointGeneration(input: CheckpointGenerationInput): void;
-	acceptSiblingGeneration(
-		input: AcceptSiblingGenerationInput,
-	): AcceptedSiblingGeneration;
 }
 
 export interface ActiveGenerationSnapshot {

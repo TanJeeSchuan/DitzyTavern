@@ -9,7 +9,7 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
-import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-defaults";
+import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "../database/schema";
 import {
 	isRepeatedImagePlacement,
 	type CanonicalGenerationSettings,

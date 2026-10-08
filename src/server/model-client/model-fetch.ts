@@ -1,4 +1,4 @@
-/** ==[HUMAN APPROVED]== Fetch is injected at the model-client boundary for deterministic transport tests. */
+/** @approved Fetch is injected at the model-client boundary for deterministic transport tests. */
 export type { ModelFetch } from "./types";
 
 export class ModelFetchTimeoutError extends Error {
@@ -8,8 +8,8 @@ export class ModelFetchTimeoutError extends Error {
 	}
 }
 
-/**
- * ==[HUMAN APPROVED]== Applies one real deadline to injected fetches and the caller-supplied
+/** @approved
+ * Applies one real deadline to injected fetches and the caller-supplied
  * response consumer. The caller's signal is still honored, while compliant transports are
  * aborted when the deadline expires.
  */
@@ -46,7 +46,7 @@ export async function fetchWithTimeout<T>(
 	}
 }
 
-/** ==[HUMAN APPROVED]== Reads at most maxBytes and cancels the stream as soon as it exceeds the cap. */
+/** @approved Reads at most maxBytes and cancels the stream as soon as it exceeds the cap. */
 export async function readBoundedResponse(
 	response: Response,
 	maxBytes: number,

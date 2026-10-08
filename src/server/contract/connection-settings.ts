@@ -1,11 +1,8 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
-import { Elysia, status } from "elysia";
+import { Elysia } from "elysia";
 import {
-	ConnectionCredentialConfirmationError,
-	ConnectionProfileNotFoundError,
-	InvalidConnectionProfileError,
 	applyConnectionHeaderOperations,
-	StaleConnectionSettingsRevisionError,
 	createConnectionSettingsModule,
 	validateConnectionProfileDraft,
 	type ConnectionSettingsModuleOptions,
@@ -30,18 +27,35 @@ import {
 	connectionTestResponse,
 } from "../../shared/contract/connection-settings";
 
+const commandResponse = {
+	200: connectionSettingsApplied,
+	409: connectionSettingsConflict,
+	404: connectionNotFoundResponse,
+	422: connectionInvalidResponse,
+};
+
+const testConnectionResponse = {
+	200: connectionTestResponse,
+	422: connectionInvalidResponse,
+};
+
+const textOnlyModelResponse = {
+	200: connectionSettingsApplied,
+	404: connectionNotFoundResponse,
+	422: connectionInvalidResponse,
+};
+
+const discoveryResponse = {
+	200: connectionDiscoveryResponse,
+	404: connectionNotFoundResponse,
+	422: connectionInvalidResponse,
+	409: connectionSettingsConflict,
+};
+
 export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: import("../model-client").ModelFetch;
 	readonly testConnectionTimeoutMs?: number;
 }
-
-const staleSettingsResponse = (error: StaleConnectionSettingsRevisionError) =>
-	status(409, {
-		outcome: "conflict" as const,
-		expectedRevision: error.expectedRevision,
-		actualRevision: error.actualRevision,
-		currentSettings: toSettingsPayload(error.currentSettings),
-	});
 
 // @approved
 //  Thin typed adapters over the Connection Settings seam; schemas stay in the
@@ -94,13 +108,7 @@ export const createConnectionSettingsRoutes = (
 						profile.modelsUrl,
 					);
 				} catch (error) {
-					if (error instanceof ConnectionProfileNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					if (error instanceof StaleConnectionSettingsRevisionError) {
-						return staleSettingsResponse(error);
-					}
-					throw error;
+					return presentDomainError(error, discoveryResponse);
 				}
 				return {
 					outcome: "success" as const,
@@ -110,41 +118,26 @@ export const createConnectionSettingsRoutes = (
 			},
 			{
 				body: connectionDiscoveryBody,
-				response: {
-					200: connectionDiscoveryResponse,
-					404: connectionNotFoundResponse,
-					422: connectionInvalidResponse,
-					409: connectionSettingsConflict,
-				},
+				response: discoveryResponse,
 			},
 		)
 		.post(
 			"/api/connection-settings/text-only-model",
-			({ body, status }) => {
+			({ body }) => {
 				try {
 					return { outcome: "applied" as const, settings: toSettingsPayload(settings.setTextOnlyModel(body)) };
 				} catch (error) {
-					if (error instanceof ConnectionProfileNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					if (error instanceof InvalidConnectionProfileError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
-					}
-					throw error;
+					return presentDomainError(error, textOnlyModelResponse);
 				}
 			},
 			{
 				body: connectionTextOnlyBody,
-				response: {
-					200: connectionSettingsApplied,
-					404: connectionNotFoundResponse,
-					422: connectionInvalidResponse,
-				},
+				response: textOnlyModelResponse,
 			},
 		)
 		.post(
 			"/api/connection-settings/test-connection",
-			async ({ body, status }) => {
+			async ({ body }) => {
 				try {
 					const profile = validateConnectionProfileDraft(body.profile);
 					const savedProfile = body.profileId === undefined ? undefined : settings.get().profiles.find((entry) => entry.id === body.profileId);
@@ -162,26 +155,17 @@ export const createConnectionSettingsRoutes = (
 					);
 					return result satisfies TestConnectionResult;
 				} catch (error) {
-					if (error instanceof Error) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
-					}
-					return status(422, {
-						outcome: "invalid" as const,
-						reason: "The Connection Profile draft could not be tested.",
-					});
+					return presentDomainError(error, testConnectionResponse);
 				}
 			},
 			{
 				body: connectionTestBody,
-				response: {
-					200: connectionTestResponse,
-					422: connectionInvalidResponse,
-				},
+				response: testConnectionResponse,
 			},
 		)
 		.post(
 			"/api/connection-settings/commands",
-			({ body, status }) => {
+			({ body }) => {
 				try {
 					let result: ConnectionSettingsSnapshot;
 					switch (body.type) {
@@ -206,32 +190,12 @@ export const createConnectionSettingsRoutes = (
 					}
 					return { outcome: "applied" as const, settings: toSettingsPayload(result) };
 				} catch (error) {
-					if (error instanceof StaleConnectionSettingsRevisionError) {
-						return staleSettingsResponse(error);
-					}
-					if (error instanceof ConnectionProfileNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					if (
-						error instanceof InvalidConnectionProfileError ||
-						error instanceof ConnectionCredentialConfirmationError
-					) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
+					return presentDomainError(error, commandResponse);
 				}
 			},
 			{
 				body: connectionCommandBody,
-				response: {
-					200: connectionSettingsApplied,
-					409: connectionSettingsConflict,
-					404: connectionNotFoundResponse,
-					422: connectionInvalidResponse,
-				},
+				response: commandResponse,
 			},
 		);
 };

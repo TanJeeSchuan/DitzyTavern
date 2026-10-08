@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { useState, type ReactNode } from "react";
-import type { PrimaryPanel } from "./types";
+import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 export function NavigationRail({
 	activePanel,
@@ -19,7 +19,7 @@ export function NavigationRail({
 }: {
 	activePanel: PrimaryPanel;
 	inspecting: boolean;
-	onOpenPanel: (panel: Exclude<PrimaryPanel, null>) => void;
+	onOpenPanel: (panel: PrimaryPanelName) => void;
 }) {
 	return (
 		<nav className="navigation-rail" aria-label="Workspace">
@@ -107,7 +107,7 @@ export function NavigationDrawer({
 	onOpenChange: (open: boolean) => void;
 	activePanel: PrimaryPanel;
 	inspecting: boolean;
-	onOpenPanel: (panel: Exclude<PrimaryPanel, null>) => void;
+	onOpenPanel: (panel: PrimaryPanelName) => void;
 }) {
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>

@@ -251,11 +251,13 @@ const pushOnce = (diagnostics: SillyTavernImportDiagnostic[], seen: Set<string>,
 	diagnostics.push(value);
 };
 
+type ConvertedSlotDefinition = Extract<ConvertedDefinition, { slot: unknown }>;
+
 const reportDefinitionNormalization = (
 	diagnostics: SillyTavernImportDiagnostic[],
 	seen: Set<string>,
 	definition: SourceDefinition,
-	converted: Extract<ConvertedDefinition, { slot: unknown }>,
+	converted: ConvertedSlotDefinition,
 ): void => {
 	if (converted.slot.reference !== "instruction") return;
 	if (definition.roleWasDefaulted) {
@@ -339,7 +341,7 @@ const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition =
 // chosen order's enabled value, unlisted definitions become disabled trailing
 // slots. References never embed resolved Participant content.
 const withEnablement = (
-	converted: Extract<ConvertedDefinition, { slot: unknown }>,
+	converted: ConvertedSlotDefinition,
 	enabled: boolean,
 ): NativePromptPreset["slots"][number] => {
 	if (converted.slot.reference === "history") {

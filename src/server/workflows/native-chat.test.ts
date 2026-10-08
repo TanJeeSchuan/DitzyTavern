@@ -1,3 +1,4 @@
+import { requireSnapshot } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -79,7 +80,7 @@ describe("Native New Chat workflow", () => {
 			humanParticipantId: human?.id,
 			modelParticipantId: model?.id,
 		});
-		expect(snapshot.messages[0]?.variants[0]?.content).toBe(
+		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants[0]?.content).toBe(
 			"The workshop bell rings twice.",
 		);
 
@@ -98,7 +99,7 @@ describe("Native New Chat workflow", () => {
 			locale: "en-US",
 			createdAt: "2026-01-02T15:04:05.000Z",
 		});
-		expect(snapshot.messages[0]?.variants[0]?.content).toBe("2026-01-02 20:34 Friday");
+		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants[0]?.content).toBe("2026-01-02 20:34 Friday");
 	});
 
 	test("forks copy the authoritative Definition server-side and record provenance without revisions or synchronization", () => {
@@ -163,11 +164,11 @@ describe("Native New Chat workflow", () => {
 		expect(model?.prompt.identity).toBe("Night radio operator on the headland.");
 		expect(human?.openings).toEqual(["Human openings never become history."]);
 		// Greeting history comes only from the model seat's fork.
-		expect(snapshot.messages).toHaveLength(1);
-		expect(snapshot.messages[0]?.variants.map((variant) => variant.content)).toEqual([
+		expect(requireSnapshot(database, snapshot.id).messages).toHaveLength(1);
+		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants.map((variant) => variant.content)).toEqual([
 			"Static clears, then a voice.",
 		]);
-		expect(snapshot.messages[0]?.author?.participantId).toBe(model?.id);
+		expect(requireSnapshot(database, snapshot.id).messages[0]?.author?.participantId).toBe(model?.id);
 	});
 
 	test("a stale Character revision fails with a typed conflict and commits nothing", () => {

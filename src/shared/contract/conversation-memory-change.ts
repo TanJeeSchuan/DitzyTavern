@@ -4,8 +4,8 @@
 // applies its own derivation to the report. Neither module imports the
 // other; this shared declaration is the only shared vocabulary.
 
-/**
- * ==[HUMAN APPROVED]== What one Conversation write changed for Memory's per-Chat sources.
+/** @approved
+ * What one Conversation write changed for Memory's per-Chat sources.
  * Conversation hands this record to the write observer installed by the
  * application layer; Memory syncs from the reported identifiers alone.
  */

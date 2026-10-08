@@ -1,3 +1,6 @@
+import { readVariantData } from "./variant-data";
+import { loadMessageRows } from "./message-rows";
+import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
 //  Paginated history read model: the normal Chat read seam for reading
 // native Messages. Pages serve stable position-ordered (chronological)
@@ -12,16 +15,14 @@
 // Variant-selection command, never a second source representation.
 
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import {
 	conversationTable,
 	conversationGenerationSettingsTable,
 	activeGenerationTable,
 	messageTable,
-	messageVariantDataTable,
-	messageVariantTable,
 } from "../database/schema";
-import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-defaults";
+import { DEFAULT_CONTINUATION_STRATEGY } from "../database/schema";
 import {
 	connectConversationDatabase,
 	groupVariantsByMessage,
@@ -51,21 +52,6 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	if (!Number.isInteger(pageSize) || pageSize < 1) return DEFAULT_HISTORY_PAGE_SIZE;
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
-
-// @approved
-//  A Message is continuable when its selected Variant carries visible
-// content or — under the instruction strategy — persisted Reasoning
-// Content. Named (not an inline IIFE) so the read model states its rule
-// once, beside the acceptance path's related but deliberately different
-// reasoning rule.
-const isContinuable = (
-	selected: ChatHistoryVariant | undefined,
-	continuationStrategy: string,
-): boolean =>
-	selected !== undefined &&
-	(selected.content.length > 0 ||
-		(continuationStrategy === "instruction" &&
-			(selected.reasoning?.length ?? 0) > 0));
 
 // @approved
 //  Reads one page of the stable Message sequence, counted backward from the
@@ -122,8 +108,8 @@ export function readChatHistory(
 	// when Variant selection changes or Messages are later edited. Pages are
 	// cut from the tail (newest first) and reversed so every served page is
 	// chronological while page 1 remains the latest window.
-	const messageRows = db
-		.select()
+	const pageRows = db
+		.select({ id: messageTable.id })
 		.from(messageTable)
 		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position))
@@ -131,46 +117,12 @@ export function readChatHistory(
 		.offset(offset)
 		.all()
 		.reverse();
-	const messageIds = messageRows.map((message) => message.id);
+	const messageIds = pageRows.map((message) => message.id);
 
-	// @approved
-	//  Variant order is preserved with the selected state; empty and
-	// duplicate variants remain distinct positions with their exact content.
-	const variantRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantTable)
-					.where(inArray(messageVariantTable.message_id, messageIds))
-					.orderBy(
-						asc(messageVariantTable.message_id),
-						asc(messageVariantTable.position),
-					)
-					.all();
-
-	const reasoningByVariant = new Map<number, string>(
-		variantRows.length === 0
-			? []
-			: db
-					.select({
-						variantId: messageVariantDataTable.message_variant_id,
-						value: messageVariantDataTable.value,
-					})
-					.from(messageVariantDataTable)
-					.where(
-						and(
-							inArray(
-								messageVariantDataTable.message_variant_id,
-								variantRows.map((variant) => variant.id),
-							),
-							eq(messageVariantDataTable.namespace, "generation"),
-							eq(messageVariantDataTable.key, "reasoning"),
-						),
-					)
-					.all()
-					.map((row) => [row.variantId, row.value]),
-	);
+	const rows = loadMessageRows(db, conversationId, { ids: messageIds });
+	const messageRows = rows.messages;
+	const variantRows = rows.variants;
+	const dataByVariant = readVariantData(db, rows.variants.map((variant) => variant.id), ["reasoning"]);
 	const liveGenerationByVariant = new Map(
 		variantRows.length === 0
 			? []
@@ -206,7 +158,7 @@ export function readChatHistory(
 				timestamp: variant.timestamp,
 				selected: variant.selected,
 			};
-			const reasoning = reasoningByVariant.get(variant.id);
+			const reasoning = dataByVariant.get(variant.id)?.reasoning;
 			if (reasoning !== undefined) historyVariant.reasoning = reasoning;
 			const liveGeneration = liveGenerationByVariant.get(variant.id);
 			if (liveGeneration !== undefined) historyVariant.liveGeneration = liveGeneration;
@@ -224,14 +176,16 @@ export function readChatHistory(
 	// capability objects below flow through the canonical snapshot helpers,
 	// so the history seam can never disagree with the snapshot or the
 	// commands about sibling eligibility.
+	const control = readControlAssignment(db, conversationId);
 	const playable = deriveControlValidity(
-		readControlAssignment(db, conversationId),
+		control,
 		castIds,
 	).valid;
 
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
+		const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
 		return {
 			id: message.id,
 			position: message.position,
@@ -239,10 +193,11 @@ export function readChatHistory(
 			author,
 			modelParticipantIdAtCreation:
 				message.context_model_participant_id ?? null,
-			continuable: isContinuable(
-				variantsByMessage.get(message.id)?.find((variant) => variant.selected),
-				continuationStrategy,
-			),
+			continuable: selected !== undefined && continuationEligibility({
+				authorRole: authorRoleOf({ author, historicalContext }, control),
+				content: selected.content,
+				hasReasoning: (selected.reasoning?.length ?? 0) > 0,
+			}, continuationStrategy) === null,
 			// @approved
 			//  Server-derived targeted Swipe eligibility from the canonical rule
 			// (ADR-0003): the client never reconstructs it from hints.

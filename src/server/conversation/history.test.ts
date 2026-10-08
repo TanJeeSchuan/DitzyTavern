@@ -1,12 +1,9 @@
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { readChatHistory } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import {
-	createConversationModule,
-	DEFAULT_HISTORY_PAGE_SIZE,
-	MAX_HISTORY_PAGE_SIZE,
-	type ConversationModule,
-} from ".";
+import { DEFAULT_HISTORY_PAGE_SIZE, MAX_HISTORY_PAGE_SIZE } from ".";
 import type { ConversationCreationInput, ParticipantDefinition } from ".";
 
 // Paginated history read model tests: stable chronological pages, lightweight
@@ -40,11 +37,11 @@ const messageInput = (timestamp: string, variantContents: string[]) => ({
 
 describe("Conversation paginated history", () => {
 	let database: Database;
-	let conversation: ConversationModule;
+	let conversation: Database;
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
-		conversation = createConversationModule(database);
+		conversation = database;
 	});
 	afterEach(() => {
 		database.close();
@@ -54,7 +51,7 @@ describe("Conversation paginated history", () => {
 		count: number,
 		overrides: Partial<ConversationCreationInput> = {},
 	) =>
-		conversation.create({
+		createConversationWithHistory(conversation, {
 			name: "History Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -75,7 +72,7 @@ describe("Conversation paginated history", () => {
 
 		// Page 1 is the latest window of history; each served page is still
 		// chronological by creation order.
-		const first = conversation.readHistory(chat.id, { page: 1, pageSize: 4 });
+		const first = readChatHistory(conversation, chat.id, { page: 1, pageSize: 4 });
 		expect(first).toBeDefined();
 		expect(first?.page).toEqual({
 			index: 1,
@@ -93,7 +90,7 @@ describe("Conversation paginated history", () => {
 			"2026-01-01T00:05:00.000Z",
 		]);
 
-		const second = conversation.readHistory(chat.id, { page: 2, pageSize: 4 });
+		const second = readChatHistory(conversation, chat.id, { page: 2, pageSize: 4 });
 		expect(second?.page.hasOlder).toBe(false);
 		expect(second?.page.hasNewer).toBe(true);
 		expect(second?.messages.map((message) => message.position)).toEqual([1, 2]);
@@ -110,18 +107,18 @@ describe("Conversation paginated history", () => {
 		const chat = createHistoryChat(11);
 		const other = createHistoryChat(1);
 		database.run("UPDATE messages SET position = position * 3 + 100 WHERE conversation_id = ?", [chat.id]);
-		const all = conversation.readHistory(chat.id, { pageSize: 20 })!.messages;
+		const all = readChatHistory(conversation, chat.id, { pageSize: 20 })!.messages;
 		for (const [offset, index, positions] of [
 			[0, 3, [103, 106, 109]], [2, 3, [103, 106, 109]], [3, 2, [112, 115, 118, 121]],
 			[6, 2, [112, 115, 118, 121]], [7, 1, [124, 127, 130, 133]], [10, 1, [124, 127, 130, 133]],
 		] as const) {
-			const around = conversation.readHistory(chat.id, { aroundMessageId: all[offset]!.id, pageSize: 4 });
+			const around = readChatHistory(conversation, chat.id, { aroundMessageId: all[offset]!.id, pageSize: 4 });
 			expect(around?.page.index).toBe(index);
 			expect(around?.messages.map((message) => message.position)).toEqual([...positions]);
-			expect(around).toEqual(conversation.readHistory(chat.id, { page: index, pageSize: 4 }));
+			expect(around).toEqual(readChatHistory(conversation, chat.id, { page: index, pageSize: 4 }));
 		}
-		expect(conversation.readHistory(chat.id, { aroundMessageId: -1 })).toBeUndefined();
-		expect(conversation.readHistory(chat.id, { aroundMessageId: conversation.readHistory(other.id)!.messages[0]!.id })).toBeUndefined();
+		expect(readChatHistory(conversation, chat.id, { aroundMessageId: -1 })).toBeUndefined();
+		expect(readChatHistory(conversation, chat.id, { aroundMessageId: readChatHistory(conversation, other.id)!.messages[0]!.id })).toBeUndefined();
 	});
 
 	test("bounds an oversized page request to the final page and clamps the page size", () => {
@@ -130,20 +127,20 @@ describe("Conversation paginated history", () => {
 		// A page far beyond the end serves the final, oldest page, so
 		// accumulating clients converge instead of seeing empty pages
 		// mid-sequence.
-		const beyond = conversation.readHistory(chat.id, { page: 99, pageSize: 2 });
+		const beyond = readChatHistory(conversation, chat.id, { page: 99, pageSize: 2 });
 		expect(beyond?.page.index).toBe(3);
 		expect(beyond?.page.totalPages).toBe(3);
 		expect(beyond?.messages.map((message) => message.position)).toEqual([1]);
 
 		// Page size bounds to the module maximum and defaults when missing.
-		const capped = conversation.readHistory(chat.id, { pageSize: 10_000 });
+		const capped = readChatHistory(conversation, chat.id, { pageSize: 10_000 });
 		expect(capped?.page.pageSize).toBe(MAX_HISTORY_PAGE_SIZE);
-		const defaulted = conversation.readHistory(chat.id);
+		const defaulted = readChatHistory(conversation, chat.id);
 		expect(defaulted?.page.pageSize).toBe(DEFAULT_HISTORY_PAGE_SIZE);
 	});
 
 	test("exposes resolved Author Stamps and preserves Variant order and selected state", () => {
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Stamped History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -170,7 +167,7 @@ describe("Conversation paginated history", () => {
 			],
 		});
 
-		const page = conversation.readHistory(chat.id, { pageSize: 10 });
+		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
 		expect(page?.cast.map((participant) => participant.name)).toEqual([
 			"Writer",
 			"Maren Voss",
@@ -200,7 +197,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("keeps empty and duplicate Variants as distinct positions with exact content", () => {
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Variant History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -215,7 +212,7 @@ describe("Conversation paginated history", () => {
 			],
 		});
 
-		const page = conversation.readHistory(chat.id, { pageSize: 10 });
+		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
 		// The duplicate and the exact empty alternative remain separate
 		// navigable positions; the empty content is untouched stored text.
 		expect(page?.messages[0]?.variants.map((variant) => variant.content)).toEqual([
@@ -227,7 +224,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("returns persisted Generation Reasoning Content in authoritative history", () => {
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Reasoning History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{
@@ -257,7 +254,7 @@ describe("Conversation paginated history", () => {
 			}],
 		});
 
-		const page = conversation.readHistory(chat.id, { pageSize: 10 });
+		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
 			expect(page?.messages[0]?.variants[0]).toMatchObject({
 				content: "Visible prose.",
 				reasoning: "Persisted thought.",
@@ -269,7 +266,7 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("excludes heavy provenance from ordinary reads: no message, variant, or Chat data", () => {
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Lightweight",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -306,7 +303,7 @@ describe("Conversation paginated history", () => {
 			],
 		});
 
-		const page = conversation.readHistory(chat.id, { pageSize: 10 });
+		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
 		expect(page?.messages[0]?.variants[0]).not.toHaveProperty("data");
 		expect(page?.messages[0]).not.toHaveProperty("data");
 		expect(page).not.toHaveProperty("data");
@@ -321,7 +318,7 @@ describe("Conversation paginated history", () => {
 		// so the canonical rule marks it Swipe-eligible; explicit created
 		// Messages carry no pair and stay ineligible with the typed reason.
 		// The client never reconstructs either capability.
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Capability History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -336,14 +333,14 @@ describe("Conversation paginated history", () => {
 			control: { human: 0, model: 1 },
 		});
 
-		const page = conversation.readHistory(chat.id);
+		const page = readChatHistory(conversation, chat.id);
 		expect(page?.messages[0]?.swipe).toEqual({ eligible: true, reason: null });
 		expect(page?.messages[0]?.continuable).toBe(true);
 		expect(page?.messages[0]?.modelParticipantIdAtCreation).toBe(
 			chat.cast[1]?.id,
 		);
 
-		const unpaired = conversation.create({
+		const unpaired = createConversationWithHistory(conversation, {
 			name: "Unpaired History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -352,19 +349,19 @@ describe("Conversation paginated history", () => {
 			control: { human: 0, model: 1 },
 			messages: [messageInput("2026-01-01T00:00:00.000Z", ["Once"])],
 		});
-		const unpairedPage = conversation.readHistory(unpaired.id);
+		const unpairedPage = readChatHistory(conversation, unpaired.id);
 		expect(unpairedPage?.messages[0]?.swipe).toEqual({
 			eligible: false,
 			reason: "missing-historical-context",
 		});
-		expect(unpairedPage?.messages[0]?.continuable).toBe(true);
+		expect(unpairedPage?.messages[0]?.continuable).toBe(false);
 	});
 
 	test("marks the Swipe capability ineligible when the Conversation is not playable", () => {
 		// Without both Control seats nothing may run; the derived reason is
 		// the canonical conversation-not-playable block, and the empty selected
 		// Variant is not continuable.
-		const chat = conversation.create({
+		const chat = createConversationWithHistory(conversation, {
 			name: "Unplayable History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{
@@ -375,7 +372,7 @@ describe("Conversation paginated history", () => {
 			}],
 		});
 
-		const page = conversation.readHistory(chat.id);
+		const page = readChatHistory(conversation, chat.id);
 		expect(page?.messages[0]?.swipe).toEqual({
 			eligible: false,
 			reason: "conversation-not-playable",
@@ -384,6 +381,6 @@ describe("Conversation paginated history", () => {
 	});
 
 	test("returns undefined for a missing Conversation", () => {
-		expect(conversation.readHistory(999999)).toBeUndefined();
+		expect(readChatHistory(conversation, 999999)).toBeUndefined();
 	});
 });

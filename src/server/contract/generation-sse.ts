@@ -14,6 +14,7 @@ import type {
 import type {
 	GenerationRuntime,
 	GenerationRuntimeState,
+	GenerationRuntimeSubscription,
 } from "../workflows/generation-runtime";
 
 type GenerationSsePayload =
@@ -82,7 +83,7 @@ export function createGenerationSubscriptionResponse(
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			let closed = false;
-			let subscription: ReturnType<typeof runtime.subscribe> | undefined;
+			let subscription: GenerationRuntimeSubscription | undefined;
 			let removeStateListener: (() => void) | undefined;
 			let removeAbortListener: (() => void) | undefined;
 			const cleanup = () => {
@@ -92,7 +93,7 @@ export function createGenerationSubscriptionResponse(
 			};
 			const emit = (type: string, data: GenerationSsePayload, eventId?: number) => {
 				if (closed) return;
-				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
+				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* @approved client disconnected */ }
 			};
 			const finish = (state: GenerationRuntimeState) => {
 				if (closed || state.status === "active") return;
@@ -100,13 +101,13 @@ export function createGenerationSubscriptionResponse(
 				emit(terminal.type, terminal.data);
 				closed = true;
 				cleanup();
-				try { controller.close(); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
+				try { controller.close(); } catch { /* @approved client disconnected */ }
 			};
 			const onAbort = () => {
 				if (closed) return;
 				closed = true;
 				cleanup();
-				try { controller.close(); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
+				try { controller.close(); } catch { /* @approved client disconnected */ }
 			};
 			removeStateListener = runtime.onStateChange(finish);
 			subscription = runtime.subscribe(

@@ -1,5 +1,5 @@
 import type { CharacterSnapshot } from "../character-library";
-import type { ConversationSnapshot, ConversationSummary } from "../conversation";
+import type { ConversationSummary } from "../conversation";
 
 // @approved
 //  Adapts the Character seam's immutable snapshot into the transport shape.
@@ -20,7 +20,7 @@ export const toCharacterPayload = (character: CharacterSnapshot) => ({
 // `data` reads (divergence (b)): heavy reads go through other seams and
 // must never ride on a summary response.
 export const toConversationSummary = (
-	conversation: ConversationSnapshot | ConversationSummary,
+	conversation: ConversationSummary,
 ) => ({
 	id: conversation.id,
 	authorNote: conversation.authorNote,

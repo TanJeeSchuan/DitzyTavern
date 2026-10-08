@@ -1,10 +1,10 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
-import { createConversationModule } from "../conversation";
 import {
 	importNativePromptPreset,
 	selectConversationPromptPreset,
@@ -33,7 +33,7 @@ const setup = () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
 	configureDecisionModels(database);
-	const conversation = createConversationModule(database).create({
+	const conversation = createConversationWithHistory(database, {
 		name: "Capture Coherence",
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },
@@ -114,7 +114,7 @@ describe("generation capture coherence", () => {
 					: kind === "continuation"
 						? { kind: "continuation" }
 						: { kind: "sibling", messageId: targetMessageId },
-				{ conversationId: state.conversationId, preparationFetch },
+				{connection: null, conversationId: state.conversationId, preparationFetch },
 			);
 
 			await semanticStarted;
@@ -166,9 +166,9 @@ describe("generation capture coherence", () => {
 				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 			},
 		});
-		const snapshot = createConversationModule(state.database).getSnapshot(state.conversationId)!;
+		const snapshot = readTestConversationSnapshot(state.database, state.conversationId)!;
 		const pending = coordinator.startGeneration({
-			conversationId: state.conversationId, expectedRevision: snapshot.revision, content: "signal",
+			conversationId: state.conversationId, expectedRevision: snapshot.revision, target: { kind: "send", content: "signal" },
 		});
 		await requested.promise;
 		const rejected = pending.catch((error: Error) => error);
@@ -177,7 +177,7 @@ describe("generation capture coherence", () => {
 		expect(await rejected).toBeInstanceOf(Error);
 		await expect(pending).rejects.toThrow("shutting down");
 		release.resolve();
-		expect(createConversationModule(state.database).getSnapshot(state.conversationId)?.messages).toEqual(snapshot.messages);
+		expect(readTestConversationSnapshot(state.database, state.conversationId)?.messages).toEqual(snapshot.messages);
 	}, 3_000);
 
 	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {
@@ -197,9 +197,9 @@ describe("generation capture coherence", () => {
 			return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 		};
 		const input = { database: state.database, conversationId: state.conversationId, preparationFetch };
-		const older = createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "older" });
+		const older = createGenerationPreviewAsync(state.database, {connection: null, ...input, kind: "send", content: "older" });
 		await firstReady;
-		const newer = await createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "newer" });
+		const newer = await createGenerationPreviewAsync(state.database, {connection: null, ...input, kind: "send", content: "newer" });
 		releaseFirst();
 		await older;
 		expect(previewRecordFor(state.database, newer.id, state.conversationId, "send").id).toBe(newer.id);
@@ -209,8 +209,8 @@ describe("generation capture coherence", () => {
 		const second = setup();
 		databases.push(first.database, second.database);
 		expect(first.conversationId).toBe(second.conversationId);
-		const left = await createGenerationPreviewAsync(first.database, { conversationId: first.conversationId, kind: "send", content: "First application." });
-		const right = await createGenerationPreviewAsync(second.database, { conversationId: second.conversationId, kind: "send", content: "Second application." });
+		const left = await createGenerationPreviewAsync(first.database, {connection: null, conversationId: first.conversationId, kind: "send", content: "First application." });
+		const right = await createGenerationPreviewAsync(second.database, {connection: null, conversationId: second.conversationId, kind: "send", content: "Second application." });
 		expect(previewRecordFor(first.database, left.id, first.conversationId, "send").id).toBe(left.id);
 		expect(previewRecordFor(second.database, right.id, second.conversationId, "send").id).toBe(right.id);
 	});

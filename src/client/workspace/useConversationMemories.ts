@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MemorySourceTarget } from "../../shared/contract/memory";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryChanges, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryChanges, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup, type MemoryCatchupResult } from "../memories";
 
 type Source = ConversationMemories["sources"][number];
 type MemoryData = { memories: ConversationMemories; catchup: MemoryCatchup | null; settings: ConversationMemoryAllowance };
@@ -73,7 +73,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		await refresh();
 		return result.outcome === "conflict" ? conflictNotice : null;
 	}), [act, conversationId, refresh, replace]);
-	const catchupAction = async (task: () => ReturnType<typeof startMemoryCatchup | typeof cancelMemoryCatchup>) => {
+	const catchupAction = async (task: () => Promise<MemoryCatchupResult>) => {
 		setCatchupBusy(true); setNotice(null);
 		try {
 			const result = await task();

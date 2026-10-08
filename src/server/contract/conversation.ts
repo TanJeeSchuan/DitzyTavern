@@ -1,23 +1,26 @@
-import type { Database } from "bun:sqlite";
-import { InvalidImageError } from "../image";
-import { Elysia, status, t } from "elysia";
-import { Type } from "@sinclair/typebox";
+import { recoverConversationConflict } from "./domain-error-recovery";
+import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
-	CharacterNotFoundError,
-	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
-} from "../character-library";
+	readConversationSummary,
+	readConversationRevision,
+	readConversationGenerationSettings,
+	readActiveGenerationDetails,
+	readVariantDetails,
+	readConversationPromptPreset,
+	readMacroVariables,
+	editMacroVariables,
+	readChatHistory,
+	executeConversationCommand,
+} from "../conversation";
+import type { Database } from "bun:sqlite";
+
+import { Elysia, t } from "elysia";
+
 import {
 	ConversationNotFoundError,
-	ConversationNotPlayableError,
 	InvalidConversationCommandError,
-	ParticipantNotFoundError,
-	ParticipantNotRemovableError,
-	createConversationModule,
 	deleteConversation,
-	StaleConversationRevisionError,
 	type ConversationAction,
-	type ConversationModule,
 } from "../conversation";
 import {
 	createGenerationCoordinator,
@@ -31,7 +34,7 @@ import {
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
-import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+import { notFoundResponse } from "./responses";
 import { toConversationSummary } from "./projections";
 import {
 	activeGenerationDetails,
@@ -70,85 +73,86 @@ import {
 import {
 	createGenerationPreviewAsync,
 	previewRecordFor,
-	type GenerationPreviewAcceptanceFor,
+	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
-import { readMemorySourceAvailability } from "../conversation/generation-details";
+import { readMemorySourceAvailability } from "../conversation";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
 	macroVariablesEditBody,
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
-import {
-	classifyGenerationFailure,
-	generationAcceptanceResponse,
-	siblingGenerationAcceptanceResponse,
-} from "./generation-error-mapping";
 import { createGenerationSubscriptionResponse } from "./generation-sse";
 import {
 	invalidOutcome,
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
-import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
-import { MemoryActivationRecordParseError } from "../../shared/contract/memory-recall";
+
+const saveParticipantResponse = {
+	200: characterAppliedResponse,
+	409: conversationConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const addCastCharacterResponse = {
+	200: conversationAppliedResponse,
+	409: castCharacterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const commandResponse = {
+	200: conversationAppliedResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const siblingGenerationResponse = {
+	200: generationAccepted,
+	404: notFoundOutcome,
+	409: notPlayableOutcome,
+	422: invalidOutcome,
+};
+
+const macroVariablesEditResponse = {
+	200: macroVariablesAppliedResponse,
+	404: notFoundOutcome,
+	409: conversationConflict,
+	422: invalidOutcome,
+};
+
+const macroVariablesReadResponse = {
+	200: macroVariables,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const variantDetailsResponse = { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+const generationInspectionResponse = { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+const generationPreviewResponse = {
+	200: generationPreview,
+	404: notFoundOutcome,
+	409: notPlayableOutcome,
+	422: invalidOutcome,
+};
+
+const deleteResponse = {
+	200: conversationDeleted,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
 const readConversationOr404 = <T>(
 	database: Database,
-	read: (conversationModule: ConversationModule) => T | undefined,
+	read: (conversationDatabase: Database) => T | undefined,
 ): T | ReturnType<typeof notFoundResponse> => {
-	const value = read(createConversationModule(database));
+	const value = read(database);
 	return value === undefined ? notFoundResponse() : value;
-};
-
-// @approved
-//  Builds the typed stale-revision recovery shared by every Conversation
-// route: the authoritative summary is re-read and returned inside the 409
-// conflict payload, or a 404 when the Conversation disappeared in the
-// meantime. One helper keeps error mapping from drifting between the
-// command, fork, and save-as-Character workflow routes.
-const staleConversationConflict = (
-	database: Database,
-	conversationId: number,
-	error: StaleConversationRevisionError,
-):
-	| { outcome: "not-found" }
-	| {
-			outcome: "conflict";
-			expectedRevision: number;
-			actualRevision: number;
-			currentConversation: ReturnType<typeof toConversationSummary>;
-	  } => {
-	const current = createConversationModule(database).getSummary(conversationId);
-	if (current === undefined) {
-		// @approved
-		//  The Conversation disappeared between the conflict and the recovery
-		// read; never fabricate authoritative state.
-		return { outcome: "not-found" as const };
-	}
-	return {
-		outcome: "conflict" as const,
-		expectedRevision: error.expectedRevision,
-		actualRevision: error.actualRevision,
-		currentConversation: toConversationSummary(current),
-	};
-};
-
-// @approved
-//  Maps a stale Conversation revision onto the typed recovery response: the
-// authoritative summary rides inside the 409, or a 404 when the Conversation
-// disappeared between the conflict and the recovery read. Exported for the
-// Conversation-owned Lore attachment routes, which inherit the canonical
-// Conversation conflict shape through the same builder.
-export const staleConversationResponse = (
-	database: Database,
-	conversationId: number,
-	error: StaleConversationRevisionError,
-) => {
-	const conflict = staleConversationConflict(database, conversationId, error);
-	return conflict.outcome === "not-found"
-		? status(404, { outcome: "not-found" as const })
-		: status(409, conflict);
 };
 
 // @approved
@@ -160,13 +164,36 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
-const previewUseFor = <K extends GenerationTargetKind>(
+async function acceptanceResponse<S extends ResponseSchemas>(
+	conversationId: number,
+	start: () => Promise<{ readonly accepted: {
+		readonly generationId: number;
+		readonly messageId: number;
+		readonly provisionalVariantId: number;
+	} }>,
+	responses: S,
+) {
+	try {
+		const { accepted } = await start();
+		return {
+			outcome: "accepted" as const,
+			generationId: accepted.generationId,
+			conversationId,
+			messageId: accepted.messageId,
+			variantId: accepted.provisionalVariantId,
+		};
+	} catch (error) {
+		return presentDomainError(error, responses);
+	}
+}
+
+const previewUseFor = (
 	database: Database,
 	conversationId: number,
-	kind: K,
+	kind: GenerationTargetKind,
 	previewId: string | undefined,
 	promptPlan: PromptPlan | undefined,
-): GenerationPreviewAcceptanceFor<K> | undefined => {
+): GenerationPreviewAcceptance | undefined => {
 	if (previewId === undefined) {
 		if (promptPlan !== undefined) {
 			throw new InvalidConversationCommandError("An edited Prompt Plan requires a preview token.");
@@ -184,7 +211,7 @@ const currentConversationRevision = (
 	database: Database,
 	conversationId: number,
 ): number => {
-	const revision = createConversationModule(database).getRevision(conversationId);
+	const revision = readConversationRevision(database, conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
 	return revision;
 };
@@ -210,18 +237,12 @@ export const createConversationRoutes = (
 					deleteConversation(database, params.id);
 					return { outcome: "deleted" as const };
 				} catch (error) {
-					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, deleteResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
-				response: {
-					200: conversationDeleted,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: deleteResponse,
 			},
 		)
 		.post(
@@ -270,7 +291,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/continue/generations",
-			async ({ params, body }) => generationAcceptanceResponse(
+			async ({ params, body }) => acceptanceResponse(
 				params.id,
 				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
@@ -278,8 +299,10 @@ export const createConversationRoutes = (
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
 					formatting: { timeZone: body.timeZone, locale: body.locale },
+					target: { kind: body.kind },
 					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
 				}),
+				generationStartRouteResponse,
 			),
 			{
 				params: conversationIdParams,
@@ -291,7 +314,10 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/preview",
 			async ({ params, body }) => {
 				try {
+					const settings = readConversationGenerationSettings(database, params.id);
+					if (settings === undefined) throw new ConversationNotFoundError(params.id);
 					const common = {
+						connection: generationCoordinator.resolveTransport(database, settings.connectionProfileId, true)?.connection ?? null,
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
@@ -310,7 +336,7 @@ export const createConversationRoutes = (
 						outcome: "available" as const,
 						previewId: preview.id,
 						conversationId: preview.conversationId,
-						kind: preview.capture.kind,
+						kind: preview.capture.target.kind,
 						promptPlan: capture.plan.promptPlan,
 						participants: {
 							human: capture.humanParticipant,
@@ -331,23 +357,13 @@ export const createConversationRoutes = (
 						},
 					};
 				} catch (error) {
-					if (!(error instanceof Error)) throw error;
-					const failure = classifyGenerationFailure(error);
-					if (failure === undefined || failure.body.outcome === "conflict") throw error;
-					if (failure.status === 404) return status(404, failure.body);
-					if (failure.status === 409) return status(409, failure.body);
-					return status(422, failure.body);
+					return presentDomainError(error, generationPreviewResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: generationPreviewBody,
-				response: {
-					200: generationPreview,
-					404: notFoundOutcome,
-					409: notPlayableOutcome,
-					422: invalidOutcome,
-				},
+				response: generationPreviewResponse,
 			},
 		)
 		.get(
@@ -355,19 +371,18 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						conversationModule.readActiveGenerationDetails(
+						readActiveGenerationDetails(conversationModule,
 							params.id,
 							params.generationId,
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, generationInspectionResponse);
 				}
 			},
 			{
 				params: generationIdParams,
-				response: { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome },
+				response: generationInspectionResponse,
 			},
 		)
 		.get(
@@ -375,27 +390,26 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						conversationModule.readVariantDetails(
+						readVariantDetails(conversationModule,
 							params.id,
 							params.messageId,
 							params.variantId,
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
-					throw error;
+					return presentDomainError(error, variantDetailsResponse);
 				}
 			},
 			{
 				params: variantIdParams,
-				response: { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome },
+				response: variantDetailsResponse,
 			},
 		)
 		.get(
 			"/api/conversations/:id",
 			({ params }) =>
 				readConversationOr404(database, (conversationModule) => {
-					return conversationModule.getSummary(params.id);
+					return readConversationSummary(conversationModule, params.id);
 				}),
 			{
 				params: conversationIdParams,
@@ -408,7 +422,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/prompt-preset",
 			({ params }) => {
-				const preset = createConversationModule(database).getPromptPreset(params.id);
+				const preset = readConversationPromptPreset(database, params.id);
 				return preset ?? notFoundResponse();
 			},
 			{
@@ -423,33 +437,26 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/macro-variables",
 			({ params, query, status }) => {
 				try {
-					const variables = createConversationModule(database).readMacroVariables(params.id, {
+					const variables = readMacroVariables(database, params.id, {
 							position: query.position,
 							promptPresetId: query.promptPresetId,
 						});
 					return variables ?? status(404, { outcome: "not-found" as const });
 				} catch (error) {
-					if (error instanceof InvalidConversationCommandError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error, macroVariablesReadResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
 				query: macroVariablesQuery,
-				response: {
-					200: macroVariables,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: macroVariablesReadResponse,
 			},
 		)
 		.post(
 			"/api/conversations/:id/macro-variables",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
-					const edited = createConversationModule(database).editMacroVariables({
+					const edited = editMacroVariables(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							promptPresetId: body.promptPresetId,
@@ -460,32 +467,22 @@ export const createConversationRoutes = (
 						});
 					return { outcome: "applied" as const, ...edited };
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
-					}
-					throw error;
+					return presentDomainError(error,
+						macroVariablesEditResponse,
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: macroVariablesEditBody,
-				response: {
-					200: macroVariablesAppliedResponse,
-					404: notFoundOutcome,
-					409: conversationConflict,
-					422: invalidOutcome,
-				},
+				response: macroVariablesEditResponse,
 			},
 		)
 		.get(
 			"/api/conversations/:id/history",
 			({ params, query }) =>
 				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readHistory(params.id, {
+					readChatHistory(conversationModule, params.id, {
 						page: query.page,
 						aroundMessageId: query.aroundMessageId,
 						pageSize: query.pageSize,
@@ -503,7 +500,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generation-settings",
 			({ params, status }) => {
-				const settings = createConversationModule(database).getGenerationSettings(params.id);
+				const settings = readConversationGenerationSettings(database, params.id);
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
@@ -523,17 +520,18 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations",
-			async ({ params, body }) => generationAcceptanceResponse(
+			async ({ params, body }) => acceptanceResponse(
 				params.id,
 				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
-					content: body.content,
+					target: { kind: body.kind, content: body.content },
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
 				}),
+				generationStartRouteResponse,
 			),
 			{
 				params: conversationIdParams,
@@ -563,26 +561,22 @@ export const createConversationRoutes = (
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
 			async ({ params, body }) =>
-				siblingGenerationAcceptanceResponse(
+				acceptanceResponse(
 					params.id,
 					() => generationCoordinator.startGeneration({
 						conversationId: params.id,
-						messageId: params.messageId,
-						formatting: { timeZone: body?.timeZone, locale: body?.locale },
-						preview: body?.previewId === undefined
+						target: { kind: body.kind, messageId: params.messageId },
+						formatting: { timeZone: body.timeZone, locale: body.locale },
+						preview: body.previewId === undefined
 							? undefined
 							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
 					}),
+					siblingGenerationResponse,
 				),
 				{
 					params: messageIdParams,
-					body: Type.Optional(siblingGenerationBody),
-					response: {
-						200: generationAccepted,
-						404: notFoundOutcome,
-						409: notPlayableOutcome,
-						422: invalidOutcome,
-					},
+					body: siblingGenerationBody,
+					response: siblingGenerationResponse,
 				},
 		)
 		// @approved
@@ -590,14 +584,14 @@ export const createConversationRoutes = (
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
-					const conversation = createConversationModule(database).execute({
+					const conversation = executeConversationCommand(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
@@ -607,42 +601,15 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (error instanceof ConversationNotFoundError) {
-						return notFoundResponse();
-					}
-					if (error instanceof ConversationNotPlayableError) {
-						return status(409, {
-							outcome: "not-playable" as const,
-							reason: error.message,
-						});
-					}
-					if (error instanceof ParticipantNotRemovableError) {
-						return status(409, {
-							outcome: "not-removable" as const,
-							reason: error.reason,
-						});
-					}
-					if (
-						error instanceof InvalidConversationCommandError ||
-						error instanceof InvalidImageError
-					) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						commandResponse,
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: conversationCommandBody,
-				response: {
-					200: conversationAppliedResponse,
-					409: conversationCommandConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: commandResponse,
 			},
 		)
 		.post(
@@ -660,33 +627,15 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					if (error instanceof StaleCharacterRevisionError) {
-						return staleCharacterConflictResponse(error);
-					}
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (
-						error instanceof ConversationNotFoundError ||
-						error instanceof CharacterNotFoundError
-					) {
-						return notFoundResponse();
-					}
-					if (error instanceof InvalidConversationCommandError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						addCastCharacterResponse,
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: addCharacterToCastBody,
-				response: {
-					200: conversationAppliedResponse,
-					409: castCharacterConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: addCastCharacterResponse,
 			},
 		)
 		.post(
@@ -704,30 +653,15 @@ export const createConversationRoutes = (
 						character: toCharacterPayload(character),
 					};
 				} catch (error) {
-					if (error instanceof StaleConversationRevisionError) {
-						return staleConversationResponse(database, params.id, error);
-					}
-					if (
-						error instanceof ConversationNotFoundError ||
-						error instanceof ParticipantNotFoundError
-					) {
-						return notFoundResponse();
-					}
-					if (error instanceof InvalidCharacterDefinitionError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error,
+						saveParticipantResponse,
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
 				params: participantIdParams,
 				body: saveParticipantAsCharacterBody,
-				response: {
-					200: characterAppliedResponse,
-					409: conversationConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: saveParticipantResponse,
 			},
 		);
 };

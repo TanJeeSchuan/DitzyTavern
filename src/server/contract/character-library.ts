@@ -1,10 +1,7 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import {
-	CharacterNotFoundError,
-	InvalidCharacterCommandError,
-	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
 	createCharacterLibraryModule,
 } from "../character-library";
 import {
@@ -15,15 +12,22 @@ import {
 	characterSnapshot,
 	commandBodySchema,
 } from "../../shared/contract/character-library";
-import { InvalidImageError } from "../image";
+
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
-import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+
 import { toCharacterPayload } from "./projections";
 
 // @approved
 //  Keep this adapter export stable for sibling route adapters that use the
 // Character transport projection while the implementation lives below the
 // route-adapter layer.
+const commandResponse = {
+	200: characterCommandApplied,
+	409: characterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
 export { toCharacterPayload };
 
 // @approved
@@ -75,29 +79,11 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 						character: toCharacterPayload(outcome),
 					};
 				} catch (error) {
-					if (error instanceof StaleCharacterRevisionError) {
-						return staleCharacterConflictResponse(error);
-					}
-					if (error instanceof CharacterNotFoundError) {
-						return notFoundResponse();
-					}
-					if (
-						error instanceof InvalidCharacterDefinitionError ||
-						error instanceof InvalidCharacterCommandError ||
-						error instanceof InvalidImageError
-					) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error, commandResponse);
 				}
 			},
 			{
 				body: commandBodySchema,
-				response: {
-					200: characterCommandApplied,
-					409: characterConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: commandResponse,
 			},
 		);

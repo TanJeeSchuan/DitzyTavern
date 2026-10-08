@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation";
 import type { GenerationProvenanceSettings } from "../generation-provenance";
 import {
 	conversationGenerationSettings,

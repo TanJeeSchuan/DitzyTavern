@@ -1,4 +1,4 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";

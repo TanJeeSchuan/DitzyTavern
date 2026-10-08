@@ -1,13 +1,11 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable, participantTable } from "../database/schema";
-import {
-	createConversationModule,
-	ConversationNotPlayableError,
-	ConversationNotFoundError,
-} from "../conversation";
+import { ConversationNotPlayableError, ConversationNotFoundError } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import {
 	PromptBudgetExceededError,
@@ -18,12 +16,11 @@ import {
 	type ModelClientGenerationInput,
 } from "../model-client";
 import {
-	generateSiblingVariant,
-	sendThroughProvisionalTailGeneration,
+	runGenerationLifecycle,
 } from ".";
 import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
 import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
@@ -59,19 +56,19 @@ const sendPreview = async (
 	conversationId: number,
 	options: { content?: string; tokenEstimator?: () => number } = {},
 ) => {
-	const preview = await createGenerationPreviewAsync(database, {
+	const preview = await createGenerationPreviewAsync(database, {connection: null,
 		conversationId,
 		kind: "send",
 		content: options.content ?? "Draft",
 		tokenEstimator: options.tokenEstimator,
 	});
-	if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
+	if (preview.capture.target.kind !== "send") throw new Error("Expected a Send preview.");
 	return preview.capture;
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
-	const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
-	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
+	if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture;
 };
 
@@ -83,7 +80,7 @@ describe("Generation runtime behavior", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversationModule(database).create({
+		const snapshot = createConversationWithHistory(database, {
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -174,7 +171,7 @@ describe("Generation runtime behavior", () => {
 		let receivedInput: ModelClientGenerationInput | undefined;
 		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
 
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient((input) => {
 				receivedInput = input;
@@ -212,7 +209,7 @@ describe("Generation runtime behavior", () => {
 
 	test("later Generations include earlier selected Messages in prompt history", async () => {
 		const plans: PromptPlan[] = [];
-		await generateTerminalTailFixture(database, {
+		await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T13:00:00Z",
 			modelClient: fakeModelClient((plan) => {
@@ -220,7 +217,7 @@ describe("Generation runtime behavior", () => {
 				return "First reply.";
 			}),
 		});
-		await generateTerminalTailFixture(database, {
+		await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T13:05:00Z",
 			modelClient: fakeModelClient((plan) => {
@@ -241,7 +238,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("generates through either Control order using identities, not positions", async () => {
-		const swapped = createConversationModule(database).create({
+		const swapped = createConversationWithHistory(database, {
 			name: "Swapped Chat",
 			participants: [
 				{ definition: adHoc("Maren Voss", ["Held by the model seat."]) },
@@ -250,7 +247,7 @@ describe("Generation runtime behavior", () => {
 			control: { human: 1, model: 0 },
 		});
 
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId: swapped.id,
 			timestamp: "2026-08-20T13:00:00Z",
 			modelClient: fakeModelClient(() => "The swapped model answers."),
@@ -264,7 +261,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("rejects unplayable Conversations with a typed result before the transport", async () => {
-		const incomplete = createConversationModule(database).create({
+		const incomplete = createConversationWithHistory(database, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -282,7 +279,7 @@ describe("Generation runtime behavior", () => {
 
 		let contacted = false;
 		await expect(
-			generateTerminalTailFixture(database, {
+			generateTerminalTailFixture(database, {connection: null,
 				conversationId: incomplete.id,
 				modelClient: fakeModelClient(() => {
 					contacted = true;
@@ -292,7 +289,7 @@ describe("Generation runtime behavior", () => {
 		).rejects.toThrow(ConversationNotPlayableError);
 		expect(contacted).toBe(false);
 
-		const after = createConversationModule(database).getSnapshot(incomplete.id);
+		const after = readTestConversationSnapshot(database, incomplete.id);
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
@@ -304,7 +301,7 @@ describe("Generation runtime behavior", () => {
 			ConversationNotFoundError,
 		);
 		await expect(
-			generateTerminalTailFixture(database, {
+			generateTerminalTailFixture(database, {connection: null,
 				conversationId: 424242,
 				modelClient: fakeModelClient(() => "x"),
 			}),
@@ -312,11 +309,11 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("a transport failure commits nothing", async () => {
-		const snapshot = createConversationModule(database).getSnapshot(conversationId);
+		const snapshot = readTestConversationSnapshot(database, conversationId);
 		if (snapshot === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
-			generateTerminalTailFixture(database, {
+			generateTerminalTailFixture(database, {connection: null,
 				conversationId,
 				modelClient: fakeModelClient(() => {
 					throw new Error("Transport down.");
@@ -324,7 +321,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("Transport down.");
 
-		const after = createConversationModule(database).getSnapshot(conversationId);
+		const after = readTestConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(snapshot.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -332,7 +329,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("preserves visible partial work as interrupted when a stream fails", async () => {
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T13:10:00Z",
 			modelClient: createFakeModelClient(() => [
@@ -356,11 +353,11 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("removes a failed zero-output attempt and keeps the prior selection", async () => {
-		const before = createConversationModule(database).getSnapshot(conversationId);
+		const before = readTestConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
-			generateTerminalTailFixture(database, {
+			generateTerminalTailFixture(database, {connection: null,
 				conversationId,
 				modelClient: createFakeModelClient(() => [
 					{ type: "failed", kind: "inactivity", message: "The stream became inactive." },
@@ -368,7 +365,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("The stream became inactive.");
 
-		const after = createConversationModule(database).getSnapshot(conversationId);
+		const after = readTestConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(before.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -376,7 +373,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("treats cancellation as targeted and preserves already received output", async () => {
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Before cancellation." },
@@ -395,7 +392,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("persists reasoning separately, including reasoning-only output", async () => {
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => [
 				{ type: "reasoning", text: "Private thought, " },
@@ -414,7 +411,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("ignores unrecognized reasoning shapes while visible content continues", async () => {
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Visible output." },
@@ -428,7 +425,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("records a length-limited terminal outcome without continuing automatically", async () => {
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Truncated answer." },
@@ -459,7 +456,7 @@ describe("Generation runtime behavior", () => {
 			markStarted = resolve;
 		});
 
-		const generation = generateTerminalTailFixture(database, {
+		const generation = generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
 			modelClient: fakeModelClient(async () => {
@@ -494,7 +491,7 @@ describe("Generation runtime behavior", () => {
 
 		// The next generation compiles from the updated authoritative state.
 		const plan: PromptPlan | undefined = await new Promise((resolve) => {
-			void generateTerminalTailFixture(database, {
+			void generateTerminalTailFixture(database, {connection: null,
 				conversationId,
 				timestamp: "2026-08-20T14:05:00Z",
 				modelClient: fakeModelClient((receivedPlan) => {
@@ -520,7 +517,7 @@ describe("Generation runtime behavior", () => {
 			markStarted = resolve;
 		});
 
-		const generation = generateTerminalTailFixture(database, {
+		const generation = generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
 			modelClient: fakeModelClient(async () => {
@@ -563,7 +560,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {
-		const module = createConversationModule(database);
+		const module = database;
 		let release!: (content: string) => void;
 		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
@@ -573,7 +570,7 @@ describe("Generation runtime behavior", () => {
 			markStarted = resolve;
 		});
 
-		const generation = generateTerminalTailFixture(database, {
+		const generation = generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
 			modelClient: fakeModelClient(async () => {
@@ -584,9 +581,9 @@ describe("Generation runtime behavior", () => {
 		await started;
 
 		// A concurrent client command lands while the transport streams.
-		const midFlight = module.getSnapshot(conversationId);
+		const midFlight = readTestConversationSnapshot(module, conversationId);
 		if (midFlight === undefined) throw new Error("Snapshot missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: midFlight.revision,
 			action: {
@@ -615,8 +612,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("reduces Tail history by whole Messages while protecting the latest human input", async () => {
-		const conversation = createConversationModule(database);
-		let current = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -658,10 +655,10 @@ describe("Generation runtime behavior", () => {
 
 		const estimates = [200, 100];
 		let receivedPlan: PromptPlan | undefined;
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: current.revision,
-			content: "Latest human input.",
+			target: { kind: "send", content: "Latest human input." },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
@@ -677,7 +674,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("retries a zero-output Send with the same bounded Lore scan window", async () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const current = requireSnapshot(conversation, conversationId);
 		const withRecentHistory = applyCommand(conversation, {
 			conversationId,
@@ -715,7 +712,7 @@ describe("Generation runtime behavior", () => {
 				wholeWord: true,
 				keywordMode: "literal",
 				regexFlags: "",
-				
+
 				priority: 1,
 				enabled: true,
 			}],
@@ -725,10 +722,10 @@ describe("Generation runtime behavior", () => {
 
 		const plans: PromptPlan[] = [];
 		let attempts = 0;
-		await expect(sendThroughProvisionalTailGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: withRecentHistory.revision,
-			content: "Please try again.",
+			target: { kind: "send", content: "Please try again." },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				plans.push(promptPlan);
 				attempts += 1;
@@ -739,10 +736,10 @@ describe("Generation runtime behavior", () => {
 		})).rejects.toThrow("No answer.");
 
 		const afterFailure = requireSnapshot(conversation, conversationId);
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: afterFailure.revision,
-			content: "Please try again.",
+			target: { kind: "send", content: "Please try again." },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				plans.push(promptPlan);
 				return "Recovered answer.";
@@ -761,8 +758,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
-		const conversation = createConversationModule(database);
-		let current = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -791,16 +788,16 @@ describe("Generation runtime behavior", () => {
 				},
 			},
 		});
-		const before = conversation.getSnapshot(conversationId);
+		const before = readTestConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		let contacted = false;
 
 		let failure: PromptBudgetExceededError | undefined;
 		try {
-			await sendThroughProvisionalTailGeneration(database, {
+			await runGenerationLifecycle(database, {connection: null,
 				conversationId,
 				expectedRevision: current.revision,
-				content: "Protected human input.",
+				target: { kind: "send", content: "Protected human input." },
 				modelClient: createFakeModelClient(() => {
 					contacted = true;
 					return "Must not be contacted.";
@@ -814,7 +811,7 @@ describe("Generation runtime behavior", () => {
 		if (failure === undefined) throw new Error("Expected a PromptBudgetExceededError.");
 
 		expect(contacted).toBe(false);
-		expect(conversation.getSnapshot(conversationId)).toEqual(before);
+		expect(readTestConversationSnapshot(conversation, conversationId)).toEqual(before);
 		// The protected element is the Send candidate's own human input.
 		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
 		expect(failure.breakdown).toMatchObject({
@@ -833,18 +830,18 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
-		const conversation = createConversationModule(database);
-		const before = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		const before = readTestConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		// The Send composes the production Tail lifecycle: its accepted human
 		// Message precedes the generated target the sibling targets.
-		const { messageId: targetId } = await sendThroughProvisionalTailGeneration(database, {
+		const { messageId: targetId } = await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: before.revision,
-			content: "Human context before target.",
+			target: { kind: "send", content: "Human context before target." },
 			modelClient: fakeModelClient(() => "Target model output."),
 		});
-		let current = conversation.getSnapshot(conversationId);
+		let current = readTestConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -886,9 +883,9 @@ describe("Generation runtime behavior", () => {
 
 		let receivedPlan: PromptPlan | undefined;
 		const estimates = [200, 100];
-		await generateSiblingVariant(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
-			messageId: targetId,
+			target: { kind: "sibling", messageId: targetId },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				receivedPlan = promptPlan;
 				return "Budgeted sibling output.";
@@ -919,7 +916,7 @@ describe("Prompt Comments", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		conversationId = createConversationModule(database).create({
+		conversationId = createConversationWithHistory(database, {
 			name: "Annotated Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -970,7 +967,7 @@ describe("Prompt Comments", () => {
 
 	test("comments survive in storage while the model request omits them", async () => {
 		let receivedPlan: PromptPlan | undefined;
-		await generateTerminalTailFixture(database, {
+		await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			timestamp: "2026-08-20T13:00:00Z",
 			modelClient: fakeModelClient((plan) => {
@@ -984,7 +981,7 @@ describe("Prompt Comments", () => {
 		expect(JSON.stringify(receivedPlan)).not.toContain("{{//");
 
 		const model = requireSnapshot(
-			createConversationModule(database),
+			database,
 			conversationId,
 		).cast[1];
 		expect(model?.prompt.systemInstruction).toBe(`Keep it terse. ${inlineComment}`);

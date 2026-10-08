@@ -48,18 +48,10 @@ export interface PromptBudgetInput {
 	protectedHistoryIndex?: number | undefined;
 }
 
-export interface PromptBudgetResult {
-	readonly fits: boolean;
+export interface PromptBudgetResult extends PromptBudgetMeasurement {
 	readonly plan: PromptPlan;
 	readonly retainedContext: readonly PromptContextEntry[];
 	readonly omittedContext: readonly PromptContextEntry[];
-	readonly tokenEstimate: number;
-	readonly responseBudget: number;
-	readonly safetyAllowance: number;
-	readonly contextLimit: number;
-	readonly totalRequiredTokens: number;
-	readonly breakdown: PromptBudgetBreakdown;
-	readonly failure: PromptBudgetFailure | null;
 }
 
 export interface PromptBudgetMeasurementInput {
@@ -86,8 +78,8 @@ export interface PromptBudgetMeasurement {
 	readonly failure: PromptBudgetFailure | null;
 }
 
-/**
- * ==[HUMAN APPROVED]==
+/** @approved
+ *
  * Creates the one text representation that token estimation is allowed to
  * count. Block, role, and content separators are fixed by this versioned
  * format so equivalent Prompt Plans produce equivalent estimates.
@@ -196,8 +188,8 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 	});
 }
 
-/**
- * ==[HUMAN APPROVED]== Validate an already-expanded plan without recompiling it or trimming its
+/** @approved
+ * Validate an already-expanded plan without recompiling it or trimming its
  * history. An inspected plan is the user's direct model input, so accepting
  * it must preserve every edit and report an over-ceiling plan as-is.
  */
@@ -230,8 +222,8 @@ export function budgetEditedPromptPlan(input: {
 	};
 }
 
-/**
- * ==[HUMAN APPROVED]== Measures one ordered Prompt Plan. Both the trimming
+/** @approved
+ * Measures one ordered Prompt Plan. Both the trimming
  * path and the inspected path use this step, so their token estimate,
  * breakdown, and fit decision cannot drift apart.
  */
@@ -281,6 +273,9 @@ const validateBudgetFields = (
 };
 
 export class PromptBudgetExceededError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	readonly result: PromptBudgetResult;
 	readonly breakdown: PromptBudgetBreakdown;
 

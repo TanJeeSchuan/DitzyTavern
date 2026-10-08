@@ -1,3 +1,4 @@
+import { createConversation } from "../conversation";
 // @approved
 //  Shared database workflow for prepared Chat Import data. Source-specific
 // importers retain parsing, artifact storage, duplicate handling, temporary
@@ -6,12 +7,11 @@
 
 import type { Database } from "bun:sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { createConversationModule } from "../conversation";
 import type {
 	ConversationCreationInput,
 	ConversationParticipantSeed,
-	ConversationSnapshot,
-} from "../conversation/types";
+	ConversationSummary,
+} from "../conversation";
 
 export interface ImportedConversationParticipantSeed
 	extends ConversationParticipantSeed {
@@ -26,7 +26,7 @@ export interface CreateImportedConversationInput
 export function createImportedConversation(
 	database: Database,
 	input: CreateImportedConversationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const create = database.transaction(() => {
 		const participants: ConversationParticipantSeed[] = input.participants.map(
 			(participant) => {
@@ -48,7 +48,7 @@ export function createImportedConversation(
 			},
 		);
 		const { participants: _participants, ...conversationInput } = input;
-		return createConversationModule(database).create({
+		return createConversation(database, {
 			...conversationInput,
 			participants,
 		});

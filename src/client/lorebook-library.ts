@@ -1,6 +1,7 @@
+import type { StaticDecode } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import {
 	lorebook,
@@ -94,8 +95,8 @@ export async function getLorebook(bookId: number, signal?: AbortSignal): Promise
 	return data === null ? null : decodeWirePayload(lorebook, data);
 }
 
-export async function testLorebookMatch(bookId: number, writing: string): Promise<LoreMatchTest> {
-	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing });
+export async function testLorebookMatch(bookId: number, writing: string, signal?: AbortSignal): Promise<LoreMatchTest> {
+	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing }, { fetch: { signal } });
 	if (error || data === undefined || data === null) {
 		if (error?.status === 404) throw new Error("That Lorebook no longer exists.");
 		throw new Error("Lorebook matching could not be tested.");
@@ -105,7 +106,9 @@ export async function testLorebookMatch(bookId: number, writing: string): Promis
 	return decoded;
 }
 
-export async function applyLorebookCommand(command: LorebookCommand) {
+export type LorebookCommandResult = RequestOutcome<StaticDecode<typeof lorebookCommandResponse>, StaticDecode<typeof lorebookCommandErrors>>;
+
+export async function applyLorebookCommand(command: LorebookCommand): Promise<LorebookCommandResult> {
 	return requestOutcome(
 		api.api.lorebooks.commands.post(command),
 		lorebookCommandResponse,

@@ -4,13 +4,13 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
 import type { ConnectionProfile } from "../connection-settings";
 import {
-	applyConversationCommand,
 	loadConversationGenerationSettings,
 	type ContinuationPrefillSuffix,
 	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "../conversation";
-import { runConversationCommand, type ConversationCommandReconciliation } from "../conversation-command-runner";
+import type { ConversationCommandReconciliation } from "../conversation-command-runner";
+import { createConversationCommands } from "../createConversationCommands";
 import {
 	budgetDraftsFromSettings,
 	makeEmptyBudgetDrafts,
@@ -76,22 +76,13 @@ export async function saveGenerationSettingsDraft(
 ): Promise<void> {
 	const base = await loadConversationGenerationSettings(options.conversation.id);
 	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return runConversationCommand({
-		revision: () => options.conversation.revision,
-		send: (expectedRevision) =>
-			applyConversationCommand(options.conversation.id, expectedRevision, {
+	return createConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
+		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
 				type: "update-generation-settings",
 				settings: next,
-			}),
-		reconciliation: options.reconciliation,
-		notices: SAVE_NOTICES,
-		callbacks: {
-			onApplied: () => options.onApplied(next),
-			onConflict: options.onConflict,
-			onNotPlayable: options.onNotPlayable,
-			onNotRemovable: options.onNotRemovable,
-		},
-	});
+			}, { notices: SAVE_NOTICES,
+				onApplied: () => options.onApplied(next),
+				onConflict: options.onConflict, onNotPlayable: options.onNotPlayable, onNotRemovable: options.onNotRemovable });
 }
 
 // @approved
@@ -140,8 +131,8 @@ interface GenerationSettingsDraftOptions {
 	connectionProfiles?: readonly ConnectionProfile[];
 }
 
-/**
- * ==[HUMAN APPROVED]== Owns the editable Generation Settings draft: the authoritative load, the
+/** @approved
+ * Owns the editable Generation Settings draft: the authoritative load, the
  * per-section drafts, and the revision-guarded save with conflict recovery
  * (a conflict refreshes the authoritative settings while every local draft
  * stays untouched). The panel renders the current draft state and wires the

@@ -1,27 +1,21 @@
+import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import type { Database } from "bun:sqlite";
-import { Elysia, status } from "elysia";
+import { Elysia } from "elysia";
 import {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,
-	DefaultPromptPresetNotRemovableError,
 	duplicatePromptPresetBlock,
 	executePromptPresetCommand,
 	importNativePromptPreset,
 	importSillyTavernPromptPreset,
-	InvalidPromptPresetCommandError,
-	InvalidPromptPresetOperationError,
 	isSillyTavernJsonValue,
 	listPromptPresets,
 	movePromptPresetBlock,
-	PromptPresetBlockNotFoundError,
-	PromptPresetDeletionImpactChangedError,
-	PromptPresetNotFoundError,
 	readNativePromptPreset,
 	removePromptPresetBlock,
 	reviewSillyTavernPromptPreset,
 	savePromptPresetBlockPatches,
 	setPromptPresetBlockEnabled,
-	StalePromptPresetRevisionError,
 } from "../prompt-preset";
 
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -43,135 +37,37 @@ import {
 	sillyTavernImportPreview,
 	sillyTavernImportRequest,
 } from "../../shared/contract/prompt-preset";
-import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 
-// @approved
-//  Thin typed adapter over the Prompt Preset library and recipe seams. The
-// database is injected so tests can mount the same routes against a temporary
-// store; production passes undefined to use the default connection per
-// request. One classifier maps every domain failure to its wire envelope, so
-// no route re-states which error classes it recognizes.
-
-type PresetFailure =
-	| { outcome: "not-found" }
-	| { outcome: "invalid"; reason: string }
-	| { outcome: "conflict"; conflict: PromptPresetConflict }
-	| { outcome: "not-removable"; reason: string };
-
-type RecipeOutcome<T> =
-	| { outcome: "ok"; value: T }
-	| Extract<PresetFailure, { outcome: "not-found" } | { outcome: "invalid" }>;
-type ImportOutcome<T> =
-	| { outcome: "ok"; value: T }
-	| Extract<PresetFailure, { outcome: "invalid" }>;
-type CommandOutcome<T> = { outcome: "ok"; value: T } | PresetFailure;
-
-const classifyPresetFailure = (error: Error): PresetFailure | null => {
-	if (
-		error instanceof PromptPresetNotFoundError ||
-		error instanceof PromptPresetBlockNotFoundError
-	) {
-		return { outcome: "not-found" };
-	}
-	if (error instanceof InvalidPromptPresetCommandError) {
-		return { outcome: "invalid", reason: error.message };
-	}
-	if (error instanceof InvalidPromptPresetOperationError) {
-		return { outcome: "invalid", reason: error.reason };
-	}
-	if (error instanceof StalePromptPresetRevisionError) {
-		return {
-			outcome: "conflict",
-			conflict: {
-				outcome: "conflict",
-				reason: "stale-revision",
-				expectedRevision: error.expectedRevision,
-				actualRevision: error.actualRevision,
-				currentPreset: error.currentPreset,
-			},
-		};
-	}
-	if (error instanceof PromptPresetDeletionImpactChangedError) {
-		return {
-			outcome: "conflict",
-			conflict: {
-				outcome: "conflict",
-				reason: "deletion-impact",
-				currentPreset: error.currentPreset,
-			},
-		};
-	}
-	if (error instanceof DefaultPromptPresetNotRemovableError) {
-		return { outcome: "not-removable", reason: error.message };
-	}
-	return null;
+const commandResponse = {
+	200: promptPresetCommandApplied,
+	409: promptPresetCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
 };
 
-// @approved
-//  A recipe operation can fail only as missing or invalid, so a library
-// conflict escapes as the invariant violation it is.
-const runRecipeOperation = <T>(operation: () => T): RecipeOutcome<T> => {
-	try {
-		return { outcome: "ok", value: operation() };
-	} catch (error) {
-		if (!(error instanceof Error)) throw error;
-		const failure = classifyPresetFailure(error);
-		if (failure?.outcome === "not-found" || failure?.outcome === "invalid") return failure;
-		throw error;
-	}
-};
+const nativeImportResponse = { 200: promptPresetCommandApplied, 422: invalidOutcome };
 
-// @approved
-//  Import and review report invalid input; their authoritative failures are
-// the same typed invalid envelope the library commands use.
-const runImportOperation = <T>(operation: () => T): ImportOutcome<T> => {
-	try {
-		return { outcome: "ok", value: operation() };
-	} catch (error) {
-		if (!(error instanceof Error)) throw error;
-		const failure = classifyPresetFailure(error);
-		if (failure?.outcome === "invalid") return failure;
-		throw error;
-	}
-};
+const sillyTavernImportResponse = { 200: sillyTavernImportApplied, 422: invalidOutcome };
 
-const runPresetCommand = <T>(operation: () => T): CommandOutcome<T> => {
-	try {
-		return { outcome: "ok", value: operation() };
-	} catch (error) {
-		if (!(error instanceof Error)) throw error;
-		const failure = classifyPresetFailure(error);
-		if (failure === null) throw error;
-		return failure;
-	}
-};
-
-const recipeResponse = <T>(outcome: RecipeOutcome<T>) =>
-	outcome.outcome === "ok"
-		? { outcome: "applied" as const }
-		: outcome.outcome === "not-found"
-			? notFoundResponse()
-			: invalidResponse(outcome.reason);
-
-const importResponse = <T, R>(outcome: ImportOutcome<T>, applied: (value: T) => R) =>
-	outcome.outcome === "ok" ? applied(outcome.value) : invalidResponse(outcome.reason);
-
-const commandResponse = <T, R>(outcome: CommandOutcome<T>, applied: (value: T) => R) =>
-	outcome.outcome === "ok"
-		? applied(outcome.value)
-		: outcome.outcome === "not-found"
-			? notFoundResponse()
-			: outcome.outcome === "invalid"
-				? invalidResponse(outcome.reason)
-				: outcome.outcome === "conflict"
-					? status(409, outcome.conflict)
-					: status(409, { outcome: "not-removable" as const, reason: outcome.reason });
+const sillyTavernReviewResponse = { 200: sillyTavernImportPreview, 422: invalidOutcome };
 
 const recipeResponseSchema = {
 	200: promptPresetRecipeApplied,
 	404: notFoundOutcome,
 	422: invalidOutcome,
 };
+
+const respond = <T, R, S extends ResponseSchemas>(
+	operation: () => T,
+	responses: S,
+	applied: (value: T) => R,
+) => {
+	try { return applied(operation()); }
+	catch (error) { return presentDomainError(error, responses); }
+};
+
+const recipeResponse = <T>(operation: () => T) =>
+	respond(operation, recipeResponseSchema, () => ({ outcome: "applied" as const }));
 
 export const createPromptPresetRoutes = (database: Database) =>
 	new Elysia()
@@ -181,14 +77,15 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return importResponse(
-					runImportOperation(() => reviewSillyTavernPromptPreset(body)),
+				return respond(
+					() => reviewSillyTavernPromptPreset(body),
+					sillyTavernReviewResponse,
 					(preview) => preview,
 				);
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: { 200: sillyTavernImportPreview, 422: invalidOutcome },
+				response: sillyTavernReviewResponse,
 			},
 		)
 		.post(
@@ -197,15 +94,15 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return importResponse(
-					runImportOperation(() =>
-						importSillyTavernPromptPreset(database, body)),
+				return respond(
+					() => importSillyTavernPromptPreset(database, body),
+					sillyTavernImportResponse,
 					(imported) => imported,
 				);
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: { 200: sillyTavernImportApplied, 422: invalidOutcome },
+				response: sillyTavernImportResponse,
 			},
 		)
 		.get(
@@ -222,14 +119,14 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/import",
 			({ body }) =>
-				importResponse(
-					runImportOperation(() =>
-						importNativePromptPreset(database, body)),
+				respond(
+					() => importNativePromptPreset(database, body),
+					nativeImportResponse,
 					(preset) => ({ outcome: "applied" as const, preset }),
 				),
 			{
 				body: nativePromptPreset,
-				response: { 200: promptPresetCommandApplied, 422: invalidOutcome },
+				response: nativeImportResponse,
 			},
 		)
 		.get(
@@ -242,32 +139,27 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/commands",
 			({ body }) =>
-				commandResponse(
+				respond(
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the library then guards the revision and derives the
 					// deletion impact from the selections present in the transaction.
-					runPresetCommand(() =>
-						executePromptPresetCommand(database, body)),
+					() => executePromptPresetCommand(database, body),
+					commandResponse,
 					(outcome) => outcome.kind === "deleted"
 						? { outcome: "deleted" as const, result: outcome.result }
 						: { outcome: "applied" as const, preset: outcome.preset },
 				),
 			{
 				body: promptPresetCommandBody,
-				response: {
-					200: promptPresetCommandApplied,
-					409: promptPresetCommandConflict,
-					404: notFoundOutcome,
-					422: invalidOutcome,
-				},
+				response: commandResponse,
 			},
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks/patches",
 			({ params, body }) =>
-				recipeResponse(runRecipeOperation(() =>
-						savePromptPresetBlockPatches(database, params.presetId, body.patches))),
+				recipeResponse(() =>
+						savePromptPresetBlockPatches(database, params.presetId, body.patches)),
 			{
 				params: presetIdParams,
 				body: promptPresetBlockPatchesBody,
@@ -277,8 +169,8 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
 			({ params, body }) =>
-				recipeResponse(runRecipeOperation(() =>
-						addPromptPresetBlock(database, params.presetId, body.reference))),
+				recipeResponse(() =>
+						addPromptPresetBlock(database, params.presetId, body.reference)),
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,
@@ -288,13 +180,13 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/move",
 			({ params, body }) =>
-				recipeResponse(runRecipeOperation(() =>
+				recipeResponse(() =>
 						movePromptPresetBlock(
 							database,
 							params.presetId,
 							params.blockId,
 							body.toPosition,
-						))),
+						)),
 			{
 				params: blockIdParams,
 				body: movePromptPresetBlockBody,
@@ -304,13 +196,13 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/toggle",
 			({ params, body }) =>
-				recipeResponse(runRecipeOperation(() =>
+				recipeResponse(() =>
 						setPromptPresetBlockEnabled(
 							database,
 							params.presetId,
 							params.blockId,
 							body.enabled,
-						))),
+						)),
 			{
 				params: blockIdParams,
 				body: setPromptPresetBlockEnabledBody,
@@ -320,8 +212,8 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/duplicate",
 			({ params }) =>
-				recipeResponse(runRecipeOperation(() =>
-						duplicatePromptPresetBlock(database, params.presetId, params.blockId))),
+				recipeResponse(() =>
+						duplicatePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -330,8 +222,8 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.delete(
 			"/api/prompt-presets/:presetId/blocks/:blockId",
 			({ params }) =>
-				recipeResponse(runRecipeOperation(() =>
-						removePromptPresetBlock(database, params.presetId, params.blockId))),
+				recipeResponse(() =>
+						removePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -340,8 +232,8 @@ export const createPromptPresetRoutes = (database: Database) =>
 		.post(
 			"/api/prompt-presets/:presetId/instructions",
 			({ params }) =>
-				recipeResponse(runRecipeOperation(() =>
-						addPromptPresetInstruction(database, params.presetId))),
+				recipeResponse(() =>
+						addPromptPresetInstruction(database, params.presetId)),
 			{
 				params: presetIdParams,
 				response: recipeResponseSchema,

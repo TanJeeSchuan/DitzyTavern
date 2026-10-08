@@ -42,6 +42,9 @@ export type { CharacterDeletionResult };
 
 export type { CharacterCommand as CharacterLibraryCommand };
 
+export type CharacterDeletionCommand = Extract<CharacterCommand, { type: "delete" }>;
+export type CharacterMutationCommand = Exclude<CharacterCommand, { type: "delete" }>;
+
 export interface CharacterLibraryModule {
 	list(): CharacterLibrarySummary[];
 	get(characterId: number): CharacterSnapshot | undefined;
@@ -50,9 +53,9 @@ export interface CharacterLibraryModule {
 	// deletion returns the typed result stating the deletion mode, because a
 	// tombstoned or hard-deleted Character no longer has a snapshot. The
 	// overloads keep every call site's return type precise.
-	execute(command: Extract<CharacterCommand, { type: "delete" }>): CharacterDeletionResult;
+	execute(command: CharacterDeletionCommand): CharacterDeletionResult;
 	execute(
-		command: Exclude<CharacterCommand, { type: "delete" }>,
+		command: CharacterMutationCommand,
 	): CharacterSnapshot;
 	execute(
 		command: CharacterCommand,

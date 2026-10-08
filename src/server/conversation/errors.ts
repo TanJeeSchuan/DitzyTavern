@@ -1,6 +1,8 @@
 import type { MessageSwipeBlockReason, ParticipantRemovalBlockReason } from "./types";
 
 export class ConversationNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor(conversationId: number) {
 		super(`Conversation ${conversationId} was not found.`);
 		this.name = "ConversationNotFoundError";
@@ -8,6 +10,9 @@ export class ConversationNotFoundError extends Error {
 }
 
 export class StaleConversationRevisionError extends Error {
+	readonly outcome = "conflict" as const;
+	readonly details = { reason: this.message };
+
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
 
@@ -28,6 +33,8 @@ export class StaleConversationRevisionError extends Error {
 // 404 rather than guessing. Matching the Conversation model, the whole
 // Conversation is implied by the participant's chat reference.
 export class ParticipantNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	readonly conversationId: number;
 	readonly participantId: number;
 
@@ -42,6 +49,9 @@ export class ParticipantNotFoundError extends Error {
 }
 
 export class InvalidConversationCommandError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidConversationCommandError";
@@ -49,6 +59,9 @@ export class InvalidConversationCommandError extends Error {
 }
 
 export class InvalidConversationCreationError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidConversationCreationError";
@@ -62,6 +75,9 @@ export class InvalidConversationCreationError extends Error {
 // historical pair no longer has a usable Definition. Existing Variants
 // remain selectable and editable; only new sibling generation is blocked.
 export class SiblingVariantUnavailableError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	readonly reason: Exclude<MessageSwipeBlockReason, "conversation-not-playable">;
 
 	constructor(
@@ -83,6 +99,9 @@ export class SiblingVariantUnavailableError extends Error {
 // reason tells clients why the Participant cannot be removed (Control must
 // be reassigned first) without inventing rules transport-side.
 export class ParticipantNotRemovableError extends Error {
+	readonly outcome = "not-removable" as const;
+	readonly details;
+
 	readonly reason: ParticipantRemovalBlockReason;
 	readonly conversationId: number;
 	readonly participantId: number;
@@ -95,6 +114,7 @@ export class ParticipantNotRemovableError extends Error {
 		this.reason = "control-assigned";
 		this.conversationId = conversationId;
 		this.participantId = participantId;
+		this.details = { reason: this.reason };
 	}
 }
 
@@ -102,6 +122,9 @@ export class ParticipantNotRemovableError extends Error {
 //  Typed outcome for play-gated actions (Compose, Generate, Swipe) in a
 // Conversation whose two Control seats are not both occupied.
 export class ConversationNotPlayableError extends Error {
+	readonly outcome = "not-playable" as const;
+	readonly details = { reason: this.message };
+
 	constructor(conversationId: number) {
 		super(
 			`Conversation ${conversationId} is not playable: two distinct Participants must occupy the human and model seats.`,
@@ -136,6 +159,9 @@ export class ConversationWriteObserverMissingError extends Error {
 //  Typed denial for Continue. Existing history remains untouched and callers
 // can present the reason without reproducing the terminal-position rule.
 export class ContinuationUnavailableError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	readonly reason: ContinuationUnavailableReason;
 
 	constructor(reason: ContinuationUnavailableReason) {

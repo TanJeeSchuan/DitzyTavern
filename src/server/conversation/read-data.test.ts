@@ -1,7 +1,8 @@
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationData } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationModule } from "./index";
 
 // The narrow Conversation data read is exercised through the same public
 // module interface as production callers (ADR-0013): write Conversation-
@@ -11,11 +12,11 @@ describe("readConversationData", () => {
 	let database: Database;
 	let conversationId: number;
 	let revision: number;
-	const module = () => createConversationModule(database);
+	const module = () => database;
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
-		const created = module().create({
+		const created = createConversationWithHistory(module(), {
 			name: "Read Data Conversation",
 			participants: [
 				{
@@ -40,7 +41,7 @@ describe("readConversationData", () => {
 	});
 
 	const writeData = (namespace: string, key: string, value: string): void => {
-		const snapshot = module().execute({
+		const snapshot = executeConversationCommand(module(), {
 			conversationId,
 			expectedRevision: revision,
 			action: {
@@ -71,7 +72,7 @@ describe("readConversationData", () => {
 		writeData("first.namespace", "beta", "2");
 		writeData("second.namespace", "gamma", "3");
 
-		const read = module().readConversationData(conversationId);
+		const read = readConversationData(module(), conversationId);
 		expect(read).toEqual({
 			name: "Read Data Conversation",
 			entries: [
@@ -86,7 +87,7 @@ describe("readConversationData", () => {
 		writeData("first.namespace", "alpha", "1");
 		writeData("second.namespace", "gamma", "3");
 
-		const read = module().readConversationData(conversationId, {
+		const read = readConversationData(module(), conversationId, {
 			namespace: "second.namespace",
 		});
 		expect(read?.name).toBe("Read Data Conversation");
@@ -100,7 +101,7 @@ describe("readConversationData", () => {
 		writeData("import.test", "warnings", "[]");
 		writeData("import.test", "sha256", "abc");
 
-		const read = module().readConversationData(conversationId, {
+		const read = readConversationData(module(), conversationId, {
 			namespace: "import.test",
 			keys: ["reportJson", "warnings"],
 		});
@@ -114,7 +115,7 @@ describe("readConversationData", () => {
 		writeData("first.namespace", "sha256", "a");
 		writeData("second.namespace", "sha256", "b");
 
-		const read = module().readConversationData(conversationId, {
+		const read = readConversationData(module(), conversationId, {
 			keys: ["sha256"],
 		});
 		expect(read?.entries).toEqual([
@@ -127,18 +128,18 @@ describe("readConversationData", () => {
 		writeData("first.namespace", "alpha", "1");
 		writeData("first.namespace", "beta", "2");
 
-		const read = module().readConversationData(conversationId, { keys: [] });
+		const read = readConversationData(module(), conversationId, { keys: [] });
 		expect(read?.entries).toHaveLength(2);
 	});
 
 	test("returns undefined for a missing Conversation", () => {
-		expect(module().readConversationData(999999)).toBeUndefined();
+		expect(readConversationData(module(), 999999)).toBeUndefined();
 	});
 
 	test("returns the name and an empty entry list for a filter with no matches", () => {
 		writeData("first.namespace", "alpha", "1");
 
-		const read = module().readConversationData(conversationId, {
+		const read = readConversationData(module(), conversationId, {
 			namespace: "unused.namespace",
 		});
 		expect(read).toEqual({ name: "Read Data Conversation", entries: [] });

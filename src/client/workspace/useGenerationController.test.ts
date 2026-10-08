@@ -10,14 +10,13 @@ Object.defineProperty(globalThis, "window", {
 	// SAFETY: the test supplies the minimal browser location read by Eden.
 	value: { location: { origin: "http://localhost" } } as Window,
 });
-const { generationSessionStoryAction } = await import("./useGenerationController");
 const { reduceStory, createStoryState } = await import("../story");
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-// Thin wiring test: one pass of the runner plus the story-effect mapping
+// Thin wiring test: one pass of the runner
 // against the real story reducer. Full rendering stays with the browser
 // smoke checks; the wiring is the seam under test here.
 
@@ -33,13 +32,13 @@ const observe = (generationIds: readonly number[]) =>
 	}) as const;
 
 describe("Generation session wiring", () => {
-	test("the runner, the mapping, and the story reducer compose into visible streaming text", () => {
+	test("the runner and the story reducer compose into visible streaming text", () => {
 		const stream = oneShotStream();
 		const storyActions: StoryAction[] = [];
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
 			applyStoryEffect: (effect) => {
-				storyActions.push(generationSessionStoryAction(effect));
+				storyActions.push(effect);
 			},
 			refreshConversation: async () => {},
 		});

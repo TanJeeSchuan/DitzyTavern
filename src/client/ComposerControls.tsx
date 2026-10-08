@@ -4,11 +4,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { controlChangeDescription } from "./cast";
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "./conversation";
-import { runConversationCommand } from "./conversation-command-runner";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
+import { createConversationCommands } from "./createConversationCommands";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ModelSelector } from "./ModelSelector";
 
 // @approved
@@ -38,6 +37,8 @@ export function ComposerControlSelectors({
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 
+	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+
 	if (conversation.cast.length === 0) {
 		return null;
 	}
@@ -57,29 +58,16 @@ export function ComposerControlSelectors({
 		setNotice(null);
 		const showUnreachable = () => setNotice(CONVERSATION_UNREACHABLE_NOTICE);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversation.id, expectedRevision, {
+			await run({
 						type: "assign-control",
 						seat,
 						participantId,
-					}),
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: {
+					}, { notices: {
 					conflict: "The Conversation changed elsewhere; the current seats were reloaded.",
 					notFound: CONVERSATION_UNREACHABLE_NOTICE,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				callbacks: {
-					onApplied: () => onControlChange(description.notice),
-					onNotPlayable: showUnreachable,
-					onNotRemovable: showUnreachable,
-				},
-			});
+				onApplied: () => onControlChange(description.notice), onNotPlayable: showUnreachable, onNotRemovable: showUnreachable });
 		} finally {
 			setPending(false);
 		}

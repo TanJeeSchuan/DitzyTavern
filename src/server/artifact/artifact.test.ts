@@ -1,3 +1,4 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -16,7 +17,7 @@ import {
 	sanitizeArtifactFilename,
 } from ".";
 import type { ConversationArtifactSeed } from "../conversation";
-import { createConversationModule, InvalidConversationCreationError } from "../conversation";
+import { InvalidConversationCreationError } from "../conversation";
 import { artifactTable, conversationTable } from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 
@@ -46,7 +47,7 @@ describe("Conversation artifacts", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		root = mkdtempSync(join(tmpdir(), "ditzytavern-artifact-"));
 		module = createArtifactModule(database, { directory: root });
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Artifact Holder",
 		});
 		chatId = created.id;
@@ -64,7 +65,7 @@ describe("Conversation artifacts", () => {
 		// The physical copy is placed at the managed relative path first,
 		// exactly as the import orchestration does before creation.
 		writeFileSync(join(root, seed.relativePath), bytes);
-		return createConversationModule(database).create({
+		return createConversationWithHistory(database, {
 			name: "Artifact Conversation",
 			artifacts: [seed],
 		});
@@ -81,7 +82,7 @@ describe("Conversation artifacts", () => {
 		});
 		writeFileSync(join(root, seed.relativePath), bytes);
 
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Artifact Conversation",
 			artifacts: [seed],
 		});
@@ -131,7 +132,7 @@ describe("Conversation artifacts", () => {
 	test("rejects duplicate (namespace, key) artifact identities within one creation", () => {
 		const seed = artifactSeed();
 		expect(() =>
-			createConversationModule(database).create({
+			createConversationWithHistory(database, {
 				name: "Duplicate Artifacts",
 				artifacts: [seed, { ...seed, relativePath: uniqueManagedRelativePath("other.jsonl") }],
 			}),
@@ -172,7 +173,7 @@ describe("Conversation artifacts", () => {
 		];
 		for (const tweak of cases) {
 			expect(() =>
-				createConversationModule(database).create({
+				createConversationWithHistory(database, {
 					name: "Invalid Artifact",
 					artifacts: [artifactSeed(tweak)],
 				}),
@@ -190,7 +191,7 @@ describe("Conversation artifacts", () => {
 		});
 		createWithArtifact(seed);
 
-		const snapshot = createConversationModule(database).getSnapshot(chatId);
+		const snapshot = readTestConversationSnapshot(database, chatId);
 		const serialized = JSON.stringify(snapshot);
 		expect(serialized).not.toContain("uuid-source.bin");
 		expect(serialized).not.toContain("opaque artifact payload");
@@ -205,7 +206,7 @@ describe("Conversation artifacts", () => {
 			sha256: sha256Hex(bytes),
 		});
 		writeFileSync(join(root, seed.relativePath), bytes);
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Exact Round Trip",
 			artifacts: [seed],
 		});
@@ -295,7 +296,7 @@ describe("Conversation artifacts", () => {
 			originalFilename: 'my "quoted"\nimport.jsonl',
 		});
 		writeFileSync(join(root, seed.relativePath), bytes);
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Download Me",
 			artifacts: [seed],
 		});
@@ -319,7 +320,7 @@ describe("Conversation artifacts", () => {
 		// A metadata row claiming an escaping path must never resolve into a
 		// read outside the managed directory, with or without a file there.
 		const seed = artifactSeed({ relativePath: "../escape.bin" });
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Escaping Artifact",
 			artifacts: [seed],
 		});

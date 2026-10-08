@@ -1,4 +1,7 @@
 export class SillyTavernImportError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "SillyTavernImportError";
@@ -10,6 +13,8 @@ export class SillyTavernImportError extends Error {
 // registry is session-bound and in-memory) or the handle was already
 // discarded. The flow expired and the client must reselect the file.
 export class StagedChatImportExpiredError extends Error {
+	readonly outcome = "expired" as const;
+
 	constructor() {
 		super("This staged import could not be resumed; the server restarted or the flow was discarded.");
 		this.name = "StagedChatImportExpiredError";
@@ -21,6 +26,9 @@ export class StagedChatImportExpiredError extends Error {
 // byte length and SHA-256 the handle was bound to. The file was cleaned up
 // or corrupted; the flow cannot continue and the client must reselect.
 export class StagedChatImportUnavailableError extends Error {
+	readonly outcome = "unavailable" as const;
+	readonly details;
+
 	// @approved
 	//  "missing" when the staged file is gone, "corrupt" when its bytes fail
 	// verification against the bound length and SHA-256.
@@ -31,6 +39,7 @@ export class StagedChatImportUnavailableError extends Error {
 				: "The staged source file no longer matches the uploaded bytes.",
 		);
 		this.name = "StagedChatImportUnavailableError";
+		this.details = { reason };
 	}
 }
 
@@ -39,6 +48,9 @@ export class StagedChatImportUnavailableError extends Error {
 // bound to. The preview can never be trusted against a different hash, so
 // the request is rejected without touching the staged flow.
 export class StagedChatImportTokenMismatchError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor() {
 		super("The supplied source SHA-256 does not match this staged import.");
 		this.name = "StagedChatImportTokenMismatchError";
@@ -52,6 +64,9 @@ export class StagedChatImportTokenMismatchError extends Error {
 // longer exists. The failure is recoverable: the staged preview, the staged
 // bytes, and every resolution choice stay intact for correction.
 export class StagedChatImportPlanError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "StagedChatImportPlanError";
@@ -64,6 +79,9 @@ export class StagedChatImportPlanError extends Error {
 // independent-copy intent. The commit is refused until that confirmation;
 // the staged preview and every resolution choice stay intact.
 export class StagedChatImportDuplicateConfirmationError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor() {
 		super(
 			"This exact source was already imported. Confirm that you want to import another independent copy.",

@@ -14,10 +14,8 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import {
-	DEFAULT_CONTINUATION_STRATEGY,
-	DEFAULT_SIBLING_GENERATION_LIMIT,
-} from "../conversation/generation-defaults";
+export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
+export const DEFAULT_CONTINUATION_STRATEGY = "instruction";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";

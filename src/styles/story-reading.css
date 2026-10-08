@@ -1,0 +1,40 @@
+.story-scroll {
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	scrollbar-color: var(--border-strong) transparent;
+}
+
+.story-content {
+	width: min(100%, 44rem);
+	min-height: 100%;
+	margin: 0 auto;
+	padding: 3rem clamp(1.6rem, 5vw, 3.4rem) 13rem;
+}
+
+.empty-chat {
+	display: grid;
+	min-height: min(32rem, 58dvh);
+	align-content: center;
+	justify-items: center;
+	text-align: center;
+}
+
+.empty-chat h2 {
+	margin: 0;
+	color: var(--foreground);
+	font-family: var(--font-reading);
+	font-size: clamp(1.35rem, 3vw, 1.8rem);
+	font-weight: 610;
+	letter-spacing: -0.025em;
+}
+
+.empty-chat p {
+	max-width: 31rem;
+	margin: 0.8rem 0 0;
+	color: var(--text-muted);
+	font-size: 0.88rem;
+	line-height: 1.65;
+}
+

@@ -31,8 +31,8 @@ export interface DiscoveryOptions {
 	readonly fetch?: ModelFetch;
 }
 
-/**
- * ==[HUMAN APPROVED]== Fetches the advisory catalog from the Profile's exact Models URL. This
+/** @approved
+ * Fetches the advisory catalog from the Profile's exact Models URL. This
  * intentionally uses one plain GET rather than an AI SDK provider so model
  * discovery remains common across all bundled adapters.
  */

@@ -1,0 +1,44 @@
+.generation-placeholder {
+	margin: 0 0 3.6rem;
+}
+
+.generation-controls {
+	display: contents;
+}
+
+.placeholder-header {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+	margin-bottom: 1.2rem;
+}
+
+.skeleton {
+	display: block;
+	border-radius: 0.55rem;
+	background: color-mix(in oklch, var(--surface-deep) 78%, var(--surface));
+}
+
+.portrait-skeleton {
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 28%;
+}
+
+.label-skeleton {
+	width: 7.5rem;
+	height: 0.75rem;
+}
+
+.prose-skeleton {
+	width: 72%;
+	height: 0.92rem;
+	margin-top: 0.7rem;
+}
+
+.prose-skeleton.wide {
+	width: 94%;
+}
+
+/* Preview mode leaves causally downstream Messages readable but dimmed and
+   non-interactive until the Preview is confirmed or cancelled. */

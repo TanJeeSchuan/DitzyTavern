@@ -1,11 +1,14 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	acceptConversationTailGeneration,
+	resolveConversationGeneration,
+	readActiveGenerationDetails,
+	readVariantDetails,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import {
-	cleanupRetainedGenerationInspections,
-	createConversationModule,
-	GENERATION_REPLAY_RETENTION_MS,
-} from "../conversation";
+import { cleanupRetainedGenerationInspections, GENERATION_REPLAY_RETENTION_MS } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -25,7 +28,7 @@ describe("Generation detail transport", () => {
 	afterEach(() => database.close());
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Details Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -33,8 +36,8 @@ describe("Generation detail transport", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
-		const accepted = module.acceptTailGeneration({
+		const module = database;
+		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T10:00:00Z",
@@ -106,7 +109,7 @@ describe("Generation detail transport", () => {
 			expect(body).not.toContain("secret.invalid");
 			expect(body).not.toContain("credential-do-not-expose");
 
-			module.resolveGeneration({
+			resolveConversationGeneration(module, {
 				conversationId: conversation.id,
 				generationId: accepted.generationId,
 				timestamp: "2026-08-27T10:00:01Z",
@@ -126,7 +129,7 @@ describe("Generation detail transport", () => {
 			expect(terminalInspectionBody).toContain("Guide the scene.");
 			expect(terminalInspectionBody).toContain("Omitted.");
 			expect(terminalInspectionBody).not.toContain("credential-do-not-expose");
-			const message = module.getSnapshot(conversation.id)?.messages.at(-1);
+			const message = readTestConversationSnapshot(module, conversation.id)?.messages.at(-1);
 			const variant = message?.variants.at(-1);
 			if (variant === undefined || message === undefined) throw new Error("Variant missing.");
 			const details = await app.handle(new Request(
@@ -152,12 +155,12 @@ describe("Generation detail transport", () => {
 				database,
 				new Date(Date.now() + GENERATION_REPLAY_RETENTION_MS + 1),
 			);
-			expect(module.readActiveGenerationDetails(conversation.id, accepted.generationId)).toBeUndefined();
+			expect(readActiveGenerationDetails(module, conversation.id, accepted.generationId)).toBeUndefined();
 			const expiredInspection = await app.handle(new Request(
 				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/inspection`,
 			));
 			expect(expiredInspection.status).toBe(404);
-			expect(module.readVariantDetails(conversation.id, message.id, variant.id)?.provenance?.status)
+			expect(readVariantDetails(module, conversation.id, message.id, variant.id)?.provenance?.status)
 				.toBe("length-limited");
 		});
 	});

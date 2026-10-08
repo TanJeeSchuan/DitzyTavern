@@ -36,8 +36,8 @@ import type {
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 
-/**
- * ==[HUMAN APPROVED]== The Continuation intent one configured strategy produces. Instruction
+/** @approved
+ * The Continuation intent one configured strategy produces. Instruction
  * Continuations carry the editable instruction and assistant-prefill
  * Continuations carry the closed Prefill suffix; the other operand never
  * applies. Inspection exposes this exact intent for the selected strategy.
@@ -120,8 +120,8 @@ export const effectiveGenerationSettingsFor = (
 		: settings.requestOverrides[connection.apiFormat],
 });
 
-/**
- * ==[HUMAN APPROVED]== Compiles the complete Generation Plan for one attempt from captured
+/** @approved
+ * Compiles the complete Generation Plan for one attempt from captured
  * inputs. The returned plan always describes a real budget candidate — a
  * plan that cannot fit carries its failure inside the budget decision
  * instead of throwing, so read-only inspection can report it.
@@ -396,8 +396,8 @@ const admitDynamicBlocks = (input: {
 	};
 };
 
-/**
- * ==[HUMAN APPROVED]== Enforces the budget decision before an attempt executes. Inspection
+/** @approved
+ * Enforces the budget decision before an attempt executes. Inspection
  * compiles without this assertion to report impossible budgets; generation
  * workflows call it so an over-budget plan never contacts a Model Client.
  */

@@ -1,4 +1,7 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { requireSnapshot } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -8,7 +11,7 @@ import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
-import { createConversationModule, deleteConversation } from "../conversation";
+import { deleteConversation } from "../conversation";
 import {
 	artifactTable,
 	conversationDataTable,
@@ -161,11 +164,11 @@ describe("SillyTavern import artifacts", () => {
 			JSON.parse(
 				findEntry(data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "",
 			);
-		expect(archiveOf(chatA.data)).toEqual({
+		expect(archiveOf(requireSnapshot(database, chatA.id).data)).toEqual({
 			header,
 			messages: [first, second],
 		});
-		expect(archiveOf(chatB.data)).toEqual({
+		expect(archiveOf(requireSnapshot(database, chatB.id).data)).toEqual({
 			header,
 			messages: [first, second],
 		});
@@ -192,13 +195,13 @@ describe("SillyTavern import artifacts", () => {
 		// The canonical parsed archive and compact report remain separate
 		// conversation-scoped data; the exact artifact lives only in the
 		// managed store behind the artifact seam.
-		expect(JSON.parse(findEntry(conversation.data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
+		expect(JSON.parse(findEntry(requireSnapshot(database, conversation.id).data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
 			header,
 			messages: [first, blankName],
 		});
 		expect(
 			JSON.parse(
-				findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
+				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
 					?.value ?? "",
 			),
 		).toEqual(report);
@@ -278,7 +281,7 @@ describe("SillyTavern import artifacts", () => {
 	test("reports a missing or corrupt exact artifact as cleaned up while native Conversation behavior stays usable", () => {
 		const path = writeSource([header, first]);
 		const { conversation, artifact } = importChat(path);
-		const module = createConversationModule(database);
+		const module = database;
 
 		// Nonfatal disappearance: deleting the physical copy never throws
 		// and never impairs the native Conversation.
@@ -297,7 +300,7 @@ describe("SillyTavern import artifacts", () => {
 		).toBe("cleaned-up");
 
 		// The native Chat and its canonical archive remain fully usable.
-		const snapshot = module.getSnapshot(conversation.id);
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		expect(snapshot?.id).toBe(conversation.id);
 		expect(snapshot?.playable).toBe(false);
 		expect(JSON.parse(findEntry(snapshot?.data ?? [], ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
@@ -309,7 +312,7 @@ describe("SillyTavern import artifacts", () => {
 		// Normal Conversation commands keep working after the disappearance.
 		const writer = snapshot?.cast[0];
 		expect(writer).toBeDefined();
-		const renamed = module.execute({
+		const renamed = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: snapshot?.revision ?? 0,
 			action: {

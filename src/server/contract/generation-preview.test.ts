@@ -1,9 +1,15 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	readConversationRevision,
+	executeConversationCommand,
+	readConversationGenerationSettings,
+	readConversationSummary,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
-import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
+import { captureModelFetch, key, profile, withProfile } from "./prompt-preset-test-fixtures";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
@@ -25,7 +31,7 @@ const prompt = {
 
 const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 
-const createChat = (database: Database) => createConversationModule(database).create({
+const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Preview Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
@@ -86,9 +92,30 @@ describe("Prompt Plan inspection", () => {
 		database.close();
 	});
 
+	test("previews with a draft Connection Profile whose request URL is empty", async () => {
+		const conversation = createChat(database);
+		const connections = createConnectionSettingsModule(database, { masterKey: key });
+		connections.createProfile({
+			expectedRevision: connections.get().revision,
+			profile: { ...profile, requestUrl: "" },
+		});
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => { throw new Error("Snapshot preview must not call a provider."); },
+		});
+		const response = await previewResponse(app, conversation.id, { kind: "send", content: "hello" });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: "available",
+			conversationId: conversation.id,
+			kind: "send",
+			promptPlan: { blocks: expect.arrayContaining([expect.objectContaining({ kind: "history", role: "human", speakerName: "Writer", content: "hello" })]) },
+		});
+	});
+
 	test("presents recoverable preview failures with their domain reason", async () => {
-		const module = createConversationModule(database);
-		const incomplete = module.create({
+		const module = database;
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Preview Chat",
 			messages: [{
 				timestamp: "2026-09-13T00:00:00.000Z",
@@ -100,7 +127,7 @@ describe("Prompt Plan inspection", () => {
 			}],
 		});
 		const playable = createChat(database);
-		const siblingUnavailable = module.create({
+		const siblingUnavailable = createConversationWithHistory(module, {
 			name: "Imported Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -178,7 +205,7 @@ describe("Prompt Plan inspection", () => {
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
+					body: JSON.stringify({ kind: "send",
 						expectedRevision: conversation.revision,
 						content: "hello",
 						previewId: plan.previewId,
@@ -238,8 +265,8 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					expectedRevision: createConversationModule(database).getRevision(conversation.id),
+				body: JSON.stringify({ kind: "send",
+					expectedRevision: readConversationRevision(database, conversation.id),
 					content: body.content,
 					previewId,
 					promptPlan,
@@ -274,8 +301,8 @@ describe("Prompt Plan inspection", () => {
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch(() => {}) });
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		module.execute({
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "add-participant", definition: { name: "Extra", prompt, openings: [] } },
@@ -287,7 +314,7 @@ describe("Prompt Plan inspection", () => {
 				headers: { "content-type": "application/json" },
 				// Preview sends use the server's narrow revision read; the client may still hold
 				// the revision from before an unrelated edit.
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
 			},
 		));
 		expect(accepted.status).toBe(200);
@@ -310,7 +337,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId, promptPlan: edited }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId, promptPlan: edited }),
 			},
 		));
 		expect(rejected.status).toBe(422);
@@ -322,10 +349,10 @@ describe("Prompt Plan inspection", () => {
 		const profile = withProfile(database).profiles[0];
 		if (profile === undefined) throw new Error("Connection Profile missing.");
 		connections.setTextOnlyModel({ profileId: profile.id, modelId: "text-only", textOnly: true });
-		const module = createConversationModule(database);
-		const generationSettings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const generationSettings = readConversationGenerationSettings(module, conversation.id);
 		if (generationSettings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "update-generation-settings", settings: {
@@ -356,8 +383,8 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					expectedRevision: module.getSummary(conversation.id)!.revision,
+				body: JSON.stringify({ kind: "send",
+					expectedRevision: readConversationSummary(module, conversation.id)!.revision,
 					content,
 
 					previewId: plan.previewId,
@@ -386,7 +413,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -411,7 +438,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -438,7 +465,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -473,7 +500,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -492,7 +519,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -508,7 +535,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("consumes a Sibling preview token after acceptance", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -532,7 +559,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
 			},
 		));
 		const accepted = await request();
@@ -551,7 +578,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("keeps a Sibling preview token retryable after acceptance fails", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Retryable Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -561,10 +588,10 @@ describe("Prompt Plan inspection", () => {
 		});
 		const target = conversation.messages[0];
 		if (target === undefined) throw new Error("Sibling target missing.");
-		const module = createConversationModule(database);
-		const settings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const settings = readConversationGenerationSettings(module, conversation.id);
 		if (settings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -589,7 +616,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const occupied = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", body: "{}" },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
 		));
 		expect(occupied.status).toBe(200);
 		const plan = await preview(app, conversation.id, {
@@ -601,7 +628,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
 			},
 		));
 		const rejected = await request();
@@ -635,7 +662,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "first",
 					previewId: first.previewId,
@@ -648,7 +675,7 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: conversation.revision,
 					content: "second",
 					previewId: second.previewId,
@@ -666,10 +693,10 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		const settings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const settings = readConversationGenerationSettings(module, conversation.id);
 		if (settings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -677,14 +704,14 @@ describe("Prompt Plan inspection", () => {
 				settings: { ...settings, continuationInstruction: "A different instruction." },
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -706,10 +733,10 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		const human = module.getSnapshot(conversation.id)?.cast[0];
+		const module = database;
+		const human = readTestConversationSnapshot(module, conversation.id)?.cast[0];
 		if (human === undefined) throw new Error("Human Participant missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -718,14 +745,14 @@ describe("Prompt Plan inspection", () => {
 				prompt: { ...human.prompt, scenario: "Unused scenario." },
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -747,8 +774,8 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		module.execute({
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -758,14 +785,14 @@ describe("Prompt Plan inspection", () => {
 				authorParticipantId: conversation.cast[0]!.id,
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
+				body: JSON.stringify({ kind: "send",
 					expectedRevision: current.revision,
 					content: "hello",
 					previewId: plan.previewId,
@@ -790,7 +817,7 @@ describe("Prompt Plan inspection", () => {
 			const rejected = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
 			}));
 			expect(rejected.status).toBe(422);
 			expect(await rejected.json()).toEqual({ outcome: "invalid", reason: "The Prompt Plan is stale. Refresh it before sending." });

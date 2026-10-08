@@ -64,3 +64,5 @@ export async function applyCommand(
 		characterCommandErrors,
 	);
 }
+
+export const LIBRARY_UNREACHABLE_NOTICE = "The Library could not be reached.";

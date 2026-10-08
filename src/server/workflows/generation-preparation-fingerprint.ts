@@ -1,6 +1,6 @@
-import type { GenerationPreparationSnapshot } from "./generate-capture";
+import type { PreparationSnapshot } from "./generate-capture";
 
-const loreFingerprintOf = (snapshot: GenerationPreparationSnapshot) => ({
+const loreFingerprintOf = (snapshot: PreparationSnapshot) => ({
 	allowance: snapshot.lore.allowance,
 	scan: snapshot.lore.scan,
 	evidence: snapshot.lore.activation.evidence,
@@ -15,7 +15,7 @@ const loreFingerprintOf = (snapshot: GenerationPreparationSnapshot) => ({
 });
 
 export const generationPreparationFingerprint = (
-	snapshot: GenerationPreparationSnapshot,
+	snapshot: PreparationSnapshot,
 ): string => JSON.stringify({
 	...snapshot,
 	lore: loreFingerprintOf(snapshot),

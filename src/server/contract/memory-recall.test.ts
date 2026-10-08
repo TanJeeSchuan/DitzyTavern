@@ -1,14 +1,23 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
-import { captureModelFetch, configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
+import {
+	captureModelFetch,
+	configureMemoryEmbeddings,
+	createChat,
+	key,
+	readOperation,
+	readPreset,
+	toggleBlock,
+	withProfile,
+} from "./prompt-preset-test-fixtures";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
@@ -45,7 +54,7 @@ const insertAlternativeVariant = (database: Database, messageId: number) => {
 };
 
 const selectVariant = async (database: Database, conversationId: number, messageId: number, variantId: number) => {
-	const revision = createConversationModule(database).getSnapshot(conversationId)?.revision;
+	const revision = readTestConversationSnapshot(database, conversationId)?.revision;
 	if (revision === undefined) throw new Error("Memory recall selection snapshot missing.");
 	const response = await createConversationRoutes(database).handle(new Request(
 		`http://localhost/api/conversations/${conversationId}/commands`,
@@ -139,7 +148,7 @@ describe("Memory recall in Generation preparation", () => {
 			const editedText = "Keep the inspected context for this attempt.";
 			const editedPlan: PromptPlan = { ...preview.promptPlan, blocks: preview.promptPlan.blocks.map((block) => block.kind === "system-instruction" ? { ...block, content: editedText } : block) };
 			const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
-				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
+				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
 			}));
 			expect(accepted.status).toBe(200);
 			const { generationId } = await accepted.json();
@@ -174,7 +183,7 @@ describe("Memory recall in Generation preparation", () => {
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
 		else resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 1);
 		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }),
 		}));
 		expect(accepted.status).toBe(422);
 		expect(await accepted.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
@@ -205,7 +214,7 @@ describe("Memory recall in Generation preparation", () => {
 		const memory = createMemorySettingsModule(database);
 		const { revision, ...settings } = memory.get();
 		memory.apply({ ...settings, expectedRevision: revision, retainProbabilityMinimum: 0.95 });
-		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
+		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
 		expect(accepted.status).toBe(200);
 		const { generationId } = await accepted.json();
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
@@ -244,7 +253,7 @@ describe("Memory recall in Generation preparation", () => {
 			},
 		));
 		expect(correction.status).toBe(200);
-		const beforeEditRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
+		const beforeEditRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (beforeEditRevision === undefined) throw new Error("Conversation snapshot missing before source edit.");
 		const edit = await createConversationRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/commands`,
@@ -258,7 +267,7 @@ describe("Memory recall in Generation preparation", () => {
 			},
 		));
 		expect(edit.status).toBe(200);
-		const currentRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
+		const currentRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (currentRevision === undefined) throw new Error("Edited Conversation snapshot missing.");
 
 		let embeddingCalls = 0;
@@ -351,7 +360,7 @@ describe("Memory recall in Generation preparation", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: currentRevision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: currentRevision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
 			},
 		));
 		expect(accepted.status).toBe(200);
@@ -377,7 +386,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(decisionCalls).toBe(1);
 		expect(writingMessages).toContainEqual({ role: "system", content: editedMemoryText });
 		expect(writingMessages).not.toContainEqual({ role: "system", content: memoryText });
-		const firstTarget = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
+		const firstTarget = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const firstVariant = firstTarget?.variants.at(-1);
 		if (!firstTarget || !firstVariant) throw new Error("The edited Memory Generation Variant was not retained.");
 		const permanentDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
@@ -401,7 +410,7 @@ describe("Memory recall in Generation preparation", () => {
 		const afterSourceCorrection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
 		expect(await afterSourceCorrection.json()).toMatchObject({ memoryActivation: { finalMemoryText: editedMemoryText, candidates: [{ claim: "Maren now holds Writer's key.", evidence: [{ excerpt: "Maren returned Writer's key." }] }] } });
 
-		const latest = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
+		const latest = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const variant = latest?.variants.at(-1);
 		if (!latest || !variant) throw new Error("Memory recall Generation Variant was not retained.");
 		const targetMemory = memoryClaim(latest.id, "Maren and Writer kept their promise.", "The key stays between them.");
@@ -419,10 +428,10 @@ describe("Memory recall in Generation preparation", () => {
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toContain(source.messageId);
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toContain(latest.id);
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.variantId)).not.toContain(alternativeVariantId);
-		const continuationRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
+		const continuationRevision = readTestConversationSnapshot(database, conversation.id)?.revision;
 		if (continuationRevision === undefined) throw new Error("Continuation revision missing.");
 		const acceptedContinuation = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/continue/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: continuationRevision, previewId: continuation.previewId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation",  expectedRevision: continuationRevision, previewId: continuation.previewId }),
 		}));
 		if (acceptedContinuation.status !== 200) throw new Error(JSON.stringify(await acceptedContinuation.json()));
 		// SAFETY: the successful acceptance route response schema guarantees a generation ID.
@@ -430,7 +439,7 @@ describe("Memory recall in Generation preparation", () => {
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${continuationGeneration.generationId}/events`))).text();
 		const continuationMemoryBlock = writingRequests.at(-1)?.find((message) => message.role === "system" && message.content.includes(memoryText));
 		expect(continuationMemoryBlock?.content).toContain(targetMemoryText);
-		const continuationTarget = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
+		const continuationTarget = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const continuationVariant = continuationTarget?.variants.at(-1);
 		if (!continuationTarget || !continuationVariant) throw new Error("Continuation Memory source was not retained.");
 		const laterMemory = memoryClaim(continuationTarget.id, "Maren told Ilya the key was safe.", continuationVariant.content);
@@ -441,7 +450,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(sibling.memoryActivation.scanMessageIds).toContain(source.messageId);
 		expect(sibling.memoryActivation.scanMessageIds).not.toContain(latest.id);
 		const acceptedSibling = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/sibling/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ previewId: sibling.previewId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling",  previewId: sibling.previewId }),
 		}));
 		if (acceptedSibling.status !== 200) throw new Error(JSON.stringify(await acceptedSibling.json()));
 		// SAFETY: the successful acceptance route response schema guarantees a generation ID.
@@ -470,8 +479,8 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		expect(changedCollection.status).toBe(200);
 		const staleAcceptance = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/continue/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-				expectedRevision: createConversationModule(database).getSnapshot(conversation.id)?.revision,
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation",
+				expectedRevision: readTestConversationSnapshot(database, conversation.id)?.revision,
 				previewId: stalePreview.previewId,
 			}),
 		}));

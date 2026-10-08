@@ -4,7 +4,6 @@ import path from "node:path";
 const ROOT = process.cwd();
 const OXLINT_BIN = path.join(ROOT, "node_modules", "oxlint", "bin", "oxlint");
 const RULE_CODE = "anti-slop(no-unapproved-comments)";
-const MARKER = "==[HUMAN APPROVED]==";
 
 interface Diagnostic {
 	readonly code: string;
@@ -41,7 +40,7 @@ for (const finding of findings) {
 const rows = [...perFile.entries()].sort((a, b) => b[1] - a[1]);
 
 console.log(`unapproved comments: ${findings.length} across ${rows.length} of ${report.number_of_files} files`);
-console.log(`approval marker: "${MARKER}" inline, or a "// @approved" line directly above a standalone comment block — add either spelling to a comment you want to keep, otherwise trim or remove the comment.`);
+console.log(`approval directive: put @approved first in a block or trailing comment, or use an exact // @approved line first in a standalone comment run.`);
 console.log("");
 for (const [file, count] of rows) {
 	console.log(`${String(count).padStart(5)}  ${file}`);

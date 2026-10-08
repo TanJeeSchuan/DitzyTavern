@@ -1,3 +1,4 @@
+import { toDataEntry } from "./message-rows";
 // @approved
 //  The narrow Conversation-scoped structured data read. The full snapshot
 // walks every per-Chat data row, but deliberate detail reads (Import
@@ -12,20 +13,9 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { conversationDataTable, conversationTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import type {
-	ConversationDataEntry,
 	ConversationDataRead,
 	ConversationDataReadFilter,
 } from "./types";
-
-const toDataEntry = (row: {
-	namespace: string;
-	key: string;
-	value: string;
-}): ConversationDataEntry => ({
-	namespace: row.namespace,
-	key: row.key,
-	value: row.value,
-});
 
 // @approved
 //  Reads the Conversation's name and the Conversation-scoped data entries,

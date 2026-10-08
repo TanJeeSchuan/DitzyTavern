@@ -12,8 +12,8 @@ export interface CharacterFork {
 	readonly sourceCharacterId: number;
 }
 
-/**
- * ==[HUMAN APPROVED]== The Library owns validating its own revision. Callers that copy a
+/** @approved
+ * The Library owns validating its own revision. Callers that copy a
  * Character into a Conversation state the revision they read; the Library
  * refuses a stale one and otherwise projects the Definition to copy together
  * with the source Character it must record as provenance.

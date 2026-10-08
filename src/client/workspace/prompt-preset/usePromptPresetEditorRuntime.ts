@@ -17,7 +17,8 @@ import {
 	type EditorLoadResult,
 	type OperationClaim,
 	type OperationStartEffects,
-	type PresetView,
+	type ReadyPresetView,
+	type ReadClaim,
 	type PromptPresetEditorEvent,
 	type PromptPresetEditorState,
 } from "../../prompt-preset-editor-state";
@@ -29,7 +30,7 @@ import {
 export interface PromptPresetEditorRuntime {
 	state: PromptPresetEditorState;
 	current: () => PromptPresetEditorState;
-	ready: Extract<PresetView, { status: "ready" }> | null;
+	ready: ReadyPresetView | null;
 	dirty: boolean;
 	dirtyCount: number;
 	dispatch: (event: PromptPresetEditorEvent) => void;
@@ -87,7 +88,7 @@ export function usePromptPresetEditorRuntime({
 	type SelectedRecipeRead =
 		| {
 				status: "ready";
-				claim: ReturnType<typeof readClaim>;
+				claim: ReadClaim;
 				selected: ConversationPromptPreset;
 			}
 		| { status: Exclude<EditorLoadResult, "ready"> };

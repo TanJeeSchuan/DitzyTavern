@@ -1,3 +1,4 @@
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -6,7 +7,6 @@ import {
 	type CharacterDefinition,
 	type CharacterLibraryCommand,
 } from "../character-library";
-import { createConversationModule } from "../conversation";
 import type { ConversationAction } from "../conversation";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { createNativeConversation } from "../workflows";
@@ -629,7 +629,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 	});
 
 	test("maps play-gated actions in incomplete Conversations to not-playable", async () => {
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Incomplete Transport",
 			messages: [
 				{

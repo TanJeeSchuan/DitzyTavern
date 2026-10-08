@@ -1,3 +1,4 @@
+import { requireSnapshot } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -130,7 +131,7 @@ describe("SillyTavern import validation", () => {
 		// SAFETY: reportJson.value was serialized from the same report we compare against.
 		const stored = JSON.parse(
 			findEntry(
-				conversation.data,
+				requireSnapshot(database, conversation.id).data,
 				IMPORT_NAMESPACE,
 				IMPORT_KEYS.reportJson,
 			)?.value ?? "",

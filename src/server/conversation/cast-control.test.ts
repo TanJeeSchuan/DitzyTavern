@@ -1,3 +1,5 @@
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -10,15 +12,9 @@ import {
 } from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
-import {
-	createConversationModule,
-	type ConversationSnapshot,
-	InvalidConversationCommandError,
-	StaleConversationRevisionError,
-} from ".";
-import type { ConversationModule } from ".";
+import { InvalidConversationCommandError, StaleConversationRevisionError } from ".";
 import type { ConversationAction, ParticipantDefinition } from ".";
-import { applyCommand } from "./test-fixtures";
+import { applyCommand } from "../test-fixtures/conversation";
 
 const emptyPrompt = () => ({
 	systemInstruction: "",
@@ -33,9 +29,9 @@ const adHoc = (
 	openings: string[] = [],
 ): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
 
-const castFor = (snapshot: ConversationSnapshot) => snapshot.cast;
+const castFor = (snapshot: TestConversationSnapshot) => snapshot.cast;
 
-const castNames = (snapshot: ConversationSnapshot) =>
+const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
 
 // Two ad-hoc Participants plus a third ad-hoc Participant appended later.
@@ -50,8 +46,8 @@ describe("Cast and Control management", () => {
 	});
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversationWithHistory(module, {
 			name: "Cast Conversation",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -68,8 +64,8 @@ describe("Cast and Control management", () => {
 	};
 
 	const append = (
-		module: ConversationModule,
-		snapshot: ConversationSnapshot,
+		module: Database,
+		snapshot: TestConversationSnapshot,
 		action: ConversationAction,
 	) =>
 		applyCommand(module, {
@@ -86,7 +82,7 @@ describe("Cast and Control management", () => {
 		expect(saved.revision).toBe(snapshot.revision + 1);
 		expect(saved.cast.find((participant) => participant.id === modelId)).toMatchObject(next);
 		expect(() => append(module, saved, { type: "update-participant-definition", participantId: modelId, definition: { ...next, name: "Invalid", openings: [""] } })).toThrow();
-		expect(module.getSnapshot(snapshot.id)).toEqual(saved);
+		expect(readTestConversationSnapshot(module, snapshot.id)).toEqual(saved);
 	});
 
 	test("appends ad-hoc Participants at the stable Cast tail without writing history", () => {
@@ -244,14 +240,14 @@ describe("Cast and Control management", () => {
 				openings: ["\t"],
 			}),
 		).toThrow(InvalidConversationCommandError);
-		expect(createConversationModule(database).getSnapshot(snapshot.id)).toEqual(
+		expect(readTestConversationSnapshot(database, snapshot.id)).toEqual(
 			snapshot,
 		);
 	});
 
 	test("rejects edits referencing a Participant outside the Conversation", () => {
 		const { module, snapshot } = setup();
-		const other = createConversationModule(database).create({
+		const other = createConversationWithHistory(database, {
 			name: "Other",
 			participants: [
 				{ definition: adHoc("Outsider") },
@@ -297,7 +293,7 @@ describe("Cast and Control management", () => {
 				definition: adHoc("Stale Addition"),
 			}),
 		).toThrow(StaleConversationRevisionError);
-		expect(castNames(createConversationModule(database).getSnapshot(snapshot.id) ?? snapshot)).toEqual([
+		expect(castNames(readTestConversationSnapshot(database, snapshot.id) ?? snapshot)).toEqual([
 			"Writer",
 			"Maren Voss",
 			"Juno Ashfeld",
@@ -435,7 +431,7 @@ describe("Cast and Control management", () => {
 		expect(updated.playable).toBe(true);
 
 		// An incomplete Conversation derives the missing-seat reason.
-		const incomplete = createConversationModule(database).create({
+		const incomplete = createConversationWithHistory(database, {
 			name: "Incomplete",
 			participants: [{ definition: adHoc("Solo") }],
 		});
@@ -455,15 +451,15 @@ describe("Cast and Control management", () => {
 		// both seats and then reassigning is not possible (seats cannot be
 		// cleared), so construct the incomplete state from a no-control
 		// preserve record instead, then assign one seat.
-		const module = createConversationModule(database);
-		const preserved = module.create({
+		const module = database;
+		const preserved = createConversationWithHistory(module, {
 			name: "Preserved Import",
 			participants: [
 				{ definition: adHoc("Writer") },
 				{ definition: adHoc("Maren Voss") },
 			],
 		});
-		const humanOnly = module.execute({
+		const humanOnly = executeConversationCommand(module, {
 			conversationId: preserved.id,
 			expectedRevision: preserved.revision,
 			action: {
@@ -481,7 +477,7 @@ describe("Cast and Control management", () => {
 			reason: "missing-seat",
 		});
 
-		const completed = module.execute({
+		const completed = executeConversationCommand(module, {
 			conversationId: preserved.id,
 			expectedRevision: humanOnly.revision,
 			action: {
@@ -507,7 +503,7 @@ describe("Cast and Control management", () => {
 				participantId: humanId,
 			}),
 		).toThrow(InvalidConversationCommandError);
-		expect(createConversationModule(database).getSnapshot(snapshot.id)?.revision).toBe(
+		expect(readTestConversationSnapshot(database, snapshot.id)?.revision).toBe(
 			snapshot.revision,
 		);
 	});
@@ -529,8 +525,8 @@ describe("Cast and Control management", () => {
 			},
 		});
 
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversationWithHistory(module, {
 			name: "Forked",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -584,8 +580,8 @@ describe("Cast and Control management", () => {
 	});
 
 	test("an incomplete Conversation keeps configuration commands available", () => {
-		const module = createConversationModule(database);
-		const preserved = module.create({
+		const module = database;
+		const preserved = createConversationWithHistory(module, {
 			name: "Preserved",
 			messages: [
 				{
@@ -596,7 +592,7 @@ describe("Cast and Control management", () => {
 				},
 			],
 		});
-		const updated = module.execute({
+		const updated = executeConversationCommand(module, {
 			conversationId: preserved.id,
 			expectedRevision: preserved.revision,
 			action: { type: "add-participant", definition: adHoc("Writer") },
@@ -624,7 +620,7 @@ describe("Cast and Control management", () => {
 		// Configuration commands remain available to incomplete
 		// Conversations: the added Participant can be renamed and its seeded
 		// Prompt row is read back normally.
-		const renamed = module.execute({
+		const renamed = executeConversationCommand(module, {
 			conversationId: updated.id,
 			expectedRevision: updated.revision,
 			action: {
@@ -663,8 +659,8 @@ describe("Cast and Control management", () => {
 	});
 
 	test("adding the missing Participant completes an incomplete Conversation while preserving the existing seat", () => {
-		const module = createConversationModule(database);
-		const oneSeat = module.create({
+		const module = database;
+		const oneSeat = createConversationWithHistory(module, {
 			name: "Preserved",
 			participants: [{ definition: adHoc("Writer") }],
 			// The incomplete-import exception reserves the first resolved
@@ -688,7 +684,7 @@ describe("Cast and Control management", () => {
 
 		// Adding the missing Participant fills only the empty model seat; the
 		// existing human assignment is never reshuffled.
-		const completed = module.execute({
+		const completed = executeConversationCommand(module, {
 			conversationId: oneSeat.id,
 			expectedRevision: oneSeat.revision,
 			action: { type: "add-participant", definition: adHoc("Rulership") },

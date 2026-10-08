@@ -1,7 +1,16 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	executeConversationCommand,
+	acceptConversationTailGeneration,
+	resolveConversationGeneration,
+	readVariantDetails,
+	acceptConversationSiblingGeneration,
+	checkpointConversationGeneration,
+	stopConversationGeneration,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationJsonObject } from "../../shared/generation-provenance";
@@ -66,8 +75,8 @@ const activation = (
 });
 
 const createChat = (database: Database) => {
-	const module = createConversationModule(database);
-	const created = module.create({
+	const module = database;
+	const created = createConversationWithHistory(module, {
 		name: "Memory evidence",
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },
@@ -75,12 +84,12 @@ const createChat = (database: Database) => {
 		],
 		control: { human: 0, model: 1 },
 	});
-	module.execute({
+	executeConversationCommand(module, {
 		conversationId: created.id,
 		expectedRevision: created.revision,
 		action: { type: "create-message", timestamp: "2026-09-23T00:00:00.000Z", variantContents: ["Maren kept the brass key."], selectedVariantIndex: 0, authorParticipantId: created.cast[1]!.id },
 	});
-	return module.getSnapshot(created.id)!;
+	return readTestConversationSnapshot(module, created.id)!;
 };
 
 const acceptedInput = (conversation: ReturnType<typeof createChat>, memory: MemoryActivationRecord) => ({
@@ -112,8 +121,8 @@ describe("permanent Memory Activation Records", () => {
 		const source = created.messages[0]!;
 		const sourceVariant = source.variants[0]!;
 		const memory = activation(source.id, sourceVariant.id);
-		const module = createConversationModule(database);
-		const accepted = module.acceptTailGeneration(acceptedInput(created, memory));
+		const module = database;
+		const accepted = acceptConversationTailGeneration(module, acceptedInput(created, memory));
 		const app = createConversationRoutes(database);
 		const inspected = await app.handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspected.status).toBe(200);
@@ -121,20 +130,20 @@ describe("permanent Memory Activation Records", () => {
 		expect(inspectedDetails?.memoryActivation).toEqual(memory);
 		expect(inspectedDetails?.memorySources).toEqual({ messageIds: [source.id], variantIds: [sourceVariant.id] });
 
-		module.resolveGeneration({ conversationId: created.id, generationId: accepted.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
-		const generated = module.getSnapshot(created.id)!.messages.at(-1)!;
+		resolveConversationGeneration(module, { conversationId: created.id, generationId: accepted.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
+		const generated = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const generatedVariant = generated.variants.at(-1)!;
-		expect(module.readVariantDetails(created.id, generated.id, generatedVariant.id)?.memoryActivation).toEqual(memory);
+		expect(readVariantDetails(module, created.id, generated.id, generatedVariant.id)?.memoryActivation).toEqual(memory);
 
-		const revision = module.getSnapshot(created.id)!.revision;
-		module.execute({ conversationId: created.id, expectedRevision: revision, action: { type: "edit-variant", messageId: source.id, variantId: sourceVariant.id, content: "Maren returned the key." } });
-		const afterEdit = module.readVariantDetails(created.id, generated.id, generatedVariant.id)!;
+		const revision = readTestConversationSnapshot(module, created.id)!.revision;
+		executeConversationCommand(module, { conversationId: created.id, expectedRevision: revision, action: { type: "edit-variant", messageId: source.id, variantId: sourceVariant.id, content: "Maren returned the key." } });
+		const afterEdit = readVariantDetails(module, created.id, generated.id, generatedVariant.id)!;
 		expect(afterEdit.memoryActivation).toEqual(memory);
 		expect(afterEdit.memorySources.variantIds).toContain(sourceVariant.id);
 
-		const beforeDeleteRevision = module.getSnapshot(created.id)!.revision;
-		module.execute({ conversationId: created.id, expectedRevision: beforeDeleteRevision, action: { type: "delete-message", messageId: source.id } });
-		const afterDeletion = module.readVariantDetails(created.id, generated.id, generatedVariant.id)!;
+		const beforeDeleteRevision = readTestConversationSnapshot(module, created.id)!.revision;
+		executeConversationCommand(module, { conversationId: created.id, expectedRevision: beforeDeleteRevision, action: { type: "delete-message", messageId: source.id } });
+		const afterDeletion = readVariantDetails(module, created.id, generated.id, generatedVariant.id)!;
 		expect(afterDeletion.memoryActivation?.candidates[0]?.evidence[0]?.excerpt).toBe("Maren kept the brass key.");
 		expect(afterDeletion.memorySources.variantIds).not.toContain(sourceVariant.id);
 
@@ -160,14 +169,14 @@ describe("permanent Memory Activation Records", () => {
 		const created = createChat(database);
 		const source = created.messages[0]!;
 		const memory = activation(source.id, source.variants[0]!.id);
-		const module = createConversationModule(database);
-		const base = module.acceptTailGeneration(acceptedInput(created, memory));
-		module.resolveGeneration({ conversationId: created.id, generationId: base.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
+		const module = database;
+		const base = acceptConversationTailGeneration(module, acceptedInput(created, memory));
+		resolveConversationGeneration(module, { conversationId: created.id, generationId: base.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
 		const model = created.cast[1]!;
 		const human = created.cast[0]!;
-		const baseMessage = module.getSnapshot(created.id)!.messages.at(-1)!;
+		const baseMessage = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const siblingMemory = (finalMemoryText: string) => activation(source.id, source.variants[0]!.id, finalMemoryText);
-		const acceptSibling = (record: MemoryActivationRecord) => module.acceptSiblingGeneration({
+		const acceptSibling = (record: MemoryActivationRecord) => acceptConversationSiblingGeneration(module, {
 			conversationId: created.id,
 			timestamp: "2026-09-23T00:03:00.000Z",
 			messageId: baseMessage.id,
@@ -183,32 +192,32 @@ describe("permanent Memory Activation Records", () => {
 		});
 		const firstMemory = siblingMemory("The first captured edit.");
 		const first = acceptSibling(firstMemory);
-		module.resolveGeneration({ conversationId: created.id, generationId: first.generationId, timestamp: "2026-09-23T00:04:00.000Z", content: "First alternative." });
+		resolveConversationGeneration(module, { conversationId: created.id, generationId: first.generationId, timestamp: "2026-09-23T00:04:00.000Z", content: "First alternative." });
 		const secondMemory = siblingMemory("The second captured edit.");
 		const second = acceptSibling(secondMemory);
-		module.resolveGeneration({ conversationId: created.id, generationId: second.generationId, timestamp: "2026-09-23T00:05:00.000Z", content: "Second alternative." });
-		expect(module.readVariantDetails(created.id, baseMessage.id, first.provisionalVariantId)?.memoryActivation).toEqual(firstMemory);
-		expect(module.readVariantDetails(created.id, baseMessage.id, second.provisionalVariantId)?.memoryActivation).toEqual(secondMemory);
-		const revision = module.getSnapshot(created.id)!.revision;
-		module.execute({ conversationId: created.id, expectedRevision: revision, action: { type: "delete-variant", messageId: baseMessage.id, variantId: first.provisionalVariantId } });
-		expect(module.readVariantDetails(created.id, baseMessage.id, first.provisionalVariantId)).toBeUndefined();
-		expect(module.readVariantDetails(created.id, baseMessage.id, second.provisionalVariantId)?.memoryActivation).toEqual(secondMemory);
+		resolveConversationGeneration(module, { conversationId: created.id, generationId: second.generationId, timestamp: "2026-09-23T00:05:00.000Z", content: "Second alternative." });
+		expect(readVariantDetails(module, created.id, baseMessage.id, first.provisionalVariantId)?.memoryActivation).toEqual(firstMemory);
+		expect(readVariantDetails(module, created.id, baseMessage.id, second.provisionalVariantId)?.memoryActivation).toEqual(secondMemory);
+		const revision = readTestConversationSnapshot(module, created.id)!.revision;
+		executeConversationCommand(module, { conversationId: created.id, expectedRevision: revision, action: { type: "delete-variant", messageId: baseMessage.id, variantId: first.provisionalVariantId } });
+		expect(readVariantDetails(module, created.id, baseMessage.id, first.provisionalVariantId)).toBeUndefined();
+		expect(readVariantDetails(module, created.id, baseMessage.id, second.provisionalVariantId)?.memoryActivation).toEqual(secondMemory);
 		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
 		const deletedVariantDetails = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${created.id}/messages/${baseMessage.id}/variants/${first.provisionalVariantId}/details`));
 		expect(deletedVariantDetails.status).toBe(404);
 
-		const interruptedBase = module.getSnapshot(created.id)!;
-		const interrupted = module.acceptTailGeneration({ ...acceptedInput(interruptedBase, memory), expectedRevision: interruptedBase.revision, timestamp: "2026-09-23T00:06:00.000Z" });
-		module.checkpointGeneration({ conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
-		module.stopGeneration({ conversationId: created.id, generationId: interrupted.generationId });
-		const interruptedTarget = module.getSnapshot(created.id)!.messages.at(-1)!;
-		expect(module.readVariantDetails(created.id, interruptedTarget.id, interruptedTarget.variants[0]!.id)?.memoryActivation).toEqual(memory);
+		const interruptedBase = readTestConversationSnapshot(module, created.id)!;
+		const interrupted = acceptConversationTailGeneration(module, { ...acceptedInput(interruptedBase, memory), expectedRevision: interruptedBase.revision, timestamp: "2026-09-23T00:06:00.000Z" });
+		checkpointConversationGeneration(module, { conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
+		stopConversationGeneration(module, { conversationId: created.id, generationId: interrupted.generationId });
+		const interruptedTarget = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
+		expect(readVariantDetails(module, created.id, interruptedTarget.id, interruptedTarget.variants[0]!.id)?.memoryActivation).toEqual(memory);
 
-		const fresh = module.getSnapshot(created.id)!;
-		const empty = module.acceptTailGeneration({ ...acceptedInput(fresh, memory), expectedRevision: fresh.revision, timestamp: "2026-09-23T00:07:00.000Z" });
-		module.stopGeneration({ conversationId: created.id, generationId: empty.generationId });
-		expect(module.getSnapshot(created.id)!.messages.some(({ id }) => id === empty.messageId)).toBe(false);
-		expect(module.readVariantDetails(created.id, empty.messageId, empty.provisionalVariantId)).toBeUndefined();
+		const fresh = readTestConversationSnapshot(module, created.id)!;
+		const empty = acceptConversationTailGeneration(module, { ...acceptedInput(fresh, memory), expectedRevision: fresh.revision, timestamp: "2026-09-23T00:07:00.000Z" });
+		stopConversationGeneration(module, { conversationId: created.id, generationId: empty.generationId });
+		expect(readTestConversationSnapshot(module, created.id)!.messages.some(({ id }) => id === empty.messageId)).toBe(false);
+		expect(readVariantDetails(module, created.id, empty.messageId, empty.provisionalVariantId)).toBeUndefined();
 		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
 	});
 
@@ -216,13 +225,13 @@ describe("permanent Memory Activation Records", () => {
 		const created = createChat(database);
 		const source = created.messages[0]!;
 		const memory = activation(source.id, source.variants[0]!.id);
-		const module = createConversationModule(database);
-		expect(() => module.execute({
+		const module = database;
+		expect(() => executeConversationCommand(module, {
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			action: { type: "put-data", scope: { type: "conversation" }, namespace: "generation-memory", key: "activation", value: "{}" },
 		})).toThrow("server-owned provenance");
-		const accepted = module.acceptTailGeneration(acceptedInput(created, memory));
+		const accepted = acceptConversationTailGeneration(module, acceptedInput(created, memory));
 		database.run("UPDATE active_generation SET memory_activation_json = ? WHERE id = ?", [JSON.stringify({ version: 1 }), accepted.generationId]);
 		const inspection = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspection.status).toBe(422);

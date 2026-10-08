@@ -16,8 +16,6 @@ export const loreActivationEvidence = Type.Unsafe<GenerationJsonValue>(Type.Recu
 
 export type LoreActivationEvidence = Static<typeof loreActivationEvidence>;
 
-export const LORE_ACTIVATION_NAMESPACE = "lore-activation";
-export const LORE_ACTIVATION_KEY = "record";
 
 export const loreActivationRecord = Type.Object({
 	version: Type.Literal(1),
@@ -38,26 +36,3 @@ export type LoreActivationRecord = Static<typeof loreActivationRecord> & {
 
 export const isLoreActivationRecord = (value: GenerationJsonValue): value is LoreActivationRecord =>
 	Value.Check(loreActivationRecord, value);
-
-export class LoreActivationRecordParseError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "LoreActivationRecordParseError";
-	}
-}
-
-/** Decode persisted JSON without turning malformed or invalid records into an absent record. */
-export const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | null => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(serialized);
-	} catch {
-		throw new LoreActivationRecordParseError("Persisted Lore Activation Record is not valid JSON.");
-	}
-	if (parsed === null) return null;
-	if (!Value.Check(loreActivationRecord, parsed)) {
-		throw new LoreActivationRecordParseError("Persisted Lore Activation Record does not match the canonical schema.");
-	}
-	// SAFETY: Value.Check establishes the complete canonical record shape before this cast.
-	return parsed as LoreActivationRecord;
-};

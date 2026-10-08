@@ -28,13 +28,14 @@ import {
 
 export const SETTINGS_ROW_ID = 1;
 export type ConnectionSettingsDb = ReturnType<typeof drizzle>;
+export type ConnectionSettingsRow = typeof connectionSettingsTable.$inferSelect;
 export type ConnectionProfileRow = typeof connectionProfileTable.$inferSelect;
 
 export function connect(database: Database): ConnectionSettingsDb {
 	return drizzle(database);
 }
 
-export function ensureSettingsRow(db: ConnectionSettingsDb) {
+export function ensureSettingsRow(db: ConnectionSettingsDb): ConnectionSettingsRow {
 	db.insert(connectionSettingsTable)
 		.values({ id: SETTINGS_ROW_ID, revision: 0 })
 		.onConflictDoNothing()

@@ -19,7 +19,7 @@
 // legacy role hints never influence Participant identity or Control. Every
 // imported Message receives a native immutable Author Stamp for its
 // resolved Participant; no historical Control pair is ever fabricated.
-import type { ConversationDataEntry } from "../conversation/types";
+import type { ConversationDataEntry } from "../conversation";
 import { translateCommentsAndMacros } from "../prompt-preset/sillytavern";
 import { SillyTavernImportError } from "./errors";
 import {

@@ -1,8 +1,8 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import type { ModelFetch } from "../model-client";
@@ -393,7 +393,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 
 	test("a committed imported recipe survives selection and reaches the captured model request", async () => {
 		const library = createPromptPresetRoutes(database);
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Imported preset chat",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -457,7 +457,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const accepted = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
+				body: JSON.stringify({ kind: "send",  expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
 			}));
 			expect(accepted.status).toBe(200);
 			// @approved

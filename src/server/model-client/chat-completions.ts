@@ -4,7 +4,7 @@ import type {
 	ConnectionProfile,
 	ConnectionProfileSecretSnapshot,
 } from "../connection-settings/types";
-import type { GenerationRequestOverrides } from "../conversation/types";
+import type { GenerationRequestOverrides } from "../conversation";
 import type { GenerationJsonObject } from "../../shared/generation-provenance";
 import { resolveRequestUrl } from "../../shared/connection-url";
 import {

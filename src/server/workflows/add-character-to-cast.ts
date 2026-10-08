@@ -1,3 +1,4 @@
+import { executeConversationCommand } from "../conversation";
 // @approved
 //  Add Character to Cast workflow.
 // Composes the Character Library and Conversation seams in one transaction:
@@ -10,8 +11,7 @@
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { forkCharacter } from "../character-library";
-import { createConversationModule } from "../conversation";
-import type { ConversationSummary } from "../conversation/types";
+import type { ConversationSummary } from "../conversation";
 import { addCharacterToCastBody } from "../../shared/contract/conversation-schema";
 
 // @approved
@@ -39,7 +39,7 @@ export function addCharacterToCast(
 		// and existence inside the same transaction; appending a fork copies
 		// the authoritative server-side Definition just read from the Library
 		// and records immutable provenance.
-		return createConversationModule(database).execute({
+		return executeConversationCommand(database, {
 			conversationId: input.conversationId,
 			expectedRevision: input.expectedConversationRevision,
 			action: {

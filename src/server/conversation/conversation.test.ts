@@ -1,3 +1,15 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	executeConversationCommand,
+	readConversationGenerationSettings,
+	readChatHistory,
+	readVariantDetails,
+	readConversationData,
+	acceptConversationContinuationGeneration,
+	resolveConversationGeneration,
+	readConversationRevision,
+	readConversationSummary,
+} from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -15,14 +27,13 @@ import {
 	VARIANT_KEYS,
 } from "../sillytavern/adapter/types";
 import {
-	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 	type AcceptContinuationGenerationInput,
 } from ".";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 
 describe("Conversation module", () => {
 	let database: Database;
@@ -32,8 +43,8 @@ describe("Conversation module", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversationWithHistory(module, {
 			name: "Test Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -65,10 +76,10 @@ describe("Conversation module", () => {
 	});
 
 	test("rejects a stale command from another browser view", () => {
-		const firstBrowser = createConversationModule(database);
-		const secondBrowser = createConversationModule(database);
-		const firstSnapshot = firstBrowser.getSnapshot(conversationId);
-		const secondSnapshot = secondBrowser.getSnapshot(conversationId);
+		const firstBrowser = database;
+		const secondBrowser = database;
+		const firstSnapshot = readTestConversationSnapshot(firstBrowser, conversationId);
+		const secondSnapshot = readTestConversationSnapshot(secondBrowser, conversationId);
 		if (firstSnapshot === undefined || secondSnapshot === undefined) {
 			throw new Error("Conversation snapshot missing.");
 		}
@@ -86,7 +97,7 @@ describe("Conversation module", () => {
 
 		expect(updated.revision).toBe(1);
 		expect(() =>
-			secondBrowser.execute({
+			executeConversationCommand(secondBrowser, {
 				conversationId,
 				expectedRevision: secondSnapshot.revision,
 				action: {
@@ -97,21 +108,21 @@ describe("Conversation module", () => {
 				},
 			}),
 		).toThrow(StaleConversationRevisionError);
-		expect(secondBrowser.getSnapshot(conversationId)).toEqual(updated);
+		expect(readTestConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
 	});
 
 	test("keeps generation-settings reads pure when the backing row is absent", () => {
 		const db = drizzle(database);
 		db.delete(conversationGenerationSettingsTable).run();
 
-		const settings = createConversationModule(database).getGenerationSettings(conversationId);
+		const settings = readConversationGenerationSettings(database, conversationId);
 
 		expect(settings).toBeUndefined();
 		expect(db.select().from(conversationGenerationSettingsTable).all()).toHaveLength(0);
 	});
 
 	test("creates Messages with immutable Author Stamps captured server-side", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
@@ -171,8 +182,8 @@ describe("Conversation module", () => {
 	});
 
 	test("uses removed Cast membership in every public Message read", () => {
-		const module = createConversationModule(database);
-		const initial = module.getSnapshot(conversationId);
+		const module = database;
+		const initial = readTestConversationSnapshot(module, conversationId);
 		if (initial === undefined) throw new Error("Conversation snapshot missing.");
 
 		const withThird = applyCommand(module, {
@@ -212,17 +223,17 @@ describe("Conversation module", () => {
 			inCast: false,
 		};
 		expect(message.author).toEqual(expectedAuthor);
-		expect(module.readHistory(conversationId)?.messages[0]?.author).toEqual(
+		expect(readChatHistory(module, conversationId)?.messages[0]?.author).toEqual(
 			expectedAuthor,
 		);
 		expect(
-			module.readVariantDetails(conversationId, message.id, variant.id)?.author,
+			readVariantDetails(module, conversationId, message.id, variant.id)?.author,
 		).toEqual(expectedAuthor);
 	});
 
 	test("keeps a captured author name without a Participant ID in public reads", () => {
-		const module = createConversationModule(database);
-		const conversation = module.create({ authorNote: "", name: "Captured Name" });
+		const module = database;
+		const conversation = createConversationWithHistory(module, { authorNote: "", name: "Captured Name" });
 		const db = drizzle(database);
 		const insertedMessage = db
 			.insert(messageTable)
@@ -256,14 +267,14 @@ describe("Conversation module", () => {
 			capturedName: "Ghost",
 			inCast: false,
 		};
-		expect(module.getSnapshot(conversation.id)?.messages[0]?.author).toEqual(
+		expect(readTestConversationSnapshot(module, conversation.id)?.messages[0]?.author).toEqual(
 			expectedAuthor,
 		);
-		expect(module.readHistory(conversation.id)?.messages[0]?.author).toEqual(
+		expect(readChatHistory(module, conversation.id)?.messages[0]?.author).toEqual(
 			expectedAuthor,
 		);
 		expect(
-			module.readVariantDetails(
+			readVariantDetails(module,
 				conversation.id,
 				insertedMessage.id,
 				insertedVariant.id,
@@ -272,8 +283,8 @@ describe("Conversation module", () => {
 	});
 
 	test("does not fabricate historical Control from a partial persisted pair", () => {
-		const module = createConversationModule(database);
-		const conversation = module.create({
+		const module = database;
+		const conversation = createConversationWithHistory(module, {
 			name: "Partial Context",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -325,16 +336,16 @@ describe("Conversation module", () => {
 			eligible: false,
 			reason: "missing-historical-context",
 		} as const;
-		const snapshot = module.getSnapshot(conversation.id);
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		expect(snapshot?.messages[0]?.author).toBeNull();
 		expect(snapshot?.messages[0]?.historicalContext).toBeNull();
 		expect(snapshot?.messages[0]?.swipe).toEqual(expectedSwipe);
 
-		const history = module.readHistory(conversation.id);
+		const history = readChatHistory(module, conversation.id);
 		expect(history?.messages[0]?.author).toBeNull();
 		expect(history?.messages[0]?.swipe).toEqual(expectedSwipe);
 
-		const details = module.readVariantDetails(
+		const details = readVariantDetails(module,
 			conversation.id,
 			messageId,
 			variantId,
@@ -344,7 +355,7 @@ describe("Conversation module", () => {
 	});
 
 	test("rejects authorship referencing a Participant outside the Conversation", () => {
-		const other = createConversationModule(database).create({
+		const other = createConversationWithHistory(database, {
 			name: "Other Conversation",
 			participants: [
 				{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
@@ -355,7 +366,7 @@ describe("Conversation module", () => {
 		const outsiderId = other.cast[0]?.id ?? 0;
 
 		expect(() =>
-			createConversationModule(database).execute({
+			executeConversationCommand(database, {
 				conversationId,
 				expectedRevision: 0,
 				action: {
@@ -369,7 +380,7 @@ describe("Conversation module", () => {
 	});
 
 	test("compacts Variant positions and selects a replacement after deletion", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
@@ -425,7 +436,7 @@ describe("Conversation module", () => {
 	});
 
 	test("protects the final Variant without advancing the revision", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
@@ -443,7 +454,7 @@ describe("Conversation module", () => {
 		}
 
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId,
 				expectedRevision: created.revision,
 				action: {
@@ -453,12 +464,12 @@ describe("Conversation module", () => {
 				},
 			}),
 		).toThrow(InvalidConversationCommandError);
-		expect(conversation.getSnapshot(conversationId)?.revision).toBe(created.revision);
+		expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(created.revision);
 	});
 
 	test("gates Compose and Swipe behind derived playability while edits stay available", () => {
-		const module = createConversationModule(database);
-		const incomplete = module.create({
+		const module = database;
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -493,7 +504,7 @@ describe("Conversation module", () => {
 			},
 		]) {
 			expect(() =>
-				module.execute({
+				executeConversationCommand(module, {
 					conversationId: incomplete.id,
 					expectedRevision: incomplete.revision,
 					action,
@@ -516,7 +527,7 @@ describe("Conversation module", () => {
 	});
 
 	test("owns scoped data and cascades Message deletion", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
@@ -565,14 +576,14 @@ describe("Conversation module", () => {
 	// the creation seam exactly as the Import Projection writes it and can
 	// never be rewritten or removed through the generic data commands.
 	test("keeps import-owned provenance beyond generic data commands", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const reportJson = JSON.stringify({
 			importerVersion: IMPORTER_VERSION,
 			source: { filename: "chat.jsonl", sha256: "a".repeat(64) },
 			counts: { messages: 1, variants: 1 },
 			warnings: [],
 		});
-		const imported = conversation.create({
+		const imported = createConversationWithHistory(conversation, {
 			name: "Imported Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -613,7 +624,7 @@ describe("Conversation module", () => {
 		// every scope: the Conversation receipt, warnings, and the promoted
 		// per-Variant provenance are not client-writable.
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -626,7 +637,7 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(InvalidConversationCommandError);
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -646,7 +657,7 @@ describe("Conversation module", () => {
 		// Deletion of import provenance is equally out of reach, in every
 		// scope.
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -658,7 +669,7 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(InvalidConversationCommandError);
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -671,7 +682,7 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(InvalidConversationCommandError);
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -685,7 +696,7 @@ describe("Conversation module", () => {
 		// The Canonical Source Archive is import-owned provenance too: no
 		// generic rewrite of the preserved source values.
 		expect(() =>
-			conversation.execute({
+			executeConversationCommand(conversation, {
 				conversationId: imported.id,
 				expectedRevision: imported.revision,
 				action: {
@@ -718,7 +729,7 @@ describe("Conversation module", () => {
 		// The rejected commands left the persisted provenance intact and did
 		// not advance the revision, so the next ordinary command still
 		// applies.
-		const provenance = conversation.readConversationData(imported.id, {
+		const provenance = readConversationData(conversation, imported.id, {
 			namespace: IMPORT_NAMESPACE,
 		});
 		expect(provenance?.entries).toEqual([
@@ -748,8 +759,8 @@ describe("Conversation module", () => {
 	});
 
 	test("keeps the greeting's Author Stamp across Variant selection and sibling creation", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		const snapshot = readTestConversationSnapshot(conversation, conversationId);
 		if (snapshot === undefined) throw new Error("Snapshot missing.");
 		const greeting = snapshot.messages[0];
 		const variant = greeting?.variants[0];
@@ -790,17 +801,17 @@ describe("Conversation module", () => {
 	// target, resolution commits its terminal Variant.
 	describe("Continuation acceptance and resolution", () => {
 		const accept = (
-			module: ReturnType<typeof createConversationModule>,
+			module: Database,
 			overrides: Partial<AcceptContinuationGenerationInput> = {},
 		) => {
-			const snapshot = module.getSnapshot(conversationId);
+			const snapshot = readTestConversationSnapshot(module, conversationId);
 			if (snapshot === undefined) throw new Error("Snapshot missing.");
 			const greeting = snapshot.messages[0];
 			const greetingVariant = greeting?.variants[0];
 			if (greeting === undefined || greetingVariant === undefined) {
 				throw new Error("Greeting missing.");
 			}
-			return module.acceptContinuationGeneration({
+			return acceptConversationContinuationGeneration(module, {
 				conversationId,
 				expectedRevision: snapshot.revision,
 				timestamp: "2026-08-20T12:00:00Z",
@@ -819,18 +830,46 @@ describe("Conversation module", () => {
 		};
 
 		const resolve = (
-			module: ReturnType<typeof createConversationModule>,
+			module: Database,
 			generationId: number,
 		) =>
-			module.resolveGeneration({
+			resolveConversationGeneration(module, {
 				conversationId,
 				generationId,
 				timestamp: "2026-08-20T12:00:00Z",
 				content: "The lantern answers.",
 			});
 
+		for (const strategy of ["assistant-prefill", "instruction"] as const) {
+			test(`reasoning-only continuation acceptance under ${strategy}`, () => {
+				const conversation = database;
+				const snapshot = requireSnapshot(conversation, conversationId);
+				const greeting = snapshot.messages[0]!;
+				const variant = greeting.variants[0]!;
+				applyCommand(conversation, {
+					conversationId, expectedRevision: snapshot.revision,
+					action: { type: "edit-variant", messageId: greeting.id, variantId: variant.id, content: "" },
+				});
+				applyCommand(conversation, {
+					conversationId, expectedRevision: readConversationRevision(conversation, conversationId)!,
+					action: { type: "put-data", scope: { type: "variant", messageId: greeting.id, variantId: variant.id }, namespace: "generation", key: "reasoning", value: "Only reasoning." },
+				});
+				const before = readConversationRevision(conversation, conversationId)!;
+				const attempt = () => accept(conversation, { generationIntent: { type: "continuation", strategy, ...(strategy === "assistant-prefill" ? { suffix: "" } : { instruction: "Continue." }) } });
+				if (strategy === "assistant-prefill") {
+					expect(attempt).toThrow();
+					expect(readConversationRevision(conversation, conversationId)).toBe(before);
+					expect(readConversationSummary(conversation, conversationId)?.activeGenerations).toEqual([]);
+				} else {
+					const accepted = attempt();
+					expect(readConversationRevision(conversation, conversationId)).toBe(before + 1);
+					expect(readConversationSummary(conversation, conversationId)?.activeGenerations[0]?.generationId).toBe(accepted.generationId);
+				}
+			});
+		}
+
 		test("persists the terminal Message with the Author Stamp and historical pair through acceptance and resolution", () => {
-			const conversation = createConversationModule(database);
+			const conversation = database;
 			const accepted = accept(conversation);
 			const committed = resolve(conversation, accepted.generationId);
 
@@ -852,31 +891,31 @@ describe("Conversation module", () => {
 		});
 
 		test("requires distinct captured human and model Participants", () => {
-			const conversation = createConversationModule(database);
+			const conversation = database;
 			expect(() =>
 				accept(conversation, { humanParticipantId: modelId }),
 			).toThrow(InvalidConversationCommandError);
-			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects a captured pair that is no longer authoritative", () => {
-			const conversation = createConversationModule(database);
+			const conversation = database;
 			expect(() =>
 				accept(conversation, { modelParticipantId: humanId }),
 			).toThrow(InvalidConversationCommandError);
-			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects a captured model stamp that no longer matches the model Participant", () => {
-			const conversation = createConversationModule(database);
+			const conversation = database;
 			expect(() =>
 				accept(conversation, { capturedModelName: "Renamed Elsewhere" }),
 			).toThrow(InvalidConversationCommandError);
-			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
+			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects pairs referencing Participants outside the Conversation", () => {
-			const other = createConversationModule(database).create({
+			const other = createConversationWithHistory(database, {
 				name: "Other Conversation",
 				participants: [
 					{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
@@ -885,7 +924,7 @@ describe("Conversation module", () => {
 				control: { human: 0, model: 1 },
 			});
 			const outsiderId = other.cast[0]?.id ?? 0;
-			const conversation = createConversationModule(database);
+			const conversation = database;
 
 			expect(() =>
 				accept(conversation, { humanParticipantId: outsiderId }),
@@ -893,7 +932,7 @@ describe("Conversation module", () => {
 		});
 
 		test("rejects a missing Conversation with the typed not-found result", () => {
-			const conversation = createConversationModule(database);
+			const conversation = database;
 			expect(() =>
 				accept(conversation, { conversationId: 424242 }),
 			).toThrow(ConversationNotFoundError);

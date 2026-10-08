@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { startMemoryWorker } from "../memory";
 import { readConversationMemories } from "../memory/collections";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";

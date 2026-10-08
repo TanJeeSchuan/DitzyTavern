@@ -1,3 +1,4 @@
+import { createConversation } from "../conversation";
 // @approved
 //  Native New Chat workflow.
 // Composes the Character Library and Conversation seams in one transaction:
@@ -10,11 +11,10 @@
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { forkCharacter } from "../character-library";
-import { createConversationModule } from "../conversation";
 import type {
-	ConversationSnapshot,
+	ConversationSummary,
 	ParticipantDefinition,
-} from "../conversation/types";
+} from "../conversation";
 import type {
 	nativeConversationBody,
 	newChatSeatSchema,
@@ -55,12 +55,12 @@ const resolveSeat = (
 export function createNativeConversation(
 	database: Database,
 	input: CreateNativeConversationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const create = database.transaction(() => {
 		const human = resolveSeat(database, input.humanSeat);
 		const model = resolveSeat(database, input.modelSeat);
 
-		return createConversationModule(database).create({
+		return createConversation(database, {
 			authorNote: "",
 			name: input.name,
 			participants: [human, model],

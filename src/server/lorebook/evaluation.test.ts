@@ -1,8 +1,8 @@
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createCharacter } from "../character-library/create";
-import { createConversationModule } from "../conversation";
 import { importNativeLorebook } from "./library";
 import { attachLorebookToCharacter, attachLorebookToConversation, readLorebookAttachmentEligibility } from "./attachments";
 import { evaluateScopedLore } from "./evaluation";
@@ -38,7 +38,7 @@ describe("scoped Lore activation", () => {
 			}],
 		});
 		attachLorebookToCharacter(database, { characterId: character.id, bookId: book.id, scope: "controlled-participant" });
-		const chat = createConversationModule(database).create({
+		const chat = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ sourceCharacterId: character.id, definition: { name: "Keeper", prompt, openings: [] } },

@@ -1,8 +1,7 @@
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "../../conversation";
-import { runConversationCommand } from "../../conversation-command-runner";
+import { createConversationCommands } from "../../createConversationCommands";
 import {
 	applyPromptPresetCommand,
 	commitSillyTavernPromptPreset,
@@ -15,10 +14,8 @@ import {
 	type SillyTavernJsonValue,
 } from "../../prompt-preset-library";
 import { downloadNativePromptPreset } from "../../prompt-preset-download";
-import {
-	CONVERSATION_UNREACHABLE_NOTICE,
-	LIBRARY_UNREACHABLE_NOTICE,
-} from "../../lib/notices";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../../character-library";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "../../conversation-command-runner";
 import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
 import {
 	conversationOperationApplies,
@@ -133,48 +130,35 @@ export function usePromptPresetLibrary({
 	//  Applies one selection through the authoritative Conversation command.
 	// `selectPreset` decides whether a pending leave must resolve first; the runtime owns the
 	// operation gate once the selection is ready to start.
+	const { run } = createConversationCommands(conversation?.id ?? null, {
+		revision: () => conversation?.revision ?? null,
+		onConversationChange: (next) => {
+			dispatch({ type: "conversation-adopted", conversationRevision: next.revision });
+			onConversationChange(next);
+		},
+		setNotice: (notice) => dispatch({ type: "notice-changed", notice }),
+	});
+
 	const applySelection = (presetId: number): void => {
 		if (conversation === null) return;
-		const conversationId = conversation.id;
 		void runOperation(SELECTION_EFFECTS, async () => {
 			const conversationClaim = conversationOperationClaim(runtime.current());
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversationId, expectedRevision, {
+			await run({
 						type: "select-prompt-preset",
 						promptPresetId: presetId,
-					}),
-				reconciliation: {
-					adoptSnapshot: (next) => {
-						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
-						dispatch({ type: "conversation-adopted", conversationRevision: next.revision });
-						onConversationChange(next);
-					},
-					showNotice: (message) => {
-						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
-							dispatch({ type: "notice-changed", notice: message });
-						}
-					},
-				},
-				notices: PRESET_COMMAND_NOTICES,
-				callbacks: {
-					onNotPlayable: () => {
+					}, { notices: PRESET_COMMAND_NOTICES, isCurrent: () => conversationOperationApplies(runtime.current(), conversationClaim), onNotPlayable: () => {
 						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
 							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.conflict });
 						}
-					},
-					onNotRemovable: (reason) => {
+					}, onNotRemovable: (reason) => {
 						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
 							dispatch({ type: "notice-changed", notice: reason });
 						}
 					},
-					onApplied: () => {
+				onApplied: () => {
 						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
 						dispatch({ type: "notice-changed", notice: null });
-					},
-				},
-			});
+					} });
 		});
 	};
 

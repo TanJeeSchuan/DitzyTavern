@@ -1,13 +1,24 @@
+import { readTestConversationSnapshot } from "../test-fixtures/conversation";
+import {
+	acceptConversationTailGeneration,
+	checkpointConversationGeneration,
+	stopConversationGeneration,
+} from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase } from "../conversation/test-fixtures";
-import { createConversationModule } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { startMemoryWorker } from "../memory";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
 import { Value } from "@sinclair/typebox/value";
-import { conversationMemories, memoryCorrectionApplied, memoryCatchup, memoryCatchupQueued, memoryCatchupRead } from "../../shared/contract/memory";
+import {
+	conversationMemories,
+	memoryCorrectionApplied,
+	memoryCatchup,
+	memoryCatchupQueued,
+	memoryCatchupRead,
+} from "../../shared/contract/memory";
 
 const waitFor = async (check: () => boolean | Promise<boolean>) => {
 	const deadline = Date.now() + 4000;
@@ -59,10 +70,10 @@ describe("Memory source lifecycle public operations", () => {
 	test("queues retained content when one Generation is stopped", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
-		const module = createConversationModule(database);
-		const snapshot = module.getSnapshot(conversation.id);
+		const module = database;
+		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		if (!snapshot || snapshot.control.humanParticipantId === null || snapshot.control.modelParticipantId === null) throw new Error("Memory fixture has no active Chat controls.");
-		const accepted = module.acceptTailGeneration({
+		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: conversation.id,
 			expectedRevision: snapshot.revision,
 			timestamp: "2026-09-23T00:01:00.000Z",
@@ -76,9 +87,9 @@ describe("Memory source lifecycle public operations", () => {
 			generationSettings: {},
 			connection: null,
 		});
-		module.checkpointGeneration({ conversationId: conversation.id, generationId: accepted.generationId, content: "Maren hides the key." });
-		module.stopGeneration({ conversationId: conversation.id, generationId: accepted.generationId });
-		const generated = module.getSnapshot(conversation.id)?.messages.at(-1);
+		checkpointConversationGeneration(module, { conversationId: conversation.id, generationId: accepted.generationId, content: "Maren hides the key." });
+		stopConversationGeneration(module, { conversationId: conversation.id, generationId: accepted.generationId });
+		const generated = readTestConversationSnapshot(module, conversation.id)?.messages.at(-1);
 		const selectedVariant = generated?.variants.find((variant) => variant.selected);
 		if (!selectedVariant) throw new Error("Stopped Generation did not retain a selected Variant.");
 		const response = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories`));
@@ -89,7 +100,7 @@ describe("Memory source lifecycle public operations", () => {
 	test("queues a selected Human source and selected Swipe while retaining the prior collection", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
-		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		if (!snapshot) throw new Error("Memory fixture Chat was not created.");
 		const humanId = snapshot.control.humanParticipantId;
 		if (humanId === null) throw new Error("Memory fixture has no Human Control.");

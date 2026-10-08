@@ -1,3 +1,5 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -16,11 +18,8 @@ import {
 	StaleCharacterRevisionError,
 } from ".";
 import type { CharacterDefinition } from ".";
-import {
-	createConversationModule,
-	type ParticipantDefinition,
-} from "../conversation";
-import { applyCommand } from "../conversation/test-fixtures";
+import { type ParticipantDefinition } from "../conversation";
+import { applyCommand } from "../test-fixtures/conversation";
 
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
@@ -460,7 +459,7 @@ describe("Character deletion", () => {
 		if (source === undefined) {
 			throw new Error("Expected the Character to exist before forking.");
 		}
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Deletion Cast",
 			participants: [
 				{
@@ -496,8 +495,8 @@ describe("Character deletion", () => {
 	// its openings are non-empty), removal reduces it to a tombstone that
 	// retains the Character provenance reference.
 	const unseatAndRemove = (conversationId: number, participantId: number) => {
-		const module = createConversationModule(database);
-		let snapshot = module.getSnapshot(conversationId);
+		const module = database;
+		let snapshot = readTestConversationSnapshot(module, conversationId);
 		if (snapshot === undefined) {
 			throw new Error("Expected the fork Conversation");
 		}
@@ -523,7 +522,7 @@ describe("Character deletion", () => {
 				participantId: spareId,
 			},
 		});
-		return module.execute({
+		return executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: snapshot.revision,
 			action: { type: "remove-participant", participantId },

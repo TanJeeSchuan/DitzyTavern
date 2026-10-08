@@ -1,50 +1,3 @@
-import type { Database } from "bun:sqlite";
-import {
-	acceptConversationTailGeneration,
-	acceptConversationContinuationGeneration,
-	acceptConversationSiblingGeneration,
-} from "./commands/accept-generation";
-import {
-	checkpointConversationGeneration,
-	removeConversationGeneration,
-	stopConversationGeneration,
-	stopConversationGenerations,
-	resolveConversationGeneration,
-} from "./commands/active-generation";
-import { createConversation } from "./create";
-export { deleteConversation } from "./delete";
-import { executeConversationCommand } from "./execute";
-import { readChatHistory } from "./history";
-import {
-	conversationExists,
-	readConversationRevision,
-	readConversationSnapshot,
-	readConversationSummary,
-} from "./snapshot";
-import { readConversationData } from "./read-data";
-import { readSelectedHistory } from "./selected-history";
-import { readConversationPromptPreset } from "./prompt-preset";
-import {
-	readActiveGenerationDetails,
-	readVariantDetails,
-} from "./generation-details";
-import { readConversationGenerationSettings } from "./generation-settings";
-import {
-	editMacroVariables,
-	readMacroVariables,
-} from "./macro-variables";
-export type {
-	EditMacroVariablesInput,
-	EditedMacroVariables,
-	ReadMacroVariablesInput,
-} from "./macro-variables";
-export type {
-	SelectedHistoryMessage,
-	SelectedHistoryRead,
-	SelectedHistoryReadRequest,
-	SelectedHistoryVariant,
-} from "./selected-history";
-import type { ConversationModule } from "./types";
 
 export {
 	ConversationNotPlayableError,
@@ -63,7 +16,7 @@ export {
 	DEFAULT_CONTINUATION_INSTRUCTION,
 	DEFAULT_SAFETY_ALLOWANCE,
 } from "./generation-settings";
-export { DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-defaults";
+export { DEFAULT_SIBLING_GENERATION_LIMIT } from "../database/schema";
 export {
 	acceptConversationContinuationGeneration,
 	acceptConversationTailGeneration,
@@ -154,12 +107,8 @@ export type {
 	StoppedGenerations,
 	ResolveGenerationInput,
 	ConversationDataScope,
-	ConversationMessageSnapshot,
-	ConversationModule,
 	ConversationParticipantSeed,
-	ConversationSnapshot,
 	ConversationSummary,
-	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
 	MessageSwipeBlockReason,
@@ -170,49 +119,33 @@ export type {
 	ParticipantRemovalEligibility,
 } from "./types";
 
-export function createConversationModule(database: Database): ConversationModule {
-	return {
-		create: (input) => createConversation(database, input),
-		exists: (conversationId) => conversationExists(database, conversationId),
-		getRevision: (conversationId) => readConversationRevision(database, conversationId),
-		getSnapshot: (conversationId) => readConversationSnapshot(database, conversationId),
-		getSummary: (conversationId) => readConversationSummary(database, conversationId),
-		getGenerationSettings: (conversationId) =>
-			readConversationGenerationSettings(database, conversationId),
-		getPromptPreset: (conversationId) =>
-			readConversationPromptPreset(database, conversationId),
-		readHistory: (conversationId, request) =>
-			readChatHistory(database, conversationId, request),
-		readConversationData: (conversationId, filter) =>
-			readConversationData(database, conversationId, filter),
-		readSelectedHistory: (conversationId, request) =>
-			readSelectedHistory(database, conversationId, request),
-		readMacroVariables: (conversationId, input) =>
-			readMacroVariables(database, conversationId, input),
-		editMacroVariables: (input) => editMacroVariables(database, input),
-		readActiveGenerationDetails: (conversationId, generationId) =>
-			readActiveGenerationDetails(database, conversationId, generationId),
-		readVariantDetails: (conversationId, messageId, variantId) =>
-			readVariantDetails(database, conversationId, messageId, variantId),
-		execute: (command) => executeConversationCommand(database, command),
-		acceptTailGeneration: (input) =>
-			acceptConversationTailGeneration(database, input),
-	acceptContinuationGeneration: (input) =>
-			acceptConversationContinuationGeneration(database, input),
-		acceptSiblingGeneration: (input) =>
-		acceptConversationSiblingGeneration(database, input),
-		checkpointGeneration: (input) =>
-			checkpointConversationGeneration(database, input),
-		resolveGeneration: (input) =>
-			resolveConversationGeneration(database, input),
-		stopGeneration: (input) =>
-			stopConversationGeneration(database, input),
-		stopGenerations: (input) =>
-			stopConversationGenerations(database, input),
-		// @approved
-		//  One canonical removal: the persisted Active Generation row decides
-		// between the Sibling Variant and Tail/Continuation Message mutations.
-		removeGeneration: (input) =>
-			removeConversationGeneration(database, input),
-	};
-}
+export { authorRoleOf, continuationEligibility } from "./continuation";
+
+export type { ConversationDatabase } from "./internal";
+export { attachConversationLorebook, saveConversationLoreSettings } from "./commands/lore-attachments";
+export { deleteConversation } from "./delete";
+export type { EditMacroVariablesInput, EditedMacroVariables, ReadMacroVariablesInput } from "./macro-variables";
+export type { SelectedHistoryMessage, SelectedHistoryRead, SelectedHistoryReadRequest, SelectedHistoryVariant } from "./selected-history";
+export { createConversation } from "./create";
+export { conversationExists, readConversationSummary, readConversationSummaryFromConnection } from "./snapshot";
+export { readConversationGenerationSettings, readConversationGenerationSettingsFromConnection } from "./generation-settings";
+export { readConversationPromptPreset } from "./prompt-preset";
+export { readSelectedHistory, readSelectedHistoryFromConnection } from "./selected-history";
+export { readConversationData } from "./read-data";
+export { editMacroVariables, readMacroVariables } from "./macro-variables";
+export { stopConversationGeneration, stopConversationGenerations } from "./commands/active-generation";
+export { runConversationReadTransaction } from "./commands/transaction";
+export { readMemorySourceAvailability } from "./generation-details";
+export { findConversation, readActiveCast, readControlAssignment } from "./internal";
+export { readActiveVariantIds, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory } from "./memory-read";
+export type { MemorySourceVariant } from "./memory-read";
+
+export { readActiveGenerationsForRecovery } from "./generation-details";
+
+export type { GenerationRequestOverrides } from "./types";
+export { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
+
+export { loadMessageRows } from "./message-rows";
+
+export { readVariantData } from "./variant-data";
+export type { VariantDataRecords } from "./variant-data";

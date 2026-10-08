@@ -6,6 +6,7 @@ import {
 	startConversationSiblingGeneration,
 	type ConversationSummary,
 	type GenerationPreviewBody,
+	type GenerationStartResult,
 } from "../conversation";
 import type { PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
@@ -159,7 +160,7 @@ export function useAssemblyController({
 		startId: number,
 		conversationId: number,
 		requestId: number,
-		request: Promise<Awaited<ReturnType<typeof startConversationGeneration>>>,
+		request: Promise<GenerationStartResult>,
 		clearDraftOnAccepted: boolean,
 		onFailure: (message: string) => void,
 		onAccepted: () => void,

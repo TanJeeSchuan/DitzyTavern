@@ -1,5 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "./lib/query-client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import "../index.css";
 import { registerWireFormats } from "../shared/contract/wire-formats";
@@ -7,6 +6,8 @@ import { App } from "./App";
 import { ImageDialogProvider } from "./ImageDialog";
 
 registerWireFormats();
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 
 // @approved
 //  Build stamp: the hashed asset name identifies the exact bundle. Snapshot

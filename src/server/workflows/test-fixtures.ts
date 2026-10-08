@@ -1,14 +1,11 @@
+import { type TestConversationSnapshot, readTestConversationSnapshot } from "../test-fixtures/conversation";
 import type { Database } from "bun:sqlite";
-import {
-	createConversationModule,
-	ConversationNotFoundError,
-	type ConversationSnapshot,
-} from "../conversation";
-import { continueGeneration } from "./generate";
+import { ConversationNotFoundError} from "../conversation";
+import { runGenerationLifecycle } from "./generate";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 
-/**
- * ==[HUMAN APPROVED]== Test-fixture seam for suites that need a terminal model Message without a
+/** @approved
+ * Test-fixture seam for suites that need a terminal model Message without a
  * user Send. It composes the production Continuation lifecycle — acceptance
  * followed by resolution — instead of a parallel commit path, so fixtures
  * exercise the same Active Generation persistence, Author Stamp capture, and
@@ -19,16 +16,16 @@ import type { GenerationAttemptInput } from "./generate-server-owned";
 export async function generateTerminalTailFixture(
 	database: Database,
 	input: GenerationAttemptInput,
-): Promise<ConversationSnapshot> {
-	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
+): Promise<TestConversationSnapshot> {
+	const snapshot = readTestConversationSnapshot(database, input.conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	await continueGeneration(database, {
+	await runGenerationLifecycle(database, {target: { kind: "continuation" },
 		...input,
 		expectedRevision: snapshot.revision,
 	});
-	const committed = createConversationModule(database).getSnapshot(input.conversationId);
+	const committed = readTestConversationSnapshot(database, input.conversationId);
 	if (committed === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}

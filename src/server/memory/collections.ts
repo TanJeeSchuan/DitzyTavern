@@ -1,28 +1,52 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readConversationRevision } from "../conversation/snapshot";
-import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
+import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
+import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
-import { claimMemoryIndexJob, embedMemoryTexts, readMemoryEmbeddingConfiguration, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, runMemoryIndexJob, type MemoryEmbed } from "./indexing";
+import {
+	claimMemoryIndexJob,
+	embedMemoryTexts,
+	readMemoryEmbeddingConfiguration,
+	readMemoryIndexReadiness,
+	readMemoryIndexReadinessBatch,
+	runMemoryIndexJob,
+	type MemoryEmbed,
+} from "./indexing";
 import { isMemoryEnabledForConversation } from "./settings";
-import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryCorrectionCommand } from "../../shared/contract/memory";
+import {
+	memoryCandidates,
+	memoryTraceSteps,
+	memoryWorkSnapshot,
+	type CapturedMemoryMessage,
+	type MemoryCandidateJudgment,
+	type MemoryCatchup,
+	type MemoryCollectionView,
+	type MemoryCorrectionCommand,
+} from "../../shared/contract/memory";
 import type { MemoryIndexReadiness, MemoryTraceStep } from "../../shared/contract/memory";
 import { abortMemoryWork, indexingVariants, registerMemoryWork, registeredMemoryVariants } from "./work";
 import { sha256 } from "./hash";
 import { projectImageAnchors } from "../../shared/image-reference";
-import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState } from "./labels";
+import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState, type MemoryLabelState } from "./labels";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
 export class StaleMemoryCollectionError extends Error {
+	readonly outcome = "conflict" as const;
+	readonly details;
+
 	constructor(readonly collection: MemoryCollectionView) {
 		super("This Memory collection changed in another session.");
 		this.name = "StaleMemoryCollectionError";
+		this.details = { collection };
 	}
 }
 
 export class InvalidMemorySourceError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	constructor(message: string) {
 		super(message);
 		this.name = "InvalidMemorySourceError";
@@ -40,33 +64,14 @@ const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemor
 };
 
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {
-	const db = drizzle(database);
-	const source = db
-		.select({ position: messageTable.position, speaker: messageTable.author_name, variantId: messageVariantTable.id, content: messageVariantTable.content })
-		.from(messageTable)
-		.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
-		.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, messageId)))
-		.get();
+	const path = readSelectedPathForMemory(database, conversationId, messageId) ?? [];
+	const current = path.find((message) => message.messageId === messageId);
+	const source = current?.variant;
 	if (!source) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");
-	const active = db
-		.select({ id: activeGenerationTable.id })
-		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.variant_id, source.variantId))
-		.get();
-	if (active) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
-	const previous = db
-		.select({ messageId: messageTable.id, variantId: messageVariantTable.id, speaker: messageTable.author_name, content: messageVariantTable.content })
-		.from(messageTable)
-		.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
-		.where(and(eq(messageTable.conversation_id, conversationId), lt(messageTable.position, source.position)))
-		.orderBy(desc(messageTable.position))
-		.limit(4)
-		.all()
-		.reverse();
-	return captured(
-		{ messageId, variantId: source.variantId, speaker: source.speaker, content: source.content },
-		previous,
-	);
+	if (source.active) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
+	const previous = path.filter((message) => message.position < source.position && message.variant !== null).slice(-4)
+		.map((message) => ({ messageId: message.messageId, variantId: message.variant!.variantId, speaker: message.author, content: message.variant!.content }));
+	return captured({ messageId, variantId: source.variantId, speaker: source.speaker, content: source.content }, previous);
 };
 
 const parseClaims = (claimsJson: string): MemoryCandidateJudgment[] | null => {
@@ -93,7 +98,9 @@ const toView = (row: CollectionRow, variant: SourceVariant, indexing: MemoryInde
 };
 
 const unprocessedView = (variant: SourceVariant, enabled: boolean): MemoryCollectionView => ({
-	...variant,
+	messageId: variant.messageId,
+	variantId: variant.variantId,
+	selected: variant.selected,
 	status: "unprocessed",
 	error: null,
 	revision: 0,
@@ -104,12 +111,7 @@ const unprocessedView = (variant: SourceVariant, enabled: boolean): MemoryCollec
 });
 
 const readSourceVariant = (database: Database, conversationId: number, messageId: number, variantId: number): SourceVariant | undefined =>
-	drizzle(database)
-		.select({ messageId: messageTable.id, variantId: messageVariantTable.id, selected: messageVariantTable.selected, content: messageVariantTable.content })
-		.from(messageVariantTable)
-		.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
-		.where(and(eq(messageVariantTable.id, variantId), eq(messageTable.id, messageId), eq(messageTable.conversation_id, conversationId)))
-		.get();
+	readVariantsForMemory(database, conversationId, { variantIds: [variantId], includeActive: true }).find((variant) => variant.messageId === messageId);
 
 const readCollection = (database: Database, variantId: number) =>
 	drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
@@ -187,14 +189,8 @@ export function queueMemorySource(database: Database, conversationId: number, me
 }
 
 export function queueMemoryTail(database: Database, conversationId: number): boolean {
-	const tail = drizzle(database)
-		.select({ id: messageTable.id })
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.orderBy(desc(messageTable.position))
-		.limit(1)
-		.get();
-	return tail ? queueMemorySource(database, conversationId, tail.id) : false;
+	const messageId = readMemoryTailMessageId(database, conversationId);
+	return messageId === undefined ? false : queueMemorySource(database, conversationId, messageId);
 }
 
 // @approved
@@ -212,14 +208,7 @@ export function startMemoryCatchup(database: Database, conversationId: number, r
 			.values({ conversation_id: conversationId, created_at: new Date().toISOString() })
 			.returning()
 			.get();
-		const activeVariants = new Set(
-			drizzle(database)
-				.select({ id: activeGenerationTable.variant_id })
-				.from(activeGenerationTable)
-				.where(eq(activeGenerationTable.conversation_id, conversationId))
-				.all()
-				.map(({ id }) => id),
-		);
+		const activeVariants = readActiveVariantIds(database, conversationId);
 		const previous: CapturedMemoryMessage[] = [];
 		for (const source of sources) {
 			if (source.content.trim().length > 0 && !activeVariants.has(source.variantId)) {
@@ -290,47 +279,38 @@ export function cancelMemoryCatchup(database: Database, conversationId: number, 
 	}).immediate();
 }
 
-export function readConversationMemories(database: Database, conversationId: number) {
-	const cursor = new Date().toISOString();
-	const db = drizzle(database);
-	const state = readMemoryLabelState(database, conversationId);
-	const path = db
-		.select({ messageId: messageTable.id, author: messageTable.author_name, authorParticipantId: messageTable.author_participant_id })
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.orderBy(asc(messageTable.position))
-		.all();
-	const rows = db
-		.select({
-			messageId: messageTable.id,
-			authorParticipantId: messageTable.author_participant_id,
-			variantId: messageVariantTable.id,
-			selected: messageVariantTable.selected,
-			content: messageVariantTable.content,
-			collection: memoryCollectionTable,
-		})
-		.from(messageTable)
-		.innerJoin(messageVariantTable, eq(messageVariantTable.message_id, messageTable.id))
-		.leftJoin(memoryCollectionTable, eq(memoryCollectionTable.variant_id, messageVariantTable.id))
-		.leftJoin(activeGenerationTable, eq(activeGenerationTable.variant_id, messageVariantTable.id))
-		.where(and(
-			eq(messageTable.conversation_id, conversationId),
-			or(eq(messageVariantTable.selected, true), isNotNull(memoryCollectionTable.variant_id)),
-			isNull(activeGenerationTable.id),
-		))
-		.orderBy(desc(messageVariantTable.selected), asc(messageTable.position), asc(messageVariantTable.position))
-		.all();
+interface MemoryCollectionSource {
+	variant: MemorySourceVariant;
+	collection: CollectionRow | undefined;
+}
+
+const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
-	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled);
-	const sources = rows.flatMap(({ collection, ...variant }): MemoryCollectionView[] => {
+	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
+	return rows.flatMap(({ variant, collection }) => {
 		if (variant.authorParticipantId !== null && state.identities[variant.authorParticipantId]?.kind === "excluded") return [];
 		if (collection) return [toView(collection, variant, readiness.get(variant.variantId)!)];
 		return variant.content.trim().length === 0 ? [] : [unprocessedView(variant, enabled)];
 	});
+};
+
+const collectionSources = (database: Database, conversationId: number, collections: CollectionRow[], changes = false): MemoryCollectionSource[] => {
+	const byVariant = new Map(collections.map((collection) => [collection.variant_id, collection]));
+	const keys = [...byVariant.keys()];
+	return readVariantsForMemory(database, conversationId, changes ? { variantIds: keys, includeActive: true } : { selectedOrVariantIds: keys })
+		.sort((left, right) => Number(right.selected) - Number(left.selected) || left.position - right.position || left.variantPosition - right.variantPosition)
+		.map((variant) => ({ variant, collection: byVariant.get(variant.variantId) }));
+};
+
+export function readConversationMemories(database: Database, conversationId: number) {
+	const cursor = new Date().toISOString();
+	const state = readMemoryLabelState(database, conversationId);
+	const path = readMessageAuthorsForMemory(database, conversationId);
+	const collections = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
 	return {
 		revision: readConversationRevision(database, conversationId) ?? 0,
 		cursor,
-		sources,
+		sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections), state),
 		path,
 		identities: state.identities,
 		cast: state.cast,
@@ -341,37 +321,14 @@ export function readConversationMemories(database: Database, conversationId: num
 
 export function readConversationMemoryChanges(database: Database, conversationId: number, since: string) {
 	const cursor = new Date().toISOString();
-	const db = drizzle(database);
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	const running = [...new Set([...registeredMemoryVariants(database), ...indexingVariants(database, configuration.spaceKey)])];
-	const rows = db
-		.select({
-			messageId: messageTable.id,
-			authorParticipantId: messageTable.author_participant_id,
-			variantId: messageVariantTable.id,
-			selected: messageVariantTable.selected,
-			content: messageVariantTable.content,
-			collection: memoryCollectionTable,
-		})
-		.from(memoryCollectionTable)
-		.innerJoin(messageVariantTable, eq(messageVariantTable.id, memoryCollectionTable.variant_id))
-		.innerJoin(messageTable, eq(messageTable.id, memoryCollectionTable.message_id))
-		.where(and(
-			eq(memoryCollectionTable.conversation_id, conversationId),
-			or(
-				gte(memoryCollectionTable.updated_at, since),
-				sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`,
-				running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running),
-			),
-		))
-		.orderBy(desc(messageVariantTable.selected), asc(messageTable.position), asc(messageVariantTable.position))
-		.all();
-	const enabled = isMemoryEnabledForConversation(database, conversationId);
+	const collections = drizzle(database).select().from(memoryCollectionTable).where(and(
+		eq(memoryCollectionTable.conversation_id, conversationId),
+		or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`, running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running)),
+	)).all();
 	const state = readMemoryLabelState(database, conversationId);
-	const readiness = readMemoryIndexReadinessBatch(database, rows.map(({ collection }) => collection), enabled, configuration);
-	const excluded = (participantId: number | null) => participantId !== null && state.identities[participantId]?.kind === "excluded";
-	const sources = rows.flatMap(({ collection, ...variant }): MemoryCollectionView[] => excluded(variant.authorParticipantId) ? [] : [toView(collection, variant, readiness.get(variant.variantId)!)]);
-	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources };
+	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections, true), state, configuration) };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {
@@ -434,6 +391,9 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 }
 
 export class StaleMemorySettingsError extends Error {
+	readonly outcome = "conflict" as const;
+	readonly details;
+
 	constructor(
 		readonly expectedRevision: number,
 		readonly actualRevision: number,
@@ -441,6 +401,7 @@ export class StaleMemorySettingsError extends Error {
 	) {
 		super("Memory settings changed in another session.");
 		this.name = "StaleMemorySettingsError";
+		this.details = { expectedRevision, actualRevision, currentSettings };
 	}
 }
 
@@ -544,7 +505,7 @@ const runMemoryExtraction = async (database: Database, job: CollectionRow, proce
 		eq(memoryCollectionTable.status, "running"),
 	);
 	if (job.catchup_run_id !== null) {
-		const selected = db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, job.variant_id)).get();
+		const selected = readVariantsForMemory(database, job.conversation_id, { variantIds: [job.variant_id], includeActive: true })[0];
 		if (selected?.selected !== true) {
 			db.delete(memoryCollectionTable).where(current).run();
 			return;

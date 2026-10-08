@@ -12,6 +12,7 @@ import {
 	stopAllConversationGenerations,
 	stopConversationGeneration,
 	type ConversationSummary,
+	type GenerationStopResult,
 } from "../conversation";
 import { generationStreamAdapter } from "../conversation-stream";
 import {
@@ -22,7 +23,6 @@ import {
 	firstActiveGenerationSessionFailure,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
-	type GenerationSessionStoryEffect,
 	type GenerationStopCommandOutcome,
 } from "../generation-sessions";
 import {
@@ -40,46 +40,11 @@ import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
 // @approved
-//  Maps a machine story effect onto the story reducer's single observation
-// vocabulary. An authoritative snapshot replaces both accumulated fields
-// atomically; content and reasoning deltas each append to the stream they
-// belong to, so Reasoning Content stays visible without joining authored
-// prose.
-export function generationSessionStoryAction(
-	effect: GenerationSessionStoryEffect,
-): StoryAction {
-	const shared = {
-		messageId: effect.messageId,
-		variantId: effect.variantId,
-		generationId: effect.generationId,
-		eventId: effect.eventId,
-	} as const;
-	if (effect.kind === "story-state") {
-		return {
-			type: "generation-observed",
-			mode: "replace",
-			content: effect.content,
-			reasoning: effect.reasoning,
-			...shared,
-		};
-	}
-	return {
-		type: "generation-observed",
-		stream: effect.kind === "story-content-delta" ? "content" : "reasoning",
-		mode: "append",
-		text: effect.text,
-		...shared,
-	};
-}
-
-// @approved
 //  Maps a transport Stop outcome onto the machine's stop-command vocabulary.
 // The transport's network outcome is the machine's failed stop; the reason is
 // owned here because the transport no longer words per-route failures.
 const stopCommandOutcome = (
-	result:
-		| Awaited<ReturnType<typeof stopConversationGeneration>>
-		| Awaited<ReturnType<typeof stopAllConversationGenerations>>,
+	result: GenerationStopResult,
 ): GenerationStopCommandOutcome => {
 	if (result.outcome === "not-found") return { outcome: "not-found" };
 	if (result.outcome === "network") return { outcome: "failed", reason: "Generation could not be stopped." };
@@ -96,8 +61,8 @@ type GenerationControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
-/**
- * ==[HUMAN APPROVED]== Thin wiring between the view, the Generation session machine, and the
+/** @approved
+ * Thin wiring between the view, the Generation session machine, and the
  * assembly controller. The session machine (generation-sessions) and its runner own
  * subscription phases, event cursors, reconnection, stop state, errors, and
  * terminal refreshes; the assembly controller owns Prompt Plan preview and
@@ -124,9 +89,7 @@ export function useGenerationController({
 	if (runnerRef.current === null) {
 		runnerRef.current = createGenerationSessionRunner({
 			adapter: generationStreamAdapter,
-			applyStoryEffect: (effect) => {
-				dispatchStory(generationSessionStoryAction(effect));
-			},
+			applyStoryEffect: dispatchStory,
 			refreshConversation: async (conversationId, signal) => {
 				await refreshStory(conversationId, signal);
 			},

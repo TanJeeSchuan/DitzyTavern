@@ -1,8 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-export const MEMORY_ACTIVATION_NAMESPACE = "generation-memory";
-export const MEMORY_ACTIVATION_KEY = "activation";
 
 export const memoryRelevanceScore = Type.Union([
 	Type.Literal("irrelevant"),
@@ -91,23 +89,9 @@ export const memoryActivationWithFinalText = (
 	manuallyEdited: finalMemoryText !== source.automaticMemoryText,
 });
 
-export class MemoryActivationRecordParseError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "MemoryActivationRecordParseError";
-	}
-}
-
 export type MemoryRelevanceScore = Static<typeof memoryRelevanceScore>;
 export type MemoryAdmissionReason = Static<typeof memoryAdmissionReason>;
 export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 
 export const isMemoryActivationRecord = (value: unknown): value is MemoryActivationRecord =>
 	Value.Check(memoryActivationRecord, value);
-
-export const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord | null => {
-	let parsed: unknown;
-	try { parsed = JSON.parse(serialized); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record is not valid JSON."); }
-	if (parsed === null) return null;
-	try { return Value.Parse(memoryActivationRecord, parsed); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema."); }
-};

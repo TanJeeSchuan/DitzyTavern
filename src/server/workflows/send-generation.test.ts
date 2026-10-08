@@ -1,12 +1,17 @@
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	readVariantDetails,
+	executeConversationCommand,
+	readActiveGenerationDetails,
+} from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
-import { sendThroughProvisionalTailGeneration } from ".";
-import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
+import { runGenerationLifecycle } from ".";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "../contract/conversation";
 import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
@@ -26,7 +31,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const created = createConversationModule(database).create({
+		const created = createConversationWithHistory(database, {
 			name: "Send Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -43,14 +48,14 @@ describe("Send through provisional Tail Generation", () => {
 	// Generation results carry the Conversation header; Message assertions
 	// re-read the full snapshot immediately after the attempt they follow.
 	const currentSnapshot = () =>
-		requireSnapshot(createConversationModule(database), conversationId);
+		requireSnapshot(database, conversationId);
 
 	test("accepts the human input and resolves the authoritative provisional target", async () => {
 		let contactedWithActiveTarget = false;
-		const result = await sendThroughProvisionalTailGeneration(database, {
+		const result = await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
-			content: "Please open the door.",
+			target: { kind: "send", content: "Please open the door." },
 			modelClient: createFakeModelClient(() => {
 				contactedWithActiveTarget = drizzle(database)
 					.select()
@@ -73,10 +78,10 @@ describe("Send through provisional Tail Generation", () => {
 	});
 
 	test("terminal details retain stop, other, and length finish reasons", async () => {
-		const completed = await sendThroughProvisionalTailGeneration(database, {
+		const completed = await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
-			content: "Complete this thought.",
+			target: { kind: "send", content: "Complete this thought." },
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Finished cleanly." },
 				{ type: "finished", finishReason: "stop" },
@@ -87,7 +92,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (completedMessage === undefined || completedVariant === undefined) {
 			throw new Error("Completed Variant missing.");
 		}
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database,
 			conversationId,
 			completedMessage.id,
 			completedVariant.id,
@@ -97,10 +102,10 @@ describe("Send through provisional Tail Generation", () => {
 			interruptionCause: null,
 		});
 
-		const other = await sendThroughProvisionalTailGeneration(database, {
+		const other = await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: completed.conversation.revision,
-			content: "Use another terminal reason.",
+			target: { kind: "send", content: "Use another terminal reason." },
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Finished another way." },
 				{ type: "finished", finishReason: "other" },
@@ -111,7 +116,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (otherMessage === undefined || otherVariant === undefined) {
 			throw new Error("Other-finished Variant missing.");
 		}
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database,
 			conversationId,
 			otherMessage.id,
 			otherVariant.id,
@@ -121,10 +126,10 @@ describe("Send through provisional Tail Generation", () => {
 			interruptionCause: null,
 		});
 
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: other.conversation.revision,
-			content: "Reach the output limit.",
+			target: { kind: "send", content: "Reach the output limit." },
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "The bounded output." },
 				{ type: "finished", finishReason: "length" },
@@ -135,7 +140,7 @@ describe("Send through provisional Tail Generation", () => {
 		if (lengthMessage === undefined || lengthVariant === undefined) {
 			throw new Error("Length-limited Variant missing.");
 		}
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database,
 			conversationId,
 			lengthMessage.id,
 			lengthVariant.id,
@@ -149,10 +154,10 @@ describe("Send through provisional Tail Generation", () => {
 	test("terminal details retain every normalized interruption cause", async () => {
 		let expectedRevision = 0;
 		for (const cause of ["provider", "inactivity", "cancelled", "transport", "protocol"] as const) {
-			const interrupted = await sendThroughProvisionalTailGeneration(database, {
+			const interrupted = await runGenerationLifecycle(database, {connection: null,
 				conversationId,
 				expectedRevision,
-				content: `Exercise the ${cause} path.`,
+				target: { kind: "send", content: `Exercise the ${cause} path.` },
 				modelClient: createFakeModelClient(() => [
 					{ type: "content", text: `Partial ${cause} output.` },
 					{ type: "failed", kind: cause, message: `Safe ${cause} failure.` },
@@ -164,7 +169,7 @@ describe("Send through provisional Tail Generation", () => {
 			if (message === undefined || variant === undefined) {
 				throw new Error(`Interrupted ${cause} Variant missing.`);
 			}
-			expect(createConversationModule(database).readVariantDetails(
+			expect(readVariantDetails(database,
 				conversationId,
 				message.id,
 				variant.id,
@@ -177,24 +182,24 @@ describe("Send through provisional Tail Generation", () => {
 	});
 
 	test("removes zero-output targets while preserving the accepted human Message and reuses it on retry", async () => {
-		await expect(sendThroughProvisionalTailGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
-			content: "Please try again.",
+			target: { kind: "send", content: "Please try again." },
 			modelClient: createFakeModelClient(() => [
 				{ type: "failed", kind: "provider", message: "No answer." },
 			]),
 		})).rejects.toThrow("No answer.");
 
-		const afterFailure = createConversationModule(database).getSnapshot(conversationId);
+		const afterFailure = readTestConversationSnapshot(database, conversationId);
 		expect(afterFailure?.messages).toHaveLength(1);
 		expect(afterFailure?.messages[0]?.author?.participantId).toBe(humanId);
 		expect(afterFailure?.revision).toBe(2);
 
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: afterFailure?.revision ?? -1,
-			content: "Please try again.",
+			target: { kind: "send", content: "Please try again." },
 			modelClient: createFakeModelClient(() => "Now it works."),
 		});
 		expect(currentSnapshot().messages).toHaveLength(2);
@@ -212,19 +217,19 @@ describe("Send through provisional Tail Generation", () => {
 		if (memorySlot === undefined) throw new Error("The Default recipe has no Memory block.");
 		if (!memorySlot.enabled) await readOperation(toggleBlock(database, preset.id, memorySlot.id, true));
 
-		await expect(sendThroughProvisionalTailGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
-			content: "Maren asked about the brass key.",
+			target: { kind: "send", content: "Maren asked about the brass key." },
 			modelClient: createFakeModelClient(() => [{ type: "failed", kind: "provider", message: "No answer." }]),
 		})).rejects.toThrow("No answer.");
 		const insertedHuman = currentSnapshot().messages[0];
 		if (insertedHuman === undefined) throw new Error("The accepted Human Message is missing.");
 		const insertedSourceStatus = database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE message_id = ?").get(insertedHuman.id)?.status;
-		await sendThroughProvisionalTailGeneration(database, {
+		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: currentSnapshot().revision,
-			content: "Maren asked about the brass key.",
+			target: { kind: "send", content: "Maren asked about the brass key." },
 			modelClient: createFakeModelClient(() => "Maren waits for an answer."),
 		});
 		expect(currentSnapshot().messages[0]?.id).toBe(insertedHuman.id);
@@ -234,10 +239,10 @@ describe("Send through provisional Tail Generation", () => {
 
 	test("rejects an oversized candidate before any Message or Active Generation is persisted", async () => {
 		let contacted = false;
-		await expect(sendThroughProvisionalTailGeneration(database, {
+		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
-			content: "Protected input.",
+			target: { kind: "send", content: "Protected input." },
 			modelClient: createFakeModelClient(() => {
 				contacted = true;
 				return "never";
@@ -245,13 +250,13 @@ describe("Send through provisional Tail Generation", () => {
 			tokenEstimator: () => 40_000,
 		})).rejects.toThrow();
 		expect(contacted).toBe(false);
-		expect(createConversationModule(database).getSnapshot(conversationId)?.messages).toHaveLength(0);
+		expect(readTestConversationSnapshot(database, conversationId)?.messages).toHaveLength(0);
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
 
 	test("persists the attempt's Effective Generation Settings so active inspection retains the Safety allowance", async () => {
-		const conversation = createConversationModule(database);
-		conversation.execute({
+		const conversation = database;
+		executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -288,10 +293,10 @@ describe("Send through provisional Tail Generation", () => {
 		const acceptedReady = new Promise<void>((resolve) => {
 			markAccepted = resolve;
 		});
-		const generation = sendThroughProvisionalTailGeneration(database, {
+		const generation = runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 1,
-			content: "Guide the scene.",
+			target: { kind: "send", content: "Guide the scene." },
 			modelClient: createFakeModelClient(async () => {
 				await pending;
 				return "The scene shifts.";
@@ -308,7 +313,7 @@ describe("Send through provisional Tail Generation", () => {
 		// Safety allowance), while the Continuation group has no applicable
 		// operand for a Tail attempt. Active inspection re-exposes only safe
 		// settings and never Request Overrides.
-		const details = createConversationModule(database).readActiveGenerationDetails(
+		const details = readActiveGenerationDetails(database,
 			conversationId,
 			generationId ?? -1,
 		);

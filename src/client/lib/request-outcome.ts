@@ -75,3 +75,5 @@ export const requestOutcome = async <
 		return { outcome: "network" };
 	}
 };
+
+export class NetworkError extends Error {}

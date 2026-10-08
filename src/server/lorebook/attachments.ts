@@ -12,11 +12,11 @@ import {
 	lorebookTable,
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
-import { findConversation, readActiveCast, readControlAssignment } from "../conversation/internal";
+import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
 import {
 	attachConversationLorebook,
 	saveConversationLoreSettings,
-} from "../conversation/commands/lore-attachments";
+} from "../conversation";
 import { StaleLoreAttachmentOwnerRevisionError } from "./errors";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";
@@ -41,6 +41,8 @@ export interface LoreSettings {
 }
 
 export class LoreAttachmentOwnerNotFoundError extends Error {
+	readonly outcome = "not-found" as const;
+
 	constructor() {
 		super("The Lore attachment owner was not found.");
 		this.name = "LoreAttachmentOwnerNotFoundError";
@@ -76,7 +78,7 @@ export const attachLorebookToCharacter = (
 	}).run();
 };
 
-/** ==[HUMAN APPROVED]== Public Lorebook seam for the Conversation-owned Chat attachment
+/** @approved Public Lorebook seam for the Conversation-owned Chat attachment
  * write; the authoritative implementation is the Conversation command
  * handler, so the seam and the revisioned command cannot drift. */
 export const attachLorebookToConversation = (
@@ -91,7 +93,7 @@ export const detachLorebookFromCharacter = (database: Database, characterId: num
 		eq(characterLorebookAttachmentTable.scope, requireScope(scope)),
 	)).run();
 
-/** ==[HUMAN APPROVED]== Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
+/** @approved Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
 export const readLorebookAttachmentEligibility = (
 	database: Database,
 	conversationId: number,
@@ -215,16 +217,11 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 		ownerId: characterId,
 		revision: character.revision,
 		attachments: db
-			.select({
-				id: characterLorebookAttachmentTable.id,
-				bookId: characterLorebookAttachmentTable.lorebook_id,
-				scope: characterLorebookAttachmentTable.scope,
-				enabled: characterLorebookAttachmentTable.enabled,
-			})
+			.select(ownerAttachmentSelection(characterLorebookAttachmentTable))
 			.from(characterLorebookAttachmentTable)
 			.where(eq(characterLorebookAttachmentTable.character_id, characterId))
 			.all()
-			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
+			.map(ownerAttachmentOf),
 	};
 };
 
@@ -252,16 +249,11 @@ export const readParticipantLorebookAttachments = (database: Database, participa
 		ownerId: participantId,
 		revision: conversation.revision,
 		attachments: db
-			.select({
-				id: participantLorebookAttachmentTable.id,
-				bookId: participantLorebookAttachmentTable.lorebook_id,
-				scope: participantLorebookAttachmentTable.scope,
-				enabled: participantLorebookAttachmentTable.enabled,
-			})
+			.select(ownerAttachmentSelection(participantLorebookAttachmentTable))
 			.from(participantLorebookAttachmentTable)
 			.where(eq(participantLorebookAttachmentTable.participant_id, participantId))
 			.all()
-			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
+			.map(ownerAttachmentOf),
 	};
 };
 
@@ -272,7 +264,7 @@ export const readLoreSettings = (database: Database, conversationId: number): Lo
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
 };
 
-/** ==[HUMAN APPROVED]== Public Lorebook seam for the Conversation-owned Chat Lore settings
+/** @approved Public Lorebook seam for the Conversation-owned Chat Lore settings
  * write; the authoritative implementation is the Conversation command
  * handler, so the seam and the revisioned command cannot drift. */
 export const saveLoreSettings = (database: Database, conversationId: number, settings: LoreSettings): LoreSettings => {
@@ -320,3 +312,15 @@ export const executeLorebookAttachmentCommand = (
 		advanceCharacterRevision(db, command.characterId, command.expectedRevision);
 	}).immediate();
 };
+
+const ownerAttachmentSelection = (table: typeof characterLorebookAttachmentTable | typeof participantLorebookAttachmentTable) => ({
+	id: table.id,
+	bookId: table.lorebook_id,
+	scope: table.scope,
+	enabled: table.enabled,
+});
+
+const ownerAttachmentOf = (row: { id: number; bookId: number; scope: string; enabled: boolean }) => ({
+	...row,
+	scope: participantScope(row.scope),
+});

@@ -6,7 +6,7 @@ import type { Lorebook } from "../../shared/contract/lorebook";
 import { readLorebook } from "./library";
 import { matchLoreEntry, type LoreEntryMatch, type LoreScanMessage } from "./matching";
 import { captureLoreScanWindow, type LoreScanSourceMessage } from "./scan";
-import { readLoreSettings, readLorebookAttachmentEligibility } from "./attachments";
+import { readLoreSettings, readLorebookAttachmentEligibility, type LoreAttachmentEligibility } from "./attachments";
 import { captureSemanticSettings, evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client";
@@ -17,7 +17,7 @@ export interface ScopedLoreEvaluation {
 	readonly scan: readonly LoreScanMessage[];
 	readonly matches: readonly ScopedLoreMatch[];
 	readonly allowance: number;
-	/** ==[HUMAN APPROVED]== Reuse captured Lore inputs so asynchronous semantic work cannot observe later edits. */
+	/** @approved Reuse captured Lore inputs so asynchronous semantic work cannot observe later edits. */
 	readonly sources?: ScopedLoreSources;
 }
 
@@ -31,11 +31,11 @@ export interface ScopedLoreMatch {
 
 export interface ScopedLoreBookSource {
 	readonly book: Lorebook;
-	/** ==[HUMAN APPROVED]== All eligible uses retained for the existing eligibility evidence. */
+	/** @approved All eligible uses retained for the existing eligibility evidence. */
 	readonly attachmentIds: readonly number[];
-	/** ==[HUMAN APPROVED]== The first eligible use represents this book after book-identity deduplication. */
+	/** @approved The first eligible use represents this book after book-identity deduplication. */
 	readonly selectedAttachmentId: number;
-	/** ==[HUMAN APPROVED]== Later eligible uses of the same book are not evaluated again. */
+	/** @approved Later eligible uses of the same book are not evaluated again. */
 	readonly deduplicatedAttachmentIds: readonly number[];
 }
 
@@ -110,7 +110,7 @@ interface ScopedLoreInput {
 
 export interface ScopedLoreSources {
 	scanMessages: readonly LoreScanMessage[];
-	eligibleUses: ReturnType<typeof readLorebookAttachmentEligibility>;
+	eligibleUses: LoreAttachmentEligibility[];
 	books: readonly ScopedLoreBookSource[];
 	allowance: number;
 	semanticSettings: SemanticSettingsSnapshot;
@@ -210,12 +210,12 @@ const assembleEvaluation = (sources: ScopedLoreSources, semantic?: import("./mat
 	};
 };
 
-/** ==[HUMAN APPROVED]== Resolve scope and run the deterministic lexical/fallback policy. */
+/** @approved Resolve scope and run the deterministic lexical/fallback policy. */
 export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation => {
 	return assembleEvaluation(collectSources(input), undefined);
 };
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Async semantic seam used by Generation preparation and the match tester. Semantic matching is
  * performed once for the captured window; any incomplete provider pass is represented as one
  * unavailable result so every entry follows the same keyword fallback policy.

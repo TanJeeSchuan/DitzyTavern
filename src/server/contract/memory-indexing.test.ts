@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { embedMemoryTexts, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
 import { sha256 } from "../memory/hash";
@@ -18,7 +18,17 @@ import { createMemoryRoutes } from "./memory";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { connectionProfileDraftOf } from "../../shared/contract/connection-settings";
-import { configureMemoryEmbeddings, createChat, createRoutes, key, readOperation, readPreset, runPresetCommand, saveBlockRole, toggleBlock } from "./prompt-preset-test-fixtures";
+import {
+	configureMemoryEmbeddings,
+	createChat,
+	createRoutes,
+	key,
+	readOperation,
+	readPreset,
+	runPresetCommand,
+	saveBlockRole,
+	toggleBlock,
+} from "./prompt-preset-test-fixtures";
 
 const waitFor = async (check: () => boolean | Promise<boolean>) => {
 	const deadline = Date.now() + 4_000;

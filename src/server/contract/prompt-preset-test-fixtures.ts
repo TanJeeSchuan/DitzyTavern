@@ -1,8 +1,8 @@
+import { createConversation } from "../conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createMemorySettingsModule } from "../memory/settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { readPromptPresetRecipe } from "../prompt-preset";
@@ -62,7 +62,7 @@ export const createChat = (
 	database: Database,
 	names: { name?: string; human?: string; model?: string } = {},
 ) =>
-	createConversationModule(database).create({
+	createConversation(database, {
 		authorNote: "",
 		name: names.name ?? "Preset Chat",
 		participants: [
@@ -325,7 +325,7 @@ export const startGeneration = async (
 		new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision, content: "Set the scene." }),
+			body: JSON.stringify({ kind: "send", expectedRevision, content: "Set the scene." }),
 		}),
 	);
 	expect(response.status).toBe(200);

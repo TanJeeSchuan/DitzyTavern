@@ -108,8 +108,8 @@ export interface ConversationCommandOptions<TOperation = never> {
 	callbacks: ConversationCommandCallbacks<TOperation>;
 }
 
-/**
- * ==[HUMAN APPROVED]== Runs one Conversation command through the common lifecycle. Obtains the
+/** @approved
+ * Runs one Conversation command through the common lifecycle. Obtains the
  * authoritative revision and refuses to send without one, normalizes send
  * exceptions to the network outcome, then handles the common typed outcomes
  * exhaustively: applied snapshot adoption plus `onApplied`, canonical
@@ -163,3 +163,11 @@ export async function runConversationCommand<TOperation = never>(
 			return;
 	}
 }
+
+// @approved
+//  Shared verbatim notices: byte-identical at every adopting site, so the
+// wording can never drift between surfaces.
+export const CONVERSATION_UNREACHABLE_NOTICE =
+	"The Conversation could not be reached.";
+export const CONVERSATION_CONFLICT_RELOAD_NOTICE =
+	"The Conversation changed elsewhere; the current Cast was loaded.";

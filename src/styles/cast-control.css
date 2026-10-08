@@ -1,0 +1,28 @@
+.cast-control {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-height: 2.55rem;
+	padding: 0.2rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+	background: var(--surface-raised);
+	font-size: 0.78rem;
+	font-weight: 640;
+	transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.cast-control:hover {
+	background: var(--surface-muted);
+}
+
+.cast-control:active {
+	transform: translateY(1px);
+}
+
+.cast-control > svg {
+	width: 1rem;
+	height: 1rem;
+	stroke-width: 1.8;
+}
+

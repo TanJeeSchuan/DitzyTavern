@@ -2,9 +2,9 @@ import { RE2JS } from "re2js";
 import type { LoreEntryFields } from "../../shared/contract/lorebook";
 import { InvalidLorebookExpressionError } from "./errors";
 
-/** ==[HUMAN APPROVED]== A complete selected Message. Matching never receives concatenated history. */
+/** @approved A complete selected Message. Matching never receives concatenated history. */
 export interface LoreScanMessage {
-	/** ==[HUMAN APPROVED]== Null identifies the pending Send text captured before a Message exists. */
+	/** @approved Null identifies the pending Send text captured before a Message exists. */
 	readonly id?: number | null;
 	readonly content: string;
 }
@@ -15,7 +15,7 @@ export interface LoreSemanticMatch {
 }
 
 export interface LoreSemanticEvaluation {
-	/** ==[HUMAN APPROVED]== A complete semantic pass was available for this attempt. */
+	/** @approved A complete semantic pass was available for this attempt. */
 	readonly available: boolean;
 	readonly matches?: readonly LoreSemanticMatch[];
 	readonly threshold: number;
@@ -208,7 +208,7 @@ const semanticEvidence = (
 	return { available: true, matched: matches.some((match) => match.score >= evaluation.threshold), threshold, matches, fallbackReason: evaluation.fallbackReason };
 };
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Evaluate one entry against a captured scan window. The lexical pass is always
  * message-bounded.
  */

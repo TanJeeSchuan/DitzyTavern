@@ -19,7 +19,7 @@ import {
 	type GenerationSessionsAction,
 	type GenerationSessionsState,
 } from "./generation-sessions";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 
 // @approved
 // The host surfaces the runner's outward effects. Story effects are mapped
@@ -143,26 +143,11 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 							state: payload,
 						});
 					},
-				}).then((result: GenerationStreamResult) => {
-					if (controllers.get(effect.generationId) === controller) {
-						controllers.delete(effect.generationId);
-					}
-					if (controller.signal.aborted) return;
-					dispatch({
-						type: "subscription-settled",
-						generationId: effect.generationId,
-						result,
-					});
-				}).catch(() => {
-					if (controllers.get(effect.generationId) === controller) {
-						controllers.delete(effect.generationId);
-					}
-					if (controller.signal.aborted) return;
-					dispatch({
-						type: "subscription-settled",
-						generationId: effect.generationId,
-						result: { outcome: "interrupted", reason: "Generation subscription was interrupted." },
-					});
+				}).catch((): GenerationStreamResult => ({
+					outcome: "interrupted", reason: "Generation subscription was interrupted.",
+				})).then((result: GenerationStreamResult) => {
+					if (controllers.get(effect.generationId) === controller) controllers.delete(effect.generationId);
+					if (!controller.signal.aborted) dispatch({ type: "subscription-settled", generationId: effect.generationId, result });
 				});
 				return;
 			}
@@ -177,9 +162,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 			case "refresh-conversation":
 				refreshConversation(effect.conversationId);
 				return;
-			case "story-content-delta":
-			case "story-reasoning-delta":
-			case "story-state":
+			case "story":
 				host.applyStoryEffect(effect);
 				return;
 		}

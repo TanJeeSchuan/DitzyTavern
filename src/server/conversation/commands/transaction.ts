@@ -11,8 +11,8 @@ import {
 	connectConversationDatabase,
 	type ConversationDatabase,
 } from "../internal";
-import { readConversationSnapshotFromConnection, readConversationSummaryFromConnection } from "../snapshot";
-import type { ConversationSnapshot, ConversationSummary } from "../types";
+import { readConversationSummaryFromConnection } from "../snapshot";
+import type { ConversationSummary } from "../types";
 
 // @approved
 //  Shared Conversation write seam: every server-owned write runs as one
@@ -29,8 +29,8 @@ const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 				last_message_time: lastMessageTime,
 		};
 
-/**
- * ==[HUMAN APPROVED]== The application-installed consumer of Conversation's reported write
+/** @approved
+ * The application-installed consumer of Conversation's reported write
  * changes, registered per database. The deep Conversation module never
  * imports Memory: the composition owning each database (app.ts for the
  * application database, each test composition for its own database) installs
@@ -53,8 +53,8 @@ export function observeConversationWrites(
 	writeObservers.set(database, observer);
 }
 
-/**
- * ==[HUMAN APPROVED]== Run one Conversation write as a single immediate transaction. The
+/** @approved
+ * Run one Conversation write as a single immediate transaction. The
  * work reports the change it made through the transaction-scoped reporter and
  * the observer runs as this wrapper's last statement, so Memory sees exactly
  * the state this transaction commits, with the writes still uncommitted to
@@ -92,7 +92,7 @@ export function runConversationTransaction<T>(
 		.immediate();
 }
 
-/** ==[HUMAN APPROVED]== Run one coherent Conversation read without reserving SQLite's write lock. */
+/** @approved Run one coherent Conversation read without reserving SQLite's write lock. */
 export function runConversationReadTransaction<T>(
 	database: Database,
 	work: (db: ConversationDatabase) => T,
@@ -102,8 +102,8 @@ export function runConversationReadTransaction<T>(
 		.deferred();
 }
 
-/**
- * ==[HUMAN APPROVED]== Advance the Conversation revision inside an open transaction and return
+/** @approved
+ * Advance the Conversation revision inside an open transaction and return
  * the post-write summary, throwing the typed not-found error when the
  * Conversation has disappeared mid-transaction. The optional write time
  * mirrors the caller's Message timestamp into last_message_time; omitting
@@ -132,8 +132,8 @@ export function requireConversationSummary(
 	return summary;
 }
 
-/**
- * ==[HUMAN APPROVED]== Advance the Conversation revision only while it still matches
+/** @approved
+ * Advance the Conversation revision only while it still matches
  * expectedRevision, throwing the typed stale error otherwise. The stale
  * error's reported current revision is caller-owned: command execution
  * reports the revision read at transaction start, while the acceptance
@@ -163,16 +163,4 @@ export function advanceConversationRevisionGuarded(
 			staleActualRevision,
 		);
 	}
-}
-
-/** ==[HUMAN APPROVED]== Read the authoritative snapshot or throw the typed not-found error. */
-export function requireConversationSnapshot(
-	db: ConversationDatabase,
-	conversationId: number,
-): ConversationSnapshot {
-	const snapshot = readConversationSnapshotFromConnection(db, conversationId);
-	if (snapshot === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-	return snapshot;
 }

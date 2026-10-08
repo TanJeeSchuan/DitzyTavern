@@ -1,7 +1,8 @@
+import { readVariantsForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { memoryCollectionTable, messageVariantTable } from "../database/schema";
+import { memoryCollectionTable } from "../database/schema";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 import { invalidateMemoryWorkForConversation } from "./cancellation";
 import { invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail } from "./collections";
@@ -30,21 +31,8 @@ export function syncMemorySources(database: Database, change: ConversationMemory
 		abortMemoryWork(database, change.removedVariantIds);
 	}
 	if (change.touchedVariantIds.length > 0) {
-		const rows = new Map(
-			drizzle(database)
-				.select({
-					id: messageVariantTable.id,
-					messageId: messageVariantTable.message_id,
-					selected: messageVariantTable.selected,
-					content: messageVariantTable.content,
-					sourceHash: memoryCollectionTable.source_hash,
-				})
-				.from(messageVariantTable)
-				.leftJoin(memoryCollectionTable, eq(memoryCollectionTable.variant_id, messageVariantTable.id))
-				.where(inArray(messageVariantTable.id, [...change.touchedVariantIds]))
-				.all()
-				.map((row) => [row.id, row] as const),
-		);
+		const collections = new Map(drizzle(database).select().from(memoryCollectionTable).where(inArray(memoryCollectionTable.variant_id, [...change.touchedVariantIds])).all().map((row) => [row.variant_id, row]));
+		const rows = new Map(readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).map((variant) => [variant.variantId, { ...variant, sourceHash: collections.get(variant.variantId)?.source_hash ?? null }]));
 		for (const id of change.touchedVariantIds) {
 			const row = rows.get(id);
 			if (!row) continue;

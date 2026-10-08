@@ -91,9 +91,11 @@ export const sourceDownloadAvailable = (
 // The exact-source presentation copy shown in Import Details: available, or
 //  described as cleaned up with the typed reason. Provenance loss never makes
 // the working Chat look corrupt.
+export type ArtifactAvailabilityLabel = { status: "available" } | { status: "cleaned-up"; reason: "missing" | "corrupt" } | null;
+
 export const artifactAvailabilityLabel = (
 	state: ChatInformationState,
-): { status: "available" } | { status: "cleaned-up"; reason: "missing" | "corrupt" } | null => {
+): ArtifactAvailabilityLabel => {
 	if (state.status !== "available") return null;
 	const artifact = state.details.artifact;
 	if (artifact === null) return null;

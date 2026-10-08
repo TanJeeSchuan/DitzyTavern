@@ -44,36 +44,12 @@ const projectPromptPreset = (
 				entryCount: historyEntryCount,
 			};
 		}
-		if (slot.reference === "instruction") {
-			// @approved
-			//  An instruction occurrence's resolved view is its stored authored
-			// name and text, exactly what the editor shows and Generation
-			// compiles; there is no Conversation-local source to read. The
-			// stored recipe read guarantees its outgoing role.
-			return {
-				id: slot.id,
-				reference: slot.reference,
-				enabled: slot.enabled,
-				role: slot.role,
-				name: slot.name,
-				content: slot.content,
-			};
-		}
-		if (isSingleUseReference(slot.reference)) {
-			return {
-				id: slot.id,
-				reference: slot.reference,
-				enabled: slot.enabled,
-				role: slot.role,
-			};
-		}
+		if (slot.reference === "instruction") return slot;
+		if (isSingleUseReference(slot.reference)) return { ...slot, reference: slot.reference };
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = owners[referenced.owner];
 		return {
-			id: slot.id,
-			reference: slot.reference,
-			enabled: slot.enabled,
-			role: slot.role,
+			...slot,
 			sourceName: owner?.name ?? null,
 			content: owner?.[referenced.channel] ?? "",
 		};
@@ -82,7 +58,7 @@ const projectPromptPreset = (
 	return { id: recipe.id, name: recipe.name, slots };
 };
 
-/** ==[HUMAN APPROVED]== Undefined when the Conversation does not exist. */
+/** @approved Undefined when the Conversation does not exist. */
 export const readConversationPromptPreset = (
 	database: Database,
 	conversationId: number,

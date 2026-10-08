@@ -1,19 +1,34 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import type { ConversationAction } from "../conversation";
+import {
+	executeConversationCommand,
+	readConversationRevision,
+	readMacroVariables,
+	editMacroVariables,
+	readConversationSummary,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { createConversationModule, deleteConversation, InvalidConversationCommandError } from "../conversation";
+import { deleteConversation, InvalidConversationCommandError } from "../conversation";
 import { createConversationRoutes } from "../contract/conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage, sweepOrphanedImages } from "../image";
 import { Value } from "@sinclair/typebox/value";
-import { activeGenerationDetails, generationAccepted, generationPreview, type GenerationBody, type GenerationPreviewBody } from "../../shared/contract/conversation-schema";
+import {
+	activeGenerationDetails,
+	generationAccepted,
+	generationPreview,
+	type GenerationBody,
+	type GenerationPreviewBody,
+} from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
-import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
-import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation/commands/active-generation";
-import { removeRetainedGenerationInspection } from "../conversation/generation-retention";
+import { acceptConversationTailGeneration } from "../conversation";
+import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation";
+import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
 import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
 
@@ -36,24 +51,24 @@ describe("Image Reference lifetime", () => {
 	const referenced = () => { sweepOrphanedImages(database); return database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash); };
 	const orphanedAt = (hash: string) => { sweepOrphanedImages(database); return database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at; };
 	const stored = () => database.query<{ hash: string }, []>("SELECT hash FROM image").all().map((row) => row.hash);
-	const conversations = () => createConversationModule(database);
+	const conversations = () => database;
 	const library = () => createCharacterLibraryModule(database);
 
-	const chat = () => conversations().create({
+	const chat = () => createConversationWithHistory(conversations(), {
 		name: "Chat",
 		participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }],
 		control: { human: 0, model: 1 },
 	});
 
 	const writeMessage = (target: ReturnType<typeof chat>, variantContents: string[]) =>
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "create-message", timestamp, variantContents, authorParticipantId: target.cast[0]!.id },
 		});
 
 	const lastMessage = (target: ReturnType<typeof chat>) => {
-		const message = conversations().getSnapshot(target.id)?.messages.at(-1);
+		const message = readTestConversationSnapshot(conversations(), target.id)?.messages.at(-1);
 		if (message === undefined) throw new Error("no message");
 		return message;
 	};
@@ -65,16 +80,16 @@ describe("Image Reference lifetime", () => {
 		expect(referenced()).toEqual([art.hash]);
 
 		const message = lastMessage(target);
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: "Nothing now." },
 		});
 		expect(referenced()).toEqual([]);
 		expect(stored()).toEqual([art.hash]);
 		expect(orphanedAt(art.hash)).toBeNumber();
-		conversations().execute({
-			conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!,
+		executeConversationCommand(conversations(), {
+			conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!,
 			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: art.token },
 		});
 		expect(orphanedAt(art.hash)).toBeNull();
@@ -85,8 +100,8 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		writeMessage(target, [art.token]);
 		const message = lastMessage(target);
-		const edit = (content: string) => conversations().execute({
-			conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!,
+		const edit = (content: string) => executeConversationCommand(conversations(), {
+			conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!,
 			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content },
 		});
 		const now = Date.now();
@@ -131,7 +146,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? conversations().create({ authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
@@ -152,16 +167,16 @@ describe("Image Reference lifetime", () => {
 		writeMessage(target, [`Again ${art.token}`]);
 		expect(referenced()).toEqual([art.hash]);
 
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "delete-message", messageId: original.id },
 		});
 		expect(referenced()).toEqual([art.hash]);
 
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "delete-message", messageId: lastMessage(target).id },
 		});
 		expect(referenced()).toEqual([]);
@@ -178,9 +193,9 @@ describe("Image Reference lifetime", () => {
 	test("a rejected command leaves its upload orphaned without a reference", async () => {
 		const target = chat();
 		const art = await picture(4);
-		expect(() => conversations().execute({
+		expect(() => executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "create-message", timestamp, variantContents: [art.token], authorParticipantId: 9999 },
 		})).toThrow(InvalidConversationCommandError);
 		expect(referenced()).toEqual([]);
@@ -191,16 +206,16 @@ describe("Image Reference lifetime", () => {
 		writeMessage(target, ["plain"]);
 		const message = lastMessage(target);
 		const art = await picture(4);
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "create-variant", messageId: message.id, content: art.token },
 		});
 		expect(referenced()).toEqual([art.hash]);
 		const added = lastMessage(target).variants.find((variant) => variant.content === art.token);
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "delete-variant", messageId: message.id, variantId: added!.id },
 		});
 		expect(referenced()).toEqual([]);
@@ -230,15 +245,15 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const maren = target.cast[1]!;
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt: { ...prompt, scenario: art.token }, openings: [] } },
 		});
 		expect(referenced()).toEqual([art.hash]);
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
 		});
 		expect(referenced()).toEqual([]);
@@ -261,8 +276,8 @@ describe("Image Reference lifetime", () => {
 						library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: definition(to) });
 					} else {
 						const target = chat();
-						conversations().execute({ conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
-						conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
+						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
+						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
 					}
 					expect(referenced()).toEqual([art.hash]);
 				});
@@ -276,12 +291,12 @@ describe("Image Reference lifetime", () => {
 		const message = lastMessage(target);
 		const [firstVariant, secondVariant] = message.variants;
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		const presetId = readMacroVariables(conversations(), target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
 
-		conversations().editMacroVariables({
+		editMacroVariables(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			promptPresetId: presetId,
 			position: message.position,
 			operation: "set",
@@ -290,18 +305,18 @@ describe("Image Reference lifetime", () => {
 		});
 		expect(referenced()).toEqual([art.hash]);
 
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "select-variant", messageId: message.id, variantId: secondVariant!.id },
 		});
 		sweepOrphanedImages(database, Date.now() + 48 * 60 * 60 * 1000);
 		expect(stored()).toEqual([art.hash]);
 		expect(referenced()).toEqual([art.hash]);
 
-		conversations().execute({
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "delete-variant", messageId: message.id, variantId: firstVariant!.id },
 		});
 		expect(referenced()).toEqual([]);
@@ -310,11 +325,11 @@ describe("Image Reference lifetime", () => {
 	test("an initial Macro Variable holds its Image until the variable is deleted", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		const presetId = readMacroVariables(conversations(), target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const edit = (body: { operation: "set"; value: string } | { operation: "delete" }) => conversations().editMacroVariables({
+		const edit = (body: { operation: "set"; value: string } | { operation: "delete" }) => editMacroVariables(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			promptPresetId: presetId,
 			position: 0,
 			name: "outfit",
@@ -329,11 +344,11 @@ describe("Image Reference lifetime", () => {
 	test("an initial Macro Variable keeps its Image when its replacement label needs JSON escaping", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		const presetId = readMacroVariables(conversations(), target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const set = (value: MacroValue) => conversations().editMacroVariables({
+		const set = (value: MacroValue) => editMacroVariables(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			promptPresetId: presetId,
 			position: 0,
 			operation: "set",
@@ -349,11 +364,11 @@ describe("Image Reference lifetime", () => {
 	test("a nested Macro Value holds its Image and releases it with the last reference", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		const presetId = readMacroVariables(conversations(), target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const set = (value: MacroValue) => conversations().editMacroVariables({
+		const set = (value: MacroValue) => editMacroVariables(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			promptPresetId: presetId,
 			position: 0,
 			operation: "set",
@@ -368,7 +383,7 @@ describe("Image Reference lifetime", () => {
 
 	test("Macro State written by setvar during a Generation holds its Image after the Definition lets go", async () => {
 		const art = await picture(4);
-		const target = conversations().create({
+		const target = createConversationWithHistory(conversations(), {
 			name: "Chat",
 			participants: [
 				{ definition: writer },
@@ -376,7 +391,7 @@ describe("Image Reference lifetime", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision,
@@ -390,10 +405,10 @@ describe("Image Reference lifetime", () => {
 		});
 		expect(referenced()).toEqual([art.hash]);
 
-		const maren = conversations().getSummary(target.id)!.cast[1]!;
-		conversations().execute({
+		const maren = readConversationSummary(conversations(), target.id)!.cast[1]!;
+		executeConversationCommand(conversations(), {
 			conversationId: target.id,
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
 		});
 		expect(referenced()).toEqual([art.hash]);
@@ -405,7 +420,7 @@ describe("Image Reference lifetime", () => {
 	test("a Generation holds the Images its plan references until its retained inspection is removed", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
 		const accepted = acceptConversationTailGeneration(database, {
 			...fields,
@@ -459,7 +474,8 @@ describe("Image Reference lifetime", () => {
 			blocks: preview.promptPlan.blocks.map((block, index) => index === last ? { ...block, content: `${block.content} ${art.token} ${ghost}` } : block),
 		};
 		const sent = await post("/generations", {
-			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			kind: "send",
+			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
 			content: "Hello",
 			previewId: preview.previewId,
 			promptPlan: edited,
@@ -492,7 +508,7 @@ describe("Image Reference lifetime", () => {
 	test("a checkpointed Variant adopts References and releases them when checkpoint text changes", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, { conversationId: target.id });
+		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision, humanContent: "Hello",
@@ -516,7 +532,7 @@ describe("Image Reference lifetime", () => {
 			} else {
 				const target = chat();
 				const participantId = target.cast[1]!.id;
-				const execute = (action: Parameters<ReturnType<typeof conversations>["execute"]>[0]["action"]) => conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action });
+				const execute = (action: ConversationAction) => executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!, action });
 				execute({ type: "update-participant-definition", participantId, definition });
 				execute({ type: "replace-participant-prompt", participantId, prompt });
 				execute({ type: "replace-participant-openings", participantId, openings: [] });

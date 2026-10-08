@@ -1,0 +1,38 @@
+.workspace-error > div {
+	display: grid;
+	justify-items: start;
+	width: min(100%, 30rem);
+	padding: 2.5rem;
+	border: 1px solid var(--border);
+	border-radius: 1.25rem;
+	background: var(--surface);
+	box-shadow: 0 1.5rem 4rem var(--shadow-soft);
+}
+
+.workspace-error svg {
+	width: 1.4rem;
+	height: 1.4rem;
+	color: var(--accent);
+	stroke-width: 1.7;
+}
+
+.workspace-error h1 {
+	margin: 1.2rem 0 0;
+	font-size: 1.5rem;
+	letter-spacing: -0.035em;
+}
+
+.workspace-error p {
+	margin: 0.6rem 0 1.4rem;
+	color: var(--text-muted);
+	font-size: 0.9rem;
+	line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.skeleton {
+		animation: skeleton-breathe 1.7s ease-in-out infinite;
+	}
+
+}
+

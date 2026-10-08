@@ -2,38 +2,24 @@ import { defineRule } from "@oxlint/plugins";
 
 import { repositoryPath } from "../../ditzy/path.ts";
 
-const DEFAULT_MARKER = "==[HUMAN APPROVED]==";
 const APPROVED_DIRECTIVE = "@approved";
 const PREVIEW_LIMIT = 160;
 
 interface Options {
-	marker?: string;
 	ignoreCommentPatterns?: string[];
 	ignoreFilePatterns?: string[];
 }
 
 const defaultOptions = {
-	marker: DEFAULT_MARKER,
 	ignoreCommentPatterns: ["oxlint-disable", "eslint-disable", "^/\\s*<reference\\b"],
 	ignoreFilePatterns: [],
 } satisfies Options;
 
 const singleLineValue = (value: string): string => value.replaceAll(/\s+/g, " ").trim();
 
-/** Audit rule: every comment must carry an explicit human-approval marker.
- *
- *  Two spellings of the one approval mechanism are accepted: the inline
- *  `==[HUMAN APPROVED]==` marker anywhere in the comment, or a leading
- *  `// @approved` directive line whose entire value is exactly "@approved"
- *  and that stands as the first line of a standalone block, approving the
- *  comment lines that follow it in that block. Line comments that stand
- *  alone on their line group into one logical block across adjacent lines
- *  and are reported once. A line comment trailing code on its line is its
- *  own block and also breaks the surrounding runs, so an inline remark can
- *  never be approved as a side effect of its neighbors; the directive
- *  spelling likewise never reaches a trailing comment — `@approved` above
- *  code approves nothing, and the trailing comment itself still needs the
- *  inline marker. */
+/** Audit rule: each comment block carries @approved. Standalone line-comment
+ * runs use an exact leading directive; block and trailing comments put the
+ * directive first in their own text. Approval never crosses code or a gap. */
 export const noUnapprovedCommentsRule = defineRule({
 	meta: {
 		type: "suggestion",
@@ -42,14 +28,14 @@ export const noUnapprovedCommentsRule = defineRule({
 				"Require every comment block (standalone adjacent line comments count as one; trailing comments stand alone) to carry an explicit approval marker; unmarked blocks are audit findings.",
 		},
 		messages: {
+			obsoleteApprovalMarker: "Inline approval markers are obsolete. Use @approved at the start of the comment block.",
 			unapprovedComment:
-				'Comment is not marked as human-approved ("{{preview}}"). Add "{{marker}}" inline, or put "// @approved" first in a standalone line-comment block, or trim/remove it.',
+				'Comment is not marked as human-approved ("{{preview}}"). Put "@approved" first in the comment block, or trim/remove it.',
 		},
 		schema: [
 			{
 				type: "object",
 				properties: {
-					marker: { type: "string" },
 					ignoreCommentPatterns: { type: "array", items: { type: "string" } },
 					ignoreFilePatterns: { type: "array", items: { type: "string" } },
 				},
@@ -64,11 +50,8 @@ export const noUnapprovedCommentsRule = defineRule({
 				// visitor runs — reading it at createOnce scope captures null.
 				const provided = (context.options?.[0] ?? {}) as Partial<Options>;
 				const options = { ...defaultOptions, ...provided };
-				if (options.ignoreFilePatterns.some((pattern) => new RegExp(pattern).test(repositoryPath(context.filename)))) {
-					return;
-				}
 				const commentPatterns = options.ignoreCommentPatterns.map((pattern) => new RegExp(pattern));
-				const approved = (value: string): boolean => value.includes(options.marker);
+				const approved = (value: string): boolean => /^[\s*]*@approved(?:\s|$)/.test(value);
 				const approvedDirective = (value: string): boolean => value.trim() === APPROVED_DIRECTIVE;
 				const ignored = (value: string): boolean => commentPatterns.some((pattern) => pattern.test(value));
 				const sourceLines = context.sourceCode.text.split("\n");
@@ -79,12 +62,17 @@ export const noUnapprovedCommentsRule = defineRule({
 						node: node as never,
 						messageId: "unapprovedComment",
 						data: {
-							marker: options.marker,
 							preview: preview.length > PREVIEW_LIMIT ? `${preview.slice(0, PREVIEW_LIMIT)}…` : preview,
 						},
 					});
 				};
 				const comments = context.sourceCode.getAllComments();
+				for (const comment of comments) {
+					if (/==\[HUMAN\sAPPROVED\]==/.test(comment.value)) context.report({ node: comment, messageId: "obsoleteApprovalMarker" });
+				}
+				if (options.ignoreFilePatterns.some((pattern) => new RegExp(pattern).test(repositoryPath(context.filename)))) {
+					return;
+				}
 				let index = 0;
 				while (index < comments.length) {
 					const comment = comments[index];
@@ -105,10 +93,8 @@ export const noUnapprovedCommentsRule = defineRule({
 						block.push(comments[index]);
 						index += 1;
 					}
-					// A leading `// @approved` line is the second approval spelling:
-					// it must be the first line of the block so it immediately precedes
-					// the comment it approves.
-					if (approvedDirective(block[0].value) || block.some((member) => approved(member.value) || ignored(member.value))) continue;
+					// A standalone directive must be exact and first in its run.
+					if (approvedDirective(block[0].value) || block.some((member) => ignored(member.value))) continue;
 					report(block[0], singleLineValue(block.map((member) => member.value).join(" ")));
 				}
 			},

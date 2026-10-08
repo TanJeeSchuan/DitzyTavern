@@ -2,7 +2,7 @@ import type {
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationDataEntry,
-} from "../../conversation/types";
+} from "../../conversation";
 
 import {
 	ARCHIVE_NAMESPACE,

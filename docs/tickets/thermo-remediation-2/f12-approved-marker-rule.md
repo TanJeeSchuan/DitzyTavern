@@ -58,3 +58,12 @@ would collide with six open remediation branches.
   a mid-block directive, a directive above code or a block comment, and a non-exact
   directive line all still warn.
 - No conversions in `src/` — the mass conversion lands in the final cleanup wave.
+
+## Final cleanup (issue #50 G15b)
+
+- [x] Convert remaining inline markers, including doubled markers, without changing comment wording.
+- [x] Extend `@approved` to lead block and trailing comments, with approval confined to that comment.
+- [x] Remove the legacy marker option and report obsolete markers, including in approval-exempt files.
+- [x] Cover block, trailing, standalone, misplaced, and obsolete directives in the rule tests.
+
+The original dual-spelling acceptance above records the intermediate F12 rollout; the final rule accepts only `@approved`.

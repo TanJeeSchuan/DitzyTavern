@@ -1,9 +1,9 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createLorebookRoutes } from "./lorebook-routes";
 import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
-import { createConversationModule } from "../conversation";
 import { createCharacterLibraryModule } from "../character-library";
 
 const request = (path: string, init?: RequestInit) =>
@@ -49,7 +49,7 @@ describe("Lorebook library transport", () => {
 			wholeWord: true,
 			keywordMode: "literal" as const,
 			regexFlags: "",
-			
+
 			priority: 4,
 			enabled: true,
 		};
@@ -102,7 +102,7 @@ describe("Lorebook library transport", () => {
 			entries: [{
 				title: "Entry", content: "Literal {{macro}}", keywords: ["key"], semanticTriggers: ["meaning"],
 				matchOperator: "or" as const, always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i", 
+				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i",
 				priority: 0, enabled: false,
 			}],
 		};
@@ -215,7 +215,7 @@ describe("Lorebook library transport", () => {
 
 	test("reads attachment eligibility and Chat Lore settings", async () => {
 		const created = await postCommand(app, { type: "create", name: "World" });
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -241,11 +241,11 @@ describe("Lorebook library transport", () => {
 			entry: {
 				title: "Harbor", content: "The harbor is old.", keywords: ["harbor"], semanticTriggers: ["ships arrive"],
 				matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "", 
+				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
 				priority: 0, enabled: true,
 			},
 		});
-		createConversationModule(database).create({
+		createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -274,7 +274,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -314,7 +314,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -342,7 +342,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -384,7 +384,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

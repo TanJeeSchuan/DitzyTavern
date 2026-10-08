@@ -1,22 +1,12 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
+
 import {
-	CharacterNotFoundError,
-	InvalidCharacterCommandError,
-	InvalidCharacterDefinitionError,
-} from "../character-library";
-import { InvalidConversationCreationError } from "../conversation";
-import {
-	StagedChatImportDuplicateConfirmationError,
-	StagedChatImportExpiredError,
-	StagedChatImportPlanError,
-	StagedChatImportTokenMismatchError,
-	StagedChatImportUnavailableError,
-	SillyTavernImportError,
 	createChatImportModule,
 	createChatImportDetailsModule,
 } from "../sillytavern";
-import { invalidResponse } from "./responses";
+
 import { toConversationSummary } from "./projections";
 import {
 	chatImportCommitBody,
@@ -34,24 +24,28 @@ import { conversationIdParams } from "../../shared/contract/conversation-schema"
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
 // @approved
-//  Expired and unavailable staged handles are both gone-state 410 outcomes;
-// every staged route maps them identically before its own error vocabulary.
-const stagedGoneBody = (error: Error) => {
-	if (error instanceof StagedChatImportExpiredError) {
-		return { outcome: "expired" as const };
-	}
-	if (error instanceof StagedChatImportUnavailableError) {
-		return { outcome: "unavailable" as const, reason: error.reason };
-	}
-	return undefined;
-};
-
-// @approved
 //  Thin typed adapters over the deep staged Chat import seam. The stage
 // route deliberately declares no body schema: Elysia must leave the raw
 // request stream untouched so the module can stream the uploaded bytes into
 // managed temporary storage exactly once instead of buffering the artifact.
 // The preview and discard routes stay tiny mappings of typed outcomes.
+const commitResponse = {
+	200: importCommittedResponse,
+	410: importGoneResponse,
+	422: invalidOutcome,
+};
+
+const previewResponse = {
+	200: importPreviewResponse,
+	410: importGoneResponse,
+	422: invalidOutcome,
+};
+
+const stageResponse = {
+	200: importStagedResponse,
+	422: invalidOutcome,
+};
+
 export const createChatImportRoutes = (
 	database: Database,
 	artifactDirectory: string,
@@ -82,50 +76,32 @@ export const createChatImportRoutes = (
 							});
 					return { outcome: "staged" as const, ...result };
 				} catch (error) {
-					if (error instanceof SillyTavernImportError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
+					return presentDomainError(error, stageResponse);
 				}
 			},
 			{
-				response: {
-					200: importStagedResponse,
-					422: invalidOutcome,
-				},
+				response: stageResponse,
 			},
 		)
 		.post(
 			"/api/imports/chats/:token/preview",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					const preview = createChatImportModule(database, { artifactDirectory: artifactDirectory }).preview(params.token, body.sha256);
 					return { outcome: "available" as const, preview };
 				} catch (error) {
-					const gone = error instanceof Error ? stagedGoneBody(error) : undefined;
-					if (gone !== undefined) return status(410, gone);
-					if (error instanceof StagedChatImportTokenMismatchError) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error, previewResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: importPreviewBody,
-				response: {
-					200: importPreviewResponse,
-					410: importGoneResponse,
-					422: invalidOutcome,
-				},
+				response: previewResponse,
 			},
 		)
 		.post(
 			"/api/imports/chats/:token/commit",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					const result = createChatImportModule(database, { artifactDirectory: artifactDirectory }).commit(params.token, {
 								sha256: body.sha256,
@@ -139,31 +115,13 @@ export const createChatImportRoutes = (
 						receipt: result.receipt,
 					};
 				} catch (error) {
-					const gone = error instanceof Error ? stagedGoneBody(error) : undefined;
-					if (gone !== undefined) return status(410, gone);
-					if (
-						error instanceof StagedChatImportTokenMismatchError ||
-						error instanceof StagedChatImportPlanError ||
-						error instanceof StagedChatImportDuplicateConfirmationError ||
-						error instanceof SillyTavernImportError ||
-						error instanceof CharacterNotFoundError ||
-						error instanceof InvalidCharacterDefinitionError ||
-						error instanceof InvalidCharacterCommandError ||
-						error instanceof InvalidConversationCreationError
-					) {
-						return invalidResponse(error.message);
-					}
-					throw error;
+					return presentDomainError(error, commitResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: chatImportCommitBody,
-				response: {
-					200: importCommittedResponse,
-					410: importGoneResponse,
-					422: invalidOutcome,
-				},
+				response: commitResponse,
 			},
 		)
 		.post(

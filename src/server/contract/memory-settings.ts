@@ -1,10 +1,12 @@
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
-import { Elysia, status } from "elysia";
+import { Elysia } from "elysia";
 
-import { InvalidSettingsError, StaleSettingsError } from "../revisioned-settings";
 import { createMemorySettingsModule } from "../memory";
 import { memorySettingsApplied, memorySettingsCommandBody, memorySettingsConflict, memorySettingsResponse } from "../../shared/contract/memory-settings";
 import { invalidOutcome } from "../../shared/contract/outcomes";
+
+const commandResponse = { 200: memorySettingsApplied, 409: memorySettingsConflict, 422: invalidOutcome };
 
 export const createMemorySettingsRoutes = (database: Database) => new Elysia()
 	.get("/api/memory-settings", () => createMemorySettingsModule(database).get(), { response: memorySettingsResponse })
@@ -13,8 +15,6 @@ export const createMemorySettingsRoutes = (database: Database) => new Elysia()
 			const settings = createMemorySettingsModule(database).apply(body);
 			return { outcome: "applied" as const, settings };
 		} catch (error) {
-			if (error instanceof StaleSettingsError) return status(409, { outcome: "conflict" as const, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision, currentSettings: error.currentSettings });
-			if (error instanceof InvalidSettingsError) return status(422, { outcome: "invalid" as const, reason: error.message });
-			throw error;
+			return presentDomainError(error, commandResponse);
 		}
-	}, { body: memorySettingsCommandBody, response: { 200: memorySettingsApplied, 409: memorySettingsConflict, 422: invalidOutcome } });
+	}, { body: memorySettingsCommandBody, response: commandResponse });

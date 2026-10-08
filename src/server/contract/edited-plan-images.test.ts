@@ -1,9 +1,10 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { createContract } from ".";
-import { createConversationModule } from "../conversation";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { formatImageReference } from "../../shared/image-reference";
@@ -26,7 +27,7 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 	return Value.Decode(generationPreview, await response.json());
 };
 
-const createChat = (database: Database) => createConversationModule(database).create({
+const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Images", participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
 		{ definition: { name: "Maren", prompt, openings: [] } },
@@ -45,7 +46,7 @@ describe("Edited Prompt Plan Images", () => {
 		const bytes = pngFixture({ width: 100, height: 100 });
 		const image = await uploadImage(database, bytes);
 		const reference = formatImageReference("map", image.hash);
-		createConversationModule(database).execute({ conversationId: source.id, expectedRevision: source.revision, action: {
+		executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: {
 			type: "create-message", timestamp: "2026-10-05T00:00:00Z", variantContents: [reference], authorParticipantId: source.cast[0]!.id,
 		} });
 		const chat = createChat(database);
@@ -55,7 +56,7 @@ describe("Edited Prompt Plan Images", () => {
 		const preview = await inspect(app, chat.id);
 		expect(preview.promptPlan.images).toEqual([]);
 		const edited = addImage(preview.promptPlan, `Look ${reference}`);
-		const accepted = await post(app, `/conversations/${chat.id}/generations`, { expectedRevision: chat.revision, content: "Look", previewId: preview.previewId, promptPlan: edited });
+		const accepted = await post(app, `/conversations/${chat.id}/generations`, { kind: "send",  expectedRevision: chat.revision, content: "Look", previewId: preview.previewId, promptPlan: edited });
 		expect(accepted.status).toBe(200);
 		const { generationId } = Value.Decode(generationAccepted, await accepted.json());
 		await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/${generationId}/events`))).text();

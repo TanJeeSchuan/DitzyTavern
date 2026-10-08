@@ -1,3 +1,9 @@
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import {
+	executeConversationCommand,
+	acceptConversationSiblingGeneration,
+	resolveConversationGeneration,
+} from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -6,16 +12,13 @@ import { participantPromptTable } from "../database/schema";
 import { createFakeModelClient } from "../model-client";
 import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
-	createConversationModule,
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
-	type ConversationModule,
-	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 
 // Targeted Swipe (new sibling Variant) eligibility is derived per Message
 // from its captured historical Control pair — never from current Control —
@@ -43,8 +46,8 @@ const adHoc = (
 });
 
 const setup = (database: Database) => {
-	const module = createConversationModule(database);
-	const snapshot = module.create({
+	const module = database;
+	const snapshot = createConversationWithHistory(module, {
 		name: "Swipe Chat",
 		participants: [
 			{ definition: adHoc("Writer") },
@@ -83,7 +86,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 		});
 		expect(greeting.swipe).toEqual({ eligible: true, reason: null });
 
-		const committed = await generateTerminalTailFixture(database, {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
 			conversationId: snapshot.id,
 			modelClient: createFakeModelClient(() => "The fog answers."),
 		});
@@ -92,8 +95,8 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	});
 
 	test("an imported Message without captured context is ineligible with the typed reason even in a playable Conversation", () => {
-		const module = createConversationModule(database);
-		const imported = module.create({
+		const module = database;
+		const imported = createConversationWithHistory(module, {
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -123,8 +126,8 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	});
 
 	test("every Message in an incomplete Conversation is ineligible with the playability reason", () => {
-		const module = createConversationModule(database);
-		const incomplete = module.create({
+		const module = database;
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -149,13 +152,13 @@ describe("Per-Message targeted Swipe eligibility", () => {
 
 	test("a historical Participant that loses its Definition makes the target ineligible with the typed reason", () => {
 		const { module, snapshot, humanId, modelId } = setup(database);
-		const withJuno = module.execute({
+		const withJuno = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
 		});
 		const junoId = withJuno.cast[2]?.id ?? 0;
-		const swapped = module.execute({
+		const swapped = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: withJuno.revision,
 			action: { type: "assign-control", seat: "model", participantId: junoId },
@@ -170,7 +173,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 			.where(eq(participantPromptTable.participant_id, modelId))
 			.run();
 
-		const after = module.getSnapshot(snapshot.id);
+		const after = readTestConversationSnapshot(module, snapshot.id);
 		if (after === undefined) throw new Error("Snapshot missing.");
 		expect(after.playable).toBe(true);
 		expect(after.cast.find((participant) => participant.id === modelId)).toBeUndefined();
@@ -182,8 +185,8 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	});
 
 	test("ineligible Messages keep their existing Variants selectable and editable", () => {
-		const module = createConversationModule(database);
-		const imported = module.create({
+		const module = database;
+		const imported = createConversationWithHistory(module, {
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -254,7 +257,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		content: "Another lamp turn.",
 	});
 
-	const seats = (snapshot: ConversationSnapshot) => {
+	const seats = (snapshot: TestConversationSnapshot) => {
 		const humanId = snapshot.cast[0]?.id;
 		const modelId = snapshot.cast[1]?.id;
 		const modelName = snapshot.cast[1]?.name;
@@ -265,11 +268,11 @@ describe("Sibling Generation acceptance and resolution", () => {
 	};
 
 	const acceptSibling = (
-		module: ConversationModule,
+		module: Database,
 		input: ReturnType<typeof siblingInput>,
 		control: ReturnType<typeof seats>,
 	) =>
-		module.acceptSiblingGeneration({
+		acceptConversationSiblingGeneration(module, {
 			...input,
 			humanParticipantId: control.humanId,
 			modelParticipantId: control.modelId,
@@ -281,11 +284,11 @@ describe("Sibling Generation acceptance and resolution", () => {
 		});
 
 	const resolveSibling = (
-		module: ConversationModule,
+		module: Database,
 		input: ReturnType<typeof siblingInput>,
 		generationId: number,
 	) => {
-		module.resolveGeneration({
+		resolveConversationGeneration(module, {
 			conversationId: input.conversationId,
 			generationId,
 			timestamp: input.timestamp,
@@ -343,13 +346,13 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (greeting === undefined) throw new Error("Greeting missing.");
 		const control = seats(snapshot);
 
-		const withJuno = module.execute({
+		const withJuno = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
 		});
 		const junoId = withJuno.cast[2]?.id ?? 0;
-		const swapped = module.execute({
+		const swapped = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: withJuno.revision,
 			action: { type: "assign-control", seat: "model", participantId: junoId },
@@ -394,7 +397,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (greeting === undefined) throw new Error("Greeting missing.");
 		const control = seats(snapshot);
 
-		const edited = module.execute({
+		const edited = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action: {
@@ -435,8 +438,8 @@ describe("Sibling Generation acceptance and resolution", () => {
 	});
 
 	test("denies sibling acceptance in an incomplete Conversation with the typed playability result", () => {
-		const module = createConversationModule(database);
-		const incomplete = module.create({
+		const module = database;
+		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Import",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -468,13 +471,13 @@ describe("Sibling Generation acceptance and resolution", () => {
 				control,
 			),
 		).toThrow(ConversationNotPlayableError);
-		expect(module.getSnapshot(incomplete.id)?.revision).toBe(0);
-		expect(module.getSnapshot(incomplete.id)?.messages[0]?.variants).toHaveLength(1);
+		expect(readTestConversationSnapshot(module, incomplete.id)?.revision).toBe(0);
+		expect(readTestConversationSnapshot(module, incomplete.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
 	test("denies sibling acceptance for a Message without captured historical context", () => {
-		const module = createConversationModule(database);
-		const imported = module.create({
+		const module = database;
+		const imported = createConversationWithHistory(module, {
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -514,8 +517,8 @@ describe("Sibling Generation acceptance and resolution", () => {
 			}
 		}
 		// Nothing committed: no Variant, no revision.
-		expect(module.getSnapshot(imported.id)?.revision).toBe(0);
-		expect(module.getSnapshot(imported.id)?.messages[0]?.variants).toHaveLength(1);
+		expect(readTestConversationSnapshot(module, imported.id)?.revision).toBe(0);
+		expect(readTestConversationSnapshot(module, imported.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
 	test("rejects a captured historical Control pair that does not match the target Message", () => {
@@ -524,7 +527,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (target === undefined) throw new Error("Message missing.");
 
 		expect(() =>
-			module.acceptSiblingGeneration({
+			acceptConversationSiblingGeneration(module, {
 				conversationId: snapshot.id,
 				messageId: target.id,
 				timestamp: "2026-08-20T14:00:00Z",
@@ -539,7 +542,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		).toThrow(
 			"The captured historical Control pair does not match the target Message.",
 		);
-		expect(module.getSnapshot(snapshot.id)?.revision).toBe(snapshot.revision);
+		expect(readTestConversationSnapshot(module, snapshot.id)?.revision).toBe(snapshot.revision);
 	});
 
 	test("denies sibling acceptance when a historical Participant no longer has a usable Definition", () => {
@@ -548,12 +551,12 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (greeting === undefined) throw new Error("Greeting missing.");
 		const control = seats(snapshot);
 
-		const withJuno = module.execute({
+		const withJuno = executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
 		});
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: withJuno.revision,
 			action: { type: "assign-control", seat: "model", participantId: withJuno.cast[2]?.id ?? 0 },

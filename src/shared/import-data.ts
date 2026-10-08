@@ -1,3 +1,4 @@
+import { LORE_ACTIVATION_NAMESPACE, MEMORY_ACTIVATION_NAMESPACE } from "./variant-data-codecs";
 // @approved
 //  The Conversation-scoped data namespaces that Import provenance owns. A
 // committed import writes its receipt, warnings, source identity, and
@@ -18,8 +19,8 @@ export const IMPORT_NAMESPACE = "import.sillytavern";
 // immutable parsed source values preserved at commit.
 export const ARCHIVE_NAMESPACE = "archive";
 
-import { LORE_ACTIVATION_NAMESPACE } from "./contract/lore-activation";
-import { MEMORY_ACTIVATION_NAMESPACE } from "./contract/memory-recall";
+
+
 
 const importOwnedDataNamespaces = [IMPORT_NAMESPACE, ARCHIVE_NAMESPACE] as const;
 const serverOwnedDataNamespaces = [

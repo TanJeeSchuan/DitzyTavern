@@ -14,7 +14,7 @@ import {
 import { openInitializedDatabase } from "../server/database/database";
 import type { ChatImportCommitInput } from "./import-chat";
 import type { WirePayload } from "./lib/wire-decode";
-import type { JsonValue } from "./lib/json-guards";
+import type { JsonValue } from "./conversation-stream";
 
 // Narrow client-boundary tests for the transport's own concerns only:
 // uploading exactly once, decoding wire responses into typed outcomes, and

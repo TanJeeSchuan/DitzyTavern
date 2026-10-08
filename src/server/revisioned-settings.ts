@@ -6,12 +6,19 @@ import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 export const SETTINGS_ID = 1;
 
 export class InvalidSettingsError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
 	override name = "InvalidSettingsError";
 }
 export class StaleSettingsError<Payload> extends Error {
+	readonly outcome = "conflict" as const;
+	readonly details;
+
 	override name = "StaleSettingsError";
 	constructor(readonly expectedRevision: number, readonly actualRevision: number, readonly currentSettings: Payload) {
 		super(`Expected settings revision ${expectedRevision}, but the current revision is ${actualRevision}.`);
+		this.details = { expectedRevision, actualRevision, currentSettings };
 	}
 }
 

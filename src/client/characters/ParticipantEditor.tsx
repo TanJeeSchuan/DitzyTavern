@@ -1,9 +1,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import {
-	applyConversationCommand,
 	type ConversationSummary,
 } from "../conversation";
-import { runConversationCommand } from "../conversation-command-runner";
+import { createConversationCommands } from "../createConversationCommands";
 import { emptyPromptChannels } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
@@ -45,35 +44,21 @@ export function ParticipantEditor({
 	draftRef.current = draft;
 
 	const dirty = participant !== undefined && !sameDefinition(draft, definitionOf(participant));
+	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+
 	const apply = async () => {
 		if (participant === undefined || !dirty || pending || draft.name.trim() === "") return false;
 		const submitted = draft;
 		let appliedSuccessfully = false;
 		setPending(true);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }),
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setNotice,
-				},
-				notices: EDITOR_NOTICES,
-				callbacks: {
-					onApplied: (applied) => {
+			await run({ type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }, { notices: EDITOR_NOTICES, onNotPlayable: setNotice,
+				onApplied: (applied) => {
 						appliedSuccessfully = true;
 						const saved = applied.cast.find((candidate) => candidate.id === participant.id);
 						if (saved) setDraft((current) => current === submitted ? definitionOf(saved) : current);
 						setNotice(null);
-					},
-					// @approved
-					//  This command family cannot produce these outcomes; the
-					// server's precise reason is kept instead of a flattened class.
-					onNotPlayable: setNotice,
-					onNotRemovable: setNotice,
-				},
-			});
+					} });
 		} finally {
 			setPending(false);
 		}

@@ -36,6 +36,7 @@ import {
 import type {
 	ConnectionProfileRow,
 	ConnectionSettingsDb,
+	ConnectionSettingsRow,
 } from "./persistence";
 import {
 	applyConnectionHeaderOperations,
@@ -60,8 +61,6 @@ import type {
 	SetConnectionCredentialInput,
 } from "./types";
 
-type ConnectionSettingsRow = ReturnType<typeof ensureSettingsRow>;
-
 interface RevisionedWriteTx {
 	readonly db: ConnectionSettingsDb;
 	readonly settings: ConnectionSettingsRow;
@@ -80,7 +79,7 @@ export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
 }
 
-/** ==[HUMAN APPROVED]==
+/** @approved
  * Creates the safe connection identity captured by runtime attempts and
  * persisted for generation inspection. Both paths use this constructor so
  * their provenance cannot disagree about the selected Profile or revision.

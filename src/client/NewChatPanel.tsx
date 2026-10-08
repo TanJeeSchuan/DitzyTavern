@@ -10,7 +10,6 @@ import {
 } from "./new-chat";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { promptChannelFields } from "../shared/definition";
-import { openingsFromText } from "./lib/openings";
 import { useAsyncEffect } from "./lib/use-async";
 
 // @approved
@@ -284,3 +283,10 @@ export function NewChatPanel({
 		</>
 	);
 }
+
+// @approved
+// An empty textarea means no openings. Splitting on "\n" keeps other blank lines as empty openings, and
+// trimming only the end of each line removes stray trailing whitespace and
+// Windows carriage returns while leading indentation survives verbatim.
+export const openingsFromText = (text: string) =>
+	text === "" ? [] : text.split("\n").map((line) => line.trimEnd());

@@ -6,6 +6,8 @@ import { listCharacters, readCharacterSnapshot } from "./snapshot";
 import type {
 	CharacterDeletionResult,
 	CharacterLibraryCommand,
+	CharacterDeletionCommand,
+	CharacterMutationCommand,
 	CharacterLibraryModule,
 	CharacterSnapshot,
 } from "./types";
@@ -30,6 +32,8 @@ export type {
 	CharacterDeletionResult,
 	CharacterDefinition,
 	CharacterLibraryCommand,
+	CharacterDeletionCommand,
+	CharacterMutationCommand,
 	CharacterLibraryModule,
 	CharacterSnapshot,
 	CharacterSummary,
@@ -43,10 +47,10 @@ export function createCharacterLibraryModule(
 	// deletion returns the typed result, every other command returns the
 	// authoritative Character.
 	function execute(
-		command: Extract<CharacterLibraryCommand, { type: "delete" }>,
+		command: CharacterDeletionCommand,
 	): CharacterDeletionResult;
 	function execute(
-		command: Exclude<CharacterLibraryCommand, { type: "delete" }>,
+		command: CharacterMutationCommand,
 	): CharacterSnapshot;
 	function execute(
 		command: CharacterLibraryCommand,
