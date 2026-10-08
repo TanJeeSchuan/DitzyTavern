@@ -22,7 +22,7 @@ import {
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../database/schema";
-import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-defaults";
+import { DEFAULT_CONTINUATION_STRATEGY } from "../database/schema";
 import {
 	connectConversationDatabase,
 	groupVariantsByMessage,

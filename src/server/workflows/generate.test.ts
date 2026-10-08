@@ -1,13 +1,10 @@
+import { createConversation, readConversationSnapshot, executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable, participantTable } from "../database/schema";
-import {
-	createConversationModule,
-	ConversationNotPlayableError,
-	ConversationNotFoundError,
-} from "../conversation";
+import { ConversationNotPlayableError, ConversationNotFoundError } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import {
 	PromptBudgetExceededError,
@@ -22,7 +19,7 @@ import {
 } from ".";
 import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
 import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
@@ -82,7 +79,7 @@ describe("Generation runtime behavior", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversationModule(database).create({
+		const snapshot = createConversation(database, {
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -240,7 +237,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("generates through either Control order using identities, not positions", async () => {
-		const swapped = createConversationModule(database).create({
+		const swapped = createConversation(database, {
 			name: "Swapped Chat",
 			participants: [
 				{ definition: adHoc("Maren Voss", ["Held by the model seat."]) },
@@ -263,7 +260,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("rejects unplayable Conversations with a typed result before the transport", async () => {
-		const incomplete = createConversationModule(database).create({
+		const incomplete = createConversation(database, {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -291,7 +288,7 @@ describe("Generation runtime behavior", () => {
 		).rejects.toThrow(ConversationNotPlayableError);
 		expect(contacted).toBe(false);
 
-		const after = createConversationModule(database).getSnapshot(incomplete.id);
+		const after = readConversationSnapshot(database, incomplete.id);
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
@@ -311,7 +308,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("a transport failure commits nothing", async () => {
-		const snapshot = createConversationModule(database).getSnapshot(conversationId);
+		const snapshot = readConversationSnapshot(database, conversationId);
 		if (snapshot === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -323,7 +320,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("Transport down.");
 
-		const after = createConversationModule(database).getSnapshot(conversationId);
+		const after = readConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(snapshot.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -355,7 +352,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("removes a failed zero-output attempt and keeps the prior selection", async () => {
-		const before = createConversationModule(database).getSnapshot(conversationId);
+		const before = readConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -367,7 +364,7 @@ describe("Generation runtime behavior", () => {
 			}),
 		).rejects.toThrow("The stream became inactive.");
 
-		const after = createConversationModule(database).getSnapshot(conversationId);
+		const after = readConversationSnapshot(database, conversationId);
 		expect(after?.messages).toEqual(before.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Message remains.
@@ -562,7 +559,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {
-		const module = createConversationModule(database);
+		const module = database;
 		let release!: (content: string) => void;
 		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
@@ -583,9 +580,9 @@ describe("Generation runtime behavior", () => {
 		await started;
 
 		// A concurrent client command lands while the transport streams.
-		const midFlight = module.getSnapshot(conversationId);
+		const midFlight = readConversationSnapshot(module, conversationId);
 		if (midFlight === undefined) throw new Error("Snapshot missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: midFlight.revision,
 			action: {
@@ -614,8 +611,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("reduces Tail history by whole Messages while protecting the latest human input", async () => {
-		const conversation = createConversationModule(database);
-		let current = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		let current = readConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -676,7 +673,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("retries a zero-output Send with the same bounded Lore scan window", async () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		const current = requireSnapshot(conversation, conversationId);
 		const withRecentHistory = applyCommand(conversation, {
 			conversationId,
@@ -760,8 +757,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
-		const conversation = createConversationModule(database);
-		let current = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		let current = readConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -790,7 +787,7 @@ describe("Generation runtime behavior", () => {
 				},
 			},
 		});
-		const before = conversation.getSnapshot(conversationId);
+		const before = readConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		let contacted = false;
 
@@ -813,7 +810,7 @@ describe("Generation runtime behavior", () => {
 		if (failure === undefined) throw new Error("Expected a PromptBudgetExceededError.");
 
 		expect(contacted).toBe(false);
-		expect(conversation.getSnapshot(conversationId)).toEqual(before);
+		expect(readConversationSnapshot(conversation, conversationId)).toEqual(before);
 		// The protected element is the Send candidate's own human input.
 		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
 		expect(failure.breakdown).toMatchObject({
@@ -832,8 +829,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
-		const conversation = createConversationModule(database);
-		const before = conversation.getSnapshot(conversationId);
+		const conversation = database;
+		const before = readConversationSnapshot(conversation, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");
 		// The Send composes the production Tail lifecycle: its accepted human
 		// Message precedes the generated target the sibling targets.
@@ -843,7 +840,7 @@ describe("Generation runtime behavior", () => {
 			target: { kind: "send", content: "Human context before target." },
 			modelClient: fakeModelClient(() => "Target model output."),
 		});
-		let current = conversation.getSnapshot(conversationId);
+		let current = readConversationSnapshot(conversation, conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = applyCommand(conversation, {
 			conversationId,
@@ -918,7 +915,7 @@ describe("Prompt Comments", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		conversationId = createConversationModule(database).create({
+		conversationId = createConversation(database, {
 			name: "Annotated Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -983,7 +980,7 @@ describe("Prompt Comments", () => {
 		expect(JSON.stringify(receivedPlan)).not.toContain("{{//");
 
 		const model = requireSnapshot(
-			createConversationModule(database),
+			database,
 			conversationId,
 		).cast[1];
 		expect(model?.prompt.systemInstruction).toBe(`Keep it terse. ${inlineComment}`);

@@ -6,7 +6,7 @@ import {
 	type MacroValue,
 	type MacroVariableWrite,
 } from "../../shared/contract/macro-variable-write";
-import type { ConversationDataEntry } from "../conversation/types";
+import type { ConversationDataEntry } from "../conversation";
 import type {
 	MacroVariable,
 	MacroVariableSource,

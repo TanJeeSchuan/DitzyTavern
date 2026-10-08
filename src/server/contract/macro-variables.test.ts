@@ -1,8 +1,8 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation, executeConversationCommand, readConversationSummary } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import {
 	captureModelFetch,
@@ -25,7 +25,7 @@ const prompt = {
 	postHistoryInstruction: "",
 };
 
-const createChat = (database: Database) => createConversationModule(database).create({
+const createChat = (database: Database) => createConversation(database, {
 	name: "Variables Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
@@ -66,8 +66,8 @@ describe("Macro Variables transport", () => {
 		// SAFETY: the route response is validated by its declared macro-variable contract.
 		const initial = Value.Decode(macroVariablesAppliedResponse, await response.json());
 
-		const module = createConversationModule(database);
-		const message = module.execute({
+		const module = database;
+		const message = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: initial.conversation.revision,
 			action: {
@@ -175,7 +175,7 @@ describe("Macro Variables transport", () => {
 			`http://localhost/api/conversations/${conversation.id}/macro-variables`,
 		));
 		expect(Value.Decode(macroVariables, await read.json()).variables).toEqual([]);
-		expect(createConversationModule(database).getSummary(conversation.id)?.revision).toBe(conversation.revision);
+		expect(readConversationSummary(database, conversation.id)?.revision).toBe(conversation.revision);
 	});
 
 	test("retains scalar and nested-array Macro Value types through storage and reads", async () => {
@@ -234,7 +234,7 @@ describe("Macro Variables transport", () => {
 		});
 		// SAFETY: the route response is validated by its declared macro-variable contract.
 		const initial = Value.Decode(macroVariablesAppliedResponse, await response.json());
-		const message = createConversationModule(database).execute({
+		const message = executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: initial.conversation.revision,
 			action: {

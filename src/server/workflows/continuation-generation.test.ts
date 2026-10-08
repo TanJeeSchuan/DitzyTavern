@@ -1,12 +1,18 @@
+import {
+	createConversation,
+	readConversationSnapshot,
+	stopConversationGeneration,
+	executeConversationCommand,
+	readVariantDetails,
+} from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { runGenerationLifecycle } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
 const definition = (name: string): ParticipantDefinition => ({
@@ -29,7 +35,7 @@ describe("Continuation Generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversationModule(database).create({
+		const snapshot = createConversation(database, {
 			name: "Continuation Chat",
 			participants: [
 				{ definition: definition("Writer") },
@@ -54,11 +60,11 @@ describe("Continuation Generation", () => {
 	// Generation results carry the Conversation header; Message assertions
 	// re-read the full snapshot immediately after the attempt they follow.
 	const currentSnapshot = () =>
-		requireSnapshot(createConversationModule(database), conversationId);
+		requireSnapshot(database, conversationId);
 
 	test("a failed terminal write preserves the generated checkpoint for recovery", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		database.exec("CREATE TRIGGER fail_terminal BEFORE INSERT ON generation_replay BEGIN SELECT RAISE(ABORT, 'terminal unavailable'); END");
 		await expect(runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
@@ -66,20 +72,20 @@ describe("Continuation Generation", () => {
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient(() => "Keep the generated output."),
 		})).rejects.toThrow("terminal unavailable");
-		const after = module.getSnapshot(conversationId);
+		const after = readConversationSnapshot(module, conversationId);
 		expect(after?.activeGenerations).toHaveLength(1);
 		expect(after?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
 		database.exec("DROP TRIGGER fail_terminal");
 		const generationId = after?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Missing Generation.");
-		module.stopGeneration({ conversationId, generationId });
-		expect(module.getSnapshot(conversationId)?.activeGenerations).toHaveLength(0);
-		expect(module.getSnapshot(conversationId)?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
+		stopConversationGeneration(module, { conversationId, generationId });
+		expect(readConversationSnapshot(module, conversationId)?.activeGenerations).toHaveLength(0);
+		expect(readConversationSnapshot(module, conversationId)?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
 	});
 
 	test("creates a separate model Message and exposes instruction intent without synthetic history", async () => {
 		let received: ModelClientGenerationInput | undefined;
-		const before = createConversationModule(database).getSnapshot(conversationId);
+		const before = readConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
@@ -108,12 +114,12 @@ describe("Continuation Generation", () => {
 	});
 
 	test("continues a reasoning-only terminal Variant without placing reasoning in prompt history", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		const variant = before.messages[0]?.variants[0];
 		if (variant === undefined) throw new Error("Missing Variant.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: before.revision,
 			action: {
@@ -124,7 +130,7 @@ describe("Continuation Generation", () => {
 				value: "Private reasoning.",
 			},
 		});
-		const current = module.getSnapshot(conversationId);
+		const current = readConversationSnapshot(module, conversationId);
 		if (current === undefined) throw new Error("Missing Conversation.");
 		let received: PromptPlan | undefined;
 		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
@@ -140,16 +146,16 @@ describe("Continuation Generation", () => {
 	});
 
 	test("uses the current model Control even when the preceding model Message has another author", async () => {
-		const module = createConversationModule(database);
-		const seed = module.getSnapshot(conversationId);
+		const module = database;
+		const seed = readConversationSnapshot(module, conversationId);
 		if (seed === undefined) throw new Error("Missing Conversation.");
 		const _generated = await generateTerminalTailFixture(database, {connection: null,
 			conversationId,
 			modelClient: createFakeModelClient(() => "The generated terminal Message."),
 		});
-		const before = module.getSnapshot(conversationId);
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
-		const withCast = module.execute({
+		const withCast = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: before.revision,
 			action: {
@@ -159,7 +165,7 @@ describe("Continuation Generation", () => {
 		});
 		const newModelId = withCast.cast.at(-1)?.id;
 		if (newModelId === undefined) throw new Error("Missing new model.");
-		const reassigned = module.execute({
+		const reassigned = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: withCast.revision,
 			action: { type: "assign-control", seat: "model", participantId: newModelId },
@@ -173,8 +179,8 @@ describe("Continuation Generation", () => {
 	});
 
 	test("rejects non-terminal positions and leaves history unchanged", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		const latest = applyCommand(module, {
 			conversationId,
@@ -191,12 +197,12 @@ describe("Continuation Generation", () => {
 			expectedRevision: latest.revision,
 			modelClient: createFakeModelClient(() => "not called"),
 		})).rejects.toThrow();
-		expect(module.getSnapshot(conversationId)).toEqual(latest);
+		expect(readConversationSnapshot(module, conversationId)).toEqual(latest);
 	});
 
 	test("budget preflight includes the instruction", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		let transcript = "";
 		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
@@ -212,10 +218,10 @@ describe("Continuation Generation", () => {
 	});
 
 	test("uses Assistant prefill request metadata without mutating either Message", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
-		const configured = module.execute({
+		const configured = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: before.revision,
 			action: {
@@ -276,7 +282,7 @@ describe("Continuation Generation", () => {
 	test("retains only the applicable Continuation operand in provenance", async () => {
 		// The default instruction strategy: the instruction is used, the Prefill
 		// suffix never applies.
-		const before = createConversationModule(database).getSnapshot(conversationId);
+		const before = readConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		await runGenerationLifecycle(database, {connection: null,target: { kind: "continuation" },
 			conversationId,
@@ -286,7 +292,7 @@ describe("Continuation Generation", () => {
 		const message = currentSnapshot().messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database, 
 			conversationId,
 			message.id,
 			variant.id,
@@ -300,10 +306,10 @@ describe("Continuation Generation", () => {
 	});
 
 	test("retains only the Prefill suffix for an assistant-prefill Continuation", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
-		const configured = module.execute({
+		const configured = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: before.revision,
 			action: {
@@ -338,7 +344,7 @@ describe("Continuation Generation", () => {
 		const message = currentSnapshot().messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
-		expect(createConversationModule(database).readVariantDetails(
+		expect(readVariantDetails(database, 
 			conversationId,
 			message.id,
 			variant.id,
@@ -351,12 +357,12 @@ describe("Continuation Generation", () => {
 	});
 
 	test("rejects Assistant prefill for reasoning-only preceding Variants", async () => {
-		const module = createConversationModule(database);
-		const before = module.getSnapshot(conversationId);
+		const module = database;
+		const before = readConversationSnapshot(module, conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");
 		const variant = before.messages[0]?.variants[0];
 		if (variant === undefined) throw new Error("Missing Variant.");
-		const withoutVisibleText = module.execute({
+		const withoutVisibleText = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: before.revision,
 			action: {
@@ -366,7 +372,7 @@ describe("Continuation Generation", () => {
 				content: "",
 			},
 		});
-		const withReasoning = module.execute({
+		const withReasoning = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: withoutVisibleText.revision,
 			action: {
@@ -377,7 +383,7 @@ describe("Continuation Generation", () => {
 				value: "Private reasoning only.",
 			},
 		});
-		const configured = module.execute({
+		const configured = executeConversationCommand(module, {
 			conversationId,
 			expectedRevision: withReasoning.revision,
 			action: {

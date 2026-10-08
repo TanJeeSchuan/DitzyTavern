@@ -1,7 +1,13 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import {
+	acceptConversationTailGeneration,
+	acceptConversationSiblingGeneration,
+	readConversationSnapshot,
+	resolveConversationGeneration,
+} from "../conversation";
+import { createConversation } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
@@ -29,8 +35,8 @@ describe("Generation Stop route mapping", () => {
 	afterEach(() => database.close());
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const conversation = module.create({
+		const module = database;
+		const conversation = createConversation(module, {
 			name: "Stop mapping",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -45,7 +51,7 @@ describe("Generation Stop route mapping", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		input.module.acceptTailGeneration({
+		acceptConversationTailGeneration(input.module, {
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -60,7 +66,7 @@ describe("Generation Stop route mapping", () => {
 		});
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
-		input.module.acceptSiblingGeneration({
+		acceptConversationSiblingGeneration(input.module, {
 			conversationId: input.conversation.id,
 			messageId,
 			timestamp,
@@ -145,7 +151,7 @@ describe("Generation Stop route mapping", () => {
 		expect(body.outcome).toBe("not-found");
 		// The foreign attempt survives untouched: durable state is never
 		// consulted under another Conversation's name.
-		expect(owner.module.getSnapshot(owner.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 	});
 
 	test("maps an already-terminal race onto the not-found transport response", async () => {
@@ -154,7 +160,7 @@ describe("Generation Stop route mapping", () => {
 		const runtime = startRuntime(input.conversation.id, accepted);
 		// The provider wins: the Generation resolves durably and the runtime
 		// settles complete while still retained for its replay window.
-		input.module.resolveGeneration({
+		resolveConversationGeneration(input.module, {
 			conversationId: input.conversation.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:05.000Z",

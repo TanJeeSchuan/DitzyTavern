@@ -1,3 +1,4 @@
+import { readConversationSnapshot, executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -21,12 +22,8 @@ import {
 	VARIANT_KEYS,
 	importSillyTavernChat,
 } from "./index";
-import {
-	ConversationNotPlayableError,
-	SiblingVariantUnavailableError,
-	createConversationModule,
-} from "../conversation";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { ConversationNotPlayableError, SiblingVariantUnavailableError } from "../conversation";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { createFakeModelClient } from "../model-client";
 import {
 	runGenerationLifecycle,
@@ -248,7 +245,7 @@ describe("SillyTavern chat import", () => {
 
 		// The result is readable through the public snapshot seam.
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id),
+			readConversationSnapshot(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -293,7 +290,7 @@ describe("SillyTavern chat import", () => {
 		});
 		expect(result.report.counts).toEqual({ messages: 0, variants: 0 });
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id),
+			readConversationSnapshot(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -339,7 +336,7 @@ describe("SillyTavern chat import", () => {
 		// The report promises the preserved single Message.
 		expect(result.report.counts).toEqual({ messages: 1, variants: 1 });
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id),
+			readConversationSnapshot(database, conversation.id),
 		).toEqual(conversation);
 	});
 
@@ -519,7 +516,7 @@ describe("SillyTavern chat import", () => {
 		const { conversation } = importChat(
 			writeSource([header, first]),
 		);
-		const module = createConversationModule(database);
+		const module = database;
 		const messageId = conversation.messages[0]?.id ?? 0;
 
 		// Every play action carries the same derived capability reason.
@@ -532,7 +529,7 @@ describe("SillyTavern chat import", () => {
 		// Compose (create-message) and Swipe (create-variant) commands throw
 		// the same typed not-playable domain outcome.
 		expect(() =>
-			module.execute({
+			executeConversationCommand(module, {
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision,
 				action: {
@@ -544,7 +541,7 @@ describe("SillyTavern chat import", () => {
 			}),
 		).toThrow(ConversationNotPlayableError);
 		expect(() =>
-			module.execute({
+			executeConversationCommand(module, {
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision,
 				action: { type: "create-variant", messageId, content: "alt" },
@@ -645,7 +642,7 @@ describe("SillyTavern chat import", () => {
 		const { conversation } = importChat(
 			writeSource([header, swiped, second]),
 		);
-		const module = createConversationModule(database);
+		const module = database;
 		expect(conversation.playable).toBe(true);
 
 		const swipeMessage = conversation.messages[0];
@@ -712,7 +709,7 @@ describe("SillyTavern chat import", () => {
 		const { conversation } = importChat(
 			writeSource([header, first]),
 		);
-		const module = createConversationModule(database);
+		const module = database;
 		const completed = applyCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
@@ -898,7 +895,7 @@ describe("SillyTavern chat import", () => {
 				?.value,
 		).toBe("5");
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id),
+			readConversationSnapshot(database, conversation.id),
 		).toEqual(conversation);
 	});
 

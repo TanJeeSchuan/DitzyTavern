@@ -1,8 +1,14 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import {
+	createConversation,
+	executeConversationCommand,
+	readConversationGenerationSettings,
+	readConversationRevision,
+	readConversationSnapshot,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { createConversationRoutes } from "./conversation";
 import { createConnectionSettingsRoutes } from "./connection-settings";
@@ -54,18 +60,18 @@ describe("Text-only Models", () => {
 		}));
 
 	const chat = (modelId: string) => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Chat",
 			participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
 			control: { human: 0, model: 1 },
 		});
-		const conversations = createConversationModule(database);
-		conversations.execute({
+		const conversations = database;
+		executeConversationCommand(conversations, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
 				type: "update-generation-settings",
-				settings: { ...conversations.getGenerationSettings(conversation.id)!, modelId },
+				settings: { ...readConversationGenerationSettings(conversations, conversation.id)!, modelId },
 			},
 		});
 		return conversation.id;
@@ -81,7 +87,7 @@ describe("Text-only Models", () => {
 				return stream();
 			},
 		});
-		const revision = createConversationModule(database).getRevision(conversationId) ?? 0;
+		const revision = readConversationRevision(database, conversationId) ?? 0;
 		const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -133,7 +139,7 @@ describe("Text-only Models", () => {
 				masterKey: key,
 				fetch: async () => new Response(JSON.stringify({ error: { message: "no vision" } }), { status: 400 }),
 			});
-			const revision = createConversationModule(database).getRevision(conversationId) ?? 0;
+			const revision = readConversationRevision(database, conversationId) ?? 0;
 			const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -169,7 +175,7 @@ describe("Text-only Models", () => {
 		});
 		const started = await coordinator.startGeneration({
 			conversationId,
-			expectedRevision: createConversationModule(database).getRevision(conversationId)!,
+			expectedRevision: readConversationRevision(database, conversationId)!,
 			target: { kind: "send", content: formatImageReference("map", art.hash) },
 		});
 		await requested.promise;
@@ -185,9 +191,9 @@ describe("Text-only Models", () => {
 		createProfile();
 		const conversationId = chat("vision-model");
 		const art = await picture();
-		const conversations = createConversationModule(database);
-		const snapshot = conversations.getSnapshot(conversationId)!;
-		const withMessage = conversations.execute({
+		const conversations = database;
+		const snapshot = readConversationSnapshot(conversations, conversationId)!;
+		const withMessage = executeConversationCommand(conversations, {
 			conversationId,
 			expectedRevision: snapshot.revision,
 			action: {
@@ -197,12 +203,12 @@ describe("Text-only Models", () => {
 				authorParticipantId: snapshot.cast[1]!.id,
 			},
 		});
-		const configured = conversations.execute({
+		const configured = executeConversationCommand(conversations, {
 			conversationId,
 			expectedRevision: withMessage.revision,
 			action: {
 				type: "update-generation-settings",
-				settings: { ...conversations.getGenerationSettings(conversationId)!, continuationStrategy: "assistant-prefill" },
+				settings: { ...readConversationGenerationSettings(conversations, conversationId)!, continuationStrategy: "assistant-prefill" },
 			},
 		});
 		let requests = 0;

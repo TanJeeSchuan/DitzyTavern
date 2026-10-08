@@ -1,7 +1,7 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readConversationGenerationSettings } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { createLorebookRoutes } from "./lorebook-routes";
 import { Value } from "@sinclair/typebox/value";
-import { createConversationModule } from "../conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
@@ -10,7 +10,22 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
 import { generationPreview, chatHistoryPage, type ConversationAction } from "../../shared/contract/conversation-schema";
-import { createChat, readConversation, readPreset, toggleBlock, saveBlockRole, readOperation, withProfile, key, captureModelFetch, startGeneration, completeGeneration, gatedProvider, readInspection, moveBlock } from "./prompt-preset-test-fixtures";
+import {
+	createChat,
+	readConversation,
+	readPreset,
+	toggleBlock,
+	saveBlockRole,
+	readOperation,
+	withProfile,
+	key,
+	captureModelFetch,
+	startGeneration,
+	completeGeneration,
+	gatedProvider,
+	readInspection,
+	moveBlock,
+} from "./prompt-preset-test-fixtures";
 
 let database: Database;
 beforeEach(() => {
@@ -149,7 +164,7 @@ test("Author Note Image References send their anchor and pixels, or only the anc
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	const settings = connections.get();
 	const profile = settings.profiles[0]!;
-	const generationSettings = createConversationModule(database).getGenerationSettings(chat.id)!;
+	const generationSettings = readConversationGenerationSettings(database, chat.id)!;
 	connections.setTextOnlyModel({ profileId: profile.id, modelId: generationSettings.modelId, textOnly: true });
 	const current = await readConversation(app, chat.id);
 	const textOnly = await preview(app, chat.id);

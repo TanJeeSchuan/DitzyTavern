@@ -1,9 +1,6 @@
+import { readConversationSnapshot } from "../conversation";
 import type { Database } from "bun:sqlite";
-import {
-	createConversationModule,
-	ConversationNotFoundError,
-	type ConversationSnapshot,
-} from "../conversation";
+import { ConversationNotFoundError, type ConversationSnapshot } from "../conversation";
 import { runGenerationLifecycle } from "./generate";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 
@@ -20,7 +17,7 @@ export async function generateTerminalTailFixture(
 	database: Database,
 	input: GenerationAttemptInput,
 ): Promise<ConversationSnapshot> {
-	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
+	const snapshot = readConversationSnapshot(database, input.conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
@@ -28,7 +25,7 @@ export async function generateTerminalTailFixture(
 		...input,
 		expectedRevision: snapshot.revision,
 	});
-	const committed = createConversationModule(database).getSnapshot(input.conversationId);
+	const committed = readConversationSnapshot(database, input.conversationId);
 	if (committed === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}

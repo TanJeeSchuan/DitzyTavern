@@ -1,9 +1,9 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation, executeConversationCommand } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { createContract } from ".";
-import { createConversationModule } from "../conversation";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { formatImageReference } from "../../shared/image-reference";
@@ -26,7 +26,7 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 	return Value.Decode(generationPreview, await response.json());
 };
 
-const createChat = (database: Database) => createConversationModule(database).create({
+const createChat = (database: Database) => createConversation(database, {
 	name: "Images", participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
 		{ definition: { name: "Maren", prompt, openings: [] } },
@@ -45,7 +45,7 @@ describe("Edited Prompt Plan Images", () => {
 		const bytes = pngFixture({ width: 100, height: 100 });
 		const image = await uploadImage(database, bytes);
 		const reference = formatImageReference("map", image.hash);
-		createConversationModule(database).execute({ conversationId: source.id, expectedRevision: source.revision, action: {
+		executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: {
 			type: "create-message", timestamp: "2026-10-05T00:00:00Z", variantContents: [reference], authorParticipantId: source.cast[0]!.id,
 		} });
 		const chat = createChat(database);

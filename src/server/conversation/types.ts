@@ -24,7 +24,6 @@ import type {
 import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
-import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import type {
 	MacroVariables as SharedMacroVariables,
@@ -329,89 +328,6 @@ export interface ConversationCommand {
 	conversationId: number;
 	expectedRevision: number;
 	action: ConversationAction;
-}
-
-export interface ConversationModule {
-	create(input: ConversationCreationInput): ConversationSnapshot;
-	exists(conversationId: number): boolean;
-	// Narrow authoritative revision read used when a preview send ignores the
-	// client's stale revision; it does not load Conversation history.
-	getRevision(conversationId: number): number | undefined;
-	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
-	getSummary(conversationId: number): ConversationSummary | undefined;
-	getGenerationSettings(
-		conversationId: number,
-	): ConversationGenerationSettings | undefined;
-	// The Chat's selected recipe with each Referenced Prompt Block resolved
-	// against this Chat's own Participant Definitions and selected history.
-	// Undefined for a missing Conversation.
-	getPromptPreset(conversationId: number): ConversationPromptPreset | undefined;
-	// Reads one stable chronological page of the normal Chat history read
-	// model. Pages carry the lightweight Participant identity, immutable
-	// Author Stamp names, Message chronology, Variant order, and selected
-	// Variant state needed for rendering; heavy provenance loads only
-	// through deliberate detail operations. Undefined for a missing
-	// Conversation.
-	readHistory(
-		conversationId: number,
-		request?: ChatHistoryPageRequest,
-	): ChatHistoryPage | undefined;
-	// Narrow on-demand read of Conversation-scoped structured data. Returns
-	// the Conversation's name and its (namespace, key) entries, optionally
-	// filtered by namespace and/or keys. Undefined for a missing
-	// Conversation; a present Conversation with no matching entries returns
-	// an empty entries array. Vocabulary-free: namespace and key strings pass
-	// through uninterpreted, so the owning domain keeps the meaning.
-	readConversationData(
-		conversationId: number,
-		filter?: ConversationDataReadFilter,
-	): ConversationDataRead | undefined;
-	readSelectedHistory(
-		conversationId: number,
-		request?: SelectedHistoryReadRequest,
-	): import("./selected-history").SelectedHistoryRead | undefined;
-	readMacroVariables(
-		conversationId: number,
-		input?: { promptPresetId?: number; position?: number },
-	): MacroVariables | undefined;
-	editMacroVariables(input: import("./macro-variables").EditMacroVariablesInput): {
-		conversation: ConversationSummary;
-		variables: MacroVariables;
-	};
-	// Deliberate detail reads. Active inspection is available only while the
-	// server-owned row is retained; compact Variant provenance survives that
-	// cleanup and is loaded separately from ordinary history.
-	readActiveGenerationDetails(
-		conversationId: number,
-		generationId: number,
-	): ActiveGenerationDetails | undefined;
-	readVariantDetails(
-		conversationId: number,
-		messageId: number,
-		variantId: number,
-	): VariantDetails | undefined;
-	execute(command: ConversationCommand): ConversationSummary;
-	// Server-owned Send lifecycle. Acceptance creates the ordinary human
-	// Message and provisional model target in one revisioned transaction;
-	// terminal transitions resolve or remove only that target.
-	acceptTailGeneration(
-		input: AcceptTailGenerationInput,
-	): AcceptedTailGeneration;
-	resolveGeneration(
-		input: ResolveGenerationInput,
-	): ConversationSummary;
-	removeGeneration(
-		input: RemoveGenerationInput,
-	): ConversationSummary;
-	stopGeneration(input: StopGenerationInput): ConversationSummary;
-	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
-	acceptContinuationGeneration(
-		input: AcceptContinuationGenerationInput,
-	): AcceptedContinuationGeneration;
-	checkpointGeneration(input: CheckpointGenerationInput): void;
-	acceptSiblingGeneration(
-		input: AcceptSiblingGenerationInput,
-	): AcceptedSiblingGeneration;
 }
 
 export interface ActiveGenerationSnapshot {

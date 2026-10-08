@@ -1,4 +1,4 @@
-import { StaleConversationRevisionError } from "../conversation/errors";
+import { StaleConversationRevisionError } from "../conversation";
 import { StaleMemoryLabelsError } from "../memory/labels";
 import { StaleLoreAttachmentOwnerRevisionError } from "../lorebook/errors";
 import type { RecoverDomainError } from "./domain-error";

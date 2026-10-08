@@ -1,9 +1,9 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createLorebookRoutes } from "./lorebook-routes";
 import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
-import { createConversationModule } from "../conversation";
 import { createCharacterLibraryModule } from "../character-library";
 
 const request = (path: string, init?: RequestInit) =>
@@ -215,7 +215,7 @@ describe("Lorebook library transport", () => {
 
 	test("reads attachment eligibility and Chat Lore settings", async () => {
 		const created = await postCommand(app, { type: "create", name: "World" });
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -245,7 +245,7 @@ describe("Lorebook library transport", () => {
 				priority: 0, enabled: true,
 			},
 		});
-		createConversationModule(database).create({
+		createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -274,7 +274,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -314,7 +314,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -342,7 +342,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -384,7 +384,7 @@ describe("Lorebook library transport", () => {
 				openings: [],
 			},
 		});
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

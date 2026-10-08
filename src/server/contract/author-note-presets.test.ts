@@ -1,7 +1,19 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { addBlock, createRoutes, exportPreset, importPreset, readOperation, saveBlockRole, toggleBlock, listPresets, createChat, selectPreset, readPreset } from "./prompt-preset-test-fixtures";
+import {
+	addBlock,
+	createRoutes,
+	exportPreset,
+	importPreset,
+	readOperation,
+	saveBlockRole,
+	toggleBlock,
+	listPresets,
+	createChat,
+	selectPreset,
+	readPreset,
+} from "./prompt-preset-test-fixtures";
 
 let database: Database;
 beforeEach(() => {

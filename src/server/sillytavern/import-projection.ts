@@ -19,7 +19,7 @@ import type {
 	ConversationDataEntry,
 	ConversationParticipantSeed,
 	ParticipantDefinition,
-} from "../conversation/types";
+} from "../conversation";
 import { emptyPromptChannels } from "../../shared/definition";
 import {
 	IMPORT_KEYS,

@@ -1,7 +1,14 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import {
+	createConversation,
+	readConversationRevision,
+	executeConversationCommand,
+	readConversationGenerationSettings,
+	readConversationSummary,
+	readConversationSnapshot,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
@@ -25,7 +32,7 @@ const prompt = {
 
 const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 
-const createChat = (database: Database) => createConversationModule(database).create({
+const createChat = (database: Database) => createConversation(database, {
 	name: "Preview Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
@@ -87,8 +94,8 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("presents recoverable preview failures with their domain reason", async () => {
-		const module = createConversationModule(database);
-		const incomplete = module.create({
+		const module = database;
+		const incomplete = createConversation(module, {
 			name: "Incomplete Preview Chat",
 			messages: [{
 				timestamp: "2026-09-13T00:00:00.000Z",
@@ -100,7 +107,7 @@ describe("Prompt Plan inspection", () => {
 			}],
 		});
 		const playable = createChat(database);
-		const siblingUnavailable = module.create({
+		const siblingUnavailable = createConversation(module, {
 			name: "Imported Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -239,7 +246,7 @@ describe("Prompt Plan inspection", () => {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ kind: "send", 
-					expectedRevision: createConversationModule(database).getRevision(conversation.id),
+					expectedRevision: readConversationRevision(database, conversation.id),
 					content: body.content,
 					previewId,
 					promptPlan,
@@ -274,8 +281,8 @@ describe("Prompt Plan inspection", () => {
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch(() => {}) });
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		module.execute({
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "add-participant", definition: { name: "Extra", prompt, openings: [] } },
@@ -322,10 +329,10 @@ describe("Prompt Plan inspection", () => {
 		const profile = withProfile(database).profiles[0];
 		if (profile === undefined) throw new Error("Connection Profile missing.");
 		connections.setTextOnlyModel({ profileId: profile.id, modelId: "text-only", textOnly: true });
-		const module = createConversationModule(database);
-		const generationSettings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const generationSettings = readConversationGenerationSettings(module, conversation.id);
 		if (generationSettings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "update-generation-settings", settings: {
@@ -357,7 +364,7 @@ describe("Prompt Plan inspection", () => {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ kind: "send", 
-					expectedRevision: module.getSummary(conversation.id)!.revision,
+					expectedRevision: readConversationSummary(module, conversation.id)!.revision,
 					content,
 
 					previewId: plan.previewId,
@@ -508,7 +515,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("consumes a Sibling preview token after acceptance", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -551,7 +558,7 @@ describe("Prompt Plan inspection", () => {
 	});
 
 	test("keeps a Sibling preview token retryable after acceptance fails", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Retryable Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -561,10 +568,10 @@ describe("Prompt Plan inspection", () => {
 		});
 		const target = conversation.messages[0];
 		if (target === undefined) throw new Error("Sibling target missing.");
-		const module = createConversationModule(database);
-		const settings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const settings = readConversationGenerationSettings(module, conversation.id);
 		if (settings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -666,10 +673,10 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		const settings = module.getGenerationSettings(conversation.id);
+		const module = database;
+		const settings = readConversationGenerationSettings(module, conversation.id);
 		if (settings === undefined) throw new Error("Generation settings missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -677,7 +684,7 @@ describe("Prompt Plan inspection", () => {
 				settings: { ...settings, continuationInstruction: "A different instruction." },
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -706,10 +713,10 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		const human = module.getSnapshot(conversation.id)?.cast[0];
+		const module = database;
+		const human = readConversationSnapshot(module, conversation.id)?.cast[0];
 		if (human === undefined) throw new Error("Human Participant missing.");
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -718,7 +725,7 @@ describe("Prompt Plan inspection", () => {
 				prompt: { ...human.prompt, scenario: "Unused scenario." },
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -747,8 +754,8 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		const module = createConversationModule(database);
-		module.execute({
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -758,7 +765,7 @@ describe("Prompt Plan inspection", () => {
 				authorParticipantId: conversation.cast[0]!.id,
 			},
 		});
-		const current = module.getSummary(conversation.id);
+		const current = readConversationSummary(module, conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
 		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,

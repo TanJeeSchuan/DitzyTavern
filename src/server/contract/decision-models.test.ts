@@ -1,3 +1,4 @@
+import { readConversationGenerationSettings } from "../conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -19,7 +20,6 @@ import { createChat } from "./prompt-preset-test-fixtures";
 import { startMemoryWorker } from "../memory";
 import { createMemoryRoutes } from "./memory";
 import { readConversationMemories } from "../memory/collections";
-import { createConversationModule } from "../conversation";
 import { testConnection } from "../model-client/test-connection";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { generationPreparationFingerprint } from "../workflows/generation-preparation-fingerprint";
@@ -248,7 +248,7 @@ test("an oversized extraction source fails visibly with no partial collection", 
 test("creating a Chat never selects a Decision Model as its writing connection", () => {
 	configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions());
 	const conversation = createChat(database);
-	expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBeNull();
+	expect(readConversationGenerationSettings(database, conversation.id)?.connectionProfileId).toBeNull();
 });
 
 test("the preparation fingerprint excludes both Memory and Lore Decision Model credentials", () => {

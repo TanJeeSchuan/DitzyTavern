@@ -1,3 +1,4 @@
+import { readConversationSnapshot } from "../conversation";
 // @approved
 //  User-facing staged Chat import: choose one file, stream its bytes into
 // their final managed artifact path exactly once, validate the complete
@@ -33,8 +34,7 @@ import { pipeline } from "node:stream/promises";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
 import { createCharacterLibraryModule } from "../character-library";
-import type { ParticipantDefinition } from "../conversation/types";
-import { createConversationModule } from "../conversation";
+import type { ParticipantDefinition } from "../conversation";
 
 import { createImportedConversation } from "../workflows";
 import {
@@ -431,7 +431,7 @@ export function createChatImportModule(
 			// Conversation snapshot is re-read through the Conversation seam
 			// instead of retaining the full result in memory.
 			if (session !== undefined && session.phase === "committed") {
-				const conversation = createConversationModule(database).getSnapshot(
+				const conversation = readConversationSnapshot(database, 
 					session.receipt.conversationId,
 				);
 				if (conversation === undefined) {

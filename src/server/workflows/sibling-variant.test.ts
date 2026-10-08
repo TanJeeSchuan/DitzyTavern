@@ -1,10 +1,10 @@
+import { createConversation, readConversationSnapshot, executeConversationCommand, readVariantDetails } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
 import {
-	createConversationModule,
 	ConversationNotPlayableError,
 	SiblingVariantUnavailableError,
 	type ConversationSnapshot,
@@ -17,7 +17,7 @@ import {
 	startServerOwnedGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
@@ -59,7 +59,7 @@ describe("Historical sibling Variant generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversationModule(database).create({
+		const snapshot = createConversation(database, {
 			name: "Sibling Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -81,7 +81,7 @@ describe("Historical sibling Variant generation", () => {
 		database.close();
 	});
 
-	const module = () => createConversationModule(database);
+	const module = () => database;
 
 	const generateOnce = async (contents: string[], timestamp?: string) => {
 		const plans: PromptPlan[] = [];
@@ -412,7 +412,7 @@ describe("Historical sibling Variant generation", () => {
 	});
 
 	test("missing historical context denies new sibling generation with the typed reason before the transport", async () => {
-		const imported = module().create({
+		const imported = createConversation(module(), {
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -477,7 +477,7 @@ describe("Historical sibling Variant generation", () => {
 	});
 
 	test("an unplayable Conversation denies sibling generation with the typed playability result", async () => {
-		const incomplete = module().create({
+		const incomplete = createConversation(module(), {
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -512,7 +512,7 @@ describe("Historical sibling Variant generation", () => {
 	test("a zero-output transport failure removes its provisional sibling and restores the prior selection", async () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
-		const before = module().getSnapshot(conversation.id);
+		const before = readConversationSnapshot(module(), conversation.id);
 		if (before === undefined) throw new Error("Snapshot missing.");
 
 		await expect(
@@ -525,7 +525,7 @@ describe("Historical sibling Variant generation", () => {
 			}),
 		).rejects.toThrow("Transport down.");
 
-		const after = module().getSnapshot(conversation.id);
+		const after = readConversationSnapshot(module(), conversation.id);
 		expect(after?.messages).toEqual(before.messages);
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Variant remains.
@@ -533,8 +533,8 @@ describe("Historical sibling Variant generation", () => {
 	});
 
 	test("records no applicable Continuation operand in sibling provenance", async () => {
-		const module = createConversationModule(database);
-		const configured = module.execute({
+		const module = database;
+		const configured = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -586,7 +586,7 @@ describe("Historical sibling Variant generation", () => {
 		if (target === undefined || variant === undefined) throw new Error("Variant missing.");
 		// A Sibling attempt never continues anything: the Continuation group is
 		// absent from its provenance even though the settings configured one.
-		expect(module.readVariantDetails(
+		expect(readVariantDetails(module, 
 			conversation.id,
 			target.id,
 			variant.id,
@@ -649,7 +649,7 @@ describe("Historical sibling Variant generation", () => {
 			modelClient: held("Second sibling", secondGate),
 		});
 		const secondAccepted = await second.accepted;
-		const active = createConversationModule(database).getSnapshot(conversation.id);
+		const active = readConversationSnapshot(database, conversation.id);
 		expect(active?.activeGenerations.map((entry) => entry.generationId)).toEqual([
 			firstAccepted.generationId,
 			secondAccepted.generationId,
@@ -669,6 +669,6 @@ describe("Historical sibling Variant generation", () => {
 			messageId: greeting.id,
 			provisionalVariantId: secondAccepted.provisionalVariantId,
 		}));
-		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toEqual([]);
+		expect(readConversationSnapshot(database, conversation.id)?.activeGenerations).toEqual([]);
 	});
 });

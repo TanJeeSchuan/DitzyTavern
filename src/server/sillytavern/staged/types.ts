@@ -1,4 +1,4 @@
-import type { ConversationSnapshot } from "../../conversation/types";
+import type { ConversationSnapshot } from "../../conversation";
 import type {
 	ChatImportCommitBody,
 	ChatImportDuplicateMatch,

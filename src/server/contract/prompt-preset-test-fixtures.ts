@@ -1,8 +1,8 @@
+import { createConversation } from "../conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createMemorySettingsModule } from "../memory/settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { readPromptPresetRecipe } from "../prompt-preset";
@@ -62,7 +62,7 @@ export const createChat = (
 	database: Database,
 	names: { name?: string; human?: string; model?: string } = {},
 ) =>
-	createConversationModule(database).create({
+	createConversation(database, {
 		authorNote: "",
 		name: names.name ?? "Preset Chat",
 		participants: [

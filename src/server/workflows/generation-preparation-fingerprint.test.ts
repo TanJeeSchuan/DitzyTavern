@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation/generation-settings";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
 import { effectiveGenerationSettingsFor } from "../generation-plan";
 import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";

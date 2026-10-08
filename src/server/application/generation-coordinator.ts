@@ -1,9 +1,9 @@
+import { stopConversationGeneration, stopConversationGenerations, readConversationGenerationSettings } from "../conversation";
 import type { Database } from "bun:sqlite";
 import {
 	checkpointConversationGeneration,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	createConversationModule,
 	removeRetainedGenerationInspection,
 	type ConversationSummary,
 } from "../conversation";
@@ -191,9 +191,9 @@ export class GenerationCoordinator {
 		// @approved
 		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.stop();
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		try {
-			const snapshot = conversation.stopGeneration({ conversationId, generationId });
+			const snapshot = stopConversationGeneration(conversation, { conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
 			runtime?.releaseStopRequest();
@@ -228,9 +228,9 @@ export class GenerationCoordinator {
 		// below owns the complete target set; runtimes are settled only after
 		// its commit succeeds.
 		runtimes.flushAll(conversationId);
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		try {
-			const stopped = conversation.stopGenerations({ conversationId });
+			const stopped = stopConversationGenerations(conversation, { conversationId });
 			const unsettled: number[] = [];
 			let unsettledReason: string | null = null;
 			for (const generationId of stopped.generationIds) {
@@ -288,7 +288,7 @@ export class GenerationCoordinator {
 		const database = this.database;
 		const runtimeRegistry = generationRuntimeFor(database);
 		runtimeRegistry.assertAccepting();
-		const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
+		const generationSettings = readConversationGenerationSettings(database, input.conversationId);
 		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
 		let runtime: GenerationRuntime | undefined;

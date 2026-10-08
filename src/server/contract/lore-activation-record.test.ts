@@ -1,7 +1,16 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import {
+	createConversation,
+	acceptConversationTailGeneration,
+	resolveConversationGeneration,
+	readConversationSnapshot,
+	readVariantDetails,
+	executeConversationCommand,
+	checkpointConversationGeneration,
+	stopConversationGeneration,
+} from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -33,7 +42,7 @@ describe("permanent Lore Activation Records", () => {
 	afterEach(() => database.close());
 
 	test("are copied to Variant data and remain readable after replay expiry", async () => {
-		const created = createConversationModule(database).create({
+		const created = createConversation(database, {
 			name: "Lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -41,8 +50,8 @@ describe("permanent Lore Activation Records", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
-		const accepted = module.acceptTailGeneration({
+		const module = database;
+		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -57,15 +66,15 @@ describe("permanent Lore Activation Records", () => {
 			connection: null,
 			loreActivation: evidence,
 		});
-		module.resolveGeneration({
+		resolveConversationGeneration(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-09-17T10:00:01Z",
 			content: "The tower appeared.",
 		});
-		const message = module.getSnapshot(created.id)!.messages.at(-1)!;
+		const message = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const variant = message.variants.at(-1)!;
-		expect(module.readVariantDetails(created.id, message.id, variant.id)?.loreActivation).toEqual(evidence);
+		expect(readVariantDetails(module, created.id, message.id, variant.id)?.loreActivation).toEqual(evidence);
 
 		const response = await createConversationRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${created.id}/messages/${message.id}/variants/${variant.id}/details`,
@@ -75,7 +84,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("rejects generic writes to the server-owned namespace", () => {
-		const created = createConversationModule(database).create({
+		const created = createConversation(database, {
 			name: "Lore namespace",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -83,8 +92,8 @@ describe("permanent Lore Activation Records", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
-		expect(() => module.execute({
+		const module = database;
+		expect(() => executeConversationCommand(module, {
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			action: {
@@ -98,7 +107,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("reports corrupt persisted records through detail contracts", async () => {
-		const created = createConversationModule(database).create({
+		const created = createConversation(database, {
 			name: "Corrupt lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -106,8 +115,8 @@ describe("permanent Lore Activation Records", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
-		const accepted = module.acceptTailGeneration({
+		const module = database;
+		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -134,13 +143,13 @@ describe("permanent Lore Activation Records", () => {
 		});
 
 		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", [JSON.stringify(evidence), accepted.generationId]);
-		module.resolveGeneration({
+		resolveConversationGeneration(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-09-17T10:00:01Z",
 			content: "The tower appeared.",
 		});
-		const message = module.getSnapshot(created.id)!.messages.at(-1)!;
+		const message = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const variant = message.variants.at(-1)!;
 		database.run(
 			"UPDATE message_variant_data SET value = ? WHERE message_variant_id = ? AND namespace = ? AND key = ?",
@@ -157,7 +166,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
-		const created = createConversationModule(database).create({
+		const created = createConversation(database, {
 			name: "Interrupted lore",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -165,11 +174,11 @@ describe("permanent Lore Activation Records", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
+		const module = database;
 		const human = created.cast[0];
 		const model = created.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = module.acceptTailGeneration({
+		const accepted = acceptConversationTailGeneration(module, {
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -184,18 +193,18 @@ describe("permanent Lore Activation Records", () => {
 			connection: null,
 			loreActivation: evidence,
 		});
-		module.checkpointGeneration({
+		checkpointConversationGeneration(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
 			content: "The tower appeared.",
 		});
-		module.stopGeneration({ conversationId: created.id, generationId: accepted.generationId });
-		const interrupted = module.getSnapshot(created.id)!.messages.at(-1)!;
+		stopConversationGeneration(module, { conversationId: created.id, generationId: accepted.generationId });
+		const interrupted = readConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const interruptedVariant = interrupted.variants.at(-1)!;
-		expect(module.readVariantDetails(created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
+		expect(readVariantDetails(module, created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
 
-		const fresh = module.getSnapshot(created.id)!;
-		const zeroOutput = module.acceptTailGeneration({
+		const fresh = readConversationSnapshot(module, created.id)!;
+		const zeroOutput = acceptConversationTailGeneration(module, {
 			conversationId: created.id,
 			expectedRevision: fresh.revision,
 			timestamp: "2026-09-17T10:00:02Z",
@@ -210,8 +219,8 @@ describe("permanent Lore Activation Records", () => {
 			connection: null,
 			loreActivation: evidence,
 		});
-		module.stopGeneration({ conversationId: created.id, generationId: zeroOutput.generationId });
-		const afterCleanup = module.getSnapshot(created.id)!;
+		stopConversationGeneration(module, { conversationId: created.id, generationId: zeroOutput.generationId });
+		const afterCleanup = readConversationSnapshot(module, created.id)!;
 		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({
 			namespace: "lore-activation",
 			key: "record",

@@ -1,9 +1,9 @@
+import { createConversation, executeConversationCommand, readConversationGenerationSettings } from "../conversation";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
-import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import {
 	createFakeModelClient,
@@ -49,7 +49,7 @@ describe("Generation capture and provenance", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const snapshot = createConversationModule(database).create({
+		const snapshot = createConversation(database, {
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -83,8 +83,8 @@ describe("Generation capture and provenance", () => {
 			profile,
 			credential: "credential-never-stored-in-provenance",
 		});
-		const conversation = createConversationModule(database);
-		const configuredConversation = conversation.execute({
+		const conversation = database;
+		const configuredConversation = executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -112,12 +112,12 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 		const profileId = created.profiles[0]!.id;
-		const updatedConversation = conversation.execute({
+		const updatedConversation = executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: configuredConversation.revision,
 			action: { type: "set-generation-model", connectionProfileId: profileId, modelId: "custom-before-discovery" },
 		});
-		expect(conversation.getGenerationSettings(conversationId)?.modelId).toBe(
+		expect(readConversationGenerationSettings(conversation, conversationId)?.modelId).toBe(
 			"custom-before-discovery",
 		);
 
@@ -126,7 +126,7 @@ describe("Generation capture and provenance", () => {
 			release = resolve;
 		});
 		let receivedInput: { modelId?: string; generationSettings?: unknown } | undefined;
-		const generation = generateTerminalTailFixture(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
+		const generation = generateTerminalTailFixture(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			connectionSettings: { masterKey: key },
 			modelClient: {
@@ -153,7 +153,7 @@ describe("Generation capture and provenance", () => {
 		responseBudget: 128,
 		contextLimit: 8192,
 	});
-		const variant = requireSnapshot(createConversationModule(database), conversationId).messages.at(-1)?.variants.at(-1);
+		const variant = requireSnapshot(database, conversationId).messages.at(-1)?.variants.at(-1);
 		const provenance = variant?.data.find(
 			(entry) => entry.namespace === "generation" && entry.key === "provenance",
 		);
@@ -198,8 +198,8 @@ describe("Generation capture and provenance", () => {
 				pinnedModels: [],
 			},
 		});
-		const conversation = createConversationModule(database);
-		const configuredConversation = conversation.execute({
+		const conversation = database;
+		const configuredConversation = executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -226,7 +226,7 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
-		conversation.execute({
+		executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: configuredConversation.revision,
 			action: {
@@ -236,7 +236,7 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 
-		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
+		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			kind: "send",
 			content: "Send with narrowed overrides.",
@@ -246,7 +246,7 @@ describe("Generation capture and provenance", () => {
 		const effectiveSettings = preview.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
-		await runGenerationLifecycle(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, createConversationModule(database).getGenerationSettings(conversationId)?.connectionProfileId ?? null).connection,
+		await runGenerationLifecycle(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			expectedRevision: 2,
 			target: { kind: "send", content: "Send with narrowed overrides." },
@@ -266,7 +266,7 @@ describe("Generation capture and provenance", () => {
 		expect(projectModelClientGenerationSettings(effectiveSettings))
 			.toEqual(receivedSettings);
 
-		const message = requireSnapshot(createConversationModule(database), conversationId).messages.at(-1);
+		const message = requireSnapshot(database, conversationId).messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
 		const provenance = variant.data.find(
@@ -288,8 +288,8 @@ describe("Generation capture and provenance", () => {
 	});
 
 	test("stores independent safe settings provenance for sibling Variants", async () => {
-		const conversation = createConversationModule(database);
-		conversation.execute({
+		const conversation = database;
+		executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -322,7 +322,7 @@ describe("Generation capture and provenance", () => {
 		});
 		const targetId = first.messages.at(-1)?.id;
 		if (targetId === undefined) throw new Error("Expected a generated Message.");
-		const secondSettings = conversation.execute({
+		const secondSettings = executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: first.revision,
 			action: {
@@ -354,7 +354,7 @@ describe("Generation capture and provenance", () => {
 			target: { kind: "sibling", messageId: targetId },
 			modelClient: fakeModelClient(() => "sibling generation"),
 		});
-		const target = requireSnapshot(createConversationModule(database), conversationId).messages.find((message) => message.id === targetId);
+		const target = requireSnapshot(database, conversationId).messages.find((message) => message.id === targetId);
 		if (target === undefined) throw new Error("Target Message disappeared.");
 		const provenance = target.variants.map((variant) => {
 			const entry = variant.data.find((item) => item.key === "provenance");

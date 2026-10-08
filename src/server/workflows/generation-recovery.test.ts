@@ -1,13 +1,11 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import {
-	acceptConversationSiblingGeneration,
-	createConversationModule,
-} from "../conversation";
+import { acceptConversationSiblingGeneration } from "../conversation";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 const prompt = {
@@ -28,8 +26,8 @@ describe("generation recovery diagnostics", () => {
 	afterEach(() => database.close());
 
 	test("continues recovering healthy rows and reports a corrupt row with its identity", () => {
-		const conversation = createConversationModule(database);
-		const created = conversation.create({
+		const conversation = database;
+		const created = createConversation(conversation, {
 			name: "Recovery Diagnostics Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

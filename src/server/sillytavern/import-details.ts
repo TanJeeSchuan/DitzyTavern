@@ -1,3 +1,4 @@
+import { readConversationData } from "../conversation";
 // @approved
 //  Committed-import details: the deliberate detail operations for an
 // imported Chat. Ordinary paginated reads never carry this data; Import
@@ -21,7 +22,6 @@ import {
 	createArtifactModule,
 	type ArtifactDownloadResult,
 } from "../artifact";
-import { createConversationModule } from "../conversation";
 
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
@@ -66,11 +66,11 @@ export function createChatImportDetailsModule(
 	database: Database,
 	artifactDirectory: string,
 ): ChatImportDetailsModule {	const artifacts = createArtifactModule(database, { directory: artifactDirectory });
-	const conversations = createConversationModule(database);
+	const conversations = database;
 
 	return {
 		importDetails(conversationId) {
-			const read = conversations.readConversationData(conversationId, {
+			const read = readConversationData(conversations, conversationId, {
 				namespace: IMPORT_NAMESPACE,
 				keys: [IMPORT_KEYS.reportJson],
 			});

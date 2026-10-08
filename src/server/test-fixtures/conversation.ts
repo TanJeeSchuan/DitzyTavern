@@ -1,13 +1,10 @@
+import { executeConversationCommand, readConversationSnapshot } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { syncMemorySources } from "../memory";
-import { observeConversationWrites } from "./commands/transaction";
-import { ConversationNotFoundError } from "./errors";
-import type {
-	ConversationCommand,
-	ConversationModule,
-	ConversationSnapshot,
-} from "./types";
+import { observeConversationWrites } from "../conversation";
+import { ConversationNotFoundError } from "../conversation";
+import type { ConversationCommand, ConversationSnapshot } from "../conversation";
 
 export function openObservedDatabase(): Database {
 	const database = openInitializedDatabase({ path: ":memory:" });
@@ -25,18 +22,18 @@ export function openObservedDatabase(): Database {
  * materializing whole Conversations.
  */
 export function applyCommand(
-	module: ConversationModule,
+	module: Database,
 	command: ConversationCommand,
 ): ConversationSnapshot {
-	const summary = module.execute(command);
+	const summary = executeConversationCommand(module, command);
 	return requireSnapshot(module, summary.id);
 }
 
 export function requireSnapshot(
-	module: ConversationModule,
+	module: Database,
 	conversationId: number,
 ): ConversationSnapshot {
-	const snapshot = module.getSnapshot(conversationId);
+	const snapshot = readConversationSnapshot(module, conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}

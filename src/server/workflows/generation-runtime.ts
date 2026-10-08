@@ -5,7 +5,7 @@ import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
 } from "../model-client";
-import { GENERATION_REPLAY_RETENTION_MS } from "../conversation/generation-retention";
+import { GENERATION_REPLAY_RETENTION_MS } from "../conversation";
 import { processStateFor } from "../application/process-state";
 
 /**

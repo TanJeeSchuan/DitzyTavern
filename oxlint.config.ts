@@ -53,6 +53,7 @@ export default defineConfig({
 		"ditzy/no-hand-written-wire-guards": "error",
 		"ditzy/no-layer-dependencies-in-shared": "error",
 		"ditzy/no-manual-conversation-transaction": "error",
+		"ditzy/no-conversation-internal-imports": "error",
 		"ditzy/no-server-runtime-imports-in-client": "error",
 	},
 });

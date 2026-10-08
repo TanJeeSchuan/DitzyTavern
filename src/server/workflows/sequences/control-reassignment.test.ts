@@ -1,7 +1,8 @@
-import { openObservedDatabase } from "../../conversation/test-fixtures";
+import { readConversationSnapshot, executeConversationCommand, createConversation } from "../../conversation";
+import { openObservedDatabase } from "../../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule, type ConversationModule, type ParticipantDefinition } from "../../conversation";
+import { type ParticipantDefinition } from "../../conversation";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../../model-client";
 import {
 	runGenerationLifecycle,
@@ -39,12 +40,12 @@ const historyRolesOf = (input: ModelClientGenerationInput): HistoryRole[] =>
 
 describe("Control reassignment between commands", () => {
 	let database: Database;
-	let conversation: ConversationModule;
+	let conversation: Database;
 	let conversationId: number;
 	let kestrelId: number;
 
 	const revision = () => {
-		const snapshot = conversation.getSnapshot(conversationId);
+		const snapshot = readConversationSnapshot(conversation, conversationId);
 		if (snapshot === undefined) throw new Error("Missing Conversation.");
 		return snapshot.revision;
 	};
@@ -64,7 +65,7 @@ describe("Control reassignment between commands", () => {
 	};
 
 	const reassignModelSeatToKestrel = () => {
-		conversation.execute({
+		executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: revision(),
 			action: { type: "assign-control", seat: "model", participantId: kestrelId },
@@ -73,8 +74,8 @@ describe("Control reassignment between commands", () => {
 
 	beforeEach(async () => {
 		database = openObservedDatabase();
-		conversation = createConversationModule(database);
-		const created = conversation.create({
+		conversation = database;
+		const created = createConversation(conversation, {
 			name: "Cast change",
 			participants: [
 				{ definition: definition("Writer") },
@@ -129,7 +130,7 @@ describe("Control reassignment between commands", () => {
 		// pair is {Writer, Kestrel} while Maren's earlier Message remains in the
 		// preceding Selected narrative path.
 		await send("Take over the scene.");
-		const snapshot = conversation.getSnapshot(conversationId);
+		const snapshot = readConversationSnapshot(conversation, conversationId);
 		const target = snapshot?.messages.at(-1);
 		if (target === undefined) throw new Error("Missing target Message.");
 
@@ -160,7 +161,7 @@ describe("Control reassignment between commands", () => {
 		// user writing, so this is not writer-visible; inferring "human" from a
 		// neighbouring Message's pair would be the same fabrication this rule
 		// exists to prevent.
-		conversation.execute({
+		executeConversationCommand(conversation, {
 			conversationId,
 			expectedRevision: revision(),
 			action: { type: "assign-control", seat: "human", participantId: kestrelId },

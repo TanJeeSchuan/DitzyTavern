@@ -351,3 +351,12 @@ export const readMemorySourceAvailability = (
 	activation: ActiveGenerationDetails["memoryActivation"],
 ): ActiveGenerationDetails["memorySources"] =>
 	readMemorySourceAvailabilityFromConnection(connectConversationDatabase(database), conversationId, activation);
+
+export function readActiveGenerationsForRecovery(database: Database) {
+ return connectConversationDatabase(database).select({
+  id: activeGenerationTable.id,
+  conversationId: activeGenerationTable.conversation_id,
+  checkpointContent: activeGenerationTable.checkpoint_content,
+  checkpointReasoning: activeGenerationTable.checkpoint_reasoning,
+ }).from(activeGenerationTable).all();
+}

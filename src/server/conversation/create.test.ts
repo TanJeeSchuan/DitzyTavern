@@ -1,3 +1,4 @@
+import { createConversation, readConversationSnapshot } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -15,7 +16,7 @@ import {
 } from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
-import { createConversationModule, InvalidConversationCreationError } from ".";
+import { InvalidConversationCreationError } from ".";
 import type { ConversationCreationInput, ParticipantDefinition } from ".";
 
 const prompt = (overrides: Partial<ParticipantDefinition["prompt"]> = {}) => ({
@@ -74,8 +75,8 @@ describe("Conversation creation", () => {
 	) => drizzle(database).select().from(table).all().length;
 
 	test("creates a playable Conversation from two distinct ad-hoc Participants", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{
@@ -109,12 +110,12 @@ describe("Conversation creation", () => {
 		// Human openings never become history; only the model seat's do.
 		expect(snapshot.messages).toEqual([]);
 
-		expect(conversation.getSnapshot(snapshot.id)).toEqual(snapshot);
+		expect(readConversationSnapshot(conversation, snapshot.id)).toEqual(snapshot);
 	});
 
 	test("converts the initial model Participant's openings into one Message of ordered sibling Variants with the first selected", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer", ["Should never appear"]) },
@@ -148,8 +149,8 @@ describe("Conversation creation", () => {
 	});
 
 	test("compiles greeting openings with owner-relative macros while storing them raw", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer") },
@@ -186,8 +187,8 @@ describe("Conversation creation", () => {
 	});
 
 	test("creates no greeting Message when the model Participant has no openings", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{ definition: adHoc("Writer") },
@@ -211,8 +212,8 @@ describe("Conversation creation", () => {
 			},
 		});
 
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{
@@ -242,7 +243,7 @@ describe("Conversation creation", () => {
 			expectedRevision: 0,
 			name: "Renamed Voss",
 		});
-		const reread = conversation.getSnapshot(snapshot.id);
+		const reread = readConversationSnapshot(conversation, snapshot.id);
 		expect(reread?.cast.find((participant) => participant.name === "Maren Voss")).toBeDefined();
 
 		// Control can assign either seat to either Cast position.
@@ -265,8 +266,8 @@ describe("Conversation creation", () => {
 			openings: source.openings,
 		});
 
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{ definition: forkDefinition(), sourceCharacterId: source.id },
@@ -288,8 +289,8 @@ describe("Conversation creation", () => {
 	});
 
 	test("normalizes Participant names while preserving case and Unicode", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(
+		const conversation = database;
+		const snapshot = createConversation(conversation, 
 			inputWith({
 				participants: [
 					{ definition: adHoc("  JUNO Åshfeld-灯台  ") },
@@ -301,16 +302,16 @@ describe("Conversation creation", () => {
 	});
 
 	test("rejects a blank Participant name or blank opening without partial writes", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 		expect(() =>
-			conversation.create(
+			createConversation(conversation, 
 				inputWith({
 					participants: [{ definition: adHoc("   ") }, { definition: adHoc("Maren") }],
 				}),
 			),
 		).toThrow(InvalidConversationCreationError);
 		expect(() =>
-			conversation.create(
+			createConversation(conversation, 
 				inputWith({
 					participants: [
 						{ definition: adHoc("Writer") },
@@ -329,11 +330,11 @@ describe("Conversation creation", () => {
 	});
 
 	test("requires two distinct Participants for native Control before commit", () => {
-		const conversation = createConversationModule(database);
+		const conversation = database;
 
 		// Same instance in both seats.
 		expect(() =>
-			conversation.create(
+			createConversation(conversation, 
 				inputWith({
 					participants: [
 						{ definition: adHoc("Solo") },
@@ -346,7 +347,7 @@ describe("Conversation creation", () => {
 
 		// Seat referencing outside the Cast.
 		expect(() =>
-			conversation.create(inputWith({ control: { human: 0, model: 5 } })),
+			createConversation(conversation, inputWith({ control: { human: 0, model: 5 } })),
 		).toThrow(InvalidConversationCreationError);
 
 		expect(countRows(conversationTable)).toBe(0);
@@ -354,8 +355,8 @@ describe("Conversation creation", () => {
 	});
 
 	test("preservation-style creation without Participants commits as incomplete", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create({
+		const conversation = database;
+		const snapshot = createConversation(conversation, {
 			name: "Imported Conversation",
 			data: [{ namespace: "archive", key: "source", value: "chat-export.json" }],
 			messages: [
@@ -386,12 +387,12 @@ describe("Conversation creation", () => {
 		expect(first?.author).toEqual(null);
 		expect(first?.historicalContext).toEqual(null);
 
-		expect(conversation.getSnapshot(snapshot.id)).toEqual(snapshot);
+		expect(readConversationSnapshot(conversation, snapshot.id)).toEqual(snapshot);
 	});
 
 	test("structural constraints back the domain: unique Cast positions, ordered openings, distinct seats, and foreign keys", () => {
-		const conversation = createConversationModule(database);
-		const snapshot = conversation.create(inputWith());
+		const conversation = database;
+		const snapshot = createConversation(conversation, inputWith());
 		const db = drizzle(database);
 		const humanId = snapshot.cast[0]?.id ?? 0;
 		const modelId = snapshot.cast[1]?.id ?? 0;

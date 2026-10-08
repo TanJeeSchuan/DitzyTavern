@@ -1,13 +1,10 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation, readConversationSnapshot, readActiveGenerationDetails } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createConnectionSettingsModule } from "../connection-settings";
-import {
-	acceptConversationTailGeneration,
-	checkpointConversationGeneration,
-	createConversationModule,
-} from "../conversation";
+import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
 import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
@@ -40,7 +37,7 @@ describe("Resumable generation transport", () => {
 	afterEach(() => database.close());
 
 	test("separates acceptance from subscription and replays buffered events", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Resumable Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -90,7 +87,7 @@ describe("Resumable generation transport", () => {
 		};
 		expect(acceptedResponse.status).toBe(200);
 		expect(accepted.generationId).toBeGreaterThan(0);
-		const acceptedRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
+		const acceptedRevision = readConversationSnapshot(database, conversation.id)?.revision;
 
 		const subscription = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
@@ -124,11 +121,11 @@ describe("Resumable generation transport", () => {
 			variantId: accepted.variantId,
 		}));
 
-		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
+		const snapshot = readConversationSnapshot(database, conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Buffered.");
 		expect(snapshot?.revision).toBe((acceptedRevision ?? 0) + 1);
-		const retained = createConversationModule(database).readActiveGenerationDetails(
+		const retained = readActiveGenerationDetails(database, 
 			conversation.id,
 			accepted.generationId,
 		);
@@ -140,7 +137,7 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("keeps other HTTP routes responsive while provider events are buffered", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Responsive Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -215,7 +212,7 @@ describe("Resumable generation transport", () => {
 			const probeResponse = await deadline(fetch(`${origin}/probe`), "Unrelated route");
 			expect(acceptedResponse.status).toBe(200);
 			expect(probeResponse.status).toBe(200);
-			expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toHaveLength(1);
+			expect(readConversationSnapshot(database, conversation.id)?.activeGenerations).toHaveLength(1);
 
 			// SAFETY: this test controls the accepted response shape.
 			const accepted = await acceptedResponse.json() as { generationId: number };
@@ -230,7 +227,7 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -292,14 +289,14 @@ describe("Resumable generation transport", () => {
 			generationId: accepted.generationId,
 		}));
 		expect(providerSignal?.aborted).toBe(true);
-		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
+		const snapshot = readConversationSnapshot(database, conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages).toHaveLength(1);
 		expect(snapshot?.messages[0]?.variants[0]?.content).toBe("Stop me.");
 	});
 
 	test("disconnecting the initiating stream leaves the controlled provider running", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Disconnect Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -356,7 +353,7 @@ describe("Resumable generation transport", () => {
 		// A second client can attach from the beginning while the first one is
 		// gone; releasing the fake provider proves the generation was not tied to
 		// the first Request signal.
-		const current = createConversationModule(database).getSnapshot(conversation.id);
+		const current = readConversationSnapshot(database, conversation.id);
 		const generationId = current?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Active Generation missing.");
 		const observer = await app.handle(new Request(
@@ -371,8 +368,8 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
-		const conversationModule = createConversationModule(database);
-		const conversation = conversationModule.create({
+		const conversationModule = database;
+		const conversation = createConversation(conversationModule, {
 			name: "Restart Recovery Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -426,7 +423,7 @@ describe("Resumable generation transport", () => {
 		expect(summaryResponse.status).toBe(200);
 		expect(summary.activeGenerations).toEqual([]);
 
-		const recoveredMessage = conversationModule.getSnapshot(conversation.id)?.messages.at(-1);
+		const recoveredMessage = readConversationSnapshot(conversationModule, conversation.id)?.messages.at(-1);
 		const recoveredVariant = recoveredMessage?.variants[0];
 		if (recoveredMessage === undefined || recoveredVariant === undefined) {
 			throw new Error("Recovered terminal Variant missing.");

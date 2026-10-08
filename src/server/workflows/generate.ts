@@ -1,6 +1,14 @@
+import {
+	readConversationRevision,
+	removeConversationGeneration,
+	checkpointConversationGeneration,
+	resolveConversationGeneration,
+	acceptConversationTailGeneration,
+	acceptConversationContinuationGeneration,
+	acceptConversationSiblingGeneration,
+} from "../conversation";
 import type { Database } from "bun:sqlite";
 import {
-	createConversationModule,
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
 	type AcceptedTailGeneration,
@@ -33,8 +41,8 @@ export interface GenerationInput extends GenerationAttemptInput {
 }
 
 export async function runGenerationLifecycle(database: Database, input: GenerationInput): Promise<AcceptedGenerationRecord> {
-	const conversation = createConversationModule(database);
-	const revision = conversation.getRevision(input.conversationId);
+	const conversation = database;
+	const revision = readConversationRevision(conversation, input.conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.expectedRevision !== undefined && revision !== input.expectedRevision) {
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
@@ -54,10 +62,10 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 		// Acceptance is authoritative even when an observing caller disconnects.
 	}
 	return runAcceptedGeneration(input, modelRequestFor(capture, input), {
-		remove: () => { conversation.removeGeneration({ conversationId: input.conversationId, generationId: accepted.generationId }); },
+		remove: () => { removeConversationGeneration(conversation, { conversationId: input.conversationId, generationId: accepted.generationId }); },
 		resolve: (outcome) => {
-			conversation.checkpointGeneration({ conversationId: input.conversationId, generationId: accepted.generationId, content: outcome.content, reasoning: outcome.reasoning });
-			const resolved = conversation.resolveGeneration({
+			checkpointConversationGeneration(conversation, { conversationId: input.conversationId, generationId: accepted.generationId, content: outcome.content, reasoning: outcome.reasoning });
+			const resolved = resolveConversationGeneration(conversation, {
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
@@ -73,17 +81,17 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 }
 
 function acceptCapturedGeneration(database: Database, input: GenerationInput, capture: CapturedGeneration, timestamp: string): AcceptedGenerationRecord {
-	const conversation = createConversationModule(database);
+	const conversation = database;
 	const fields = capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp });
 	switch (capture.target.kind) {
 		case "send":
 			if (input.expectedRevision === undefined || capture.facts.kind !== "send") throw new Error("Send capture is incomplete.");
-			return conversation.acceptTailGeneration({ ...fields, expectedRevision: input.expectedRevision, humanContent: capture.target.content, reuseHumanMessageId: capture.facts.reuseHumanMessageId });
+			return acceptConversationTailGeneration(conversation, { ...fields, expectedRevision: input.expectedRevision, humanContent: capture.target.content, reuseHumanMessageId: capture.facts.reuseHumanMessageId });
 		case "continuation":
 			if (input.expectedRevision === undefined || capture.facts.kind !== "continuation") throw new Error("Continuation capture is incomplete.");
-			return conversation.acceptContinuationGeneration({ ...fields, expectedRevision: input.expectedRevision, precedingMessageId: capture.facts.precedingMessageId, precedingVariantId: capture.facts.precedingVariantId, generationIntent: capture.facts.intent });
+			return acceptConversationContinuationGeneration(conversation, { ...fields, expectedRevision: input.expectedRevision, precedingMessageId: capture.facts.precedingMessageId, precedingVariantId: capture.facts.precedingVariantId, generationIntent: capture.facts.intent });
 		case "sibling":
-			return conversation.acceptSiblingGeneration({ ...fields, messageId: capture.target.messageId, generationIntent: { type: "sibling" } });
+			return acceptConversationSiblingGeneration(conversation, { ...fields, messageId: capture.target.messageId, generationIntent: { type: "sibling" } });
 	}
 }
 

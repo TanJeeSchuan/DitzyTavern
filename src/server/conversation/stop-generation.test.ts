@@ -1,10 +1,12 @@
+import { readVariantDetails, readConversationSnapshot, acceptConversationSiblingGeneration } from "./index";
+import {
+	createConversation,
+} from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import {
-	acceptConversationSiblingGeneration,
 	acceptConversationTailGeneration,
 	checkpointConversationGeneration,
-	createConversationModule,
 } from ".";
 // The raw durable stop transitions are private implementation details of the
 // Conversation module; only these durable-transaction tests reach them
@@ -14,7 +16,7 @@ import {
 	stopConversationGeneration,
 	stopConversationGenerations,
 } from "./commands/active-generation";
-import { openObservedDatabase, requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {
@@ -35,8 +37,8 @@ describe("explicit Conversation Generation Stop", () => {
 	afterEach(() => database.close());
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const created = module.create({
+		const module = database;
+		const created = createConversation(module, {
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -81,7 +83,7 @@ describe("explicit Conversation Generation Stop", () => {
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:01.000Z",
 		});
-		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
+		const stopped = readConversationSnapshot(database, input.created.id)!;
 		const modelMessage = stopped.messages.at(-1);
 		const variant = modelMessage?.variants[0];
 		if (modelMessage === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
@@ -94,7 +96,7 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
 		]);
-		expect(input.module.readVariantDetails(
+		expect(readVariantDetails(input.module, 
 			input.created.id,
 			modelMessage.id,
 			variant.id,
@@ -121,12 +123,12 @@ describe("explicit Conversation Generation Stop", () => {
 			removed: 0,
 			failed: 0,
 		});
-		const recoveredMessage = input.module.getSnapshot(input.created.id)?.messages.at(-1);
+		const recoveredMessage = readConversationSnapshot(input.module, input.created.id)?.messages.at(-1);
 		const recoveredVariant = recoveredMessage?.variants[0];
 		if (recoveredMessage === undefined || recoveredVariant === undefined) {
 			throw new Error("Recovered Variant missing.");
 		}
-		expect(input.module.readVariantDetails(
+		expect(readVariantDetails(input.module, 
 			input.created.id,
 			recoveredMessage.id,
 			recoveredVariant.id,
@@ -145,7 +147,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
+		const stopped = readConversationSnapshot(database, input.created.id)!;
 
 		expect(stopped.activeGenerations).toEqual([]);
 		expect(stopped.messages).toHaveLength(2);
@@ -186,7 +188,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
+		const stopped = readConversationSnapshot(database, input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 		const stoppedMessage = stopped.messages[0];
 		const stoppedVariant = variants[1];
@@ -201,7 +203,7 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);
-		expect(input.module.readVariantDetails(
+		expect(readVariantDetails(input.module, 
 			input.created.id,
 			stoppedMessage.id,
 			stoppedVariant.id,
@@ -220,7 +222,7 @@ describe("explicit Conversation Generation Stop", () => {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
-		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
+		const stopped = readConversationSnapshot(database, input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 
 		expect(stopped.activeGenerations).toEqual([]);
@@ -233,7 +235,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const input = setup();
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		const accept = (timestamp: string) => input.module.acceptSiblingGeneration({
+		const accept = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp,
@@ -247,7 +249,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 		const first = accept("2026-08-27T00:00:01.000Z");
 		const second = accept("2026-08-27T00:00:02.000Z");
-		const revisionBeforeStop = input.module.getSnapshot(input.created.id)?.revision;
+		const revisionBeforeStop = readConversationSnapshot(input.module, input.created.id)?.revision;
 
 		const stopped = stopConversationGenerations(database, {
 			conversationId: input.created.id,

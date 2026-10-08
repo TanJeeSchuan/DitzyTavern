@@ -1,13 +1,18 @@
+import {
+	acceptConversationTailGeneration,
+	acceptConversationSiblingGeneration,
+	readConversationSnapshot,
+	resolveConversationGeneration,
+} from "../conversation";
+import {
+	createConversation,
+} from "../conversation";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { processStateFor } from "../application/process-state";
 import { createConnectionSettingsModule } from "../connection-settings";
-import {
-	ConversationNotFoundError,
-	checkpointConversationGeneration,
-	createConversationModule,
-} from "../conversation";
-import { openObservedDatabase, requireSnapshot } from "../conversation/test-fixtures";
+import { ConversationNotFoundError, checkpointConversationGeneration } from "../conversation";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { gracefullyShutdownGenerations } from "../workflows/generation-recovery";
 import {
 	generationRuntimeFor,
@@ -57,10 +62,10 @@ describe("GenerationCoordinator", () => {
 	// Generation results carry the Conversation header; Message assertions
 	// re-read the full snapshot immediately after the attempt they follow.
 	const currentSnapshot = (conversationId: number) =>
-		requireSnapshot(createConversationModule(database), conversationId);
+		requireSnapshot(database, conversationId);
 
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Coordinator Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -119,7 +124,7 @@ describe("GenerationCoordinator", () => {
 	});
 
 	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Shutdown Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -160,7 +165,7 @@ describe("GenerationCoordinator", () => {
 	}, 10_000);
 
 	test("stops a running attempt through one application entrance", async () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Coordinator Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -213,7 +218,7 @@ describe("GenerationCoordinator", () => {
 		expect(started.runtime.state.status).toBe("stopped");
 		expect(providerSignal?.aborted).toBe(true);
 		await expect(started.result).rejects.toThrow();
-		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
+		const snapshot = readConversationSnapshot(database, conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages).toHaveLength(1);
 	});
@@ -257,8 +262,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const conversation = module.create({
+		const module = database;
+		const conversation = createConversation(module, {
 			name: "Stop lifecycle",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -273,7 +278,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		input.module.acceptTailGeneration({
+		acceptConversationTailGeneration(input.module, {
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -288,7 +293,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		});
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
-		input.module.acceptSiblingGeneration({
+		acceptConversationSiblingGeneration(input.module, {
 			conversationId: input.conversation.id,
 			messageId,
 			timestamp,
@@ -322,7 +327,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const runtime = startRuntime(input.conversation.id, accepted, {
 			onStop: () => {
 				// Observed by the real runtime during its own stop() call.
-				const active = input.module.getSnapshot(input.conversation.id)?.activeGenerations ?? [];
+				const active = readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations ?? [];
 				activeAtAbort.push(...active.map((entry) => entry.generationId));
 			},
 		});
@@ -339,7 +344,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		// followed it before the runtime settled terminal.
 		expect(activeAtAbort).toEqual([accepted.generationId]);
 		expect(runtime.state.status).toBe("stopped");
-		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
+		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing when no runtime exists and the durable target is gone", async () => {
@@ -349,7 +354,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const outcome = await coordinator.stopGeneration(input.conversation.id, 404_404);
 
 		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(404_404);
-		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
+		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 	});
 
 	test("Stop stops nothing and never touches durable state when the runtime belongs to another Conversation", async () => {
@@ -364,7 +369,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(accepted.generationId);
 		// The addressed Conversation has no such Generation; durable state is
 		// never consulted under another Conversation's name.
-		expect(owner.module.getSnapshot(owner.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
 		expect(runtime.isStopRequested).toBe(false);
 	});
@@ -387,7 +392,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 		// The durable transition never ran: the Active Generation survives so
 		// a later Stop cannot settle from stale output.
-		expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toHaveLength(1);
+		expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
 	});
 
@@ -410,7 +415,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 					...output,
 				}),
 			onStop: () => {
-				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
+				activeAtAbort.push(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
 		const secondRuntime = startRuntime(input.conversation.id, second, {
@@ -421,7 +426,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 					...output,
 				}),
 			onStop: () => {
-				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
+				activeAtAbort.push(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
 		// Un-checkpointed provider output on both runtimes: Stop All's forced
@@ -445,7 +450,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(firstRuntime.state.status).toBe("stopped");
 		expect(secondRuntime.state.status).toBe("stopped");
 		// The flushed pending output survives in the stopped Variants.
-		const snapshot = input.module.getSnapshot(input.conversation.id);
+		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
 		const contents = (snapshot?.messages ?? []).flatMap((message) => message.variants.map((variant) => variant.content));
 		expect(contents).toContain("First keeps this.");
 		expect(contents).toContain("Second keeps this.");
@@ -478,7 +483,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const runtime = startRuntime(input.conversation.id, accepted);
 		// The provider wins the race: the Generation resolves durably and the
 		// terminal runtime lingers only for its replay window.
-		input.module.resolveGeneration({
+		resolveConversationGeneration(input.module, {
 			conversationId: input.conversation.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:05.000Z",
@@ -518,8 +523,8 @@ describe("Generation Coordinator terminal races", () => {
 	afterEach(() => { processStateFor(database).dispose(); database.close(); });
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const conversation = module.create({
+		const module = database;
+		const conversation = createConversation(module, {
 			name: "Terminal race",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -534,7 +539,7 @@ describe("Generation Coordinator terminal races", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		input.module.acceptTailGeneration({
+		acceptConversationTailGeneration(input.module, {
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -560,7 +565,7 @@ describe("Generation Coordinator terminal races", () => {
 			variantId: accepted.provisionalVariantId,
 			startedAt: "2026-08-27T00:00:00.000Z",
 			onStop: () => {
-				input.module.resolveGeneration({
+				resolveConversationGeneration(input.module, {
 					conversationId: input.conversation.id,
 					generationId: accepted.generationId,
 					timestamp: "2026-08-27T00:00:01.000Z",
@@ -579,7 +584,7 @@ describe("Generation Coordinator terminal races", () => {
 		expect(outcome.outcome).toBe("not-stoppable");
 		expect(runtime.state.status).toBe("complete");
 		expect(terminalStates).toEqual(["complete"]);
-		const snapshot = input.module.getSnapshot(input.conversation.id);
+		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages.at(-1)?.variants).toHaveLength(1);
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Provider won.");
@@ -594,7 +599,7 @@ describe("Generation Coordinator terminal races", () => {
 		// historical Control pair makes sibling acceptance eligible.
 		const target = input.conversation.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		const acceptSibling = (timestamp: string) => input.module.acceptSiblingGeneration({
+		const acceptSibling = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
 			conversationId: input.conversation.id,
 			messageId: target.id,
 			timestamp,
@@ -618,7 +623,7 @@ describe("Generation Coordinator terminal races", () => {
 			onStop: () => {
 				// Stop All must secure the durable Conversation transition before
 				// asking this provider attempt to abort.
-				expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
+				expect(readConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
 			},
 		});
 		const stopRuntime = generationRuntimeFor(database).start({
@@ -646,7 +651,7 @@ describe("Generation Coordinator terminal races", () => {
 		expect(stopRuntime.state.status).toBe("stopped");
 		expect(providerTerminalStates).toEqual(["stopped"]);
 		expect(stopTerminalStates).toEqual(["stopped"]);
-		const snapshot = input.module.getSnapshot(input.conversation.id);
+		const snapshot = readConversationSnapshot(input.module, input.conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages[0]?.variants.map((variant) => variant.content)).toEqual(["Original."]);
 		expect(snapshot?.messages[0]?.variants.filter((variant) => variant.selected)).toHaveLength(1);

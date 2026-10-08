@@ -1,7 +1,8 @@
+import { createConversation } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationModule, type ConversationModule, type ConversationSnapshot } from "../conversation";
-import { openObservedDatabase, applyCommand } from "../conversation/test-fixtures";
+import { type ConversationSnapshot } from "../conversation";
+import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { listChatSummaries } from "./chat";
 
 const prompt = {
@@ -14,16 +15,16 @@ const prompt = {
 
 describe("Chat list summaries", () => {
 	let database: Database;
-	let module: ConversationModule;
+	let module: Database;
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		module = createConversationModule(database);
+		module = database;
 	});
 	afterEach(() => database.close());
 
 	const createChat = (name: string, names: string[]) =>
-		module.create({
+		createConversation(module, {
 			name,
 			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, openings: [] } })),
 			control: { human: 0, model: 1 },
@@ -94,7 +95,7 @@ describe("Chat list summaries", () => {
 	});
 
 	test("a Chat without Participants has no Portraits", () => {
-		const chat = module.create({ authorNote: "", name: "No Cast" });
+		const chat = createConversation(module, { authorNote: "", name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

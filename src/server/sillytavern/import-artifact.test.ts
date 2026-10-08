@@ -1,4 +1,5 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readConversationSnapshot, executeConversationCommand } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -8,7 +9,7 @@ import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
-import { createConversationModule, deleteConversation } from "../conversation";
+import { deleteConversation } from "../conversation";
 import {
 	artifactTable,
 	conversationDataTable,
@@ -278,7 +279,7 @@ describe("SillyTavern import artifacts", () => {
 	test("reports a missing or corrupt exact artifact as cleaned up while native Conversation behavior stays usable", () => {
 		const path = writeSource([header, first]);
 		const { conversation, artifact } = importChat(path);
-		const module = createConversationModule(database);
+		const module = database;
 
 		// Nonfatal disappearance: deleting the physical copy never throws
 		// and never impairs the native Conversation.
@@ -297,7 +298,7 @@ describe("SillyTavern import artifacts", () => {
 		).toBe("cleaned-up");
 
 		// The native Chat and its canonical archive remain fully usable.
-		const snapshot = module.getSnapshot(conversation.id);
+		const snapshot = readConversationSnapshot(module, conversation.id);
 		expect(snapshot?.id).toBe(conversation.id);
 		expect(snapshot?.playable).toBe(false);
 		expect(JSON.parse(findEntry(snapshot?.data ?? [], ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
@@ -309,7 +310,7 @@ describe("SillyTavern import artifacts", () => {
 		// Normal Conversation commands keep working after the disappearance.
 		const writer = snapshot?.cast[0];
 		expect(writer).toBeDefined();
-		const renamed = module.execute({
+		const renamed = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: snapshot?.revision ?? 0,
 			action: {

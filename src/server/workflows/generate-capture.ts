@@ -19,10 +19,10 @@ import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
 import { evaluateScopedLore, evaluateScopedLoreAsync, noLoreEvaluation, type ScopedLoreEvaluation } from "../lorebook/evaluation";
-import type { CastParticipantSnapshot } from "../conversation/types";
-import { readConversationSummaryFromConnection } from "../conversation/snapshot";
-import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
-import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
+import type { CastParticipantSnapshot } from "../conversation";
+import { readConversationSummaryFromConnection } from "../conversation";
+import { readConversationGenerationSettingsFromConnection } from "../conversation";
+import { readSelectedHistoryFromConnection } from "../conversation";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
@@ -30,7 +30,7 @@ import { generationPreparationFingerprint } from "./generation-preparation-finge
 import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
-import { runConversationReadTransaction } from "../conversation/commands/transaction";
+import { runConversationReadTransaction } from "../conversation";
 import {
 	compileGenerationPlan,
 	continuationIntentFor,

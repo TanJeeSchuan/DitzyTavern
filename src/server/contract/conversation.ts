@@ -1,5 +1,17 @@
 import { recoverConversationConflict } from "./domain-error-recovery";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
+import {
+	readConversationSummary,
+	readConversationRevision,
+	readConversationGenerationSettings,
+	readActiveGenerationDetails,
+	readVariantDetails,
+	readConversationPromptPreset,
+	readMacroVariables,
+	editMacroVariables,
+	readChatHistory,
+	executeConversationCommand,
+} from "../conversation";
 import type { Database } from "bun:sqlite";
 
 import { Elysia, t } from "elysia";
@@ -7,10 +19,8 @@ import { Elysia, t } from "elysia";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	createConversationModule,
 	deleteConversation,
 	type ConversationAction,
-	type ConversationModule,
 } from "../conversation";
 import {
 	createGenerationCoordinator,
@@ -65,7 +75,7 @@ import {
 	previewRecordFor,
 	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
-import { readMemorySourceAvailability } from "../conversation/generation-details";
+import { readMemorySourceAvailability } from "../conversation";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
@@ -139,9 +149,9 @@ const deleteResponse = {
 
 const readConversationOr404 = <T>(
 	database: Database,
-	read: (conversationModule: ConversationModule) => T | undefined,
+	read: (conversationDatabase: Database) => T | undefined,
 ): T | ReturnType<typeof notFoundResponse> => {
-	const value = read(createConversationModule(database));
+	const value = read(database);
 	return value === undefined ? notFoundResponse() : value;
 };
 
@@ -201,7 +211,7 @@ const currentConversationRevision = (
 	database: Database,
 	conversationId: number,
 ): number => {
-	const revision = createConversationModule(database).getRevision(conversationId);
+	const revision = readConversationRevision(database, conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
 	return revision;
 };
@@ -304,7 +314,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/preview",
 			async ({ params, body }) => {
 				try {
-					const settings = createConversationModule(database).getGenerationSettings(params.id);
+					const settings = readConversationGenerationSettings(database, params.id);
 					if (settings === undefined) throw new ConversationNotFoundError(params.id);
 					const common = {
 						connection: generationCoordinator.resolveTransport(database, settings.connectionProfileId, true)?.connection ?? null,
@@ -361,7 +371,7 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						conversationModule.readActiveGenerationDetails(
+						readActiveGenerationDetails(conversationModule, 
 							params.id,
 							params.generationId,
 						),
@@ -380,7 +390,7 @@ export const createConversationRoutes = (
 			({ params }) => {
 				try {
 					return readConversationOr404(database, (conversationModule) =>
-						conversationModule.readVariantDetails(
+						readVariantDetails(conversationModule, 
 							params.id,
 							params.messageId,
 							params.variantId,
@@ -399,7 +409,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id",
 			({ params }) =>
 				readConversationOr404(database, (conversationModule) => {
-					return conversationModule.getSummary(params.id);
+					return readConversationSummary(conversationModule, params.id);
 				}),
 			{
 				params: conversationIdParams,
@@ -412,7 +422,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/prompt-preset",
 			({ params }) => {
-				const preset = createConversationModule(database).getPromptPreset(params.id);
+				const preset = readConversationPromptPreset(database, params.id);
 				return preset ?? notFoundResponse();
 			},
 			{
@@ -427,7 +437,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/macro-variables",
 			({ params, query, status }) => {
 				try {
-					const variables = createConversationModule(database).readMacroVariables(params.id, {
+					const variables = readMacroVariables(database, params.id, {
 							position: query.position,
 							promptPresetId: query.promptPresetId,
 						});
@@ -446,7 +456,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/macro-variables",
 			({ params, body }) => {
 				try {
-					const edited = createConversationModule(database).editMacroVariables({
+					const edited = editMacroVariables(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							promptPresetId: body.promptPresetId,
@@ -459,7 +469,7 @@ export const createConversationRoutes = (
 				} catch (error) {
 					return presentDomainError(error,
 						macroVariablesEditResponse,
-						recoverConversationConflict(() => createConversationModule(database).getSummary(params.id)));
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
@@ -472,7 +482,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/history",
 			({ params, query }) =>
 				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readHistory(params.id, {
+					readChatHistory(conversationModule, params.id, {
 						page: query.page,
 						aroundMessageId: query.aroundMessageId,
 						pageSize: query.pageSize,
@@ -490,7 +500,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generation-settings",
 			({ params, status }) => {
-				const settings = createConversationModule(database).getGenerationSettings(params.id);
+				const settings = readConversationGenerationSettings(database, params.id);
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
@@ -581,7 +591,7 @@ export const createConversationRoutes = (
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
-					const conversation = createConversationModule(database).execute({
+					const conversation = executeConversationCommand(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
@@ -593,7 +603,7 @@ export const createConversationRoutes = (
 				} catch (error) {
 					return presentDomainError(error,
 						commandResponse,
-						recoverConversationConflict(() => createConversationModule(database).getSummary(params.id)));
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
@@ -619,7 +629,7 @@ export const createConversationRoutes = (
 				} catch (error) {
 					return presentDomainError(error,
 						addCastCharacterResponse,
-						recoverConversationConflict(() => createConversationModule(database).getSummary(params.id)));
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{
@@ -645,7 +655,7 @@ export const createConversationRoutes = (
 				} catch (error) {
 					return presentDomainError(error,
 						saveParticipantResponse,
-						recoverConversationConflict(() => createConversationModule(database).getSummary(params.id)));
+						recoverConversationConflict(() => readConversationSummary(database, params.id)));
 				}
 			},
 			{

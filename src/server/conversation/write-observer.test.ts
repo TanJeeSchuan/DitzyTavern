@@ -1,12 +1,8 @@
+import { createConversation, readConversationSnapshot } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import {
-	ConversationWriteObserverMissingError,
-	createConversationModule,
-	deleteConversation,
-	observeConversationWrites,
-} from ".";
+import { ConversationWriteObserverMissingError, deleteConversation, observeConversationWrites } from ".";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 
 const prompt = {
@@ -36,8 +32,8 @@ describe("Conversation write observer composition contract", () => {
 	});
 
 	const createChatWithVariant = (db: Database) => {
-		const module = createConversationModule(db);
-		const created = module.create({
+		const module = db;
+		const created = createConversation(module, {
 			name: "Observer Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -45,7 +41,7 @@ describe("Conversation write observer composition contract", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const snapshot = module.getSnapshot(created.id);
+		const snapshot = readConversationSnapshot(module, created.id);
 		const variantId = snapshot?.messages[0]?.variants[0]?.id;
 		if (variantId === undefined) throw new Error("Opening Variant missing.");
 		return { id: created.id, variantId };
@@ -56,7 +52,7 @@ describe("Conversation write observer composition contract", () => {
 		expect(() => deleteConversation(database, chat.id)).toThrow(
 			ConversationWriteObserverMissingError,
 		);
-		const after = createConversationModule(database).getSnapshot(chat.id);
+		const after = readConversationSnapshot(database, chat.id);
 		// The throwing delivery rolls the write back; the Chat still exists.
 		expect(after).not.toBeUndefined();
 		expect(after?.messages).toHaveLength(1);
@@ -77,7 +73,7 @@ describe("Conversation write observer composition contract", () => {
 		expect(report.database).toBe(database);
 		expect(report.change.conversationId).toBe(chat.id);
 		expect([...report.change.removedVariantIds]).toEqual([chat.variantId]);
-		expect(createConversationModule(database).getSnapshot(chat.id)).toBeUndefined();
+		expect(readConversationSnapshot(database, chat.id)).toBeUndefined();
 	});
 
 	test("compositions observe exactly their own database", () => {

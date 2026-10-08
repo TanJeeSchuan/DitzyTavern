@@ -28,7 +28,7 @@ import {
 	requireParticipant,
 	type ConversationDatabase,
 } from "../internal";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-defaults";
+import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../../database/schema";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,

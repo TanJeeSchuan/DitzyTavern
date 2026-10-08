@@ -11,7 +11,7 @@ import {
 	type CharacterDefinition,
 	createCharacterLibraryModule,
 } from "../character-library";
-import type { ParticipantDefinition } from "../conversation/types";
+import type { ParticipantDefinition } from "../conversation";
 import {
 	createNativeConversation,
 	type NewChatSeat,

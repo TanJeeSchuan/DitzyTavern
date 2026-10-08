@@ -44,7 +44,7 @@ import {
 	readParticipantConversationId,
 } from "../lorebook/attachments";
 import {
-	createConversationModule,
+	readConversationSummary,
 	executeConversationCommand,
 	type ConversationCommand,
 } from "../conversation";
@@ -145,7 +145,7 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 	} catch (error) {
 		return presentDomainError(error,
 			attachmentCommandResponse,
-			recoverConversationConflict(() => createConversationModule(database).getSummary(command.conversationId)));
+			recoverConversationConflict(() => readConversationSummary(database, command.conversationId)));
 	}
 };
 

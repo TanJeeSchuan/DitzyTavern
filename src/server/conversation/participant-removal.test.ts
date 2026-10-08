@@ -1,3 +1,4 @@
+import { createConversation, readConversationSnapshot, executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -10,17 +11,15 @@ import {
 } from "../database/schema";
 import { createCharacterLibraryModule } from "../character-library";
 import {
-	createConversationModule,
 	InvalidConversationCommandError,
 	ParticipantNotRemovableError,
 	SiblingVariantUnavailableError,
 	StaleConversationRevisionError,
 	type ConversationAction,
-	type ConversationModule,
 	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
-import { openObservedDatabase, applyCommand } from "./test-fixtures";
+import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
@@ -55,7 +54,7 @@ describe("Participant removal", () => {
 	});
 
 	const append = (
-		module: ConversationModule,
+		module: Database,
 		snapshot: ConversationSnapshot,
 		action: ConversationAction,
 	) =>
@@ -66,8 +65,8 @@ describe("Participant removal", () => {
 		});
 
 	const setup = () => {
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Removal Conversation",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -87,7 +86,7 @@ describe("Participant removal", () => {
 	// original model Participant becomes unseated (and removable) while the
 	// Conversation stays playable.
 	const unseatModel = (
-		module: ConversationModule,
+		module: Database,
 		snapshot: ConversationSnapshot,
 	) => {
 		const withThird = append(module, snapshot, {
@@ -103,7 +102,7 @@ describe("Participant removal", () => {
 	};
 
 	const unseatHuman = (
-		module: ConversationModule,
+		module: Database,
 		snapshot: ConversationSnapshot,
 	) => {
 		const withThird = append(module, snapshot, {
@@ -145,7 +144,7 @@ describe("Participant removal", () => {
 
 		// The rejected command committed nothing: Cast, seats, and revision
 		// are unchanged.
-		const reread = createConversationModule(database).getSnapshot(snapshot.id);
+		const reread = readConversationSnapshot(database, snapshot.id);
 		expect(reread?.cast).toEqual(snapshot.cast);
 		expect(reread?.revision).toBe(snapshot.revision);
 	});
@@ -153,14 +152,14 @@ describe("Participant removal", () => {
 	test("a stale or missing removal target fails with the typed outcomes", () => {
 		const { module, snapshot, humanId } = setup();
 		expect(() =>
-			module.execute({
+			executeConversationCommand(module, {
 				conversationId: snapshot.id,
 				expectedRevision: snapshot.revision + 99,
 				action: { type: "remove-participant", participantId: humanId },
 			}),
 		).toThrow(StaleConversationRevisionError);
 
-		const other = createConversationModule(database).create({
+		const other = createConversation(database, {
 			name: "Other",
 			participants: [
 				{ definition: adHoc("Outsider") },
@@ -281,8 +280,8 @@ describe("Participant removal", () => {
 			},
 		});
 
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Forked Removal",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -361,8 +360,8 @@ describe("Participant removal", () => {
 	test("an author-only reference keeps the tombstone alive", () => {
 		// No openings, so no greeting is created: the only reference to
 		// Writer will be the composed Message's Author Stamp.
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Composed History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -634,8 +633,8 @@ describe("Participant removal", () => {
 				openings: ["The lamp turns."],
 			},
 		});
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Source Deleted",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -666,7 +665,7 @@ describe("Participant removal", () => {
 
 		// The fork keeps its complete local Definition and its immutable
 		// provenance, and the tombstoned source still names the provenance.
-		const reread = createConversationModule(database).getSnapshot(snapshot.id);
+		const reread = readConversationSnapshot(database, snapshot.id);
 		const fork = reread?.cast.find((p) => p.id === modelId);
 		expect(fork?.name).toBe("Maren Voss");
 		expect(fork?.prompt).toEqual(source.prompt);
@@ -695,8 +694,8 @@ describe("Participant removal", () => {
 				openings: [],
 			},
 		});
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Final Reference",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -747,8 +746,8 @@ describe("Participant removal", () => {
 				openings: ["The lamp turns."],
 			},
 		});
-		const module = createConversationModule(database);
-		const snapshot = module.create({
+		const module = database;
+		const snapshot = createConversation(module, {
 			name: "Collected Source",
 			participants: [
 				{ definition: adHoc("Writer") },

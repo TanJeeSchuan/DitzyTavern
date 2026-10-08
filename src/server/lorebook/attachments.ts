@@ -12,11 +12,11 @@ import {
 	lorebookTable,
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
-import { findConversation, readActiveCast, readControlAssignment } from "../conversation/internal";
+import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
 import {
 	attachConversationLorebook,
 	saveConversationLoreSettings,
-} from "../conversation/commands/lore-attachments";
+} from "../conversation";
 import { StaleLoreAttachmentOwnerRevisionError } from "./errors";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";

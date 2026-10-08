@@ -1,4 +1,5 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { readChatHistory, executeConversationCommand, createConversation, readConversationSnapshot } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -7,7 +8,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { createConversationModule } from "../conversation";
 import { artifactTable, conversationDataTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
@@ -137,8 +137,8 @@ describe("graduated Chat history and Import Details", () => {
 			chatOnly("TANJS", [2]),
 		]);
 
-		const conversations = createConversationModule(database);
-		const history = conversations.readHistory(result.conversation.id, {
+		const conversations = database;
+		const history = readChatHistory(conversations, result.conversation.id, {
 			pageSize: 10,
 		});
 		expect(history?.cast.map((participant) => participant.name)).toEqual([
@@ -185,8 +185,8 @@ describe("graduated Chat history and Import Details", () => {
 			chatOnly("TANJS", [2]),
 		]);
 
-		const conversations = createConversationModule(database);
-		const before = conversations.readHistory(result.conversation.id, {
+		const conversations = database;
+		const before = readChatHistory(conversations, result.conversation.id, {
 			pageSize: 10,
 		});
 		const swipedMessage = before?.messages[1];
@@ -200,7 +200,7 @@ describe("graduated Chat history and Import Details", () => {
 
 		// Normal swipe navigation executes the existing revisioned Variant
 		// selection command: selection persists and later Messages are kept.
-		const applied = conversations.execute({
+		const applied = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: result.conversation.revision,
 			action: {
@@ -211,7 +211,7 @@ describe("graduated Chat history and Import Details", () => {
 		});
 		expect(applied.revision).toBe(result.conversation.revision + 1);
 
-		const after = conversations.readHistory(result.conversation.id, {
+		const after = readChatHistory(conversations, result.conversation.id, {
 			pageSize: 10,
 		});
 		const selection = after?.messages[1]?.variants;
@@ -239,8 +239,8 @@ describe("graduated Chat history and Import Details", () => {
 		const artifactPath = exactArtifactPath(result.conversation.id);
 		const bytesBefore = readFileSync(artifactPath);
 
-		const conversations = createConversationModule(database);
-		let snapshot = conversations.execute({
+		const conversations = database;
+		let snapshot = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: result.conversation.revision,
 			action: {
@@ -250,7 +250,7 @@ describe("graduated Chat history and Import Details", () => {
 				content: "Edited native text",
 			},
 		});
-		snapshot = conversations.execute({
+		snapshot = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: snapshot.revision,
 			action: {
@@ -261,7 +261,7 @@ describe("graduated Chat history and Import Details", () => {
 		});
 
 		// Native reads reflect the edits; both preserved sources stay frozen.
-		const history = conversations.readHistory(result.conversation.id, {
+		const history = readChatHistory(conversations, result.conversation.id, {
 			pageSize: 10,
 		});
 		expect(history?.messages[0]?.variants[0]?.content).toBe("Edited native text");
@@ -303,7 +303,7 @@ describe("graduated Chat history and Import Details", () => {
 		});
 
 		// A Chat without import provenance has no Import Details.
-		const native = createConversationModule(database).create({
+		const native = createConversation(database, {
 			name: "Native Chat",
 			participants: [{ definition: { name: "Writer", prompt: {
 				systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "",
@@ -325,8 +325,8 @@ describe("graduated Chat history and Import Details", () => {
 
 		// The exact bytes vanish; normal paginated reading still works.
 		rmSync(artifactPath, { force: true });
-		const conversations = createConversationModule(database);
-		const history = conversations.readHistory(result.conversation.id, {
+		const conversations = database;
+		const history = readChatHistory(conversations, result.conversation.id, {
 			pageSize: 10,
 		});
 		expect(history?.messages).toHaveLength(2);
@@ -343,7 +343,7 @@ describe("graduated Chat history and Import Details", () => {
 		});
 
 		// Normal commands keep working after provenance loss.
-		const applied = conversations.execute({
+		const applied = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: result.conversation.revision,
 			action: {
@@ -370,8 +370,8 @@ describe("graduated Chat history and Import Details", () => {
 	});
 
 	test("corrupt persisted provenance is explicit and never makes a Chat a prior import", () => {
-		const conversations = createConversationModule(database);
-		const corrupt = conversations.create({
+		const conversations = database;
+		const corrupt = createConversation(conversations, {
 			name: "Corrupt Import",
 			participants: [{
 				definition: {
@@ -414,7 +414,7 @@ describe("graduated Chat history and Import Details", () => {
 			filename: "corrupt.jsonl",
 			sha256: "corrupt-sha256",
 		})).toEqual({ exact: [], related: [] });
-		expect(conversations.readHistory(corrupt.id)?.messages).toHaveLength(1);
+		expect(readChatHistory(conversations, corrupt.id)?.messages).toHaveLength(1);
 	});
 
 	test("duplicate evidence in Import Details excludes this Chat and classifies related sources", async () => {
@@ -446,14 +446,14 @@ describe("graduated Chat history and Import Details", () => {
 			chatOnly("Rulership", [2]),
 		]);
 
-		const conversations = createConversationModule(database);
+		const conversations = database;
 		// Control assignment and Cast management work exactly like native
 				// Chats; nothing imported-specific blocks them. Import Control set the
 		// model seat on the second Participant, so assigning the human seat to
 		// it performs the atomic seat swap.
-		const snapshot = conversations.getSnapshot(result.conversation.id);
+		const snapshot = readConversationSnapshot(conversations, result.conversation.id);
 		expect(snapshot?.playable).toBe(true);
-		const changed = conversations.execute({
+		const changed = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: result.conversation.revision,
 			action: {

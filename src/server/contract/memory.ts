@@ -1,11 +1,11 @@
 import { recoverMemoryLabelsConflict } from "./domain-error-recovery";
 import { presentDomainError } from "./domain-error";
+import { readSelectedHistory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
 import { mergeMemoryLabels, setMemoryIdentity } from "../memory/labels";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup } from "../memory/collections";
-import { createConversationModule } from "../conversation";
 import {
 	conversationMemories,
 	conversationMemoryAllowance,
@@ -115,7 +115,7 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 			// read model, invoked inside startMemoryCatchup's transaction, and
 			// mapped onto Memory's captured-message contract.
 			const run = startMemoryCatchup(database, conversationId, () => {
-				const history = createConversationModule(database).readSelectedHistory(conversationId);
+				const history = readSelectedHistory(database, conversationId);
 				return history === undefined ? undefined : history.messages.flatMap((message) => message.variant === null ? [] : [{ messageId: message.id, variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content }]);
 			});
 			return { outcome: "queued" as const, run };

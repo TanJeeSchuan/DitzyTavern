@@ -1,8 +1,9 @@
-import { openObservedDatabase } from "../conversation/test-fixtures";
+import { createConversation, executeConversationCommand, readConversationSummary, readConversationSnapshot } from "../conversation";
+import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { createConversationModule, deleteConversation } from "../conversation";
+import { deleteConversation } from "../conversation";
 import { createConversationRoutes } from "../contract/conversation";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage, sweepOrphanedImages, InvalidImageError } from "../image";
@@ -31,7 +32,7 @@ describe("Portraits", () => {
 	};
 	const referenced = () => { sweepOrphanedImages(database); return database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash); };
 	const library = () => createCharacterLibraryModule(database);
-	const conversations = () => createConversationModule(database);
+	const conversations = () => database;
 
 	const writer = { name: "Writer", prompt, openings: [] };
 
@@ -72,13 +73,13 @@ describe("Portraits", () => {
 		expect(library().list()).toEqual([]);
 		expect(referenced()).toEqual([]);
 
-		const chat = conversations().create({ authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
-		expect(() => conversations().execute({
+		const chat = createConversation(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
+		expect(() => executeConversationCommand(conversations(), {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
 			action: { type: "add-participant", definition: { name: "Ghost", prompt, openings: [], portrait: { ...carried.portrait, hash: "f".repeat(64) } } },
 		})).toThrow(InvalidImageError);
-		expect(conversations().getSummary(chat.id)?.cast).toHaveLength(2);
+		expect(readConversationSummary(conversations(), chat.id)?.cast).toHaveLength(2);
 		expect(referenced()).toEqual([]);
 	});
 
@@ -91,14 +92,14 @@ describe("Portraits", () => {
 		library().execute(
 			{ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: { name: "Maren", prompt, openings: [], portrait: replacement.portrait } },
 		);
-		expect(conversations().getSummary(chat.id)?.cast[1]?.portrait).toEqual(original.portrait);
+		expect(readConversationSummary(conversations(), chat.id)?.cast[1]?.portrait).toEqual(original.portrait);
 		expect(referenced().sort()).toEqual([original.portrait.hash, replacement.portrait.hash].sort());
 	});
 
 	test("adding a Character to the Cast copies its Portrait", async () => {
 		const carried = await art(4);
 		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: carried.portrait } });
-		const chat = conversations().create({ authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
+		const chat = createConversation(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
 		const added = addCharacterToCast(database, {
 			conversationId: chat.id,
 			expectedConversationRevision: chat.revision,
@@ -139,7 +140,7 @@ describe("Portraits", () => {
 
 	test("a removed Participant's Messages fall back to the stamped name and its Portrait is orphaned", async () => {
 		const carried = await art(4);
-		const chat = conversations().create({
+		const chat = createConversation(conversations(), {
 			name: "Chat",
 			participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }, { definition: { ...writer, name: "Guest", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },
@@ -149,16 +150,16 @@ describe("Portraits", () => {
 		if (guest === undefined) throw new Error("Guest missing");
 		expect(referenced()).toEqual([carried.portrait.hash]);
 
-		const removed = conversations().execute({ conversationId: chat.id, expectedRevision: chat.revision, action: { type: "remove-participant", participantId: guest.id } });
+		const removed = executeConversationCommand(conversations(), { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "remove-participant", participantId: guest.id } });
 		expect(removed.cast.map((participant) => participant.name)).toEqual(["Writer", "Maren"]);
 		expect(referenced()).toEqual([]);
-		const message = conversations().getSnapshot(chat.id)?.messages[0];
+		const message = readConversationSnapshot(conversations(), chat.id)?.messages[0];
 		expect(message?.author).toMatchObject({ capturedName: "Guest", inCast: false });
 	});
 
 	test("a Portrait never enters a Prompt Plan", async () => {
 		const carried = await art(4);
-		const chat = conversations().create({
+		const chat = createConversation(conversations(), {
 			name: "Chat",
 			participants: [{ definition: { ...writer, portrait: carried.portrait } }, { definition: { ...writer, name: "Maren", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },

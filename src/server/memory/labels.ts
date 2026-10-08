@@ -1,9 +1,18 @@
+import { readSelectedPathForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray, isNull, min } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { conversationMemorySettingsTable, conversationTable, memoryCollectionTable, messageTable, participantTable } from "../database/schema";
-import { memoryCandidates, memoryIdentities, memoryLabelMerges, type MemoryCandidateJudgment, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "../../shared/contract/memory";
+import { conversationMemorySettingsTable, conversationTable, memoryCollectionTable, participantTable } from "../database/schema";
+import {
+	memoryCandidates,
+	memoryIdentities,
+	memoryLabelMerges,
+	type MemoryCandidateJudgment,
+	type MemoryIdentityCommand,
+	type MemoryLabelMerge,
+	type MemoryLabelMergeCommand,
+} from "../../shared/contract/memory";
 import { applyMemoryPeople } from "../../shared/memory-identity";
 import { abortMemoryWork } from "./work";
 
@@ -24,18 +33,11 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 	const db = drizzle(database);
 	const row = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
 	const cast = new Map<number, { id: number; names: string[] }>();
-	const names = db
-		.select({ id: participantTable.id, name: participantTable.name, formerName: messageTable.author_name })
-		.from(participantTable)
-		.leftJoin(messageTable, and(eq(messageTable.author_participant_id, participantTable.id), eq(messageTable.conversation_id, participantTable.conversation_id)))
-		.where(eq(participantTable.conversation_id, conversationId))
-		.groupBy(participantTable.id, messageTable.author_name)
-		.orderBy(asc(participantTable.position), asc(participantTable.id), min(messageTable.position), min(messageTable.id))
-		.all();
-	for (const { id, name, formerName } of names) {
-		const participant = cast.get(id) ?? { id, names: [name] };
-		if (formerName !== null && !participant.names.includes(formerName)) participant.names.push(formerName);
-		cast.set(id, participant);
+	const path = readSelectedPathForMemory(database, conversationId) ?? [];
+	const names = db.select({ id: participantTable.id, name: participantTable.name }).from(participantTable)
+		.where(eq(participantTable.conversation_id, conversationId)).orderBy(asc(participantTable.position), asc(participantTable.id)).all();
+	for (const { id, name } of names) {
+		cast.set(id, { id, names: [...new Set([name, ...path.flatMap((message) => message.authorParticipantId === id && message.author !== null ? [message.author] : [])])] });
 	}
 	return {
 		revision: row?.label_revision ?? 0,
@@ -48,11 +50,10 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[], state: ReturnType<typeof readMemoryLabelState>): MemoryCandidateJudgment[] =>
 	claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, state.cast, state.identities, state.merges) }));
 
-export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) =>
-	database.query<{ excluded: number }, [number, number]>(`
-		SELECT json_extract(s.identities, '$.' || m.author_participant_id || '.kind') = 'excluded' AS excluded
-		FROM messages m JOIN conversation_memory_settings s ON s.conversation_id = m.conversation_id
-		WHERE m.conversation_id = ? AND m.id = ?`).get(conversationId, messageId)?.excluded === 1;
+export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
+	const author = readSelectedPathForMemory(database, conversationId)?.find((message) => message.messageId === messageId)?.authorParticipantId;
+	return author !== undefined && author !== null && readMemoryLabelState(database, conversationId).identities[author]?.kind === "excluded";
+};
 
 const rewriteCollections = (database: Database, conversationId: number, state: ReturnType<typeof readMemoryLabelState>) => {
 	const db = drizzle(database);
@@ -87,11 +88,8 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 			.onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: values })
 			.run();
 		const excluded = Object.entries(state.identities).flatMap(([id, value]) => value.kind === "excluded" ? [Number(id)] : []);
-		const messages = db
-			.select({ id: messageTable.id })
-			.from(messageTable)
-			.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.author_participant_id, excluded)));
-		const removed = excluded.length === 0 ? [] : db
+		const messages = (readSelectedPathForMemory(database, conversationId) ?? []).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
+		const removed = messages.length === 0 ? [] : db
 			.delete(memoryCollectionTable)
 			.where(and(eq(memoryCollectionTable.conversation_id, conversationId), inArray(memoryCollectionTable.message_id, messages)))
 			.returning({ id: memoryCollectionTable.variant_id })

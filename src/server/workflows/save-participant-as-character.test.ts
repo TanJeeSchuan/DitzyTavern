@@ -1,3 +1,4 @@
+import { readConversationSnapshot, executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -12,12 +13,7 @@ import {
 	InvalidCharacterDefinitionError,
 } from "../character-library";
 import type { CharacterDefinition } from "../character-library";
-import {
-	ConversationNotFoundError,
-	createConversationModule,
-	ParticipantNotFoundError,
-	StaleConversationRevisionError,
-} from "../conversation";
+import { ConversationNotFoundError, ParticipantNotFoundError, StaleConversationRevisionError } from "../conversation";
 import { createNativeConversation, saveParticipantAsCharacter } from ".";
 
 const prompt = () => ({
@@ -100,7 +96,7 @@ describe("Save Participant as Character workflow", () => {
 		expect(library.get(result.character.id)?.revision).toBe(0);
 
 		// The Conversation and its revision are untouched by saving.
-		const reread = createConversationModule(database).getSnapshot(conversation.id);
+		const reread = readConversationSnapshot(database, conversation.id);
 		expect(reread?.revision).toBe(conversation.revision);
 		expect(reread?.cast).toEqual(conversation.cast);
 		expect(reread?.messages).toEqual(conversation.messages);
@@ -153,7 +149,7 @@ describe("Save Participant as Character workflow", () => {
 			participantId: participant.id,
 		});
 
-		const reread = createConversationModule(database).getSnapshot(conversation.id);
+		const reread = readConversationSnapshot(database, conversation.id);
 		const saved = reread?.cast.find((entry) => entry.id === participant.id);
 		// The original Participant and this Conversation did not change: same
 		// position, local Definition, no provenance, and the same revision.
@@ -190,7 +186,7 @@ describe("Save Participant as Character workflow", () => {
 
 		// A local edit makes the fork differ from its source, so the saved
 		// Character must come from the Participant, never from the source.
-		const edited = createConversationModule(database).execute({
+		const edited = executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -210,7 +206,7 @@ describe("Save Participant as Character workflow", () => {
 		expect(saved.character.openings).toEqual(fork.openings);
 		// ... with no reference to the Participant and no change to the
 		// source Character or the Conversation.
-		const reread = createConversationModule(database).getSnapshot(conversation.id);
+		const reread = readConversationSnapshot(database, conversation.id);
 		const unchanged = reread?.cast.find((entry) => entry.id === fork.id);
 		expect(unchanged?.name).toBe("Local Maren");
 		expect(unchanged?.sourceCharacterId).toBe(source.id);
@@ -225,7 +221,7 @@ describe("Save Participant as Character workflow", () => {
 		if (participant === undefined) throw new Error("Expected a model seat.");
 
 		// Another actor advances the Conversation after the client read.
-		createConversationModule(database).execute({
+		executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -251,7 +247,7 @@ describe("Save Participant as Character workflow", () => {
 		// Atomic: nothing was created and the Conversation did not move again.
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.cast,
+			readConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 
@@ -267,7 +263,7 @@ describe("Save Participant as Character workflow", () => {
 		).toThrow(ParticipantNotFoundError);
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+			readConversationSnapshot(database, conversation.id)?.revision,
 		).toBe(conversation.revision);
 	});
 
@@ -321,7 +317,7 @@ describe("Save Participant as Character workflow", () => {
 		// Atomic: the blank-name Character never leaks into the Library.
 		expect(countRows(characterTable)).toBe(0);
 		expect(
-			createConversationModule(database).getSnapshot(conversation.id)?.cast,
+			readConversationSnapshot(database, conversation.id)?.cast,
 		).toHaveLength(3);
 	});
 
@@ -343,7 +339,7 @@ describe("Save Participant as Character workflow", () => {
 			expectedRevision: character.revision,
 			name: "Library Rename",
 		});
-		const editedConversation = createConversationModule(database).execute({
+		const editedConversation = executeConversationCommand(database, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {

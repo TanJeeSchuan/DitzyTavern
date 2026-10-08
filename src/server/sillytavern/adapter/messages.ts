@@ -2,7 +2,7 @@ import type {
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
-} from "../../conversation/types";
+} from "../../conversation";
 import { SillyTavernImportError } from "../errors";
 import {
 	IMPORT_KEYS,

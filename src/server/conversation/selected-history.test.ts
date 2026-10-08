@@ -1,7 +1,7 @@
+import { createConversation, readSelectedHistory } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationModule } from "./index";
 import { macroWritesToData } from "../prompt-macros";
 
 const prompt = {
@@ -19,7 +19,7 @@ describe("Conversation selected history", () => {
 	afterEach(() => { database.close(); });
 
 	test("returns only the bounded selected path and requested Variant data", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Focused history",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -48,7 +48,7 @@ describe("Conversation selected history", () => {
 			})),
 		});
 
-		const read = createConversationModule(database).readSelectedHistory(conversation.id, {
+		const read = readSelectedHistory(database, conversation.id, {
 			position: 2,
 			conversationDataNamespace: "prompt-macro",
 			variantDataNamespace: "prompt-macro",
@@ -66,7 +66,7 @@ describe("Conversation selected history", () => {
 			{ namespace: "unrelated", key: "large", value: "discarded" },
 		);
 
-		const target = createConversationModule(database).readSelectedHistory(conversation.id, {
+		const target = readSelectedHistory(database, conversation.id, {
 			targetMessageId: read?.messages[1]?.id,
 			variantDataNamespace: "prompt-macro",
 			variantDataKeys: ["write:1"],

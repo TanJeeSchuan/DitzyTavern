@@ -25,7 +25,7 @@ import {
 	storeExactArtifactCopy,
 } from "../artifact";
 import type { ArtifactMetadata } from "../artifact";
-import type { ConversationSnapshot } from "../conversation/types";
+import type { ConversationSnapshot } from "../conversation";
 import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,

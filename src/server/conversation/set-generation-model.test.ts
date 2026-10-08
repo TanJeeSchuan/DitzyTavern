@@ -1,11 +1,8 @@
+import { createConversation, executeConversationCommand, readConversationGenerationSettings } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import {
-	createConversationModule,
-	InvalidConversationCommandError,
-	StaleConversationRevisionError,
-} from ".";
+import { InvalidConversationCommandError, StaleConversationRevisionError } from ".";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 import {
 	GENERATION_SETTINGS_FIELDS,
@@ -21,8 +18,8 @@ const prompt = {
 	postHistoryInstruction: "",
 };
 
-const createConversation = (database: Database, name: string) =>
-	createConversationModule(database).create({
+const createTestConversation = (database: Database, name: string) =>
+	createConversation(database, {
 		name,
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },
@@ -86,22 +83,22 @@ const createConnection = (database: Database): number => {
 
 	test("changes only the model selection between full writes", () => {
 		const connectionProfileId = createConnection(database);
-		const conversation = createConversation(database, "Focused model command");
-		const module = createConversationModule(database);
-		module.execute({
+		const conversation = createTestConversation(database, "Focused model command");
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "update-generation-settings", settings: configuredSettings() },
 		});
-		const before = module.getGenerationSettings(conversation.id);
+		const before = readConversationGenerationSettings(module, conversation.id);
 		if (before === undefined) throw new Error("Stored settings missing.");
 
-		const updated = module.execute({
+		const updated = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision + 1,
 			action: { type: "set-generation-model", connectionProfileId, modelId: "  qwen3-max  " },
 		});
-		const stored = module.getGenerationSettings(conversation.id);
+		const stored = readConversationGenerationSettings(module, conversation.id);
 		if (stored === undefined) throw new Error("Stored settings missing.");
 
 		// The owning domain adapter owns trimming, so the submitted model ID
@@ -118,64 +115,64 @@ const createConnection = (database: Database): number => {
 
 	test("creates the default settings under the submitted model when none are stored", () => {
 		const connectionProfileId = createConnection(database);
-		const conversation = createConversation(database, "Unconfigured model command");
-		const module = createConversationModule(database);
+		const conversation = createTestConversation(database, "Unconfigured model command");
+		const module = database;
 
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
 		});
 
-		const stored = module.getGenerationSettings(conversation.id);
+		const stored = readConversationGenerationSettings(module, conversation.id);
 		expect(stored).toEqual({ ...DEFAULT_CONVERSATION_GENERATION_SETTINGS, connectionProfileId, modelId: "qwen3-max" });
 	});
 
 	test("clears the Conversation selection when its Connection Profile is deleted", () => {
 		const connectionProfileId = createConnection(database);
-		const conversation = createConversation(database, "Deleted connection");
+		const conversation = createTestConversation(database, "Deleted connection");
 		const connections = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(3) });
 
-		expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBe(
+		expect(readConversationGenerationSettings(database, conversation.id)?.connectionProfileId).toBe(
 			connectionProfileId,
 		);
 		connections.deleteProfile({ expectedRevision: 1, profileId: connectionProfileId });
-		expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBeNull();
+		expect(readConversationGenerationSettings(database, conversation.id)?.connectionProfileId).toBeNull();
 	});
 
 	test("rejects a blank model ID and keeps the stored settings", () => {
 		const connectionProfileId = createConnection(database);
-		const conversation = createConversation(database, "Blank model command");
-		const module = createConversationModule(database);
-		module.execute({
+		const conversation = createTestConversation(database, "Blank model command");
+		const module = database;
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "update-generation-settings", settings: configuredSettings() },
 		});
 
 		expect(() =>
-			module.execute({
+			executeConversationCommand(module, {
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision + 1,
 				action: { type: "set-generation-model", connectionProfileId, modelId: "   " },
 			}),
 		).toThrow(InvalidConversationCommandError);
-		expect(module.getGenerationSettings(conversation.id)?.modelId).toBe("deepseek-chat");
+		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe("deepseek-chat");
 	});
 
 	test("requires the current Conversation revision", () => {
 		const connectionProfileId = createConnection(database);
-		const conversation = createConversation(database, "Stale model command");
-		const module = createConversationModule(database);
+		const conversation = createTestConversation(database, "Stale model command");
+		const module = database;
 
 		expect(() =>
-			module.execute({
+			executeConversationCommand(module, {
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision + 5,
 				action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
 			}),
 		).toThrow(StaleConversationRevisionError);
-		expect(module.getGenerationSettings(conversation.id)?.modelId).toBe(
+		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe(
 			DEFAULT_CONVERSATION_GENERATION_SETTINGS.modelId,
 		);
 	});

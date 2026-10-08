@@ -1,10 +1,8 @@
+import { createConversation, readConversationGenerationSettings, executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import {
-	createConversationModule,
-	InvalidConversationCommandError,
-} from ".";
+import { InvalidConversationCommandError } from ".";
 import {
 	GENERATION_SETTINGS_FIELDS,
 	type CanonicalGenerationSettings,
@@ -58,7 +56,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("persists the default and configured Safety allowance", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -66,10 +64,10 @@ describe("Conversation Generation Settings", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
+		const module = database;
 
-		expect(module.getGenerationSettings(conversation.id)?.safetyAllowance).toBe(500);
-		const updated = module.execute({
+		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(500);
+		const updated = executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -78,12 +76,12 @@ describe("Conversation Generation Settings", () => {
 			},
 		});
 
-		expect(module.getGenerationSettings(conversation.id)?.safetyAllowance).toBe(777);
+		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(777);
 		expect(updated.revision).toBe(1);
 	});
 
 	test("persists and validates the parallel Sibling Generation limit", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Sibling limit settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -91,9 +89,9 @@ describe("Conversation Generation Settings", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
-		expect(module.getGenerationSettings(conversation.id)?.siblingGenerationLimit).toBe(4);
-		module.execute({
+		const module = database;
+		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(4);
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -101,11 +99,11 @@ describe("Conversation Generation Settings", () => {
 				settings: completeSettings({ siblingGenerationLimit: 2 }),
 			},
 		});
-		expect(module.getGenerationSettings(conversation.id)?.siblingGenerationLimit).toBe(2);
+		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(2);
 	});
 
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Invalid budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -113,11 +111,11 @@ describe("Conversation Generation Settings", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
+		const module = database;
 		const settings = completeSettings({ contextLimit: 4096, responseBudget: 128 });
 
 		for (const safetyAllowance of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-			expect(() => module.execute({
+			expect(() => executeConversationCommand(module, {
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision,
 				action: {
@@ -126,17 +124,17 @@ describe("Conversation Generation Settings", () => {
 				},
 			})).toThrow(InvalidConversationCommandError);
 		}
-		expect(module.getGenerationSettings(conversation.id)?.safetyAllowance).toBe(500);
+		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(500);
 	});
 
 	test("returns undefined for a nonexistent Conversation", () => {
-		const module = createConversationModule(database);
+		const module = database;
 
-		expect(module.getGenerationSettings(9999)).toBeUndefined();
+		expect(readConversationGenerationSettings(module, 9999)).toBeUndefined();
 	});
 
 	test("round-trips every canonical field through the settings write and read", () => {
-		const conversation = createConversationModule(database).create({
+		const conversation = createConversation(database, {
 			name: "Round-trip settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -145,7 +143,7 @@ describe("Conversation Generation Settings", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const module = createConversationModule(database);
+		const module = database;
 		const submitted: CanonicalGenerationSettings = {
 			modelId: "  round-trip-model  ",
 			temperature: 0.5,
@@ -167,12 +165,12 @@ describe("Conversation Generation Settings", () => {
 			},
 		};
 
-		module.execute({
+		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "update-generation-settings", settings: submitted },
 		});
-		const stored = module.getGenerationSettings(conversation.id);
+		const stored = readConversationGenerationSettings(module, conversation.id);
 		if (stored === undefined) throw new Error("Stored settings missing.");
 
 		// The domain adapter owns trimming, so the model ID survives normalized
