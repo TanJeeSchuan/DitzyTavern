@@ -204,13 +204,15 @@ export class GenerationCoordinator {
 		const database = this.database;
 		const runtimes = generationRuntimeFor(database);
 		const runtime = runtimes.get(generationId);
-		// ==[HUMAN APPROVED]== The runtime registry knows which Conversation owns this Generation.
+		// @approved
+		//  The runtime registry knows which Conversation owns this Generation.
 		// A mismatch means the addressed Conversation has no such Generation;
 		// durable state is never consulted under another Conversation's name.
 		if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
 			return { outcome: "not-stoppable", generationId } as const;
 		}
-		// ==[HUMAN APPROVED]== A failed checkpoint must prevent a Stop from using stale output.
+		// @approved
+		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.stop();
 		const conversation = createConversationModule(database);
 		try {
@@ -222,7 +224,8 @@ export class GenerationCoordinator {
 				error instanceof InvalidConversationCommandError ||
 				error instanceof ConversationNotFoundError
 			) {
-				// ==[HUMAN APPROVED]== Nothing durable was stopped: the Active Generation vanished
+				// @approved
+				//  Nothing durable was stopped: the Active Generation vanished
 				// while this Stop was in flight (the natural-completion race),
 				// or the Conversation is gone and the provider attempt cannot
 				// durably commit either. Release the Stop request so the
@@ -243,7 +246,8 @@ export class GenerationCoordinator {
 	async stopAllGenerations(conversationId: number): Promise<GenerationStopAllOutcome> {
 		const database = this.database;
 		const runtimes = generationRuntimeFor(database);
-		// ==[HUMAN APPROVED]== Forced checkpoints without aborting first. The durable transition
+		// @approved
+		//  Forced checkpoints without aborting first. The durable transition
 		// below owns the complete target set; runtimes are settled only after
 		// its commit succeeds.
 		runtimes.flushAll(conversationId);
@@ -366,17 +370,19 @@ export class GenerationCoordinator {
 						reason: error instanceof Error ? error.message : "Generation failed.",
 						kind,
 						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						// Protocol failures are local refusals raised before any request reaches the provider.
+						// ==[HUMAN APPROVED]== Protocol failures are local refusals raised before any request reaches the provider.
 						imageModel: kind !== "cancelled" && kind !== "protocol" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
 							? { connectionProfileId: transport.connection.profileId, modelId: capturedRequest.modelId }
 							: undefined,
 					});
 				} catch {
-					// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
+					// @approved
+					//  Keep uncheckpointed output in the active runtime for a later Stop.
 				}
 				throw error;
 			});
-		// ==[HUMAN APPROVED]== The HTTP adapter intentionally returns after acceptance. Consume the
+		// @approved
+		//  The HTTP adapter intentionally returns after acceptance. Consume the
 		// detached rejection here while exposing the terminal Promise to tests
 		// and non-HTTP callers that want to await it.
 		runtimeRegistry.track(result);

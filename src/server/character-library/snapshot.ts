@@ -18,7 +18,8 @@ import type {
 	CharacterSummary,
 } from "./types";
 
-// ==[HUMAN APPROVED]== Alphabetical order for the library. Case and Unicode differences are
+// @approved
+//  Alphabetical order for the library. Case and Unicode differences are
 // resolved by the collator; stable identity is only an invisible
 // duplicate tie-breaker.
 const collator = new Intl.Collator("en", { usage: "sort", numeric: true });
@@ -34,7 +35,8 @@ const compareByLibraryOrder = (a: CharacterSummary, b: CharacterSummary) => {
 	return a.id - b.id;
 };
 
-// ==[HUMAN APPROVED]== Derives the deletion impact of one Character from its Participant
+// @approved
+//  Derives the deletion impact of one Character from its Participant
 // provenance references (active and tombstoned rows across every
 // Conversation). This is the single reference-count rule shared by reads,
 // the confirmation presentation, and the delete command, so the presented
@@ -93,7 +95,8 @@ export function readCharacterSnapshot(
 }
 
 export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
-	// ==[HUMAN APPROVED]== One global projection of provenance references drives every summary's
+	// @approved
+	//  One global projection of provenance references drives every summary's
 	// used count, so the list never issues a per-Character reference query.
 	const references = new Map<number, number>();
 	for (const row of db

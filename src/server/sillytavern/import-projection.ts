@@ -1,6 +1,6 @@
-// ==[HUMAN APPROVED]== Canonical Import Projection: the pure source-to-native derivation shared
+// @approved
+//  Canonical Import Projection: the pure source-to-native derivation shared
 // by the developer import and the Staged Import.
-//
 // The SillyTavern adapter decodes and validates the source one way; the
 // projection then owns everything that maps decoded source into native
 // Conversation creation data — resolved author ownership, Message stamping,
@@ -9,7 +9,6 @@
 // developer import uses the Default Import Policy (trimmed author grouping,
 // empty imported Definitions), and the Staged Import supplies the
 // user-confirmed Resolved Participant Plan.
-//
 // The projection is deliberately pure: no database, filesystem, staging
 // state, or exact-artifact concerns. Plan validation, Profile resolution,
 // duplicate gating, and artifact finalization stay with the paths that own
@@ -31,13 +30,15 @@ import {
 } from "./adapter/types";
 import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 
-// ==[HUMAN APPROVED]== The blank captured author's proposed Participant-name default lives in
+// @approved
+//  The blank captured author's proposed Participant-name default lives in
 // shared so the server projection and the client flow label cannot drift.
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../../shared/imported-author";
 
 export { UNKNOWN_IMPORTED_AUTHOR_NAME };
 
-// ==[HUMAN APPROVED]== Imported Participants start with an empty typed Prompt and no openings:
+// @approved
+//  Imported Participants start with an empty typed Prompt and no openings:
 // the history itself is the preserved record, and no identity content is
 // fabricated. Names follow the shared Definition rules (leading and trailing
 // whitespace removed, case and Unicode preserved).
@@ -47,7 +48,8 @@ export const emptyImportedDefinition = (name: string): ParticipantDefinition => 
 	openings: [],
 });
 
-// ==[HUMAN APPROVED]== Deterministic import Control from the resolved Participant count: the
+// @approved
+//  Deterministic import Control from the resolved Participant count: the
 // first resolved Participant becomes human, the second model, and later
 // Participants stay unseated. A one-Participant import reserves only the
 // human seat so that adding the missing Participant later preserves it and
@@ -62,21 +64,26 @@ export const deterministicImportControl = (
 	return { human: 0, model: 1 };
 };
 
-// ==[HUMAN APPROVED]== One initial author group keyed on the resolved (trimmed) captured author
+// @approved
+//  One initial author group keyed on the resolved (trimmed) captured author
 // name. The exact raw captured value stays untouched in preserved source
 // data (`author.name` entry and canonical archive); grouping by the resolved
 // value never reinterprets roles, `is_user`, or the literal `Writer` name.
 export interface ImportAuthorGroup {
-	// ==[HUMAN APPROVED]== The trimmed captured author name; null for the single
+	// @approved
+	//  The trimmed captured author name; null for the single
 	// blank/whitespace-only group.
 	key: string | null;
-	// ==[HUMAN APPROVED]== 1-based record positions whose Messages belong to this group.
+	// @approved
+	//  1-based record positions whose Messages belong to this group.
 	positions: number[];
-	// ==[HUMAN APPROVED]== Variant count of each retained Message, parallel to `positions`.
+	// @approved
+	//  Variant count of each retained Message, parallel to `positions`.
 	variantCounts: number[];
 }
 
-// ==[HUMAN APPROVED]== The resolved group key: the trimmed captured author name, or null for the
+// @approved
+//  The resolved group key: the trimmed captured author name, or null for the
 // single blank/whitespace-only group. Grouping by the resolved value — never
 // by `is_user`, header roles, or the literal `Writer` name — gives one
 // Participant per exact resolved author group in first-appearance order.
@@ -85,7 +92,8 @@ const authorGroupKey = (rawName: string): string | null => {
 	return trimmed === "" ? null : trimmed;
 };
 
-// ==[HUMAN APPROVED]== The single author-grouping primitive. Both import paths consume it: the
+// @approved
+//  The single author-grouping primitive. Both import paths consume it: the
 // Default Import Policy groups on it directly, and the staged preview builds
 // its initial groups from it (the user then merges or splits whole Messages
 // through the Resolved Participant Plan). Whitespace variants and every
@@ -105,7 +113,8 @@ export const groupImportedAuthors = (
 			indexByKey.set(key, index);
 			groups.push({ key, positions: [], variantCounts: [] });
 		}
-		// ==[HUMAN APPROVED]== SAFETY: the index was recorded when that group was pushed above,
+		// @approved
+		//  SAFETY: the index was recorded when that group was pushed above,
 		// so it always refers to an existing group.
 		const group = groups[index] as ImportAuthorGroup;
 		group.positions.push(author.position);
@@ -114,7 +123,8 @@ export const groupImportedAuthors = (
 	return groups;
 };
 
-// ==[HUMAN APPROVED]== One resulting native Participant in the resolution: the complete
+// @approved
+//  One resulting native Participant in the resolution: the complete
 // Definition, optional Character Provenance, and the staged-only
 // create-with-Character flag. The developer path's Default Import Policy
 // always yields ad-hoc (Chat-only) Participants with empty definitions.
@@ -124,19 +134,22 @@ export interface ImportProjectionParticipant {
 	createCharacter?: boolean | undefined;
 }
 
-// ==[HUMAN APPROVED]== The resolution input to the Import Projection: an ordered Participant set
+// @approved
+//  The resolution input to the Import Projection: an ordered Participant set
 // plus the per-Message ownership the projection stamps onto every Message.
 // This is data, never a policy implementation — the projection stays the
 // only place native creation data is assembled, and tests can compare
 // different resolutions through one `projectImport`.
 export interface ImportProjectionResolution {
 	participants: readonly ImportProjectionParticipant[];
-	// ==[HUMAN APPROVED]== 1-based record position → zero-based Participant index. Must assign
+	// @approved
+	//  1-based record position → zero-based Participant index. Must assign
 	// every retained position exactly once.
 	messageOwners: ReadonlyMap<number, number>;
 }
 
-// ==[HUMAN APPROVED]== The Default Import Policy: the developer import's implicit
+// @approved
+//  The Default Import Policy: the developer import's implicit
 // author-resolution rules expressed as an Import Projection resolution. One
 // Participant per trimmed author group in first-appearance order with an
 // empty imported Definition and the shared blank-placeholder name, and the
@@ -161,11 +174,12 @@ export const defaultImportResolution = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Prior-import evidence classified by its match kind. Exact matches (raw
+// @approved
+//  Prior-import evidence classified by its match kind. Exact matches (raw
 // SHA-256) and related matches (declared integrity only) both produce one
 // independent-copy warning; only exact matches demand the staged
 // confirmation gate, which stays with the Staged Import.
-// ==[HUMAN APPROVED]== One copy warning per matching prior Chat, mirroring the wording both
+//  One copy warning per matching prior Chat, mirroring the wording both
 // import paths always used. Each warning names an independent copy: import
 // never deduplicates, matches, or reuses prior Chats.
 const duplicateCopyWarnings = (
@@ -176,7 +190,8 @@ const duplicateCopyWarnings = (
 			`Source was already imported as chat ${match.id} ("${match.name}"); this import creates an independent copy.`,
 	);
 
-// ==[HUMAN APPROVED]== The native creation data the projection produces: Participants (with
+// @approved
+//  The native creation data the projection produces: Participants (with
 // provenance flags), derived Control, stamped Messages, and the complete
 // Conversation-scoped data entry set. The caller supplies the Chat name and
 // the exact-artifact metadata; staging, plan validation, Profile resolution,
@@ -194,7 +209,8 @@ export interface ProjectedImport {
 	report: SillyTavernImportReport;
 }
 
-// ==[HUMAN APPROVED]== Conversation-scoped entries derived from the final report. They are built
+// @approved
+//  Conversation-scoped entries derived from the final report. They are built
 // by the projection after duplicate-warning composition so the persisted
 // warnings and report match the Conversation they are stored with. The
 // namespace is import-owned (shared/import-data): these entries commit
@@ -203,7 +219,8 @@ export interface ProjectedImport {
 export const importProvenanceEntries = (
 	report: SillyTavernImportReport,
 ): ConversationDataEntry[] => {
-	// ==[HUMAN APPROVED]== The report is canonical; every flat query-index value is derived from
+	// @approved
+	//  The report is canonical; every flat query-index value is derived from
 	// this same committed value so the two persistence mirrors cannot drift.
 	const entries: ConversationDataEntry[] = [];
 	if (report.source.integrity !== undefined) {
@@ -253,7 +270,8 @@ export const importProvenanceEntries = (
 	return entries;
 };
 
-// ==[HUMAN APPROVED]== The canonical Import Projection: maps decoded source and one resolution
+// @approved
+//  The canonical Import Projection: maps decoded source and one resolution
 // into native creation data. It stamps every retained Message with its
 // resolved Participant, derives Control deterministically from the resolved
 // Participant count, and assembles the final report and data entries —
@@ -271,10 +289,12 @@ export function projectImport(
 		warnings: [...decoded.report.warnings, ...duplicateCopyWarnings(duplicates)],
 	};
 	const messages = decoded.messages.map((message, index) => {
-		// ==[HUMAN APPROVED]== SAFETY: authors is the parallel per-record projection of messages,
+		// @approved
+		//  SAFETY: authors is the parallel per-record projection of messages,
 		// so the author row for this Message always exists.
 		const author = decoded.authors[index] as SillyTavernExactAuthor;
-		// ==[HUMAN APPROVED]== SAFETY: every resolution assigns every retained position to
+		// @approved
+		//  SAFETY: every resolution assigns every retained position to
 		// exactly one Participant (grouping for the default policy, plan
 		// validation for the staged path).
 		const owner = resolution.messageOwners.get(author.position) as number;

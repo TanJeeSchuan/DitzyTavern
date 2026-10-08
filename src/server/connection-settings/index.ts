@@ -71,7 +71,8 @@ interface RevisionedProfileWriteTx extends RevisionedWriteTx {
 	readonly profile: ConnectionProfileRow;
 }
 
-// ==[HUMAN APPROVED]== Every successful revisioned mutation advances the
+// @approved
+//  Every successful revisioned mutation advances the
 // Connection Settings revision exactly once.
 type RevisionedWriteOutcome = { readonly kind: "advanced" };
 
@@ -135,7 +136,8 @@ export function createConnectionSettingsModule(
 		};
 	};
 
-	// ==[HUMAN APPROVED]== One seam owns connect, ensure, revision check, mutate, and the
+	// @approved
+	//  One seam owns connect, ensure, revision check, mutate, and the
 	// revision advance, so every successful write bumps the revision exactly
 	// once by construction rather than by caller discipline.
 	function revisionedWrite(
@@ -253,7 +255,8 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: ({ db }) => {
 
-				// ==[HUMAN APPROVED]== The row is deleted before the seam advances: when the deleted
+				// @approved
+				//  The row is deleted before the seam advances: when the deleted
 				// Profile holds the active seat, the foreign key nulls the selection
 				// (PRAGMA foreign_keys is ON), and the seam then writes the returned
 				// replacement id — the same final state, still one immediate

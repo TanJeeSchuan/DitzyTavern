@@ -3,11 +3,13 @@ import { projectImageAnchors } from "../../shared/image-reference";
 import { sentImageTokens } from "./images";
 import type { PromptContextEntry, PromptPlan } from "./types";
 
-// ==[HUMAN APPROVED]== The application owns this small synchronous boundary. The heuristic library
+// @approved
+//  The application owns this small synchronous boundary. The heuristic library
 // can be replaced without changing Prompt Compiler or Generation code.
 export type TokenEstimator = (transcript: string) => number;
 
-// ==[HUMAN APPROVED]== tokenx is deliberately imported in one place. Its estimate is an
+// @approved
+//  tokenx is deliberately imported in one place. Its estimate is an
 // approximation for preflight, never a provider tokenization guarantee.
 export const tokenxEstimator: TokenEstimator = estimateTokenCount;
 
@@ -17,7 +19,8 @@ export interface PromptBudgetBreakdown {
 	safetyAllowance: number;
 	tokenEstimate: number;
 	totalRequiredTokens: number;
-	// ==[HUMAN APPROVED]== These character counts make an impossible candidate's fixed and
+	// @approved
+	//  These character counts make an impossible candidate's fixed and
 	// protected portions inspectable without making extra estimator calls.
 	fixedPromptCharacters: number;
 	protectedHistoryCharacters: number;
@@ -29,7 +32,8 @@ export interface PromptBudgetFailure {
 }
 
 export interface PromptBudgetInput {
-	// ==[HUMAN APPROVED]== `plan` is the first candidate. The callback recompiles the same
+	// @approved
+	//  `plan` is the first candidate. The callback recompiles the same
 	// provider-neutral plan after each whole-history omission.
 	plan: PromptPlan;
 	compile: (context: readonly PromptContextEntry[]) => PromptPlan;
@@ -38,7 +42,8 @@ export interface PromptBudgetInput {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
-	// ==[HUMAN APPROVED]== When omitted, the latest human entry is protected. Callers may pass the
+	// @approved
+	//  When omitted, the latest human entry is protected. Callers may pass the
 	// candidate human Message's original index explicitly.
 	protectedHistoryIndex?: number | undefined;
 }
@@ -63,7 +68,8 @@ export interface PromptBudgetMeasurementInput {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
-	// ==[HUMAN APPROVED]== The failure reason distinguishes an over-large protected history
+	// @approved
+	//  The failure reason distinguishes an over-large protected history
 	// from an otherwise fixed prompt that cannot fit.
 	protectedHistory?: boolean;
 	protectedHistoryCharacters?: number;
@@ -88,7 +94,8 @@ export interface PromptBudgetMeasurement {
  */
 export function toEstimationTranscript(plan: PromptPlan): string {
 	const blocks = plan.blocks.map((block, index) => {
-		// ==[HUMAN APPROVED]== Definition blocks carry the outgoing role their recipe slot chose;
+		// @approved
+		//  Definition blocks carry the outgoing role their recipe slot chose;
 		// history blocks carry no presentation role of their own, only a
 		// speaker name.
 		const role = block.kind === "history" ? "none" : block.role;
@@ -160,7 +167,8 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 	let candidate = candidateAfterRemoving(0);
 
 	if (!candidate.measurement.fits && removableIndexes.length > 0) {
-		// ==[HUMAN APPROVED]== Removing oldest whole history blocks only shortens this compiler's
+		// @approved
+		//  Removing oldest whole history blocks only shortens this compiler's
 		// estimation transcript. Find the smallest fitting removal count without
 		// rebuilding and rescanning a multi-megabyte prompt once per Message.
 		let lower = 1;

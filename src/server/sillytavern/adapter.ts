@@ -1,16 +1,14 @@
-// ==[HUMAN APPROVED]== SillyTavern JSONL chat adapter.
-//
+// @approved
+//  SillyTavern JSONL chat adapter.
 // Maps a SillyTavern chat export (one JSON object per line) into the generic
 // Conversation creation input. This module is the only place SillyTavern
 // vocabulary may appear; the Conversation module never sees it.
-//
 // The adapter decodes and validates: records, header, per-record structural
 // defects, UTF-8 strictness, Swipe selection, and timestamps. Every later
 // record becomes one native Message with one native Variant per source Swipe
 // in source order (selecting exactly `swipe_id`), and a payload-only record
 // becomes one selected Variant derived from its row payload. The complete
 // parsed source stays value-lossless in the canonical archive.
-//
 // Author identity is the Import Projection's concern, not the decoder's:
 // the decoded source carries the per-record exact raw captured author value
 // (never trimmed or normalized) plus the parallel Message list, and the
@@ -49,7 +47,8 @@ import {
 export * from "./adapter/types";
 export { decodeSillyTavernSourceBytes } from "./adapter/messages";
 
-// ==[HUMAN APPROVED]== One adapter-owned codec constructs source identity everywhere the
+// @approved
+//  One adapter-owned codec constructs source identity everywhere the
 // import domain needs it. Empty or absent advisory integrity is omitted so
 // the decoded report, persisted report, and duplicate-index lookup share one
 // representation.
@@ -72,7 +71,8 @@ export const toSillyTavernImportSource = (input: {
 	return source;
 };
 
-// ==[HUMAN APPROVED]== One decoder defines whether persisted canonical import provenance is
+// @approved
+//  One decoder defines whether persisted canonical import provenance is
 // readable. Import Details and duplicate classification share it so corrupt
 // report JSON cannot remain usable through a stale flat query index.
 export const decodeSillyTavernImportReport = (
@@ -134,7 +134,8 @@ const isJsonString = (value: unknown): value is string => typeof value === "stri
 const isJsonInteger = (value: unknown): value is number =>
 	typeof value === "number" && Number.isInteger(value);
 
-// ==[HUMAN APPROVED]== The sealed single-pass source decode shared by the developer import path
+// @approved
+//  The sealed single-pass source decode shared by the developer import path
 // and the Staged Import: identical validation, counts, archive, and report,
 // plus the per-record exact author values the import groups on. Previewing
 // and committing re-decode the exact same staged bytes, so the review can
@@ -166,7 +167,8 @@ export function decodeSillyTavernImportSource(
 		0,
 	);
 
-	// ==[HUMAN APPROVED]== The canonical archive keeps the parsed header and the complete parsed
+	// @approved
+	//  The canonical archive keeps the parsed header and the complete parsed
 	// source message objects, so no source value is destroyed even though the
 	// native projection models only a subset of it.
 	const archive: ConversationDataEntry = {
@@ -175,7 +177,8 @@ export function decodeSillyTavernImportSource(
 		value: JSON.stringify({ header, messages: messageRecords }),
 	};
 
-	// ==[HUMAN APPROVED]== The Import Projection is the only writer of the flat query index;
+	// @approved
+	//  The Import Projection is the only writer of the flat query index;
 	// this decoder contributes only the canonical archive and report value.
 	const data: ConversationDataEntry[] = [archive];
 	const source = toSillyTavernImportSource({
@@ -194,7 +197,8 @@ export function decodeSillyTavernImportSource(
 	return { authorNote, messages, authors, data, report };
 }
 
-// ==[HUMAN APPROVED]== The sealed adapter parse surface: decode plus the Default Import Policy
+// @approved
+//  The sealed adapter parse surface: decode plus the Default Import Policy
 // through the shared Import Projection, with no prior-import evidence (the
 // developer import composes duplicate evidence before projecting; this
 // convenience wrapper stays for adapter-level tests and simple callers).
@@ -217,7 +221,8 @@ export function parseSillyTavernChatJsonl(
 	};
 }
 
-// ==[HUMAN APPROVED]== Preview-oriented inspection: the full structural validation of the import
+// @approved
+//  Preview-oriented inspection: the full structural validation of the import
 // path (UTF-8 strictness, JSON line errors, header shape, per-record
 // structural defects) plus the exact author values preview groups on. No
 // Participant, Message, or native record is created.

@@ -46,7 +46,8 @@ const toDataEntry = (row: { namespace: string; key: string; value: string }) => 
 	value: row.value,
 });
 
-// ==[HUMAN APPROVED]== Play-gated capabilities share one derived reason: without two distinct
+// @approved
+//  Play-gated capabilities share one derived reason: without two distinct
 // seated Participants none of Compose, Generate, or Swipe may run. The
 // literal is checked against the capability contract by deriveCapabilities.
 const playCapability = (playable: boolean): CapabilityAvailability => ({
@@ -62,7 +63,8 @@ export function deriveCapabilities(playable: boolean): ConversationCapabilities 
 	};
 }
 
-// ==[HUMAN APPROVED]== Control validity is the single derived playability rule: both seats set,
+// @approved
+//  Control validity is the single derived playability rule: both seats set,
 // distinct, and referencing active Cast Participants. Playable and the
 // capability gate both follow from it, so clients never reproduce the rule.
 export function deriveControlValidity(
@@ -83,7 +85,8 @@ export function deriveControlValidity(
 	return { valid: reason === null, reason };
 }
 
-// ==[HUMAN APPROVED]== Derives per-Message targeted Swipe eligibility. The eligibility rule is
+// @approved
+//  Derives per-Message targeted Swipe eligibility. The eligibility rule is
 // the single derived answer for "can this Message generate a new sibling
 // Variant": the Conversation must be playable, the Message must carry a
 // captured historical Control pair, and both historical Participants must
@@ -175,7 +178,8 @@ const deriveParticipantRemovalFromDatabase = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Cheap existence probe for callers that only need to know whether the
+// @approved
+//  Cheap existence probe for callers that only need to know whether the
 // Conversation row is present. readConversationSnapshot runs many queries
 // to assemble the full snapshot (cast, messages, variants, data, active
 // generations), which is too costly to use as an existence check.
@@ -189,7 +193,8 @@ export function conversationExists(
 	) !== undefined;
 }
 
-// ==[HUMAN APPROVED]== Narrow revision read for server-owned preview sends. The
+// @approved
+//  Narrow revision read for server-owned preview sends. The
 // preview capture already owns the exact Prompt Plan, so refreshing the
 // acceptance guard must not materialize the complete Conversation snapshot.
 export function readConversationRevision(
@@ -341,7 +346,8 @@ export function readConversationSummaryFromConnection(
 		.get();
 	if (conversation === undefined) return undefined;
 
-	// ==[HUMAN APPROVED]== Active Cast members only. Tombstoned Participants keep a minimal base
+	// @approved
+	//  Active Cast members only. Tombstoned Participants keep a minimal base
 	// row solely to satisfy structural Message references; they are never
 	// part of the Cast and carry no position.
 	const castRows = readActiveCast(db, conversationId);
@@ -366,7 +372,8 @@ export function readConversationSummaryFromConnection(
 		(opening) => opening.content,
 	);
 
-	// ==[HUMAN APPROVED]== Intermediate Cast shape lacks the derived per-Participant fields; they
+	// @approved
+	//  Intermediate Cast shape lacks the derived per-Participant fields; they
 	// are attached after Control is read so labels and removal eligibility
 	// derive from the final ordered roster.
 	const cast: Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[] =
@@ -396,7 +403,8 @@ export function readConversationSummaryFromConnection(
 	const controlValidity = deriveControlValidity(control, cast.map((p) => p.id));
 	const playable = controlValidity.valid;
 
-	// ==[HUMAN APPROVED]== Duplicate display labels derive from Cast order: the first Participant
+	// @approved
+	//  Duplicate display labels derive from Cast order: the first Participant
 	// sharing a name keeps the plain label, later ones receive ordinals.
 	const nameOccurrences = new Map<string, number>();
 	const labelsById = new Map<number, string>();
@@ -418,7 +426,8 @@ export function readConversationSummaryFromConnection(
 		.orderBy(asc(activeGenerationTable.id))
 		.all();
 
-	// ==[HUMAN APPROVED]== Removal eligibility follows Messages: the deletion mode and
+	// @approved
+	//  Removal eligibility follows Messages: the deletion mode and
 	// affected-generation count derive from the same references the command
 	// enforces, so clients never reconstruct the rule.
 	return {

@@ -150,7 +150,8 @@ export function PromptPresetRecipeEditor({
 				if (event.canceled || pending || !isSortableOperation(event.operation)) return;
 				const { source } = event.operation;
 				if (source === null) return;
-				// ==[HUMAN APPROVED]== SAFETY: Every sortable in this provider receives its numeric prompt block ID.
+				// @approved
+				//  SAFETY: Every sortable in this provider receives its numeric prompt block ID.
 				const sourceId = source.id as number;
 				if (source.initialIndex === source.index) return;
 				setOrderedSlots((current) => {

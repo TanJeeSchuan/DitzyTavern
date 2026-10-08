@@ -1,5 +1,5 @@
-// ==[HUMAN APPROVED]== Add Character to Cast workflow.
-//
+// @approved
+//  Add Character to Cast workflow.
 // Composes the Character Library and Conversation seams in one transaction:
 // the source Character must match its expected revision and the destination
 // Conversation its expected revision. The authoritative Character Definition
@@ -14,7 +14,8 @@ import { createConversationModule } from "../conversation";
 import type { ConversationSummary } from "../conversation/types";
 import { addCharacterToCastBody } from "../../shared/contract/conversation-schema";
 
-// ==[HUMAN APPROVED]== The input derives from the canonical add-character-to-cast wire
+// @approved
+//  The input derives from the canonical add-character-to-cast wire
 // schema (ADR-0032) so the workflow can never drift from the transport
 // contract; the Conversation id is not part of the body because it lives in
 // the route path.
@@ -33,7 +34,8 @@ export function addCharacterToCast(
 			input.expectedCharacterRevision,
 		);
 
-		// ==[HUMAN APPROVED]== The deep Conversation command validates the destination revision
+		// @approved
+		//  The deep Conversation command validates the destination revision
 		// and existence inside the same transaction; appending a fork copies
 		// the authoritative server-side Definition just read from the Library
 		// and records immutable provenance.

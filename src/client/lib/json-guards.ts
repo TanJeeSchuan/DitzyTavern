@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== JSON value vocabulary for payloads parsed at the fetch boundary. Only
+// @approved
+//  JSON value vocabulary for payloads parsed at the fetch boundary. Only
 // JSON scalars, arrays, and plain objects can appear; the type is the
 // transport seams' parse target before shared contract schemas decode the
 // payload into trusted data.

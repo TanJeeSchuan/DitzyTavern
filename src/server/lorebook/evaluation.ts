@@ -54,7 +54,8 @@ const attachmentSelectionEvidence = (source: Pick<ScopedLoreBookSource, "selecte
 		: "The only eligible use was selected for this book.",
 });
 
-// ==[HUMAN APPROVED]== The persisted lore evidence. The book strip drops its entries array
+// @approved
+//  The persisted lore evidence. The book strip drops its entries array
 // (the entry is carried beside it), the stored entry passes through as the
 // JSON value it already is, and the per-condition spread keeps the
 // interface-typed match evidence assignable to the closed JSON type; the

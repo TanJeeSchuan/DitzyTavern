@@ -11,7 +11,8 @@ import { runConversationCommand } from "./conversation-command-runner";
 import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
 import { ModelSelector } from "./ModelSelector";
 
-// ==[HUMAN APPROVED]== Cast-only Control selectors on the composer toolbar: `Writing as` for the
+// @approved
+//  Cast-only Control selectors on the composer toolbar: `Writing as` for the
 // human seat and `Responding as` for the model seat. Selecting the opposite
 // seat's occupant visibly performs one atomic swap; selecting an unseated
 // Participant replaces only the chosen seat. Seats can never be cleared, and

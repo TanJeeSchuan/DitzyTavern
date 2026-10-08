@@ -3,7 +3,8 @@ import { processStateFor } from "../application/process-state";
 
 export interface RunningWork { readonly controller: AbortController; readonly indexSpaceKey: string | null }
 
-// ==[HUMAN APPROVED]== In-flight memory work lives in the process-state container per database;
+// @approved
+//  In-flight memory work lives in the process-state container per database;
 // registration and abort semantics are unchanged. No expiry: work unregisters itself.
 const running = (database: Database) => processStateFor(database).memoryWork;
 

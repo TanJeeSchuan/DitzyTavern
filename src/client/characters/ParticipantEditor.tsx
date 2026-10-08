@@ -11,7 +11,8 @@ import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition }
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 import { ParticipantMemory } from "./ParticipantMemory";
 
-// ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
+// @approved
+//  The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
 const EDITOR_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the current state was loaded.",
@@ -66,7 +67,8 @@ export function ParticipantEditor({
 						if (saved) setDraft((current) => current === submitted ? definitionOf(saved) : current);
 						setNotice(null);
 					},
-					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
+					// @approved
+					//  This command family cannot produce these outcomes; the
 					// server's precise reason is kept instead of a flattened class.
 					onNotPlayable: setNotice,
 					onNotRemovable: setNotice,

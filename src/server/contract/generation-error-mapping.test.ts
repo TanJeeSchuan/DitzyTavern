@@ -64,7 +64,8 @@ describe("generation acceptance seams", () => {
 		expect(result).toMatchObject({ code: 409, response: { outcome: "not-playable" } });
 	});
 
-	// ==[HUMAN APPROVED]== Sibling starts carry no revision input, so a stale-revision conflict
+	// @approved
+	//  Sibling starts carry no revision input, so a stale-revision conflict
 	// is outside their vocabulary and must reach the framework's 500 handling
 	// as the original domain error.
 	test("Sibling starts decline a stale-revision conflict", async () => {

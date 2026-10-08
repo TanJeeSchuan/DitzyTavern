@@ -16,10 +16,10 @@ export interface AddParticipantInput {
 	sourceCharacterId?: number | undefined;
 }
 
-// ==[HUMAN APPROVED]== Appends a new Participant to the stable Cast tail with a complete local
+// @approved
+//  Appends a new Participant to the stable Cast tail with a complete local
 // Definition. Either an ad-hoc Definition or the already-resolved fork of a
 // Character (with immutable provenance). Appending never writes history.
-//
 // Incomplete-import completion is the narrow exception to "never reassigns
 // Control": when the Conversation lacks two distinct occupied seats, the new
 // Participant fills the first empty seat (human before model), preserving any
@@ -40,7 +40,8 @@ export function addParticipant(
 		);
 	}
 
-	// ==[HUMAN APPROVED]== Append at the stable Cast tail. Only active Participants contribute to
+	// @approved
+	//  Append at the stable Cast tail. Only active Participants contribute to
 	// the next position: tombstones carry no position and are excluded, so
 	// the active roster stays contiguous.
 	const latestPosition = db
@@ -62,7 +63,8 @@ export function addParticipant(
 		input.sourceCharacterId ?? null,
 	);
 
-	// ==[HUMAN APPROVED]== Completion fill: only an incomplete Conversation (fewer than two
+	// @approved
+	//  Completion fill: only an incomplete Conversation (fewer than two
 	// distinct occupied seats) is eligible. Neither seat occupied assigns
 	// human first, and a single existing assignment is preserved while the
 	// new Participant fills the one empty seat, so the added Participant

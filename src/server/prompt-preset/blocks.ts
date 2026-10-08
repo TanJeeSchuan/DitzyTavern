@@ -16,7 +16,8 @@ import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
 import { refreshMemoryForConversation } from "../memory";
 
-// ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
+// @approved
+//  The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
 // fresh read, so a stale block draft can never overwrite separately saved
 // ordering or toggles — there is no whole-recipe write to do it with.
@@ -105,7 +106,8 @@ const refreshSelectedMemoryTails = (database: Database, presetId: number, before
 	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) refreshMemoryForConversation(database, conversationId);
 };
 
-// ==[HUMAN APPROVED]== The stored position of every slot is a dense 1-based order, so a
+// @approved
+//  The stored position of every slot is a dense 1-based order, so a
 // move target and a duplicate's neighbor stay meaningful. Renumbering goes
 // through one offset pass first because `position` is unique per preset:
 // every row briefly moves past the end, then takes its final place.
@@ -168,7 +170,8 @@ export const savePromptPresetBlockPatches = (
 	}).immediate();
 };
 
-// ==[HUMAN APPROVED]== One transactional boundary for the occurrence-addressed writes: the
+// @approved
+//  One transactional boundary for the occurrence-addressed writes: the
 // occurrence must belong to the preset before any statement of the operation
 // runs, the write sees the verified occurrence, and the response is the
 // stored recipe as a fresh read.
@@ -294,11 +297,13 @@ export const duplicatePromptPresetBlock = (
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
 		assertNoSecondUniqueBlock(original.reference, true);
-		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
+		// @approved
+		//  The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.
 		const ordered = orderedIdsOf(db, presetId);
-		// ==[HUMAN APPROVED]== Authored instruction rows carry their own name and text;
+		// @approved
+		//  Authored instruction rows carry their own name and text;
 		// referenced occurrences store none, so only the instruction branch
 		// contributes them to the copy.
 		const duplicatedRow: typeof promptPresetBlockTable.$inferInsert = {

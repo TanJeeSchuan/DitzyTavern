@@ -26,7 +26,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-// ==[HUMAN APPROVED]== Generation capture coverage: an Active Generation keeps the Prompt Plan
+// @approved
+//  Generation capture coverage: an Active Generation keeps the Prompt Plan
 // it captured, whatever the shared recipe or the Conversation selection does
 // while the attempt streams, and later attempts compile the latest saved
 // state.

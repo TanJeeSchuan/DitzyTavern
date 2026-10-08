@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Deliberate Generation detail reads. These are kept out of the ordinary
+// @approved
+//  Deliberate Generation detail reads. These are kept out of the ordinary
 // Conversation snapshot/history paths so active prompt text is retained only
 // for the bounded server-owned lifecycle and terminal reads expose only the
 // compact safe provenance allow-list.
@@ -73,7 +74,8 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 	};
 };
 
-// ==[HUMAN APPROVED]== Active inspection decodes the persisted Generation Settings into the safe
+// @approved
+//  Active inspection decodes the persisted Generation Settings into the safe
 // display projection over the canonical Generation Settings vocabulary
 // (ADR-0032). Every canonical field except Request Overrides participates —
 // inspection never re-exposes Request Overrides — and every participating
@@ -82,7 +84,8 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 // formerly omitted value is retained instead of being decoded as absent.
 type InspectionSettingsField = Exclude<GenerationSettingsField, "requestOverrides">;
 
-// ==[HUMAN APPROVED]== The persisted value is written from validated domain settings, so display
+// @approved
+//  The persisted value is written from validated domain settings, so display
 // decoding keeps strings loose: a corrupt persisted value surfaces as its
 // raw string rather than being silently mistaken for a valid literal.
 type InspectionSettingsValue<T> = T extends string ? string | null : T | null;
@@ -91,7 +94,8 @@ type SafeGenerationSettings = {
 	[K in InspectionSettingsField]: InspectionSettingsValue<CanonicalGenerationSettings[K]>;
 };
 
-// ==[HUMAN APPROVED]== The decoded value for each inspection field. Compile-locked: adding a
+// @approved
+//  The decoded value for each inspection field. Compile-locked: adding a
 // canonical field (outside the exclusion) fails typecheck until inspection
 // states how it decodes — and the projection below maps the table, so that
 // one line is the whole change.
@@ -118,12 +122,14 @@ const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
 };
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
-	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
+	// @approved
+	//  SAFETY: a non-object source decodes as an empty record, and every field
 	// decoder then resolves its own intentional null. The projection maps the
 	// decoder table itself, so the table's declaration order is the field
 	// order and a new field cannot be forgotten in the projection.
 	const source = generationJsonObject(value);
-	// ==[HUMAN APPROVED]== SAFETY: the key list is the decoder table's own keys in declared
+	// @approved
+	//  SAFETY: the key list is the decoder table's own keys in declared
 	// order and every value is that table's decode of the same field, so the
 	// record is exactly the mapped SafeGenerationSettings shape.
 	return Object.fromEntries(

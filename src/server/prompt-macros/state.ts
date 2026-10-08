@@ -13,7 +13,8 @@ import type {
 } from "../../shared/contract/macro-variables";
 import { parseGenerationJson } from "../../shared/generation-provenance";
 
-// ==[HUMAN APPROVED]== Macro records have a domain-owned namespace. Generic data commands must
+// @approved
+//  Macro records have a domain-owned namespace. Generic data commands must
 // not be able to manufacture or overwrite a write because state is derived from
 // selected Variants rather than from one mutable Conversation map.
 export const MACRO_DATA_NAMESPACE = "prompt-macro";
@@ -82,7 +83,8 @@ export const macroWritesToData = (
 	writes: readonly MacroVariableWrite[],
 ): ConversationDataEntry[] => {
 	if (writes.length === 0) return [];
-	// ==[HUMAN APPROVED]== The evaluator keeps every write in order so later macros observe earlier
+	// @approved
+	//  The evaluator keeps every write in order so later macros observe earlier
 	// values. Durable Variant state only needs the final write for each name;
 	// retaining the tombstone is essential because it masks inherited state.
 	const finalWrites = new Map<string, MacroVariableWrite>();

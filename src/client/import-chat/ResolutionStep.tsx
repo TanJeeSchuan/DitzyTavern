@@ -31,12 +31,14 @@ export function ResolutionStep({
 	onContinue: () => void;
 }) {
 	const exactCount = flow.duplicates.exact.length;
-	// ==[HUMAN APPROVED]== Presentation-only merge selection; the reducer only sees the confirmed
+	// @approved
+	//  Presentation-only merge selection; the reducer only sees the confirmed
 	// merge action with its explicit target and sources.
 	const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
 	const ready = resolutionReady(flow);
 
-	// ==[HUMAN APPROVED]== Defensive cleanup: selections referencing removed segments never leak.
+	// @approved
+	//  Defensive cleanup: selections referencing removed segments never leak.
 	const mergeTargets = useMemo(
 		() =>
 			flow.groups.filter((group) => mergeSelection.includes(group.id)),

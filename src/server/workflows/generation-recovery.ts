@@ -30,7 +30,8 @@ interface ActiveRecoveryRow {
 	conversationId: number;
 	checkpointContent: string;
 	checkpointReasoning: string;
-	// ==[HUMAN APPROVED]== Kept under the persisted column name so the row satisfies the canonical
+	// @approved
+	//  Kept under the persisted column name so the row satisfies the canonical
 	// intent reader without re-parsing the JSON here.
 	generation_intent_json: string;
 }
@@ -79,7 +80,8 @@ export function recoverActiveGenerations(
 				});
 				interrupted += 1;
 			} else {
-				// ==[HUMAN APPROVED]== The canonical removal seam reads the persisted intent itself:
+				// @approved
+				//  The canonical removal seam reads the persisted intent itself:
 				// Sibling attempts lose their provisional Variant, Tail and
 				// Continuation attempts their provisional Message. The accepted
 				// human Message of a Tail attempt is never removed here.

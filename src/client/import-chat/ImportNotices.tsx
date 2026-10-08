@@ -1,6 +1,7 @@
 import type { ChatImportFlowState } from "../import-chat-flow";
 
-// ==[HUMAN APPROVED]== The related-import notice and the warnings list read identically at
+// @approved
+//  The related-import notice and the warnings list read identically at
 // every step that shows them, so both steps and the receipt render the one
 // component rather than repeating its copy.
 export function ImportRelatedNotice({
@@ -38,7 +39,8 @@ export function ImportWarningsList({
 	);
 }
 
-// ==[HUMAN APPROVED]== The Chat title is editable at both the resolution and review steps; the
+// @approved
+//  The Chat title is editable at both the resolution and review steps; the
 // placeholder is the only difference the steps ever needed.
 export function ImportTitleField({
 	title,

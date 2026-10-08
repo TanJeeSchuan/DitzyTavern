@@ -19,7 +19,8 @@ import {
 	type ResolvedPromptPresetSlot,
 } from "../../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== The Chat's selected recipe with each Referenced Prompt Block resolved
+// @approved
+//  The Chat's selected recipe with each Referenced Prompt Block resolved
 // against that Chat's own Conversation-local Participant Definitions and
 // selected narrative path. The preset stores references, never rendered
 // character text or history, so this read is the only place they meet. The
@@ -44,7 +45,8 @@ const projectPromptPreset = (
 			};
 		}
 		if (slot.reference === "instruction") {
-			// ==[HUMAN APPROVED]== An instruction occurrence's resolved view is its stored authored
+			// @approved
+			//  An instruction occurrence's resolved view is its stored authored
 			// name and text, exactly what the editor shows and Generation
 			// compiles; there is no Conversation-local source to read. The
 			// stored recipe read guarantees its outgoing role.
@@ -98,7 +100,8 @@ export const readConversationPromptPreset = (
 			human: cast.find((participant) => participant.id === control.humanParticipantId),
 			model: cast.find((participant) => participant.id === control.modelParticipantId),
 		};
-		// ==[HUMAN APPROVED]== A selected Variant is one history entry. Count it in SQL instead of
+		// @approved
+		//  A selected Variant is one history entry. Count it in SQL instead of
 		// materializing all Messages and alternative Variants just to inspect the
 		// resolved recipe.
 		const historyEntryCount = db

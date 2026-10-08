@@ -102,13 +102,13 @@ export interface SelectedHistoryReadRequest {
 	variantDataKeys?: readonly string[] | undefined;
 }
 
+// @approved
 // Generic filesystem artifact ownership seed. The metadata row commits
 // atomically with the Conversation through the creation seam; the exact
 // bytes live outside SQLite under the caller-provided unique managed
 // relative path and are never automatically deleted. Identity is unique per
 // Conversation by (namespace, key).
-//
-// ==[HUMAN APPROVED]== Derived from the canonical shared artifact metadata schema so the
+//  Derived from the canonical shared artifact metadata schema so the
 // creation seam and the Chat Import wire contract cannot drift.
 export type ConversationArtifactSeed = Static<typeof artifactMetadata>;
 
@@ -220,7 +220,8 @@ export interface ConversationMessageSnapshot {
 	data: ConversationDataEntry[];
 }
 
-// ==[HUMAN APPROVED]== The full deep snapshot deliberately extends the shared conversationSummary
+// @approved
+//  The full deep snapshot deliberately extends the shared conversationSummary
 // contract (divergence (b), ADR-0032 pattern): it adds the heavy `messages`
 // and `data` reads that the summary transport shape intentionally omits —
 // the story reads messages through the paginated history seam, heavy
@@ -297,7 +298,8 @@ export type ConversationDataScope =
 // transaction.
 type WireConversationAction = SharedConversationAction;
 
-// ==[HUMAN APPROVED]== Extension (b): the Conversation-owned Lore attachment commands
+// @approved
+//  Extension (b): the Conversation-owned Lore attachment commands
 // (Chat Lore settings, Chat and Participant Lorebook attachments) are
 // revisioned Conversation mutations whose canonical wire declaration lives
 // in the Lorebook command schema — they ride the Lorebook attachment route,

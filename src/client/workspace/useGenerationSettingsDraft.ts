@@ -31,7 +31,8 @@ import {
 	type SamplingValues,
 } from "../generation-settings-draft";
 
-// ==[HUMAN APPROVED]== The Generation Settings save wording: each notice names what this surface
+// @approved
+//  The Generation Settings save wording: each notice names what this surface
 // preserved or could not reach, while the runner owns when each notice is
 // shown.
 const SAVE_NOTICES = {
@@ -40,7 +41,8 @@ const SAVE_NOTICES = {
 	unreachable: "The Generation Settings could not be saved.",
 };
 
-// ==[HUMAN APPROVED]== The draft values the panel resolves from its local editor state: every
+// @approved
+//  The draft values the panel resolves from its local editor state: every
 // field a draft owns, resolved and validated before save.
 export interface GenerationSettingsDraftValues {
 	sampling: SamplingValues;
@@ -62,7 +64,8 @@ export interface SaveGenerationSettingsDraftOptions {
 	onNotRemovable: (reason: string) => void;
 }
 
-// ==[HUMAN APPROVED]== The panel's full-object write — the one client writer of the whole
+// @approved
+//  The panel's full-object write — the one client writer of the whole
 // Generation Settings aggregate. The base is read at write time, so a model
 // selection the composer's selector committed after this panel loaded is
 // never restored stale, and every draft-owned field then overrides its base
@@ -91,7 +94,8 @@ export async function saveGenerationSettingsDraft(
 	});
 }
 
-// ==[HUMAN APPROVED]== The written aggregate: the freshly read authoritative settings contribute
+// @approved
+//  The written aggregate: the freshly read authoritative settings contribute
 // the model selection no draft edits, and every draft-owned field overrides
 // its base value.
 function applyDraftsToGenerationSettings(
@@ -259,7 +263,8 @@ export function useGenerationSettingsDraft({
 				onNotRemovable: showUnreachable,
 			});
 		} catch {
-			// ==[HUMAN APPROVED]== The write-time read can fail before any command is sent; this
+			// @approved
+			//  The write-time read can fail before any command is sent; this
 			// surface owns the unreachable presentation for that case too.
 			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
 		} finally {

@@ -35,7 +35,8 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 	});
 }
 
-// ==[HUMAN APPROVED]== The command-failure wording shared by every Profile command handler; the
+// @approved
+//  The command-failure wording shared by every Profile command handler; the
 // conflict variant is passed per command because it names what was preserved.
 const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
 const PROFILE_NOT_FOUND_ERROR = "The selected Profile no longer exists.";
@@ -164,7 +165,8 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const canSave = settings !== null && validationError === null;
 	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);
 
-	// ==[HUMAN APPROVED]== Runs one Connection Settings command and owns the failure wording
+	// @approved
+	//  Runs one Connection Settings command and owns the failure wording
 	// repeated by every Profile command handler: a conflict preserves the
 	// editor state in the reducer, an invalid outcome surfaces the
 	// server reason, and anything else reads as a missing Profile. Returns
@@ -331,7 +333,8 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			dispatch({ type: "set-error", message: "Credential reset failed." });
 			return;
 		}
-		// ==[HUMAN APPROVED]== Reset deliberately skips preserveConflict: the credential draft is
+		// @approved
+		//  Reset deliberately skips preserveConflict: the credential draft is
 		// cleared either way, so a conflict reads as a plain failure here.
 		if (result.outcome !== "applied") { dispatch({ type: "set-error", message: result.outcome === "invalid" ? result.reason : "Credential reset failed." }); return; }
 		dispatch({ type: "reset-credential-succeeded", settings: result.settings });

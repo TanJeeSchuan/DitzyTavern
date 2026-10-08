@@ -127,7 +127,8 @@ const InstructionFieldEditor = ({
 	</div>;
 };
 
-// ==[HUMAN APPROVED]== The draft and operation callbacks a recipe row forwards to its owner; the
+// @approved
+//  The draft and operation callbacks a recipe row forwards to its owner; the
 // editor section and the row share the contract so they cannot drift.
 export interface RecipeOperationHandlers {
 	onDraftChange: (blockId: number, draft: BlockDraft) => void;
@@ -136,7 +137,8 @@ export interface RecipeOperationHandlers {
 	onOperation: (run: () => Promise<PromptPresetOperationOutcome>) => void;
 }
 
-// ==[HUMAN APPROVED]== One recipe row: the ordered slot header, immediate ordering and drafted toggle
+// @approved
+//  One recipe row: the ordered slot header, immediate ordering and drafted toggle
 // controls, and a focused modal editor. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
 // reference.

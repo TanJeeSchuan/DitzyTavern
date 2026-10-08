@@ -75,8 +75,9 @@ export async function loadConversation(
 	return conversation;
 }
 
+// @approved
 // The Conversation command route's outcome is the wire's own: the applied
-// ==[HUMAN APPROVED]== response under `available`, the typed 409/404/422 envelopes verbatim,
+//  response under `available`, the typed 409/404/422 envelopes verbatim,
 // and network for everything the seam could not classify.
 export type CommandOutcome = Awaited<ReturnType<typeof applyConversationCommand>>;
 
@@ -227,8 +228,9 @@ export async function previewConversationGeneration(
 	);
 }
 
+// @approved
 // Starts a server-owned generation without coupling acceptance to a browser
-// ==[HUMAN APPROVED]== stream. Call subscribeConversationGeneration separately for each observing
+//  stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
 export async function startConversationGeneration(
 	conversationId: number,
@@ -273,8 +275,9 @@ export async function startConversationContinuationGeneration(
 	);
 }
 
+// @approved
 // Stop is an explicit server command. The caller may separately abort its
-// ==[HUMAN APPROVED]== local subscription after this request; closing that subscription alone never
+//  local subscription after this request; closing that subscription alone never
 // reaches this function and therefore cannot cancel provider work.
 export async function stopConversationGeneration(conversationId: number, generationId: number) {
 	return requestOutcome(

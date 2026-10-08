@@ -82,7 +82,8 @@ export function deleteVariant(
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
 	compactVariantPositions(db, input.messageId, variant.position);
-	// ==[HUMAN APPROVED]== The replacing Swipe re-derives its Memory collection; the
+	// @approved
+	//  The replacing Swipe re-derives its Memory collection; the
 	// removed Variant's in-flight work is abandoned in both cases so a deleted
 	// source never keeps a provider call or a Memory worker slot alive.
 	if (replacementId === undefined) {

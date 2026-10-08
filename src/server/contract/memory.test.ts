@@ -205,7 +205,8 @@ describe("Memory source public contract", () => {
 		const firstRequest = new Promise<void>((resolve) => { firstRequestStarted = resolve; });
 		const models: string[] = [];
 		const fakeFetch: ModelFetch = async (_input, init) => {
-			// ==[HUMAN APPROVED]== SAFETY: The controlled Model Client fake receives its ordinary chat-completion JSON request.
+			// @approved
+			//  SAFETY: The controlled Model Client fake receives its ordinary chat-completion JSON request.
 			const body = JSON.parse(String(init?.body)) as { model: string };
 			models.push(body.model);
 			if (models.length === 1) { firstRequestStarted(); await firstRequestGate; }

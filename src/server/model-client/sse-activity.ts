@@ -1,5 +1,6 @@
 import { createParser } from "eventsource-parser";
-// ==[HUMAN APPROVED]== The AI SDK surfaces parsed deltas. Observe SSE comments and meaningful
+// @approved
+//  The AI SDK surfaces parsed deltas. Observe SSE comments and meaningful
 // events at the fetch boundary so keep-alive pings reset the Stream Inactivity Timeout.
 
 interface ProviderSseFrame {

@@ -19,7 +19,8 @@ import type { GenerationSettingsDraftController } from "./useGenerationSettingsD
 import type { SplitInspector } from "./panel-coordination";
 import type { PrimaryPanel } from "./types";
 
-// ==[HUMAN APPROVED]== Panels that share the parent-rendered header state their title here. Chats,
+// @approved
+//  Panels that share the parent-rendered header state their title here. Chats,
 // Prompt Presets, and Lorebooks render their own header (those panels own the
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.

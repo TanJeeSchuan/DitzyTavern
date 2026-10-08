@@ -26,7 +26,8 @@ export const definitionOf = ({
 
 export const sameDefinition = (a: ParticipantDefinition, b: ParticipantDefinition) => JSON.stringify(a) === JSON.stringify(b);
 
-// ==[HUMAN APPROVED]== Blank Opening cards are editor scratch space; the server rejects blank Openings.
+// @approved
+//  Blank Opening cards are editor scratch space; the server rejects blank Openings.
 export const submittableDefinition = (draft: ParticipantDefinition): ParticipantDefinition =>
 	({ ...draft, openings: draft.openings.filter((opening) => opening.trim() !== "") });
 

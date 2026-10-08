@@ -33,7 +33,8 @@ export function createMessage(
 		);
 	}
 
-	// ==[HUMAN APPROVED]== The Author Stamp captures the Participant identity plus its current
+	// @approved
+	//  The Author Stamp captures the Participant identity plus its current
 	// name at Message creation; clients never submit the name.
 	const author = requireParticipant(
 		db,
@@ -64,7 +65,8 @@ export function createMessage(
 			selected: index === selectedVariantIndex,
 		})),
 	);
-	// ==[HUMAN APPROVED]== Only a Human-authored Message is reported: Memory derives a
+	// @approved
+	//  Only a Human-authored Message is reported: Memory derives a
 	// source from the Human's selected Variant, while model turns are
 	// remembered through their own Generation resolution.
 	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) {

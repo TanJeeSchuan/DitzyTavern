@@ -64,7 +64,8 @@ export function CharacterEditor({
 						return false;
 					}
 					setSnapshot(applied.character);
-					// ==[HUMAN APPROVED]== Only a save adopts the saved Definition, and only when nothing was typed meanwhile.
+					// @approved
+					//  Only a save adopts the saved Definition, and only when nothing was typed meanwhile.
 					if (command.type === "update-definition") setDraft((current) => current === submitted ? definitionOf(applied.character) : current);
 					setConflict(null);
 					setNotice(null);

@@ -20,9 +20,11 @@ type SettingsTable<Row> = SQLiteTable & { id: AnySQLiteColumn; revision: AnySQLi
 export const createRevisionedSettings = <Row extends { id: number; revision: number }, Payload>(database: Database, table: SettingsTable<Row>, project: (row: Row) => Payload) => {
 	const db = drizzle(database);
 	const row = () => {
-		// ==[HUMAN APPROVED]== SAFETY: every settings table gives all columns but id a default, so the singleton row inserts from its id alone.
+		// @approved
+		//  SAFETY: every settings table gives all columns but id a default, so the singleton row inserts from its id alone.
 		db.insert(table).values({ id: SETTINGS_ID } as never).onConflictDoNothing().run();
-		// ==[HUMAN APPROVED]== SAFETY: the table's own select shape is Row.
+		// @approved
+		//  SAFETY: the table's own select shape is Row.
 		return db.select().from(table).where(eq(table.id, SETTINGS_ID)).get() as Row;
 	};
 	const get = () => project(row());

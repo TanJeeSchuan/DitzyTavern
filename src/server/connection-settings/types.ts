@@ -6,7 +6,8 @@ import type {
 	ConnectionSettingsPayload,
 } from "../../shared/contract/connection-settings";
 
-// ==[HUMAN APPROVED]== The shared wire contract is the canonical declaration of every Connection
+// @approved
+//  The shared wire contract is the canonical declaration of every Connection
 // Settings shape; the server-side types below derive from it so the two
 // representations can no longer drift apart.
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];

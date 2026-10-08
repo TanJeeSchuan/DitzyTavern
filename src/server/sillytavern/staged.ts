@@ -1,15 +1,14 @@
-// ==[HUMAN APPROVED]== User-facing staged Chat import: choose one file, stream its bytes into
+// @approved
+//  User-facing staged Chat import: choose one file, stream its bytes into
 // their final managed artifact path exactly once, validate the complete
 // source before any Participant resolution, and return a reviewable preview
 // bound to the exact byte length and SHA-256 that were uploaded.
-//
 // This is the deep behavioral seam for the import flow: it composes only
 // public capabilities (the SillyTavern adapter for validation, the
 // Character Library for name-only suggestions, and the prior-import
 // classifier for duplicate evidence). It creates no native Chat, no
 // Participant, no Actor Profile, and no artifact metadata row; the previewed
 // source stays session-bound at its managed path until commit.
-//
 // Staging is session-bound by construction: staged handles and committed
 // receipts live in one expiring session store owned by the per-database
 // process-state container. A server restart (graceful shutdown included)
@@ -20,7 +19,6 @@
 // files, so abandoned flows never pin memory or unclaimed artifact bytes.
 // Discard (explicit cancellation) removes only the uncommitted staged bytes
 // of that one flow.
-//
 // Commit is atomic across filesystem and SQLite without a finalization step:
 // the immutable staged managed path becomes the final artifact path, and the
 // commit transaction claims it in place (the artifact metadata row
@@ -75,7 +73,8 @@ import type {
 
 export * from "./staged/types";
 
-// ==[HUMAN APPROVED]== One expiring import-session store. Process-level so every request-scoped
+// @approved
+//  One expiring import-session store. Process-level so every request-scoped
 // module instance shares the same handles, and a server restart clears it
 // wholesale (the expiry contract). Both session phases live in this one
 // map, and every entry carries its own absolute expiry: the staged handle
@@ -85,7 +84,8 @@ export type StagedImportSession =
 	| { phase: "staged"; expiresAt: number; record: StagedRecord }
 	| { phase: "committed"; expiresAt: number; receipt: ChatImportReceipt };
 
-// ==[HUMAN APPROVED]== An interactive staging flow (upload, resolve Participants, confirm, commit)
+// @approved
+//  An interactive staging flow (upload, resolve Participants, confirm, commit)
 // fits comfortably inside this window; anything older is abandoned work that
 // must not keep staged bytes or receipts alive.
 export const STAGED_IMPORT_SESSION_TTL_MS = 60 * 60 * 1000;
@@ -99,7 +99,8 @@ export interface StagedImportStore {
 	dispose(): void;
 }
 
-// ==[HUMAN APPROVED]== The expiring import-session store. The process-state container owns its
+// @approved
+//  The expiring import-session store. The process-state container owns its
 // lifecycle; this factory owns only the store's behavior. `now` is injectable for tests.
 export const createStagedImportStore = (): StagedImportStore => {
 	const sessions = new Map<string, StagedImportSession>();
@@ -121,7 +122,8 @@ export const createStagedImportStore = (): StagedImportStore => {
 
 const stagedImportStore = (database: Database): StagedImportStore => processStateFor(database).stagedImports;
 
-// ==[HUMAN APPROVED]== Streams the uploaded bytes into their staged managed path while hashing
+// @approved
+//  Streams the uploaded bytes into their staged managed path while hashing
 // them in flight, so neither the HTTP boundary nor this module buffers the
 // complete artifact in memory. Node's pipeline owns backpressure and
 // propagates reader or writer failures to the call-site cleanup path.
@@ -139,7 +141,8 @@ const streamToStagedFile = async (
 		},
 	});
 	await pipeline(
-		// ==[HUMAN APPROVED]== Bun's Web ReadableStream is runtime-compatible with Node's
+		// @approved
+		//  Bun's Web ReadableStream is runtime-compatible with Node's
 		// WebReadableStream; the declarations differ only in their convenience methods.
 		// @ts-expect-error
 		Readable.fromWeb(bytes),
@@ -163,7 +166,8 @@ const verifyStagedBytes = (
 		: "corrupt";
 };
 
-// ==[HUMAN APPROVED]== A staged handle whose bytes are missing or no longer match the binding
+// @approved
+//  A staged handle whose bytes are missing or no longer match the binding
 // can serve neither a preview nor a commit; the typed unavailable error
 // names the reason.
 const assertStagedAvailable = (record: StagedRecord): void => {
@@ -178,18 +182,19 @@ interface ResolvedPlanParticipant {
 	plan: ChatImportResolvedParticipantPlan;
 	definition: ParticipantDefinition;
 	sourceCharacterId: number | null;
-	// ==[HUMAN APPROVED]== True when the resolution creates a new Actor Profile in the same
+	// @approved
+	//  True when the resolution creates a new Actor Profile in the same
 	// database operation as the Chat; the created Profile becomes the
 	// Participant's immutable provenance source, exactly like a fork.
 	createProfile: boolean;
 }
 
-// ==[HUMAN APPROVED]== Structural validation of the user-confirmed plan. Runs entirely before
+// @approved
+//  Structural validation of the user-confirmed plan. Runs entirely before
 // the exact artifact is finalized, so every rejection here is recoverable:
 // the staged preview, the staged bytes, and every resolution choice stay
 // intact for correction. The resolver never offers Message skipping, so the
 // plan must assign every retained Message to exactly one Participant.
-//
 // Trust boundary: the client owns the confirmation UX (blank captured names
 // must be explicitly confirmed or edited, and every fork Character must be
 // explicitly approved). The authoritative server invariant is that every
@@ -255,7 +260,8 @@ const validateResolutionPlan = (
 			`Every Message must belong to exactly one Participant; ${unassigned} Message${unassigned === 1 ? "" : "s"} remain unassigned.`,
 		);
 	}
-	// ==[HUMAN APPROVED]== Exact duplicates (matching raw-byte SHA-256) require the explicit
+	// @approved
+	//  Exact duplicates (matching raw-byte SHA-256) require the explicit
 	// Import another copy confirmation; related-source matches stay
 	// advisory and never gate the commit.
 	if (
@@ -266,7 +272,8 @@ const validateResolutionPlan = (
 	}
 };
 
-// ==[HUMAN APPROVED]== Resolves the plan into complete Participant Definitions before the exact
+// @approved
+//  Resolves the plan into complete Participant Definitions before the exact
 // artifact is finalized. Fork names come from the selected Profile's current
 // name, never from the client-supplied plan name; creation and chat-only
 // Participants keep the user-confirmed nonblank name with the empty imported
@@ -306,7 +313,8 @@ const resolvePlanParticipants = (
 	});
 };
 
-// ==[HUMAN APPROVED]== Maps each 1-based record position to the seed index of the Participant
+// @approved
+//  Maps each 1-based record position to the seed index of the Participant
 // that owns it. Plan validation guarantees a complete, non-overlapping
 // assignment, so every retained position resolves.
 const assignMessageOwners = (
@@ -321,7 +329,8 @@ const assignMessageOwners = (
 	return owners;
 };
 
-// ==[HUMAN APPROVED]== The exact staged bytes already sit at their unique managed path, and that
+// @approved
+//  The exact staged bytes already sit at their unique managed path, and that
 // immutable staged path is the final artifact path: the commit transaction
 // claims it in place by referencing it from the artifact metadata row. No
 // file move, copy, or finalization precedes the database operation, so a
@@ -340,7 +349,8 @@ export function createChatImportModule(
 		async stageFile({ bytes, originalFilename }) {
 			stagedImportStore(database).sweep();
 			const filename = basename(originalFilename);
-			// ==[HUMAN APPROVED]== The upload lands directly at its final unique managed path; the
+			// @approved
+			//  The upload lands directly at its final unique managed path; the
 			// commit transaction claims this exact path in place.
 			const relativePath = uniqueManagedRelativePath(filename);
 			const stagedPath = join(artifactDirectory, relativePath);
@@ -366,7 +376,8 @@ export function createChatImportModule(
 					sha256: staged.sha256,
 				});
 			} catch (error) {
-				// ==[HUMAN APPROVED]== Validation failure discards the uploaded staging bytes so a
+				// @approved
+				//  Validation failure discards the uploaded staging bytes so a
 				// rejected file never lingers as an uncommitted temporary.
 				rmSync(stagedPath, { force: true });
 				throw error;
@@ -414,7 +425,8 @@ export function createChatImportModule(
 		commit(token, input) {
 			stagedImportStore(database).sweep();
 			const session = stagedImportStore(database).sessions.get(token);
-			// ==[HUMAN APPROVED]== A consumed token is a committed token: its compact receipt serves
+			// @approved
+			//  A consumed token is a committed token: its compact receipt serves
 			// the idempotent retry after a lost response. The authoritative
 			// Conversation snapshot is re-read through the Conversation seam
 			// instead of retaining the full result in memory.
@@ -423,7 +435,8 @@ export function createChatImportModule(
 					session.receipt.conversationId,
 				);
 				if (conversation === undefined) {
-					// ==[HUMAN APPROVED]== The committed Chat no longer exists, so the receipt can
+					// @approved
+					//  The committed Chat no longer exists, so the receipt can
 					// never be served again and is evicted with it.
 					stagedImportStore(database).sessions.delete(token);
 					throw new Error(
@@ -441,7 +454,8 @@ export function createChatImportModule(
 			}
 			assertStagedAvailable(record);
 
-			// ==[HUMAN APPROVED]== Re-decode the exact staged bytes that produced the preview, so
+			// @approved
+			//  Re-decode the exact staged bytes that produced the preview, so
 			// the committed Chat is always the previewed one. Awaiting no
 			// reopening of the user's original file: the flow works from the
 			// staged copy alone.
@@ -454,12 +468,14 @@ export function createChatImportModule(
 			});
 			const messageCount = decoded.report.counts.messages;
 
-			// ==[HUMAN APPROVED]== Plan validation and Profile resolution are fully recoverable:
+			// @approved
+			//  Plan validation and Profile resolution are fully recoverable:
 			// nothing is written and the staged bytes are untouched.
 			validateResolutionPlan(record, messageCount, input);
 			const resolved = resolvePlanParticipants(database, input);
 
-			// ==[HUMAN APPROVED]== The confirmed Resolved Participant Plan through the shared
+			// @approved
+			//  The confirmed Resolved Participant Plan through the shared
 			// Import Projection: ownership mapping, Definitions with
 			// provenance, derived Control, stamped Messages, and the final
 			// report and data entries all come from one seam. The artifact
@@ -506,7 +522,8 @@ export function createChatImportModule(
 				byteLength: record.byteLength,
 				counts: { ...decoded.report.counts },
 				participants: resolved.map((entry, index) => ({
-					// ==[HUMAN APPROVED]== The committed Cast is authoritative: a created Profile's id is
+					// @approved
+					//  The committed Cast is authoritative: a created Profile's id is
 					// assigned inside the transaction, so provenance comes from the
 					// committed Participant rather than the pre-commit plan.
 					name: conversation.cast[index]?.name ?? entry.definition.name,
@@ -522,7 +539,8 @@ export function createChatImportModule(
 					})),
 				},
 			};
-			// ==[HUMAN APPROVED]== Consume the token once while retaining the compact receipt for
+			// @approved
+			//  Consume the token once while retaining the compact receipt for
 			// idempotent retry within the same session lifetime.
 			stagedImportStore(database).sessions.set(token, {
 				phase: "committed",
@@ -537,7 +555,8 @@ export function createChatImportModule(
 			const session = stagedImportStore(database).sessions.get(token);
 			if (session === undefined || session.phase !== "staged") return;
 			stagedImportStore(database).sessions.delete(token);
-			// ==[HUMAN APPROVED]== Removes only this flow's uncommitted temporary staging bytes;
+			// @approved
+			//  Removes only this flow's uncommitted temporary staging bytes;
 			// committed artifacts are never touched here.
 			rmSync(session.record.stagedPath, { force: true });
 		},

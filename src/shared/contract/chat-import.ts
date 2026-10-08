@@ -178,7 +178,8 @@ const importDetailsArtifactAvailability = Type.Union([
 
 export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
-// ==[HUMAN APPROVED]== The committed metadata of one preserved exact-source artifact:
+// @approved
+//  The committed metadata of one preserved exact-source artifact:
 // (namespace, key) identity within the Conversation, managed placement, and
 // content digest. Neutral shared home for the 7-field schema so the
 // Conversation creation seam and the wire artifact shape both derive from
@@ -199,7 +200,8 @@ export const artifactMetadata = Type.Object({
 	sha256: Type.String(),
 });
 
-// ==[HUMAN APPROVED]== The wire artifact shape adds the owning Chat and the derived
+// @approved
+//  The wire artifact shape adds the owning Chat and the derived
 // availability on top of the committed metadata.
 const importDetailsArtifact = Type.Composite([
 	artifactMetadata,
@@ -286,7 +288,8 @@ export const importCleanedUpResponse = Type.Object({
 	reason: cleanupReason,
 });
 
-// ==[HUMAN APPROVED]== The Chat Import command family's modeled error union: the composed
+// @approved
+//  The Chat Import command family's modeled error union: the composed
 // 410/422 envelopes every staged route declares, so the client decodes an
 // error body against exactly that union.
 export const chatImportCommandErrors = Type.Union([

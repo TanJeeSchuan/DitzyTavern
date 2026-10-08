@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== The macro language has one lexical owner. The importer and evaluator
+// @approved
+//  The macro language has one lexical owner. The importer and evaluator
 // both consume this scanner so delimiter balancing, escaping, and Prompt Comment boundaries
 // cannot drift between the two paths.
 
@@ -82,7 +83,8 @@ const macroEnd = (source: string, start: number, allowEscapedStart = false): num
 	return index.macroEnds.get(start) ?? null;
 };
 
-// ==[HUMAN APPROVED]== Prompt Comment recognition includes both supported forms. The scoped
+// @approved
+//  Prompt Comment recognition includes both supported forms. The scoped
 // close scan is deliberately here rather than in either consumer.
 export const promptCommentEnd = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
@@ -125,7 +127,8 @@ export const scanMacroToken = (
 	return { kind: "char", end: index + 1 };
 };
 
-// ==[HUMAN APPROVED]== Used after parsing classifies a segment as literal. Split-brace escapes
+// @approved
+//  Used after parsing classifies a segment as literal. Split-brace escapes
 // lose their marker; complete escaped macros/comments and backslash pairs stay verbatim.
 export const unescapeMacroText = (source: string): string => {
 	let output = "";

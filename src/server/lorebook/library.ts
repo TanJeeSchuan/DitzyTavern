@@ -95,7 +95,8 @@ const validateEntry = (entry: LoreEntryFields): LoreEntryFields => {
 		throw new InvalidLorebookCommandError("Lorebook entry priority must be an integer.");
 	}
 	try {
-		// ==[HUMAN APPROVED]== Validate flags even when the entry currently has no expressions. A
+		// @approved
+		//  Validate flags even when the entry currently has no expressions. A
 		// later edit must not inherit a malformed configuration that was
 		// accepted merely because its lists happened to be empty.
 		validateLorebookExpressions(entry);

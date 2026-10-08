@@ -16,7 +16,8 @@ import type {
 } from "./types";
 
 export interface ArtifactModuleOptions {
-	// ==[HUMAN APPROVED]== Managed artifact directory of the deployment; all stored copies live
+	// @approved
+	//  Managed artifact directory of the deployment; all stored copies live
 	// under it by their committed relative paths.
 	directory: string;
 }
@@ -90,7 +91,8 @@ export function createArtifactModule(
 			if (row === undefined) return undefined;
 			const read = readRow(row);
 			if (read.status === "cleaned-up") return read;
-			// ==[HUMAN APPROVED]== Response metadata derives from the stored original leaf
+			// @approved
+			//  Response metadata derives from the stored original leaf
 			// filename and is sanitized; the exact bytes are untouched.
 			return {
 				status: "available",

@@ -1,7 +1,8 @@
 import { promptPresetSelectClass } from "../../prompt-preset-presentation";
 import { AppSelect } from "@/components/ui/select";
 
-// ==[HUMAN APPROVED]== One typed preset select: the canonical guard decides which vocabulary entries
+// @approved
+//  One typed preset select: the canonical guard decides which vocabulary entries
 // are offered and which change values are accepted, so no caller hand-rolls its own
 // narrowing and every select renders with the shared styling.
 export function PromptPresetSelect<T extends string>({

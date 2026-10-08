@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Focused selected-history read model. Generation and Macro Variable
+// @approved
+//  Focused selected-history read model. Generation and Macro Variable
 // consumers need only the selected narrative path and, optionally, one
 // namespace of Variant data; loading every alternative Variant or arbitrary
 // metadata makes those reads scale with discarded history.

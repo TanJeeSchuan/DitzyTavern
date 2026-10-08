@@ -84,7 +84,8 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 	.post("/api/conversations/:id/memories/catchup", ({ params }) => {
 		try {
 			const conversationId = Number(params.id);
-			// ==[HUMAN APPROVED]== The selected path is composed here from Conversation's own
+			// @approved
+			//  The selected path is composed here from Conversation's own
 			// read model, invoked inside startMemoryCatchup's transaction, and
 			// mapped onto Memory's captured-message contract.
 			const run = startMemoryCatchup(database, conversationId, () => {

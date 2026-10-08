@@ -1,7 +1,7 @@
-// ==[HUMAN APPROVED]== Test data teardown. Run with `bun run db:teardown`.
+// @approved
+//  Test data teardown. Run with `bun run db:teardown`.
 // Removes only rows matching the seed script's values, so user-created
 // data is left untouched. Safe to run repeatedly.
-//
 // Seeded Conversations are identified by their exact seed name and derived
 // Chat times, never by table-wide deletes; Participant, Prompt, Opening,
 // Control, and Message rows go with them through cascade deletes. Seeded
@@ -28,7 +28,8 @@ export function teardown(databasePath?: string) {
 	const log = (message: string) => console.log(`[teardown] ${message}`);
 
 	try {
-		// ==[HUMAN APPROVED]== Seeded native Conversations carry both Chat times equal to the seed
+		// @approved
+		//  Seeded native Conversations carry both Chat times equal to the seed
 		// base time: the greeting is their only history and carries no other
 		// timestamps.
 		const seedChatMatches = conversations.map((conversation) =>
@@ -55,7 +56,8 @@ export function teardown(databasePath?: string) {
 		}
 		log(`removed ${seededChatIds.length} conversation rows with their Casts and history`);
 
-		// ==[HUMAN APPROVED]== Match seeded Characters on their complete seed Definition.
+		// @approved
+		//  Match seeded Characters on their complete seed Definition.
 		let removedCharacters = 0;
 		for (const character of characters) {
 			const candidates = db

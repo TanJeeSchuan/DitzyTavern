@@ -93,7 +93,8 @@ export async function collectModelClientGeneration(
 				default:
 					assertNeverModelClientEvent(event);
 			}
-			// ==[HUMAN APPROVED]== An async iterator can resolve every read from its in-memory queue. A
+			// @approved
+			//  An async iterator can resolve every read from its in-memory queue. A
 			// plain await then remains in the microtask queue and starves Elysia's
 			// request dispatcher until the provider stream drains. Bound each burst
 			// without adding a scheduling turn to ordinary short streams.
@@ -134,7 +135,8 @@ export async function collectModelClientGeneration(
 function isModelClientFailure(
 	error: Error,
 ): error is Error & { kind: ModelClientFailureKind; responseBody?: string } {
-	// ==[HUMAN APPROVED]== SAFETY: Model Client transport errors extend Error and carry one of the
+	// @approved
+	//  SAFETY: Model Client transport errors extend Error and carry one of the
 	// closed failure kinds before this predicate is called.
 	const candidate = error as Error & { kind?: ModelClientFailureKind };
 	const kind = candidate.kind;

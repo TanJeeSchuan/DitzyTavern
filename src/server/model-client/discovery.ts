@@ -87,7 +87,8 @@ export async function discoverModels(
 			const bytes = bounded.bytes;
 			let parsed: JsonValue;
 			try {
-				// ==[HUMAN APPROVED]== SAFETY: the JSON parser establishes the only boundary at which the
+				// @approved
+				//  SAFETY: the JSON parser establishes the only boundary at which the
 				// untrusted response enters this module; parseCatalogBody validates the
 				// concrete object shape before any field is consumed.
 				parsed = JSON.parse(new TextDecoder().decode(bytes)) as JsonValue;
@@ -143,7 +144,8 @@ function parseCatalogBody(value: JsonValue): { data: ModelCatalogEntry[] } | nul
 
 function jsonObject(value: JsonValue): { readonly [key: string]: JsonValue } | null {
 	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// ==[HUMAN APPROVED]== SAFETY: the object tag check above establishes a JSON object before this
+	// @approved
+	//  SAFETY: the object tag check above establishes a JSON object before this
 	// assertion is used to inspect its named fields.
 	return value as { readonly [key: string]: JsonValue };
 }

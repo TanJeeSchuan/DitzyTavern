@@ -1,7 +1,8 @@
 import type { StagedChatHandle } from "../import-chat-flow";
 import { sourceSize } from "./presentation";
 
-// ==[HUMAN APPROVED]== The one Source card shared by the Import flow's resolution and
+// @approved
+//  The one Source card shared by the Import flow's resolution and
 // review steps. The declared-integrity row stays a resolution-step display:
 // the review step keeps its exact previous layout.
 export function SourceCard({

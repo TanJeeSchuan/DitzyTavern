@@ -41,7 +41,8 @@ import {
 	parseMemoryActivationRecord,
 } from "../../../shared/contract/memory-recall";
 
-// ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
+// @approved
+//  Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
 // accept-generation.ts; both halves share the transaction seam and the
 // terminal persistence helpers below.
@@ -61,7 +62,8 @@ const readActiveGeneration = (
 	)
 	.get();
 
-// ==[HUMAN APPROVED]== The one Active Generation read-or-throw prelude: every terminal
+// @approved
+//  The one Active Generation read-or-throw prelude: every terminal
 // transaction resolves the same (conversation, generation) pair and rejects
 // a vanished record with the same typed error.
 const requireActiveGeneration = (
@@ -98,7 +100,8 @@ export const isSiblingGenerationRow = (row: { generation_intent_json: string }):
 	return parsed.type === "sibling";
 };
 
-// ==[HUMAN APPROVED]== The one provisional Variant existence read: terminal persistence and
+// @approved
+//  The one provisional Variant existence read: terminal persistence and
 // the stop transition both validate the same (variant_id, message_id) pair,
 // and the stop transition additionally reads the selected mark.
 const provisionalVariantRow = (
@@ -129,7 +132,8 @@ const terminalStatusFrom = (
 	return value === "length-limited" || value === "interrupted" ? value : "complete";
 };
 
-// ==[HUMAN APPROVED]== The Active Generation columns the bounded replay window carries over
+// @approved
+//  The Active Generation columns the bounded replay window carries over
 // verbatim. The exclusions are the active-only bookkeeping the durable
 // Variant or the running attempt owns (provenance, human Message, prior
 // Variant) and the two checkpoint columns the terminal outcome supplies
@@ -270,7 +274,8 @@ export const persistTerminalVariantData = (
 	}
 };
 
-// ==[HUMAN APPROVED]== The durable terminal commit against an already-open transaction:
+// @approved
+//  The durable terminal commit against an already-open transaction:
 // validate the provisional target, write terminal content, persist terminal
 // Variant data, retain bounded inspection data, and remove the Active
 // Generation row. Shared by resolution and Stop's durable-output branch so
@@ -327,7 +332,8 @@ export function resolveConversationGeneration(
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
-		// ==[HUMAN APPROVED]== The terminal Variant content is committed; Memory re-derives
+		// @approved
+		//  The terminal Variant content is committed; Memory re-derives
 		// its collection from the resolved source.
 		reportChange({
 			conversationId: input.conversationId,
@@ -363,7 +369,8 @@ export const removeConversationGeneration = (
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		// ==[HUMAN APPROVED]== Removal deletes the provisional target — the sibling Variant
+		// @approved
+		//  Removal deletes the provisional target — the sibling Variant
 		// alone, or the whole provisional Message for a Tail or Continuation
 		// target — so its removed Variant id is reported and Memory abandons the
 		// in-flight work the write just deleted. The removed sibling Variant is
@@ -403,7 +410,8 @@ export function checkpointConversationGeneration(
 	});
 }
 
-// ==[HUMAN APPROVED]== The checkpoint write against an already-read Active Generation row:
+// @approved
+//  The checkpoint write against an already-read Active Generation row:
 // the monotonic event position guards delayed writes, the provisional
 // Variant mirrors the visible content, and the crash-recovery copy stores
 // both streams. Shared by the Tail and Sibling checkpoint seams.
@@ -570,7 +578,8 @@ function restoreStoppedSiblingSelection(
 	}
 }
 
-// ==[HUMAN APPROVED]== Explicit Stop uses the latest durable checkpoint as its terminal input. A
+// @approved
+//  Explicit Stop uses the latest durable checkpoint as its terminal input. A
 // live runtime flushes immediately before calling this seam; a caller without
 // a runtime still gets the last authoritative checkpoint and the same cleanup
 // rules. The existing resolve/remove operations keep the transition atomic,
@@ -591,7 +600,8 @@ export function stopConversationGeneration(
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		// ==[HUMAN APPROVED]== A durable Stop commits the terminal Variant content; a
+		// @approved
+		//  A durable Stop commits the terminal Variant content; a
 		// zero-output Stop deletes the target whole, so its in-flight Memory
 		// work is abandoned through the removed record.
 		reportChange(transition.durableOutput ? {

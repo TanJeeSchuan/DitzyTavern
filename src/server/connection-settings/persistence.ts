@@ -89,13 +89,16 @@ export function readProfile(
 		apiFormat: row.api_format,
 		requestUrl: row.request_url,
 		modelsUrl: row.models_url,
-		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every Model Backend value
+		// @approved
+		//  SAFETY: validateConnectionProfileDraft rejects every Model Backend value
 		// outside the closed v1 vocabulary before the row can be written.
 		modelBackend: row.model_backend as ConnectionProfile["modelBackend"],
-		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every Adapter value outside
+		// @approved
+		//  SAFETY: validateConnectionProfileDraft rejects every Adapter value outside
 		// the three bundled adapter identifiers before the row can be written.
 		adapter: row.adapter as ConnectionProfile["adapter"],
-		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every output-token
+		// @approved
+		//  SAFETY: validateConnectionProfileDraft rejects every output-token
 		// representation outside the Chat Completions v1 vocabulary.
 		outputTokenRepresentation: row.output_token_representation as ConnectionProfile["outputTokenRepresentation"],
 		timeoutMs: row.timeout_ms,
@@ -124,7 +127,8 @@ export function readEncryptedSecret(
 ): ConnectionProfileSecretSnapshot | null {
 	if (row === undefined || row.format_version === null || row.key_id === null || row.nonce === null || row.ciphertext === null || row.tag === null) return null;
 	const payload = decryptConnectionSecretSync(masterKey, id, {
-		// ==[HUMAN APPROVED]== SAFETY: the encryption module accepts the versioned value and rejects any
+		// @approved
+		//  SAFETY: the encryption module accepts the versioned value and rejects any
 		// unsupported value before decrypting it.
 		formatVersion: row.format_version as 1,
 		keyId: row.key_id,
@@ -245,7 +249,8 @@ export function requireProfile(
 	return profile;
 }
 
-// ==[HUMAN APPROVED]== The one revision advance: every successful revisioned write bumps the
+// @approved
+//  The one revision advance: every successful revisioned write bumps the
 // revision exactly once. The revisionedWrite seam is its sole caller, so "every
 // write bumps exactly once" is a property of the seam, not of caller
 // discipline.

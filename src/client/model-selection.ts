@@ -5,7 +5,8 @@ export interface ModelSelectionInput {
 	readonly textOnlyModels: readonly string[];
 }
 
-// ==[HUMAN APPROVED]== Opening the combobox is intentionally a small curated view. Once the user
+// @approved
+//  Opening the combobox is intentionally a small curated view. Once the user
 // types, the complete advisory catalog becomes searchable without turning it
 // into an allowlist; pinned IDs absent from discovery remain available too.
 // Text-only marks stay listed so a mistaken mark is always reachable to undo.

@@ -206,7 +206,8 @@ export function ActiveWritingWorkspace({
 
 	const selectChat = (chatId: string) => {
 		if (preview.previewPending) return;
-		// ==[HUMAN APPROVED]== Workspace chat ids are wire strings; the story read model speaks
+		// @approved
+		//  Workspace chat ids are wire strings; the story read model speaks
 		// numeric Conversation ids, so the coercion happens at this boundary.
 		if (
 			previewNavigationNeedsConfirmation(

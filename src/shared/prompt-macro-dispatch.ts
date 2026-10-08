@@ -496,7 +496,8 @@ const macroDefinitions: ReadonlyMap<string, MacroDefinition> = new Map([
 	} }],
 	["//", { evaluateArgs: false, handler: () => "" }],
 	["comment", { evaluateArgs: false, handler: () => "" }],
-	// ==[HUMAN APPROVED]== SAFETY: Object.entries supplies only the literal variable alias keys above;
+	// @approved
+	//  SAFETY: Object.entries supplies only the literal variable alias keys above;
 	// each key is narrowed to the VariableOperation accepted by variableDefinition.
 	...Object.entries(variableAliases).flatMap(([operation, names]) => names.map((name) => [name, variableDefinition(operation as VariableOperation)] as const)),
 ]);

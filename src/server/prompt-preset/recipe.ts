@@ -51,7 +51,8 @@ export const promptPresetBlockSelection = {
 	content: promptPresetBlockTable.content,
 };
 
-// ==[HUMAN APPROVED]== The recipe reader's row shape: the shared selection plus the
+// @approved
+//  The recipe reader's row shape: the shared selection plus the
 // occurrence id it addresses slots by.
 const storedPromptPresetBlockSelection = {
 	id: promptPresetBlockTable.id,
@@ -82,7 +83,8 @@ export const selectDefaultPromptPreset = (
 		.run();
 };
 
-// ==[HUMAN APPROVED]== Applies one Conversation's authoritative selection of a shared
+// @approved
+//  Applies one Conversation's authoritative selection of a shared
 // preset. The selection is a reference to the library entry: validation
 // reads the live library row inside the caller's transaction, so a preset
 // deleted concurrently can never become the stored target, and the upsert
@@ -114,7 +116,8 @@ const storedOccurrences = (
 	db: PromptPresetDatabase,
 	presetId: number,
 ): PromptPresetRecipe["slots"] => {
-	// ==[HUMAN APPROVED]== SAFETY: prompt_preset_block_shape_check enforces this discriminated row
+	// @approved
+	//  SAFETY: prompt_preset_block_shape_check enforces this discriminated row
 	// shape for every insert and update.
 	const slots = db
 		.select(storedPromptPresetBlockSelection)
@@ -122,7 +125,8 @@ const storedOccurrences = (
 		.where(eq(promptPresetBlockTable.preset_id, presetId))
 		.orderBy(asc(promptPresetBlockTable.position))
 		.all() as StoredPromptPresetBlock[];
-	// ==[HUMAN APPROVED]== An authored instruction always stores its composed name, text,
+	// @approved
+	//  An authored instruction always stores its composed name, text,
 	// and outgoing role. The stored value is never normalized or flattened,
 	// including when its content is legitimately empty. The three members are
 	// the stored row's own discriminant; every other projection of it (the

@@ -5,7 +5,8 @@ import { parseMacroDocument, unescapeMacroText, type MacroDocumentNode } from ".
 
 export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
 
-// ==[HUMAN APPROVED]== Immutable inputs for one attempt. The evaluator never reads browser
+// @approved
+//  Immutable inputs for one attempt. The evaluator never reads browser
 // globals, a database, or the wall clock. Mutable values live in the explicit
 // MacroAttemptState passed alongside this environment.
 
@@ -20,7 +21,8 @@ export interface MacroEnvironment {
 	readonly random?: () => number;
 }
 
-// ==[HUMAN APPROVED]== Mutable state for one complete attempt. Evaluation receives this as a
+// @approved
+//  Mutable state for one complete attempt. Evaluation receives this as a
 // visible parameter rather than inheriting it from a shared environment record;
 // authored blocks therefore observe writes in order and budget recompilation
 // can reuse the same expansion cache without losing the attempt journal.
@@ -57,7 +59,8 @@ export const createMacroAttemptState = (
 	macroPositionBase: "",
 });
 
-// ==[HUMAN APPROVED]== One named construction path captures every immutable input and creates
+// @approved
+//  One named construction path captures every immutable input and creates
 // every mutable per-attempt value. Generation capture and creation-time
 // opening expansion therefore cannot forget the journal or cache.
 export const createAttemptEnvironment = (input: AttemptEnvironmentInput): AttemptEnvironment => ({

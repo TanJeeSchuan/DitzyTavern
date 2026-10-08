@@ -1,5 +1,5 @@
-// ==[HUMAN APPROVED]== Native New Chat workflow.
-//
+// @approved
+//  Native New Chat workflow.
 // Composes the Character Library and Conversation seams in one transaction:
 // each initial seat resolves to a complete Definition — either the
 // authoritative copy of a library Character (checked against its expected
@@ -20,7 +20,8 @@ import type {
 	newChatSeatSchema,
 } from "../../shared/contract/native-conversation";
 
-// ==[HUMAN APPROVED]== Seat shapes derive from the canonical native-conversation wire
+// @approved
+//  Seat shapes derive from the canonical native-conversation wire
 // schema so the workflow can never drift from the transport contract.
 export type NewChatSeat = Static<typeof newChatSeatSchema>;
 
@@ -28,7 +29,8 @@ export type CharacterForkSeat = Extract<NewChatSeat, { type: "character" }>;
 
 export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
 
-// ==[HUMAN APPROVED]== The input derives from the canonical native-conversation wire
+// @approved
+//  The input derives from the canonical native-conversation wire
 // schema (ADR-0032); `createdAt` stays workflow-owned because the transport
 // never submits it — the server defaults it to the creation time.
 export type CreateNativeConversationInput = Static<typeof nativeConversationBody> & {

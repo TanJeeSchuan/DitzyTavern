@@ -11,7 +11,8 @@ import {
 	type CharacterSnapshot,
 } from "../shared/contract/character-library";
 
-// ==[HUMAN APPROVED]== Typed client for the Character Library transport adapters. Outcomes mirror
+// @approved
+//  Typed client for the Character Library transport adapters. Outcomes mirror
 // the server's typed results so the UI can recover from conflicts without
 // losing local drafts. Every Character shape is the canonical shared wire
 // schema's Static type, imported under the client's historical names so the
@@ -26,8 +27,9 @@ export type {
 	CharacterSummary,
 };
 
+// @approved
 // The Character command route's outcome is the wire's own: the applied
-// ==[HUMAN APPROVED]== response (applied snapshot or derived deletion result) under `available`,
+//  response (applied snapshot or derived deletion result) under `available`,
 // the typed 409/404/422 envelopes verbatim, and network for everything the
 // seam could not classify.
 export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;

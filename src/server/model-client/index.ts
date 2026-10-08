@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Deep Model Client seam. Provider-neutral generation input and normalized
+// @approved
+//  Deep Model Client seam. Provider-neutral generation input and normalized
 // events are public; concrete transports remain private to this module.
 
 export {

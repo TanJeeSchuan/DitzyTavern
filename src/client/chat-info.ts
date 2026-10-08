@@ -1,8 +1,8 @@
-// ==[HUMAN APPROVED]== Pure presentation state for the Chat information surface. Chat information
+// @approved
+//  Pure presentation state for the Chat information surface. Chat information
 // is the ordinary way to inspect a Chat's details; Import Details appears
 // inside it only when the Chat carries import provenance. There is no
 // persistent Imported badge, header marker, or separate category.
-//
 // The reducer keeps the loading, no-provenance, unreadable, available, and
 // error states testable without a browser: the view feeds typed transport
 // outcomes in and derives the exact presentation (including cleaned-up
@@ -16,20 +16,24 @@ export type ReadableChatImportDetails = Extract<
 >;
 
 export type ChatInformationState =
+	// @approved
 	// The panel opened; the lightweight Import Details check is in flight.
-	// ==[HUMAN APPROVED]==
 	| { status: "loading" }
+	// @approved
 	// The Chat exists but has no import provenance: generic Chat information
-	// ==[HUMAN APPROVED]== only, with no imported marker of any kind.
+	//  only, with no imported marker of any kind.
 	| { status: "no-import-details" }
-	// ==[HUMAN APPROVED]== The Chat has an import report entry, but its persisted provenance cannot
+	// @approved
+	//  The Chat has an import report entry, but its persisted provenance cannot
 	// be decoded. Keep this visible rather than treating it as never imported.
 	| { status: "unreadable-import-details" }
+	// @approved
 	// Import Details loaded; the exact-artifact availability drives the
-	// ==[HUMAN APPROVED]== download action and the cleaned-up presentation.
+	//  download action and the cleaned-up presentation.
 	| { status: "available"; details: ReadableChatImportDetails }
+	// @approved
 	// The details could not be loaded (transport failure); Chat information
-	// ==[HUMAN APPROVED]== stays usable without importing specifics.
+	//  stays usable without importing specifics.
 	| { status: "error" };
 
 export type ChatInformationAction =
@@ -61,8 +65,9 @@ export function reduceChatInformation(
 	}
 }
 
+// @approved
 // Derived download availability for the exact preserved source. Missing or
-// ==[HUMAN APPROVED]== corrupt artifacts report cleaned up: only exact download is disabled while
+//  corrupt artifacts report cleaned up: only exact download is disabled while
 // normal Chat reading and commands stay available.
 export interface SourceDownloadAvailability {
 	available: boolean;
@@ -82,8 +87,9 @@ export const sourceDownloadAvailable = (
 	return { available: false, reason: availability.reason };
 };
 
+// @approved
 // The exact-source presentation copy shown in Import Details: available, or
-// ==[HUMAN APPROVED]== described as cleaned up with the typed reason. Provenance loss never makes
+//  described as cleaned up with the typed reason. Provenance loss never makes
 // the working Chat look corrupt.
 export const artifactAvailabilityLabel = (
 	state: ChatInformationState,

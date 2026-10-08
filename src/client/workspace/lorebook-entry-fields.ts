@@ -16,7 +16,8 @@ const entryConditionFields = [
 
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
 
-// ==[HUMAN APPROVED]== Expressions are newline-delimited in the editor. Commas are valid expression
+// @approved
+//  Expressions are newline-delimited in the editor. Commas are valid expression
 // content (especially in quantified regular expressions), so they cannot be a
 // list separator.
 const splitList = (value: string): string[] => value.split(/\r?\n/).filter((part) => part.length > 0);

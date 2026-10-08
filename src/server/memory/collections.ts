@@ -143,7 +143,8 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 	return row;
 };
 
-// ==[HUMAN APPROVED]== Queue one explicit replacement using only its selected Variant and four prior selected Messages.
+// @approved
+//  Queue one explicit replacement using only its selected Variant and four prior selected Messages.
 export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number): MemoryCollectionView {
 	return database.transaction(() => {
 		const enabled = isMemoryEnabledForConversation(database, conversationId);
@@ -162,7 +163,8 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 	}).immediate();
 }
 
-// ==[HUMAN APPROVED]== Queue selected source work from an authoritative write transaction.
+// @approved
+//  Queue selected source work from an authoritative write transaction.
 export function queueMemorySource(database: Database, conversationId: number, messageId: number, catchupRunId: number | null = null, knownCapture?: CapturedMemorySource): boolean {
 	if (!isMemoryEnabledForConversation(database, conversationId) || isExcludedMemorySource(database, conversationId, messageId)) return false;
 	let source: CapturedMemorySource;
@@ -195,7 +197,8 @@ export function queueMemoryTail(database: Database, conversationId: number): boo
 	return tail ? queueMemorySource(database, conversationId, tail.id) : false;
 }
 
-// ==[HUMAN APPROVED]== Queue selected source work from an authoritative write transaction.
+// @approved
+//  Queue selected source work from an authoritative write transaction.
 // The selected history arrives through a reader the caller owns (the Memory
 // route composes it from Conversation's own read model), invoked inside this
 // transaction so the path snapshot is consistent with the queued work.
@@ -441,7 +444,8 @@ export class StaleMemorySettingsError extends Error {
 	}
 }
 
-// ==[HUMAN APPROVED]== Invalidate one source version whenever its text or selected status changes.
+// @approved
+//  Invalidate one source version whenever its text or selected status changes.
 export function invalidateMemoryWorkForVariant(database: Database, variantId: number) {
 	const row = readCollection(database, variantId);
 	if (!row) return;
@@ -519,7 +523,8 @@ const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 		.where(and(eq(memoryCollectionTable.status, "pending"), eq(memoryCollectionTable.ownership, "automatic")))
 		.orderBy(asc(memoryCollectionTable.catchup_run_id), asc(memoryCollectionTable.updated_at))
 		.get();
-	// ==[HUMAN APPROVED]== Live (non-catch-up) extraction outranks indexing; indexing runs only when no live extraction is waiting.
+	// @approved
+	//  Live (non-catch-up) extraction outranks indexing; indexing runs only when no live extraction is waiting.
 	const liveExtractionPending = extraction !== undefined && extraction.catchup_run_id === null;
 	const index = liveExtractionPending ? undefined : claimMemoryIndexJob(database);
 	if (index) return { kind: "index" as const, job: index };

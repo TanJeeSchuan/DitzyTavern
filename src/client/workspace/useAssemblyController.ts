@@ -59,7 +59,8 @@ export function useAssemblyController({
 	const canRetry = conversation !== null && lastGenerationRef.current?.conversationId === conversation.id &&
 		assembly === null && !variantPreviewActive && !isGenerating;
 
-	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
+	// @approved
+	//  Assembly request identity is one monotonic counter: a request stays
 	// current until a newer request, a cancellation, or a Chat switch advances it.
 	const issueAssemblyRequestId = (): number => {
 		const requestId = nextAssemblyRequestIdRef.current;
@@ -97,7 +98,8 @@ export function useAssemblyController({
 			request,
 			preview: preservedPreview,
 		});
-		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		// @approved
+		//  The transport classifies every failure itself; it never rejects.
 		void previewConversationGeneration(conversationId, request)
 			.then((outcome) => {
 				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
@@ -162,7 +164,8 @@ export function useAssemblyController({
 		onFailure: (message: string) => void,
 		onAccepted: () => void,
 	) => {
-		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		// @approved
+		//  The transport classifies every failure itself; it never rejects.
 		const outcome = await request;
 		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 		if (outcome.outcome !== "available") {

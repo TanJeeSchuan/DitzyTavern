@@ -18,7 +18,8 @@ export async function shutdownApplication(
 			stopMemoryWorker(),
 		]);
 		if (recovery.failed > 0) console.error(`[generation-recovery] Shutdown recovery left ${recovery.failed} generation(s) unresolved.`);
-		// ==[HUMAN APPROVED]== One dispose path drops every process-local store for this database:
+		// @approved
+		//  One dispose path drops every process-local store for this database:
 		// inspection previews, staged import sessions (the restart contract),
 		// in-flight memory work, and the sweep tick.
 		processStateFor(database).dispose();

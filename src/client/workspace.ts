@@ -60,7 +60,8 @@ export async function deleteChat(chatId: string): Promise<string | null> {
 	return error.status === 422 && "reason" in error.value ? error.value.reason : "The Chat could not be deleted.";
 }
 
-// ==[HUMAN APPROVED]== Renames any Chat, not only the open one, so the current revision is read
+// @approved
+//  Renames any Chat, not only the open one, so the current revision is read
 // first; a revision that moved in between is retried once.
 export async function renameChat(chatId: string, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
 	const current = await loadConversation(Number(chatId)).catch(() => null);

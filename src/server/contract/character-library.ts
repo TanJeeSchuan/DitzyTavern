@@ -20,12 +20,14 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toCharacterPayload } from "./projections";
 
-// ==[HUMAN APPROVED]== Keep this adapter export stable for sibling route adapters that use the
+// @approved
+//  Keep this adapter export stable for sibling route adapters that use the
 // Character transport projection while the implementation lives below the
 // route-adapter layer.
 export { toCharacterPayload };
 
-// ==[HUMAN APPROVED]== Thin typed adapters over the Character Library seam. The database is
+// @approved
+//  Thin typed adapters over the Character Library seam. The database is
 // injected so tests can mount the same routes against a temporary store;
 // production provides the server-owned database connection.
 export const createCharacterLibraryRoutes = (database: Database) =>

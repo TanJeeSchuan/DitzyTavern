@@ -1,5 +1,5 @@
-// ==[HUMAN APPROVED]== The principal Generation Plan Compiler (ADR-0032).
-//
+// @approved
+//  The principal Generation Plan Compiler (ADR-0032).
 // One deterministic interface turns captured Conversation state, Generation
 // intent, canonical Generation Settings, and the safe Connection facts into
 // the complete Generation Plan used by inspection and execution. The pure
@@ -7,7 +7,6 @@
 // module owns intent applicability, budgeting, and the active API Format
 // selection for Request Overrides, while the Prompt Compiler keeps
 // named-block ordering, macro expansion, and selected history.
-//
 // The module is pure: it never touches SQLite, HTTP, credentials, or
 // provider vocabulary. Effective means DitzyTavern used a value locally or
 // supplied it to the selected Model Client adapter — never that a remote
@@ -57,7 +56,8 @@ export const continuationIntentFor = (
 		suffix: settings.continuationPrefillSuffix,
 	};
 
-// ==[HUMAN APPROVED]== The applicable Continuation operands for one attempt. Tail and Sibling
+// @approved
+//  The applicable Continuation operands for one attempt. Tail and Sibling
 // attempts have none; a Continuation retains exactly the operand its
 // strategy uses, so the effective settings can never imply that an
 // inapplicable operand participated.
@@ -87,7 +87,8 @@ const continuationOperands = (
 		};
 };
 
-// ==[HUMAN APPROVED]== The Effective Generation Settings for one attempt. The literal is
+// @approved
+//  The Effective Generation Settings for one attempt. The literal is
 // compile-locked to the canonical vocabulary: adding a canonical field fails
 // typecheck until the compiler states how it participates.
 export const effectiveGenerationSettingsFor = (
@@ -103,13 +104,15 @@ export const effectiveGenerationSettingsFor = (
 	contextLimit: settings.contextLimit,
 	responseBudget: settings.responseBudget,
 	safetyAllowance: settings.safetyAllowance,
-	// ==[HUMAN APPROVED]== No production policy currently consumes this configured limit, and the
+	// @approved
+	//  No production policy currently consumes this configured limit, and the
 	// Model Client projection excludes it. It therefore did not participate in
 	// this attempt and must not appear as an effective value.
 	siblingGenerationLimit: null,
 	...continuationOperands(intent),
 	repeatedImagePlacement: settings.repeatedImagePlacement,
-	// ==[HUMAN APPROVED]== Only the namespace matching the selected Connection Profile's format is
+	// @approved
+	//  Only the namespace matching the selected Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never
 	// transmitted. Without a selected Profile no namespace applies.
 	requestOverrides: connection === null
@@ -131,7 +134,8 @@ export const compileGenerationPlan = (
 		environment: { self: input.human.name, other: input.model.name },
 		state: createMacroAttemptState(),
 	};
-	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
+	// @approved
+	//  Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
@@ -164,7 +168,8 @@ export const compileGenerationPlan = (
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
-	// ==[HUMAN APPROVED]== Intent applicability decides the protected history: an assistant-prefill
+	// @approved
+	//  Intent applicability decides the protected history: an assistant-prefill
 	// Continuation must retain the prefixed model text it continues from;
 	// every other intent protects the latest human entry by default. A prefill
 	// intent without preceding model history has no prefix to continue from,

@@ -5,7 +5,8 @@ import { ConversationNotFoundError, InvalidConversationCommandError } from "./er
 import { hasActiveGenerationFromConnection } from "./internal";
 import { runConversationTransaction } from "./commands/transaction";
 
-// ==[HUMAN APPROVED]== Deletes a Chat and, through foreign-key cascades, everything it owns. A
+// @approved
+//  Deletes a Chat and, through foreign-key cascades, everything it owns. A
 // running Generation must be stopped first so no attempt writes into a
 // Conversation that no longer exists. The guard reads the shared Active
 // Generation existence probe inside the write transaction so a Generation
@@ -15,7 +16,8 @@ export function deleteConversation(database: Database, conversationId: number) {
 		if (hasActiveGenerationFromConnection(db, conversationId)) {
 			throw new InvalidConversationCommandError("Stop the running Generation before deleting this Chat.");
 		}
-		// ==[HUMAN APPROVED]== The Variant ids are enumerated before the cascading delete so
+		// @approved
+		//  The Variant ids are enumerated before the cascading delete so
 		// Memory can abandon their in-flight work when the write commits.
 		const removedVariantIds = db
 			.select({ id: messageVariantTable.id })

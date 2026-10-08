@@ -16,10 +16,12 @@ export {
 	InvalidCharacterDefinitionError,
 	StaleCharacterRevisionError,
 } from "./errors";
-// ==[HUMAN APPROVED]== Narrow garbage-collection hook for the Conversation domain: removes an
+// @approved
+//  Narrow garbage-collection hook for the Conversation domain: removes an
 // already-tombstoned Character when its final provenance reference disappears.
 export { collectReleasedCharacterTombstones } from "./cleanup";
-// ==[HUMAN APPROVED]== Canonical copy-into-Conversation seam: the Library validates the
+// @approved
+//  Canonical copy-into-Conversation seam: the Library validates the
 // revision the caller read and projects the Definition with its provenance.
 export { forkCharacter, type CharacterFork } from "./fork";
 export type {
@@ -36,7 +38,8 @@ export type {
 export function createCharacterLibraryModule(
 	database: Database,
 ): CharacterLibraryModule {
-	// ==[HUMAN APPROVED]== Overloaded binding keeps the module contract precise: a confirmed
+	// @approved
+	//  Overloaded binding keeps the module contract precise: a confirmed
 	// deletion returns the typed result, every other command returns the
 	// authoritative Character.
 	function execute(

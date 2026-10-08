@@ -35,7 +35,8 @@ const PRESET_COMMAND_NOTICES = {
 	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 };
 
-// ==[HUMAN APPROVED]== Each flow declares its own start effects at the call site, so adding a flow
+// @approved
+//  Each flow declares its own start effects at the call site, so adding a flow
 // never requires editing a global registry: a selection supersedes reads and owns the Conversation
 // race; a library command supersedes reads and clears the notice channel; committing an import
 // supersedes reads; an order choice and an export keep reads current; the export clears the notice.
@@ -84,7 +85,8 @@ interface PromptPresetLibraryUnit {
 	cancelSillyTavernReview: () => void;
 }
 
-// ==[HUMAN APPROVED]== The library unit: the shared preset list, the per-Chat selection, native and
+// @approved
+//  The library unit: the shared preset list, the per-Chat selection, native and
 // SillyTavern interchange. It shares the runtime's settlement and one unified refresh path, so its
 // flows cannot drift from the recipe unit's ownership rules.
 export function usePromptPresetLibrary({
@@ -117,7 +119,8 @@ export function usePromptPresetLibrary({
 			notice: outcome.outcome === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
 		});
 	};
-	// ==[HUMAN APPROVED]== The shared import epilogue: reload the library and the selected recipe,
+	// @approved
+	//  The shared import epilogue: reload the library and the selected recipe,
 	// then report the imported name once the fresh state is accepted.
 	const reloadAfterImport = async (claim: OperationClaim, notice: string): Promise<void> => {
 		const refresh = await load();
@@ -126,7 +129,8 @@ export function usePromptPresetLibrary({
 		dispatch({ type: "notice-changed", notice });
 	};
 
-	// ==[HUMAN APPROVED]== Applies one selection through the authoritative Conversation command.
+	// @approved
+	//  Applies one selection through the authoritative Conversation command.
 	// `selectPreset` decides whether a pending leave must resolve first; the runtime owns the
 	// operation gate once the selection is ready to start.
 	const applySelection = (presetId: number): void => {
@@ -174,7 +178,8 @@ export function usePromptPresetLibrary({
 		});
 	};
 
-	// ==[HUMAN APPROVED]== One library command execution: pending and notice state live here, and
+	// @approved
+	//  One library command execution: pending and notice state live here, and
 	// the outcome's authoritative re-read refreshes the list and the selected
 	// recipe. A success notice is caller-shaped so a rename, a duplication and
 	// a deletion each name what happened.
@@ -211,7 +216,8 @@ export function usePromptPresetLibrary({
 						if (!ownsOperation(claim)) return;
 						if (reportRefreshFailure(refresh)) break;
 						if (command.type === "delete") {
-							// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before
+							// @approved
+							//  Either confirmed deletion value can conflict. Refresh before
 							// the notice so a renewed confirmation shows the current name, revision
 							// and impact instead of the values the author already confirmed.
 							if (outcome.reason === "deletion-impact") {
@@ -242,7 +248,8 @@ export function usePromptPresetLibrary({
 		});
 	};
 
-	// ==[HUMAN APPROVED]== Switching presets with unsaved block edits defers the selection until
+	// @approved
+	//  Switching presets with unsaved block edits defers the selection until
 	// Save, Discard or Keep editing resolves the drafts, so a switch never
 	// silently drops a block draft.
 	const selectPreset = (presetId: number): void => {
@@ -272,7 +279,8 @@ export function usePromptPresetLibrary({
 	const importPresetFile = async (file: File): Promise<void> => {
 		await runOperation(LIBRARY_WRITE_EFFECTS, async (claim) => {
 			try {
-				// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
+				// @approved
+				//  SAFETY: JSON.parse returns the JSON value that the review route validates again.
 				const source = JSON.parse(await file.text()) as SillyTavernJsonValue;
 				const native = parseNativePromptPreset(JSON.stringify(source));
 				if (native !== null) {

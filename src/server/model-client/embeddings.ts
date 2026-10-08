@@ -43,7 +43,8 @@ export async function requestEmbeddings(
 			if (bounded.truncated) throw new EmbeddingServiceError("malformed-response", "The embedding response is too large to read safely.");
 			let parsed: JsonValue;
 			try {
-				// ==[HUMAN APPROVED]== SAFETY: parseEmbeddingResponse validates the untrusted JSON shape before use.
+				// @approved
+				//  SAFETY: parseEmbeddingResponse validates the untrusted JSON shape before use.
 				parsed = JSON.parse(new TextDecoder().decode(bounded.bytes)) as JsonValue;
 			} catch { throw new EmbeddingServiceError("malformed-response", "The embedding endpoint returned invalid JSON."); }
 			const vectors = parseEmbeddingResponse(parsed);
@@ -68,7 +69,8 @@ function parseEmbeddingResponse(value: JsonValue): number[][] | null {
 	const rows = value.data.flatMap((row) => {
 		if (!isObject(row) || !Array.isArray(row.embedding)) return [];
 		if (!row.embedding.every(isFiniteNumber)) return [];
-		// ==[HUMAN APPROVED]== SAFETY: every value passed this guard's number tag and finite-value check.
+		// @approved
+		//  SAFETY: every value passed this guard's number tag and finite-value check.
 		return [row.embedding as number[]];
 	});
 	if (rows.length !== value.data.length || rows.some((row) => row.length === 0)) return null;
@@ -82,7 +84,8 @@ function isObject(value: JsonValue): value is JsonObject {
 
 function isFiniteNumber(value: JsonValue): value is number {
 	if (Object.prototype.toString.call(value) !== "[object Number]") return false;
-	// ==[HUMAN APPROVED]== SAFETY: the number tag above narrows this JSON value to a number.
+	// @approved
+	//  SAFETY: the number tag above narrows this JSON value to a number.
 	return Number.isFinite(value as number);
 }
 

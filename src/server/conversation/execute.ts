@@ -51,7 +51,8 @@ import type {
 } from "./types";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 
-// ==[HUMAN APPROVED]== The per-command gate policy: each command declares whether it
+// @approved
+//  The per-command gate policy: each command declares whether it
 // requires a playable Conversation and whether an Active Generation blocks
 // it. Compose (create-message) and Swipe creation (create-variant) are play
 // actions needing both distinct Control seats; Control mutation joins them
@@ -164,7 +165,8 @@ export const conversationCommandPolicy = {
 	},
 	"select-prompt-preset": {
 		handler: selectPromptPreset,
-		// ==[HUMAN APPROVED]== Selection needs neither seat occupied nor a quiet attempt:
+		// @approved
+		//  Selection needs neither seat occupied nor a quiet attempt:
 		// an Active Generation keeps the Prompt Plan it captured, so switching
 		// or reassigning its selection never disturbs the running request.
 		requiresPlayable: false,
@@ -180,7 +182,8 @@ export const conversationCommandPolicy = {
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
-	// ==[HUMAN APPROVED]== Lore attachment and Chat Lore settings changes are configuration
+	// @approved
+	//  Lore attachment and Chat Lore settings changes are configuration
 	// writes. The Lorebook attachment seam they replace enforced only the
 	// revision guard, so they need no playable Conversation (an incomplete
 	// Chat can still select its Lorebooks) and never disturb an Active
@@ -242,7 +245,8 @@ function executeConversationCommandWithResult<T>(
 		}
 
 		const input = { conversationId: command.conversationId, ...command.action };
-		// ==[HUMAN APPROVED]== SAFETY: the `satisfies` clause on conversationCommandPolicy
+		// @approved
+		//  SAFETY: the `satisfies` clause on conversationCommandPolicy
 		// guarantees each entry's handler accepts exactly its own command's
 		// input shape, so indexing the table by input.type is sound; the cast
 		// only recovers that correlation for the compiler.

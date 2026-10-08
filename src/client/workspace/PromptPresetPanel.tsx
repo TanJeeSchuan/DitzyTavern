@@ -8,7 +8,8 @@ import { PromptPresetImportReviewDialog } from "./prompt-preset/PromptPresetImpo
 import { UnsavedBlockEditDialog } from "./prompt-preset/UnsavedBlockEditDialog";
 import { usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
-// ==[HUMAN APPROVED]== Prompt Presets are first-order Chat configuration and live in the
+// @approved
+//  Prompt Presets are first-order Chat configuration and live in the
 // primary side panel. The library manages shared presets and the per-Chat selection;
 // ordering persists through its authoritative operation. Enablement and authored fields
 // stay as block drafts until the panel footer saves them. Focused import review and unsaved-edit choices

@@ -1,9 +1,9 @@
-// ==[HUMAN APPROVED]== SillyTavern chat import orchestration: reads one JSONL export file as
+// @approved
+//  SillyTavern chat import orchestration: reads one JSONL export file as
 // explicit UTF-8, decodes it through the SillyTavern adapter, classifies
 // prior imports of the same source, preserves an independent exact-byte copy
 // of the selected source in managed artifact storage, and creates the Chat
 // through the generic Conversation creation seam in a single transaction.
-//
 // This source-specific importer prepares decoded Conversation data and the
 // exact artifact, then delegates database creation to the shared Chat Import
 // workflow. It never writes domain tables directly. The exact source bytes
@@ -45,7 +45,8 @@ export interface SillyTavernImportResult {
 	conversation: ConversationSnapshot;
 	report: SillyTavernImportReport;
 	duplicateChatIds: number[];
-	// ==[HUMAN APPROVED]== Metadata of the exact preserved source copy, committed with the
+	// @approved
+	//  Metadata of the exact preserved source copy, committed with the
 	// Conversation; the physical bytes live under the managed relative path.
 	artifact: ArtifactMetadata;
 }
@@ -66,7 +67,8 @@ const decodeUtf8 = decodeSillyTavernSourceBytes;
 export function importSillyTavernChat(
 	database: Database,
 	sourcePath: string,
-	// ==[HUMAN APPROVED]== Managed artifact directory: every successful import preserves an
+	// @approved
+	//  Managed artifact directory: every successful import preserves an
 	// independent exact-byte copy of the source here, so the argument is
 	// required and cannot be skipped.
 	artifactDirectory: string,
@@ -78,7 +80,8 @@ export function importSillyTavernChat(
 	const sourceText = decodeUtf8(bytes);
 
 	const decoded = decodeSillyTavernImportSource(sourceText, { name, filename, sha256 });
-	// ==[HUMAN APPROVED]== Classified prior-import evidence feeds the projection's duplicate
+	// @approved
+	//  Classified prior-import evidence feeds the projection's duplicate
 	// warning composition: one warning per prior Chat, exact copies and
 	// related sources alike, with only exact copies gated by the staged
 	// confirmation later on that path.
@@ -92,7 +95,8 @@ export function importSillyTavernChat(
 		priorMatches,
 	);
 
-	// ==[HUMAN APPROVED]== The exact validated bytes are copied into a unique managed relative
+	// @approved
+	//  The exact validated bytes are copied into a unique managed relative
 	// path before the database creation operation begins. Failure here
 	// aborts with no Chat, Participant, Profile, Message, Variant, Roster,
 	// Author Stamp, or artifact metadata row created. If the database
@@ -108,7 +112,8 @@ export function importSillyTavernChat(
 		);
 	}
 
-	// ==[HUMAN APPROVED]== One construction of the committed artifact metadata: the seed
+	// @approved
+	//  One construction of the committed artifact metadata: the seed
 	// rides into the Conversation creation seam and the returned metadata
 	// adds only the resolved Chat id.
 	const artifactSeed = {

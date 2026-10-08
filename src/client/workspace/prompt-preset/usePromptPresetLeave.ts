@@ -11,7 +11,8 @@ interface PromptPresetLeaveUnit {
 	discardAndLeave: () => void;
 }
 
-// ==[HUMAN APPROVED]== The save-on-leave operation's declared start effects: it keeps any in-flight
+// @approved
+//  The save-on-leave operation's declared start effects: it keeps any in-flight
 // read current until its own unified refresh cancels it, owns no Conversation race, and clears no
 // feedback channel as it starts. The leave handoff is the hook's settle-then-resolve sequencing
 // below, not a state flag.
@@ -22,7 +23,8 @@ const SAVE_ON_LEAVE_EFFECTS: OperationStartEffects = {
 	clearProblem: false,
 };
 
-// ==[HUMAN APPROVED]== The leave unit guards close and selection, and defers either action until
+// @approved
+//  The leave unit guards close and selection, and defers either action until
 // the atomic save settles. Save-on-leave is
 // linearized: the batch is submitted, a current refresh is accepted, the save settles, and only
 // then does the leave resolve to close or start a selection.
@@ -44,7 +46,8 @@ export function usePromptPresetLeave({
 }): PromptPresetLeaveUnit {
 	const { current, dirty, dispatch, runOperation, ownsOperation } = runtime;
 
-	// ==[HUMAN APPROVED]== Completes a resolved leave: the drafts are gone and the deferred action
+	// @approved
+	//  Completes a resolved leave: the drafts are gone and the deferred action
 	// — closing the panel or applying the pending selection — runs. Called only after the save
 	// operation has settled, so the runtime gate is released when a selection starts.
 	const finishLeave = (request: LeaveRequest): void => {
@@ -61,7 +64,8 @@ export function usePromptPresetLeave({
 		const request = live.leaveRequest;
 		const currentReady = live.view.status === "ready" ? live.view : null;
 		if (conversation === null || currentReady === null || request === null) return;
-		// ==[HUMAN APPROVED]== The save operation settles before `runOperation` resolves, so the
+		// @approved
+		//  The save operation settles before `runOperation` resolves, so the
 		// outcome below is read after the runtime gate is released. Only a still-current
 		// successful save resolves the leave; a failed save reports and stays open, a superseded
 		// refresh aborts without completing the leave, and reconciliation that left newer dirty

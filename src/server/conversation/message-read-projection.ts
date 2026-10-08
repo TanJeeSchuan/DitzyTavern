@@ -3,7 +3,8 @@ import type {
 	HistoricalControlSnapshot,
 } from "./types";
 
-// ==[HUMAN APPROVED]== The read models all use the same projection of a Message's immutable author
+// @approved
+//  The read models all use the same projection of a Message's immutable author
 // stamp and captured historical Control. These operations are deliberately
 // pure: callers own the Cast read and pass only its active membership.
 export const toAuthorStamp = (

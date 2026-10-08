@@ -14,7 +14,8 @@ import {
 import { readConversationSnapshotFromConnection, readConversationSummaryFromConnection } from "../snapshot";
 import type { ConversationSnapshot, ConversationSummary } from "../types";
 
-// ==[HUMAN APPROVED]== Shared Conversation write seam: every server-owned write runs as one
+// @approved
+//  Shared Conversation write seam: every server-owned write runs as one
 // immediate SQLite transaction on a fresh Drizzle handle, advances the
 // Conversation revision exactly once, and finishes with the authoritative
 // summary. Deep history remains an explicit read. Command modules compose these pieces instead of hand-repeating

@@ -20,7 +20,8 @@ import type {
 	SuggestionMatchKind,
 } from "./types";
 
-// ==[HUMAN APPROVED]== Name-only matching: SillyTavern roles, header fields, avatar data,
+// @approved
+//  Name-only matching: SillyTavern roles, header fields, avatar data,
 // Message content, and `is_user` never influence a Character candidate.
 const levenshtein = (a: string, b: string): number => {
 	const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
@@ -47,7 +48,8 @@ const suggestionTier = (
 	if (candidateName.toLocaleLowerCase() === key.toLocaleLowerCase()) {
 		return "case-insensitive";
 	}
-	// ==[HUMAN APPROVED]== Fuzzy tier: a bounded normalized edit distance. Names too dissimilar
+	// @approved
+	//  Fuzzy tier: a bounded normalized edit distance. Names too dissimilar
 	// never cross into the suggestion set.
 	const threshold = Math.max(
 		1,
@@ -59,7 +61,8 @@ const suggestionTier = (
 const tierRank = (tier: SuggestionMatchKind): number =>
 	tier === "exact" ? 0 : tier === "case-insensitive" ? 1 : 2;
 
-// ==[HUMAN APPROVED]== Picks the strongest candidate by exact, then case-insensitive, then fuzzy
+// @approved
+//  Picks the strongest candidate by exact, then case-insensitive, then fuzzy
 // tier. The library list is already library-ordered (pinned, then name,
 // then id), so the first candidate of the winning tier is the strongest.
 const strongestSuggestion = (
@@ -89,7 +92,8 @@ const buildGroups = (
 	characters: readonly CharacterSummary[],
 ): ChatImportGroup[] =>
 	groupImportedAuthors(authors).map((group) => ({
-		// ==[HUMAN APPROVED]== The single blank group keyed as the empty string; every other
+		// @approved
+		//  The single blank group keyed as the empty string; every other
 		// group keeps its trimmed captured author string.
 		key: group.key ?? "",
 		isBlank: group.key === null,
