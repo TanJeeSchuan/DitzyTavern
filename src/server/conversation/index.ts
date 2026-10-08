@@ -85,7 +85,6 @@ export { isSiblingGenerationRow } from "./commands/active-generation";
 // active_generation table through its own raw handle. The probe accepts the
 // raw Database like every other public entry point, so workflows never
 // construct the module's Drizzle handle.
-export { hasActiveGeneration } from "./internal";
 export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
