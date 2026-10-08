@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef } from "react";
 import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand } from "../lorebook-library";
 import { splitList, type EntryListKey } from "./lorebook-entry-fields";
-import { fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
+import { editedSince, fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
+
+type LorebookResult = Awaited<ReturnType<typeof applyLorebookCommand>>;
+interface SettleFlags { notice?: string; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean }
 
 export function useLorebookEditor(bookId: number) {
 	const client = useQueryClient();
@@ -41,18 +44,20 @@ export function useLorebookEditor(bookId: number) {
 			}
 		},
 	});
+	const settle = (result: LorebookResult, submitted: LorebookEditorState, flags: SettleFlags = {}) => {
+		if (result.outcome === "available" && result.value.outcome === "applied") {
+			dispatch({ type: "applied", book: result.value.book, submitted, notice: flags.notice ?? null, newEntry: flags.newEntry, enabled: flags.enabled });
+			return result.value.book;
+		}
+		if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, submitted, preserveBookDraft: flags.preserveBookDraft,
+			notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
+		else dispatch({ type: "notice", notice: result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed." });
+		return null;
+	};
 	const apply = async (action: LorebookCommand, submitted: LorebookEditorState) => {
 		const result = await command.mutateAsync(action);
 		if (current.current === null) return null;
-		if (result.outcome === "available" && result.value.outcome === "applied") {
-			dispatch({ type: "applied", book: result.value.book, submitted, notice: null,
-				newEntry: action.type === "save-entry" && action.entryId === undefined });
-			return result.value.book;
-		}
-		if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, submitted,
-			preserveBookDraft: true, notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
-		else dispatch({ type: "notice", notice: result.outcome === "invalid" ? result.reason : "The Lorebook operation failed." });
-		return null;
+		return settle(result, submitted, { newEntry: action.type === "save-entry" && action.entryId === undefined, preserveBookDraft: true });
 	};
 	const save = useMutation({
 		onError: (error) => setNotice(error.message),
@@ -66,8 +71,7 @@ export function useLorebookEditor(bookId: number) {
 				saved = await apply({ type: "save-entry", bookId, expectedRevision: saved.revision, entryId: submitted.entryId ?? undefined, entry: submitted.entryDraft }, submitted);
 			}
 			if (saved === null || current.current === null) return false;
-			const unchanged = current.current.bookDraft.name === submitted.bookDraft.name
-				&& current.current.bookDraft.description === submitted.bookDraft.description && sameEntry(current.current.entryDraft, submitted.entryDraft);
+			const unchanged = !editedSince(current.current, submitted);
 			if (unchanged) dispatch({ type: "notice", notice: "Lorebook saved." });
 			return unchanged;
 		},
@@ -79,13 +83,8 @@ export function useLorebookEditor(bookId: number) {
 		command.mutate(action, {
 			onSuccess: (result) => {
 				if (result.outcome === "available" && result.value.outcome === "deleted") { onOpenBook?.(null, "Lorebook deleted."); return; }
-				if (result.outcome === "available" && result.value.outcome === "applied") {
-					if (result.value.book.id !== bookId) { onOpenBook?.(result.value.book.id, success); return; }
-					dispatch({ type: "applied", book: result.value.book, submitted: state, notice: success ?? null,
-						enabled: action.type === "set-entry-enabled" && action.entryId === entryId ? action.enabled : undefined });
-				} else if (result.outcome === "conflict") {
-					dispatch({ type: "applied", book: result.currentBook, submitted: state, notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
-				} else setNotice(result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed.");
+				if (result.outcome === "available" && result.value.outcome === "applied" && result.value.book.id !== bookId) { onOpenBook?.(result.value.book.id, success); return; }
+				settle(result, state, { notice: success, enabled: action.type === "set-entry-enabled" && action.entryId === entryId ? action.enabled : undefined });
 			},
 		});
 	};
