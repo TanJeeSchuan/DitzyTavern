@@ -118,7 +118,8 @@ describe("Decision Model Memory judgments", () => {
 			} });
 		};
 		const [judgment] = await judgeMemoryCandidates({ source, context, candidates: [candidate], selection, fetch: fakeFetch });
-		// ==[HUMAN APPROVED]== SAFETY: The fake captures the request emitted by judgeMemoryCandidates, whose request shape is asserted below.
+		// @approved
+		//  SAFETY: The fake captures the request emitted by judgeMemoryCandidates, whose request shape is asserted below.
 		const sent = JSON.parse(requestBody) as { state: { source: CapturedMemoryMessage; context: CapturedMemoryMessage[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution?: string; evidence?: string[] } } }> };
 		expect(authorization).toBe("Bearer secret");
 		expect(sent.state).toEqual({ source, context });

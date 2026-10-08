@@ -1,5 +1,5 @@
-// ==[HUMAN APPROVED]== Save Participant as Character workflow.
-//
+// @approved
+//  Save Participant as Character workflow.
 // Composes the Conversation and Character Library seams in one transaction:
 // the destination Conversation must match its expected revision, and the
 // authoritative Participant Definition is read server-side from the current
@@ -30,7 +30,8 @@ export interface SaveParticipantAsCharacterResult {
 	character: CharacterSnapshot;
 }
 
-// ==[HUMAN APPROVED]== Creates one new reusable Character whose Definition is an exact copy of
+// @approved
+//  Creates one new reusable Character whose Definition is an exact copy of
 // the Participant's current authoritative Definition. Duplicate Character
 // names are allowed, so this succeeds even when the Library already holds a
 // Character with the same name. The Conversation revision is checked but
@@ -62,7 +63,8 @@ export function saveParticipantAsCharacter(
 			);
 		}
 
-		// ==[HUMAN APPROVED]== Copy the authoritative server-side Definition into a new library
+		// @approved
+		//  Copy the authoritative server-side Definition into a new library
 		// Character. Creation is atomic: the lifecycle row, Prompt row, and
 		// all Opening rows commit together or not at all.
 		return ({

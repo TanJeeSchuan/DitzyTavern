@@ -7,7 +7,8 @@ import {
 	type ConversationCommandReconciliation,
 } from "./conversation-command-runner";
 
-// ==[HUMAN APPROVED]== The wording this surface shows whenever the model-selection command could
+// @approved
+//  The wording this surface shows whenever the model-selection command could
 // not be saved; the runner owns when each notice appears.
 export const MODEL_SELECTION_UNAVAILABLE_NOTICE = "The model selection could not be saved.";
 
@@ -22,15 +23,18 @@ export interface CommitConversationModelOptions {
 	connectionProfileId: number;
 	modelId: string;
 	reconciliation: ConversationCommandReconciliation;
-	// ==[HUMAN APPROVED]== Applied-commit work owned by the selector's own state (display sync,
+	// @approved
+	//  Applied-commit work owned by the selector's own state (display sync,
 	// closing the combobox).
 	onCommitted: (modelId: string) => void;
-	// ==[HUMAN APPROVED]== The typed Conversation-state outcomes keep their precise meaning; the
+	// @approved
+	//  The typed Conversation-state outcomes keep their precise meaning; the
 	// selector presents them as one unavailable notice.
 	onUnavailable: (reason: string) => void;
 }
 
-// ==[HUMAN APPROVED]== The composer's focused model-selection command: selecting a model sends
+// @approved
+//  The composer's focused model-selection command: selecting a model sends
 // only the model ID, and the Conversation module merges it into the stored
 // Generation Settings inside the command transaction. The selector owns no
 // settings snapshot, so it structurally cannot restore another editor's

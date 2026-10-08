@@ -8,7 +8,8 @@ import { ImageDialogProvider } from "./ImageDialog";
 
 registerWireFormats();
 
-// ==[HUMAN APPROVED]== Build stamp: the hashed asset name identifies the exact bundle. Snapshot
+// @approved
+//  Build stamp: the hashed asset name identifies the exact bundle. Snapshot
 // this from the console whenever "is this the current client?" comes up.
 const bundle = [...document.scripts]
 	.map((script) => script.src)

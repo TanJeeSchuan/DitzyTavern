@@ -101,7 +101,8 @@ const readConversationOr404 = <T>(
 	return value === undefined ? notFoundResponse() : value;
 };
 
-// ==[HUMAN APPROVED]== Builds the typed stale-revision recovery shared by every Conversation
+// @approved
+//  Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
 // conflict payload, or a 404 when the Conversation disappeared in the
 // meantime. One helper keeps error mapping from drifting between the
@@ -120,7 +121,8 @@ const staleConversationConflict = (
 	  } => {
 	const current = createConversationModule(database).getSummary(conversationId);
 	if (current === undefined) {
-		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
+		// @approved
+		//  The Conversation disappeared between the conflict and the recovery
 		// read; never fabricate authoritative state.
 		return { outcome: "not-found" as const };
 	}
@@ -132,7 +134,8 @@ const staleConversationConflict = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Maps a stale Conversation revision onto the typed recovery response: the
+// @approved
+//  Maps a stale Conversation revision onto the typed recovery response: the
 // authoritative summary rides inside the 409, or a 404 when the Conversation
 // disappeared between the conflict and the recovery read. Exported for the
 // Conversation-owned Lore attachment routes, which inherit the canonical
@@ -148,7 +151,8 @@ export const staleConversationResponse = (
 		: status(409, conflict);
 };
 
-// ==[HUMAN APPROVED]== Send and Continue share one acceptance response contract.
+// @approved
+//  Send and Continue share one acceptance response contract.
 const generationStartRouteResponse = {
 	200: generationAccepted,
 	404: notFoundOutcome,
@@ -185,7 +189,8 @@ const currentConversationRevision = (
 	return revision;
 };
 
-// ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so the
+// @approved
+//  Route options extend the Coordinator composition options, so the
 // transport layer and the application share one options shape (transport
 // fetch, checkpoint cadence, master key); the Coordinator resolves the deep
 // Conversation module and the process runtime registry itself.
@@ -223,7 +228,8 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/:generationId/stop",
 			async ({ params }) => {
 				const outcome = await generationCoordinator.stopGeneration(params.id, params.generationId);
-				// ==[HUMAN APPROVED]== Durable truth wins: a committed interrupted transition always
+				// @approved
+				//  Durable truth wins: a committed interrupted transition always
 				// returns the authoritative Conversation snapshot, even when the
 				// process runtime could not be settled. Anything that stopped
 				// nothing is not-found: the addressed Conversation has no
@@ -501,7 +507,8 @@ export const createConversationRoutes = (
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
-				// ==[HUMAN APPROVED]== The module read returns a fresh plain object in the canonical
+				// @approved
+				//  The module read returns a fresh plain object in the canonical
 				// Generation Settings vocabulary; the response schema is the derived
 				// transport clone, so no field-by-field payload projection sits here.
 				return settings;
@@ -549,7 +556,8 @@ export const createConversationRoutes = (
 				response: t.Any(),
 			},
 		)
-		// ==[HUMAN APPROVED]== A targeted Swipe creates one server-owned Provisional Variant
+		// @approved
+		//  A targeted Swipe creates one server-owned Provisional Variant
 		// on an existing Message. The request is only an observer;
 		// closing it never aborts the sibling provider attempt.
 		.post(
@@ -577,13 +585,15 @@ export const createConversationRoutes = (
 					},
 				},
 		)
-		// ==[HUMAN APPROVED]== Revisioned Conversation commands remain separate from the
+		// @approved
+		//  Revisioned Conversation commands remain separate from the
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
 			({ params, body, status }) => {
 				try {
-					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
+					// @approved
+					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;

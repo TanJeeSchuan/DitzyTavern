@@ -1,5 +1,6 @@
+// @approved
 // One runner for the common revisioned Conversation command lifecycle. Every
-// ==[HUMAN APPROVED]== Conversation command follows the same shape: read the authoritative
+//  Conversation command follows the same shape: read the authoritative
 // revision, send the command, classify its typed outcome, and reconcile —
 // adopt the authoritative snapshot after an applied or conflicting command,
 // show the standard notice for each failure class, and never send a command
@@ -11,49 +12,56 @@
 import type { ConversationSummary } from "../shared/contract/conversation-schema";
 import type { CommandOutcome } from "./conversation";
 
+// @approved
 // Notice shown when no authoritative Conversation revision is available. The
-// ==[HUMAN APPROVED]== command is refused before it is sent: the client never substitutes a
+//  command is refused before it is sent: the client never substitutes a
 // fabricated revision.
 export const CONVERSATION_REVISION_UNAVAILABLE_NOTICE =
 	"The Conversation revision is not available yet.";
 
+// @approved
 // Reads the authoritative Conversation revision a command is based on, in the
-// ==[HUMAN APPROVED]== form the owning surface stores it (the loaded snapshot or the story read
+//  form the owning surface stores it (the loaded snapshot or the story read
 // model). Returning null means that revision is not available yet; the runner
 // then refuses to send instead of falling back to a fabricated value.
 export type ConversationRevisionSource = () => number | null;
 
+// @approved
 // Reconciliation side effects shared by every Conversation command path,
-// ==[HUMAN APPROVED]== injected by the owning surface so the runner and its tests need no React
+//  injected by the owning surface so the runner and its tests need no React
 // or global state. Production wiring maps these onto each surface's own
 // state owners (the Conversation snapshot setter and its notice state).
 export interface ConversationCommandReconciliation {
+	// @approved
 	// Adopt an authoritative snapshot: the applied Conversation after a
-	// ==[HUMAN APPROVED]== command succeeds, or the current Conversation a conflict carries (the
+	//  command succeeds, or the current Conversation a conflict carries (the
 	// canonical conflict reload, so a stale surface converges immediately).
 	adoptSnapshot: (conversation: ConversationSummary) => void;
+	// @approved
 	// Show a command-failure notice through the surface's own notice state.
-	// ==[HUMAN APPROVED]==
 	showNotice: (notice: string) => void;
 }
 
+// @approved
 // Caller-owned wording for the standard notices. The runner owns when each
-// ==[HUMAN APPROVED]== notice is shown; the surface owns what it says, because each surface names
+//  notice is shown; the surface owns what it says, because each surface names
 // what it preserved or could not reach.
 export interface ConversationCommandNotices {
+	// @approved
 	// Shown when the command conflicts with a newer Conversation revision.
-	// ==[HUMAN APPROVED]==
 	conflict: string;
+	// @approved
 	// Shown when the Conversation no longer exists.
-	// ==[HUMAN APPROVED]==
 	notFound: string;
+	// @approved
 	// Shown when the command could not be delivered; exception normalization
-	// ==[HUMAN APPROVED]== maps a thrown send onto this notice too.
+	//  maps a thrown send onto this notice too.
 	unreachable: string;
 }
 
+// @approved
 // Typed callbacks the runner never interprets. `onApplied` and `onConflict`
-// ==[HUMAN APPROVED]== carry synchronous operation-specific state changes and confirmations.
+//  carry synchronous operation-specific state changes and confirmations.
 // Authoritative reloads belong to the state owner that observes the adopted snapshot.
 // `onNotPlayable` and `onNotRemovable` are required: those
 // Conversation-state outcomes keep their precise meaning, so every adopting
@@ -69,8 +77,9 @@ export interface ConversationCommandCallbacks<TOperation = never> {
 	onOperation?: (operation: TOperation) => void;
 }
 
+// @approved
 // An outcome the runner never interprets: no adoption, no notice, no
-// ==[HUMAN APPROVED]== classification. Command families whose send results exceed the common
+//  classification. Command families whose send results exceed the common
 // Conversation command set — for example a character-library conflict that
 // names the changed Character instead of carrying a Conversation snapshot,
 // or a success that carries a Character while the Conversation stays
@@ -82,8 +91,9 @@ export interface ConversationOperationOutcome<TOperation> {
 	operation: TOperation;
 }
 
+// @approved
 // One revisioned Conversation command execution: the revision source the
-// ==[HUMAN APPROVED]== runner consults at send time, the command itself, the injected
+//  runner consults at send time, the command itself, the injected
 // reconciliation adapter, the surface-owned notice wording, and the typed
 // operation-specific callbacks. The send seam returns the common Conversation
 // outcomes plus, when the command family carries them, operation outcomes

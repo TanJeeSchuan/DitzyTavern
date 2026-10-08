@@ -36,7 +36,8 @@ const promptHistoryRole = Type.Union([
 	Type.Null(),
 ]);
 
-// ==[HUMAN APPROVED]== Definition-sourced plan blocks carry the provider-neutral presentation
+// @approved
+//  Definition-sourced plan blocks carry the provider-neutral presentation
 // role their recipe slot chose; history blocks carry the authorship roles of
 // their own Messages. The Model Client owns the translation into provider
 // vocabulary. Every Definition-sourced kind has the same fields, so the kind
@@ -53,7 +54,8 @@ const promptDefinitionBlockKind = Type.Union([
 	Type.Literal("scenario"),
 	Type.Literal("example-dialogue"),
 	Type.Literal("post-history-instruction"),
-	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
+	// @approved
+	//  An authored instruction block's plan entry. Like Definition-sourced
 	// blocks it carries its expanded content and the recipe-chosen outgoing
 	// role; unlike them its text was authored in the preset, not resolved from
 	// a Participant.
@@ -630,7 +632,8 @@ const removeParticipantAction = Type.Object({
 	participantId: Type.Integer(),
 });
 
-// ==[HUMAN APPROVED]== Selects one shared Prompt Preset for this Conversation. Selection is
+// @approved
+//  Selects one shared Prompt Preset for this Conversation. Selection is
 // a reference to the library entry, never a copy, and it deliberately stays
 // available while an Active Generation exists: the running attempt keeps the
 // Prompt Plan it captured, and later attempts use the new selection.
@@ -672,7 +675,8 @@ export const conversationCommandBody = Type.Object({
 });
 
 export const generationFormattingContext = Type.Object({
-	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
+	// @approved
+	//  Formatting context belongs to the initiating client, not persisted
 	// Conversation settings. It is shared by preview and all three Generation
 	// start bodies so the route cannot rename or omit one side.
 	timeZone: Type.Optional(Type.String()),
@@ -699,7 +703,8 @@ export const generationBody = Type.Object({
 	...inspectedPlanFields,
 });
 
-// ==[HUMAN APPROVED]== Continue carries only the Conversation revision. The server derives the
+// @approved
+//  Continue carries only the Conversation revision. The server derives the
 // selected terminal Message and current Control pair from its snapshot.
 export const continuationBody = Type.Object({
 	expectedRevision: Type.Integer(),
@@ -737,7 +742,8 @@ export const generationPreviewBody = Type.Union([
 	}),
 ]);
 
-// ==[HUMAN APPROVED]== The one Generation attempt vocabulary: the kind discriminant of the
+// @approved
+//  The one Generation attempt vocabulary: the kind discriminant of the
 // Preview body above. Every capture, preview record, lifecycle policy, and
 // server-owned wrapper dispatches on this union instead of restating the
 // kinds, so the wire vocabulary and the server vocabulary cannot drift.
@@ -887,7 +893,8 @@ export const castCharacterConflict = Type.Union([
 	conversationConflict,
 ]);
 
-// ==[HUMAN APPROVED]== The Conversation route families' modeled error unions: the composed
+// @approved
+//  The Conversation route families' modeled error unions: the composed
 // 409/404/422 envelopes each family declares, so the client decodes an error
 // body against exactly the union its route models.
 export const conversationConflictErrors = Type.Union([

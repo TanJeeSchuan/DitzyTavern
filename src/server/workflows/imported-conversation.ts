@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Shared database workflow for prepared Chat Import data. Source-specific
+// @approved
+//  Shared database workflow for prepared Chat Import data. Source-specific
 // importers retain parsing, artifact storage, duplicate handling, temporary
 // state, and retry behavior; this seam owns only the all-or-nothing Character
 // Library and Conversation changes.

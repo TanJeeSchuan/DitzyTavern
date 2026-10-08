@@ -107,7 +107,8 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 	}, { body: nativeLorebook, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
 	.post("/api/lorebooks/import/sillytavern", ({ body }) => {
 		if (!isSillyTavernJsonValue(body.source)) return invalidResponse("SillyTavern lorebook JSON must be valid JSON.");
-		// ==[HUMAN APPROVED]== SAFETY: the guard above proves the opaque request value is valid JSON at this boundary.
+		// @approved
+		//  SAFETY: the guard above proves the opaque request value is valid JSON at this boundary.
 		const result = execute(() => importSillyTavernLorebook(database, body.source as SillyTavernJsonValue));
 		if (!result.ok) return result.failure.outcome === "invalid" ? invalidResponse(result.failure.reason) : notFoundResponse();
 		return { outcome: "applied" as const, book: result.value.book, warnings: result.value.warnings };
@@ -137,7 +138,8 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 			mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
 			fallbackReason: semantic.fallbackReason,
 			scan,
-			// ==[HUMAN APPROVED]== SAFETY: the match flattens onto the entry item (the schema owns
+			// @approved
+			//  SAFETY: the match flattens onto the entry item (the schema owns
 			// the item shape, not a nested `match` envelope) and the wire schema
 			// owns mutable expression arrays, so the closed JSON projection is the
 			// one cast validated by the declared response schema.
@@ -152,7 +154,8 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
 
-// ==[HUMAN APPROVED]== The Conversation-owned Lore attachment commands dispatch through the
+// @approved
+//  The Conversation-owned Lore attachment commands dispatch through the
 // canonical Conversation command seam, inheriting its revision guard,
 // post-write summary, and conflict shape. Chat-targeted commands carry the
 // conversation id on the wire; Participant commands derive it from the

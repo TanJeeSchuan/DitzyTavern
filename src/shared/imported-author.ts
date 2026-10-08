@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Editable Participant-name default for blank captured author groups in a
+// @approved
+//  Editable Participant-name default for blank captured author groups in a
 // Chat import. The exact blank source value stays untouched in preserved
 // source data; this name is the flow's proposed native Participant-name
 // default. One constant serves both sides — the server import projection

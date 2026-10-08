@@ -83,7 +83,8 @@ import {
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 
-// ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation preparation and
+// @approved
+//  Generation-start capture: from one authoritative Conversation preparation and
 // the captured configuration this module derives the complete Generation Plan
 // through the one Generation Plan Compiler, together with the captured
 // participants and Control pair and the provenance record every server-owned
@@ -116,7 +117,8 @@ const participatingHistoryFromRead = (
 	control,
 });
 
-// ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model
+// @approved
+//  The one authorship rule every Generation kind uses. A Message is model
 // writing when its Author Stamp matches the current model Control seat or the
 // model Participant of its own captured historical Control pair, and human
 // writing under the mirrored rule. Consulting the captured pair is what keeps
@@ -145,7 +147,8 @@ const roleForMessage = (
 	return null;
 };
 
-// ==[HUMAN APPROVED]== Selected-history entries for prompt compilation, derived from each
+// @approved
+//  Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
 // The caller supplies the already-bounded participating Messages, so this
 // helper cannot accidentally include a sibling target or its later history.
@@ -261,13 +264,15 @@ interface GenerationPreparationBase {
 	readonly lore: ScopedLoreEvaluation;
 }
 
-// ==[HUMAN APPROVED]== The lifecycle facts of one captured Generation, keyed by attempt
+// @approved
+//  The lifecycle facts of one captured Generation, keyed by attempt
 // kind: exactly the fields that kind's acceptance commands read, declared
 // once and carried by both the preparation member and the captured
 // Generation.
 export type GenerationCaptureFacts<K extends GenerationTargetKind = GenerationTargetKind> = {
 	send: { readonly reuseHumanMessageId: number | undefined };
-	// ==[HUMAN APPROVED]== A Continuation always carries an intent: this fact narrows the
+	// @approved
+	//  A Continuation always carries an intent: this fact narrows the
 	// member's carried intent for the acceptance command. Sibling derives no
 	// facts beyond its own target fields.
 	continuation: {
@@ -278,7 +283,8 @@ export type GenerationCaptureFacts<K extends GenerationTargetKind = GenerationTa
 	sibling: {};
 }[K];
 
-// ==[HUMAN APPROVED]== The carried derivations every member states: the instant Memory
+// @approved
+//  The carried derivations every member states: the instant Memory
 // Recall snapshot, the carried intent, and the pending-human decision.
 type GenerationPreparationCarried = {
 	readonly memory: MemoryRecallSnapshot;
@@ -286,7 +292,8 @@ type GenerationPreparationCarried = {
 	readonly pendingHumanText: string | undefined;
 };
 
-// ==[HUMAN APPROVED]== The one captured preparation member: the shared preparation base, the
+// @approved
+//  The one captured preparation member: the shared preparation base, the
 // attempt's own target fields and lifecycle facts, and the carried derivations.
 type GenerationPreparationMember<K extends GenerationTargetKind> =
 	GenerationPreparationBase & GenerationTargetFor<K> & GenerationCaptureFacts<K> & GenerationPreparationCarried;
@@ -303,7 +310,8 @@ type GenerationPreparation<K extends GenerationTargetKind = GenerationTargetKind
 	sibling: Omit<GenerationPreparationSnapshot<"sibling">, "memory"> & { readonly memory: MemoryActivationRecord; readonly fingerprint: string };
 }[K];
 
-// ==[HUMAN APPROVED]== The kind-wide member projections the generic builders state as
+// @approved
+//  The kind-wide member projections the generic builders state as
 // their ensured intermediates; the cast to the public per-kind member is
 // the only kind claim they make.
 type GenerationPreparationSnapshotAcrossKinds =
@@ -342,14 +350,16 @@ const reusableHumanMessageId = (
 		: undefined;
 };
 
-// ==[HUMAN APPROVED]== The intent one attempt kind carries, so the policy rows and the captured Generation read the same mapping.
+// @approved
+//  The intent one attempt kind carries, so the policy rows and the captured Generation read the same mapping.
 type GenerationIntentFor<K extends GenerationTargetKind> = {
 	send: undefined;
 	continuation: GenerationIntent;
 	sibling: GenerationIntent;
 }[K];
 
-// ==[HUMAN APPROVED]== The capture state the member fields read: the captured Control pair, the selected participation, the attempt's carried intent, and the Conversation's generation settings.
+// @approved
+//  The capture state the member fields read: the captured Control pair, the selected participation, the attempt's carried intent, and the Conversation's generation settings.
 interface GenerationCaptureState<K extends GenerationTargetKind> {
 	readonly participation: ParticipatingHistory;
 	readonly human: CastParticipantSnapshot;
@@ -358,32 +368,39 @@ interface GenerationCaptureState<K extends GenerationTargetKind> {
 	readonly settings: ConversationGenerationSettings;
 }
 
-// ==[HUMAN APPROVED]== The one capture policy per attempt kind: the shared preparation and
+// @approved
+//  The one capture policy per attempt kind: the shared preparation and
 // capture flows read these rows instead of branching on the kind, so the
 // kinds differ only where they genuinely differ. Every row function reads
 // only the attempt's target fields; the merged capture input carries them
 // alongside the capture options.
 interface GenerationCapturePolicy<K extends GenerationTargetKind> {
-	// ==[HUMAN APPROVED]== The Message whose Variant is the attempt's read point in the selected history.
+	// @approved
+	//  The Message whose Variant is the attempt's read point in the selected history.
 	readonly selectsMessageId?: (attempt: GenerationTargetFor<K>) => number;
-	// ==[HUMAN APPROVED]== The kind's eligibility guard, thrown before any semantic work.
+	// @approved
+	//  The kind's eligibility guard, thrown before any semantic work.
 	readonly assertEligible?: (read: {
 		readonly summary: ConversationSummary;
 		readonly selected: SelectedHistoryRead;
 		readonly conversationId: number;
 	}) => void;
-	// ==[HUMAN APPROVED]== The intent the attempt carries; effective settings and plan compilation read the same derivation.
+	// @approved
+	//  The intent the attempt carries; effective settings and plan compilation read the same derivation.
 	readonly intent: (settings: ConversationGenerationSettings) => GenerationIntentFor<K>;
-	// ==[HUMAN APPROVED]== The attempt's member fields: its target fields plus lifecycle facts and the pending-human decision.
+	// @approved
+	//  The attempt's member fields: its target fields plus lifecycle facts and the pending-human decision.
 	readonly memberFields: (
 		state: GenerationCaptureState<K>,
 		attempt: GenerationTargetFor<K>,
 	) => GenerationTargetFor<K> & GenerationCaptureFacts<K> & { readonly pendingHumanText: string | undefined };
-	// ==[HUMAN APPROVED]== The human writing the asynchronous semantic pass scans with, ungated by reuse — behavior preserved from the F3 split.
+	// @approved
+	//  The human writing the asynchronous semantic pass scans with, ungated by reuse — behavior preserved from the F3 split.
 	readonly semanticPendingHumanText?: (attempt: GenerationTargetFor<K>) => string | undefined;
 }
 
-// ==[HUMAN APPROVED]== The one capture policy table, one row per attempt kind.
+// @approved
+//  The one capture policy table, one row per attempt kind.
 type GenerationCapturePolicies = { [K in GenerationTargetKind]: GenerationCapturePolicy<K> };
 
 const capturePolicies: GenerationCapturePolicies = {
@@ -406,7 +423,8 @@ const capturePolicies: GenerationCapturePolicies = {
 		},
 		intent: (settings) => continuationIntentFor(settings),
 		memberFields: (state) => {
-			// ==[HUMAN APPROVED]== The one Continuation eligibility validation, at the point the
+			// @approved
+			//  The one Continuation eligibility validation, at the point the
 			// terminal entry is in hand and before the semantic memory pass.
 			const latest = state.participation.messages.at(-1);
 			const selectedVariant = latest?.variant;
@@ -519,7 +537,8 @@ export function prepareGenerationInputsSnapshot<K extends GenerationTargetKind>(
 		context: selectedHistoryFrom(participation.messages, human.id, model.id),
 	};
 	const intent = policy.intent(settings);
-	// ==[HUMAN APPROVED]== The attempt's member fields — its target fields plus lifecycle
+	// @approved
+	//  The attempt's member fields — its target fields plus lifecycle
 	// facts and the pending-human decision — derived once where their reads
 	// are validated.
 	const memberFields = policy.memberFields({ participation, human, model, intent, settings }, input);
@@ -582,7 +601,8 @@ export function prepareGenerationInputsSnapshot<K extends GenerationTargetKind>(
 		pendingHumanText,
 		memory: captureMemory(),
 	};
-	// ==[HUMAN APPROVED]== SAFETY: the member fields carry the attempt's own target fields
+	// @approved
+	//  SAFETY: the member fields carry the attempt's own target fields
 	// and lifecycle facts, so the assembled member is the public member of
 	// the attempt's kind.
 	return member as GenerationPreparationSnapshot<K>;
@@ -599,7 +619,8 @@ export async function prepareGenerationInputsAsync<K extends GenerationTargetKin
 ): Promise<GenerationPreparation<K>> {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();
-	// ==[HUMAN APPROVED]== The snapshot is captured before semantic work can suspend, so books,
+	// @approved
+	//  The snapshot is captured before semantic work can suspend, so books,
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
@@ -628,7 +649,8 @@ export async function prepareGenerationInputsAsync<K extends GenerationTargetKin
 		memory,
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
-	// ==[HUMAN APPROVED]== SAFETY: the prepared snapshot is this attempt's own member, so the
+	// @approved
+	//  SAFETY: the prepared snapshot is this attempt's own member, so the
 	// re-evaluated semantic pass and the completed Memory record are that
 	// member's own fields under GenerationPreparation<K>.
 	return ready as GenerationPreparation<K>;
@@ -659,7 +681,8 @@ const captureConfigurationFromPreparation = (
 	};
 };
 
-// ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
+// @approved
+//  The retained provenance record: safe connection identity, model identity,
 // and the attempt's Effective Generation Settings. Only fields in the shared
 // provenance vocabulary are retained — an intent-inapplicable Continuation
 // operand is already absent from the plan — and Request Overrides are never
@@ -845,7 +868,8 @@ function resolveConnectionSnapshot(
 	return connectionSnapshotOf(settings, profile);
 }
 
-// ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
+// @approved
+//  Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. The
 // retained writing context and the Effective Generation Settings pass
 // through as the closed JSON values they already are, and the connection
@@ -885,7 +909,8 @@ export async function captureGeneration<K extends GenerationTargetKind>(
 	const preparation = await prepareGenerationInputsAsync<K>({ database, ...target, ...options });
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	// ==[HUMAN APPROVED]== A retry reuses the already accepted trailing human Message; a fresh
+	// @approved
+	//  A retry reuses the already accepted trailing human Message; a fresh
 	// Send appends the submitted human writing to the selected narrative path
 	// before budgeting. Continuation and Sibling compile the selected history
 	// as captured.
@@ -899,7 +924,8 @@ export async function captureGeneration<K extends GenerationTargetKind>(
 	});
 	const shared = toCapturedGeneration(preparation, derivation, configuration, plan);
 	const captured: CapturedGenerationFor = { ...shared, ...memberFactsOf(preparation) };
-	// ==[HUMAN APPROVED]== SAFETY: the attempt's target and its preparation carry the same kind
+	// @approved
+	//  SAFETY: the attempt's target and its preparation carry the same kind
 	// by construction (the preparation is captured from that target), so the
 	// spread's member fields and facts are the CapturedGenerationFor<K>
 	// member's own — the Continuation's carried intent is always defined.

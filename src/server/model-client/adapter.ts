@@ -30,7 +30,8 @@ export function createModelAdapter(options: ModelAdapterOptions) {
 		apiKey: options.credential,
 		baseURL: new URL(options.requestUrl).origin,
 		headers: options.headers,
-		// ==[HUMAN APPROVED]== SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
+		// @approved
+		//  SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
 		// SAFETY: ModelFetch has the same RequestInfo/RequestInit/Response contract
 		// as the AI SDK fetch hook; it only makes the fetch implementation injectable.
 		fetch: options.fetch as typeof fetch,
@@ -42,7 +43,8 @@ export function createModelAdapter(options: ModelAdapterOptions) {
 		case "openrouter":
 			return createOpenRouter({
 				...providerOptions,
-				// ==[HUMAN APPROVED]== Strict mode enables OpenRouter usage accounting without adding
+				// @approved
+				//  Strict mode enables OpenRouter usage accounting without adding
 				// optional application attribution headers.
 				compatibility: "strict",
 			}).chat(options.modelId);

@@ -18,7 +18,8 @@ import { useAsyncEffect } from "./lib/use-async";
 import { formatSize } from "./lib/format";
 import { PanelHeader } from "./PanelHeader";
 
-// ==[HUMAN APPROVED]== Keep import origin in this on-demand panel. Do not add an Imported badge,
+// @approved
+//  Keep import origin in this on-demand panel. Do not add an Imported badge,
 // category, or capability mode. Load artifact bytes only for a download.
 
 interface ChatInformationPanelProps {

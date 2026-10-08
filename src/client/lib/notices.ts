@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Shared verbatim notices: byte-identical at every adopting site, so the
+// @approved
+//  Shared verbatim notices: byte-identical at every adopting site, so the
 // wording can never drift between surfaces.
 export const CONVERSATION_UNREACHABLE_NOTICE =
 	"The Conversation could not be reached.";

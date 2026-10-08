@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Prior-import duplicate classification shared by the developer import path
+// @approved
+//  Prior-import duplicate classification shared by the developer import path
 // and the staged preview. A matching raw-byte SHA-256 means an exact
 // duplicate of the selected source; a match only on the source-declared
 // integrity (which remains advisory, never a verified content digest) is a
@@ -17,7 +18,8 @@ import {
 	type SillyTavernImportSource,
 } from "./adapter";
 
-// ==[HUMAN APPROVED]== One entry per matching prior Chat, classified into the kind of evidence
+// @approved
+//  One entry per matching prior Chat, classified into the kind of evidence
 // that matched. A prior Chat sharing both the SHA-256 and the declared
 // integrity is reported once as exact; the exact evidence wins because it
 // is authoritative over the advisory declared value.
@@ -73,7 +75,8 @@ export function findPriorImportsBySource(
 			.map((row) => row.conversationId),
 	);
 
-	// ==[HUMAN APPROVED]== Exact evidence is authoritative and collected first; a Chat matching
+	// @approved
+	//  Exact evidence is authoritative and collected first; a Chat matching
 	// both keys is reported once as exact regardless of row order. The
 	// related set then excludes every already-exact Chat.
 	const exactIds: number[] = [];

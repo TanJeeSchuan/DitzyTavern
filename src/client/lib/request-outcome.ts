@@ -2,7 +2,8 @@ import type { Static, StaticDecode, TSchema } from "@sinclair/typebox";
 import { decodeWirePayload } from "./wire-decode";
 import type { WirePayload } from "./wire-decode";
 
-// ==[HUMAN APPROVED]== The one client transport outcome: the decoded 200 payload rides under
+// @approved
+//  The one client transport outcome: the decoded 200 payload rides under
 // the wire word `outcome` as `available`, the route's modeled wire error
 // union passes through verbatim, and anything the request or response seam
 // could not classify — a failed fetch, a body that fails either contract —
@@ -13,7 +14,8 @@ export type RequestOutcome<Value, Error> =
 	| Error
 	| { outcome: "network" };
 
-// ==[HUMAN APPROVED]== Elysia's default request-validation body: the one error shape a route
+// @approved
+//  Elysia's default request-validation body: the one error shape a route
 // never declares but Treaty still unions into `error.value`. It has no wire
 // outcome tag, so the modeled error union is derived without it.
 type ValidationFailure = {
@@ -25,7 +27,8 @@ type ValidationFailure = {
 	expected?: string | undefined;
 };
 
-// ==[HUMAN APPROVED]== The route's modeled wire error union, read straight off the Treaty request
+// @approved
+//  The route's modeled wire error union, read straight off the Treaty request
 // and stripped of the undeclared validation envelope.
 type TransportErrorValue<Request> = Awaited<Request> extends { error: infer Error }
 	? Exclude<Error, null> extends { value: infer Value } ? Value : never
@@ -38,7 +41,8 @@ type TransportRequest = Promise<{
 	error: { status: number; value: WirePayload | ValidationFailure } | null;
 }>;
 
-// ==[HUMAN APPROVED]== The one client transport seam: every command and read adapter hands its
+// @approved
+//  The one client transport seam: every command and read adapter hands its
 // Treaty request, the 200 contract schema, and the route family's modeled
 // error-union schema here. The error body is decoded against the error
 // schema exactly as the 200 body is decoded against the success schema —

@@ -1,6 +1,6 @@
-// ==[HUMAN APPROVED]== Test data generator. Run with `bun run db:seed`.
+// @approved
+//  Test data generator. Run with `bun run db:seed`.
 // Idempotent: does nothing if the tables already contain rows.
-//
 // Characters are created through the public Character Library seam and
 // Conversations through the public native New Chat workflow, so seeded
 // Definitions, Casts, Control assignments, and greeting history follow
@@ -107,7 +107,8 @@ export const characters: SeedCharacter[] = [
 
 export type AdHocPersona = ParticipantDefinition;
 
-// ==[HUMAN APPROVED]== Ad-hoc human personas. "Writer" is an ordinary possible Participant name;
+// @approved
+//  Ad-hoc human personas. "Writer" is an ordinary possible Participant name;
 // it carries no special behavior. The satisfies check keeps the concrete
 // keys known to consumers (teardown and the seed itself) while validating
 // the AdHocPersona contract.
@@ -140,7 +141,8 @@ export const adHocPersonas = {
 
 export interface SeedConversation {
 	name: string;
-	// ==[HUMAN APPROVED]== Both Chat times derive from this base because native greetings carry no
+	// @approved
+	//  Both Chat times derive from this base because native greetings carry no
 	// historical timestamps of their own.
 	createdAt: string;
 	humanSeat: NewChatSeat | { persona: keyof typeof adHocPersonas };
@@ -210,7 +212,8 @@ export function seed(databasePath?: string) {
 			characterIdByName.set(character.name, created.id);
 		}
 
-		// ==[HUMAN APPROVED]== A fork seat always checks the authoritative revision server-side;
+		// @approved
+		//  A fork seat always checks the authoritative revision server-side;
 		// the expected revision here mirrors what a client would have read.
 		const forkSeat = (characterName: string): NewChatSeat => {
 			const characterId = characterIdByName.get(characterName);

@@ -128,7 +128,8 @@ const postReview = async (
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(importRequest(source, orderListId)),
 	}));
-	// ==[HUMAN APPROVED]== SAFETY: the route response is the declared preview or invalid outcome.
+	// @approved
+	//  SAFETY: the route response is the declared preview or invalid outcome.
 	return { status: response.status, body: await response.json() as SillyTavernImportPreview | ImportError };
 };
 
@@ -142,7 +143,8 @@ const postImport = async (
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(importRequest(source, orderListId)),
 	}));
-	// ==[HUMAN APPROVED]== SAFETY: the route response is the declared applied or invalid outcome.
+	// @approved
+	//  SAFETY: the route response is the declared applied or invalid outcome.
 	return { status: response.status, body: await response.json() as SillyTavernImportApplied | ImportError };
 };
 
@@ -192,7 +194,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			expect(applied.preset.conversationCount).toBe(0);
 		}
 		const listed = await app.handle(new Request("http://localhost/api/prompt-presets"));
-		// ==[HUMAN APPROVED]== SAFETY: the list route's payload is the authoritative library read.
+		// @approved
+		//  SAFETY: the list route's payload is the authoritative library read.
 		const payload = await listed.json() as { presets: { name: string }[] };
 		expect(payload.presets).toHaveLength(3);
 	});
@@ -417,7 +420,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const conversations = createConversationRoutes(database, {
 			masterKey: key,
 			fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
-				// ==[HUMAN APPROVED]== SAFETY: the conversation route sends this exact JSON request body
+				// @approved
+				//  SAFETY: the conversation route sends this exact JSON request body
 				// to the configured ModelFetch implementation.
 				captured = JSON.parse(String(init?.body)) as CapturedGenerationRequest;
 				return new Response("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
@@ -436,7 +440,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			expect(authoredContent).toBeDefined();
 
 			const latest = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
-			// ==[HUMAN APPROVED]== SAFETY: this GET response is the conversation route's declared snapshot.
+			// @approved
+			//  SAFETY: this GET response is the conversation route's declared snapshot.
 			const latestBody = await latest.json() as ConversationRevision;
 			const selected = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
 				method: "POST",
@@ -445,7 +450,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			}));
 			expect(selected.status).toBe(200);
 			const afterSelection = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
-			// ==[HUMAN APPROVED]== SAFETY: this GET response is the conversation route's declared snapshot.
+			// @approved
+			//  SAFETY: this GET response is the conversation route's declared snapshot.
 			const afterSelectionBody = await afterSelection.json() as ConversationRevision;
 			captured = { messages: [] };
 			const accepted = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
@@ -454,7 +460,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				body: JSON.stringify({ expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
 			}));
 			expect(accepted.status).toBe(200);
-			// ==[HUMAN APPROVED]== SAFETY: this POST response is the conversation route's declared generation.
+			// @approved
+			//  SAFETY: this POST response is the conversation route's declared generation.
 			const acceptedBody = await accepted.json() as AcceptedGeneration;
 			const events = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`));
 			await events.text();

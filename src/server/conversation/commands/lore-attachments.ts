@@ -12,7 +12,8 @@ import {
 import type { ConversationDatabase } from "../internal";
 import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
-// ==[HUMAN APPROVED]== The Conversation-owned Lore attachment commands: Chat Lore settings
+// @approved
+//  The Conversation-owned Lore attachment commands: Chat Lore settings
 // and Chat/Participant Lorebook attachments are revisioned Conversation
 // mutations executed through the shared command seam. The writes touch only
 // Lore attachment and Lore settings rows, so every command reports the same
@@ -24,7 +25,8 @@ const loreRowsChanged = (conversationId: number): ConversationMemoryChange => ({
 	promptPresetChanged: false,
 });
 
-// ==[HUMAN APPROVED]== Re-checks the Participant inside the command transaction. The
+// @approved
+//  Re-checks the Participant inside the command transaction. The
 // Lorebook attachment wire command carries no conversation id, so the
 // transport derives it from the Participant's Chat reference before
 // dispatch; this lookup keeps the old atomicity, where the owner read and

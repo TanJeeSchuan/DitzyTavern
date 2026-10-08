@@ -31,12 +31,14 @@ import {
 export const connectConversationDatabase = (database: Database) => drizzle(database);
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
 
-// ==[HUMAN APPROVED]== The Control assignment state aliases the shared ControlAssignment
+// @approved
+//  The Control assignment state aliases the shared ControlAssignment
 // declaration (ADR-0032) so the domain read model can never drift from the
 // snapshot and client derivations.
 export type ControlAssignmentState = ControlAssignment;
 
-// ==[HUMAN APPROVED]== Reads the current Control assignment. A Conversation is playable only when
+// @approved
+//  Reads the current Control assignment. A Conversation is playable only when
 // both distinct seats are occupied; this derived state is never stored.
 export const readControlAssignment = (
 	db: ConversationDatabase,
@@ -80,7 +82,8 @@ export interface ActiveCastRow {
 	portrait: Portrait | undefined;
 }
 
-// ==[HUMAN APPROVED]== Every Conversation read model uses the same active Cast query. The
+// @approved
+//  Every Conversation read model uses the same active Cast query. The
 // complete row keeps lightweight history reads and detailed snapshots on one
 // active-membership definition while callers choose their own projection. An
 // optional Participant allow-list keeps focused reads at the controlled rows.
@@ -146,7 +149,8 @@ export const groupVariantsByMessage = <
 	toValue: (row: Row) => Value,
 ): Map<number, Value[]> => groupRowsByNumber(rows, (row) => row.message_id, toValue);
 
-// ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
+// @approved
+//  The one Active-Generation existence probe: every gate that must
 // treat a running Generation as mutually exclusive reads this predicate, so
 // the probe query and its existence rule are written once for the module.
 // Commands inside an open transaction read the open connection so the probe
@@ -163,7 +167,8 @@ export const hasActiveGenerationFromConnection = (
 		.where(eq(activeGenerationTable.conversation_id, conversationId))
 		.get() !== undefined;
 
-// ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
+// @approved
+//  Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
 // violation on the per-Participant Control index during an atomic swap or an
 // incomplete-import completion fill. Shared by assign-control and by the
@@ -196,7 +201,8 @@ export const writeControlAssignment = (
 	}
 };
 
-// ==[HUMAN APPROVED]== Names follow the shared Definition rules: surrounding whitespace is
+// @approved
+//  Names follow the shared Definition rules: surrounding whitespace is
 // removed while case and Unicode are preserved; a nonblank result is
 // required for every Participant.
 export const normalizeParticipantName = (name: string) => name.trim();
@@ -211,7 +217,8 @@ export const requireParticipantName = (name: string): string => {
 	return normalized;
 };
 
-// ==[HUMAN APPROVED]== Openings are stored exactly as authored; only fully blank entries are
+// @approved
+//  Openings are stored exactly as authored; only fully blank entries are
 // rejected, matching Character Library rules.
 export const requireParticipantOpenings = (
 	openings: string[],
@@ -226,7 +233,8 @@ export const requireParticipantOpenings = (
 	return openings;
 };
 
-// ==[HUMAN APPROVED]== Validates a complete Participant Definition for Cast management
+// @approved
+//  Validates a complete Participant Definition for Cast management
 // commands, mirroring creation-time rules.
 export const requireParticipantDefinition = (
 	definition: ParticipantDefinition,
@@ -263,7 +271,8 @@ export const requireParticipant = (
 	return participant;
 };
 
-// ==[HUMAN APPROVED]== The one Conversation existence/revision probe: every site that must
+// @approved
+//  The one Conversation existence/revision probe: every site that must
 // answer "is this Conversation still there, and at which revision" reads
 // this projection, so the probe query is written once. Undefined means the
 // Conversation is gone; requireConversation turns that into the typed
@@ -295,7 +304,8 @@ export const requireConversation = (
 	return conversation;
 };
 
-// ==[HUMAN APPROVED]== The shared revision prelude every revisioned command runs first:
+// @approved
+//  The shared revision prelude every revisioned command runs first:
 // existence, then the stale check, both as the module's typed errors.
 export const requireConversationRevision = (
 	db: ConversationDatabase,
@@ -309,7 +319,8 @@ export const requireConversationRevision = (
 	return conversation;
 };
 
-// ==[HUMAN APPROVED]== The reference columns a Message uses to refer to a Participant: its
+// @approved
+//  The reference columns a Message uses to refer to a Participant: its
 // immutable Author Stamp or either side of its captured historical Control
 // pair. The neutral shape lets the DB commands and the snapshot derivation
 // share one predicate.
@@ -319,7 +330,8 @@ export interface ParticipantReferenceRow {
 	contextModelParticipantId: number | null;
 }
 
-// ==[HUMAN APPROVED]== The single retained-reference rule shared by the snapshot derivation and
+// @approved
+//  The single retained-reference rule shared by the snapshot derivation and
 // the removal and tombstone-collection commands: a Message refers to a
 // Participant through its Author Stamp or its historical Control pair.
 // Every site consumes this predicate so a new reference kind can never
@@ -332,7 +344,8 @@ export const messageReferencesParticipant = (
 	message.contextHumanParticipantId === participantId ||
 	message.contextModelParticipantId === participantId;
 
-// ==[HUMAN APPROVED]== Whether any Message of the Conversation still refers to the Participant.
+// @approved
+//  Whether any Message of the Conversation still refers to the Participant.
 // These are the retained references that demand a tombstone; without any,
 // the Participant can be hard-deleted.
 export const hasRetainedParticipantReference = (
@@ -346,7 +359,8 @@ export const hasRetainedParticipantReference = (
 		.where(
 			and(
 				eq(messageTable.conversation_id, conversationId),
-				// ==[HUMAN APPROVED]== The same three reference columns the shared predicate reads,
+				// @approved
+				//  The same three reference columns the shared predicate reads,
 				// asked of the database so the first hit ends the search and no
 				// Message of a long Conversation is materialized to answer a boolean.
 				or(
@@ -430,7 +444,8 @@ export interface InsertedParticipant {
 	openings: readonly string[];
 }
 
-// ==[HUMAN APPROVED]== One Participant insertion: the active row, its complete local
+// @approved
+//  One Participant insertion: the active row, its complete local
 // Definition prompt, and its ordered openings. Shared by native creation and
 // the Cast append so the three written rows cannot drift. Insertion failures
 // always throw the module's canonical command error; creation maps it to its
@@ -494,7 +509,8 @@ export const insertParticipant = (
 	return { id: inserted.id, name, openings };
 };
 
-// ==[HUMAN APPROVED]== The Author Stamp and captured historical Control pair a Message
+// @approved
+//  The Author Stamp and captured historical Control pair a Message
 // carries. The shared shapes keep every insertion site writing exactly the
 // same columns.
 export interface MessageAuthorStamp {
@@ -507,7 +523,8 @@ export interface MessageControlContext {
 	modelParticipantId: number;
 }
 
-// ==[HUMAN APPROVED]== One Message insertion shared by creation, Compose, and the
+// @approved
+//  One Message insertion shared by creation, Compose, and the
 // provisional Generation targets: the returning id is required, so a failed
 // insert is an error instead of a silent undefined dereference. Insertion
 // failures always throw the module's canonical command error; creation maps
@@ -552,7 +569,8 @@ export interface VariantInsertValues {
 	selected: boolean;
 }
 
-// ==[HUMAN APPROVED]== One Variant insertion with its required returning id, so callers
+// @approved
+//  One Variant insertion with its required returning id, so callers
 // that address the new Variant (provisional targets, per-Variant data rows)
 // never read an undefined identifier.
 export const insertVariant = (
@@ -578,7 +596,8 @@ export const insertVariant = (
 	return inserted.id;
 };
 
-// ==[HUMAN APPROVED]== Batch Variant insertion for Messages created with several Variants
+// @approved
+//  Batch Variant insertion for Messages created with several Variants
 // at once; the returning ids keep per-Variant data rows addressable.
 export const insertVariants = (
 	db: ConversationDatabase,
@@ -601,7 +620,8 @@ export const insertVariants = (
 		.map((row) => row.id);
 };
 
-// ==[HUMAN APPROVED]== Appending one selected Variant displaces the Message's current
+// @approved
+//  Appending one selected Variant displaces the Message's current
 // selection and takes the next position. Shared by Swipe creation and the
 // provisional Sibling target so the deselect-then-insert rule is written once.
 export const appendSelectedVariant = (

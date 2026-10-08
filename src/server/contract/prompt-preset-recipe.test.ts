@@ -32,7 +32,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-// ==[HUMAN APPROVED]== The owning module guards a move target the transport schema cannot
+// @approved
+//  The owning module guards a move target the transport schema cannot
 // deliver, so a direct caller cannot displace an occurrence either.
 describe("Prompt Preset move bounds", () => {
 	let database: Database;
@@ -487,7 +488,8 @@ describe("Prompt Preset block patch batch", () => {
 	});
 	afterEach(() => database.close());
 
-	// ==[HUMAN APPROVED]== The batch route addresses stored occurrences, so the fixture seeds one
+	// @approved
+	//  The batch route addresses stored occurrences, so the fixture seeds one
 	// authored instruction beside the Default recipe's referenced slots.
 	const seedSlots = () => {
 		createChat(database);

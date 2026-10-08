@@ -10,7 +10,8 @@ export class PromptPresetNotFoundError extends Error {
 	}
 }
 
-// ==[HUMAN APPROVED]== Typed revision conflict. Carries the authoritative current preset
+// @approved
+//  Typed revision conflict. Carries the authoritative current preset
 // so callers can recover without overwriting their local draft.
 export class StalePromptPresetRevisionError extends Error {
 	readonly presetId: number;
@@ -42,7 +43,8 @@ export class InvalidPromptPresetCommandError extends Error {
 	}
 }
 
-// ==[HUMAN APPROVED]== Typed deletion-impact conflict. The affected-Conversation count changed
+// @approved
+//  Typed deletion-impact conflict. The affected-Conversation count changed
 // since the author confirmed deletion even though the preset's metadata
 // revision did not; carries the authoritative current preset so the
 // confirmation can be renewed with the exact impact.
@@ -58,7 +60,8 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 	}
 }
 
-// ==[HUMAN APPROVED]== The Default preset stays available as the nondeletable destination
+// @approved
+//  The Default preset stays available as the nondeletable destination
 // of new Conversations and preset deletions, so removing it is refused no
 // matter which revision the caller saw.
 export class DefaultPromptPresetNotRemovableError extends Error {

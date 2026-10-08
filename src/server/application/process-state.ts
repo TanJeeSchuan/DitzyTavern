@@ -7,7 +7,8 @@ import {
 import { createStagedImportStore, type StagedImportStore } from "../sillytavern/staged";
 import type { RunningWork } from "../memory/work";
 
-// ==[HUMAN APPROVED]== One process-local state container per database. Every store that must
+// @approved
+//  One process-local state container per database. Every store that must
 // die with the process (or with a test's throwaway database) lives here,
 // behind one sweep tick and one dispose path. Domain modules own their
 // store behavior; this container owns only lifecycle: creation, expiry
@@ -46,7 +47,8 @@ const createProcessState = (database: Database): ProcessState => {
 	const stagedImports = createStagedImportStore();
 	const memoryWork = new Map<number, Set<RunningWork>>();
 	let timer: ReturnType<typeof setInterval> | undefined;
-	// ==[HUMAN APPROVED]== The one teardown path. The sweep reaps a container whose
+	// @approved
+	//  The one teardown path. The sweep reaps a container whose
 	// database has closed: bun:sqlite exposes no open flag and `inTransaction`
 	// throws on the closed handle, so a test that skips dispose() and any
 	// close path that skips shutdownApplication cannot keep a timer past one
@@ -65,7 +67,8 @@ const createProcessState = (database: Database): ProcessState => {
 		generationPreviews.sweep(now);
 		stagedImports.sweep(now);
 	};
-	// Unref'd: the sweep must never keep a process (or a test run) alive. ==[HUMAN APPROVED]==
+	// @approved
+	// Unref'd: the sweep must never keep a process (or a test run) alive.
 	timer = setInterval(() => sweep(), PROCESS_STATE_SWEEP_INTERVAL_MS);
 	timer.unref();
 	return {

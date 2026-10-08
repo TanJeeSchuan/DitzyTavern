@@ -13,7 +13,8 @@ export interface AssignControlInput {
 	participantId: number;
 }
 
-// ==[HUMAN APPROVED]== Assigns one Control seat to a Cast Participant. Selecting the opposite
+// @approved
+//  Assigns one Control seat to a Cast Participant. Selecting the opposite
 // seat's occupant swaps the two assignments atomically, so a two-person
 // Cast can never become locked; selecting an unseated Participant replaces
 // only the chosen seat, leaving the displaced occupant active and eligible
@@ -38,7 +39,8 @@ export function assignControl(db: ConversationDatabase, input: AssignControlInpu
 		modelParticipantId: current.modelParticipantId,
 	};
 	if (change === "swap") {
-		// ==[HUMAN APPROVED]== The two assignments exchange: the chosen seat receives the selected
+		// @approved
+		//  The two assignments exchange: the chosen seat receives the selected
 		// Participant, and the opposite seat receives the previous occupant of
 		// the chosen seat.
 		if (input.seat === "human") {

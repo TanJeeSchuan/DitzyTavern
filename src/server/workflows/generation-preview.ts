@@ -37,7 +37,8 @@ export interface GenerationPreviewRecordFields {
 	readonly expiresAt: number;
 }
 
-// ==[HUMAN APPROVED]== The preview record retains the captured Generation of one attempt kind;
+// @approved
+//  The preview record retains the captured Generation of one attempt kind;
 // the kind lives on the capture itself, riding the one Generation Target
 // union.
 export type GenerationPreviewRecordFor<K extends GenerationTargetKind> = GenerationPreviewRecordFields & {
@@ -68,7 +69,8 @@ export interface GenerationPreviewStore {
 	dispose(): void;
 }
 
-// ==[HUMAN APPROVED]== The expiring per-conversation inspection store. The process-state
+// @approved
+//  The expiring per-conversation inspection store. The process-state
 // container owns its lifecycle; this factory owns only the store's behavior.
 export const createGenerationPreviewStore = (): GenerationPreviewStore => {
 	const previews = new Map<number, GenerationPreviewRecord>();
@@ -107,7 +109,8 @@ export const previewRecordFor = <K extends GenerationTargetKind>(
 	if (record.capture.kind !== kind) {
 		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
 	}
-	// ==[HUMAN APPROVED]== SAFETY: the capture's kind discriminant was just compared against the
+	// @approved
+	//  SAFETY: the capture's kind discriminant was just compared against the
 	// caller's kind, so the record holds that kind's captured Generation.
 	return record as GenerationPreviewRecordFor<K>;
 };

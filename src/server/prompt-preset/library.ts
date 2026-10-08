@@ -35,7 +35,8 @@ import {
 	convertSillyTavernPromptPreset,
 } from "./sillytavern";
 
-// ==[HUMAN APPROVED]== The Prompt Preset library is a Character Library sibling: one
+// @approved
+//  The Prompt Preset library is a Character Library sibling: one
 // revisioned list of named recipes whose deletion impact (the
 // affected-Conversation count) rides every authoritative read. The Default
 // preset is an ordinary entry except that deleting it is refused.
@@ -60,7 +61,8 @@ const insertPresetHeader = (
 	return inserted.id;
 };
 
-// ==[HUMAN APPROVED]== The one library-header selection and the one row-to-summary projection,
+// @approved
+//  The one library-header selection and the one row-to-summary projection,
 // shared by the list read and the in-transaction require read so a header
 // field addition touches both callers through one declaration.
 const presetHeaderSelection = {
@@ -99,7 +101,8 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 	return presets.map((preset) => summaryOf(preset, totals.get(preset.id) ?? 0));
 };
 
-// ==[HUMAN APPROVED]== Reads one preset's summary with its deletion impact (the
+// @approved
+//  Reads one preset's summary with its deletion impact (the
 // Conversation selections currently pointing at it) inside the caller's
 // transaction, so conflicts and results name exactly what a command saw.
 const requireSummary = (db: PromptPresetDatabase, presetId: number): PromptPresetSummary => {
@@ -125,7 +128,8 @@ const requireCommandName = (name: string): string => {
 	return normalized;
 };
 
-// ==[HUMAN APPROVED]== Native export is projected from the stored recipe, not from a selected
+// @approved
+//  Native export is projected from the stored recipe, not from a selected
 // Conversation. Occurrence ids are local database identity and are omitted so
 // reimport always creates fresh independent rows; referenced slots carry no
 // resolved Participant or history content.
@@ -135,11 +139,12 @@ export const readNativePromptPreset = (
 ): NativePromptPreset | undefined => {
 	const recipe = readPromptPresetRecipe(database, presetId);
 	if (recipe === undefined) return undefined;
-	// ==[HUMAN APPROVED]== Occurrence ids are local database identity and are omitted so reimport
+	// @approved
+	//  Occurrence ids are local database identity and are omitted so reimport
 	// always creates fresh independent rows; referenced slots carry no resolved
 	// Participant or history content. The slot is already the canonical closed
 	// slot shape, so the projection is one envelope strip.
-	// ==[HUMAN APPROVED]== SAFETY: the strip result is exactly the wire slot (one id column
+	//  SAFETY: the strip result is exactly the wire slot (one id column
 	// removed from the occurrence), and the recipe's declared promptPresetRecipe
 	// wire schema validates every value this projection emits.
 	return {
@@ -148,7 +153,8 @@ export const readNativePromptPreset = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Native import validates the complete recipe before the transaction
+// @approved
+//  Native import validates the complete recipe before the transaction
 // begins, then inserts a new non-Default library row and fresh occurrence rows
 // together. No source identity or Conversation selection is carried across.
 export const importNativePromptPreset = (
@@ -174,7 +180,8 @@ export const importNativePromptPreset = (
 					enabled: slot.enabled,
 					role: slot.reference === "history" ? null : slot.role,
 				};
-				// ==[HUMAN APPROVED]== An authored instruction is the only slot that stores its
+				// @approved
+				//  An authored instruction is the only slot that stores its
 				// composed name and text.
 				if (slot.reference === "instruction") {
 					row.name = slot.name;
@@ -191,7 +198,8 @@ export const importNativePromptPreset = (
 	return execute.immediate();
 };
 
-// ==[HUMAN APPROVED]== SillyTavern conversion completes before the native importer starts its
+// @approved
+//  SillyTavern conversion completes before the native importer starts its
 // transaction. A source that needs an order choice or contains invalid structure therefore
 // cannot leave a partially-created library row behind.
 export const importSillyTavernPromptPreset = (
@@ -203,7 +211,8 @@ export const importSillyTavernPromptPreset = (
 	return { ...preview, preset };
 };
 
-// ==[HUMAN APPROVED]== Executes one revisioned library command atomically. Rename, duplicate and
+// @approved
+//  Executes one revisioned library command atomically. Rename, duplicate and
 // delete each require the expected revision; creation carries none because it
 // addresses no existing preset. A rename advances the revision exactly once,
 // while duplicating writes an independent preset without touching the guarded
@@ -220,7 +229,8 @@ export function executePromptPresetCommand(
 	database: Database,
 	command: PromptPresetCommand,
 ): PromptPresetCommandResult {
-	// ==[HUMAN APPROVED]== One drizzle handle and one transaction serve every command this
+	// @approved
+	//  One drizzle handle and one transaction serve every command this
 	// executor accepts; the create path has no guarded source, so it is the
 	// only member that skips the revision read.
 	const db = connect(database);
@@ -241,7 +251,8 @@ export function executePromptPresetCommand(
 
 		if (command.type === "delete") {
 			if (preset.isDefault) throw new DefaultPromptPresetNotRemovableError();
-			// ==[HUMAN APPROVED]== The confirmed deletion impact is compared against the
+			// @approved
+			//  The confirmed deletion impact is compared against the
 			// authoritative count in the same transaction that reassigns selections,
 			// so a count the author never saw can never be deleted.
 			if (preset.conversationCount !== command.expectedConversationCount) {
@@ -285,7 +296,8 @@ export function executePromptPresetCommand(
 		}
 
 		db.update(promptPresetTable)
-			// ==[HUMAN APPROVED]== The rename is the only command that changes the guarded
+			// @approved
+			//  The rename is the only command that changes the guarded
 			// source preset, so it alone advances the revision the next command
 			// must carry.
 			.set({ name: requireCommandName(command.name), revision: preset.revision + 1 })

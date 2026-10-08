@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Cross-domain contract between Conversation and Memory: the deep
+// @approved
+//  Cross-domain contract between Conversation and Memory: the deep
 // Conversation module reports what one committed write changed, and Memory
 // applies its own derivation to the report. Neither module imports the
 // other; this shared declaration is the only shared vocabulary.

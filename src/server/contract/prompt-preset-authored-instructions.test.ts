@@ -23,7 +23,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-// ==[HUMAN APPROVED]== Authored instruction coverage through the public routes and captured
+// @approved
+//  Authored instruction coverage through the public routes and captured
 // Generation requests: recipe operations on authored instruction blocks,
 // and the shared-and-copied recipe lifecycle. The authored instruction
 // macro language and its warnings live in the instruction macros suite.

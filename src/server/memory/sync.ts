@@ -13,7 +13,8 @@ export function refreshMemoryForConversation(database: Database, conversationId:
 	queueMemoryTail(database, conversationId);
 }
 
-// ==[HUMAN APPROVED]== Apply one Conversation-reported change to Memory's own tables. The
+// @approved
+//  Apply one Conversation-reported change to Memory's own tables. The
 // deep Conversation module reports what it changed instead of calling
 // Memory from inside its write transactions; the application layer delivers
 // the record here inside the same transaction wrapper, so Memory reads
@@ -22,7 +23,8 @@ export function refreshMemoryForConversation(database: Database, conversationId:
 // join Memory's collection table for the staleness check.
 export function syncMemorySources(database: Database, change: ConversationMemoryChange): void {
 	if (change.removedVariantIds.length > 0) {
-		// ==[HUMAN APPROVED]== Exactly the reported removals are abandoned: the report names
+		// @approved
+		//  Exactly the reported removals are abandoned: the report names
 		// the Variant rows this write deleted, so no registered-variant scan is
 		// needed to rediscover them.
 		abortMemoryWork(database, change.removedVariantIds);

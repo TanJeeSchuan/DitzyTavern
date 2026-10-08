@@ -178,7 +178,8 @@ const secondaryEvidence = (
 		},
 		excludeAll: {
 			...condition(excludeAllMatches, entry.excludeAll),
-			// ==[HUMAN APPROVED]== Exclude-all vetoes only when every exclusion is present.
+			// @approved
+			//  Exclude-all vetoes only when every exclusion is present.
 			matched: entry.excludeAll.length === 0 || excludeAllMatches.length < entry.excludeAll.length,
 		},
 	};

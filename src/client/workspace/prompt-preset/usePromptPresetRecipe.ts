@@ -24,7 +24,8 @@ interface PromptPresetRecipeUnit {
 	) => Promise<SaveDraftsResult>;
 }
 
-// ==[HUMAN APPROVED]== The recipe operation's declared start effects: it keeps any in-flight read
+// @approved
+//  The recipe operation's declared start effects: it keeps any in-flight read
 // current (a failed or superseded recipe operation leaves the last view intact), owns no
 // Conversation race, and clears the problem channel as it starts so its own outcome owns the copy.
 const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
@@ -43,7 +44,8 @@ const promptPresetOperationProblem = (
 		? "The selected preset no longer exists."
 		: fallback;
 
-// ==[HUMAN APPROVED]== The save-on-leave result a leave resolution acts on: a successful save whose
+// @approved
+//  The save-on-leave result a leave resolution acts on: a successful save whose
 // refresh accepted may resolve the leave, `kept` stays open with newer dirty drafts retained,
 // `failed` reports a problem while retaining drafts, and `aborted` makes no state or feedback
 // change because the save-on-leave's refresh was superseded.
@@ -53,7 +55,8 @@ export type SaveDraftsResult =
 	| { status: "failed"; problem: string }
 	| { status: "aborted" };
 
-// ==[HUMAN APPROVED]== The recipe unit: immediate ordering and an atomic draft save batch.
+// @approved
+//  The recipe unit: immediate ordering and an atomic draft save batch.
 // It shares the runtime's settlement owner and refresh
 // ownership, so its flows cannot diverge from the library unit's response rules.
 export function usePromptPresetRecipe({
@@ -65,7 +68,8 @@ export function usePromptPresetRecipe({
 }): PromptPresetRecipeUnit {
 	const { current, dispatch, loadRecipe, runOperation, ownsOperation } = runtime;
 
-	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live here, and
+	// @approved
+	//  One recipe operation execution: pending and problem state live here, and
 	// the applied response reloads only the selected Conversation-resolved recipe. An
 	// authoritative null recipe stays silent
 	// here (the view is already unavailable); network failure reports the recipe reload problem.
@@ -99,7 +103,8 @@ export function usePromptPresetRecipe({
 
 	const clearDraft = (blockId: number): void => dispatch({ type: "draft-cleared", blockId });
 
-	// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain command,
+	// @approved
+	//  Save-on-leave submits every dirty occurrence in one typed domain command,
 	// then reloads only the selected Conversation-resolved recipe. The save's own refresh (not a
 	// pre-save read) accepts the fresh recipe and retires exactly the submitted draft versions; the
 	// local drafts remain available if the save is rejected or either request fails, and a superseded
@@ -133,7 +138,8 @@ export function usePromptPresetRecipe({
 		const live = current();
 		const freshReady = live.view.status === "ready" ? live.view : null;
 		if (freshReady !== null && dirtyDraftSummary(freshReady.selected, live.drafts).count > 0) {
-			// ==[HUMAN APPROVED]== The save settled but reconciliation left newer dirty drafts: retain
+			// @approved
+			//  The save settled but reconciliation left newer dirty drafts: retain
 			// them and keep the panel open instead of clearing them through leave resolution.
 			return { status: "kept" };
 		}

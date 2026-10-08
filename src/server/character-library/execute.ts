@@ -26,7 +26,8 @@ import type {
 	CharacterSnapshot,
 } from "./types";
 
-// ==[HUMAN APPROVED]== Executes one revisioned Character command atomically. Every mutation
+// @approved
+//  Executes one revisioned Character command atomically. Every mutation
 // except creation requires the expected revision and increments it on
 // success. A stale command fails without any change and carries the
 // authoritative current Character in the typed conflict. Deletion returns
@@ -58,7 +59,8 @@ export function executeCharacterCommand(
 		}
 
 		if (command.type === "delete") {
-			// ==[HUMAN APPROVED]== Deletion advances no further revision: a hard-deleted Character
+			// @approved
+			//  Deletion advances no further revision: a hard-deleted Character
 			// has no row left, and a tombstone is hidden and nonrestorable.
 			return deleteCharacter(db, command.characterId);
 		}

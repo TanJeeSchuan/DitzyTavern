@@ -21,7 +21,8 @@ import {
 	startGeneration,
 } from "./prompt-preset-test-fixtures";
 
-// ==[HUMAN APPROVED]== Native interchange exercises export and reimport of the stored recipe
+// @approved
+//  Native interchange exercises export and reimport of the stored recipe
 // through the public library routes: references stay references, authored
 // text travels untouched, and a reimported recipe drives a selected
 // Conversation's captured request.

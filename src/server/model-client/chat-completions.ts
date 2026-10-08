@@ -42,7 +42,8 @@ export interface ChatCompletionsModelClientOptions {
 
 export { ModelClientTransportError } from "./errors";
 
-// ==[HUMAN APPROVED]== Production v1 Model Client. The adapter owns all provider request shaping;
+// @approved
+//  Production v1 Model Client. The adapter owns all provider request shaping;
 // callers only supply the opaque Prompt Plan and provider-neutral generation
 // settings. The request destination is captured when this client is created,
 // so Profile edits cannot redirect an in-flight Generation.
@@ -64,7 +65,8 @@ export function createOpenRouterModelClient(
 	return createConfiguredModelClient(options, "openrouter");
 }
 
-// ==[HUMAN APPROVED]== The adapter dispatch lives inside the deep Model Client: routes and
+// @approved
+//  The adapter dispatch lives inside the deep Model Client: routes and
 // workflows select one provider-neutral factory and never import concrete
 // transport constructors.
 export function createModelClient(
@@ -146,14 +148,17 @@ async function* generateOpenAICompatibleStream(options: {
 		else options.input.signal.addEventListener("abort", onCallerAbort, { once: true });
 	}
 	resetInactivity();
-	// ==[HUMAN APPROVED]== A request without a body carries no Request Overrides to apply and is
+	// @approved
+	//  A request without a body carries no Request Overrides to apply and is
 	// forwarded to the captured destination unchanged.
 	const overriddenBody = (init?: RequestInit): string | undefined => {
 		if (init?.body === undefined) return undefined;
-		// ==[HUMAN APPROVED]== SAFETY: the AI SDK serializes this request as a JSON object whose values
+		// @approved
+		//  SAFETY: the AI SDK serializes this request as a JSON object whose values
 		// are within the Conversation Request Override JSON domain.
 		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
-		// ==[HUMAN APPROVED]== The Generation Plan Compiler narrowed the Request Overrides to the
+		// @approved
+		//  The Generation Plan Compiler narrowed the Request Overrides to the
 		// namespace of the API Format this adapter was constructed for.
 		const overrides = settings.requestOverrides;
 		validateChatCompletionsOverrides(overrides);

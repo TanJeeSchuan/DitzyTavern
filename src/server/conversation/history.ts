@@ -1,11 +1,11 @@
-// ==[HUMAN APPROVED]== Paginated history read model: the normal Chat read seam for reading
+// @approved
+//  Paginated history read model: the normal Chat read seam for reading
 // native Messages. Pages serve stable position-ordered (chronological)
 // Messages with the lightweight Participant identity, selected Variant
 // state, and persisted Reasoning Content needed for rendering. Exact artifact
 // bytes, the canonical archive text, signatures, generation IDs, and other
 // message/variant/Conversation-scoped provenance are excluded here
 // and load only through deliberate detail operations.
-//
 // Imported Chats graduate into exactly this read model: their Messages use
 // the immutable Author Stamp created from the resolved Participant name,
 // and ordinary swipe navigation after commit is the existing revisioned
@@ -52,7 +52,8 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
 
-// ==[HUMAN APPROVED]== A Message is continuable when its selected Variant carries visible
+// @approved
+//  A Message is continuable when its selected Variant carries visible
 // content or — under the instruction strategy — persisted Reasoning
 // Content. Named (not an inline IIFE) so the read model states its rule
 // once, beside the acceptance path's related but deliberately different
@@ -66,7 +67,8 @@ const isContinuable = (
 		(continuationStrategy === "instruction" &&
 			(selected.reasoning?.length ?? 0) > 0));
 
-// ==[HUMAN APPROVED]== Reads one page of the stable Message sequence, counted backward from the
+// @approved
+//  Reads one page of the stable Message sequence, counted backward from the
 // newest Message: page 1 serves the latest window and later pages reach
 // further into older history. Each served page is still chronological. The
 // requested page is bounded into the available range (a page beyond the end
@@ -115,7 +117,8 @@ export function readChatHistory(
 	);
 	const offset = (pageIndex - 1) * pageSize;
 
-	// ==[HUMAN APPROVED]== Stable chronology: creation order (position ascending) never reorders
+	// @approved
+	//  Stable chronology: creation order (position ascending) never reorders
 	// when Variant selection changes or Messages are later edited. Pages are
 	// cut from the tail (newest first) and reversed so every served page is
 	// chronological while page 1 remains the latest window.
@@ -130,7 +133,8 @@ export function readChatHistory(
 		.reverse();
 	const messageIds = messageRows.map((message) => message.id);
 
-	// ==[HUMAN APPROVED]== Variant order is preserved with the selected state; empty and
+	// @approved
+	//  Variant order is preserved with the selected state; empty and
 	// duplicate variants remain distinct positions with their exact content.
 	const variantRows =
 		messageIds.length === 0
@@ -215,7 +219,8 @@ export function readChatHistory(
 	const castIds = activeCast.map((participant) => participant.id);
 	const castIdsSet = new Set(castIds);
 
-	// ==[HUMAN APPROVED]== Playability is the single derived Control-validity rule, and the
+	// @approved
+	//  Playability is the single derived Control-validity rule, and the
 	// capability objects below flow through the canonical snapshot helpers,
 	// so the history seam can never disagree with the snapshot or the
 	// commands about sibling eligibility.
@@ -238,7 +243,8 @@ export function readChatHistory(
 				variantsByMessage.get(message.id)?.find((variant) => variant.selected),
 				continuationStrategy,
 			),
-			// ==[HUMAN APPROVED]== Server-derived targeted Swipe eligibility from the canonical rule
+			// @approved
+			//  Server-derived targeted Swipe eligibility from the canonical rule
 			// (ADR-0003): the client never reconstructs it from hints.
 			swipe: deriveMessageSwipeEligibility(
 				playable,

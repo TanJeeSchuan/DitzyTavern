@@ -74,13 +74,16 @@ export {
 	removeConversationGeneration,
 	resolveConversationGeneration,
 } from "./commands/active-generation";
-// ==[HUMAN APPROVED]== Derived targeted-Swipe rule shared by the snapshot and the sibling
+// @approved
+//  Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";
-// ==[HUMAN APPROVED]== Canonical persisted-intent reader shared by terminal commands and the
+// @approved
+//  Canonical persisted-intent reader shared by terminal commands and the
 // recovery sweep so the sibling discriminator cannot drift between them.
 export { isSiblingGenerationRow } from "./commands/active-generation";
-// ==[HUMAN APPROVED]== The one Active-Generation existence probe, shared with the
+// @approved
+//  The one Active-Generation existence probe, shared with the
 // Generation-start capture workflows so no workflow re-probes the
 // active_generation table through its own raw handle. The probe accepts the
 // raw Database like every other public entry point, so workflows never
@@ -90,11 +93,13 @@ export {
 	MAX_HISTORY_PAGE_SIZE,
 	readChatHistory,
 } from "./history";
-// ==[HUMAN APPROVED]== The application-installed write observer: app.ts hands Memory's
+// @approved
+//  The application-installed write observer: app.ts hands Memory's
 // sync to this seam so the deep Conversation module reports what it changed
 // instead of importing Memory.
 export { observeConversationWrites } from "./commands/transaction";
-// ==[HUMAN APPROVED]== The canonical revisioned command seam: the Lorebook attachment
+// @approved
+//  The canonical revisioned command seam: the Lorebook attachment
 // route dispatches its Conversation-owned commands through it instead of
 // keeping a parallel write transaction.
 export { executeConversationCommand } from "./execute";
@@ -204,7 +209,8 @@ export function createConversationModule(database: Database): ConversationModule
 			stopConversationGeneration(database, input),
 		stopGenerations: (input) =>
 			stopConversationGenerations(database, input),
-		// ==[HUMAN APPROVED]== One canonical removal: the persisted Active Generation row decides
+		// @approved
+		//  One canonical removal: the persisted Active Generation row decides
 		// between the Sibling Variant and Tail/Continuation Message mutations.
 		removeGeneration: (input) =>
 			removeConversationGeneration(database, input),

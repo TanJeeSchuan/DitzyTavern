@@ -267,7 +267,8 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			}
 		}
 		if (entryDirty) {
-			// ==[HUMAN APPROVED]== The book save above may have yielded to a newer entry edit. Do not
+			// @approved
+			//  The book save above may have yielded to a newer entry edit. Do not
 			// send the stale closure value after that edit; leave it dirty for an
 			// explicit save instead.
 			if (!isCurrentView(token, initialBookId) || entryDraftVersionRef.current !== initialEntryDraftVersion) return false;
@@ -430,7 +431,8 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
 			if (result.outcome !== "available") {
-				// ==[HUMAN APPROVED]== A conflict names a newer Conversation revision, not a state
+				// @approved
+				//  A conflict names a newer Conversation revision, not a state
 				// snapshot: refetching the attachment read puts the fresh revision
 				// in the cache before the notice shows, so an unchanged retry
 				// succeeds without leaving the panel.
@@ -501,7 +503,8 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		try {
 			const parsed: unknown = JSON.parse(await file.text());
 			const native = parseNativeLorebook(JSON.stringify(parsed));
-			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
+			// @approved
+			//  SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
 			if (result.outcome === "available" && result.value.outcome === "applied") refreshBookCaches(result.value.book);
 			if (request !== importRequestRef.current || token !== viewTokenRef.current) return;

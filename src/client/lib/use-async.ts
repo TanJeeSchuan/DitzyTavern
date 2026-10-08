@@ -1,6 +1,7 @@
 import { useEffect, type DependencyList } from "react";
 
-// ==[HUMAN APPROVED]== One guard per effect activation: the task's promise callbacks consult
+// @approved
+//  One guard per effect activation: the task's promise callbacks consult
 // `isCancelled` so state updates stop once the effect re-runs or the
 // component unmounts.
 export interface AsyncEffectGuard {
@@ -33,6 +34,7 @@ export function useAsyncEffect(
 		const guard = createAsyncEffectGuard();
 		void task(guard.isCancelled);
 		return guard.cancel;
-		// The caller owns the dependency list, mirroring useEffect. ==[HUMAN APPROVED]==
+		// @approved
+		// The caller owns the dependency list, mirroring useEffect.
 	}, deps);
 }

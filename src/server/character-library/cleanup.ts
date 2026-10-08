@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { characterTable, participantTable } from "../database/schema";
 import type { CharacterDatabase } from "./internal";
 
-// ==[HUMAN APPROVED]== Narrow garbage collection for already-tombstoned Characters.
-//
+// @approved
+//  Narrow garbage collection for already-tombstoned Characters.
 // The Conversation domain owns Participant cleanup; when it removes the
 // final provenance reference of a Character — an active Participant being
 // hard-deleted, or a Participant tombstone being collected — it invokes this
@@ -21,7 +21,8 @@ export function collectReleasedCharacterTombstones(
 			.from(characterTable)
 			.where(eq(characterTable.id, characterId))
 			.get();
-		// ==[HUMAN APPROVED]== Only tombstones are garbage-collected; active Characters survive
+		// @approved
+		//  Only tombstones are garbage-collected; active Characters survive
 		// the loss of every reference, and already-collected rows are gone.
 		if (character === undefined || character.deletedAt === null) {
 			continue;

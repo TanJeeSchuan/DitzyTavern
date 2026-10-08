@@ -6,7 +6,8 @@ import { characterCommandErrors } from "../shared/contract/character-library";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { emptyPromptChannels } from "../shared/definition";
 
-// Typed client for the native New Chat workflow. Outcomes mirror the ==[HUMAN APPROVED]==
+// @approved
+// Typed client for the native New Chat workflow. Outcomes mirror the
 // server's typed results so setup problems (stale fork sources, invalid
 // Definitions) surface without losing the user's draft.
 
@@ -25,8 +26,9 @@ export type SeatDraft =
 			};
 	  };
 
+// @approved
 // The native-creation route's outcome is the wire's own: the created
-// ==[HUMAN APPROVED]== Conversation under `available`, the typed 409/404/422 envelopes verbatim,
+//  Conversation under `available`, the typed 409/404/422 envelopes verbatim,
 // and network for everything the seam could not classify.
 export type CreationOutcome = Awaited<ReturnType<typeof createNativeConversation>>;
 

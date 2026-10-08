@@ -48,7 +48,8 @@ const preview = async (
 		},
 	));
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route validated this response against the preview schema.
+	// @approved
+	//  SAFETY: the route validated this response against the preview schema.
 	return await response.json() as Pick<GenerationPreview, "previewId" | "promptPlan">;
 };
 
@@ -68,7 +69,8 @@ const previewResponse = (
 ));
 
 const readVariantData = (database: Database) => {
-	// ==[HUMAN APPROVED]== SAFETY: this fixture selects the three scalar columns asserted below.
+	// @approved
+	//  SAFETY: this fixture selects the three scalar columns asserted below.
 	return database.query("SELECT namespace, key, value FROM message_variant_data").all() as { namespace: string; key: string; value: string }[];
 };
 
@@ -185,7 +187,8 @@ describe("Prompt Plan inspection", () => {
 				},
 			));
 			expect(started.status).toBe(200);
-			// ==[HUMAN APPROVED]== SAFETY: the acceptance response is the route's generation contract.
+			// @approved
+			//  SAFETY: the acceptance response is the route's generation contract.
 			const accepted = await started.json() as { generationId: number };
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(captured?.messages).toContainEqual({

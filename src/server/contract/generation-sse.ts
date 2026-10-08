@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Every SSE frame payload is a member of the shared Generation event
+// @approved
+//  Every SSE frame payload is a member of the shared Generation event
 // vocabulary: normalized events, state snapshots, and the terminal applied/
 // stopped/failure frames. The schemas in src/shared/contract/generation-events
 // own the shapes; this adapter only owns framing and delivery.
@@ -113,7 +114,8 @@ export function createGenerationSubscriptionResponse(
 				(envelope) => emit("generation", envelope.event, envelope.eventId),
 				(state) => emit("state", activeGenerationPayload(state)),
 			);
-			// ==[HUMAN APPROVED]== A terminal runtime can synchronously finish from the replay callback
+			// @approved
+			//  A terminal runtime can synchronously finish from the replay callback
 			// before subscribe() returns. Close the newly-created subscription too.
 			if (closed) subscription.close();
 			finish(runtime.state);

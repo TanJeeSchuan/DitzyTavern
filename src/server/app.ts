@@ -18,7 +18,8 @@ export interface AppOptions extends ConversationRouteOptions {
 
 export async function createApp(options: AppOptions) {
 	const { database, fetch, artifactDirectory = defaultArtifactDirectory() } = options;
-	// ==[HUMAN APPROVED]== The application layer consumes Conversation's reported changes:
+	// @approved
+	//  The application layer consumes Conversation's reported changes:
 	// Memory sync runs as the last statement of the Conversation transaction
 	// wrapper, so its reads see exactly the committed write.
 	observeConversationWrites(database, syncMemorySources);
@@ -27,7 +28,8 @@ export async function createApp(options: AppOptions) {
 		process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, fetch, signal, trace),
 		embed: embedMemoryTexts(database, fetch),
 	});
-	// ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;
+	// @approved
+	//  One process-start sweep resolves only abandoned local Active Generations;
 	// it never resumes or retries a provider request.
 	reportRecovery("Startup", recoverActiveGenerations(database));
 

@@ -51,7 +51,8 @@ export const BUDGET_FIELD_LABELS = {
 	siblingGenerationLimit: "Sibling Generation limit",
 } as const;
 
-// ==[HUMAN APPROVED]== Matches the server command's per-field messages so client feedback reads as
+// @approved
+//  Matches the server command's per-field messages so client feedback reads as
 // one system. The Safety allowance is the only field accepting zero.
 export const BUDGET_FIELD_ERROR = {
 	contextLimit: "Context limit must be a positive whole number.",
@@ -77,7 +78,8 @@ export type BudgetDraftValue =
 	| { status: "valid"; value: number }
 	| { status: "invalid" };
 
-// ==[HUMAN APPROVED]== Mirrors the server's whole-number rule by accepting only canonical digit
+// @approved
+//  Mirrors the server's whole-number rule by accepting only canonical digit
 // strings. Blank, negative, decimal, and exponent text all land as invalid so
 // Apply cannot send a partially resolved aggregate; the parsed numeric value
 // is then checked against the field minimum exactly like Number.isInteger.
@@ -112,7 +114,8 @@ export function resolveSamplingValues(drafts: SamplingDrafts): SamplingValues | 
 	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as SamplingValues;
 }
 
-// ==[HUMAN APPROVED]== Request Overrides drafts. Each namespace is an independent JSON object and
+// @approved
+//  Request Overrides drafts. Each namespace is an independent JSON object and
 // the closed namespace set mirrors the Conversation Generation Settings
 // contract, so switching the selected Connection Profile never transmits
 // overrides authored for another API Format.
@@ -141,14 +144,16 @@ export type OverridesDraftValue =
 	| { status: "valid"; value: GenerationRequestOverrides }
 	| { status: "invalid" };
 
-// ==[HUMAN APPROVED]== Matches the server command's JSON-value message so client feedback reads
+// @approved
+//  Matches the server command's JSON-value message so client feedback reads
 // as one system: the namespace must be an object whose JSON serialization
 // succeeds. Arrays and scalars are invalid because the shared contract
 // requires a Record per namespace.
 export const OVERRIDES_DRAFT_ERROR = "Request Overrides must be JSON values.";
 
 export function parseOverridesDraft(value: JsonData): OverridesDraftValue {
-	// ==[HUMAN APPROVED]== SAFETY: the object-tag check establishes a plain object (null, arrays,
+	// @approved
+	//  SAFETY: the object-tag check establishes a plain object (null, arrays,
 	// and scalars all carry other tags) accepted by JSON.stringify.
 	if (Object.prototype.toString.call(value) !== "[object Object]") {
 		return { status: "invalid" };
@@ -162,14 +167,16 @@ export function parseOverridesDraft(value: JsonData): OverridesDraftValue {
 	if (serialized === undefined) return { status: "invalid" };
 	return {
 		status: "valid",
-		// ==[HUMAN APPROVED]== SAFETY: serializing an object and parsing the result restores the
+		// @approved
+		//  SAFETY: serializing an object and parsing the result restores the
 		// closed JSON value domain the shared contract allows, mirroring the
 		// server's cloneRequestOverrides normalization.
 		value: JSON.parse(serialized) as GenerationRequestOverrides,
 	};
 }
 
-// ==[HUMAN APPROVED]== Returns null whenever any namespace draft is invalid so Apply cannot send
+// @approved
+//  Returns null whenever any namespace draft is invalid so Apply cannot send
 // a partially resolved aggregate.
 export function resolveOverridesValues(
 	drafts: OverridesDrafts,
@@ -199,7 +206,8 @@ export function requestOverridesSummary(
 	return count === 0 ? `No custom fields for ${label}` : `${count} custom field${count === 1 ? "" : "s"} sent to ${label}`;
 }
 
-// ==[HUMAN APPROVED]== The first-class Sampling wire keys and the two managed key families are
+// @approved
+//  The first-class Sampling wire keys and the two managed key families are
 // the shared closed sets from src/shared/generation-overrides.ts, so the
 // editor notices can never drift from the server merge.
 const FIRST_CLASS_SAMPLING_OVERRIDE_KEY_SET = new Set<string>(
@@ -214,7 +222,8 @@ export function collidingSamplingOverrideKeys(
 	);
 }
 
-// ==[HUMAN APPROVED]== Chat Completions is the only namespace with a server-side merge today, and
+// @approved
+//  Chat Completions is the only namespace with a server-side merge today, and
 // the merge skips the two shared managed key families rather than failing.
 // Other namespaces are never transmitted, so nothing is managed for them and
 // no key is rejected silently.

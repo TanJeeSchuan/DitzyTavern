@@ -15,7 +15,8 @@ export const characterLibrarySummary = Type.Object({
 	pinned: Type.Boolean(),
 	preview: Type.String(),
 	portrait: Type.Optional(portrait),
-	// ==[HUMAN APPROVED]== Global provenance reference count (active or tombstoned
+	// @approved
+	//  Global provenance reference count (active or tombstoned
 	// Participants forked from this Character), so pickers and lists present
 	// deletion impact without one detail request per row.
 	provenanceReferenceCount: Type.Integer(),
@@ -26,7 +27,8 @@ export const characterDeletionMode = Type.Union([
 	Type.Literal("tombstone"),
 ]);
 
-// ==[HUMAN APPROVED]== Derived deletion impact presented with every authoritative read so the
+// @approved
+//  Derived deletion impact presented with every authoritative read so the
 // confirmation flow can show the exact consequence before any command.
 export const characterDeletionImpact = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
@@ -160,7 +162,8 @@ export const characterConflict = Type.Object({
 	currentCharacter: characterSnapshot,
 });
 
-// ==[HUMAN APPROVED]== The Character command family's modeled error union: the composed
+// @approved
+//  The Character command family's modeled error union: the composed
 // 409/404/422 envelopes the library command and native-creation routes
 // declare, so the client decodes an error body against exactly that union.
 export const characterCommandErrors = Type.Union([

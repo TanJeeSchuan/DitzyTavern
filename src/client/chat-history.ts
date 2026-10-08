@@ -1,9 +1,9 @@
+// @approved
 // Replaceable typed client boundary for reading a Chat's native history and
-// ==[HUMAN APPROVED]== its Import Details. Every view uses this single boundary: pagination,
+//  its Import Details. Every view uses this single boundary: pagination,
 // receipt loading, heavy provenance, and artifact download stay behind typed
 // operations instead of embedding transport behavior throughout Message
 // components.
-//
 // The paginated read model is the normal Chat read: stable chronological
 // pages of native Messages with Participant identity, immutable Author
 // Stamp names, Variant order, selected Variant state, and persisted Reasoning
@@ -35,13 +35,15 @@ export type { ChatImportDetails };
 
 export interface ChatHistoryPageRequest {
 	aroundMessageId?: number;
+	// @approved
 	// 1-based page within the stable position-ordered chronology, counted
-	// ==[HUMAN APPROVED]== backward from the newest Message (page 1 = latest window).
+	//  backward from the newest Message (page 1 = latest window).
 	page?: number;
 }
 
+// @approved
 // Exact-source download outcome. Missing or corrupt exact artifacts are a
-// ==[HUMAN APPROVED]== typed cleaned-up result: only exact download is affected, never normal
+//  typed cleaned-up result: only exact download is affected, never normal
 // Chat reading or commands.
 export type ChatSourceDownloadOutcome =
 	| { outcome: "available"; filename: string; mediaType: string; bytes: Uint8Array }
@@ -67,8 +69,9 @@ export async function loadHistoryPage(
 	);
 }
 
+// @approved
 // Loads the persisted receipt and source identity for one Chat; a typed
-// ==[HUMAN APPROVED]== not-found for Chats without import provenance.
+//  not-found for Chats without import provenance.
 export async function loadImportDetails(conversationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId })["import-details"].get(),

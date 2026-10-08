@@ -1,11 +1,11 @@
-// ==[HUMAN APPROVED]== Pure state transitions for the Import Chat flow. The view orchestrates
+// @approved
+//  Pure state transitions for the Import Chat flow. The view orchestrates
 // the replaceable import client and feeds typed outcomes back into this
 // reducer, so every step (choose, upload-once staging, staged preview,
 // Participant resolution, final review, commit, receipt, cancel warning,
 // discard) is testable without a browser or a frontend framework. No browser
 // File reference ever lives in the state: after the initial upload the flow
 // works from the staged token and SHA-256 alone.
-//
 // Resolution model: the preview contributes one working segment per exact
 // captured author string. The user can merge whole segments into one
 // Participant, split selected whole Messages into another existing segment
@@ -40,41 +40,51 @@ export interface ImportMessageRecord {
 	isBlankSource: boolean;
 }
 
-// ==[HUMAN APPROVED]== One working segment of the resolution. Whole Messages are carried as
+// @approved
+//  One working segment of the resolution. Whole Messages are carried as
 // records so their position, Variant count, and blank-source marker cannot
 // drift apart during a merge or split.
 export interface ImportGroupDraft {
-	// ==[HUMAN APPROVED]== Stable local identity, since a split produces two segments sharing one
+	// @approved
+	//  Stable local identity, since a split produces two segments sharing one
 	// exact captured author key.
 	id: string;
-	// ==[HUMAN APPROVED]== The exact captured author string this segment is primarily associated
+	// @approved
+	//  The exact captured author string this segment is primarily associated
 	// with; the empty string for blank captured names.
 	key: string;
 	isBlank: boolean;
-	// ==[HUMAN APPROVED]== Blank-source Messages require an explicit usable Participant name before
+	// @approved
+	//  Blank-source Messages require an explicit usable Participant name before
 	// commit, wherever they end up after merge or split.
 	messages: ImportMessageRecord[];
-	// ==[HUMAN APPROVED]== Editable native Participant name.
+	// @approved
+	//  Editable native Participant name.
 	participantName: string;
-	// ==[HUMAN APPROVED]== Strongest name-only Character suggestion, unconfirmed; null when the
+	// @approved
+	//  Strongest name-only Character suggestion, unconfirmed; null when the
 	// initial group (or the library) had nothing to suggest.
 	suggestion: ChatImportSuggestion | null;
-	// ==[HUMAN APPROVED]== A fork outcome must be explicitly approved: the pre-filled suggestion
+	// @approved
+	//  A fork outcome must be explicitly approved: the pre-filled suggestion
 	// alone never passes final review, and picking a Character from the
 	// picker counts as the explicit approval.
 	suggestedApproved: boolean;
-	// ==[HUMAN APPROVED]== Blank-source confirmation: confirmed by the user explicitly, or by
+	// @approved
+	//  Blank-source confirmation: confirmed by the user explicitly, or by
 	// editing this segment's Participant name (supplying a nonblank name).
 	blankNameConfirmed: boolean;
 	outcome: ImportResolutionOutcome;
-	// ==[HUMAN APPROVED]== View-local multi-selection of whole Messages for splitting.
+	// @approved
+	//  View-local multi-selection of whole Messages for splitting.
 	selectedPositions: number[];
 }
 
 export const variantCountForGroup = (group: ImportGroupDraft): number =>
 	group.messages.reduce((total, message) => total + message.variantCount, 0);
 
-// ==[HUMAN APPROVED]== The staged handle and its binding, set once when the upload succeeds.
+// @approved
+//  The staged handle and its binding, set once when the upload succeeds.
 // Every preview refresh, commit, and discard works from this handle alone;
 // it is never reconstructed from a browser path.
 export interface StagedChatHandle {
@@ -87,9 +97,11 @@ export interface StagedChatHandle {
 
 export interface ChatImportFlowState {
 	phase: ChatImportPhase;
-	// ==[HUMAN APPROVED]== True while the Cancel warning is shown before discarding the flow.
+	// @approved
+	//  True while the Cancel warning is shown before discarding the flow.
 	cancelPending: boolean;
-	// ==[HUMAN APPROVED]== Contextual problem text; recoverable errors keep the staged preview
+	// @approved
+	//  Contextual problem text; recoverable errors keep the staged preview
 	// and every choice made during this flow.
 	problem: string | null;
 	handle: StagedChatHandle | null;
@@ -101,61 +113,78 @@ export interface ChatImportFlowState {
 		related: ChatImportDuplicateMatch[];
 	};
 	groups: ImportGroupDraft[];
-	// ==[HUMAN APPROVED]== Explicit Import another copy confirmation for exact duplicates; only
+	// @approved
+	//  Explicit Import another copy confirmation for exact duplicates; only
 	// matching SHA-256 demands it, related-source matches stay advisory.
 	duplicateConfirmed: boolean;
-	// ==[HUMAN APPROVED]== Segment snapshots pushed before every structural merge/split so the
+	// @approved
+	//  Segment snapshots pushed before every structural merge/split so the
 	// user can undo resolution changes before commit.
 	history: ImportGroupDraft[][];
-	// ==[HUMAN APPROVED]== Compact receipt of the committed import, shown by the success step.
+	// @approved
+	//  Compact receipt of the committed import, shown by the success step.
 	receipt: ChatImportReceipt | null;
 }
 
 export type ChatImportFlowAction =
 	| { type: "begin" }
-	// ==[HUMAN APPROVED]== The user chose exactly one file; the view starts the single upload.
+	// @approved
+	//  The user chose exactly one file; the view starts the single upload.
 	| { type: "file-chosen" }
 	| { type: "stage-succeeded"; stage: { token: string; preview: ChatImportPreview } }
-	// ==[HUMAN APPROVED]== A validation failure: no token exists, so the flow returns to choosing
+	// @approved
+	//  A validation failure: no token exists, so the flow returns to choosing
 	// with the contextual reason intact.
 	| { type: "stage-failed"; reason: string }
-	// ==[HUMAN APPROVED]== Recoverable preview refresh with the same token and hash: preview
+	// @approved
+	//  Recoverable preview refresh with the same token and hash: preview
 	// fields update while the user's edits and approvals survive.
 	| { type: "preview-succeeded"; preview: ChatImportPreview }
 	| { type: "preview-failed"; reason: string }
 	| { type: "title-changed"; title: string }
 	| { type: "group-name-changed"; id: string; name: string }
 	| { type: "outcome-changed"; id: string; outcome: ImportResolutionOutcome }
-	// ==[HUMAN APPROVED]== Explicitly approves the pre-filled Character suggestion for a fork.
+	// @approved
+	//  Explicitly approves the pre-filled Character suggestion for a fork.
 	| { type: "suggestion-approved"; id: string }
-	// ==[HUMAN APPROVED]== Explicit confirmation of a blank-source Participant's current name.
+	// @approved
+	//  Explicit confirmation of a blank-source Participant's current name.
 	| { type: "blank-name-confirmed"; id: string }
-	// ==[HUMAN APPROVED]== Toggles whole-Message selection for a split.
+	// @approved
+	//  Toggles whole-Message selection for a split.
 	| { type: "message-selected"; id: string; position: number; selected: boolean }
-	// ==[HUMAN APPROVED]== Merges whole segments into one Participant; the target keeps its
+	// @approved
+	//  Merges whole segments into one Participant; the target keeps its
 	// identity, name, outcome, and approvals, and takes the union of Messages.
 	| { type: "merge-into"; targetId: string; sourceIds: string[] }
-	// ==[HUMAN APPROVED]== Moves selected whole Messages into an existing segment.
+	// @approved
+	//  Moves selected whole Messages into an existing segment.
 	| { type: "split-out"; fromId: string; toId: string; positions: number[] }
-	// ==[HUMAN APPROVED]== Moves selected whole Messages into a brand-new segment with a fresh id.
+	// @approved
+	//  Moves selected whole Messages into a brand-new segment with a fresh id.
 	| { type: "split-new"; fromId: string; positions: number[]; newId: string }
-	// ==[HUMAN APPROVED]== Reverts the last structural merge/split, restoring the previous
+	// @approved
+	//  Reverts the last structural merge/split, restoring the previous
 	// segments exactly.
 	| { type: "undo-resolution" }
 	| { type: "duplicate-confirmed"; confirmed: boolean }
-	// ==[HUMAN APPROVED]== Final-review navigation, keeping every resolution choice.
+	// @approved
+	//  Final-review navigation, keeping every resolution choice.
 	| { type: "review-ready" }
 	| { type: "back-to-preview" }
 	| { type: "commit-started" }
 	| { type: "commit-succeeded"; receipt: ChatImportReceipt }
-	// ==[HUMAN APPROVED]== Recoverable commit failure: review stays open with every choice intact.
+	// @approved
+	//  Recoverable commit failure: review stays open with every choice intact.
 	| { type: "commit-failed"; reason: string }
-	// ==[HUMAN APPROVED]== The success receipt is dismissed; the host closes the flow.
+	// @approved
+	//  The success receipt is dismissed; the host closes the flow.
 	| { type: "success-dismissed" }
 	| { type: "cancel-requested" }
 	| { type: "cancel-abandoned" }
 	| { type: "confirm-cancel" }
-	// ==[HUMAN APPROVED]== Back from preview or review to file selection; the view discards the
+	// @approved
+	//  Back from preview or review to file selection; the view discards the
 	// old token before dispatching this.
 	| { type: "back-to-choose" }
 	| { type: "reset" };
@@ -190,7 +219,8 @@ const draftFromGroup = (
 	id: `group-${index}`,
 	key: group.key,
 	isBlank: group.isBlank,
-	// ==[HUMAN APPROVED]== A blank captured group's Messages are all blank-source; nonblank
+	// @approved
+	//  A blank captured group's Messages are all blank-source; nonblank
 	// groups carry no blank-source Messages until later splits move some in.
 	messages: group.messagePositions.map((position, index) => ({
 		position,
@@ -199,9 +229,11 @@ const draftFromGroup = (
 	})),
 	participantName: group.participantNameDefault,
 	suggestion: group.suggestion === null ? null : { ...group.suggestion },
-	// ==[HUMAN APPROVED]== The strongest suggestion is pre-filled but never auto-approved.
+	// @approved
+	//  The strongest suggestion is pre-filled but never auto-approved.
 	suggestedApproved: false,
-	// ==[HUMAN APPROVED]== Blank captured names start unconfirmed: the default name alone never
+	// @approved
+	//  Blank captured names start unconfirmed: the default name alone never
 	// passes final review.
 	blankNameConfirmed: !group.isBlank,
 	outcome:
@@ -214,13 +246,15 @@ const draftFromGroup = (
 const hasBlankSource = (group: ImportGroupDraft): boolean =>
 	group.messages.some((message) => message.isBlankSource);
 
-// ==[HUMAN APPROVED]== Single preview/review-phase guard shared by every case that only applies
+// @approved
+//  Single preview/review-phase guard shared by every case that only applies
 // while a staged preview is open; the guard helper keeps the repeated switch
 // checks in one place.
 const inStagedFlow = (state: ChatImportFlowState): boolean =>
 	state.phase === "preview" || state.phase === "review";
 
-// ==[HUMAN APPROVED]== Merges a refreshed preview into the working segments: preview-derived
+// @approved
+//  Merges a refreshed preview into the working segments: preview-derived
 // fields update, while the user's editable names, approvals, outcomes, and
 // structural merge/split choices survive by segment identity. A segment
 // that still exactly matches its initial preview group refreshes its
@@ -266,7 +300,8 @@ const toggleMessageSelection = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Merges whole segments into the target Participant. The target keeps its
+// @approved
+//  Merges whole segments into the target Participant. The target keeps its
 // identity, name, outcome, suggestion, and approvals; the sources' Messages
 // (with their Variant counts and blank-source flags) join the target. The
 // previous segments are snapshotted so the merge can be undone.
@@ -289,7 +324,8 @@ const mergeSegments = (
 			...sources.flatMap((source) => source.messages),
 		],
 		selectedPositions: [],
-		// ==[HUMAN APPROVED]== Blank-content arriving with merged Messages re-arms the name
+		// @approved
+		//  Blank-content arriving with merged Messages re-arms the name
 		// confirmation when the target had none; an already confirmed
 		// blank-affected target keeps its confirmation.
 		blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
@@ -307,7 +343,8 @@ const mergeSegments = (
 	};
 };
 
-// ==[HUMAN APPROVED]== Splits selected whole Messages out of one segment. Moving into an existing
+// @approved
+//  Splits selected whole Messages out of one segment. Moving into an existing
 // segment keeps that segment's identity and choices; moving into a brand-new
 // segment creates a fresh unconfirmed identity that must be named before
 // commit. Every Variant stays with its owning Message because the record moves
@@ -332,7 +369,8 @@ const splitSegments = (
 		selectedPositions: [],
 	};
 
-	// ==[HUMAN APPROVED]== Moving every Message out of a segment merges that identity away: an
+	// @approved
+	//  Moving every Message out of a segment merges that identity away: an
 	// emptied source is dropped rather than left to block the review. The
 	// pre-split snapshot keeps the operation fully reversible.
 	const nextGroups = state.groups
@@ -346,7 +384,8 @@ const splitSegments = (
 			...target,
 			messages: [...target.messages, ...moved],
 			selectedPositions: [],
-			// ==[HUMAN APPROVED]== Blank-content arriving with moved Messages re-arms the name
+			// @approved
+			//  Blank-content arriving with moved Messages re-arms the name
 			// confirmation when the target had none.
 			blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
 				? target.blankNameConfirmed
@@ -361,7 +400,8 @@ const splitSegments = (
 		};
 	}
 
-	// ==[HUMAN APPROVED]== A fresh segment starts as an unconfirmed Chat-only identity: it must be
+	// @approved
+	//  A fresh segment starts as an unconfirmed Chat-only identity: it must be
 	// named explicitly, and any blank-source Messages it carries require the
 	// same confirmation rule as every other blank group.
 	const created: ImportGroupDraft = {
@@ -392,13 +432,15 @@ export function reduceChatImportFlow(
 		case "reset":
 			return createChatImportFlowState();
 		case "file-chosen":
-			// ==[HUMAN APPROVED]== The flow accepts exactly one file; only the choose phase may
+			// @approved
+			//  The flow accepts exactly one file; only the choose phase may
 			// start the single upload.
 			return state.phase === "choose"
 				? { ...state, phase: "staging", problem: null, cancelPending: false }
 				: state;
 		case "stage-succeeded": {
-			// ==[HUMAN APPROVED]== Only the single in-flight upload may produce a staged preview;
+			// @approved
+			//  Only the single in-flight upload may produce a staged preview;
 			// stale results arriving after Back/Cancel are ignored.
 			if (state.phase !== "staging") return state;
 			const { token, preview } = action.stage;
@@ -428,7 +470,8 @@ export function reduceChatImportFlow(
 			};
 		}
 		case "stage-failed":
-			// ==[HUMAN APPROVED]== Validation completed before any resolution; the reason is
+			// @approved
+			//  Validation completed before any resolution; the reason is
 			// contextual and no token was created. Stale failures after the
 			// flow moved on are ignored.
 			if (state.phase !== "staging") return state;
@@ -453,7 +496,8 @@ export function reduceChatImportFlow(
 			};
 		case "preview-failed":
 			if (!inStagedFlow(state)) return state;
-			// ==[HUMAN APPROVED]== Recoverable: the staged token and hash remain valid, so the
+			// @approved
+			//  Recoverable: the staged token and hash remain valid, so the
 			// preview and every choice stay; only the problem is shown.
 			return { ...state, problem: action.reason };
 		case "title-changed":
@@ -467,7 +511,8 @@ export function reduceChatImportFlow(
 						? {
 								...group,
 								participantName: action.name,
-								// ==[HUMAN APPROVED]== Supplying an editable name satisfies the
+								// @approved
+								//  Supplying an editable name satisfies the
 								// blank-source confirmation rule.
 								blankNameConfirmed: hasBlankSource(group)
 									? true
@@ -478,7 +523,8 @@ export function reduceChatImportFlow(
 			};
 		case "suggestion-approved":
 			if (!inStagedFlow(state)) return state;
-			// ==[HUMAN APPROVED]== Approves the currently selected fork Character (the pre-filled
+			// @approved
+			//  Approves the currently selected fork Character (the pre-filled
 			// suggestion or any Character the user picked from the picker).
 			return {
 				...state,
@@ -490,7 +536,8 @@ export function reduceChatImportFlow(
 			};
 		case "outcome-changed":
 			if (!inStagedFlow(state)) return state;
-			// ==[HUMAN APPROVED]== Switching outcomes never auto-approves anything: a fork only
+			// @approved
+			//  Switching outcomes never auto-approves anything: a fork only
 			// becomes approved through the explicit approval action.
 			return {
 				...state,
@@ -534,7 +581,8 @@ export function reduceChatImportFlow(
 			if (!inStagedFlow(state)) return state;
 			return splitSegments(state, action.fromId, action.positions, {
 				newId: action.newId,
-				// ==[HUMAN APPROVED]== The fresh segment keeps the source's captured key as its
+				// @approved
+				//  The fresh segment keeps the source's captured key as its
 				// label; the user must still supply an explicit name.
 				newKey: state.groups.find((group) => group.id === action.fromId)?.key ?? "",
 				newIsBlank:
@@ -576,7 +624,8 @@ export function reduceChatImportFlow(
 				receipt: action.receipt,
 			};
 		case "commit-failed":
-			// ==[HUMAN APPROVED]== Recoverable: the staged preview, the exact bytes, and every
+			// @approved
+			//  Recoverable: the staged preview, the exact bytes, and every
 			// resolution choice stay; the review reopens with the reason.
 			return state.phase === "committing"
 				? { ...state, phase: "review", problem: action.reason }
@@ -590,7 +639,8 @@ export function reduceChatImportFlow(
 		case "cancel-abandoned":
 			return { ...state, cancelPending: false };
 		case "confirm-cancel":
-			// ==[HUMAN APPROVED]== Closing phase: the view discards the staged handle (when one
+			// @approved
+			//  Closing phase: the view discards the staged handle (when one
 			// exists) and closes the nested flow.
 			return { ...state, cancelPending: false, phase: "closing" };
 		case "back-to-choose":
@@ -602,7 +652,8 @@ export function reduceChatImportFlow(
 	}
 }
 
-// ==[HUMAN APPROVED]== Cancel warns only when an open flow could be discarded: a file is being
+// @approved
+//  Cancel warns only when an open flow could be discarded: a file is being
 // uploaded or a staged preview/resolution/review exists. Choosing phase
 // closes without a warning because nothing has been staged yet; the success
 // and closing phases hold a committed Chat, never uncommitted staging data.
@@ -611,13 +662,15 @@ export const cancelNeedsWarning = (state: ChatImportFlowState): boolean =>
 	state.phase === "preview" ||
 	state.phase === "review";
 
-// ==[HUMAN APPROVED]== The single-upload gate: only the choose phase may start an upload, so a
+// @approved
+//  The single-upload gate: only the choose phase may start an upload, so a
 // double invocation (or a retry after a recoverable error) can never stream
 // the file a second time.
 export const shouldBeginUpload = (state: ChatImportFlowState): boolean =>
 	state.phase === "choose";
 
-// ==[HUMAN APPROVED]== Includes a wasted segment check: a Participant owning no Messages must be
+// @approved
+//  Includes a wasted segment check: a Participant owning no Messages must be
 // split back or merged away before commit. Position coverage itself is
 // validated authoritatively by the server at commit; this gate only keeps
 // the obvious structural errors and unresolved choices out of the review.
@@ -632,14 +685,16 @@ export const resolutionReady = (state: ChatImportFlowState): boolean => {
 	});
 };
 
-// ==[HUMAN APPROVED]== The review may proceed to commit only when every resolution choice is
+// @approved
+//  The review may proceed to commit only when every resolution choice is
 // confirmed and an exact duplicate has received its explicit Import another
 // copy confirmation.
 export const canCommit = (state: ChatImportFlowState): boolean =>
 	resolutionReady(state) &&
 	(state.duplicates.exact.length === 0 || state.duplicateConfirmed);
 
-// ==[HUMAN APPROVED]== Derived duplicate-name warnings: new-Character Participants may reuse a
+// @approved
+//  Derived duplicate-name warnings: new-Character Participants may reuse a
 // name already held by an existing Profile or by another resolved
 // Participant; uniqueness is never enforced, so the warning is the visible
 // acknowledgement while the authoritative commit always succeeds.
@@ -672,7 +727,8 @@ export const deriveDuplicateNameWarnings = (
 	return warnings;
 };
 
-// ==[HUMAN APPROVED]== The commit payload built from the confirmed resolution, ready for the
+// @approved
+//  The commit payload built from the confirmed resolution, ready for the
 // replaceable import client.
 export const buildResolvedParticipants = (
 	state: ChatImportFlowState,

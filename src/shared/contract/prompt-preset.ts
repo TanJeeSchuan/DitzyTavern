@@ -10,7 +10,8 @@ export type SillyTavernJsonValue =
 	| SillyTavernJsonValue[]
 	| { [key: string]: SillyTavernJsonValue };
 
-// ==[HUMAN APPROVED]== A Referenced Prompt Block names Conversation or Participant Definition
+// @approved
+//  A Referenced Prompt Block names Conversation or Participant Definition
 // content rather than text authored in the preset. Version one's vocabulary
 // is exactly the content the native five-field Prompt model and the selected
 // narrative path can supply; the owner prefix states which controlled
@@ -44,7 +45,8 @@ export const singleUseReferenceLabels = {
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
 
-// ==[HUMAN APPROVED]== The outgoing presentation role a Definition slot's content is sent as.
+// @approved
+//  The outgoing presentation role a Definition slot's content is sent as.
 // It controls model-request presentation only: it never changes which
 // Participant supplies the text or how owner-relative macros expand.
 export const promptOutgoingRole = Type.Union([
@@ -54,7 +56,8 @@ export const promptOutgoingRole = Type.Union([
 ]);
 export type PromptOutgoingRole = Static<typeof promptOutgoingRole>;
 
-// ==[HUMAN APPROVED]== The outgoing role each reference assembles with until an author chooses
+// @approved
+//  The outgoing role each reference assembles with until an author chooses
 // otherwise. These are exactly today's assembly roles, so the initial
 // Default recipe reproduces the established request and a newly added
 // reference starts with the familiar presentation. History is absent: its
@@ -80,14 +83,16 @@ export const promptBlockReference = Type.Union([
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
-// ==[HUMAN APPROVED]== An authored instruction block's reference literal. It is not a Referenced
+// @approved
+//  An authored instruction block's reference literal. It is not a Referenced
 // Prompt Block: its text is owned by the preset, edited in the block editor,
 // and expanded with the Conversation's current Control pair rather than a
 // Definition owner.
 export const promptInstructionReference = Type.Literal("instruction");
 export type PromptInstructionReference = Static<typeof promptInstructionReference>;
 
-// ==[HUMAN APPROVED]== Every stored slot reference a recipe row can carry, for validation and
+// @approved
+//  Every stored slot reference a recipe row can carry, for validation and
 // reads that must not silently drop a future slot kind.
 export const promptPresetBlockReference = Type.Union([
 	promptBlockReference,
@@ -95,7 +100,8 @@ export const promptPresetBlockReference = Type.Union([
 ]);
 export type PromptPresetBlockReference = Static<typeof promptPresetBlockReference>;
 
-// ==[HUMAN APPROVED]== One ordered recipe slot as the compiler consumes it. A referenced
+// @approved
+//  One ordered recipe slot as the compiler consumes it. A referenced
 // Definition slot carries its required outgoing role; history carries no
 // slot-owned role because its entries keep the roles of their own Messages;
 // and an authored instruction carries its editable name, text, and role.
@@ -131,7 +137,8 @@ export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "ref
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);
 
-// ==[HUMAN APPROVED]== A stored occurrence derives from the canonical slot and adds only local
+// @approved
+//  A stored occurrence derives from the canonical slot and adds only local
 // database identity. Deliberate duplicates are separate occurrences, so
 // editor operations address one row by `id` instead of by reference.
 export const promptPresetBlockOccurrence = Type.Intersect([
@@ -148,7 +155,8 @@ export const promptPresetRecipe = Type.Object({
 });
 export type PromptPresetRecipe = Static<typeof promptPresetRecipe>;
 
-// ==[HUMAN APPROVED]== Native interchange deliberately omits stored occurrence ids and the
+// @approved
+//  Native interchange deliberately omits stored occurrence ids and the
 // Conversation-resolved view by reusing the canonical slot contract. References
 // remain references, while authored instruction occurrences carry only their
 // own source text and metadata. This is the complete supported native recipe
@@ -160,7 +168,8 @@ export const nativePromptPreset = Type.Object({
 });
 export type NativePromptPreset = Static<typeof nativePromptPreset>;
 
-// ==[HUMAN APPROVED]== SillyTavern import is deliberately a review/commit flow. The source is
+// @approved
+//  SillyTavern import is deliberately a review/commit flow. The source is
 // kept as opaque JSON at the wire boundary so the server can validate the supported subset
 // without pretending that unsupported source settings are native recipe fields.
 export const sillyTavernImportRequest = Type.Object({
@@ -194,7 +203,8 @@ export const sillyTavernImportPreview = Type.Object({
 });
 export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 
-// ==[HUMAN APPROVED]== The read-only resolution one Chat sees. A Definition slot carries the
+// @approved
+//  The read-only resolution one Chat sees. A Definition slot carries the
 // Participant it reads, that Participant's authored source text, and the
 // outgoing role the slot assembles with; the history slot carries the number
 // of selected narrative path entries it contributes, because its content is
@@ -218,7 +228,8 @@ export const resolvedPromptPresetSlot = Type.Union([
 		enabled: Type.Boolean(),
 		entryCount: Type.Integer(),
 	}),
-	// ==[HUMAN APPROVED]== The resolved view of an instruction occurrence is the stored authored
+	// @approved
+	//  The resolved view of an instruction occurrence is the stored authored
 	// name and text: unlike a referenced block there is no Conversation-local
 	// source, so what the editor shows and what Generation compiles are the
 	// same stored text.
@@ -240,7 +251,8 @@ export const conversationPromptPreset = Type.Object({
 });
 export type ConversationPromptPreset = Static<typeof conversationPromptPreset>;
 
-// ==[HUMAN APPROVED]== The library entry every preset list shows. `conversationCount` is
+// @approved
+//  The library entry every preset list shows. `conversationCount` is
 // the deletion impact presented with every authoritative read, exactly like
 // the Character Library's provenance reference count: the confirmation flow
 // shows how many Conversations move to Default before any command, while the
@@ -277,7 +289,8 @@ export const promptPresetCreateCommand = Type.Object({
 	name: Type.String(),
 });
 
-// ==[HUMAN APPROVED]== Rename, duplicate and delete each carry the expected revision the caller
+// @approved
+//  Rename, duplicate and delete each carry the expected revision the caller
 // saw; creation carries none because it addresses no existing preset. Duplicate
 // carries the new preset's name so naming stays an explicit library operation.
 // Block patches are occurrence-addressed and travel the recipe route, so every
@@ -296,7 +309,8 @@ export const promptPresetDuplicateCommand = Type.Object({
 	name: Type.String(),
 });
 
-// ==[HUMAN APPROVED]== Confirmed deletion. The expected revision guards the library metadata
+// @approved
+//  Confirmed deletion. The expected revision guards the library metadata
 // and the confirmed affected-Conversation count guards the deletion impact:
 // both must match the authoritative values the author confirmed. The outcome
 // derives the reassignment from the selections present at command time.
@@ -307,7 +321,8 @@ export const promptPresetDeleteCommand = Type.Object({
 	expectedConversationCount: Type.Integer(),
 });
 
-// ==[HUMAN APPROVED]== One occurrence-addressed patch saves block fields and enablement
+// @approved
+//  One occurrence-addressed patch saves block fields and enablement
 // without rewriting ordering or another occurrence.
 export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
@@ -332,7 +347,8 @@ export const promptPresetBlockPatch = Type.Union([
 ]);
 export type PromptPresetBlockPatch = Static<typeof promptPresetBlockPatch>;
 
-// ==[HUMAN APPROVED]== The footer and save-on-leave submit the dirty set atomically.
+// @approved
+//  The footer and save-on-leave submit the dirty set atomically.
 export const promptPresetBlockPatchesBody = Type.Object({
 	patches: Type.Array(promptPresetBlockPatch),
 });
@@ -345,7 +361,8 @@ export const promptPresetCommandBody = Type.Union([
 ]);
 export type PromptPresetCommand = Static<typeof promptPresetCommandBody>;
 
-// ==[HUMAN APPROVED]== Outcome of a confirmed deletion: the reassignment count is derived
+// @approved
+//  Outcome of a confirmed deletion: the reassignment count is derived
 // from the selections present at command time, never guessed by the client.
 export const promptPresetDeletionResult = Type.Object({
 	presetId: Type.Integer(),
@@ -353,7 +370,8 @@ export const promptPresetDeletionResult = Type.Object({
 });
 export type PromptPresetDeletionResult = Static<typeof promptPresetDeletionResult>;
 
-// ==[HUMAN APPROVED]== The applied-command wire union states its variant: a summary for every
+// @approved
+//  The applied-command wire union states its variant: a summary for every
 // metadata command, or the deletion's derived reassignment. Deletion returns
 // the typed result instead of a summary because the preset no longer exists.
 // Block operations respond through the recipe route with a minimal applied acknowledgment; the
@@ -375,7 +393,8 @@ export const promptPresetRecipeApplied = Type.Object({
 });
 export type PromptPresetRecipeApplied = Static<typeof promptPresetRecipeApplied>;
 
-// ==[HUMAN APPROVED]== The two recoverable command conflicts share one 409 envelope: the
+// @approved
+//  The two recoverable command conflicts share one 409 envelope: the
 // preset's library metadata revision is stale, or the deletion impact the
 // author confirmed no longer matches. Both carry the authoritative current
 // preset so the caller can recover without a follow-up read.
@@ -397,14 +416,16 @@ const promptPresetConflict = Type.Union([
 ]);
 export type PromptPresetConflict = Static<typeof promptPresetConflict>;
 
-// ==[HUMAN APPROVED]== The command route's typed 409 payload: a recoverable command conflict,
+// @approved
+//  The command route's typed 409 payload: a recoverable command conflict,
 // or the refusal of a Default deletion.
 export const promptPresetCommandConflict = Type.Union([
 	promptPresetConflict,
 	notRemovableOutcome,
 ]);
 
-// ==[HUMAN APPROVED]== The Prompt Preset command family's modeled error union: the composed
+// @approved
+//  The Prompt Preset command family's modeled error union: the composed
 // 409/404/422 envelopes the command route declares, so the client decodes an
 // error body against exactly that union.
 export const promptPresetCommandErrors = Type.Union([
@@ -413,7 +434,8 @@ export const promptPresetCommandErrors = Type.Union([
 	invalidOutcome,
 ]);
 
-// ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each operation
+// @approved
+//  The authoritative recipe operations the popup composes. Each operation
 // persists the smallest change it names: adding one reference, moving one
 // occurrence, toggling one occurrence, duplicating one occurrence, or removing
 // one occurrence. The Prompt Preset editor sends toggles and authored fields through

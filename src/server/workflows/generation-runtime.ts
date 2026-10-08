@@ -72,7 +72,8 @@ export interface GenerationRuntimeScheduler {
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
-// ==[HUMAN APPROVED]== The runtime's own mutable view of GenerationRuntimeState: one field
+// @approved
+//  The runtime's own mutable view of GenerationRuntimeState: one field
 // derivation from the published state, so a field addition touches one
 // declaration and cannot drift between the two.
 type MutableRuntimeState = {
@@ -253,7 +254,8 @@ export class GenerationRuntime {
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
 		if (this.stateValue.status !== "active" || this.stopRequested) {
-			// ==[HUMAN APPROVED]== A late provider frame is ignored rather than being allowed to mutate
+			// @approved
+			//  A late provider frame is ignored rather than being allowed to mutate
 			// a terminal generation or appear out of order to a reconnecting client.
 			return {
 				generationId: this.stateValue.generationId,
@@ -311,7 +313,8 @@ export class GenerationRuntime {
 			this.pendingProviderTerminal ??= { status: "failed", failure };
 			return;
 		}
-		// ==[HUMAN APPROVED]== A failure event is part of the same ordered stream. If the provider
+		// @approved
+		//  A failure event is part of the same ordered stream. If the provider
 		// already emitted one, retain that single authoritative frame rather than
 		// duplicating it when the workflow reports its rejected Promise.
 		if (this.events.at(-1)?.event.type !== "failed") {
@@ -354,7 +357,8 @@ export class GenerationRuntime {
 
 	stop(): void {
 		if (this.stateValue.status !== "active") return;
-		// ==[HUMAN APPROVED]== Stop is the explicit server-owned cancellation seam. Flush before
+		// @approved
+		//  Stop is the explicit server-owned cancellation seam. Flush before
 		// aborting so the terminal Conversation transition can use every delta
 		// observed by this runtime, even when the provider ignores the abort.
 		this.flushCheckpoint();
@@ -401,7 +405,8 @@ export class GenerationRuntime {
 			? normalizedAfter
 			: this.stateValue.latestEventId;
 
-		// ==[HUMAN APPROVED]== When a replay position has fallen out of the bounded buffer, the
+		// @approved
+		//  When a replay position has fallen out of the bounded buffer, the
 		// authoritative state must precede any live frames. The state contains
 		// the accumulated text, so retained frames at or before that position
 		// are intentionally skipped.
@@ -409,7 +414,8 @@ export class GenerationRuntime {
 			try { onState?.(this.state); } catch { /* observer failure cannot stop replay ==[HUMAN APPROVED]== */ }
 		}
 
-		// ==[HUMAN APPROVED]== A subscriber is attached before replay so an event published by an
+		// @approved
+		//  A subscriber is attached before replay so an event published by an
 		// async provider between replay frames cannot be lost or duplicated.
 		const subscriber: Subscriber = (envelope) => {
 			if (envelope.eventId > effectiveAfter) onEvent(envelope);

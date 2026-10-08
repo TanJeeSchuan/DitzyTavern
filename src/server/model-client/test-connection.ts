@@ -142,8 +142,9 @@ export async function testConnection(
 		if (!(error instanceof Error)) {
 			return failure("endpoint", "The provider request failed.");
 		}
+		// @approved
 		// SAFETY: AI SDK provider failures extend Error and expose these optional
-		// response fields; the parser below reads only those known fields. ==[HUMAN APPROVED]==
+		// response fields; the parser below reads only those known fields.
 		return normalizeTestConnectionError(error as ProviderErrorLike, {
 			timedOut,
 			secretValues,

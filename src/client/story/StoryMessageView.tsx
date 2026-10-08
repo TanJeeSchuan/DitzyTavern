@@ -22,7 +22,8 @@ import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { Prose } from "./prose";
 
-// ==[HUMAN APPROVED]== The story renders one native Message from the paginated read model: the
+// @approved
+//  The story renders one native Message from the paginated read model: the
 // immutable Author Stamp name, the persisted selected Variant, and the
 // existing Swipe navigation. Empty and duplicate Variants stay separate
 // positions; an exact empty Variant renders a presentation-only placeholder
@@ -52,16 +53,19 @@ export function StoryMessageView({
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
-	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
+	// @approved
+	//  Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
 	generationActive?: boolean;
-	// ==[HUMAN APPROVED]== Causally downstream of the previewed Variant: the stored text stays
+	// @approved
+	//  Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
 	// or cancelled.
 	previewDownstream?: boolean;
-	// ==[HUMAN APPROVED]== This Message is the Preview target: its Swipe controls stay enabled so
+	// @approved
+	//  This Message is the Preview target: its Swipe controls stay enabled so
 	// Variants can be compared freely without server commands, while every
 	// other mutation remains locked.
 	previewTarget?: boolean;

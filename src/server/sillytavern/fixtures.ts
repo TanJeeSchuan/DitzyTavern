@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Shared synthetic fixtures for the SillyTavern import tests. Raw parsed
+// @approved
+//  Shared synthetic fixtures for the SillyTavern import tests. Raw parsed
 // records are deliberately minimal; unknown fields exercise value-lossless
 // archiving.
 
@@ -47,7 +48,8 @@ export const emptyContentFixture = {
 	mes: "",
 };
 
-// ==[HUMAN APPROVED]== A generated assistant record carrying Swipes. The row-level payload
+// @approved
+//  A generated assistant record carrying Swipes. The row-level payload
 // (`mes`, `extra`, `gen_started`, `gen_finished`) duplicates the saved
 // alternative and must never be promoted by the projection; only `swipes`
 // and the matching `swipe_info` entries feed the native Variants. The
@@ -130,7 +132,8 @@ export const swipeRecordFixture = {
 	],
 };
 
-// ==[HUMAN APPROVED]== A payload-only record carrying row-level generation provenance; the
+// @approved
+//  A payload-only record carrying row-level generation provenance; the
 // projection attaches it to the single selected Variant.
 export const provenancedPayloadFixture = {
 	name: "Writer",

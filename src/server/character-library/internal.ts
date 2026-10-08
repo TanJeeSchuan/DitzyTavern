@@ -12,7 +12,8 @@ export const connectCharacterLibraryDatabase = (database: Database) =>
 	drizzle(database);
 export type CharacterDatabase = ReturnType<typeof connectCharacterLibraryDatabase>;
 
-// ==[HUMAN APPROVED]== Names are normalized by removing leading and trailing whitespace while
+// @approved
+//  Names are normalized by removing leading and trailing whitespace while
 // preserving case and Unicode exactly.
 export const normalizeName = (name: string) => name.trim();
 
@@ -27,7 +28,8 @@ const requireName = (
 	return normalized;
 };
 
-// ==[HUMAN APPROVED]== Openings are stored exactly as authored; only fully blank entries are
+// @approved
+//  Openings are stored exactly as authored; only fully blank entries are
 // rejected.
 const requireOpenings = (
 	openings: readonly string[],
@@ -43,13 +45,15 @@ const requireOpenings = (
 	return openings;
 };
 
-// ==[HUMAN APPROVED]== A Definition with name and openings validated for library storage.
+// @approved
+//  A Definition with name and openings validated for library storage.
 export interface NormalizedDefinition {
 	name: string;
 	openings: readonly string[];
 }
 
-// ==[HUMAN APPROVED]== Creation-time validation failures use the definition error type.
+// @approved
+//  Creation-time validation failures use the definition error type.
 export function requireDefinition(
 	name: string,
 	openings: readonly string[],
@@ -63,7 +67,8 @@ export function requireDefinition(
 	};
 }
 
-// ==[HUMAN APPROVED]== Command-time validation failures use the command error type.
+// @approved
+//  Command-time validation failures use the command error type.
 export const requireCommandName = (name: string): string =>
 	requireName(name, (message) => new InvalidCharacterCommandError(message));
 
@@ -79,7 +84,8 @@ export interface CharacterRowState {
 	pinned: boolean;
 }
 
-// ==[HUMAN APPROVED]== Reads the active lifecycle row for one Character. Tombstoned Characters
+// @approved
+//  Reads the active lifecycle row for one Character. Tombstoned Characters
 // are treated as not found by every public operation.
 export const requireActiveCharacter = (
 	db: CharacterDatabase,

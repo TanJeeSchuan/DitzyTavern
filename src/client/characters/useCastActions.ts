@@ -16,14 +16,16 @@ import type { CharacterSnapshot } from "../character-library";
 import { controlChangeDescription } from "../cast";
 import { emptyPromptChannels } from "../../shared/definition";
 
-// ==[HUMAN APPROVED]== The minimal reference the drawer needs to offer navigation into the new
+// @approved
+//  The minimal reference the drawer needs to offer navigation into the new
 // Character Library entry. Internal identifiers are not displayed anywhere.
 export interface SavedCharacterReference {
 	id: number;
 	name: string;
 }
 
-// ==[HUMAN APPROVED]== The character-library add command's extra outcome: the conflict names the
+// @approved
+//  The character-library add command's extra outcome: the conflict names the
 // changed Character instead of carrying a Conversation snapshot, so the
 // runner must not adopt or word it and forwards it untouched.
 type AddCharacterOperation = {
@@ -31,7 +33,8 @@ type AddCharacterOperation = {
 	currentCharacterName?: string;
 };
 
-// ==[HUMAN APPROVED]== The save-as-Character command's extra outcome: the success carries the new
+// @approved
+//  The save-as-Character command's extra outcome: the success carries the new
 // Character while the Conversation itself stays untouched, so there is no
 // snapshot to adopt and the runner forwards it untouched.
 type SaveParticipantOperation = {
@@ -45,7 +48,8 @@ const ADD_ADHOC_NOTICES = {
 	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 };
 
-// ==[HUMAN APPROVED]== Caller-owned wording for the add-from-library command.
+// @approved
+//  Caller-owned wording for the add-from-library command.
 const ADD_CHARACTER_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the authoritative Cast was reloaded.",
 	notFound: "That Character is no longer available.",
@@ -56,7 +60,8 @@ interface CastActionsOptions {
 	conversationId: number;
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	// ==[HUMAN APPROVED]== The removal confirmation dialog is drawer state; the remove action only
+	// @approved
+	//  The removal confirmation dialog is drawer state; the remove action only
 	// closes it before dispatching.
 	setRemoveTargetId: (participantId: number | null) => void;
 }
@@ -79,7 +84,8 @@ export function useCastActions({
 }: CastActionsOptions) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-	// ==[HUMAN APPROVED]== Announces a completed promotion and the navigation action to the new
+	// @approved
+	//  Announces a completed promotion and the navigation action to the new
 	// Character Library entry; cleared when the next save attempt starts so
 	// the drawer never shows a stale confirmation next to a fresh failure.
 	const [saveConfirmation, setSaveConfirmation] = useState<{
@@ -95,7 +101,8 @@ export function useCastActions({
 		}
 	};
 
-	// ==[HUMAN APPROVED]== Removes one unseated Participant after the confirmation dialog. The
+	// @approved
+	//  Removes one unseated Participant after the confirmation dialog. The
 	// impact was already shown from the snapshot; the typed not-removable
 	// outcome covers the race where Control changed before the command
 	// landed.
@@ -125,7 +132,8 @@ export function useCastActions({
 				},
 				callbacks: {
 					onApplied: () => setNotice(null),
-					// ==[HUMAN APPROVED]== The seat was taken concurrently, so the presented Cast is
+					// @approved
+					//  The seat was taken concurrently, so the presented Cast is
 					// stale: the precise wording is paired with an authoritative
 					// reload instead of the server reason.
 					onNotRemovable: () => {
@@ -157,10 +165,12 @@ export function useCastActions({
 					});
 					if (outcome.outcome === "conflict") {
 						if ("currentConversation" in outcome) {
-							// ==[HUMAN APPROVED]== A conversation conflict carries the authoritative snapshot.
+							// @approved
+							//  A conversation conflict carries the authoritative snapshot.
 							return outcome;
 						}
-						// ==[HUMAN APPROVED]== A library conflict names the changed Character instead of
+						// @approved
+						//  A library conflict names the changed Character instead of
 						// carrying a Conversation snapshot: the runner must not
 						// adopt or word it, so it is forwarded as an operation
 						// outcome for the drawer's typed callback.
@@ -181,7 +191,8 @@ export function useCastActions({
 				notices: ADD_CHARACTER_NOTICES,
 				callbacks: {
 					onApplied: () => setNotice(null),
-					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
+					// @approved
+					//  This command family cannot produce these outcomes; the
 					// drawer still words them instead of flattening them.
 					onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
 					onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
@@ -256,7 +267,8 @@ export function useCastActions({
 		}
 	};
 
-	// ==[HUMAN APPROVED]== Saves one active Participant as a new reusable Character. The command
+	// @approved
+	//  Saves one active Participant as a new reusable Character. The command
 	// carries only the expected Conversation revision and the Participant
 	// reference: the authoritative server-side Definition is copied by the
 	// workflow, so a stale client copy can never leak into the Library. The
@@ -278,7 +290,8 @@ export function useCastActions({
 						expectedConversationRevision: expectedRevision,
 						participantId: participant.id,
 					});
-					// ==[HUMAN APPROVED]== The save workflow leaves the Conversation untouched: the
+					// @approved
+					//  The save workflow leaves the Conversation untouched: the
 					// applied outcome carries the new Character and no snapshot
 					// to adopt, so it is forwarded as an operation outcome.
 					if (outcome.outcome === "available") {
@@ -299,7 +312,8 @@ export function useCastActions({
 					unreachable: LIBRARY_UNREACHABLE_NOTICE,
 				},
 				callbacks: {
-					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
+					// @approved
+					//  This command family cannot produce these outcomes; the
 					// server's precise reason is kept instead of a flattened class.
 					onNotPlayable: (reason) => setNotice(reason),
 					onNotRemovable: (reason) => setNotice(reason),

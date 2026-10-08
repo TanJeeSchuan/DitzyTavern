@@ -1,11 +1,10 @@
-// ==[HUMAN APPROVED]== Deterministic Prompt compilation.
-//
+// @approved
+//  Deterministic Prompt compilation.
 // Block order is the selected Prompt Preset's recipe, not a fixed sequence:
 // the compiler walks the recipe's enabled slots in order and resolves each
 // Referenced Prompt Block against the Definitions and selected history it was
 // given, and expands each authored instruction block's own text. Empty blocks
 // are omitted from the rendered plan only — storage keeps exact text.
-//
 // Macro expansion, Prompt Comments, and escaping are owned by the shared
 // shared macro engine; this module supplies only the macro context
 // each provenance establishes. A Definition slot expands relative to its
@@ -41,13 +40,15 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { resolvePromptImages } from "./images";
 
-// ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
+// @approved
+//  Everything a Definition-sourced plan block carries apart from its resolved
 // content and outgoing role: the plan kind the recipe slot compiles into. The
 // other fields arrive from the slot at push time.
 type DefinitionBlock = Exclude<PromptBlock, { kind: "history" }>;
 type DefinitionBlockFraming = { kind: DefinitionBlock["kind"] };
 
-// ==[HUMAN APPROVED]== What each Referenced Prompt Block reads: which controlled Definition owns
+// @approved
+//  What each Referenced Prompt Block reads: which controlled Definition owns
 // the text, which Prompt channel holds it, the plan block it compiles into,
 // and the label its macro warnings carry. The declaration is exhaustive over
 // the reference vocabulary, so a reference added to the shared contract fails
@@ -99,7 +100,8 @@ export const referencedDefinitionBlocks = {
 	}
 >;
 
-// ==[HUMAN APPROVED]== The recipe's outgoing role is the author-chosen presentation in the
+// @approved
+//  The recipe's outgoing role is the author-chosen presentation in the
 // shared contract's dropdown vocabulary; the plan keeps the established
 // provider-neutral role words, so the Model Client keeps owning the
 // translation into provider vocabulary, exactly as it does for history.
@@ -112,7 +114,8 @@ const planRoleFor = {
 const loreText = (entries: readonly PromptLoreEntry[]): string =>
 	entries.map((entry) => entry.content).filter((content) => content.length > 0).join("\n\n");
 
-// ==[HUMAN APPROVED]== Compiles one authored opening with the owner's macro context. The position
+// @approved
+//  Compiles one authored opening with the owner's macro context. The position
 // is the one-based ordered position used to label warnings.
 export function compileOpening(
 	content: string,
@@ -144,7 +147,8 @@ const expandInto = (request: {
 	cacheKey: string;
 }) => {
 	const { blocks, warnings, block, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey } = request;
-	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
+	// @approved
+	//  Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
 	let expanded: MacroExpansionResult;
 	const cached = macroAttemptState.expansionCache.get(cacheKey);
@@ -174,7 +178,8 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
 	const macroAttemptState = input.attempt?.state ?? createMacroAttemptState();
 
-	// ==[HUMAN APPROVED]== Owner-relative macro context: `{{self}}` is the Definition owner and
+	// @approved
+	//  Owner-relative macro context: `{{self}}` is the Definition owner and
 	// `{{other}}` the other controlled Participant, whatever order the recipe
 	// places their slots in.
 	const definitions = {
@@ -236,7 +241,8 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			continue;
 		}
 		if (slot.reference === "instruction") {
-			// ==[HUMAN APPROVED]== Authored preset text resolves `{{self}}` to the current
+			// @approved
+			//  Authored preset text resolves `{{self}}` to the current
 			// human-controlled Participant and `{{other}}` to the current
 			// model-controlled Participant, whatever outgoing role the block
 			// presents with — the role never changes either perspective. The

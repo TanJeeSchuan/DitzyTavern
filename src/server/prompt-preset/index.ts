@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== The shared Prompt Preset library seam. A preset is an ordered assembly
+// @approved
+//  The shared Prompt Preset library seam. A preset is an ordered assembly
 // recipe and nothing else; Generation Settings, Connection Profiles and text
 // processing stay outside it. Every Conversation selects one preset, and the
 // Default preset is ordinary stored content rather than a compiler branch, so

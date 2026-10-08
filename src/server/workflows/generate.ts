@@ -1,5 +1,5 @@
-// ==[HUMAN APPROVED]== Server-owned Generation workflows.
-//
+// @approved
+//  Server-owned Generation workflows.
 // Composes the deep Conversation seam and the pure Prompt Compiler in one
 // deterministic flow: prepare one immutable set of generation inputs, compile
 // the provider-neutral Prompt Plan from the two controlled Participants and
@@ -10,10 +10,8 @@
 // the human/model historical pair — is captured at generation start, so
 // concurrent renames or Definition edits never rewrite an in-flight
 // Generation and affect only later ones.
-//
 // The transport is injected as a seam: this module stays independent of any
 // concrete provider, streaming protocol, or credentials.
-//
 // Capture/derivation lives in generate-capture.ts; the detached scaffolding
 // and provider-attempt tail live in generate-server-owned.ts. This module
 // owns the public workflow entry points and their input/result contracts.
@@ -76,11 +74,13 @@ async function notifyAccepted<Accepted>(
 	try {
 		await input.onAccepted?.(accepted);
 	} catch {
-		// ==[HUMAN APPROVED]== Acceptance is authoritative even when an observing caller disconnects.
+		// @approved
+		//  Acceptance is authoritative even when an observing caller disconnects.
 	}
 }
 
-// ==[HUMAN APPROVED]== What acceptance must report for the runner to finish a Generation
+// @approved
+//  What acceptance must report for the runner to finish a Generation
 // without asking the lifecycle anything further.
 interface AcceptedGenerationTarget {
 	generationId: number;
@@ -98,7 +98,8 @@ interface GenerationLifecyclePolicy<
 	Input extends GenerationAttemptInput,
 	Accepted extends AcceptedGenerationTarget,
 > {
-	// ==[HUMAN APPROVED]== The attempt target this lifecycle starts, on the one Generation
+	// @approved
+	//  The attempt target this lifecycle starts, on the one Generation
 	// Target union.
 	target: (input: Input) => GenerationTargetFor<K>;
 	accept: (
@@ -111,7 +112,8 @@ interface GenerationLifecyclePolicy<
 		capture: CapturedGenerationFor<K>,
 		input: Input,
 	) => ModelClientGenerationInput;
-	// ==[HUMAN APPROVED]== Terminal Conversation data particular to this lifecycle, recorded
+	// @approved
+	//  Terminal Conversation data particular to this lifecycle, recorded
 	// ahead of the shared outcome entries. Only Continue has any.
 	terminalData?: (capture: CapturedGenerationFor<K>) => readonly ConversationDataEntry[];
 }
@@ -127,7 +129,8 @@ async function runGenerationLifecycle<
 	K extends GenerationTargetKind,
 	Input extends GenerationAttemptInput & {
 		readonly preview?: GenerationPreviewAcceptanceFor<K>;
-		// ==[HUMAN APPROVED]== Fired immediately after the accepted target transaction commits
+		// @approved
+		//  Fired immediately after the accepted target transaction commits
 		// and before provider contact begins.
 		readonly onAccepted?: (accepted: Accepted) => void | Promise<void>;
 	},
@@ -140,7 +143,8 @@ async function runGenerationLifecycle<
 	const conversation = createConversationModule(database);
 	const revision = conversation.getRevision(input.conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
-	// ==[HUMAN APPROVED]== A revisioned lifecycle fails fast before the Prompt Plan is
+	// @approved
+	//  A revisioned lifecycle fails fast before the Prompt Plan is
 	// compiled. The acceptance transaction re-checks the revision under its
 	// own lock and stays authoritative; this only avoids budgeting a
 	// Conversation that has already moved on.
@@ -155,7 +159,8 @@ async function runGenerationLifecycle<
 	if (input.preview === undefined) {
 		capture = await captureGeneration(database, target, input);
 	} else {
-		// ==[HUMAN APPROVED]== SAFETY: each lifecycle entry point binds its preview
+		// @approved
+		//  SAFETY: each lifecycle entry point binds its preview
 		// acceptance and its target to the same attempt kind, so the captured
 		// Generation of the accepted preview is the capture member of that kind.
 		capture = captureGenerationPreview(
@@ -206,25 +211,29 @@ async function runGenerationLifecycle<
 }
 
 export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
-	// ==[HUMAN APPROVED]== Send is a revisioned acceptance operation. The submitted text is
+	// @approved
+	//  Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
 	preview?: GenerationPreviewAcceptanceFor<"send">;
-	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
+	// @approved
+	//  Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
 }
 
-// ==[HUMAN APPROVED]== The one lifecycle policy table, one row per attempt kind. Each row
+// @approved
+//  The one lifecycle policy table, one row per attempt kind. Each row
 // states only where its kind genuinely differs: the attempt target it starts,
 // how it accepts into the Conversation, and (Continuation only) the terminal
 // data recorded ahead of the shared outcome entries.
 const generationLifecyclePolicies = {
 	send: {
 		target: (input: SendThroughProvisionalTailGenerationInput) => ({ kind: "send", content: input.content }),
-		// ==[HUMAN APPROVED]== Send's accepted lifecycle: preflight is entirely read-only; only
+		// @approved
+		//  Send's accepted lifecycle: preflight is entirely read-only; only
 		// after it succeeds does the Conversation seam atomically create the human
 		// input, provisional model target, and Active Generation before this
 		// workflow contacts a Model Client.
@@ -285,7 +294,8 @@ const generationLifecyclePolicies = {
 	} satisfies GenerationLifecyclePolicy<"sibling", GenerateSiblingVariantInput, AcceptedSiblingGeneration>,
 };
 
-// ==[HUMAN APPROVED]== Send workflow: the accepted human/provisional target is committed
+// @approved
+//  Send workflow: the accepted human/provisional target is committed
 // atomically and the provider attempt runs detached from any observing
 // request. Each entry names its kind and delegates to the one lifecycle
 // runner with its row of the one policy table.
@@ -299,7 +309,8 @@ export async function sendThroughProvisionalTailGeneration(
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
-	// ==[HUMAN APPROVED]== Continue is a revisioned acceptance operation. The selected terminal
+	// @approved
+	//  Continue is a revisioned acceptance operation. The selected terminal
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
 	expectedRevision: number;
@@ -310,7 +321,8 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 
 export type ContinueGenerationResult = AcceptedContinuationGeneration;
 
-// ==[HUMAN APPROVED]== Continue starts from the selected narrative path and persists an ordinary
+// @approved
+//  Continue starts from the selected narrative path and persists an ordinary
 // model-authored Message. It shares the same normalized stream, terminal
 // outcome, and provisional cleanup behavior as Send, but never inserts a
 // Human-authored Message.
@@ -322,21 +334,24 @@ export async function continueGeneration(
 }
 
 export interface GenerateSiblingVariantInput extends GenerationAttemptInput {
-	// ==[HUMAN APPROVED]== The target Message whose captured historical Control pair governs this
+	// @approved
+	//  The target Message whose captured historical Control pair governs this
 	// sibling generation. Current Control is deliberately ignored: Swiping an
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
 	preview?: GenerationPreviewAcceptanceFor<"sibling">;
-	// ==[HUMAN APPROVED]== Fired immediately after the accepted sibling target transaction
+	// @approved
+	//  Fired immediately after the accepted sibling target transaction
 	// commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
 
-// ==[HUMAN APPROVED]== Targeted Swipe: generates a new sibling Variant for an existing native
+// @approved
+//  Targeted Swipe: generates a new sibling Variant for an existing native
 // Message using the historical Control pair captured when that Message was
 // generated or its openings were configured. The historical pair's current
 // Definitions and names compile the plan; current generation settings and
@@ -366,7 +381,8 @@ export function startServerOwnedGeneration(
 ): ServerOwnedGeneration<AcceptedGenerationRecord, AcceptedGenerationRecord> {
 	return startServerOwnedGenerationFrom(
 		database,
-		// ==[HUMAN APPROVED]== SAFETY: the dispatch below routes the whole input to exactly one
+		// @approved
+		//  SAFETY: the dispatch below routes the whole input to exactly one
 		// lifecycle, and that lifecycle invokes acceptance only with its own
 		// accepted record, so the union input's narrower acceptance callback is
 		// sound by construction.

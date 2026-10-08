@@ -45,7 +45,8 @@ import {
 } from "../../shared/contract/prompt-preset";
 import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== Thin typed adapter over the Prompt Preset library and recipe seams. The
+// @approved
+//  Thin typed adapter over the Prompt Preset library and recipe seams. The
 // database is injected so tests can mount the same routes against a temporary
 // store; production passes undefined to use the default connection per
 // request. One classifier maps every domain failure to its wire envelope, so
@@ -106,7 +107,8 @@ const classifyPresetFailure = (error: Error): PresetFailure | null => {
 	return null;
 };
 
-// ==[HUMAN APPROVED]== A recipe operation can fail only as missing or invalid, so a library
+// @approved
+//  A recipe operation can fail only as missing or invalid, so a library
 // conflict escapes as the invariant violation it is.
 const runRecipeOperation = <T>(operation: () => T): RecipeOutcome<T> => {
 	try {
@@ -119,7 +121,8 @@ const runRecipeOperation = <T>(operation: () => T): RecipeOutcome<T> => {
 	}
 };
 
-// ==[HUMAN APPROVED]== Import and review report invalid input; their authoritative failures are
+// @approved
+//  Import and review report invalid input; their authoritative failures are
 // the same typed invalid envelope the library commands use.
 const runImportOperation = <T>(operation: () => T): ImportOutcome<T> => {
 	try {
@@ -240,7 +243,8 @@ export const createPromptPresetRoutes = (database: Database) =>
 			"/api/prompt-presets/commands",
 			({ body }) =>
 				commandResponse(
-					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
+					// @approved
+					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the library then guards the revision and derives the
 					// deletion impact from the selections present in the transaction.
 					runPresetCommand(() =>

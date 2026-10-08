@@ -194,7 +194,8 @@ const diagnostic = (code: string, message: string, identifier?: string): SillyTa
 	return value;
 };
 
-// ==[HUMAN APPROVED]== Translation consumes the recursive parse used by expansion. Descendants
+// @approved
+//  Translation consumes the recursive parse used by expansion. Descendants
 // are replaced by source span, so nested supported macros are translated without rebuilding
 // and reparsing an outer expression. Prompt Comments remain opaque, exactly as they are to
 // expansion; malformed input is returned by the parser as literal text.
@@ -235,7 +236,8 @@ export const translateCommentsAndMacros = (source: string): string => {
 
 const supportedReference = (identifier: string): keyof typeof supportedReferences | null => {
 	if (!Object.hasOwn(supportedReferences, identifier)) return null;
-	// ==[HUMAN APPROVED]== SAFETY: Object.hasOwn proves the identifier is one of supportedReferences' literal keys.
+	// @approved
+	//  SAFETY: Object.hasOwn proves the identifier is one of supportedReferences' literal keys.
 	return identifier as keyof typeof supportedReferences;
 };
 
@@ -280,7 +282,8 @@ const reportDefinitionNormalization = (
 	}
 };
 
-// ==[HUMAN APPROVED]== One converted definition, used identically by listed occurrences and
+// @approved
+//  One converted definition, used identically by listed occurrences and
 // unlisted definitions so the two paths can never classify the same source
 // differently. Conversion decides what the definition is (a supported
 // reference with its default outgoing role, an authored instruction with its
@@ -331,7 +334,8 @@ const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition =
 	};
 };
 
-// ==[HUMAN APPROVED]== Enablement is applied after conversion: listed occurrences take the
+// @approved
+//  Enablement is applied after conversion: listed occurrences take the
 // chosen order's enabled value, unlisted definitions become disabled trailing
 // slots. References never embed resolved Participant content.
 const withEnablement = (
@@ -383,7 +387,8 @@ const buildSillyTavernPreview = (
 	const listedIdentifiers = new Set(order.entries.map((entry) => entry.identifier));
 	const worldInfoIdentifiers = new Set(["worldInfoBefore", "worldInfoAfter"]);
 	const worldInfoEntries = order.entries.filter((entry) => worldInfoIdentifiers.has(entry.identifier));
-	// ==[HUMAN APPROVED]== Keep the first enabled occurrence, not the identifier: an order may list the
+	// @approved
+	//  Keep the first enabled occurrence, not the identifier: an order may list the
 	// same World Info placeholder more than once, and only one occurrence can map
 	// to the native Lore block.
 	const loreKeeperEntry = worldInfoEntries.find((entry) => entry.enabled) ?? worldInfoEntries[0];
@@ -430,7 +435,8 @@ const buildSillyTavernPreview = (
 		}
 	}
 
-	// ==[HUMAN APPROVED]== Unlisted definitions become disabled trailing slots in source
+	// @approved
+	//  Unlisted definitions become disabled trailing slots in source
 	// definition order, so an author can inspect and enable any supported
 	// reference absent from the chosen order list. Unsupported placeholders
 	// are omitted with the same deduplicated diagnostics in either path.
@@ -534,7 +540,8 @@ export const reviewSillyTavernPromptPreset = (value: SillyTavernJsonValue): Sill
 	return buildSillyTavernPreview(normalized, sourceName(normalized.settings, request.name), request.orderListId);
 };
 
-// ==[HUMAN APPROVED]== Converts one SillyTavern source into the review preview the import flow
+// @approved
+//  Converts one SillyTavern source into the review preview the import flow
 // commits; a source that needs an order choice is refused rather than guessed.
 export const convertSillyTavernPromptPreset = (value: SillyTavernJsonValue): SillyTavernImportPreview => {
 	const preview = reviewSillyTavernPromptPreset(value);

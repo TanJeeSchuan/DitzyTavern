@@ -228,7 +228,8 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 	};
 };
 
-// ==[HUMAN APPROVED]== The Conversation a Participant Lore attachment command mutates:
+// @approved
+//  The Conversation a Participant Lore attachment command mutates:
 // the Lorebook attachment wire command carries no conversation id, so the
 // transport derives it from the Participant's own Chat reference. Undefined
 // when the Participant is gone, which the route presents as not-found.
@@ -291,7 +292,8 @@ const advanceCharacterRevision = (db: LoreDatabase, characterId: number, expecte
 	}
 };
 
-// ==[HUMAN APPROVED]== The two Character-owned Lore attachment commands stay in the Lorebook
+// @approved
+//  The two Character-owned Lore attachment commands stay in the Lorebook
 // module: the Character Library owns their revision, and the guarded advance
 // below is its attachment-command application. The five Conversation-owned
 // commands (attach-chat, detach-chat, attach-participant, detach-participant,

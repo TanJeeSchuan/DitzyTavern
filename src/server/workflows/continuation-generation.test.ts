@@ -265,7 +265,8 @@ describe("Continuation Generation", () => {
 			strategy: "assistant-prefill",
 			suffix: "\n",
 		});
-		// ==[HUMAN APPROVED]== The assistant prefill is adapter request intent derived from
+		// @approved
+		//  The assistant prefill is adapter request intent derived from
 		// the plan's protected final model entry, not a separately retained capture.
 		expect(received?.promptPlan.intent).not.toHaveProperty("instruction");
 		expect(currentSnapshot().messages[0]?.variants[0]?.content).toBe("The first scene ends here.");

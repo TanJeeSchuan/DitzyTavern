@@ -18,7 +18,8 @@ type ChatMessage =
 	| { role: "system" | "assistant"; content: string }
 	| { role: "user"; content: string | UserPart[] };
 
-// ==[HUMAN APPROVED]== The plan keeps provider-neutral presentation roles; this adapter owns the
+// @approved
+//  The plan keeps provider-neutral presentation roles; this adapter owns the
 // translation into provider vocabulary, exactly as it does for history
 // authorship.
 const providerRoleFor = {
@@ -61,7 +62,8 @@ const userParts = (segments: readonly Segment[], speakerName: string | null): Us
 		? imagePart(segment.image)
 		: { type: "text", text: `${index === 0 ? speakerPrefix(speakerName) : ""}${segment.text}` });
 
-// ==[HUMAN APPROVED]== Images only travel in user messages. A system or assistant message keeps
+// @approved
+//  Images only travel in user messages. A system or assistant message keeps
 // its text and anchors; its Images follow in a user message, each after its
 // anchor.
 const followingImages = (segments: readonly Segment[]): UserPart[] =>
@@ -125,7 +127,8 @@ export function toMessages(
 			if (role === "model") {
 				lastModelHistoryContent = block.content;
 			}
-			// ==[HUMAN APPROVED]== The selected preceding model text is moved to the final assistant
+			// @approved
+			//  The selected preceding model text is moved to the final assistant
 			// message below when prefill is active. Leaving the history copy in
 			// place would send the prefix twice and would not be a true prefill.
 			if (assistantPrefill && blockIndex === lastModelHistoryIndex) {
@@ -137,12 +140,14 @@ export function toMessages(
 			continue;
 		}
 		if (block.content.length === 0) continue;
-		// ==[HUMAN APPROVED]== The compiled presentation role is presentation truth: the recipe
+		// @approved
+		//  The compiled presentation role is presentation truth: the recipe
 		// slot chose it and the plan kept it provider-neutral, so the adapter
 		// owns the same translation it applies to history authorship.
 		push(providerRoleFor[block.role], renderBlock(blockIndex, block.content));
 	}
-	// ==[HUMAN APPROVED]== Continuation instructions are request intent, not Conversation history.
+	// @approved
+	//  Continuation instructions are request intent, not Conversation history.
 	// Keep them as an adapter-owned system message so no synthetic user turn
 	// is persisted or inferred by the provider-neutral workflow.
 	if (continuationIntent?.strategy === "instruction") {

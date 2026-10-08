@@ -39,7 +39,8 @@ import {
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
-// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's single observation
+// @approved
+//  Maps a machine story effect onto the story reducer's single observation
 // vocabulary. An authoritative snapshot replaces both accumulated fields
 // atomically; content and reasoning deltas each append to the stream they
 // belong to, so Reasoning Content stays visible without joining authored
@@ -71,7 +72,8 @@ export function generationSessionStoryAction(
 	};
 }
 
-// ==[HUMAN APPROVED]== Maps a transport Stop outcome onto the machine's stop-command vocabulary.
+// @approved
+//  Maps a transport Stop outcome onto the machine's stop-command vocabulary.
 // The transport's network outcome is the machine's failed stop; the reason is
 // owned here because the transport no longer words per-route failures.
 const stopCommandOutcome = (
@@ -132,7 +134,8 @@ export function useGenerationController({
 	}
 	const runner = runnerRef.current;
 
-	// ==[HUMAN APPROVED]== Unmount detaches every local subscription. The machine keeps cursors,
+	// @approved
+	//  Unmount detaches every local subscription. The machine keeps cursors,
 	// so a later remount reattaches from each Generation's latest processed
 	// event, and no server-owned Active Generation is ever cancelled here.
 	useEffect(() => {
@@ -141,7 +144,8 @@ export function useGenerationController({
 		};
 	}, [runner]);
 
-	// ==[HUMAN APPROVED]== Authoritative snapshots reconcile the session collection. The dispatch
+	// @approved
+	//  Authoritative snapshots reconcile the session collection. The dispatch
 	// is idempotent, so re-observing unchanged targets has no effect and no
 	// joined dependency keys are needed.
 	useEffect(() => {
@@ -244,7 +248,8 @@ export function useGenerationController({
 		if (conversationId === undefined || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		// @approved
+		//  The transport classifies every failure itself; it never rejects.
 		const outcome = await stopConversationGeneration(conversationId, generationId);
 		runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
 	};
@@ -254,7 +259,8 @@ export function useGenerationController({
 		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		// @approved
+		//  The transport classifies every failure itself; it never rejects.
 		const outcome = await stopAllConversationGenerations(conversationId);
 		runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
 	};

@@ -33,7 +33,8 @@ import {
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
-// ==[HUMAN APPROVED]== Expired and unavailable staged handles are both gone-state 410 outcomes;
+// @approved
+//  Expired and unavailable staged handles are both gone-state 410 outcomes;
 // every staged route maps them identically before its own error vocabulary.
 const stagedGoneBody = (error: Error) => {
 	if (error instanceof StagedChatImportExpiredError) {
@@ -45,7 +46,8 @@ const stagedGoneBody = (error: Error) => {
 	return undefined;
 };
 
-// ==[HUMAN APPROVED]== Thin typed adapters over the deep staged Chat import seam. The stage
+// @approved
+//  Thin typed adapters over the deep staged Chat import seam. The stage
 // route deliberately declares no body schema: Elysia must leave the raw
 // request stream untouched so the module can stream the uploaded bytes into
 // managed temporary storage exactly once instead of buffering the artifact.
@@ -167,7 +169,8 @@ export const createChatImportRoutes = (
 		.post(
 			"/api/imports/chats/:token/discard",
 			({ params }) => {
-				// ==[HUMAN APPROVED]== Discard is idempotent: unknown and already-discarded handles
+				// @approved
+				//  Discard is idempotent: unknown and already-discarded handles
 				// report the same removed outcome without touching anything.
 				createChatImportModule(database, { artifactDirectory: artifactDirectory }).discard(params.token);
 				return { outcome: "discarded" as const };
@@ -184,7 +187,8 @@ export const createChatImportRoutes = (
 			({ params, status }) => {
 				const details = createChatImportDetailsModule(database, artifactDirectory).importDetails(params.id);
 				if (details === undefined) {
-					// ==[HUMAN APPROVED]== Either the Chat is missing or it carries no import
+					// @approved
+					//  Either the Chat is missing or it carries no import
 					// provenance; the client treats both as "no Import Details".
 					return status(404, { outcome: "not-found" as const });
 				}
@@ -206,7 +210,8 @@ export const createChatImportRoutes = (
 					return status(404, { outcome: "not-found" as const });
 				}
 				if (result.status === "cleaned-up") {
-					// ==[HUMAN APPROVED]== Missing or corrupt exact artifacts are described as cleaned
+					// @approved
+					//  Missing or corrupt exact artifacts are described as cleaned
 					// up and disable only exact download; normal Chat reading and
 					// every Conversation command stay available.
 					return status(410, {
@@ -214,7 +219,8 @@ export const createChatImportRoutes = (
 						reason: result.reason,
 					});
 				}
-				// ==[HUMAN APPROVED]== The exact managed bytes stream verbatim; only response metadata
+				// @approved
+				//  The exact managed bytes stream verbatim; only response metadata
 				// (media type and the sanitized original leaf filename) derives
 				// from the stored artifact.
 				return new Response(new Uint8Array(result.bytes), {

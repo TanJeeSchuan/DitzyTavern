@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Focused UI-boundary presentation for the Prompt Preset library in the
+// @approved
+//  Focused UI-boundary presentation for the Prompt Preset library in the
 // preset panel. These shape list labels, selection feedback, deletion
 // confirmation copy, and the recipe vocabulary shared by the recipe editor
 // and the import review; the library behavior itself lives behind the server
@@ -7,7 +8,8 @@
 
 import { singleUseReferenceLabels, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== One vocabulary for both the recipe editor and the SillyTavern import
+// @approved
+//  One vocabulary for both the recipe editor and the SillyTavern import
 // review, so a slot label or outgoing-role label can never drift between
 // them.
 export const slotLabels = {
@@ -28,12 +30,14 @@ export const outgoingRoleLabels = {
 	assistant: "Assistant message",
 } as const satisfies Record<PromptOutgoingRole, string>;
 
-// ==[HUMAN APPROVED]== One select surface shared by every preset select, so parent sections never
+// @approved
+//  One select surface shared by every preset select, so parent sections never
 // import styling from a child row.
 export const promptPresetSelectClass =
 	"rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
-// ==[HUMAN APPROVED]== The typed narrowing every preset select reuses: a change value is accepted
+// @approved
+//  The typed narrowing every preset select reuses: a change value is accepted
 // only when it names one of the canonical labels, so no caller hand-rolls its own guard.
 export const isPromptOutgoingRole = (value: string): value is PromptOutgoingRole =>
 	Object.hasOwn(outgoingRoleLabels, value);
@@ -42,7 +46,8 @@ type TitledSlot =
 	| { reference: "instruction"; name: string }
 	| { reference: Exclude<PromptPresetBlockReference, "instruction"> };
 
-// ==[HUMAN APPROVED]== An authored instruction titles itself with its own name and falls back to
+// @approved
+//  An authored instruction titles itself with its own name and falls back to
 // the reference label when that name is blank; every other slot shows the
 // reference label.
 export const slotTitle = (slot: TitledSlot): string =>
@@ -50,8 +55,9 @@ export const slotTitle = (slot: TitledSlot): string =>
 		? slot.name
 		: slotLabels[slot.reference];
 
+// @approved
 // Short human label for the affected-Conversation count presented on every
-// ==[HUMAN APPROVED]== library list row, so the deletion confirmation can state the exact
+//  library list row, so the deletion confirmation can state the exact
 // consequence before any command is sent.
 export function affectedConversationsLabel(count: number): string {
 	if (count === 0) return "Not selected by any Chat";
@@ -65,8 +71,9 @@ interface PresetDeletionConfirmationCopy {
 	confirmLabel: string;
 }
 
+// @approved
 // The confirmation names exactly what deletion does: the affected
-// ==[HUMAN APPROVED]== Conversations move to the Default preset in the same operation, and
+//  Conversations move to the Default preset in the same operation, and
 // the Default preset itself can never be deleted.
 export function presetDeletionConfirmationCopy(
 	name: string,
@@ -81,7 +88,8 @@ export function presetDeletionConfirmationCopy(
 	};
 }
 
-// ==[HUMAN APPROVED]== The notice after a deletion is rejected because the affected-Conversation
+// @approved
+//  The notice after a deletion is rejected because the affected-Conversation
 // count changed: nothing was deleted, and the current impact is stated before
 // the author confirms again.
 export function presetDeletionImpactChangedNotice(
@@ -91,8 +99,9 @@ export function presetDeletionImpactChangedNotice(
 	return `Deletion impact changed: ${affectedConversationsLabel(conversationCount)}. Confirm deletion again to remove "${name}".`;
 }
 
+// @approved
 // Success notice after a confirmed deletion. The typed result carries the
-// ==[HUMAN APPROVED]== derived reassignment, so the wording matches what the server
+//  derived reassignment, so the wording matches what the server
 // actually did: affected Chats landed on the Default preset, and nothing
 // else in them changed.
 export function presetDeletionResultNotice(

@@ -27,7 +27,8 @@ import type {
 	PromptPresetSummary,
 } from "../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== Typed client for the Prompt Preset library transport adapters. Outcomes
+// @approved
+//  Typed client for the Prompt Preset library transport adapters. Outcomes
 // mirror the server's typed results so the popup can recover from conflicts
 // without losing its list. Every shape is the canonical shared wire schema's
 // Static type, so the client can never drift from the server. The global
@@ -130,17 +131,20 @@ export async function commitSillyTavernPromptPreset(
 	);
 }
 
+// @approved
 // The applied-command response states its variant, so the popup narrows on
-// ==[HUMAN APPROVED]== the outcome tag instead of inferring it from which fields are present.
+//  the outcome tag instead of inferring it from which fields are present.
 export type PresetCommandOutcome = Awaited<ReturnType<typeof applyPromptPresetCommand>>;
 
-// ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each call
+// @approved
+//  The authoritative recipe operations the popup composes. Each call
 // persists one smallest operation against the shared preset; the applied response is only an
 // acknowledgment because the editor reloads the Conversation-resolved recipe through its read
 // seam.
 export type PromptPresetOperationOutcome = Awaited<ReturnType<typeof applyRecipeOperation>>;
 
-// ==[HUMAN APPROVED]== Every recipe operation responds with the same applied acknowledgment plus
+// @approved
+//  Every recipe operation responds with the same applied acknowledgment plus
 // the shared not-found/invalid envelopes, so one adapter maps the treaty union for all of them.
 type RecipeOperationRequest = EdenResponse<
 	PromptPresetRecipeApplied,
@@ -159,7 +163,8 @@ export function addPromptPresetReference(
 	);
 }
 
-// ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence; its name, text, and
+// @approved
+//  Appends one blank authored instruction occurrence; its name, text, and
 // role are authored through the block editor's Save boundary.
 export function addPromptPresetInstruction(
 	presetId: number,
@@ -207,7 +212,8 @@ export function removePromptPresetBlock(
 	);
 }
 
-// ==[HUMAN APPROVED]== The footer and save-on-leave submit occurrence-addressed block
+// @approved
+//  The footer and save-on-leave submit occurrence-addressed block
 // drafts through the recipe route, which is never revision-guarded.
 // Block saves never travel the library command executor, which accepts
 // only revision-guarded commands.

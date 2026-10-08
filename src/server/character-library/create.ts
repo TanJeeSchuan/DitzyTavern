@@ -13,7 +13,8 @@ import {
 import { readCharacterSnapshot } from "./snapshot";
 import type { CharacterDefinition, CharacterSnapshot } from "./types";
 
-// ==[HUMAN APPROVED]== Creates one Character atomically from a complete Definition. Partially
+// @approved
+//  Creates one Character atomically from a complete Definition. Partially
 // configured library entries cannot exist: the lifecycle row, its Prompt
 // row, and all Opening rows commit together or not at all.
 export function createCharacter(

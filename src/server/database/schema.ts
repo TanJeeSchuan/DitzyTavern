@@ -1,4 +1,5 @@
-// ==[HUMAN APPROVED]== Drizzle schema source of truth.
+// @approved
+//  Drizzle schema source of truth.
 // Domain modules add tables here; run `bun run db:generate` to produce migrations.
 
 import { sql, type SQLWrapper } from "drizzle-orm";
@@ -59,7 +60,8 @@ export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrai
 		? undefined
 		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! };
 
-// ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
+// @approved
+//  The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
 // part of it. Exactly one row is the Default preset, which every Conversation
 // selects until it selects another.
@@ -69,7 +71,8 @@ export const promptPresetTable = sqliteTable(
 		id: int().primaryKey({ autoIncrement: true }),
 		name: text().notNull(),
 		is_default: int({ mode: "boolean" }).notNull().default(false),
-		// ==[HUMAN APPROVED]== Optimistic-concurrency revision following the Character
+		// @approved
+		//  Optimistic-concurrency revision following the Character
 		// Library convention: every authoritative library command carries the
 		// revision the caller saw, so a stale rename or deletion cannot
 		// silently act on state the caller never confirmed.
@@ -82,7 +85,8 @@ export const promptPresetTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== One ordered slot of a recipe. Enablement is stored on the slot so a
+// @approved
+//  One ordered slot of a recipe. Enablement is stored on the slot so a
 // disabled slot keeps its place in the order rather than leaving it. The
 // outgoing role is stored per occurrence so deliberate duplicates can be
 // presented differently; history rows keep it null because their entries
@@ -98,7 +102,8 @@ export const promptPresetBlockTable = sqliteTable(
 		reference: text().notNull(),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 		role: text({ enum: ["system", "user", "assistant"] }),
-		// ==[HUMAN APPROVED]== The authored instruction block's own metadata and text. Null on
+		// @approved
+		//  The authored instruction block's own metadata and text. Null on
 		// every referenced occurrence: the preset stores references, never
 		// rendered Participant or history content.
 		name: text(),
@@ -159,7 +164,8 @@ export const promptPresetBlockTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Shared authored lore is independent of its future attachment uses.
+// @approved
+//  Shared authored lore is independent of its future attachment uses.
 // JSON columns keep the authoring vocabulary extensible while the library validates every
 // value before persistence; identities and ordering remain relational and stable.
 export const lorebookTable = sqliteTable("lorebook", {
@@ -199,7 +205,8 @@ export const lorebookEntryTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Lore content is shared; scope and enablement belong to each use. Character
+// @approved
+//  Lore content is shared; scope and enablement belong to each use. Character
 // uses are copied into a Participant when that Participant is forked, while
 // Chat uses remain independent of the Cast.
 export const characterLorebookAttachmentTable = sqliteTable(
@@ -253,7 +260,8 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
 	enabled: int({ mode: "boolean" }).notNull().default(true),
-	// ==[HUMAN APPROVED]== Preserve deleted Profile identity so settings reads can report the broken choice.
+	// @approved
+	//  Preserve deleted Profile identity so settings reads can report the broken choice.
 	extraction_profile_id: int(),
 	extraction_model: text().notNull().default(""),
 	context_limit: int().notNull().default(16384),
@@ -286,7 +294,8 @@ export const conversationTable = sqliteTable("conversation", {
 	revision: int().notNull().default(0),
 });
 
-// ==[HUMAN APPROVED]== The Conversation's own selection from the shared preset library. The
+// @approved
+//  The Conversation's own selection from the shared preset library. The
 // preset is referenced, never copied: saved edits reach every Conversation
 // that selected it. Every Conversation has exactly one row, written at
 // creation, so no read has to invent a selection.
@@ -316,12 +325,14 @@ export const messageTable = sqliteTable(
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		position: int().notNull(),
 		timestamp: text().notNull(),
-		// ==[HUMAN APPROVED]== Immutable Author Stamp: the authoring Cast Participant and the name
+		// @approved
+		//  Immutable Author Stamp: the authoring Cast Participant and the name
 		// captured when the Message was created. Null only for preservation
 		// records whose authors are not yet resolved into Participants.
 		author_participant_id: int().references(() => participantTable.id),
 		author_name: text(),
-		// ==[HUMAN APPROVED]== Historical Control context: the human/model pair active when native
+		// @approved
+		//  Historical Control context: the human/model pair active when native
 		// generation (including initial openings) began. Set together or not
 		// at all; imported history is never retrofitted with a pair.
 		context_human_participant_id: int().references(() => participantTable.id),
@@ -413,7 +424,8 @@ export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
 	primaryKey({ columns: [table.space_key, table.text_hash] }),
 ]);
 
-// ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the
+// @approved
+//  Character lifecycle base record. Definition content lives in the
 // character_prompt and character_opening child tables, so a future
 // tombstone can strip the Definition while retaining the referenced row.
 export const characterTable = sqliteTable("character", {
@@ -421,11 +433,13 @@ export const characterTable = sqliteTable("character", {
 	name: text().notNull(),
 	revision: int().notNull().default(0),
 	pinned: int({ mode: "boolean" }).notNull().default(false),
-	// ==[HUMAN APPROVED]== Null while the Character is active; set when reduced to a tombstone.
+	// @approved
+	//  Null while the Character is active; set when reduced to a tombstone.
 	deleted_at: text(),
 });
 
-// ==[HUMAN APPROVED]== One active Prompt row per Character with every typed Prompt field.
+// @approved
+//  One active Prompt row per Character with every typed Prompt field.
 // Fields are required but may be empty; text is stored exactly as authored.
 export const characterPromptTable = sqliteTable("character_prompt", {
 	character_id: int()
@@ -439,7 +453,8 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 	...portraitColumns(),
 }, (table) => [portraitComplete("character_prompt_portrait_complete", table)]);
 
-// ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows. Empty lists and duplicate
+// @approved
+//  Ordered, exact, nonblank Opening rows. Empty lists and duplicate
 // contents are allowed; the (character, position) pair is unique.
 export const characterOpeningTable = sqliteTable(
 	"character_opening",
@@ -459,12 +474,12 @@ export const characterOpeningTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Conversation-local identity. Each Participant owns an independent copied
+// @approved
+//  Conversation-local identity. Each Participant owns an independent copied
 // Definition (participant_prompt and participant_opening children) and keeps
 // immutable provenance pointing at the Character it forked, if any. The
 // source reference is a plain structural reference without revision tracking
 // or synchronization; deleting the source row is blocked while referenced.
-//
 // Removed Participants keep this base row only when a Message still refers
 // to them (Author Stamp or historical Control pair): the base is reduced to
 // a nonrestorable tombstone holding stable identity, final name,
@@ -479,11 +494,13 @@ export const participantTable = sqliteTable(
 		conversation_id: int()
 			.notNull()
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
-		// ==[HUMAN APPROVED]== The Participant's own normalized nonblank name, independent of the
+		// @approved
+		//  The Participant's own normalized nonblank name, independent of the
 		// source Character and of every other Cast member. For a tombstone
 		// this is the final name captured at removal.
 		name: text().notNull(),
-		// ==[HUMAN APPROVED]== Explicit, stable Cast position. Contiguity is maintained by the
+		// @approved
+		//  Explicit, stable Cast position. Contiguity is maintained by the
 		// Conversation domain; uniqueness is enforced structurally on active
 		// Participants. Tombstones are not in the Cast and carry no position:
 		// removal writes the sentinel 0 (never used by active members, which
@@ -491,7 +508,8 @@ export const participantTable = sqliteTable(
 		// rows so the sentinel never collides.
 		position: int().notNull(),
 		source_character_id: int().references(() => characterTable.id),
-		// ==[HUMAN APPROVED]== Null while the Participant is active in the Cast; set when reduced
+		// @approved
+		//  Null while the Participant is active in the Cast; set when reduced
 		// to a tombstone that only satisfies structural Message references.
 		deleted_at: text(),
 	},
@@ -502,7 +520,8 @@ export const participantTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== One active Prompt row per Participant with every typed Prompt field,
+// @approved
+//  One active Prompt row per Participant with every typed Prompt field,
 // stored exactly as authored. Removed with the Participant when its copy is
 // deleted; never shared with the source Character.
 export const participantPromptTable = sqliteTable("participant_prompt", {
@@ -517,7 +536,8 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	...portraitColumns(),
 }, (table) => [portraitComplete("participant_prompt_portrait_complete", table)]);
 
-// ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
+// @approved
+//  Database column row representation for prompt channels shared by
 // character_prompt and participant_prompt tables.
 export interface PromptChannelRow {
 	system_instruction: string;
@@ -527,7 +547,8 @@ export interface PromptChannelRow {
 	post_history_instruction: string;
 }
 
-// ==[HUMAN APPROVED]== Maps canonical PromptChannels to database column names shared by
+// @approved
+//  Maps canonical PromptChannels to database column names shared by
 // character_prompt and participant_prompt tables.
 export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => ({
 	system_instruction: prompt.systemInstruction,
@@ -545,7 +566,8 @@ export const toPromptChannels = (row: PromptChannelRow): PromptChannels => ({
 	postHistoryInstruction: row.post_history_instruction,
 });
 
-// ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows owned by the Participant.
+// @approved
+//  Ordered, exact, nonblank Opening rows owned by the Participant.
 export const participantOpeningTable = sqliteTable(
 	"participant_opening",
 	{
@@ -564,7 +586,8 @@ export const participantOpeningTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Control assignment: at most one human and one model seat per Conversation,
+// @approved
+//  Control assignment: at most one human and one model seat per Conversation,
 // each held by a distinct Cast Participant of the same Conversation. The
 // primary key bounds each seat to one row, and the unique Participant
 // reference makes the two seats structurally distinct.
@@ -651,7 +674,8 @@ export const messageVariantDataTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Generic Conversation artifact metadata: one row per owned filesystem
+// @approved
+//  Generic Conversation artifact metadata: one row per owned filesystem
 // artifact. The row commits atomically with its Conversation through the
 // creation seam while the exact bytes live outside SQLite under a unique
 // managed relative path; committed physical copies are never automatically
@@ -666,10 +690,12 @@ export const artifactTable = sqliteTable(
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		namespace: text().notNull(),
 		key: text().notNull(),
-		// ==[HUMAN APPROVED]== Path relative to the managed artifact directory of the owning
+		// @approved
+		//  Path relative to the managed artifact directory of the owning
 		// deployment, never an absolute filesystem path.
 		relative_path: text().notNull(),
-		// ==[HUMAN APPROVED]== The original leaf filename carried by the source, used verbatim for
+		// @approved
+		//  The original leaf filename carried by the source, used verbatim for
 		// download presentation (sanitized only in response metadata).
 		original_filename: text().notNull(),
 		media_type: text().notNull(),
@@ -685,7 +711,8 @@ export const artifactTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== A server-owned Tail Generation lives in this table only while its provider
+// @approved
+//  A server-owned Tail Generation lives in this table only while its provider
 // attempt is active.  Its provisional Message/Variant are ordinary
 // Conversation rows, but this record keeps the captured generation input
 // and target identity together so the provider can be contacted only after
@@ -706,7 +733,8 @@ export const activeGenerationTable = sqliteTable(
 		variant_id: int()
 			.notNull()
 			.references(() => messageVariantTable.id, { onDelete: "cascade" }),
-		// ==[HUMAN APPROVED]== A sibling records the Variant that was selected before its provisional
+		// @approved
+		//  A sibling records the Variant that was selected before its provisional
 		// target was created. Tail and Continuation rows leave this null.
 		prior_variant_id: int().references(() => messageVariantTable.id, { onDelete: "set null" }),
 		human_participant_id: int()
@@ -715,25 +743,29 @@ export const activeGenerationTable = sqliteTable(
 		model_participant_id: int()
 			.notNull()
 			.references(() => participantTable.id),
-		// ==[HUMAN APPROVED]== Names are captured with the Control pair so an inspection remains
+		// @approved
+		//  Names are captured with the Control pair so an inspection remains
 		// stable when either Participant is renamed while the provider runs.
 		captured_human_name: text().notNull().default(""),
 		captured_model_name: text().notNull(),
 		started_at: text().notNull(),
 		prompt_plan_json: text().notNull(),
-		// ==[HUMAN APPROVED]== Budget diagnostics are active-only inspection data. Keeping this
+		// @approved
+		//  Budget diagnostics are active-only inspection data. Keeping this
 		// separate from the plan makes the lifecycle able to discard the
 		// complete prompt while retaining only compact Variant provenance.
 		prompt_inspection_json: text().notNull().default("{}"),
 	prompt_context_json: text().notNull(),
-		// ==[HUMAN APPROVED]== Captured lore evidence is copied to durable Variant data at terminal
+		// @approved
+		//  Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
 		lore_activation_json: text().notNull().default("null"),
 		memory_activation_json: text().notNull().default("null"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
-		// ==[HUMAN APPROVED]== Mutable execution state. Checkpoints deliberately live on the active
+		// @approved
+		//  Mutable execution state. Checkpoints deliberately live on the active
 		// record rather than Conversation revision history: they are a bounded
 		// crash-recovery aid and never represent a new authored edit.
 		checkpoint_content: text().notNull().default(""),
@@ -743,7 +775,8 @@ export const activeGenerationTable = sqliteTable(
 		provenance_namespace: text(),
 		provenance_key: text(),
 		provenance_value: text(),
-		// ==[HUMAN APPROVED]== Pending macro writes are captured with the originating preset and
+		// @approved
+		//  Pending macro writes are captured with the originating preset and
 		// survive a process restart until terminal Variant persistence can attach
 		// them to the target. An attempt never derives these from completion order.
 		macro_preset_id: int(),
@@ -751,7 +784,8 @@ export const activeGenerationTable = sqliteTable(
 	},
 );
 
-// ==[HUMAN APPROVED]== Terminal inspection copy retained only for the bounded SSE replay window.
+// @approved
+//  Terminal inspection copy retained only for the bounded SSE replay window.
 // The durable Variant owns compact provenance; this row temporarily keeps the
 // complete provider-neutral capture so a reconnecting client can inspect the
 // Generation that produced the just-finished Variant.
@@ -791,7 +825,8 @@ export const generationReplayTable = sqliteTable(
 	},
 );
 
-// ==[HUMAN APPROVED]== Conversation-owned generation controls. A model selection is the
+// @approved
+//  Conversation-owned generation controls. A model selection is the
 // Connection Profile and provider model ID together, so changing one Chat
 // never redirects another Chat's later Generations.
 export const conversationGenerationSettingsTable = sqliteTable(
@@ -811,7 +846,8 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		context_limit: int().notNull().default(32768),
 		response_budget: int().notNull().default(1024),
 		safety_allowance: int().notNull().default(500),
-		// ==[HUMAN APPROVED]== Maximum number of parallel Sibling Generations at one response
+		// @approved
+		//  Maximum number of parallel Sibling Generations at one response
 		// position. Tail and Continuation still use the single-position gate.
 		sibling_generation_limit: int().notNull().default(DEFAULT_SIBLING_GENERATION_LIMIT),
 		continuation_strategy: text().notNull().default(DEFAULT_CONTINUATION_STRATEGY),
@@ -824,7 +860,8 @@ export const conversationGenerationSettingsTable = sqliteTable(
 	},
 );
 
-// ==[HUMAN APPROVED]== Application-global catalog of model connections. Every saved Profile is
+// @approved
+//  Application-global catalog of model connections. Every saved Profile is
 // available to every Chat; the Chat stores which one its model selection uses.
 export const connectionProfileTable = sqliteTable(
 	"connection_profile",
@@ -855,7 +892,8 @@ export const connectionSettingsTable = sqliteTable("connection_settings", {
 	revision: int().notNull().default(0),
 });
 
-// ==[HUMAN APPROVED]== One encrypted payload per Profile. The dedicated credential and custom
+// @approved
+//  One encrypted payload per Profile. The dedicated credential and custom
 // header values are never represented in any client-facing row or snapshot.
 export const connectionSecretTable = sqliteTable("connection_secret", {
 	profile_id: int()
@@ -886,7 +924,8 @@ export const connectionProfilePinnedModelTable = sqliteTable(
 	],
 );
 
-// ==[HUMAN APPROVED]== Advisory model IDs returned by the explicitly configured Models URL. The
+// @approved
+//  Advisory model IDs returned by the explicitly configured Models URL. The
 // cache is separate from Connection Settings revision and is replaced only
 // after a successful refresh. The composite key intentionally remains
 // case-sensitive: provider identifiers preserve their exact spelling, while

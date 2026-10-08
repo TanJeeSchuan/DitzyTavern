@@ -11,7 +11,8 @@ import {
 	type StoryState,
 } from "../story";
 
-// ==[HUMAN APPROVED]== The story stage has no command-notice surface: a failed command leaves the
+// @approved
+//  The story stage has no command-notice surface: a failed command leaves the
 // reading view untouched and the next authoritative read converges it. The
 // runner still refuses to send without a revision and normalizes exceptions;
 // this surface's adapter simply chooses silence for the standard notices.
@@ -21,7 +22,8 @@ const STORY_COMMAND_NOTICES = {
 	unreachable: "The Conversation could not be reached.",
 };
 
-// ==[HUMAN APPROVED]== The story's no-presentation decision for the precise Conversation-state
+// @approved
+//  The story's no-presentation decision for the precise Conversation-state
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
@@ -111,7 +113,8 @@ export function useStoryMessageActions({
 				showNotice: noPresentation,
 			},
 			notices: STORY_COMMAND_NOTICES,
-			// ==[HUMAN APPROVED]== Update-after-success: the story read model moves only once the
+			// @approved
+			//  Update-after-success: the story read model moves only once the
 			// command applied, so a failed or conflicted Swipe leaves the story
 			// exactly as the Conversation state is — nothing to roll back.
 			callbacks: {
@@ -153,7 +156,8 @@ export function useStoryMessageActions({
 			notices: STORY_COMMAND_NOTICES,
 			callbacks: {
 				onApplied: () => {
-					// ==[HUMAN APPROVED]== Reload the edited Message's page so authoritative content replaces the
+					// @approved
+					//  Reload the edited Message's page so authoritative content replaces the
 					// local edit without drifting from the server's read model.
 					void loadHistoryPage(conversationId, { aroundMessageId: messageId }).then(
 						(freshHistory) => {

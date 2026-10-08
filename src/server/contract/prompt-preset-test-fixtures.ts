@@ -19,7 +19,8 @@ import type {
 } from "../../shared/contract/prompt-preset";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 
-// ==[HUMAN APPROVED]== Shared Prompt Preset suite fixtures. The Prompt Preset transport suites
+// @approved
+//  Shared Prompt Preset suite fixtures. The Prompt Preset transport suites
 // mount the same public route groups against one isolated initialized
 // database, so the setup they genuinely share lives here; each suite keeps
 // its own local helpers where its concerns differ.
@@ -102,7 +103,8 @@ export const configureMemoryEmbeddings = (database: Database, endpoint: string, 
 	return memory.apply({ ...settings, expectedRevision: revision, embeddingProfileId: created.id, embeddingModel: model });
 };
 
-// ==[HUMAN APPROVED]== Library and selection tests exercise the ordinary public routes
+// @approved
+//  Library and selection tests exercise the ordinary public routes
 // against one isolated initialized database: the same seam the popup uses,
 // with no test-only transport or persistence helpers.
 export const createRoutes = (database: Database) => ({
@@ -124,7 +126,8 @@ export const listPresets = async (
 ): Promise<PromptPresetSummary[]> => {
 	const response = await app.handle(new Request("http://localhost/api/prompt-presets"));
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the library list payload.
+	// @approved
+	//  SAFETY: the route's response schema is the library list payload.
 	const payload = await response.json() as PromptPresetListResponse;
 	return payload.presets;
 };
@@ -137,7 +140,8 @@ export const exportPreset = async (
 		new Request(`http://localhost/api/prompt-presets/${presetId}/export`),
 	);
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the native interchange payload.
+	// @approved
+	//  SAFETY: the route's response schema is the native interchange payload.
 	return await response.json() as NativePromptPreset;
 };
 
@@ -177,7 +181,8 @@ export const runPresetCommand = async (
 			body: JSON.stringify(command),
 		}),
 	);
-	// ==[HUMAN APPROVED]== SAFETY: the route validates the discriminated command at this boundary.
+	// @approved
+	//  SAFETY: the route validates the discriminated command at this boundary.
 	const body = await response.json();
 	return { status: response.status, body };
 };
@@ -191,7 +196,8 @@ export const readSelectedPreset = async (
 	);
 	if (response.status === 404) return null;
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the resolved preset payload.
+	// @approved
+	//  SAFETY: the route's response schema is the resolved preset payload.
 	return await response.json() as ConversationPromptPreset;
 };
 
@@ -203,7 +209,8 @@ export const readConversation = async (
 		new Request(`http://localhost/api/conversations/${conversationId}`),
 	);
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the conversation summary payload.
+	// @approved
+	//  SAFETY: the route's response schema is the conversation summary payload.
 	return await response.json() as ConversationSummary;
 };
 
@@ -223,7 +230,8 @@ export const selectPreset = async (
 			}),
 		}),
 	);
-	// ==[HUMAN APPROVED]== SAFETY: the route validates the revisioned command shape at this boundary.
+	// @approved
+	//  SAFETY: the route validates the revisioned command shape at this boundary.
 	const body = await response.json();
 	return { status: response.status, body };
 };
@@ -237,14 +245,16 @@ export const readActiveInspection = async (
 		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/inspection`,
 	));
 	expect(inspected.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the active inspection payload.
+	// @approved
+	//  SAFETY: the route's response schema is the active inspection payload.
 	const inspection = await inspected.json() as {
 		promptPlan: { blocks: { kind: string }[] };
 	};
 	return inspection.promptPlan.blocks;
 };
 
-// ==[HUMAN APPROVED]== The controlled provider fake captures every Chat Completions
+// @approved
+//  The controlled provider fake captures every Chat Completions
 // request behind a barrier, so a test runs mid-attempt Conversation
 // operations against a held provider stream before releasing it.
 export const gatedProvider = () => {
@@ -267,7 +277,8 @@ export const gatedProvider = () => {
 			for (const waiter of waiters.splice(0)) waiter();
 		},
 		fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
-			// ==[HUMAN APPROVED]== SAFETY: the controlled fake receives the AI SDK Chat Completions body.
+			// @approved
+			//  SAFETY: the controlled fake receives the AI SDK Chat Completions body.
 			requests.push(JSON.parse(String(init?.body)) as CapturedRequest);
 			if (!open) await new Promise<void>((resolve) => { waiters.push(resolve); });
 			return stream();
@@ -275,7 +286,8 @@ export const gatedProvider = () => {
 	};
 };
 
-// ==[HUMAN APPROVED]== SAFETY: the controlled fake receives the AI SDK Chat Completions body and
+// @approved
+//  SAFETY: the controlled fake receives the AI SDK Chat Completions body and
 // answers with a single completed delta.
 export const captureModelFetch = (
 	onCapture: (captured: CapturedRequest) => void,
@@ -289,7 +301,8 @@ export const captureModelFetch = (
 		.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
 		.join("") + "data: [DONE]\n\n";
 	return async (_input, init) => {
-		// ==[HUMAN APPROVED]== SAFETY: this test's fake owns the request body shape.
+		// @approved
+		//  SAFETY: this test's fake owns the request body shape.
 		onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
 		return new Response(new ReadableStream({
 			async start(controller) {
@@ -316,7 +329,8 @@ export const startGeneration = async (
 		}),
 	);
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: this contract test controls the typed acceptance response.
+	// @approved
+	//  SAFETY: this contract test controls the typed acceptance response.
 	const accepted = await response.json() as { generationId: number };
 	if (gate !== undefined) {
 		while (gate.requests.length < minimumRequests) {
@@ -337,7 +351,8 @@ export const readInspection = async (
 		),
 	);
 	expect(inspected.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the active inspection payload.
+	// @approved
+	//  SAFETY: the route's response schema is the active inspection payload.
 	return await inspected.json() as {
 		promptPlan: {
 			blocks: { kind: string; content: string; role: string | null }[];
@@ -365,14 +380,16 @@ export const readPreset = async (
 		new Request(`http://localhost/api/conversations/${conversationId}/prompt-preset`),
 	);
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the route's response schema is the resolved preset payload.
+	// @approved
+	//  SAFETY: the route's response schema is the resolved preset payload.
 	return await response.json() as ConversationPromptPreset;
 };
 
 export const readOperation = async (operation: Promise<Response>): Promise<void> => {
 	const response = await operation;
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: every successful recipe mutation route returns the minimal
+	// @approved
+	//  SAFETY: every successful recipe mutation route returns the minimal
 	// applied acknowledgment; tests read the authoritative recipe separately when needed.
 	expect(await response.json()).toEqual({ outcome: "applied" });
 };
@@ -446,7 +463,8 @@ export const saveBlockPatches = (
 		}),
 	);
 
-// ==[HUMAN APPROVED]== Individual Save and save-on-leave share one occurrence-addressed patch
+// @approved
+//  Individual Save and save-on-leave share one occurrence-addressed patch
 // contract, so the fixtures submit single-element batches through the same
 // route instead of dedicated role/content endpoints.
 export const saveBlockRole = (

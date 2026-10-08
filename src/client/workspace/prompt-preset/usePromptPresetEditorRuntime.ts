@@ -22,7 +22,8 @@ import {
 	type PromptPresetEditorState,
 } from "../../prompt-preset-editor-state";
 
-// ==[HUMAN APPROVED]== The shared owner of the panel's session state and operation settlement: every
+// @approved
+//  The shared owner of the panel's session state and operation settlement: every
 // focused unit starts work through `runOperation` and checks ownership through `ownsOperation`, so
 // no flow assembles its own epoch handling and one settle rule holds busy for every mutation.
 export interface PromptPresetEditorRuntime {
@@ -51,7 +52,8 @@ export function usePromptPresetEditorRuntime({
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
 	const stateRef = useRef(state);
 
-	// ==[HUMAN APPROVED]== Unmounting the panel invalidates every in-flight response, callback,
+	// @approved
+	//  Unmounting the panel invalidates every in-flight response, callback,
 	// download and deferred leave: once the editor is gone no operation may settle or continue,
 	// and dispatch becomes a no-op so no state update or deferred action can escape it.
 	const alive = useRef(true);
@@ -69,7 +71,8 @@ export function usePromptPresetEditorRuntime({
 	const ownsOperation = (claim: OperationClaim): boolean =>
 		alive.current && operationApplies(stateRef.current, claim);
 
-	// ==[HUMAN APPROVED]== One operation settlement owner: a flow declares its start effects and
+	// @approved
+	//  One operation settlement owner: a flow declares its start effects and
 	// hands over its body, and this wrapper refuses a second operation while the first is active,
 	// runs the body and settles only its own busy state. Because the settle happens synchronously
 	// before `runOperation` resolves, a leave that starts its selection after `await runOperation(...)`
@@ -113,7 +116,8 @@ export function usePromptPresetEditorRuntime({
 		}
 	};
 
-	// ==[HUMAN APPROVED]== The broad refresh path for initial load, revision refreshes, library
+	// @approved
+	//  The broad refresh path for initial load, revision refreshes, library
 	// commands, imports and selection changes: it fetches the library list and the
 	// Conversation-resolved recipe, requires both successes for ready, and classifies a current
 	// response under one acceptance rule. An authoritative null recipe takes precedence over a
@@ -143,7 +147,8 @@ export function usePromptPresetEditorRuntime({
 		return "network";
 	};
 
-	// ==[HUMAN APPROVED]== Recipe mutations reload only the selected Conversation-resolved recipe;
+	// @approved
+	//  Recipe mutations reload only the selected Conversation-resolved recipe;
 	// the library summary is unchanged by block edits. It keeps the same read claim and stale
 	// response handling as the broad refresh, including authoritative absence and last-view
 	// preservation on network failure.
@@ -168,7 +173,8 @@ export function usePromptPresetEditorRuntime({
 	useAsyncEffect((isCancelled) => {
 		const currentState = stateRef.current;
 		if (currentState.session.key !== sessionKey) {
-			// ==[HUMAN APPROVED]== Every Chat transition starts clean; a same-session revision refresh
+			// @approved
+			//  Every Chat transition starts clean; a same-session revision refresh
 			// keeps drafts.
 			dispatch({
 				type: "session-changed",

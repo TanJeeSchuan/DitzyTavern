@@ -9,7 +9,8 @@ import type {
 	SillyTavernJsonValue,
 } from "../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== The Prompt Preset panel's decision rules, separated from its rendering and
+// @approved
+//  The Prompt Preset panel's decision rules, separated from its rendering and
 // its transport: which read or mutation response may still apply, how saved
 // drafts reconcile and retire against the authoritative recipe, and how busy,
 // notice and leave state transition. The controller hook and the dialog stay
@@ -20,7 +21,8 @@ export type BlockDraft =
 	| { kind: "role"; role: PromptOutgoingRole; enabled?: boolean }
 	| { kind: "content"; name: string; content: string; role: PromptOutgoingRole; enabled?: boolean };
 
-// ==[HUMAN APPROVED]== One slot-kind-safe draft-to-patch rule. Every block accepts
+// @approved
+//  One slot-kind-safe draft-to-patch rule. Every block accepts
 // enablement; referenced Definition blocks also accept role drafts, and authored
 // instructions accept name, text and role drafts. The same rule drives dirtiness,
 // batch building and submitted-version retirement.
@@ -51,7 +53,8 @@ export function draftToPatch(
 export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft): boolean =>
 	draftToPatch(slot, draft) !== null;
 
-// ==[HUMAN APPROVED]== The one-pass dirty summary: `dirty` guards close and selection while
+// @approved
+//  The one-pass dirty summary: `dirty` guards close and selection while
 // `count` is what the unsaved-drafts dialog shows, both from one scan.
 interface DirtyDraftSummary {
 	dirty: boolean;
@@ -70,7 +73,8 @@ export function dirtyDraftSummary(
 	return { dirty: count > 0, count };
 }
 
-// ==[HUMAN APPROVED]== A save finishes exactly the submitted draft version: after a successful
+// @approved
+//  A save finishes exactly the submitted draft version: after a successful
 // save the editor retires an occurrence's draft only when it still equals
 // what was submitted, so a newer local edit made while saving survives.
 const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
@@ -84,7 +88,8 @@ export interface DirtyBlockPatches {
 	submitted: Record<number, BlockDraft>;
 }
 
-// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain command.
+// @approved
+//  Save-on-leave submits every dirty occurrence in one typed domain command.
 // The patches address occurrences, and the submitted map carries the exact
 // versions that may be retired once a fresh recipe is accepted.
 export function dirtyBlockPatches(
@@ -110,7 +115,8 @@ export type PresetView =
 
 export type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
 
-// ==[HUMAN APPROVED]== The SillyTavern import review is transient editor state: opening, closing
+// @approved
+//  The SillyTavern import review is transient editor state: opening, closing
 // or switching Chat clears it through the same session transition as every
 // other form, so no dismissal path can strand a review.
 export interface SillyTavernReview {
@@ -121,7 +127,8 @@ export interface SillyTavernReview {
 
 export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 
-// ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the panel
+// @approved
+//  The editor session owns the response ordering: `id` changes when the panel
 // switches Chat, `latestRead` when a newer read supersedes
 // an older one, and `latestConversationOperation` when a Conversation-owned
 // mutation or newer Conversation revision invalidates its expected revision.
@@ -153,7 +160,8 @@ export interface PromptPresetEditorState {
 	session: EditorSession;
 	view: PresetView;
 	drafts: Record<number, BlockDraft>;
-	// ==[HUMAN APPROVED]== `busy` holds the panel against a second operation. The deferred
+	// @approved
+	//  `busy` holds the panel against a second operation. The deferred
 	// save-on-leave needs no flag: the leave resolves only after the save operation settles,
 	// so the next selection starts with busy already released.
 	busy: boolean;
@@ -163,7 +171,8 @@ export interface PromptPresetEditorState {
 	review: SillyTavernReview | null;
 }
 
-// ==[HUMAN APPROVED]== The start effects one operation declares at the call site where the flow
+// @approved
+//  The start effects one operation declares at the call site where the flow
 // starts: whether it supersedes the in-flight read, whether it owns the Conversation race, and
 // which feedback channels it clears. There is no global operation registry or policy table —
 // every flow states its own effects, so clearing either or both feedback channels needs no new
@@ -198,7 +207,8 @@ export type PromptPresetEditorEvent =
 	| { type: "leave-resolved" }
 	| { type: "leave-failed"; problem: string };
 
-// ==[HUMAN APPROVED]== One clean session and one clean editor state, shared by construction and by
+// @approved
+//  One clean session and one clean editor state, shared by construction and by
 // every Chat transition, so the two can never drift.
 function cleanSession(key: string, id: number, conversationRevision: number | null): EditorSession {
 	return {
@@ -262,7 +272,8 @@ export type PromptPresetOperationRunner = <R>(
 	body: (claim: OperationClaim) => Promise<R>,
 ) => Promise<R | undefined>;
 
-// ==[HUMAN APPROVED]== The pure operation runner keeps operation ownership and settlement beside
+// @approved
+//  The pure operation runner keeps operation ownership and settlement beside
 // the editor reducer. The React hook supplies liveness and dispatch, but cannot invent a second
 // busy/claim policy for one of the editor's flows.
 export function createPromptPresetEditorOperationRunner({
@@ -298,7 +309,8 @@ export const conversationOperationApplies = (
 	operationApplies(state, claim) &&
 	claim.conversationOperationId === state.session.latestConversationOperation;
 
-// ==[HUMAN APPROVED]== A fresh recipe retires a submitted draft only after it reflects
+// @approved
+//  A fresh recipe retires a submitted draft only after it reflects
 // the saved enablement and any role or authored fields. An older read cannot retire it.
 function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockDraft): boolean {
 	if (submitted.kind === "enabled") return slot.enabled === submitted.enabled;
@@ -312,7 +324,8 @@ function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockD
 		&& slot.role === submitted.role;
 }
 
-// ==[HUMAN APPROVED]== One selected-recipe acceptance rule: the fresh recipe replaces the view and
+// @approved
+//  One selected-recipe acceptance rule: the fresh recipe replaces the view and
 // the drafts reconcile against it in one pass. Switching presets clears the draft set scoped to
 // the old preset; a reload prunes drafts for occurrences the recipe no longer contains and
 // retires exactly the submitted versions a successful save wrote — only when the fresh recipe
@@ -366,13 +379,15 @@ export function reducePromptPresetEditorState(
 ): PromptPresetEditorState {
 	switch (event.type) {
 		case "session-changed":
-			// ==[HUMAN APPROVED]== Every Chat transition starts clean: transient forms, notices,
+			// @approved
+			//  Every Chat transition starts clean: transient forms, notices,
 			// drafts and pending leaves belong to one panel session.
 			return cleanEditorState(
 				cleanSession(event.sessionKey, state.session.id + 1, event.conversationRevision),
 			);
 		case "conversation-revision-changed":
-			// ==[HUMAN APPROVED]== A newer Conversation snapshot invalidates pending responses but
+			// @approved
+			//  A newer Conversation snapshot invalidates pending responses but
 			// its refresh is unrelated to the block drafts owned by this session.
 			return {
 				...state,
@@ -445,7 +460,8 @@ export function reducePromptPresetEditorState(
 				...state,
 				session: {
 					...state.session,
-					// ==[HUMAN APPROVED]== Merge pending retirement explicitly: each submitted
+					// @approved
+					//  Merge pending retirement explicitly: each submitted
 					// occurrence's version joins (or replaces) the pending set, with the null case
 					// stated rather than relying on spreading a nullable map.
 					pendingRetire: state.session.pendingRetire === null
@@ -460,7 +476,8 @@ export function reducePromptPresetEditorState(
 		case "leave-kept":
 			return { ...state, leaveRequest: null };
 		case "leave-resolved":
-			// ==[HUMAN APPROVED]== Completing a resolved leave drops the drafts and the pending
+			// @approved
+			//  Completing a resolved leave drops the drafts and the pending
 			// retirement; the deferred close or selection runs after this transition.
 			return {
 				...state,

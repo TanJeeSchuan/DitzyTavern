@@ -43,7 +43,8 @@ const staleSettingsResponse = (error: StaleConnectionSettingsRevisionError) =>
 		currentSettings: toSettingsPayload(error.currentSettings),
 	});
 
-// ==[HUMAN APPROVED]== Thin typed adapters over the Connection Settings seam; schemas stay in the
+// @approved
+//  Thin typed adapters over the Connection Settings seam; schemas stay in the
 // shared contract and this module only maps domain outcomes to responses.
 export const createConnectionSettingsRoutes = (
 	database: Database,

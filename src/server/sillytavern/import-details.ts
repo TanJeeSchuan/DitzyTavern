@@ -1,8 +1,8 @@
-// ==[HUMAN APPROVED]== Committed-import details: the deliberate detail operations for an
+// @approved
+//  Committed-import details: the deliberate detail operations for an
 // imported Chat. Ordinary paginated reads never carry this data; Import
 // Details loads the persisted receipt and source identity, structured
 // duplicate evidence, and exact-source artifact availability on demand.
-//
 // The two preserved source representations stay immutable and outside this
 // module's writes: the canonical parsed archive lives in Conversation-scoped
 // data, and the exact original bytes live as a generic Conversation artifact
@@ -33,11 +33,11 @@ import {
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 
-// ==[HUMAN APPROVED]== The complete Import Details payload for one imported Chat, derived
+// @approved
+//  The complete Import Details payload for one imported Chat, derived
 // from the canonical shared wire schema so the transport shape can never
 // drift from it. Null is never a failure: a Chat without import provenance
 // simply has no Import Details.
-//
 // The receipt is the compact record persisted at commit (counts, warnings,
 // source identity, importer version). Duplicates are structured evidence as
 // of this read, excluding this Chat itself: matching raw-byte SHA-256 is an
@@ -48,12 +48,14 @@ import { findPriorImportsBySource } from "./prior-imports";
 export type ChatImportDetails = Static<typeof chatImportDetails>;
 
 export interface ChatImportDetailsModule {
-	// ==[HUMAN APPROVED]== Reads the persisted receipt, source identity, duplicate evidence, and
+	// @approved
+	//  Reads the persisted receipt, source identity, duplicate evidence, and
 	// exact-artifact availability for one imported Chat. An unreadable persisted
 	// report is returned as an explicit state; undefined is reserved for a
 	// missing Chat or a Chat with no report entry.
 	importDetails(conversationId: number): ChatImportDetails | undefined;
-	// ==[HUMAN APPROVED]== Streams the exact managed bytes with the stored original leaf filename
+	// @approved
+	//  Streams the exact managed bytes with the stored original leaf filename
 	// through the artifact seal. Undefined when the Chat owns no exact
 	// artifact; a cleaned-up result reports missing or corrupt without
 	// touching normal Chat behavior.
@@ -72,7 +74,8 @@ export function createChatImportDetailsModule(
 				namespace: IMPORT_NAMESPACE,
 				keys: [IMPORT_KEYS.reportJson],
 			});
-			// ==[HUMAN APPROVED]== A missing report entry means the Chat has no import provenance;
+			// @approved
+			//  A missing report entry means the Chat has no import provenance;
 			// an existing but invalid report is a distinct, visible read state.
 			if (read === undefined) return undefined;
 			const reportValue = importEntryValue(read.entries, IMPORT_KEYS.reportJson);
@@ -91,7 +94,8 @@ export function createChatImportDetailsModule(
 				EXACT_SOURCE_ARTIFACT_NAMESPACE,
 				EXACT_SOURCE_ARTIFACT_KEY,
 			) ?? null;
-			// ==[HUMAN APPROVED]== Byte length comes from the committed artifact metadata (the
+			// @approved
+			//  Byte length comes from the committed artifact metadata (the
 			// source-declared report never records a byte count).
 			const byteLength = artifact?.byteLength ?? null;
 			const sourceValue = toSillyTavernImportSource({
@@ -99,7 +103,8 @@ export function createChatImportDetailsModule(
 				sha256: report.source.sha256,
 				integrity: report.source.integrity,
 			});
-			// ==[HUMAN APPROVED]== Declared integrity is advisory and optional; it participates in
+			// @approved
+			//  Declared integrity is advisory and optional; it participates in
 			// duplicate classification only when the report carried it.
 			const matches = findPriorImportsBySource(database, sourceValue);
 			const duplicates: ChatImportDuplicateEvidence = {
@@ -138,7 +143,8 @@ export function createChatImportDetailsModule(
 	};
 }
 
-// ==[HUMAN APPROVED]== One Conversation-scoped import entry by key from the read seam's entries.
+// @approved
+//  One Conversation-scoped import entry by key from the read seam's entries.
 // The seam may legitimately return other import keys for the Chat, so the
 // lookup narrows by key and never assumes order or completeness.
 const importEntryValue = (

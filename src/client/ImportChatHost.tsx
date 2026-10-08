@@ -10,23 +10,27 @@ import {
 import { PanelHeader } from "./PanelHeader";
 import type { ChatSummary } from "./workspace";
 
-// ==[HUMAN APPROVED]== Keep this host mounted while the panel is closed so an open import retains
+// @approved
+//  Keep this host mounted while the panel is closed so an open import retains
 // its staged preview and choices. The flow's Back and Cancel handlers decide
 // when staging is discarded.
 
 interface ImportChatHostProps {
-	// ==[HUMAN APPROVED]== The Chats panel is currently open; the host keeps its state mounted
+	// @approved
+	//  The Chats panel is currently open; the host keeps its state mounted
 	// across panel toggles and renders nothing while closed.
 	open: boolean;
 	chats: ChatSummary[];
 	activeId: string;
 	mutationsDisabled?: boolean;
-	// ==[HUMAN APPROVED]== Library Characters the resolver can fork from.
+	// @approved
+	//  Library Characters the resolver can fork from.
 	characters: { id: number; name: string }[];
 	onSelect: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
-	// ==[HUMAN APPROVED]== A committed import opens its Chat: reloads the workspace and selects it.
+	// @approved
+	//  A committed import opens its Chat: reloads the workspace and selects it.
 	onImportLaunched: (conversationId: number) => void;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onActiveChatDeleted: () => void;

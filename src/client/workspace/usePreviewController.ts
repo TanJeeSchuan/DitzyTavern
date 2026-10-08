@@ -10,7 +10,8 @@ import {
 	type StoryState,
 } from "../story";
 
-// ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure. Preview
+// @approved
+//  The wording this surface shows for each standard command failure. Preview
 // mode stays local on conflict: the runner never touches the story's preview
 // state, so the notice only has to say what the writer still controls.
 const PREVIEW_NOTICES = {
@@ -64,7 +65,8 @@ export function usePreviewController({
 		setPreviewPending(true);
 		setPreviewError(null);
 		try {
-			// ==[HUMAN APPROVED]== The transport boundary refuses to send without the matching
+			// @approved
+			//  The transport boundary refuses to send without the matching
 			// client preview; the runner refuses to send without an
 			// authoritative revision and owns every outcome afterwards.
 			await confirmPreviewSelection(
@@ -89,10 +91,12 @@ export function usePreviewController({
 						},
 						notices: PREVIEW_NOTICES,
 						callbacks: {
-							// ==[HUMAN APPROVED]== The runner adopted the applied snapshot; confirming ends
+							// @approved
+							//  The runner adopted the applied snapshot; confirming ends
 							// the local Preview and moves the stored selection.
 							onApplied: () => dispatchStory({ type: "preview-confirmed" }),
-							// ==[HUMAN APPROVED]== The server's precise reasons are shown as-is; nothing
+							// @approved
+							//  The server's precise reasons are shown as-is; nothing
 							// about this surface flattens them into a failure class.
 							onNotPlayable: setPreviewError,
 							onNotRemovable: setPreviewError,
