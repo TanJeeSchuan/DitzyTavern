@@ -3,6 +3,8 @@ export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-pr
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import {
+	authorRoleOf,
+	continuationEligibility,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	ContinuationUnavailableError,
@@ -105,36 +107,6 @@ const participatingHistoryFromRead = (
 });
 
 // @approved
-//  The one authorship rule every Generation kind uses. A Message is model
-// writing when its Author Stamp matches the current model Control seat or the
-// model Participant of its own captured historical Control pair, and human
-// writing under the mirrored rule. Consulting the captured pair is what keeps
-// a Control reassignment from re-presenting earlier model writing as the
-// writer's own; deriving the role from current Control alone made Send and
-// Sibling disagree with Continuation about the same Message.
-const roleForMessage = (
-	message: Pick<ParticipatingHistoryMessage, "author" | "historicalContext">,
-	humanParticipantId: number,
-	modelParticipantId: number,
-): "human" | "model" | null => {
-	const authorId = message.author?.participantId;
-	if (authorId === undefined || authorId === null) return null;
-	if (
-		authorId === modelParticipantId ||
-		message.historicalContext?.modelParticipantId === authorId
-	) {
-		return "model";
-	}
-	if (
-		authorId === humanParticipantId ||
-		message.historicalContext?.humanParticipantId === authorId
-	) {
-		return "human";
-	}
-	return null;
-};
-
-// @approved
 //  Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
 // The caller supplies the already-bounded participating Messages, so this
@@ -153,7 +125,7 @@ const selectedHistoryFrom = (
 			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
 			content: message.variant.content,
-			role: roleForMessage(message, humanParticipantId, modelParticipantId),
+			role: authorRoleOf(message, { humanParticipantId, modelParticipantId }),
 		});
 	}
 
@@ -301,14 +273,13 @@ function captureFacts(
 		case "continuation": {
 			const latest = participation.messages.at(-1);
 			const variant = latest?.variant;
-			if (latest === undefined || variant === null || variant === undefined ||
-				roleForMessage(latest, human.id, model.id) !== "model" ||
-				!(variant.content.length > 0 || variant.data.some((entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0))) {
-				throw new ContinuationUnavailableError("not-terminal-model-message");
-			}
-			if (settings.continuationStrategy === "assistant-prefill" && variant.content.length === 0) {
-				throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-			}
+			if (latest === undefined || variant === null || variant === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
+			const reason = continuationEligibility({
+				authorRole: authorRoleOf(latest, { humanParticipantId: human.id, modelParticipantId: model.id }),
+				content: variant.content,
+				hasReasoning: variant.data.some((entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0),
+			}, settings.continuationStrategy);
+			if (reason !== null) throw new ContinuationUnavailableError(reason);
 			return { kind: "continuation", precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
 		}
 	}
@@ -423,7 +394,7 @@ export function prepareGenerationInputsSnapshot(
 			variantId: message.variant.id,
 			position: message.position,
 			speakerName: message.author?.capturedName ?? null,
-			role: roleForMessage(message, human.id, model.id),
+			role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
 			content: message.variant.content,
 		}]),
 		pendingHumanText,

@@ -216,3 +216,5 @@ export function createConversationModule(database: Database): ConversationModule
 			removeConversationGeneration(database, input),
 	};
 }
+
+export { authorRoleOf, continuationEligibility } from "./continuation";

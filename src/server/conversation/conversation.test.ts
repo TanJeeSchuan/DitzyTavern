@@ -829,6 +829,34 @@ describe("Conversation module", () => {
 				content: "The lantern answers.",
 			});
 
+		for (const strategy of ["assistant-prefill", "instruction"] as const) {
+			test(`reasoning-only continuation acceptance under ${strategy}`, () => {
+				const conversation = createConversationModule(database);
+				const snapshot = requireSnapshot(conversation, conversationId);
+				const greeting = snapshot.messages[0]!;
+				const variant = greeting.variants[0]!;
+				applyCommand(conversation, {
+					conversationId, expectedRevision: snapshot.revision,
+					action: { type: "edit-variant", messageId: greeting.id, variantId: variant.id, content: "" },
+				});
+				applyCommand(conversation, {
+					conversationId, expectedRevision: conversation.getRevision(conversationId)!,
+					action: { type: "put-data", scope: { type: "variant", messageId: greeting.id, variantId: variant.id }, namespace: "generation", key: "reasoning", value: "Only reasoning." },
+				});
+				const before = conversation.getRevision(conversationId)!;
+				const attempt = () => accept(conversation, { generationIntent: { type: "continuation", strategy, ...(strategy === "assistant-prefill" ? { suffix: "" } : { instruction: "Continue." }) } });
+				if (strategy === "assistant-prefill") {
+					expect(attempt).toThrow();
+					expect(conversation.getRevision(conversationId)).toBe(before);
+					expect(conversation.getSummary(conversationId)?.activeGenerations).toEqual([]);
+				} else {
+					const accepted = attempt();
+					expect(conversation.getRevision(conversationId)).toBe(before + 1);
+					expect(conversation.getSummary(conversationId)?.activeGenerations[0]?.generationId).toBe(accepted.generationId);
+				}
+			});
+		}
+
 		test("persists the terminal Message with the Author Stamp and historical pair through acceptance and resolution", () => {
 			const conversation = createConversationModule(database);
 			const accepted = accept(conversation);

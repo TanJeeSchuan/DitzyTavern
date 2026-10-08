@@ -1,3 +1,4 @@
+import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
 //  Paginated history read model: the normal Chat read seam for reading
 // native Messages. Pages serve stable position-ordered (chronological)
@@ -51,21 +52,6 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	if (!Number.isInteger(pageSize) || pageSize < 1) return DEFAULT_HISTORY_PAGE_SIZE;
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
-
-// @approved
-//  A Message is continuable when its selected Variant carries visible
-// content or — under the instruction strategy — persisted Reasoning
-// Content. Named (not an inline IIFE) so the read model states its rule
-// once, beside the acceptance path's related but deliberately different
-// reasoning rule.
-const isContinuable = (
-	selected: ChatHistoryVariant | undefined,
-	continuationStrategy: string,
-): boolean =>
-	selected !== undefined &&
-	(selected.content.length > 0 ||
-		(continuationStrategy === "instruction" &&
-			(selected.reasoning?.length ?? 0) > 0));
 
 // @approved
 //  Reads one page of the stable Message sequence, counted backward from the
@@ -224,14 +210,16 @@ export function readChatHistory(
 	// capability objects below flow through the canonical snapshot helpers,
 	// so the history seam can never disagree with the snapshot or the
 	// commands about sibling eligibility.
+	const control = readControlAssignment(db, conversationId);
 	const playable = deriveControlValidity(
-		readControlAssignment(db, conversationId),
+		control,
 		castIds,
 	).valid;
 
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
+		const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
 		return {
 			id: message.id,
 			position: message.position,
@@ -239,10 +227,11 @@ export function readChatHistory(
 			author,
 			modelParticipantIdAtCreation:
 				message.context_model_participant_id ?? null,
-			continuable: isContinuable(
-				variantsByMessage.get(message.id)?.find((variant) => variant.selected),
-				continuationStrategy,
-			),
+			continuable: selected !== undefined && continuationEligibility({
+				authorRole: authorRoleOf({ author, historicalContext }, control),
+				content: selected.content,
+				hasReasoning: (selected.reasoning?.length ?? 0) > 0,
+			}, continuationStrategy) === null,
 			// @approved
 			//  Server-derived targeted Swipe eligibility from the canonical rule
 			// (ADR-0003): the client never reconstructs it from hints.

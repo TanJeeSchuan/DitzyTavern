@@ -1,3 +1,6 @@
+import { generationJsonObject } from "../../../shared/generation-provenance";
+import { authorRoleOf, continuationEligibility } from "../continuation";
+import { toAuthorStamp, toHistoricalContext } from "../message-read-projection";
 import type { Database } from "bun:sqlite";
 import { and, eq, max, sql } from "drizzle-orm";
 import {
@@ -477,7 +480,7 @@ export function acceptConversationContinuationGeneration(
 		...input,
 		lifecycle: "Continuation",
 		generationIntent: input.generationIntent ?? { type: "continuation", strategy: "instruction" },
-		validate: (db, _human, model) => {
+		validate: (db, human, model) => {
 			const latest = db
 				.select({ id: messageTable.id, position: messageTable.position })
 				.from(messageTable)
@@ -491,14 +494,6 @@ export function acceptConversationContinuationGeneration(
 				);
 			}
 			const preceding = requireMessage(db, input.conversationId, input.precedingMessageId);
-			const precedingWasModelAuthored = preceding.author_participant_id !== null &&
-				(preceding.author_participant_id === model.id ||
-					preceding.context_model_participant_id === preceding.author_participant_id);
-			if (!precedingWasModelAuthored) {
-				throw new InvalidConversationCommandError(
-					"Continue is available only after a model-authored Message.",
-				);
-			}
 			const selected = db
 				.select({ content: messageVariantTable.content })
 				.from(messageVariantTable)
@@ -510,11 +505,13 @@ export function acceptConversationContinuationGeneration(
 					),
 				)
 				.get();
-			if (selected === undefined || (selected.content.length === 0 && !hasReasoningData(db, input.precedingVariantId))) {
-				throw new InvalidConversationCommandError(
-					"Continue requires a terminal Variant with visible or reasoning Content.",
-				);
-			}
+			if (selected === undefined) throw new InvalidConversationCommandError("Continue requires the selected terminal Variant.");
+			const reason = continuationEligibility({
+				authorRole: authorRoleOf({ author: toAuthorStamp(preceding, new Set([human.id, model.id])), historicalContext: toHistoricalContext(preceding) }, { humanParticipantId: human.id, modelParticipantId: model.id }),
+				content: selected.content,
+				hasReasoning: hasReasoningData(db, input.precedingVariantId),
+			}, generationJsonObject(input.generationIntent)?.strategy === "assistant-prefill" ? "assistant-prefill" : "instruction");
+			if (reason !== null) throw new InvalidConversationCommandError("Continue requires terminal model output eligible for this strategy.");
 			return { humanMessageId: null, position: latest.position + 1 };
 		},
 	});

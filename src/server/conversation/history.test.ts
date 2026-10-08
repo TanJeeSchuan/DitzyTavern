@@ -357,7 +357,7 @@ describe("Conversation paginated history", () => {
 			eligible: false,
 			reason: "missing-historical-context",
 		});
-		expect(unpairedPage?.messages[0]?.continuable).toBe(true);
+		expect(unpairedPage?.messages[0]?.continuable).toBe(false);
 	});
 
 	test("marks the Swipe capability ineligible when the Conversation is not playable", () => {
