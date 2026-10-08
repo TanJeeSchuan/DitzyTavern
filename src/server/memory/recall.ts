@@ -1,5 +1,5 @@
 import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
-import { readVariantsForMemory } from "../conversation";
+import { readActiveVariantIds } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -229,7 +229,7 @@ const readRecallInputs = (input: RecallSceneInput): ReadRecallInputs => {
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, limit);
 	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
 	const variantIds = [...new Set(input.messages.map((message) => message.variantId))];
-	const activeVariants = new Set(readVariantsForMemory(input.database, input.conversationId, { variantIds, includeActive: true }).filter((variant) => variant.active).map((variant) => variant.variantId));
+	const activeVariants = readActiveVariantIds(input.database, input.conversationId);
 	const collections = variantIds.length === 0
 		? []
 		: db.select().from(memoryCollectionTable)

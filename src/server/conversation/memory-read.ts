@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
@@ -19,9 +19,10 @@ export interface MemorySourceVariant {
 export function readVariantsForMemory(
 	database: Database,
 	conversationId: number,
-	options: { variantIds?: readonly number[]; includeActive?: boolean } = {},
+	options: { variantIds?: readonly number[]; selectedOrVariantIds?: readonly number[]; includeActive?: boolean } = {},
 ): MemorySourceVariant[] {
 	if (options.variantIds?.length === 0) return [];
+	const kept = options.selectedOrVariantIds;
 	return connectConversationDatabase(database).select({
 		messageId: messageTable.id,
 		position: messageTable.position,
@@ -38,6 +39,7 @@ export function readVariantsForMemory(
 		.where(and(
 			eq(messageTable.conversation_id, conversationId),
 			options.variantIds === undefined ? undefined : inArray(messageVariantTable.id, [...options.variantIds]),
+			kept === undefined ? undefined : or(eq(messageVariantTable.selected, true), kept.length === 0 ? undefined : inArray(messageVariantTable.id, [...kept])),
 			options.includeActive ? undefined : isNull(activeGenerationTable.id),
 		))
 		.orderBy(asc(messageTable.position), asc(messageVariantTable.position))
@@ -58,8 +60,7 @@ export function readSelectedPathForMemory(database: Database, conversationId: nu
 	}
 	const read = readSelectedHistory(database, conversationId, { ids, conversationData: false });
 	if (read === undefined) return undefined;
-	const active = new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
-		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));
+	const active = readActiveVariantIds(database, conversationId);
 	return read.messages.map((message) => ({
 		messageId: message.id,
 		position: message.position,
@@ -85,3 +86,7 @@ export const readMemoryTailMessageId = (database: Database, conversationId: numb
 	connectConversationDatabase(database).select({ id: messageTable.id }).from(messageTable)
 		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position)).limit(1).get()?.id;
+
+export const readActiveVariantIds = (database: Database, conversationId: number): Set<number> =>
+	new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
+		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
+import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
 import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import {
@@ -208,7 +208,7 @@ export function startMemoryCatchup(database: Database, conversationId: number, r
 			.values({ conversation_id: conversationId, created_at: new Date().toISOString() })
 			.returning()
 			.get();
-		const activeVariants = new Set(readVariantsForMemory(database, conversationId, { includeActive: true }).filter((variant) => variant.active).map((variant) => variant.variantId));
+		const activeVariants = readActiveVariantIds(database, conversationId);
 		const previous: CapturedMemoryMessage[] = [];
 		for (const source of sources) {
 			if (source.content.trim().length > 0 && !activeVariants.has(source.variantId)) {
@@ -296,8 +296,8 @@ const memoryViews = (database: Database, conversationId: number, rows: MemoryCol
 
 const collectionSources = (database: Database, conversationId: number, collections: CollectionRow[], changes = false): MemoryCollectionSource[] => {
 	const byVariant = new Map(collections.map((collection) => [collection.variant_id, collection]));
-	return readVariantsForMemory(database, conversationId, { variantIds: changes ? [...byVariant.keys()] : undefined, includeActive: changes })
-		.filter((variant) => changes || variant.selected || byVariant.has(variant.variantId))
+	const keys = [...byVariant.keys()];
+	return readVariantsForMemory(database, conversationId, changes ? { variantIds: keys, includeActive: true } : { selectedOrVariantIds: keys })
 		.sort((left, right) => Number(right.selected) - Number(left.selected) || left.position - right.position || left.variantPosition - right.variantPosition)
 		.map((variant) => ({ variant, collection: byVariant.get(variant.variantId) }));
 };
