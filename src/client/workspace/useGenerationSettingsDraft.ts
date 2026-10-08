@@ -10,7 +10,7 @@ import {
 	type ConversationSummary,
 } from "../conversation";
 import type { ConversationCommandReconciliation } from "../conversation-command-runner";
-import { useConversationCommands } from "../useConversationCommands";
+import { createConversationCommands } from "../createConversationCommands";
 import {
 	budgetDraftsFromSettings,
 	makeEmptyBudgetDrafts,
@@ -76,7 +76,7 @@ export async function saveGenerationSettingsDraft(
 ): Promise<void> {
 	const base = await loadConversationGenerationSettings(options.conversation.id);
 	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return useConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
+	return createConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
 		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
 				type: "update-generation-settings",
 				settings: next,

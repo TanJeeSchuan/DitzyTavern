@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { useConversationCommands } from "../useConversationCommands";
+import { createConversationCommands } from "../createConversationCommands";
 import {
 	confirmPreviewSelection,
 	type StoryAction,
@@ -45,7 +45,7 @@ export function usePreviewController({
 		previewConfirmInFlightRef.current = false;
 	}, [story.preview]);
 
-	const { run } = useConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: setPreviewError });
+	const { run } = createConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: setPreviewError });
 
 	const clearPreviewError = () => setPreviewError(null);
 

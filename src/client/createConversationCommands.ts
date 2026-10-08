@@ -13,7 +13,7 @@ interface RunOptions<Operation> extends Partial<ConversationCommandCallbacks<Ope
 	isCurrent?: () => boolean;
 }
 
-export function useConversationCommands(conversationId: number | null, surface: ConversationCommandSurface) {
+export function createConversationCommands(conversationId: number | null, surface: ConversationCommandSurface) {
 	return {
 		run: <Operation = never>(action: ConversationAction | ConversationCommandOptions<Operation>["send"], options: RunOptions<Operation> = {}) => runConversationCommand({
 			revision: surface.revision,

@@ -66,11 +66,10 @@ export function createChatImportDetailsModule(
 	database: Database,
 	artifactDirectory: string,
 ): ChatImportDetailsModule {	const artifacts = createArtifactModule(database, { directory: artifactDirectory });
-	const conversations = database;
 
 	return {
 		importDetails(conversationId) {
-			const read = readConversationData(conversations, conversationId, {
+			const read = readConversationData(database, conversationId, {
 				namespace: IMPORT_NAMESPACE,
 				keys: [IMPORT_KEYS.reportJson],
 			});

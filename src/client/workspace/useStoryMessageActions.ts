@@ -3,7 +3,7 @@ import { loadHistoryPage } from "../chat-history";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { useConversationCommands } from "../useConversationCommands";
+import { createConversationCommands } from "../createConversationCommands";
 import {
 	classifyVariantSelection,
 	type StoryAction,
@@ -56,7 +56,7 @@ export function useStoryMessageActions({
 	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
-	const { run } = useConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: noPresentation });
+	const { run } = createConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: noPresentation });
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);

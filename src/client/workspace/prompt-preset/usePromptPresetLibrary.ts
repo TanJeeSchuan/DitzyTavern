@@ -1,7 +1,7 @@
 import {
 	type ConversationSummary,
 } from "../../conversation";
-import { useConversationCommands } from "../../useConversationCommands";
+import { createConversationCommands } from "../../createConversationCommands";
 import {
 	applyPromptPresetCommand,
 	commitSillyTavernPromptPreset,
@@ -130,7 +130,7 @@ export function usePromptPresetLibrary({
 	//  Applies one selection through the authoritative Conversation command.
 	// `selectPreset` decides whether a pending leave must resolve first; the runtime owns the
 	// operation gate once the selection is ready to start.
-	const { run } = useConversationCommands(conversation?.id ?? null, {
+	const { run } = createConversationCommands(conversation?.id ?? null, {
 		revision: () => conversation?.revision ?? null,
 		onConversationChange: (next) => {
 			dispatch({ type: "conversation-adopted", conversationRevision: next.revision });

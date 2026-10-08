@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { loadConversationPromptPreset, type ConversationSummary } from "./conversation";
-import { useConversationCommands } from "./useConversationCommands";
+import { createConversationCommands } from "./createConversationCommands";
 import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ProseEditor } from "./editor/ProseEditor";
 import { useSaveGuard } from "./SaveGuard";
@@ -34,7 +34,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	if (conversation.revision > expectedRevision && conversation.authorNote === saved) setExpectedRevision(conversation.revision);
-	const { run } = useConversationCommands(conversation.id, { revision: () => expectedRevision, onConversationChange, setNotice });
+	const { run } = createConversationCommands(conversation.id, { revision: () => expectedRevision, onConversationChange, setNotice });
 
 	const dirty = draft !== saved;
 	const save = async (): Promise<boolean> => {

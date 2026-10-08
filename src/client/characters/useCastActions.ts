@@ -7,7 +7,7 @@ import {
 	saveParticipantAsCharacter,
 	type ConversationSummary,
 } from "../conversation";
-import { useConversationCommands } from "../useConversationCommands";
+import { createConversationCommands } from "../createConversationCommands";
 import type { CharacterSnapshot } from "../character-library";
 import { controlChangeDescription } from "../cast";
 import { emptyPromptChannels } from "../../shared/definition";
@@ -89,7 +89,7 @@ export function useCastActions({
 		character: SavedCharacterReference;
 	} | null>(null);
 
-	const { run } = useConversationCommands(conversationId, { revision: () => conversation?.revision ?? null, onConversationChange, setNotice });
+	const { run } = createConversationCommands(conversationId, { revision: () => conversation?.revision ?? null, onConversationChange, setNotice });
 
 	const refreshConversation = async () => {
 		try {

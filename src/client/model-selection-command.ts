@@ -2,7 +2,7 @@ import {
 	type ConversationSummary,
 } from "./conversation";
 import type { ConversationCommandReconciliation } from "./conversation-command-runner";
-import { useConversationCommands } from "./useConversationCommands";
+import { createConversationCommands } from "./createConversationCommands";
 
 // @approved
 //  The wording this surface shows whenever the model-selection command could
@@ -37,7 +37,7 @@ export interface CommitConversationModelOptions {
 // settings snapshot, so it structurally cannot restore another editor's
 // fields the way a second full-object writer could.
 export function commitConversationModel(options: CommitConversationModelOptions): Promise<void> {
-	return useConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
+	return createConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
 		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
 				type: "set-generation-model",
 				connectionProfileId: options.connectionProfileId,

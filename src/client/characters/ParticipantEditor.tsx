@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { useConversationCommands } from "../useConversationCommands";
+import { createConversationCommands } from "../createConversationCommands";
 import { emptyPromptChannels } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
@@ -44,7 +44,7 @@ export function ParticipantEditor({
 	draftRef.current = draft;
 
 	const dirty = participant !== undefined && !sameDefinition(draft, definitionOf(participant));
-	const { run } = useConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
 
 	const apply = async () => {
 		if (participant === undefined || !dirty || pending || draft.name.trim() === "") return false;

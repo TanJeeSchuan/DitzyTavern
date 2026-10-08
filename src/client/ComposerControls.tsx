@@ -6,7 +6,7 @@ import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
 } from "./conversation";
-import { useConversationCommands } from "./useConversationCommands";
+import { createConversationCommands } from "./createConversationCommands";
 import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ModelSelector } from "./ModelSelector";
 
@@ -37,7 +37,7 @@ export function ComposerControlSelectors({
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 
-	const { run } = useConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
 
 	if (conversation.cast.length === 0) {
 		return null;
