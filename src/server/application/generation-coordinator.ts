@@ -361,9 +361,9 @@ export class GenerationCoordinator {
 		return { accepted, runtime, result };
 	}
 
-	resolveTransport(database: Database, profileId: number | null, preview: true): ResolvedGenerationTransport | null;
+	resolveTransport(database: Database, profileId: number | null, preview: true): Pick<ResolvedGenerationTransport, "connection"> | null;
 	resolveTransport(database: Database, profileId: number | null, preview?: false): ResolvedGenerationTransport;
-	resolveTransport(database: Database, profileId: number | null, preview = false): ResolvedGenerationTransport | null {
+	resolveTransport(database: Database, profileId: number | null, preview = false): Pick<ResolvedGenerationTransport, "connection"> | ResolvedGenerationTransport | null {
 		const settingsModule = createConnectionSettingsModule(database, this.options);
 		const settings = settingsModule.get();
 		if (profileId === null) {
@@ -375,6 +375,8 @@ export class GenerationCoordinator {
 			if (preview) return null;
 			throw new GenerationConfigurationError("The selected Connection Profile is unavailable.");
 		}
+		const connection = connectionSnapshotOf(settings, profile);
+		if (preview) return { connection };
 		return {
 			modelClient: createModelClient({
 				profile,
@@ -382,7 +384,7 @@ export class GenerationCoordinator {
 				fetch: this.options.fetch,
 				loadImage: imageLoader(database),
 			}),
-			connection: connectionSnapshotOf(settings, profile),
+			connection,
 		};
 	}
 }

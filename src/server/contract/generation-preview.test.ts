@@ -9,7 +9,7 @@ import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
-import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
+import { captureModelFetch, key, profile, withProfile } from "./prompt-preset-test-fixtures";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
@@ -90,6 +90,27 @@ describe("Prompt Plan inspection", () => {
 		setSystemTime();
 		processStateFor(database).dispose();
 		database.close();
+	});
+
+	test("previews with a draft Connection Profile whose request URL is empty", async () => {
+		const conversation = createChat(database);
+		const connections = createConnectionSettingsModule(database, { masterKey: key });
+		connections.createProfile({
+			expectedRevision: connections.get().revision,
+			profile: { ...profile, requestUrl: "" },
+		});
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => { throw new Error("Snapshot preview must not call a provider."); },
+		});
+		const response = await previewResponse(app, conversation.id, { kind: "send", content: "hello" });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: "available",
+			conversationId: conversation.id,
+			kind: "send",
+			promptPlan: { blocks: expect.arrayContaining([expect.objectContaining({ kind: "history", role: "human", speakerName: "Writer", content: "hello" })]) },
+		});
 	});
 
 	test("presents recoverable preview failures with their domain reason", async () => {
