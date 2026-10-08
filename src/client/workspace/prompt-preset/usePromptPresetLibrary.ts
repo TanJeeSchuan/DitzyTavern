@@ -14,10 +14,8 @@ import {
 	type SillyTavernJsonValue,
 } from "../../prompt-preset-library";
 import { downloadNativePromptPreset } from "../../prompt-preset-download";
-import {
-	CONVERSATION_UNREACHABLE_NOTICE,
-	LIBRARY_UNREACHABLE_NOTICE,
-} from "../../lib/notices";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../../character-library";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "../../conversation-command-runner";
 import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
 import {
 	conversationOperationApplies,

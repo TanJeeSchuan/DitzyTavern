@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { loadConversationPromptPreset, type ConversationSummary } from "./conversation";
 import { useConversationCommands } from "./useConversationCommands";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ProseEditor } from "./editor/ProseEditor";
 import { useSaveGuard } from "./SaveGuard";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "./prompt-preset-library";

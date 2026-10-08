@@ -7,7 +7,7 @@ import {
 	type ConversationSummary,
 } from "./conversation";
 import { useConversationCommands } from "./useConversationCommands";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ModelSelector } from "./ModelSelector";
 
 // @approved

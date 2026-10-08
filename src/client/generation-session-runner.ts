@@ -19,7 +19,7 @@ import {
 	type GenerationSessionsAction,
 	type GenerationSessionsState,
 } from "./generation-sessions";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 
 // @approved
 // The host surfaces the runner's outward effects. Story effects are mapped

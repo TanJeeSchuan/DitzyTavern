@@ -6,7 +6,7 @@ import { libraryPickerEntries } from "../cast";
 import { removalConfirmationCopy } from "../cast-remove";
 import { applyCommand, listCharacters, type CharacterSummary } from "../character-library";
 import type { ConversationSummary } from "../conversation";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/notices";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import { emptyPromptChannels, promptPreview } from "../../shared/definition";
 import { Portrait } from "../story/Portrait";
 import { AddParticipantMenu } from "./AddParticipantMenu";

@@ -1,6 +1,6 @@
 import { applyConversationCommand, type ConversationAction, type ConversationSummary } from "./conversation";
 import { runConversationCommand, type ConversationCommandCallbacks, type ConversationCommandNotices, type ConversationCommandOptions } from "./conversation-command-runner";
-import { CONVERSATION_CONFLICT_RELOAD_NOTICE, CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
+import { CONVERSATION_CONFLICT_RELOAD_NOTICE, CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 
 interface ConversationCommandSurface {
 	revision: () => number | null;

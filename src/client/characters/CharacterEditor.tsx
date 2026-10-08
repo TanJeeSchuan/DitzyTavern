@@ -10,7 +10,7 @@ import {
 	type CharacterSnapshot,
 } from "../character-library";
 import { deletionConfirmationCopy, deletionResultNotice, usedCountLabel } from "../character-delete";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/notices";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";

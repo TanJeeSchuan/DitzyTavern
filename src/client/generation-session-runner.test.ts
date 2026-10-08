@@ -6,7 +6,7 @@ import type {
 	GenerationStreamSubscription,
 } from "./conversation-stream";
 import { createGenerationSessionRunner } from "./generation-session-runner";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 import type {
 	GenerationSessionStoryEffect,
 	GenerationSessionsState,

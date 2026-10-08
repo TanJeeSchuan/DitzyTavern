@@ -32,7 +32,7 @@ import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes"
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import { conversationPromptPreset } from "../shared/contract/prompt-preset";
 import { decodeWirePayload } from "./lib/wire-decode";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 
 export type {
 	ActiveGenerationDetails,

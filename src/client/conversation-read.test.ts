@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { NetworkError } from "./lib/network-error";
+import { NetworkError } from "./lib/request-outcome";
 
 const originalFetch = globalThis.fetch;
 Object.defineProperty(globalThis, "window", {

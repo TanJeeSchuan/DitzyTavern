@@ -1,9 +1,6 @@
 import { useState } from "react";
-import {
-	CONVERSATION_CONFLICT_RELOAD_NOTICE,
-	CONVERSATION_UNREACHABLE_NOTICE,
-	LIBRARY_UNREACHABLE_NOTICE,
-} from "../lib/notices";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
+import { CONVERSATION_CONFLICT_RELOAD_NOTICE, CONVERSATION_UNREACHABLE_NOTICE } from "../conversation-command-runner";
 import {
 	addCharacterToCast,
 	loadConversation,
