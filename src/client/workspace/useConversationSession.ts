@@ -9,6 +9,10 @@ import type { ChatSummary, Workspace } from "../workspace";
 import { useAsyncEffect } from "../lib/use-async";
 import { adoptConversationSummary } from "./conversation-session-state";
 import { NetworkError } from "../lib/network-error";
+import { api } from "../lib/eden";
+import { decodeWirePayload } from "../lib/wire-decode";
+import { chatHistoryPage } from "../../shared/contract/conversation-schema";
+import { notFoundOutcome } from "../../shared/contract/outcomes";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -143,12 +147,18 @@ export function useConversationSession({
 			? current.messages.filter((_, index) => index % current.page!.pageSize === 0 || index === current.messages.length - 1).map((message) => ({ aroundMessageId: message.id }))
 			: [{ page: 1 }];
 		for (const request of requests) {
-			const history = await loadHistoryPage(conversationId, request, signal);
+			const { data, error, response } = await api.api.conversations({ id: conversationId }).history.get({ query: request, fetch: { signal } });
 			if (signal?.aborted || navigation !== navigationRef.current || Number(activeChatIdRef.current) !== conversationId) return freshConversation;
-			if (history.outcome === "network") throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
-			if (history.outcome === "available") applyStory({
+			if (error) {
+				if (response === undefined) throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
+				if (error.status === 404 && decodeWirePayload(notFoundOutcome, error.value) !== null) continue;
+				throw new Error(`Unable to load Conversation ${conversationId} history`);
+			}
+			const history = decodeWirePayload(chatHistoryPage, data);
+			if (history === null) throw new Error(`Unable to load Conversation ${conversationId} history`);
+			applyStory({
 				type: detached ? "history-refreshed" : "first-page",
-				page: history.value,
+				page: history,
 				activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId),
 			});
 		}
