@@ -243,6 +243,13 @@ const draftFromGroup = (
 	selectedPositions: [],
 });
 
+const updateGroup = (state: ChatImportFlowState, id: string, update: (group: ImportGroupDraft) => ImportGroupDraft): ChatImportFlowState => ({
+	...state, groups: state.groups.map((group) => group.id === id ? update(group) : group),
+});
+
+const confirmMergedName = (target: ImportGroupDraft, incoming: readonly ImportMessageRecord[]): boolean =>
+	hasBlankSource(target) ? target.blankNameConfirmed : !incoming.some((message) => message.isBlankSource);
+
 const hasBlankSource = (group: ImportGroupDraft): boolean =>
 	group.messages.some((message) => message.isBlankSource);
 
@@ -328,9 +335,7 @@ const mergeSegments = (
 		//  Blank-content arriving with merged Messages re-arms the name
 		// confirmation when the target had none; an already confirmed
 		// blank-affected target keeps its confirmation.
-		blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
-			? target.blankNameConfirmed
-			: !sources.some((source) => hasBlankSource(source)),
+		blankNameConfirmed: confirmMergedName(target, sources.flatMap((source) => source.messages)),
 	};
 	const sourceIdsSet = new Set(sources.map((source) => source.id));
 	return {
@@ -387,17 +392,10 @@ const splitSegments = (
 			// @approved
 			//  Blank-content arriving with moved Messages re-arms the name
 			// confirmation when the target had none.
-			blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
-				? target.blankNameConfirmed
-				: !moved.some((message) => message.isBlankSource),
+			blankNameConfirmed: confirmMergedName(target, moved),
 		};
-		return {
-			...state,
-			groups: nextGroups.map((group) =>
-				group.id === to.existingId ? nextTarget : group,
-			),
-			history: [...state.history, cloneGroups(state.groups)],
-		};
+		return updateGroup({ ...state, groups: nextGroups,
+			history: [...state.history, cloneGroups(state.groups)] }, to.existingId, () => nextTarget);
 	}
 
 	// @approved
@@ -504,71 +502,28 @@ export function reduceChatImportFlow(
 			return inStagedFlow(state) ? { ...state, title: action.title } : state;
 		case "group-name-changed":
 			if (!inStagedFlow(state)) return state;
-			return {
-				...state,
-				groups: state.groups.map((group) =>
-					group.id === action.id
-						? {
-								...group,
-								participantName: action.name,
-								// @approved
-								//  Supplying an editable name satisfies the
-								// blank-source confirmation rule.
-								blankNameConfirmed: hasBlankSource(group)
-									? true
-									: group.blankNameConfirmed,
-							}
-						: group,
-				),
-			};
+			return updateGroup(state, action.id, (group) => ({
+				...group, participantName: action.name,
+				blankNameConfirmed: hasBlankSource(group) || group.blankNameConfirmed,
+			}));
 		case "suggestion-approved":
 			if (!inStagedFlow(state)) return state;
 			// @approved
 			//  Approves the currently selected fork Character (the pre-filled
 			// suggestion or any Character the user picked from the picker).
-			return {
-				...state,
-				groups: state.groups.map((group) =>
-					group.id === action.id && group.outcome.type === "fork"
-						? { ...group, suggestedApproved: true }
-						: group,
-				),
-			};
+			return updateGroup(state, action.id, (group) => group.outcome.type === "fork" ? { ...group, suggestedApproved: true } : group);
 		case "outcome-changed":
 			if (!inStagedFlow(state)) return state;
 			// @approved
 			//  Switching outcomes never auto-approves anything: a fork only
 			// becomes approved through the explicit approval action.
-			return {
-				...state,
-				groups: state.groups.map((group) =>
-					group.id === action.id ? { ...group, outcome: action.outcome } : group,
-				),
-			};
+			return updateGroup(state, action.id, (group) => ({ ...group, outcome: action.outcome }));
 		case "blank-name-confirmed":
 			if (!inStagedFlow(state)) return state;
-			return {
-				...state,
-				groups: state.groups.map((group) =>
-					group.id === action.id
-						? { ...group, blankNameConfirmed: true }
-						: group,
-				),
-			};
+			return updateGroup(state, action.id, (group) => ({ ...group, blankNameConfirmed: true }));
 		case "message-selected":
 			if (!inStagedFlow(state)) return state;
-			return {
-				...state,
-				groups: state.groups.map((group) =>
-					group.id === action.id
-						? toggleMessageSelection(
-								group,
-								action.position,
-								action.selected,
-							)
-						: group,
-				),
-			};
+			return updateGroup(state, action.id, (group) => toggleMessageSelection(group, action.position, action.selected));
 		case "merge-into":
 			if (!inStagedFlow(state)) return state;
 			return mergeSegments(state, action.targetId, action.sourceIds);
