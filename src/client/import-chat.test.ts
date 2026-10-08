@@ -183,7 +183,7 @@ describe("Chat import client boundary", () => {
 		);
 		expect(committed.outcome).toBe("available");
 		if (committed.outcome !== "available") return;
-		expect(committed.value.receipt.conversationId).toBe(committed.value.receipt.conversationId);
+		expect(committed.value.conversation.id).toBe(committed.value.receipt.conversationId);
 
 		const retry = await commitImport(
 			staged.value.token,

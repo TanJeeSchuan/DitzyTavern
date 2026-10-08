@@ -227,7 +227,7 @@ function MemoryTraceView({ conversationId, variantId, live, onClose }: { convers
 				{live ? " · live" : ""}
 			</span>
 			<Button type="button" size="icon-xs" variant="ghost" aria-label="Hide pipeline trace" onClick={onClose}>
-				<X aria-hidden="true" /> Hide pipeline trace
+				<X aria-hidden="true" />
 			</Button>
 		</header>
 		{error && <p className="import-problem" role="alert">{error}</p>}

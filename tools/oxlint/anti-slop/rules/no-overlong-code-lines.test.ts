@@ -81,5 +81,12 @@ tester.run("no-overlong-code-lines", noOverlongCodeLinesRule, {
 			options: [{ max: 14 }],
 			errors: [{ line: 1, messageId: "overlongCodeLine" }],
 		},
+		{
+			// An array of short string members is code: its only uncovered
+			// characters are commas and brackets, which per-member run resets
+			// would let escape. Structural counting flags it.
+			code: `const names = [${Array.from({ length: 50 }, () => `"a"`).join(", ")}];`,
+			errors: [{ line: 1, messageId: "overlongCodeLine" }],
+		},
 	],
 });

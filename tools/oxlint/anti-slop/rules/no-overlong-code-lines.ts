@@ -23,7 +23,22 @@ const markLiteralFields = (source: SourceCode): Uint8Array => {
 	return covered;
 };
 
-/** Longest run of uncovered, non-whitespace code characters on one line (uncovered whitespace is neutral). */
+/** Uncovered, non-whitespace code characters on one line, counted ACROSS string
+ * tokens: resetting at each literal would let arrays of short string members
+ * (commas and brackets are the only code) escape the ceiling entirely. */
+// A line carrying several literal tokens is not "one big literal": arrays of
+// short string members are code even though every run between them is a
+// comma. A single literal (or template, or JSX text) stays exempt.
+const inlineLiteralCount = (line: string, covered: Uint8Array, lineStart: number, source: SourceCode): number => {
+	let count = 0;
+	for (const tokenOrComment of source.tokensAndComments) {
+		if (!LITERAL_OR_COMMENT_TYPES.has(tokenOrComment.type)) continue;
+		if (tokenOrComment.end <= lineStart || tokenOrComment.start >= lineStart + line.length) continue;
+		if (tokenOrComment.type === "Line" || tokenOrComment.type === "Block" || tokenOrComment.type === "Shebang") continue;
+		count += 1;
+	}
+	return count;
+};
 const longestCodeRun = (line: string, covered: Uint8Array, lineStart: number): number => {
 	let longest = 0;
 	let run = 0;
@@ -45,7 +60,7 @@ export const noOverlongCodeLinesRule = defineRule({
 		type: "layout",
 		docs: {
 			description:
-				"Flag source lines over the length ceiling whose length comes from code. A line dominated by string-literal content (template chunks, string tokens, JSX text) or comments — a prompt template body, a long URL constant — is exempt even when a closing delimiter or semicolon trails it; real code remnants always leave a run longer than a delimiter. A warning, so pre-existing offenders are burned down rather than failing CI.",
+				"Flag source lines over the length ceiling whose length comes from code. A line dominated by string-literal content (template chunks, string tokens, JSX text) or comments — a prompt template body, a long URL constant — is exempt even when a closing delimiter or semicolon trails it; structural code is counted across literals, so arrays of short string members are still code. A warning, so pre-existing offenders are burned down rather than failing CI.",
 		},
 		messages: {
 			overlongCodeLine:
@@ -71,7 +86,7 @@ export const noOverlongCodeLinesRule = defineRule({
 				for (const [lineIndex, line] of source.getLines().entries()) {
 					if (line.length <= max) continue;
 					const lineStart = source.lineStartIndices[lineIndex];
-					if (longestCodeRun(line, covered, lineStart) > MAX_INLINE_CODE_DEBRIS) {
+					if (longestCodeRun(line, covered, lineStart) > MAX_INLINE_CODE_DEBRIS || inlineLiteralCount(line, covered, lineStart, source) > 2) {
 						context.report({
 							loc: { line: lineIndex + 1, column: 0 },
 							messageId: "overlongCodeLine",

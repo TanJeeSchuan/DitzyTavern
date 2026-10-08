@@ -164,7 +164,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 									<button
 										type="button"
 										className="model-pin-button"
-										aria-label={`{isPinned ? "Unstar" : "Star"} {modelId} in {profile.displayName}`}
+										aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`}
 										disabled={busy}
 										onClick={() => void togglePin(profile, modelId)}
 									>
