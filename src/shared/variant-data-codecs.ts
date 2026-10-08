@@ -1,10 +1,54 @@
+import { Value } from "@sinclair/typebox/value";
 import {
 	generationProvenanceCodec, generationJsonObject, parseGenerationJson,
 	type GenerationJsonValue, type GenerationProvenanceDataEntry, type GenerationProvenanceRecord,
 } from "./generation-provenance";
-import { parseLoreActivationRecord, LoreActivationRecordParseError, type LoreActivationRecord } from "./contract/lore-activation";
-import { parseMemoryActivationRecord, MemoryActivationRecordParseError, type MemoryActivationRecord } from "./contract/memory-recall";
+import { loreActivationRecord, type LoreActivationRecord } from "./contract/lore-activation";
+import { memoryActivationRecord, type MemoryActivationRecord } from "./contract/memory-recall";
 import { decodeMacroVariableWrite, encodeMacroVariableWrite, type MacroVariableWrite } from "./contract/macro-variable-write";
+
+export class LoreActivationRecordParseError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
+	constructor(message: string) {
+		super(message);
+		this.name = "LoreActivationRecordParseError";
+	}
+}
+
+/** Decode persisted JSON without turning malformed or invalid records into an absent record. */
+const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | null => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(serialized);
+	} catch {
+		throw new LoreActivationRecordParseError("Persisted Lore Activation Record is not valid JSON.");
+	}
+	if (parsed === null) return null;
+	if (!Value.Check(loreActivationRecord, parsed)) {
+		throw new LoreActivationRecordParseError("Persisted Lore Activation Record does not match the canonical schema.");
+	}
+	// SAFETY: Value.Check establishes the complete canonical record shape before this cast.
+	return parsed as LoreActivationRecord;
+};
+
+export class MemoryActivationRecordParseError extends Error {
+	readonly outcome = "invalid" as const;
+	readonly details = { reason: this.message };
+
+	constructor(message: string) {
+		super(message);
+		this.name = "MemoryActivationRecordParseError";
+	}
+}
+
+const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord | null => {
+	let parsed: unknown;
+	try { parsed = JSON.parse(serialized); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record is not valid JSON."); }
+	if (parsed === null) return null;
+	try { return Value.Parse(memoryActivationRecord, parsed); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema."); }
+};
 
 export const GENERATION_DATA_NAMESPACE = "generation";
 export const GENERATION_DATA_KEYS = {
@@ -68,13 +112,11 @@ export const variantDataCodecs = {
 		namespace: LORE_ACTIVATION_NAMESPACE, key: LORE_ACTIVATION_KEY, keys: [LORE_ACTIVATION_KEY],
 		decode: parseLoreActivationRecord,
 		encode: (value: LoreActivationRecord) => JSON.stringify(value),
-		parseError: LoreActivationRecordParseError,
 	},
 	memoryActivation: {
 		namespace: MEMORY_ACTIVATION_NAMESPACE, key: MEMORY_ACTIVATION_KEY, keys: [MEMORY_ACTIVATION_KEY],
 		decode: parseMemoryActivationRecord,
 		encode: (value: MemoryActivationRecord) => JSON.stringify(value),
-		parseError: MemoryActivationRecordParseError,
 	},
 	macroWrites: {
 		namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey, keys: [], keyPrefix: "write:",
