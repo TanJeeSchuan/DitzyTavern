@@ -14,6 +14,7 @@ tester.run("no-conversation-internal-imports", noConversationInternalImportsRule
   { filename: "src/server/database/schema.ts", code: 'import { messageTable } from "./schema";' },
  ],
  invalid: [
+  { filename: "src/server/database/schema.ts", code: 'import type { ConversationSummary } from "../conversation/types";', errors: [{ messageId: "internalImport" }] },
   { filename: "src/server/memory/recall.ts", code: 'import { readChatHistory } from "../conversation/history";', errors: [{ messageId: "internalImport" }] },
   { filename: "src/server/workflows/nested/capture.ts", code: 'import type { ConversationSummary } from "../../conversation/types";', errors: [{ messageId: "internalImport" }] },
   { filename: "src/server/memory/recall.ts", code: 'import { messageVariantTable as variants } from "../database/schema";', errors: [{ messageId: "tableImport" }] },
