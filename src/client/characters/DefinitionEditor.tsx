@@ -121,8 +121,10 @@ export function DefinitionEditor({
 					</button>
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 					<input
-						className={`-mx-2 rounded-md bg-transparent px-2 py-1 text-xl font-semibold tracking-[-0.02em] outline-none
-							hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50`}
+						className={[
+							"-mx-2 rounded-md bg-transparent px-2 py-1 text-xl font-semibold tracking-[-0.02em] outline-none",
+							"hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50",
+						].join(" ")}
 						value={draft.name}
 						aria-label="Name"
 						placeholder="Name"
