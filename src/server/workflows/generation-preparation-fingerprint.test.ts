@@ -48,6 +48,8 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			control: { humanParticipantId: 1, modelParticipantId: 2 },
 		},
 		settings,
+		intent: undefined,
+		pendingHumanText: undefined,
 		effectiveSettings: effectiveGenerationSettingsFor(settings, undefined, null),
 		recipe: { id: 1, name: "Default", slots: [] },
 		connection: null,
