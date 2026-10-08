@@ -78,11 +78,47 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 		<h3>Lorebooks</h3>
 		<p className="panel-note">Attach shared books to this {ownerLabel(owner)}. Scope controls when the book can activate.</p>
 		<div className="apply-row">
-			<AppSelect className="field-input" value={selectedBookId} disabled={disabled || pending || books.length === 0} onValueChange={setSelectedBookId} aria-label="Lorebook to attach" emptyLabel="Select a Lorebook" options={books.map((book) => ({ value: book.id, label: book.name }))} />
-			<AppSelect className="field-input" value={selectedScope} disabled={disabled || pending} onValueChange={(value) => setSelectedScope(value === "controlled-participant" ? "controlled-participant" : "cast")} aria-label="Lorebook attachment scope" options={[{ value: "cast", label: "Cast" }, { value: "controlled-participant", label: "Controlled Participant" }]} />
+			<AppSelect
+			className="field-input"
+			value={selectedBookId}
+			disabled={disabled || pending || books.length === 0}
+			onValueChange={setSelectedBookId}
+			aria-label="Lorebook to attach"
+			emptyLabel="Select a Lorebook"
+			options={books.map((book) => ({ value: book.id, label: book.name }))}
+		/>
+			<AppSelect
+			className="field-input"
+			value={selectedScope}
+			disabled={disabled || pending}
+			onValueChange={(value) => setSelectedScope(value === "controlled-participant" ? "controlled-participant" : "cast")}
+			aria-label="Lorebook attachment scope"
+			options={[
+				{ value: "cast", label: "Cast" },
+				{ value: "controlled-participant", label: "Controlled Participant" },
+			]}
+		/>
 			<Button variant="outline" size="sm" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</Button>
 		</div>
-		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment)}>Detach</Button></li>)}</ul>}
+		{state.attachments.length === 0 ? (
+			<p className="panel-note">No Lorebooks attached.</p>
+		) : (
+			<ul className="lore-attachment-list">
+				{state.attachments.map((attachment) => (
+					<li className="apply-row" key={attachment.id}>
+						<span>
+							{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}
+						</span>
+						<Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>
+							{attachment.enabled ? "Disable" : "Enable"}
+						</Button>
+						<Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment)}>
+							Detach
+						</Button>
+					</li>
+				))}
+			</ul>
+		)}
 		{notice !== null && <p className="panel-note" role="status">{notice}</p>}
 	</section>;
 }
@@ -97,7 +133,15 @@ function LoreAttachmentLoading({ owner }: { owner: Owner }) {
 			<div className="h-9 min-w-40 animate-pulse rounded-md bg-muted/50" />
 			<div className="h-9 w-16 animate-pulse rounded-md bg-muted/50" />
 		</div>
-		<ul className="lore-attachment-list" aria-hidden="true">{["first", "second"].map((key) => <li className="apply-row" key={key}><div className="h-5 flex-1 animate-pulse rounded bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /></li>)}</ul>
+		<ul className="lore-attachment-list" aria-hidden="true">
+			{["first", "second"].map((key) => (
+				<li className="apply-row" key={key}>
+					<div className="h-5 flex-1 animate-pulse rounded bg-muted/50" />
+					<div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" />
+					<div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" />
+				</li>
+			))}
+		</ul>
 	</section>;
 }
 

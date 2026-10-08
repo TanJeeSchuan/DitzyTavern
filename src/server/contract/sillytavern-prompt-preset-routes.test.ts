@@ -27,6 +27,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 type ImportError = { outcome: "invalid"; reason: string };
 interface ImportRequest {
 	source: SillyTavernJsonValue;
@@ -167,7 +169,10 @@ const requireApplied = (body: SillyTavernImportApplied | ImportError): SillyTave
 describe("SillyTavern Prompt Preset import transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("reviews and commits both tracked samples through one selected order", async () => {

@@ -585,12 +585,14 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 								><X aria-hidden="true" /></Button>
 							</li>)}
 						</ul>}
-					{loreBlockMissing && attachmentState.attachments.some((attachment) => attachment.enabled) && <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+					{loreBlockMissing && attachmentState.attachments.some((attachment) => attachment.enabled) && (
+						<div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
 						<p className="flex-1">The selected Prompt Preset has no enabled Lore block, so attached lore is not sent to the model.</p>
 						<Button type="button" size="xs" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>
 							{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable" : "Add block"}
 						</Button>
-					</div>}
+						</div>
+					)}
 				</section>}
 			<section className="flex flex-col gap-3 border-t border-border pt-6" aria-labelledby="lore-library-title">
 				<div className="flex items-center justify-between gap-2">
@@ -700,7 +702,11 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 									<Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button>
 								</div>
 								{book.entries.length === 0 && <p className="text-sm text-muted-foreground">No entries yet. Fill in the new entry and save to add it.</p>}
-								{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}>
+								{book.entries.map((entry, index) => (
+									<div
+										className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`}
+										key={entry.id}
+									>
 									<Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}>
 										<strong className="truncate">{entry.title || "Untitled entry"}</strong>
 										<span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span>
@@ -730,7 +736,9 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 										disabled={pending}
 										onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}
 									>{entry.enabled ? "Disable" : "Enable"}</Button>
-								</div>)}
+									</div>
+								)
+							)}
 							</section>
 							{dirty && <p className="panel-intro">Save your entry edits before testing matches.</p>}
 							<MatchTester

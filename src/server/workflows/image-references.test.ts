@@ -17,6 +17,8 @@ import { removeRetainedGenerationInspection } from "../conversation/generation-r
 import { createNativeConversation } from ".";
 import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const writer = { name: "Writer", prompt, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
@@ -24,7 +26,10 @@ const timestamp = "2026-10-04T00:00:00.000Z";
 describe("Image Reference lifetime", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => { database.close(); });
 
 	const picture = async (width: number) => {

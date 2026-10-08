@@ -10,38 +10,28 @@
 // Content. Exact artifact bytes, the canonical archive text, and signatures
 // stay behind deliberate detail operations.
 
+import { api } from "./lib/eden";
+import { requestOutcome } from "./lib/request-outcome";
+import { decodeWirePayload } from "./lib/wire-decode";
 import type {
-	ChatHistoryAuthorStamp,
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryVariant,
 } from "../shared/contract/conversation-schema";
 import { chatHistoryPage } from "../shared/contract/conversation-schema";
-import type {
-	ChatImportDetails,
-	ChatImportDuplicateMatch,
-	ImportDetailsArtifact,
-	ImportDetailsArtifactAvailability,
-} from "../shared/contract/chat-import";
 import {
 	chatImportDetails,
 	importCleanedUpResponse,
 } from "../shared/contract/chat-import";
-import { decodeWirePayload } from "./lib/wire-decode";
-import type { JsonValue } from "./lib/json-guards";
+import type { ChatImportDetails } from "../shared/contract/chat-import";
+import { notFoundOutcome } from "../shared/contract/outcomes";
 
 export type {
-	ChatHistoryAuthorStamp,
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryVariant,
 };
-export type {
-	ChatImportDetails,
-	ChatImportDuplicateMatch,
-	ImportDetailsArtifact,
-	ImportDetailsArtifactAvailability,
-};
+export type { ChatImportDetails };
 
 export interface ChatHistoryPageRequest {
 	aroundMessageId?: number;
@@ -50,160 +40,83 @@ export interface ChatHistoryPageRequest {
 	page?: number;
 }
 
-export type ChatHistoryOutcome =
-	| { status: "available"; page: ChatHistoryPage }
-	| { status: "not-found" }
-	| { status: "invalid" }
-	| { status: "network" };
-
-export type ChatImportDetailsOutcome =
-	| { status: "available"; details: ChatImportDetails }
-	// The Chat is missing or carries no import provenance; the view treats
-	// ==[HUMAN APPROVED]== both as "no Import Details" without any persistent import marker.
-	| { status: "not-found" }
-	| { status: "network" };
-
 // Exact-source download outcome. Missing or corrupt exact artifacts are a
 // ==[HUMAN APPROVED]== typed cleaned-up result: only exact download is affected, never normal
 // Chat reading or commands.
 export type ChatSourceDownloadOutcome =
-	| { status: "available"; filename: string; mediaType: string; bytes: Uint8Array }
-	| { status: "cleaned-up"; reason: "missing" | "corrupt" }
-	| { status: "not-found" }
-	| { status: "network" };
+	| { outcome: "available"; filename: string; mediaType: string; bytes: Uint8Array }
+	| { outcome: "cleaned-up"; reason: "missing" | "corrupt" }
+	| { outcome: "not-found" }
+	| { outcome: "network" };
 
-export interface ChatHistoryTransport {
-	// Reads one stable chronological page of native Messages.
-	// ==[HUMAN APPROVED]==
-	loadHistory(
-		conversationId: number,
-		request?: ChatHistoryPageRequest,
-		signal?: AbortSignal,
-	): Promise<ChatHistoryOutcome>;
-	// Loads the persisted receipt and source identity for one Chat; a typed
-	// ==[HUMAN APPROVED]== not-found for Chats without import provenance.
-	loadImportDetails(conversationId: number): Promise<ChatImportDetailsOutcome>;
-	// Downloads the exact managed source bytes with the stored original leaf
-	// ==[HUMAN APPROVED]== filename. Cleaned-up is a typed outcome, never an exception.
-	downloadExactSource(conversationId: number): Promise<ChatSourceDownloadOutcome>;
+// Reads one stable chronological page of native Messages; the outcome is
+// the wire's own: the page under `available`, the typed 404 envelope
+// verbatim, and network for everything the seam could not classify.
+export async function loadHistoryPage(
+	conversationId: number,
+	request?: ChatHistoryPageRequest,
+	signal?: AbortSignal,
+) {
+	return requestOutcome(
+		api.api.conversations({ id: conversationId }).history.get({
+			query: { page: request?.page, aroundMessageId: request?.aroundMessageId },
+			fetch: { signal },
+		}),
+		chatHistoryPage,
+		notFoundOutcome,
+	);
 }
 
-// Validates and decodes one history page against the canonical shared
-// ==[HUMAN APPROVED]== contract at the I/O boundary. Any field failing the typed contract
-// discards the whole payload so a malformed response can never masquerade
-// as trusted history.
-const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null =>
-	decodeWirePayload(chatHistoryPage, value);
+// Loads the persisted receipt and source identity for one Chat; a typed
+// ==[HUMAN APPROVED]== not-found for Chats without import provenance.
+export async function loadImportDetails(conversationId: number) {
+	return requestOutcome(
+		api.api.conversations({ id: conversationId })["import-details"].get(),
+		chatImportDetails,
+		notFoundOutcome,
+	);
+}
 
-const parseImportDetails = (value: JsonValue): ChatImportDetails | null =>
-	decodeWirePayload(chatImportDetails, value);
+// The exact-source base targets like the Eden boundary: the page origin in
+// the browser, a local default where the browser object is absent.
+const importSourceBase =
+	globalThis.window === undefined ? "http://localhost" : window.location.origin;
 
-const parseHistoryResponse = async (
-	response: Response,
-): Promise<ChatHistoryOutcome> => {
-	if (response.status === 404) return { status: "not-found" };
-	if (!response.ok) return { status: "invalid" };
-	const value: JsonValue = await response.json().catch(() => ({}));
-	const page = parseHistoryPage(value);
-	if (page === null) return { status: "invalid" };
-	return { status: "available", page };
-};
-
-const parseImportDetailsResponse = async (
-	response: Response,
-): Promise<ChatImportDetailsOutcome> => {
-	if (response.status === 404) return { status: "not-found" };
-	if (!response.ok) return { status: "network" };
-	const value: JsonValue = await response.json().catch(() => ({}));
-	const details = parseImportDetails(value);
-	if (details === null) return { status: "network" };
-	return { status: "available", details };
-};
-
-const parseDownloadResponse = async (
-	response: Response,
-): Promise<ChatSourceDownloadOutcome> => {
-	if (response.status === 404) return { status: "not-found" };
-	if (response.status === 410) {
-		const value: JsonValue = await response.json().catch(() => ({}));
-		const cleaned = decodeWirePayload(importCleanedUpResponse, value);
-		return {
-			status: "cleaned-up",
-			reason: cleaned?.reason ?? "missing",
-		};
+// The exact-source download is this module's one byte-protocol read: the
+// archive streams raw under its own media type instead of decoded wire, so
+// — like the Generation and update streams — its response is read directly;
+// only the typed 410 cleaned-up envelope is decoded here, and the sanitized
+// leaf filename and media type come from the response headers.
+export async function downloadExactSource(
+	conversationId: number,
+): Promise<ChatSourceDownloadOutcome> {
+	try {
+		const response = await fetch(
+			`${importSourceBase}/api/conversations/${conversationId}/import-source`,
+		);
+		if (response.ok) {
+			const disposition = response.headers.get("content-disposition") ?? "";
+			const match = /filename="([^"]+)"/.exec(disposition);
+			const filename = match?.[1] ?? "imported-chat.jsonl";
+			return {
+				outcome: "available",
+				filename,
+				mediaType: response.headers.get("content-type") ?? "application/octet-stream",
+				bytes: new Uint8Array(await response.arrayBuffer()),
+			};
+		}
+		if (response.status === 404) return { outcome: "not-found" };
+		if (response.status === 410) {
+			const cleaned = decodeWirePayload(
+				importCleanedUpResponse,
+				await response.json().catch(() => null),
+			);
+			return cleaned === null
+				? { outcome: "network" }
+				: { outcome: "cleaned-up", reason: cleaned.reason };
+		}
+		return { outcome: "network" };
+	} catch {
+		return { outcome: "network" };
 	}
-	if (!response.ok) return { status: "network" };
-	const disposition = response.headers.get("content-disposition") ?? "";
-	const match = /filename="([^"]+)"/.exec(disposition);
-	const filename = match?.[1] ?? "imported-chat.jsonl";
-	return {
-		status: "available",
-		filename,
-		mediaType: response.headers.get("content-type") ?? "application/octet-stream",
-		bytes: new Uint8Array(await response.arrayBuffer()),
-	};
-};
-
-export interface ChatHistoryTransportOptions {
-	// Server origin; defaults to the current page origin in the browser.
-	// ==[HUMAN APPROVED]==
-	base?: string;
-	// Injectable request function for tests (for example one backed by
-	// ==[HUMAN APPROVED]== a mocked Response).
-	fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
-
-export const createChatHistoryTransport = (
-	options: ChatHistoryTransportOptions = {},
-): ChatHistoryTransport => {
-	const base =
-		options.base ??
-		(globalThis.window === undefined
-			? "http://localhost"
-			: window.location.origin);
-	const request = options.fetchImpl ?? ((input, init) => fetch(input, init));
-
-	const historyUrl = (conversationId: number, page?: ChatHistoryPageRequest) => {
-		const query = new URLSearchParams();
-		if (page?.page !== undefined) query.set("page", String(page.page));
-		if (page?.aroundMessageId !== undefined) query.set("aroundMessageId", String(page.aroundMessageId));
-		const suffix = query.size > 0 ? `?${query.toString()}` : "";
-		return `${base}/api/conversations/${conversationId}/history${suffix}`;
-	};
-
-	return {
-		async loadHistory(conversationId, page, signal) {
-			try {
-				const response = await request(historyUrl(conversationId, page), { signal });
-				return await parseHistoryResponse(response);
-			} catch {
-				return { status: "network" };
-			}
-		},
-		async loadImportDetails(conversationId) {
-			try {
-				const response = await request(
-					`${base}/api/conversations/${conversationId}/import-details`,
-				);
-				return await parseImportDetailsResponse(response);
-			} catch {
-				return { status: "network" };
-			}
-		},
-		async downloadExactSource(conversationId) {
-			try {
-				const response = await request(
-					`${base}/api/conversations/${conversationId}/import-source`,
-				);
-				return await parseDownloadResponse(response);
-			} catch {
-				return { status: "network" };
-			}
-		},
-	};
-};
-
-// The default boundary used by the Chat reading UI.
-// ==[HUMAN APPROVED]==
-export const chatHistoryTransport: ChatHistoryTransport =
-	createChatHistoryTransport();

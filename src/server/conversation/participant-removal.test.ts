@@ -25,6 +25,8 @@ import { applyCommand } from "./test-fixtures";
 import { generateSiblingVariant } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
+import { observeConversationWrites } from "./commands/transaction";
+import { syncMemorySources } from "../memory";
 const emptyPrompt = () => ({
 	systemInstruction: "",
 	identity: "",
@@ -50,6 +52,7 @@ describe("Participant removal", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 	afterEach(() => {
 		database.close();

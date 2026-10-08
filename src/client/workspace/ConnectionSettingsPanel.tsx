@@ -26,7 +26,15 @@ export function ConnectionSettingsPanel({
 		<div className="panel-body settings-panel-body">
 			{controller.loading ? <p className="panel-note" role="status">Loading Connections…</p>
 				: controller.settings === null ? <p className="import-problem" role="alert">{controller.error}</p>
-				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} onOpenSemanticTrigger={() => setSemanticTriggersOpen(true)} />}
+				: (
+					<ConnectionProfileList
+						controller={controller}
+						settings={controller.settings}
+						activeProfileId={activeProfileId}
+						semanticTriggers={semanticTriggers}
+						onOpenSemanticTrigger={() => setSemanticTriggersOpen(true)}
+					/>
+				)}
 		</div>
 	);
 }

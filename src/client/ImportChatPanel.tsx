@@ -10,8 +10,10 @@ import {
 	type ChatImportFlowState,
 } from "./import-chat-flow";
 import {
-	chatImportTransport,
+	commitImport,
 	discardStagedImport,
+	previewImport,
+	stageImport,
 } from "./import-chat";
 import {
 	ChooseStep,
@@ -91,18 +93,18 @@ export function ImportChatPanel({
 	};
 
 	const runStage = async (file: File) => {
-		const outcome = await chatImportTransport.stage(file, file.name);
+		const outcome = await stageImport(file, file.name);
 		if (cancelledRef.current) return;
 		onDispatch(
-			outcome.status === "staged"
+			outcome.outcome === "available"
 				? {
 						type: "stage-succeeded",
-						stage: { token: outcome.token, preview: outcome.preview },
+						stage: { token: outcome.value.token, preview: outcome.value.preview },
 					}
 				: {
 						type: "stage-failed",
 						reason:
-							outcome.status === "invalid"
+							outcome.outcome === "invalid"
 								? outcome.reason
 								: "The file could not be uploaded. Check the connection and choose it again.",
 					},
@@ -112,16 +114,16 @@ export function ImportChatPanel({
 	const refreshPreview = async () => {
 		const handle = flow.handle;
 		if (handle === null) return;
-		const outcome = await chatImportTransport.preview(handle.token, handle.sha256);
+		const outcome = await previewImport(handle.token, handle.sha256);
 		if (cancelledRef.current) return;
-		if (outcome.status === "available") {
-			onDispatch({ type: "preview-succeeded", preview: outcome.preview });
+		if (outcome.outcome === "available") {
+			onDispatch({ type: "preview-succeeded", preview: outcome.value.preview });
 			return;
 		}
 		onDispatch({
 			type: "preview-failed",
 			reason:
-				outcome.status === "expired" || outcome.status === "unavailable"
+				outcome.outcome === "expired" || outcome.outcome === "unavailable"
 					? "This staged import is no longer available. Go back and choose the file again."
 					: "The preview could not be refreshed. Try again.",
 		});
@@ -131,22 +133,22 @@ export function ImportChatPanel({
 		const handle = flow.handle;
 		if (handle === null || !canCommit(flow)) return;
 		onDispatch({ type: "commit-started" });
-		const outcome = await chatImportTransport.commit(handle.token, handle.sha256, {
+		const outcome = await commitImport(handle.token, handle.sha256, {
 			title: flow.title,
 			duplicateConfirmed: flow.duplicateConfirmed,
 			participants: buildResolvedParticipants(flow),
 		});
 		if (cancelledRef.current) return;
-		if (outcome.status === "committed") {
-			onDispatch({ type: "commit-succeeded", receipt: outcome.receipt });
+		if (outcome.outcome === "available") {
+			onDispatch({ type: "commit-succeeded", receipt: outcome.value.receipt });
 			return;
 		}
 		onDispatch({
 			type: "commit-failed",
 			reason:
-				outcome.status === "invalid"
+				outcome.outcome === "invalid"
 					? outcome.reason
-					: outcome.status === "expired" || outcome.status === "unavailable"
+					: outcome.outcome === "expired" || outcome.outcome === "unavailable"
 						? "This staged import is no longer available. Go back and choose the file again."
 						: "The import could not be committed. Check the connection and try again; the staged preview and every choice stay available.",
 		});

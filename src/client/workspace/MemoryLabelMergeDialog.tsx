@@ -19,7 +19,12 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 	const listId = useId();
 	const names = [...new Set(snapshot.sources.flatMap((source) => source.claims.flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
 	const target = destination.trim();
-	const affected = snapshot.sources.flatMap((source) => source.claims.flatMap((claim, index) => claim.people.some((name) => labels.includes(name) && name !== target) ? [{ source, claim, index }] : []));
+	const affected = snapshot.sources.flatMap((source) =>
+		source.claims.flatMap((claim, index) =>
+			claim.people.some((name) => labels.includes(name) && name !== target)
+				? [{ source, claim, index }]
+				: [],
+		));
 	const save = async (event: FormEvent) => {
 		event.preventDefault();
 		setPending(true); setError(null);
@@ -46,7 +51,19 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 						{names.map((name) => <ToggleGroupItem key={name} value={name}>{name}</ToggleGroupItem>)}
 					</ToggleGroup>
 				</fieldset>
-				<label className="field"><span className="field-label">Merge into</span><input className="field-input" list={listId} placeholder="Choose an existing name or type a new one" value={destination} maxLength={1024} onChange={(event) => setDestination(event.target.value)} disabled={pending} required /></label>
+				<label className="field">
+					<span className="field-label">Merge into</span>
+					<input
+						className="field-input"
+						list={listId}
+						placeholder="Choose an existing name or type a new one"
+						value={destination}
+						maxLength={1024}
+						onChange={(event) => setDestination(event.target.value)}
+						disabled={pending}
+						required
+					/>
+				</label>
 				<datalist id={listId}>{names.map((name) => <option key={name} value={name} />)}</datalist>
 				{labels.length > 0 && target && <section className="memory-merge-preview" aria-label="Merge preview">
 					<p className="field-label">{affected.length} {affected.length === 1 ? "Memory" : "Memories"} will use {target}</p>

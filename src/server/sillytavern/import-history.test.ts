@@ -30,6 +30,8 @@ import {
 	writerFixture as writer,
 } from "./fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // Graduated reading and Import Details: an imported Chat opens through the
 // same paginated native read model as every other Chat, swipe navigation is
 // the existing revisioned Variant-selection command, both preserved source
@@ -56,6 +58,7 @@ describe("graduated Chat history and Import Details", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-history-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

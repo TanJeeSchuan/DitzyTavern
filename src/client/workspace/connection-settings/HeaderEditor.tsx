@@ -16,7 +16,17 @@ export function HeaderEditor({ data, onChange }: { data: HeaderEditorData; onCha
 				<div key={key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2">
 					<span className={`truncate font-mono text-xs ${header.operation === "remove" ? "text-muted-foreground line-through" : ""}`} title={key}>{key}</span>
 					{header.operation === "replace"
-						? <input className="field-input" type="password" aria-label={`${key} value`} value={header.replacement} onChange={(event) => update(key, { replacement: event.target.value })} placeholder={header.configured ? "New value" : "Value"} autoComplete="off" />
+						? (
+							<input
+								className="field-input"
+								type="password"
+								aria-label={`${key} value`}
+								value={header.replacement}
+								onChange={(event) => update(key, { replacement: event.target.value })}
+								placeholder={header.configured ? "New value" : "Value"}
+								autoComplete="off"
+							/>
+						)
 						: <span className="text-xs text-muted-foreground">{header.operation === "remove" ? "Removed on save" : "Saved value"}</span>}
 					<span className="flex justify-end">
 						{!header.configured

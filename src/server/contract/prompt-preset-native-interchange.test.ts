@@ -21,6 +21,8 @@ import {
 	startGeneration,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Native interchange exercises export and reimport of the stored recipe
 // through the public library routes: references stay references, authored
 // text travels untouched, and a reimported recipe drives a selected
@@ -28,7 +30,10 @@ import {
 describe("Native Prompt Preset interchange", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("round-trips authored text, comments, references, roles, order and disabled repeats", async () => {

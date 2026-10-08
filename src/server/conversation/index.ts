@@ -48,6 +48,7 @@ import type { ConversationModule } from "./types";
 
 export {
 	ConversationNotPlayableError,
+	ConversationWriteObserverMissingError,
 	ContinuationUnavailableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,

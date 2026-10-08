@@ -25,6 +25,8 @@ import {
 } from ".";
 import { applyCommand, requireSnapshot } from "./test-fixtures";
 
+import { observeConversationWrites } from "./commands/transaction";
+import { syncMemorySources } from "../memory";
 describe("Conversation module", () => {
 	let database: Database;
 	let conversationId: number;
@@ -33,6 +35,7 @@ describe("Conversation module", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const module = createConversationModule(database);
 		const snapshot = module.create({
 			name: "Test Conversation",

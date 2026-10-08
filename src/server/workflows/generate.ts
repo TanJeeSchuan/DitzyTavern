@@ -125,12 +125,16 @@ interface GenerationLifecyclePolicy<
  */
 async function runGenerationLifecycle<
 	K extends GenerationTargetKind,
-	Input extends GenerationAttemptInput & { readonly preview?: GenerationPreviewAcceptanceFor<K> },
+	Input extends GenerationAttemptInput & {
+		readonly preview?: GenerationPreviewAcceptanceFor<K>;
+		// ==[HUMAN APPROVED]== Fired immediately after the accepted target transaction commits
+		// and before provider contact begins.
+		readonly onAccepted?: (accepted: Accepted) => void | Promise<void>;
+	},
 	Accepted extends AcceptedGenerationTarget,
 >(
 	database: Database,
 	input: Input,
-	onAccepted: ((accepted: Accepted) => void | Promise<void>) | undefined,
 	policy: GenerationLifecyclePolicy<K, Input, Accepted>,
 ): Promise<Accepted> {
 	const conversation = createConversationModule(database);
@@ -171,7 +175,7 @@ async function runGenerationLifecycle<
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
 	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
-	await notifyAccepted<Accepted>({ onAccepted }, accepted);
+	await notifyAccepted<Accepted>({ onAccepted: input.onAccepted }, accepted);
 	return runAcceptedGeneration(input, policy.request(capture, input), {
 		remove: () => {
 			conversation.removeGeneration({
@@ -213,41 +217,85 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
 }
 
-/**
- * ==[HUMAN APPROVED]== A settled Generation is its acceptance record restated against the
- * Conversation as it stands after resolution. Acceptance already names the
- * Generation, its target Message, and its Provisional Variant, so a terminal
- * result carries nothing new but the newer snapshot — there is no separate
- * per-lifecycle result shape to map onto.
- */
-export type SendThroughProvisionalTailGenerationResult = AcceptedTailGeneration;
-
-const sendLifecycle: GenerationLifecyclePolicy<"send", SendThroughProvisionalTailGenerationInput, AcceptedTailGeneration> = {
-	target: (input) => ({ kind: "send", content: input.content }),
-	// ==[HUMAN APPROVED]== Send's accepted lifecycle: preflight is entirely read-only; only
-	// after it succeeds does the Conversation seam atomically create the human
-	// input, provisional model target, and Active Generation before this
-	// workflow contacts a Model Client.
-	accept: (conversation, input, capture, timestamp) => conversation.acceptTailGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
+// ==[HUMAN APPROVED]== The one lifecycle policy table, one row per attempt kind. Each row
+// states only where its kind genuinely differs: the attempt target it starts,
+// how it accepts into the Conversation, and (Continuation only) the terminal
+// data recorded ahead of the shared outcome entries.
+const generationLifecyclePolicies = {
+	send: {
+		target: (input: SendThroughProvisionalTailGenerationInput) => ({ kind: "send", content: input.content }),
+		// ==[HUMAN APPROVED]== Send's accepted lifecycle: preflight is entirely read-only; only
+		// after it succeeds does the Conversation seam atomically create the human
+		// input, provisional model target, and Active Generation before this
+		// workflow contacts a Model Client.
+		accept: (
+			conversation: ConversationModule,
+			input: SendThroughProvisionalTailGenerationInput,
+			capture: CapturedGenerationFor<"send">,
+			timestamp: string,
+		) => conversation.acceptTailGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: input.conversationId,
+				timestamp,
+			}),
+			expectedRevision: input.expectedRevision,
+			humanContent: capture.content,
+			reuseHumanMessageId: capture.reuseHumanMessageId,
 		}),
-		expectedRevision: input.expectedRevision,
-		humanContent: capture.content,
-		reuseHumanMessageId: capture.reuseHumanMessageId,
-	}),
-	request: modelRequestFor,
+		request: modelRequestFor,
+	} satisfies GenerationLifecyclePolicy<"send", SendThroughProvisionalTailGenerationInput, AcceptedTailGeneration>,
+	continuation: {
+		target: () => ({ kind: "continuation" }),
+		accept: (
+			conversation: ConversationModule,
+			input: ContinueGenerationInput,
+			capture: CapturedGenerationFor<"continuation">,
+			timestamp: string,
+		) => conversation.acceptContinuationGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: input.conversationId,
+				timestamp,
+			}),
+			expectedRevision: input.expectedRevision,
+			precedingMessageId: capture.precedingMessageId,
+			precedingVariantId: capture.precedingVariantId,
+			generationIntent: capture.intent,
+		}),
+		request: modelRequestFor,
+		terminalData: (capture: CapturedGenerationFor<"continuation">) => [
+			{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
+		],
+	} satisfies GenerationLifecyclePolicy<"continuation", ContinueGenerationInput, AcceptedContinuationGeneration>,
+	sibling: {
+		target: (input: GenerateSiblingVariantInput) => ({ kind: "sibling", messageId: input.messageId }),
+		accept: (
+			conversation: ConversationModule,
+			input: GenerateSiblingVariantInput,
+			capture: CapturedGenerationFor<"sibling">,
+			timestamp: string,
+		) => conversation.acceptSiblingGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: input.conversationId,
+				timestamp,
+			}),
+			messageId: capture.messageId,
+			generationIntent: { type: "sibling" },
+		}),
+		request: modelRequestFor,
+	} satisfies GenerationLifecyclePolicy<"sibling", GenerateSiblingVariantInput, AcceptedSiblingGeneration>,
 };
 
 // ==[HUMAN APPROVED]== Send workflow: the accepted human/provisional target is committed
 // atomically and the provider attempt runs detached from any observing
-// request.
+// request. Each entry names its kind and delegates to the one lifecycle
+// runner with its row of the one policy table.
+export type SendThroughProvisionalTailGenerationResult = AcceptedTailGeneration;
+
 export async function sendThroughProvisionalTailGeneration(
 	database: Database,
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
-	return runGenerationLifecycle(database, input, input.onAccepted, sendLifecycle);
+	return runGenerationLifecycle(database, input, generationLifecyclePolicies.send);
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
@@ -266,29 +314,11 @@ export type ContinueGenerationResult = AcceptedContinuationGeneration;
 // model-authored Message. It shares the same normalized stream, terminal
 // outcome, and provisional cleanup behavior as Send, but never inserts a
 // Human-authored Message.
-const continuationLifecycle: GenerationLifecyclePolicy<"continuation", ContinueGenerationInput, AcceptedContinuationGeneration> = {
-	target: () => ({ kind: "continuation" }),
-	accept: (conversation, input, capture, timestamp) => conversation.acceptContinuationGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
-		}),
-		expectedRevision: input.expectedRevision,
-		precedingMessageId: capture.precedingMessageId,
-		precedingVariantId: capture.precedingVariantId,
-		generationIntent: capture.intent,
-	}),
-	request: modelRequestFor,
-	terminalData: (capture) => [
-		{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
-	],
-};
-
 export async function continueGeneration(
 	database: Database,
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
-	return runGenerationLifecycle(database, input, input.onAccepted, continuationLifecycle);
+	return runGenerationLifecycle(database, input, generationLifecyclePolicies.continuation);
 }
 
 export interface GenerateSiblingVariantInput extends GenerationAttemptInput {
@@ -312,26 +342,14 @@ export type SiblingGenerationResult = AcceptedSiblingGeneration;
 // Definitions and names compile the plan; current generation settings and
 // the selected history preceding the target Message complete it. The commit
 // appends the sibling without changing current Control or the Author Stamp.
-const siblingLifecycle: GenerationLifecyclePolicy<"sibling", GenerateSiblingVariantInput, AcceptedSiblingGeneration> = {
-	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
-	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
-	target: (input) => ({ kind: "sibling", messageId: input.messageId }),
-	accept: (conversation, input, capture, timestamp) => conversation.acceptSiblingGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
-		}),
-		messageId: capture.messageId,
-		generationIntent: { type: "sibling" },
-	}),
-	request: modelRequestFor,
-};
-
+// Sibling capture remains revision-neutral: the target's historical pair and
+// the sibling acceptance seam own its distinct eligibility and
+// parallel-at-position rules.
 export async function generateSiblingVariant(
 	database: Database,
 	input: GenerateSiblingVariantInput,
 ): Promise<SiblingGenerationResult> {
-	return runGenerationLifecycle(database, input, input.onAccepted, siblingLifecycle);
+	return runGenerationLifecycle(database, input, generationLifecyclePolicies.sibling);
 }
 
 /**

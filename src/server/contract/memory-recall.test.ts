@@ -18,6 +18,8 @@ import { createMemorySettingsModule } from "../memory/settings";
 import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/labels";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;
 	while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
@@ -98,6 +100,7 @@ describe("Memory recall in Generation preparation", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 	});
 

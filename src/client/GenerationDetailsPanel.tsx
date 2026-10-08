@@ -42,13 +42,13 @@ export function GenerationDetailsPanel({
 
 	useAsyncEffect((isCancelled) => {
 		setState({ status: "loading" });
-		const showError = (status: "not-found" | "invalid" | "network", reason?: string) => {
+		const showError = (outcome: "not-found" | "invalid" | "network", reason?: string) => {
 			if (isCancelled()) return;
 			setState({
 				status: "error",
-				message: status === "not-found"
+				message: outcome === "not-found"
 					? "These Generation details are no longer available."
-					: status === "invalid"
+					: outcome === "invalid"
 						? reason ?? "Stored Generation details are invalid."
 						: "Generation details could not be loaded.",
 			});
@@ -265,9 +265,20 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 				<div><dt>Relevance minimum</dt><dd>{record.relevanceMinimum}</dd></div>
 				<div><dt>Prompt edit</dt><dd>{record.manuallyEdited ? "Manual" : "Automatic"}</dd></div>
 			</dl>
-			<p className="panel-note">{record.manuallyEdited ? "This Memory block was edited for this Generation. Saved source Memories are unchanged." : "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}</p>
-			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && <p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>}
-			{record.manuallyEdited && <details><summary>Automatic Memory selection</summary><pre className="generation-detail-preformatted">{record.automaticMemoryText || "No Memory text was selected automatically."}</pre></details>}
+			<p className="panel-note">
+			{record.manuallyEdited
+				? "This Memory block was edited for this Generation. Saved source Memories are unchanged."
+				: "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}
+		</p>
+			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && (
+			<p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>
+		)}
+			{record.manuallyEdited && (
+			<details>
+				<summary>Automatic Memory selection</summary>
+				<pre className="generation-detail-preformatted">{record.automaticMemoryText || "No Memory text was selected automatically."}</pre>
+			</details>
+		)}
 			<details><summary>Final Memory block</summary><pre className="generation-detail-preformatted">{record.finalMemoryText || "The final Memory block was empty."}</pre></details>
 			<details>
 				<summary>Considered claims ({record.candidates.length})</summary>
@@ -275,13 +286,66 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 					{record.candidates.map((candidate) => <li key={candidate.identity}>
 						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
 						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
-						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null ? "Not judged" : `Decision Model relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}</p>
-						{candidate.evidence.length > 0 && <details><summary>Supporting excerpts</summary><ul>{candidate.evidence.map((evidence, index) => <li key={`${evidence.messageId}-${index}`}><MemorySourceLink messageId={evidence.messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /><blockquote>{evidence.excerpt}</blockquote></li>)}</ul></details>}
+						<p className="panel-note">
+							<MemorySourceLink
+								messageId={candidate.messageId}
+								variantId={candidate.variantId}
+								sources={memorySources}
+								onNavigateSource={onNavigateSource}
+							/> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}
+							{candidate.sourceChanged
+								? " · source changed since this Memory was saved"
+								: ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null
+									? "no semantic rank"
+									: `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}
+							{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null
+								? "Not judged"
+								: `Decision Model relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}
+						</p>
+						{candidate.evidence.length > 0 && (
+							<details>
+								<summary>Supporting excerpts</summary>
+								<ul>
+									{candidate.evidence.map((evidence, index) => (
+										<li key={`${evidence.messageId}-${index}`}>
+											<MemorySourceLink
+												messageId={evidence.messageId}
+												variantId={null}
+												sources={memorySources}
+												onNavigateSource={onNavigateSource}
+											/>
+											<blockquote>{evidence.excerpt}</blockquote>
+										</li>
+									))}
+								</ul>
+							</details>
+						)}
 					</li>)}
 				</ol>}
 			</details>
-			{record.candidates.some((candidate) => candidate.relevance !== null) && <p className="panel-note">Decision Model relevance is a model judgment about this scene, not proof that a Memory claim is true.</p>}
-			<details><summary>Captured recall scene</summary><p className="panel-note">Messages {record.scanMessageIds.length ? record.scanMessageIds.map((messageId, index) => <span key={messageId}>{index > 0 ? ", " : ""}<MemorySourceLink messageId={messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /></span>) : "none"}{record.scanTruncated ? " · scene text truncated to fit the scan limit" : ""}</p><pre className="generation-detail-preformatted">{record.scene || "No visible scene text was available."}</pre></details>
+			{record.candidates.some((candidate) => candidate.relevance !== null) && (
+			<p className="panel-note">Decision Model relevance is a model judgment about this scene, not proof that a Memory claim is true.</p>
+		)}
+			<details>
+			<summary>Captured recall scene</summary>
+			<p className="panel-note">
+				Messages {record.scanMessageIds.length
+					? record.scanMessageIds.map((messageId, index) => (
+						<span key={messageId}>
+							{index > 0 ? ", " : ""}
+							<MemorySourceLink
+								messageId={messageId}
+								variantId={null}
+								sources={memorySources}
+								onNavigateSource={onNavigateSource}
+							/>
+						</span>
+					))
+					: "none"}
+				{record.scanTruncated ? " · scene text truncated to fit the scan limit" : ""}
+			</p>
+			<pre className="generation-detail-preformatted">{record.scene || "No visible scene text was available."}</pre>
+		</details>
 		</section>
 	);
 }

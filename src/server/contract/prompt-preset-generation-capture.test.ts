@@ -26,6 +26,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== Generation capture coverage: an Active Generation keeps the Prompt Plan
 // it captured, whatever the shared recipe or the Conversation selection does
 // while the attempt streams, and later attempts compile the latest saved
@@ -33,7 +35,10 @@ import {
 describe("Prompt Preset capture", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("an Active Generation keeps its captured plan while saved edits take effect on the next Generation", async () => {
@@ -108,7 +113,10 @@ describe("Prompt Preset capture", () => {
 describe("Prompt Preset selection around an Active Generation", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("a selection change during an attempt keeps its captured Prompt Plan and later attempts use the new selection", async () => {

@@ -11,7 +11,15 @@ export function DecisionModelPicker({ settings, onSettingsChange, selection, onC
 	label: string;
 }) {
 	return <>
-		<ProfileModelPicker settings={settings} onSettingsChange={onSettingsChange} apiFormat="system-one" selected={{ connectionProfileId: selection.decisionProfileId, modelId: selection.decisionModel }} onSelect={(profile, decisionModel) => onChange({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label={label} />
+		<ProfileModelPicker
+			settings={settings}
+			onSettingsChange={onSettingsChange}
+			apiFormat="system-one"
+			selected={{ connectionProfileId: selection.decisionProfileId, modelId: selection.decisionModel }}
+			onSelect={(profile, decisionModel) => onChange({ decisionProfileId: profile.id, decisionModel })}
+			emptyLabel="Add a System One connection in Connections."
+			label={label}
+		/>
 		{selection.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => onChange({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
 	</>;
 }

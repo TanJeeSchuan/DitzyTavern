@@ -29,13 +29,18 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
 	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
 
 describe("Prompt Preset authored instruction macros", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>

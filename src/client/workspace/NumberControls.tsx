@@ -14,7 +14,16 @@ export function NumberRow({ id, label, value, onChange, ...limits }: { id: strin
 	return (
 		<div className="flex items-center justify-between gap-3">
 			<label htmlFor={id} className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">{label}</label>
-			<span className="w-20"><input id={id} className="field-input text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" type="number" {...limits} value={value} onChange={(event) => onChange(Number(event.target.value))} /></span>
+			<span className="w-20">
+				<input
+					id={id}
+					className="field-input text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+					type="number"
+					{...limits}
+					value={value}
+					onChange={(event) => onChange(Number(event.target.value))}
+				/>
+			</span>
 		</div>
 	);
 }

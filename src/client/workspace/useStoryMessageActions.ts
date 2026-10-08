@@ -1,5 +1,5 @@
 import type { Dispatch } from "react";
-import { chatHistoryTransport } from "../chat-history";
+import { loadHistoryPage } from "../chat-history";
 import {
 	applyConversationCommand,
 	type ConversationSummary,
@@ -155,13 +155,13 @@ export function useStoryMessageActions({
 				onApplied: () => {
 					// ==[HUMAN APPROVED]== Reload the edited Message's page so authoritative content replaces the
 					// local edit without drifting from the server's read model.
-					void chatHistoryTransport
-						.loadHistory(conversationId, { aroundMessageId: messageId })
-						.then((freshHistory) => {
-							if (freshHistory.status === "available") {
-								dispatchStory({ type: "history-refreshed", page: freshHistory.page });
+					void loadHistoryPage(conversationId, { aroundMessageId: messageId }).then(
+						(freshHistory) => {
+							if (freshHistory.outcome === "available") {
+								dispatchStory({ type: "history-refreshed", page: freshHistory.value });
 							}
-						});
+						},
+					);
 				},
 				onNotPlayable: noPresentation,
 				onNotRemovable: noPresentation,

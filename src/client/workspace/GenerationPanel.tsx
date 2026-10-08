@@ -83,7 +83,12 @@ function GenerationSettings({
 			{settings !== null && status !== "load-error" && (
 				<div className="grid gap-8">
 					<p className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-						<span className="text-sm font-semibold text-foreground">{settings.modelId}{namespace !== null && <span className="font-normal text-muted-foreground"> · {OVERRIDES_NAMESPACE_LABELS[namespace]}</span>}</span>
+						<span className="text-sm font-semibold text-foreground">
+						{settings.modelId}
+						{namespace !== null && (
+							<span className="font-normal text-muted-foreground"> · {OVERRIDES_NAMESPACE_LABELS[namespace]}</span>
+						)}
+					</span>
 						Change the model from the composer.
 					</p>
 
@@ -94,7 +99,15 @@ function GenerationSettings({
 					<section aria-labelledby="continuation-settings-title">
 						<h3 id="continuation-settings-title">Continuation</h3>
 						<p>How the next model Message continues after a length limit.</p>
-						<SegmentedControl value={strategy} onValueChange={setStrategy} label="Continuation strategy" options={[{ value: "instruction", label: "Instruction" }, { value: "assistant-prefill", label: "Assistant prefill" }]} />
+						<SegmentedControl
+						value={strategy}
+						onValueChange={setStrategy}
+						label="Continuation strategy"
+						options={[
+							{ value: "instruction", label: "Instruction" },
+							{ value: "assistant-prefill", label: "Assistant prefill" },
+						]}
+					/>
 						{strategy === "assistant-prefill" ? (
 							<Field htmlFor="continuation-prefill-suffix" label="Prefill suffix">
 								<AppSelect
@@ -121,7 +134,16 @@ function GenerationSettings({
 					<section aria-labelledby="image-placement-title">
 						<h3 id="image-placement-title">Repeated Images</h3>
 						<p>When the same Image appears more than once in a Generation, which copy is sent. The others send only their name.</p>
-						<SegmentedControl value={imagePlacement} onValueChange={setImagePlacement} label="Repeated Image placement" options={[{ value: "first", label: "First" }, { value: "last", label: "Last" }, { value: "every", label: "Every" }]} />
+						<SegmentedControl
+						value={imagePlacement}
+						onValueChange={setImagePlacement}
+						label="Repeated Image placement"
+						options={[
+							{ value: "first", label: "First" },
+							{ value: "last", label: "Last" },
+							{ value: "every", label: "Every" },
+						]}
+					/>
 						<ul className="grid gap-1 text-xs text-muted-foreground">
 							<li><strong>First</strong> keeps the start of the prompt unchanged between Generations, so provider prompt caching keeps working.</li>
 							<li><strong>Last</strong> shows the model the Image at its most recent mention, but changes the prompt from the earlier position onward and discards that cache.</li>

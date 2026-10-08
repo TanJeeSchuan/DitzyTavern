@@ -283,7 +283,13 @@ export function ActiveWritingWorkspace({
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
 			<NavigationRail activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
-			<NavigationDrawer open={navigationOpen} onOpenChange={setNavigationOpen} activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
+			<NavigationDrawer
+				open={navigationOpen}
+				onOpenChange={setNavigationOpen}
+				activePanel={panelState.primaryPanel}
+				inspecting={assemblyActive}
+				onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))}
+			/>
 
 			<SaveGuardContext.Provider value={registerSaveGuard}>
 			<SaveNavigationContext.Provider value={requestNavigation}>
@@ -440,7 +446,14 @@ export function ActiveWritingWorkspace({
 				</div>
 
 				{story.page?.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
-					<button className="secondary-button" type="button" disabled={previewMode} onClick={() => void session.jumpToLatest().catch(() => dispatchStory({ type: "history-failed" }))}>Jump to latest</button>
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={previewMode}
+						onClick={() => void session.jumpToLatest().catch(() => dispatchStory({ type: "history-failed" }))}
+					>
+						Jump to latest
+					</button>
 				</div>}
 				<Composer
 					draft={generation.draft}
@@ -540,7 +553,10 @@ export function ActiveWritingWorkspace({
 					<div className="workspace-toast-heading"><CircleAlert aria-hidden="true" /><Toast.Title>Generation failed</Toast.Title></div>
 					<Toast.Description className="workspace-toast-description">{generation.generationError}</Toast.Description>
 					{generation.generationImageModel !== null && <>
-						<p className="workspace-toast-description">This Generation sent Images to <span className="font-mono">{generation.generationImageModel.modelId}</span>. If it cannot read Images, mark it text-only to send their names instead.</p>
+						<p className="workspace-toast-description">
+							This Generation sent Images to <span className="font-mono">{generation.generationImageModel.modelId}</span>
+							. If it cannot read Images, mark it text-only to send their names instead.
+						</p>
 						{markError !== null && <p className="workspace-toast-description text-destructive" role="alert">{markError}</p>}
 						<div className="workspace-toast-actions">
 							<Button type="button" size="xs" variant="outline" disabled={marking} onClick={() => void markFailedModelTextOnly(false)}>Mark text-only</Button>
@@ -571,7 +587,19 @@ export function ActiveWritingWorkspace({
 			</Toast.Root>
 		)}
 		<Toast.Viewport className="toast-viewport" />
-		<UnsavedChangesDialog open={leaveAction !== null} saving={leaveSaving || guardPending} error={leaveError} onKeepEditing={() => setLeaveAction(null)} onDiscard={() => { saveGuardRef.current?.discard(); const action = leaveAction; setLeaveAction(null); action?.(); }} onSave={() => void saveAndLeave()} />
+		<UnsavedChangesDialog
+			open={leaveAction !== null}
+			saving={leaveSaving || guardPending}
+			error={leaveError}
+			onKeepEditing={() => setLeaveAction(null)}
+			onDiscard={() => {
+				saveGuardRef.current?.discard();
+				const action = leaveAction;
+				setLeaveAction(null);
+				action?.();
+			}}
+			onSave={() => void saveAndLeave()}
+		/>
 		</Toast.Provider>
 	);
 }

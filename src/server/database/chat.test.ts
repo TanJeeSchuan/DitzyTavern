@@ -5,6 +5,8 @@ import { applyCommand } from "../conversation/test-fixtures";
 import { listChatSummaries } from "./chat";
 import { openInitializedDatabase } from "./database";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -19,6 +21,7 @@ describe("Chat list summaries", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		module = createConversationModule(database);
 	});
 	afterEach(() => database.close());

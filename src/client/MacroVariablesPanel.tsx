@@ -20,10 +20,10 @@ type PanelState =
 	| { status: "ready"; variables: MacroVariables }
 	| { status: "error"; message: string };
 
-const errorText = (status: "not-found" | "network" | "invalid") =>
-	status === "not-found"
+const errorText = (outcome: "not-found" | "network" | "invalid") =>
+	outcome === "not-found"
 		? "Macro Variables are no longer available for this Chat."
-		: status === "invalid"
+		: outcome === "invalid"
 			? "This history position is not available."
 			: "Macro Variables could not be loaded.";
 
@@ -238,7 +238,15 @@ export function MacroVariablesReadyView({
 			</p>
 			<label className="macro-position-field">
 				<span>History position</span>
-				<AppSelect value={position} onValueChange={(value) => onPositionChange(Number(value))} disabled={saving} options={availablePositions.map((value) => ({ value, label: value === 0 ? "Before first Message" : `After Message ${value}` }))} />
+				<AppSelect
+					value={position}
+					onValueChange={(value) => onPositionChange(Number(value))}
+					disabled={saving}
+					options={availablePositions.map((value) => ({
+						value,
+						label: value === 0 ? "Before first Message" : `After Message ${value}`,
+					}))}
+				/>
 			</label>
 			<section className="macro-variable-list" aria-label="Effective Macro Variables">
 				{variables.variables.length === 0 && <p className="panel-note">No effective variables at this position.</p>}
@@ -261,8 +269,35 @@ export function MacroVariablesReadyView({
 					<h3>{editing === null ? "Add Variable" : `Edit ${editing.name}`}</h3>
 					{editing !== null && <button className="edit-action" type="button" onClick={beginAdd} disabled={saving}>Cancel</button>}
 				</div>
-				<label><span>Name</span><input value={draftName} onChange={(event) => { setDraftName(event.target.value); setNameError(false); }} aria-invalid={nameError} aria-describedby={nameError ? "macro-name-error" : undefined} disabled={saving} readOnly={editing !== null} placeholder="variableName" />{nameError && <small id="macro-name-error" className="field-error" role="alert">Enter a Macro Variable name.</small>}</label>
-				<div className="macro-value-field"><span>Value</span><ProseEditor className="macro-value-editor" ariaLabel="Value" value={draftValue} onChange={setDraftValue} disabled={saving} placeholder="A long multiline value is supported." /></div>
+				<label>
+					<span>Name</span>
+					<input
+						value={draftName}
+						onChange={(event) => {
+							setDraftName(event.target.value);
+							setNameError(false);
+						}}
+						aria-invalid={nameError}
+						aria-describedby={nameError ? "macro-name-error" : undefined}
+						disabled={saving}
+						readOnly={editing !== null}
+						placeholder="variableName"
+					/>
+					{nameError && (
+						<small id="macro-name-error" className="field-error" role="alert">Enter a Macro Variable name.</small>
+					)}
+				</label>
+				<div className="macro-value-field">
+					<span>Value</span>
+					<ProseEditor
+						className="macro-value-editor"
+						ariaLabel="Value"
+						value={draftValue}
+						onChange={setDraftValue}
+						disabled={saving}
+						placeholder="A long multiline value is supported."
+					/>
+				</div>
 				<button className="primary-button" type="submit" disabled={saving}><Plus aria-hidden="true" /> {saving ? "Saving…" : editing === null ? "Add Variable" : "Save Variable"}</button>
 			</form>
 			<p className="panel-note macro-variables-help">

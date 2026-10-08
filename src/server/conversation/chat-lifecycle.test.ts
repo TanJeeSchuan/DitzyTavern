@@ -17,6 +17,8 @@ import {
 } from ".";
 import { applyCommand } from "./test-fixtures";
 
+import { observeConversationWrites } from "./commands/transaction";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -31,6 +33,7 @@ describe("Chat rename and deletion", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		module = createConversationModule(database);
 	});
 	afterEach(() => database.close());

@@ -9,6 +9,8 @@ import { uploadImage, sweepOrphanedImages, InvalidImageError } from "../image";
 import type { Portrait } from "../../shared/contract/image";
 import { addCharacterToCast, createNativeConversation, saveParticipantAsCharacter } from ".";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "A lighthouse archivist.",
@@ -20,7 +22,10 @@ const prompt = {
 describe("Portraits", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => { database.close(); });
 
 	const art = async (width: number): Promise<{ portrait: Portrait }> => {

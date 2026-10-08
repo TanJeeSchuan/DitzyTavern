@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { conversationSummary } from "./conversation-schema";
+import { invalidOutcome } from "./outcomes";
 
 const importSuggestion = Type.Object({
 	characterId: Type.Integer(),
@@ -284,3 +285,11 @@ export const importCleanedUpResponse = Type.Object({
 	outcome: Type.Literal("cleaned-up"),
 	reason: cleanupReason,
 });
+
+// ==[HUMAN APPROVED]== The Chat Import command family's modeled error union: the composed
+// 410/422 envelopes every staged route declares, so the client decodes an
+// error body against exactly that union.
+export const chatImportCommandErrors = Type.Union([
+	importGoneResponse,
+	invalidOutcome,
+]);

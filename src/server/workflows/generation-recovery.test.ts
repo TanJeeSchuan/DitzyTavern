@@ -8,6 +8,8 @@ import {
 	acceptConversationSiblingGeneration,
 	createConversationModule,
 } from "../conversation";
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 const prompt = {
@@ -24,6 +26,7 @@ describe("generation recovery diagnostics", () => {
 	beforeEach(() => {
 		database = openDatabase({ path: ":memory:" });
 		initializeDatabase(database);
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());

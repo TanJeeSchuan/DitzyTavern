@@ -10,6 +10,8 @@ import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const definition = (name: string): ParticipantDefinition => ({
 	name,
 	prompt: {
@@ -30,6 +32,7 @@ describe("Continuation Generation", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const snapshot = createConversationModule(database).create({
 			name: "Continuation Chat",
 			participants: [

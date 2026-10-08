@@ -8,7 +8,8 @@ import {
 	type ChatInformationState,
 } from "./chat-info";
 import {
-	chatHistoryTransport,
+	downloadExactSource,
+	loadImportDetails,
 	type ChatSourceDownloadOutcome,
 } from "./chat-history";
 import { downloadFileInBrowser } from "./lib/download";
@@ -37,37 +38,35 @@ export function ChatInformationPanel({
 		createChatInformationState,
 	);
 	const [downloadOutcome, setDownloadOutcome] = useState<
-		{ status: "idle" } | { status: "downloading" } | ChatSourceDownloadOutcome
-	>({ status: "idle" });
+		{ outcome: "idle" } | { outcome: "downloading" } | ChatSourceDownloadOutcome
+	>({ outcome: "idle" });
 
 	useAsyncEffect((isCancelled) => {
 		dispatch({ type: "chat-opened" });
-		void chatHistoryTransport
-			.loadImportDetails(conversationId)
-			.then((outcome) => {
-				if (isCancelled()) return;
-				if (outcome.status === "available") {
-					if (outcome.details.provenanceState === "unreadable") {
-						dispatch({ type: "details-unreadable" });
-						return;
-					}
-					dispatch({ type: "details-loaded", details: outcome.details });
+		void loadImportDetails(conversationId).then((outcome) => {
+			if (isCancelled()) return;
+			if (outcome.outcome === "available") {
+				if (outcome.value.provenanceState === "unreadable") {
+					dispatch({ type: "details-unreadable" });
 					return;
 				}
-				if (outcome.status === "not-found") {
-					dispatch({ type: "no-import-details" });
-					return;
-				}
-				dispatch({ type: "details-failed" });
-			});
+				dispatch({ type: "details-loaded", details: outcome.value });
+				return;
+			}
+			if (outcome.outcome === "not-found") {
+				dispatch({ type: "no-import-details" });
+				return;
+			}
+			dispatch({ type: "details-failed" });
+		});
 	}, [conversationId]);
 
 	const runDownload = async () => {
 		const download = sourceDownloadAvailable(state);
 		if (!download.available) return;
-		setDownloadOutcome({ status: "downloading" });
-		const outcome = await chatHistoryTransport.downloadExactSource(conversationId);
-		if (outcome.status === "available") {
+		setDownloadOutcome({ outcome: "downloading" });
+		const outcome = await downloadExactSource(conversationId);
+		if (outcome.outcome === "available") {
 			downloadFileInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
 		}
 		setDownloadOutcome(outcome);
@@ -143,7 +142,7 @@ function ImportDetailsSection({
 	state: Extract<ChatInformationState, { status: "available" }>;
 	availability: ReturnType<typeof artifactAvailabilityLabel>;
 	download: ReturnType<typeof sourceDownloadAvailable>;
-	downloadOutcome: { status: "idle" } | { status: "downloading" } | ChatSourceDownloadOutcome;
+	downloadOutcome: { outcome: "idle" } | { outcome: "downloading" } | ChatSourceDownloadOutcome;
 	onDownload: () => void;
 }) {
 	const { details } = state;
@@ -230,23 +229,23 @@ function ImportDetailsSection({
 					type="button"
 					disabled={
 						!download.available ||
-						downloadOutcome.status === "downloading"
+						downloadOutcome.outcome === "downloading"
 					}
 					onClick={onDownload}
 				>
 					<Download aria-hidden="true" />
-					{downloadOutcome.status === "downloading"
+					{downloadOutcome.outcome === "downloading"
 						? "Preparing download…"
 						: "Download original file"}
 				</button>
-				{downloadOutcome.status === "cleaned-up" && (
+				{downloadOutcome.outcome === "cleaned-up" && (
 					<p className="import-problem" role="alert">
 						The original file is missing or no longer matches its recorded
 						checksum. You can still read and edit this Chat, but you cannot
 						download the original file.
 					</p>
 				)}
-				{downloadOutcome.status === "network" && (
+				{downloadOutcome.outcome === "network" && (
 					<p className="import-problem" role="alert">
 						The download could not be prepared. Check the connection and
 						try again.
