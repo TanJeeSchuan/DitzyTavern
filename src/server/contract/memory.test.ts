@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { startMemoryWorker } from "../memory";
 import { readConversationMemories } from "../memory/collections";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
@@ -40,9 +38,7 @@ const resetCommand = (database: Database, messageId: number) => {
 describe("Memory source public contract", () => {
 	let database: Database;
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		// The test composition installs Memory's sync on Conversation's write stream.
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

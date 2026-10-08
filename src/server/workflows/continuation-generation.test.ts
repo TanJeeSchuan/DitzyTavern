@@ -2,16 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
-import { openInitializedDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const definition = (name: string): ParticipantDefinition => ({
 	name,
 	prompt: {
@@ -31,8 +28,7 @@ describe("Continuation Generation", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const snapshot = createConversationModule(database).create({
 			name: "Continuation Chat",
 			participants: [

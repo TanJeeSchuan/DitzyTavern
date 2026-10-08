@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
-import { openInitializedDatabase } from "../database/database";
 import {
 	conversationTable,
 	conversationControlTable,
@@ -27,7 +26,7 @@ import {
 	SiblingVariantUnavailableError,
 	createConversationModule,
 } from "../conversation";
-import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createFakeModelClient } from "../model-client";
 import {
 	generateSiblingVariant,
@@ -44,8 +43,6 @@ import {
 	writerFixture as first,
 } from "./fixtures";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const findEntry = (
 	entries: { namespace: string; key: string; value: string }[] | undefined,
 	namespace: string,
@@ -58,8 +55,7 @@ describe("SillyTavern chat import", () => {
 	let artifactDirectory: string;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

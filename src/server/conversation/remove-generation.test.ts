@@ -1,8 +1,8 @@
+import { openObservedDatabase } from "./test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { activeGenerationTable } from "../database/schema";
 import {
 	acceptConversationContinuationGeneration,
@@ -13,7 +13,6 @@ import {
 } from ".";
 
 import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 // Regression tests for canonical Generation removal. The Active Generation
 // row is the only authority for which mutation a removal performs: a Sibling
@@ -25,8 +24,7 @@ describe("canonical Conversation Generation removal", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => database.close());

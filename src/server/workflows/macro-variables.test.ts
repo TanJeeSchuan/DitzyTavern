@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
 import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation/commands/active-generation";
@@ -12,14 +12,11 @@ import {
 } from "./generate-capture";
 import { recoverActiveGenerations } from "./generation-recovery";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 describe("Conversation-persistent prompt macro variables", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
 

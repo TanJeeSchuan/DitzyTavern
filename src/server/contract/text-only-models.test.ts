@@ -1,6 +1,6 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
@@ -10,8 +10,6 @@ import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const key = new Uint8Array(32).fill(29);
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const profile = {
@@ -38,8 +36,7 @@ describe("Text-only Models", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 	afterEach(() => { database.close(); });
 

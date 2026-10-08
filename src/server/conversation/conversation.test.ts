@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openInitializedDatabase } from "../database/database";
 import {
 	conversationGenerationSettingsTable,
 	messageTable,
@@ -23,10 +22,8 @@ import {
 	StaleConversationRevisionError,
 	type AcceptContinuationGenerationInput,
 } from ".";
-import { applyCommand, requireSnapshot } from "./test-fixtures";
+import { openObservedDatabase, applyCommand, requireSnapshot } from "./test-fixtures";
 
-import { observeConversationWrites } from "./commands/transaction";
-import { syncMemorySources } from "../memory";
 describe("Conversation module", () => {
 	let database: Database;
 	let conversationId: number;
@@ -34,8 +31,7 @@ describe("Conversation module", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		const module = createConversationModule(database);
 		const snapshot = module.create({
 			name: "Test Conversation",

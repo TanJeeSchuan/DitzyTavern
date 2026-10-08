@@ -1,7 +1,7 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openInitializedDatabase } from "../database/database";
 import { readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import { initializeConnectionSecretKey } from "../connection-secrets";
@@ -18,8 +18,6 @@ import { createMemorySettingsModule } from "../memory/settings";
 import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/labels";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;
 	while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
@@ -99,8 +97,7 @@ describe("Memory recall in Generation preparation", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 	});
 

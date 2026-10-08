@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule, type ConversationModule, type ConversationSnapshot } from "../conversation";
-import { applyCommand } from "../conversation/test-fixtures";
+import { openObservedDatabase, applyCommand } from "../conversation/test-fixtures";
 import { listChatSummaries } from "./chat";
-import { openInitializedDatabase } from "./database";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
@@ -20,8 +17,7 @@ describe("Chat list summaries", () => {
 	let module: ConversationModule;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 		module = createConversationModule(database);
 	});
 	afterEach(() => database.close());

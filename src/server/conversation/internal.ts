@@ -163,15 +163,6 @@ export const hasActiveGenerationFromConnection = (
 		.where(eq(activeGenerationTable.conversation_id, conversationId))
 		.get() !== undefined;
 
-export const hasActiveGeneration = (
-	database: Database,
-	conversationId: number,
-): boolean =>
-	hasActiveGenerationFromConnection(
-		connectConversationDatabase(database),
-		conversationId,
-	);
-
 // ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
 // violation on the per-Participant Control index during an atomic swap or an

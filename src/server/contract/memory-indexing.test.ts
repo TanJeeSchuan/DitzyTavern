@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openInitializedDatabase } from "../database/database";
-import { observeConversationWrites } from "../conversation";
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { embedMemoryTexts, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
 import { sha256 } from "../memory/hash";
 import { createMemorySettingsModule } from "../memory/settings";
 import { captureMemoryRecallSnapshot } from "../memory/recall";
-import { startMemoryWorker, syncMemorySources } from "../memory";
+import { startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import type { ModelFetch } from "../model-client";
 import { formatImageReference } from "../../shared/image-reference";
@@ -103,11 +102,9 @@ describe("Memory indexing public lifecycle", () => {
 	let memories: ReturnType<typeof createMemoryRoutes>;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
+		database = openObservedDatabase();
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 		memories = createMemoryRoutes(database);
-		// The test composition installs Memory's sync on Conversation's write stream.
-		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => database.close());

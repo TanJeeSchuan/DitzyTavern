@@ -1,9 +1,19 @@
+import type { Database } from "bun:sqlite";
+import { openInitializedDatabase } from "../database/database";
+import { syncMemorySources } from "../memory";
+import { observeConversationWrites } from "./commands/transaction";
 import { ConversationNotFoundError } from "./errors";
 import type {
 	ConversationCommand,
 	ConversationModule,
 	ConversationSnapshot,
 } from "./types";
+
+export function openObservedDatabase(): Database {
+	const database = openInitializedDatabase({ path: ":memory:" });
+	observeConversationWrites(database, syncMemorySources);
+	return database;
+}
 
 /**
  * ==[HUMAN APPROVED]== Test-fixture seam for suites that assert on Messages

@@ -1,12 +1,10 @@
+import { openObservedDatabase } from "../conversation/test-fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule } from "../conversation";
-import { openInitializedDatabase } from "../database/database";
 import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
-import { observeConversationWrites } from "../conversation";
-import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -25,8 +23,7 @@ describe("Generation Stop route mapping", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		observeConversationWrites(database, syncMemorySources);
+		database = openObservedDatabase();
 	});
 
 	afterEach(() => database.close());
