@@ -39,5 +39,3 @@ export function useLorebookAttachments(conversationId: number) {
 		enableLoreSlot: () => enable.mutate(),
 	};
 }
-
-export type LorebookAttachmentsController = ReturnType<typeof useLorebookAttachments>;

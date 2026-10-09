@@ -15,7 +15,7 @@ import { GenerationPanel } from "./GenerationPanel";
 import { LorebookPanel } from "./LorebookPanel";
 import { MemorySettingsEditor } from "./MemorySettingsEditor";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
-import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import type { GenerationPanelDraft } from "./GenerationPanel";
 import type { SplitInspector } from "./panel-coordination";
 import type { PrimaryPanel } from "./types";
 
@@ -68,7 +68,7 @@ export function PrimaryPanelView({
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 	connectionSettings: ConnectionSettingsController;
-	generationSettings: GenerationSettingsDraftController;
+	generationSettings: GenerationPanelDraft;
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {

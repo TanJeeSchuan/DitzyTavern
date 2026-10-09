@@ -6,10 +6,20 @@ import { formatJudgment, formatTimestamp } from "../lib/format";
 import { loadMemoryTrace, type ConversationMemories } from "../memories";
 import type { MemoryTraceStep } from "../../shared/contract/memory";
 import { memorySourceState } from "./memory-source-state";
-import type { ClaimDraft, ConversationMemoryActions } from "./useConversationMemories";
+import type { ClaimDraft } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
 type Claim = Source["claims"][number];
+
+/** @approved The Memory commands these cards send: corrections, retries, and the label of the source's Message. */
+type MemoryActions = {
+	label: (messageId: number) => string;
+	retry: (source: Source) => void;
+	retryIndex: (source: Source) => void;
+	edit: (source: Source, index: number | null) => void;
+	save: (source: Source, index: number, draft: ClaimDraft) => void;
+	remove: (source: Source, index: number) => void;
+};
 
 export function MemorySourceCard({ conversationId, source, label, busy, enabled, excluded, actions, onNavigate, onStep, onClear }: {
 	conversationId: number;
@@ -18,7 +28,7 @@ export function MemorySourceCard({ conversationId, source, label, busy, enabled,
 	busy: boolean;
 	enabled: boolean;
 	excluded: boolean;
-	actions: ConversationMemoryActions;
+	actions: MemoryActions;
 	onNavigate: () => void;
 	onStep: ((offset: -1 | 1) => void) | null;
 	onClear: () => void;
@@ -69,7 +79,7 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	group: string;
 	busy: boolean;
 	editing: boolean;
-	actions: ConversationMemoryActions;
+	actions: MemoryActions;
 	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
 }) {

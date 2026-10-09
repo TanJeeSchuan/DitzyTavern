@@ -1,7 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MemorySourceTarget } from "../../shared/contract/memory";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryChanges, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup, type MemoryCatchupResult } from "../memories";
+import {
+	cancelMemoryCatchup,
+	correctMemory,
+	loadConversationMemories,
+	loadMemoryAllowance,
+	loadMemoryCatchup,
+	loadMemoryChanges,
+	resetAndReextract,
+	retryMemoryIndex,
+	startMemoryCatchup,
+	type ConversationMemories,
+	type ConversationMemoryAllowance,
+	type MemoryCatchup,
+	type MemoryCatchupResult,
+} from "../memories";
 
 type Source = ConversationMemories["sources"][number];
 type MemoryData = { memories: ConversationMemories; catchup: MemoryCatchup | null; settings: ConversationMemoryAllowance };
@@ -9,7 +23,9 @@ export type ClaimDraft = { claim: string; attribution: string; people: string[] 
 const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
 const targetOf = ({ messageId, variantId, revision }: Source): MemorySourceTarget => ({ messageId, variantId, expectedRevision: revision });
 const inFlight = (status: string) => status === "pending" || status === "running";
-const workInFlight = (data: MemoryData | undefined) => data !== undefined && (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
+const workInFlight = (data: MemoryData | undefined) =>
+	data !== undefined
+	&& (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
 
 export function useConversationMemories(conversationId: number, conversationRevision: number) {
 	const client = useQueryClient();
@@ -123,9 +139,16 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
 		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },
 		cancelReset: () => setResetTarget(null),
-		identitySaved: async (updated: ConversationMemories) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(null); await refresh(); },
-		labelsMerged: async (updated: ConversationMemories, destination: string) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(`Labels merged into ${destination}.`); },
+		identitySaved: async (updated: ConversationMemories) => {
+			await update((current) => ({ ...current, memories: updated }));
+			setEditing(null);
+			setNotice(null);
+			await refresh();
+		},
+		labelsMerged: async (updated: ConversationMemories, destination: string) => {
+			await update((current) => ({ ...current, memories: updated }));
+			setEditing(null);
+			setNotice(`Labels merged into ${destination}.`);
+		},
 	};
 }
-
-export type ConversationMemoryActions = ReturnType<typeof useConversationMemories>["actions"];

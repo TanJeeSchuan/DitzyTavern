@@ -16,9 +16,14 @@ import {
 	SAMPLING_DRAFT_ERROR,
 	SAMPLING_FIELDS,
 	SAMPLING_FIELD_LABELS,
+	type BudgetDrafts,
+	type BudgetField,
+	type OverridesDrafts,
 	type OverridesNamespace,
+	type SamplingDrafts,
+	type SamplingField,
 } from "../generation-settings-draft";
-import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import type { TransmittingNamespace } from "./useGenerationSettingsDraft";
 
 const TOKEN_BUDGET_FIELDS = ["contextLimit", "responseBudget", "safetyAllowance"] as const;
 const formatTokens = (value: number) => value.toLocaleString();
@@ -34,8 +39,8 @@ export function SamplingEditor({
 	drafts,
 	onChange,
 }: {
-	drafts: GenerationSettingsDraftController["samplingDrafts"];
-	onChange: GenerationSettingsDraftController["updateSampling"];
+	drafts: SamplingDrafts;
+	onChange: (field: SamplingField, raw: string) => void;
 }) {
 	return (
 		<section aria-labelledby="generation-sampling-title">
@@ -115,8 +120,8 @@ export function BudgetEditor({
 	onChange,
 	loreAllowance,
 }: {
-	drafts: GenerationSettingsDraftController["budgetDrafts"];
-	onChange: GenerationSettingsDraftController["updateBudget"];
+	drafts: BudgetDrafts;
+	onChange: (field: BudgetField, raw: string) => void;
 	loreAllowance: number | null;
 }) {
 	const [context, response, safety] = TOKEN_BUDGET_FIELDS.map((field) => parseBudgetDraft(field, drafts[field]));
@@ -241,9 +246,9 @@ export function RequestOverridesEditor({
 	onChange,
 	transmittingNamespace,
 }: {
-	drafts: GenerationSettingsDraftController["overridesDrafts"];
-	onChange: GenerationSettingsDraftController["updateOverrides"];
-	transmittingNamespace: GenerationSettingsDraftController["transmittingNamespace"];
+	drafts: OverridesDrafts;
+	onChange: (namespace: OverridesNamespace, value: JsonData) => void;
+	transmittingNamespace: TransmittingNamespace;
 }) {
 	const transmitting = transmittingNamespace.status === "known" ? transmittingNamespace.namespace : null;
 	const namespace = (key: OverridesNamespace) => (

@@ -31,6 +31,14 @@ import {
 	type SamplingValues,
 } from "../generation-settings-draft";
 
+export type GenerationSettingsDraftStatus = "loading" | "load-error" | "saving" | "ready";
+
+/** @approved Whether the selected Connection Profile can carry Request Overrides, and under which namespace. */
+export type TransmittingNamespace =
+	| { status: "loading" }
+	| { status: "no-active-profile" }
+	| { status: "known"; namespace: OverridesNamespace };
+
 // @approved
 //  The Generation Settings save wording: each notice names what this surface
 // preserved or could not reach, while the runner owns when each notice is
@@ -176,11 +184,11 @@ export function useGenerationSettingsDraft({
 	});
 	useEffect(() => { syncDraft(); }, [conversationId, settings]);
 	const selectedProfile = connectionProfiles?.find((profile) => profile.id === settings?.connectionProfileId);
-	const transmittingNamespace = settings === null || connectionProfiles === undefined
-		? { status: "loading" as const }
+	const transmittingNamespace: TransmittingNamespace = settings === null || connectionProfiles === undefined
+		? { status: "loading" }
 		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings" || selectedProfile.apiFormat === "system-one"
-			? { status: "no-active-profile" as const }
-			: { status: "known" as const, namespace: selectedProfile.apiFormat };
+			? { status: "no-active-profile" }
+			: { status: "known", namespace: selectedProfile.apiFormat };
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
@@ -242,7 +250,7 @@ export function useGenerationSettingsDraft({
 	});
 	const resetWrite = write.reset;
 	useEffect(() => { resetWrite(); }, [conversationId, resetWrite]);
-	const status = settings === null ? query.isError ? "load-error" : "loading" : write.isPending ? "saving" : "ready";
+	const status: GenerationSettingsDraftStatus = settings === null ? query.isError ? "load-error" : "loading" : write.isPending ? "saving" : "ready";
 	const canSave = status === "ready" && validDraft;
 	const save = async () => {
 		if (conversation === null || !canSave || samplingValues === null || budgetValues === null || overridesValues === null || session.current.saving) return false;
@@ -284,5 +292,3 @@ export function useGenerationSettingsDraft({
 		discard,
 	};
 }
-
-export type GenerationSettingsDraftController = ReturnType<typeof useGenerationSettingsDraft>;

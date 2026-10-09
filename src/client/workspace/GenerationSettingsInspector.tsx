@@ -1,7 +1,18 @@
-import type { ConversationSummary } from "../conversation";
+import type { JsonData } from "json-edit-react";
+import type { ConversationGenerationSettings, ConversationSummary } from "../conversation";
+import type { OverridesDrafts, OverridesNamespace } from "../generation-settings-draft";
 import { PanelHeader } from "../PanelHeader";
 import { RequestOverridesEditor } from "./GenerationSettingsEditors";
-import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import type { GenerationSettingsDraftStatus, TransmittingNamespace } from "./useGenerationSettingsDraft";
+
+/** @approved The Generation Settings the Request Overrides inspector reads and its one write. */
+type GenerationOverridesInspector = {
+	settings: ConversationGenerationSettings | null;
+	status: GenerationSettingsDraftStatus;
+	overridesDrafts: OverridesDrafts;
+	updateOverrides: (namespace: OverridesNamespace, value: JsonData) => void;
+	transmittingNamespace: TransmittingNamespace;
+};
 
 export function GenerationSettingsInspector({
 	conversation,
@@ -9,7 +20,7 @@ export function GenerationSettingsInspector({
 	onClose,
 }: {
 	conversation: ConversationSummary | null;
-	controller: GenerationSettingsDraftController;
+	controller: GenerationOverridesInspector;
 	onClose: () => void;
 }) {
 	return (

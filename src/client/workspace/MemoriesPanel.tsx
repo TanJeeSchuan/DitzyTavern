@@ -15,10 +15,10 @@ import { MemoryLabelMergeDialog } from "./MemoryLabelMergeDialog";
 import { MemoryIdentityDialog } from "./MemoryIdentityDialog";
 import { MemoryNoteDialog } from "./MemoryNoteDialog";
 import { MemoryClaimRow, MemorySourceCard } from "./MemorySource";
+import { groupEntriesByPeople, memoryCastMembers, memoryEntries, memoryPositions, type MemoryEntry } from "./memories-view";
 import { useConversationMemories } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
-type Entry = { source: Source; index: number };
 type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
 export function MemoriesPanel({ conversationId, conversationRevision, cast, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
@@ -43,43 +43,23 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 	const [noteOpen, setNoteOpen] = useState(false);
 	const [alternativesOpen, setAlternativesOpen] = useState(false);
 
-	const position = new Map(memories?.path.map((entry, index) => [entry.messageId, index]));
+	const position = memoryPositions(memories?.path ?? []);
 	const selected = memories?.sources.filter((source) => source.selected) ?? [];
 	const alternatives = memories?.sources.filter((source) => !source.selected) ?? [];
 	const awaitingEmbedding = selected.filter((source) => source.indexing.status === "unconfigured").length;
-	const needle = useDeferredValue(query).trim().toLowerCase();
-	const memoryCast = cast.map((participant) => ({ ...participant, names: memories?.cast.find(({ id }) => id === participant.id)?.names ?? [] }));
-	const entries = (sources: Source[]) => sources
-		.filter((source) => focus === null || source.messageId === focus)
-		.sort((a, b) => (position.get(b.messageId) ?? -1) - (position.get(a.messageId) ?? -1))
-		.flatMap((source) =>
-			source.claims.flatMap((claim, index) =>
-				!needle ||
-				[claim.claim, claim.attribution, ...claim.people].some((text) => text.toLowerCase().includes(needle))
-					? [{ source, index }]
-					: []
-			)
-		);
-	const rank = (name: string) => memoryCast.findIndex((participant) => participant.names.includes(name)) >>> 0;
-	const byPeople = (list: Entry[]) => {
-		const groups = new Map<string, { people: string[]; entries: Entry[] }>();
-		for (const entry of list) {
-			const people = [...new Set(entry.source.claims[entry.index]!.people)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-			const key = JSON.stringify(people);
-			if (groups.has(key)) groups.get(key)!.entries.push(entry); else groups.set(key, { people, entries: [entry] });
-		}
-		const order = ({ people }: { people: string[] }) => people.length ? rank(people[0]!) : Infinity;
-		return [...groups].sort(([a, x], [b, y]) => order(x) - order(y) || x.people.length - y.people.length || y.entries.length - x.entries.length || a.localeCompare(b));
-	};
+	const search = useDeferredValue(query);
+	const searching = search.trim() !== "";
+	const memoryCast = memoryCastMembers(cast, memories);
+	const entries = (sources: Source[]) => memoryEntries(sources, position, focus, search);
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const render = (list: Entry[]) =>
-		byPeople(list).map(([key, { people, entries: group }]) => (
+	const render = (list: MemoryEntry[]) =>
+		groupEntriesByPeople(list, memoryCast).map(({ key, people, entries: group }) => (
 			<PeopleGroup
 				key={key}
 				people={people}
 				cast={memoryCast}
 				entries={group}
-				cap={needle !== "" || focus !== null ? 20 : 6}
+				cap={searching || focus !== null ? 20 : 6}
 				onMerge={(person) => setMerging([person])}
 				onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}
 			>
@@ -199,7 +179,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 					<p className="memory-empty">
 						{memories.path.length === 0
 							? "Memories appear here once the story has saved Messages."
-							: needle
+							: searching
 								? "No Memories match this search."
 								: focus !== null
 									? "No Memories from this Message."
@@ -268,11 +248,11 @@ function PeopleGroup({
 }: {
 	people: string[];
 	cast: (CastMember & { names: string[] })[];
-	entries: Entry[];
+	entries: MemoryEntry[];
 	cap: number;
 	onMerge: (person: string) => void;
 	onIdentity: (participant: CastMember, kind: MemoryIdentity["kind"]) => void;
-	children: (entry: Entry) => ReactNode;
+	children: (entry: MemoryEntry) => ReactNode;
 }) {
 	const [more, setMore] = useState(0);
 	const shown = (entries.length <= cap + 3 ? entries.length : cap) + more;

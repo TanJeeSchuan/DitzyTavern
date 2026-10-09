@@ -19,7 +19,18 @@ type State = { settings: SemanticTriggerSettings | null; draft: Draft | null; lo
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
 const draftOf = ({ revision: _revision, ...draft }: SemanticTriggerSettings): Draft => draft;
 
-export type SemanticTriggerSettingsController = ReturnType<typeof useSemanticTriggerSettings>;
+/** @approved The Semantic Trigger draft and commands the editor surface reads and writes. */
+type SemanticTriggerDraftEditor = {
+	settings: SemanticTriggerSettings | null;
+	draft: Draft | null;
+	dirty: boolean;
+	pending: boolean;
+	error: string | null;
+	reload: () => void;
+	update: (patch: Partial<Draft>) => void;
+	discard: () => void;
+	save: () => Promise<boolean>;
+};
 
 export function useSemanticTriggerSettings() {
 	const [state, setState] = useState<State>({ settings: null, draft: null, loading: true, pending: false, error: null });
@@ -57,7 +68,7 @@ export function useSemanticTriggerSettings() {
 	};
 }
 
-export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerSettingsController; onBack: () => void }) {
+export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerDraftEditor; onBack: () => void }) {
 	const navigate = useNavigationRequest();
 	const connections = useConnectionSettingsQuery();
 	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
