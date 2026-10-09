@@ -76,20 +76,17 @@ export async function evaluateSemanticLore(input: {
 	const controller = new AbortController();
 	const signal = input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
 	try {
-		const scores = new Map<string, number>();
+		const scored = triggerItems.map((item) => ({ ...item, score: 0 }));
 		const requests = sceneChunks(sceneFits, input.messages).flatMap(requestsFor);
 		for (let start = 0; start < requests.length; start += 2) {
 			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request, questions }) => requestDecisions({ request, questions, selection, fetch: input.fetch, signal })));
 			for (const answers of responses) for (const [id, answer] of answers) {
 				if (answer.type !== "noul") throw new Error("Decision Model returned a malformed Semantic Trigger answer.");
-				scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
+				const item = scored.find((candidate) => candidate.id === id);
+				if (item !== undefined) item.score = Math.max(item.score, answer.noul);
 			}
 		}
-		const matches = triggerItems.map((item) => {
-			const score = scores.get(item.id);
-			if (score === undefined) throw new Error("Decision Model returned a malformed Semantic Trigger answer.");
-			return { trigger: item.question.instructions.situation, score };
-		});
+		const matches = scored.map(({ question: { instructions: { situation } }, score }) => ({ trigger: situation, score }));
 		return { available: true, threshold: settings.triggerThreshold, matches };
 	} catch (error) {
 		controller.abort();

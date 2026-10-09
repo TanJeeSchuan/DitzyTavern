@@ -57,6 +57,15 @@ const recipeResponseSchema = {
 	422: invalidOutcome,
 };
 
+const recipeResponse = (operation: () => void) => {
+	try {
+		operation();
+		return { outcome: "applied" as const };
+	} catch (error) {
+		return presentDomainError(error, recipeResponseSchema);
+	}
+};
+
 export const createPromptPresetRoutes = (database: Database) =>
 	new Elysia()
 		.post(
@@ -149,14 +158,9 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks/patches",
-			({ params, body }) => {
-				try {
-					savePromptPresetBlockPatches(database, params.presetId, body.patches);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params, body }) =>
+				recipeResponse(() =>
+						savePromptPresetBlockPatches(database, params.presetId, body.patches)),
 			{
 				params: presetIdParams,
 				body: promptPresetBlockPatchesBody,
@@ -165,14 +169,9 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
-			({ params, body }) => {
-				try {
-					addPromptPresetBlock(database, params.presetId, body.reference);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params, body }) =>
+				recipeResponse(() =>
+						addPromptPresetBlock(database, params.presetId, body.reference)),
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,
@@ -181,19 +180,14 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/move",
-			({ params, body }) => {
-				try {
-					movePromptPresetBlock(
-						database,
-						params.presetId,
-						params.blockId,
-						body.toPosition,
-					);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params, body }) =>
+				recipeResponse(() =>
+						movePromptPresetBlock(
+							database,
+							params.presetId,
+							params.blockId,
+							body.toPosition,
+						)),
 			{
 				params: blockIdParams,
 				body: movePromptPresetBlockBody,
@@ -202,19 +196,14 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/toggle",
-			({ params, body }) => {
-				try {
-					setPromptPresetBlockEnabled(
-						database,
-						params.presetId,
-						params.blockId,
-						body.enabled,
-					);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params, body }) =>
+				recipeResponse(() =>
+						setPromptPresetBlockEnabled(
+							database,
+							params.presetId,
+							params.blockId,
+							body.enabled,
+						)),
 			{
 				params: blockIdParams,
 				body: setPromptPresetBlockEnabledBody,
@@ -223,14 +212,9 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/duplicate",
-			({ params }) => {
-				try {
-					duplicatePromptPresetBlock(database, params.presetId, params.blockId);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params }) =>
+				recipeResponse(() =>
+						duplicatePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -238,14 +222,9 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.delete(
 			"/api/prompt-presets/:presetId/blocks/:blockId",
-			({ params }) => {
-				try {
-					removePromptPresetBlock(database, params.presetId, params.blockId);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params }) =>
+				recipeResponse(() =>
+						removePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -253,14 +232,9 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/instructions",
-			({ params }) => {
-				try {
-					addPromptPresetInstruction(database, params.presetId);
-					return { outcome: "applied" as const };
-				} catch (error) {
-					return presentDomainError(error, recipeResponseSchema);
-				}
-			},
+			({ params }) =>
+				recipeResponse(() =>
+						addPromptPresetInstruction(database, params.presetId)),
 			{
 				params: presetIdParams,
 				response: recipeResponseSchema,
