@@ -9,7 +9,7 @@ import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { promptChannelLabels } from "../../shared/definition";
 import { SaveFooter } from "../SaveFooter";
-import { useSaveNavigation } from "../SaveGuard";
+import { useNavigationRequest } from "../SaveGuard";
 
 export const definitionOf = ({
 	name,
@@ -66,7 +66,7 @@ export function DefinitionEditor({
 	onSave: () => void;
 	onBack: () => void;
 }) {
-	const navigate = useSaveNavigation();
+	const navigate = useNavigationRequest();
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const identity = useRef<ProseEditorHandle>(null);

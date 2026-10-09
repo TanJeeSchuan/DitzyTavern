@@ -9,7 +9,7 @@ import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type Semantic
 import type { SemanticTriggerSettingsCommand } from "../../shared/contract/semantic-trigger-settings";
 import { useAsyncEffect } from "../lib/use-async";
 import { SaveFooter } from "../SaveFooter";
-import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
+import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
 import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
@@ -58,7 +58,7 @@ export function useSemanticTriggerSettings() {
 }
 
 export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerSettingsController; onBack: () => void }) {
-	const navigate = useSaveNavigation();
+	const navigate = useNavigationRequest();
 	const [connections, setConnections] = useState<ConnectionSettings | null>(null);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const loadConnections = useCallback((isCancelled: () => boolean = () => false) => loadConnectionSettings()

@@ -1,6 +1,6 @@
 # T3 — Shrink the ActiveWritingWorkspace shell
 
-Status: TODO
+Status: Done
 
 Blocked By: None
 
@@ -31,11 +31,24 @@ owns the guard protocol; its navigation half lives in the shell.
 
 ## TODO
 
-- [ ] Extract `useSaveNavigation`
-- [ ] Extract theme hook; move toast state out of the shell
-- [ ] Shell ≤ 350 lines, ≤ 5 `useState` (`grep -c useState`)
-- [ ] typecheck, lint, `bun test`
-- [ ] Manual browser check of save-guard navigation and theme
-- [ ] Commit
+- [x] Extract `useSaveNavigation`
+- [x] Extract theme hook; move toast state out of the shell
+- [x] Shell ≤ 350 lines, ≤ 5 `useState` (`grep -c useState`)
+- [x] typecheck, lint, `bun test`
+- [x] Manual browser check of save-guard navigation and theme
+- [x] Commit
 
 ## Outcome
+
+Shell is 341 lines with 3 `useState` (`grep -c useState` counts the import, giving 4). The save-guard
+navigation half moved to `useSaveNavigation()` in `SaveGuard.tsx` (returns `{ requestNavigation,
+dialogProps, registerSaveGuard }`; panel-side rename: the context-consumer hook is now
+`useNavigationRequest`). Theme persistence lives in `src/client/lib/use-theme.ts`. Both the
+generation-failure toast and the control-change toast became self-owned components
+(`GenerationErrorToast.tsx`, `ControlChangeToaster.tsx`), including `markFailedModelTextOnly`.
+Because the ≤ 5-state target left no room for detached detail state, `generationDetailsTarget` and
+`memoryFocus` folded into the panel-coordination reducer: `generation-details-opened` carries the
+target, `memories-opened` carries the focus, and every action that drops a surface drops the focus
+data alongside it. The story stage (header, preview dock, message list, composer) moved to
+`StoryStage.tsx`, which owns no state. Behavior unchanged; verified by playwright-cli through the
+dirty-editor save/discard navigation and the theme toggle persisting across reload.

@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { CONNECTION_ADAPTER_LABELS, type ConnectionProfileDraft, type TestConnectionResult } from "../../connection-settings";
 import { SaveFooter } from "../../SaveFooter";
-import { useSaveGuard, useSaveNavigation } from "../../SaveGuard";
+import { useSaveGuard, useNavigationRequest } from "../../SaveGuard";
 import { CredentialField } from "./CredentialField";
 import { HeaderEditor } from "./HeaderEditor";
 import { ModelCombobox } from "./ModelCombobox";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 export function ConnectionProfileEditor({ controller }: { controller: ConnectionSettingsController }) {
-	const navigate = useSaveNavigation();
+	const navigate = useNavigationRequest();
 	const [validationVisible, setValidationVisible] = useState(false);
 	const {
 		draft,
