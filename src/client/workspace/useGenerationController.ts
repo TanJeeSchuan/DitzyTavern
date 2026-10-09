@@ -1,5 +1,7 @@
+import { useMutation } from "@tanstack/react-query";
 import {
 	useEffect,
+	useMemo,
 	useReducer,
 	useRef,
 	useState,
@@ -79,6 +81,11 @@ export function useGenerationController({
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
+	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
+	useEffect(() => {
+		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
+		return () => stopOwner.cancellation.abort();
+	}, [stopOwner]);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -202,31 +209,39 @@ export function useGenerationController({
 	};
 
 	const conversationSwitched = () => {
+		stopOwner.cancellation.abort();
 		dispatchPendingStarts({ type: "conversation-switched" });
 		assemblyController.conversationSwitched();
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
+	const stop = useMutation({
+		mutationKey: ["conversation", conversation?.id, "stop-generation"],
+		mutationFn: ({ conversationId, generationId }: { conversationId: number; generationId: number; signal: AbortSignal }) => stopConversationGeneration(conversationId, generationId),
+		onSuccess: (outcome, submission) => {
+			if (!submission.signal.aborted) runner.dispatch({ type: "stop-settled", generationId: submission.generationId, outcome: stopCommandOutcome(outcome) });
+		},
+	});
+	const stopAll = useMutation({
+		mutationKey: ["conversation", conversation?.id, "stop-all-generations"],
+		mutationFn: ({ conversationId }: { conversationId: number; signal: AbortSignal }) => stopAllConversationGenerations(conversationId),
+		onSuccess: (outcome, submission) => {
+			if (!submission.signal.aborted) runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
+		},
+	});
 	const stopGeneration = async (generationId: number) => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || stopPending) return;
+		if (conversationId === undefined || stopPending || stopOwner.cancellation.signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		// @approved
-		//  The transport classifies every failure itself; it never rejects.
-		const outcome = await stopConversationGeneration(conversationId, generationId);
-		runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
+		await stop.mutateAsync({ conversationId, generationId, signal: stopOwner.cancellation.signal });
 	};
-
 	const stopAllGenerations = async () => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending) return;
+		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || stopOwner.cancellation.signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		// @approved
-		//  The transport classifies every failure itself; it never rejects.
-		const outcome = await stopAllConversationGenerations(conversationId);
-		runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
+		await stopAll.mutateAsync({ conversationId, signal: stopOwner.cancellation.signal });
 	};
 
 	const cancelGeneration = () => {
