@@ -125,10 +125,10 @@ const unusableResponse = { outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE
 // @approved
 //  The one "throw on anything but 200" read dialect: every read adapter
 // without a modeled error envelope hands its Treaty request and 200 contract
-// schema here. The decoded 200 payload is returned verbatim; a rejected
-// request is the retryable NetworkError, while an error status or a body
-// that fails its contract is a plain Error with the shared unusable-response
-// notice that no NetworkError back-off loop retries.
+// schema here. The decoded 200 payload is returned verbatim; a result with no
+// Response is the retryable NetworkError, while an error status, a body that
+// fails its contract, or a rejected body read is a plain Error with the shared
+// unusable-response notice that no NetworkError back-off loop retries.
 export const requestData = async <Request extends TransportRequest, Schema extends TSchema>(
 	request: Request,
 	schema: Schema,

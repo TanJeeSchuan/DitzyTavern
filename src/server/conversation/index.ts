@@ -68,7 +68,6 @@ export {
 } from "./generation-retention";
 export type {
 	CapabilityAvailability,
-	ActiveGenerationSnapshot,
 	CapabilityBlockReason,
 	CastParticipantSnapshot,
 	AuthorStampSnapshot,

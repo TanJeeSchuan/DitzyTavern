@@ -278,13 +278,6 @@ export interface ConversationCommand {
 	action: ConversationAction;
 }
 
-export interface ActiveGenerationSnapshot {
-	generationId: number;
-	messageId: number;
-	variantId: number;
-	startedAt: string;
-}
-
 // Deliberate, on-demand read of one server-owned Active Generation. Derived
 // from the canonical shared schema (ADR-0032): the inspection contract and
 // the domain seam share one declaration, so an inspection field cannot
