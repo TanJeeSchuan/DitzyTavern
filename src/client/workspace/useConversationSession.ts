@@ -178,10 +178,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 			if (outcome.outcome === "not-found") continue;
 			if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
 			if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-			const type = currentSession().story.page === null ? "first-page" : "history-refreshed";
-			if (applyPage({ type, page: outcome.value }, signal) && !detached && type === "history-refreshed") {
-				applyPage({ type: "next-page-arrived", page: outcome.value }, signal);
-			}
+			applyPage({ type: detached ? "history-refreshed" : "first-page", page: outcome.value, activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId) }, signal);
 		}
 		return freshConversation;
 	}, [client, readHistory, applyPage]);

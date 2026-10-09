@@ -392,19 +392,16 @@ test("initial history behind Conversation authority refetches and finishes openi
 	expect(h.requests).toHaveLength(3);
 });
 
-test("refresh retains older Messages loaded while its latest page is pending", async () => {
-	const late = Promise.withResolvers<Response>();
-	let reads = 0;
+test("refresh adopts the authoritative latest page, dropping Messages deleted on the server", async () => {
+	const latest = page(1, 1, 6);
+	const afterDelete = { ...latest, messages: [page(1, 2, 6).messages[1], latest.messages[0]] };
+	let refreshed = false;
 	const h = await harness(({ url }) => Promise.resolve(url.pathname.endsWith("history")
-		? url.searchParams.has("aroundMessageId") ? Response.json(page(1, 2)) : ++reads === 1 ? Response.json(page()) : late.promise
-		: Response.json(summary())));
-	let refresh: Promise<unknown> = Promise.resolve();
-	await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1); });
-	await flushHook();
-	await h.hook.act(async () => h.hook.current.loadMoreHistory());
-	await h.hook.act(async () => { late.resolve(Response.json(page())); await refresh; });
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
-	expect(h.hook.current.story.page?.hasOlder).toBe(true);
+		? Response.json(refreshed ? afterDelete : page())
+		: Response.json(summary(1, refreshed ? 6 : 5))));
+	refreshed = true;
+	await h.hook.act(async () => { await h.hook.current.refreshStory(1); });
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([104, 105]);
 });
 
 test("navigation to a visible Message cancels paging and permits another older page", async () => {

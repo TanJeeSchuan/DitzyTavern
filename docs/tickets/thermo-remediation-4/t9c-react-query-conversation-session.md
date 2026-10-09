@@ -248,3 +248,19 @@ uncommitted diff against `099abf7`. No unresolved review objections.
 No e2e, browser/server process, dependency installation, or worktree creation was used.
 Combined hook runs retain the existing React act warnings; isolated session tests pass without them.
 Concurrent edits outside the seven owned paths are excluded from staging.
+
+### Review round 2 (orchestrator fix)
+
+- **#4 reverted to follow-up.** The round-1 refresh merge kept server-deleted Messages and stale edited content in the retained window
+  (revision 5 `[105,106]` then authoritative revision 6 `[104,105]` yielded `[104,105,106]`) — worse than the pre-existing symptom it
+  fixed. `refreshStory` again settles the latest page as `first-page` (or `history-refreshed` when detached). Pinned by
+  "refresh adopts the authoritative latest page, dropping Messages deleted on the server" (fails on 045c4c62).
+
+## Follow-ups
+
+- **#4 (pre-existing):** a generation refresh that resolves after the reader paged older history replaces the window with the latest
+  page, so the older pages vanish until scrolled again. A correct fix must reconcile every retained page against authoritative history
+  (refetch retained pages or a server window read), which is new machinery. Repro: hold refresh's latest-page response, load older
+  history to `[103..106]`, resolve refresh → `[105,106]`.
+- **#7 (pre-existing, unreachable):** two `useConversationSession` instances for one Conversation don't share history updates.
+  Production mounts one session.
