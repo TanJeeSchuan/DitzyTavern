@@ -20,6 +20,10 @@ Source: issue #52, **§7 Legibility**. Many items may already be gone after earl
 4. Comment ratio: `client/import-chat.ts` (41%), `server/sillytavern/import-projection.ts` (31%), and `client/conversation-command-runner.ts`
    if it survived T7. Delete `@approved` justifications for shapes that no longer need defending. Keep comments that state a non-obvious constraint.
 
+5. Position compaction outside `database/resequence.ts` (found in T6 review): Variant compaction in
+   `server/conversation/commands/delete-variant.ts` (~:33) and active-Cast compaction in `server/conversation/commands/remove-participant.ts` (~:101).
+   Move them onto `resequence` if the scope/UNIQUE shape matches; otherwise record why not.
+
 - **Behavior changed:** none.
 
 ## Files owned
@@ -32,6 +36,7 @@ Whatever the measurements above point at. No other ticket is running at the same
 - [ ] 2. jscpd clones on non-test code: 0 (or justified)
 - [ ] 3. accept-generation line
 - [ ] 4. comment trim
+- [ ] 5. remaining position compaction onto `resequence`
 - [ ] typecheck, lint, check:contracts, `bun run test`
 - [ ] Commit
 
