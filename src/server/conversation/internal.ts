@@ -247,12 +247,16 @@ export const requireParticipantDefinition = (
 
 export type ParticipantRow = typeof participantTable.$inferSelect;
 
-export const requireParticipant = (
+// @approved
+//  The active Participant row of a Conversation, or undefined: the one
+// ownership lookup shared by commands that need the row and by callers that
+// map a missing Participant to their own typed error.
+export const findActiveParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
 	participantId: number,
-): ParticipantRow => {
-	const participant = db
+): ParticipantRow | undefined =>
+	db
 		.select()
 		.from(participantTable)
 		.where(
@@ -263,6 +267,13 @@ export const requireParticipant = (
 			),
 		)
 		.get();
+
+export const requireParticipant = (
+	db: ConversationDatabase,
+	conversationId: number,
+	participantId: number,
+): ParticipantRow => {
+	const participant = findActiveParticipant(db, conversationId, participantId);
 
 	if (participant === undefined) {
 		throw new InvalidConversationCommandError(

@@ -11,17 +11,13 @@ import { toDataEntry } from "./message-rows";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { conversationDataTable, conversationTable } from "../database/schema";
+import { queryBatches } from "../database/query-batches";
 import { connectConversationDatabase } from "./internal";
 import type {
 	ConversationDataEntry,
 	ConversationDataRead,
 	ConversationDataReadFilter,
 } from "./types";
-
-const queryBatches = <T>(values: readonly T[]): T[][] =>
-	Array.from({ length: Math.ceil(values.length / 500) }, (_, index) =>
-		values.slice(index * 500, (index + 1) * 500),
-	);
 
 // @approved
 //  Reads the Conversation's name and the Conversation-scoped data entries,

@@ -6,6 +6,7 @@ import {
 	promptPresetBlockTable,
 	promptPresetTable,
 } from "../database/schema";
+import { queryBatches } from "../database/query-batches";
 import {
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
@@ -129,11 +130,6 @@ export const selectConversationPromptPreset = (
 		})
 		.run();
 };
-
-const queryBatches = <T>(values: readonly T[]): T[][] =>
-	Array.from({ length: Math.ceil(values.length / 500) }, (_, index) =>
-		values.slice(index * 500, (index + 1) * 500),
-	);
 
 // @approved
 //  An authored instruction always stores its composed name, text,

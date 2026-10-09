@@ -3,7 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState, type Dispatch
 import { flushSync } from "react-dom";
 import { loadHistoryPage, type ChatHistoryPageRequest } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
-import { conversationKey, conversationQuery, publishConversation, useConversationQuery } from "../conversation-query";
+import { cancellableFetch, conversationKey, conversationQuery, publishConversation, useConversationQuery } from "../conversation-query";
 import type { StoryAction, StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { NetworkError, SERVER_UNREACHABLE_NOTICE } from "../lib/request-outcome";
@@ -24,11 +24,9 @@ const historyQuery = (client: QueryClient, id: number, request: ChatHistoryPageR
 	},
 	refetchOnReconnect: false,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
-		const cancellation = owner ? AbortSignal.any([signal, owner]) : signal;
-		await Promise.resolve();
-		cancellation.throwIfAborted();
-		const outcome = await loadHistoryPage(id, request, cancellation);
-		cancellation.throwIfAborted();
+		const outcome = await cancellableFetch(signal, owner, (cancellation) =>
+			loadHistoryPage(id, request, cancellation),
+		);
 		const current = client.getQueryData<Awaited<ReturnType<typeof loadHistoryPage>>>([...historyKey(id), request]);
 		return outcome.outcome === "available" && current?.outcome === "available" && current.value.revision > outcome.value.revision ? current : outcome;
 	},

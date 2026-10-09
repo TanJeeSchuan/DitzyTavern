@@ -419,37 +419,35 @@ export function readMemoryAllowance(database: Database, conversationId: number) 
 	return memorySettingsView(database, conversationId, ensureChatState(database, conversationId));
 }
 
+const updateChatState = (
+	database: Database,
+	conversationId: number,
+	expectedRevision: number,
+	patch: Partial<Pick<typeof conversationMemorySettingsTable.$inferSelect, "allowance" | "memory_note">>,
+) =>
+	database.transaction(() => {
+		const current = ensureChatState(database, conversationId);
+		guardRevision("settings", expectedRevision, current, () => memorySettingsView(database, conversationId, current));
+		const next = { ...current, ...patch, revision: current.revision + 1 };
+		connect(database)
+			.update(conversationMemorySettingsTable)
+			.set({ ...patch, revision: next.revision })
+			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
+			.run();
+		return memorySettingsView(database, conversationId, next);
+	}).immediate();
+
 export function setMemoryAllowance(database: Database, conversationId: number, expectedRevision: number, allowance: number) {
 	if (!Number.isSafeInteger(allowance) || allowance < 0) {
 		throw new InvalidMemorySourceError("Memory Allowance must be a non-negative whole number of estimated tokens.");
 	}
-	return database.transaction(() => {
-		const current = ensureChatState(database, conversationId);
-		guardRevision("settings", expectedRevision, current, () => memorySettingsView(database, conversationId, current));
-		const next = current.revision + 1;
-		connect(database)
-			.update(conversationMemorySettingsTable)
-			.set({ allowance, revision: next })
-			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
-			.run();
-		return memorySettingsView(database, conversationId, { ...current, allowance, revision: next });
-	}).immediate();
+	return updateChatState(database, conversationId, expectedRevision, { allowance });
 }
 
 export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {
 	const memoryNote = note.trim();
 	if (memoryNote.length > 2_000) throw new InvalidMemorySourceError("The Memory note is limited to 2,000 characters.");
-	return database.transaction(() => {
-		const current = ensureChatState(database, conversationId);
-		guardRevision("settings", expectedRevision, current, () => memorySettingsView(database, conversationId, current));
-		const next = current.revision + 1;
-		connect(database)
-			.update(conversationMemorySettingsTable)
-			.set({ memory_note: memoryNote, revision: next })
-			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
-			.run();
-		return memorySettingsView(database, conversationId, { ...current, memory_note: memoryNote, revision: next });
-	}).immediate();
+	return updateChatState(database, conversationId, expectedRevision, { memory_note: memoryNote });
 }
 
 export interface MemoryWorkerOptions {

@@ -98,6 +98,19 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
 	const labels = useMemo(() => new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`])), [memories?.path]);
+	const settleCorrection = useCallback(async (
+		result: Awaited<ReturnType<typeof correctMemory>>,
+		afterReplace?: () => void,
+	) => {
+		if (result.outcome !== "conflict" && result.outcome !== "available") {
+			return result.outcome === "invalid" || result.outcome === "unusable"
+				? result.reason
+				: "The Memory correction could not be saved.";
+		}
+		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
+		afterReplace?.();
+		return result.outcome === "conflict" ? conflictNotice : null;
+	}, [replace]);
 	const actions = useMemo(() => ({
 		label: (messageId: number) => labels.get(messageId) ?? "Earlier Message",
 		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
@@ -109,28 +122,14 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
 		edit: (source: Source, index: number | null) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
-		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
-			const result = await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft });
-			if (result.outcome !== "conflict" && result.outcome !== "available") {
-				return result.outcome === "invalid" || result.outcome === "unusable"
-					? result.reason
-					: "The Memory correction could not be saved.";
-			}
-			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
-			setEditing(null);
-			return result.outcome === "conflict" ? conflictNotice : null;
-		}); },
-		remove: (source: Source, index: number) => void act(source, async () => {
-			const result = await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" });
-			if (result.outcome !== "conflict" && result.outcome !== "available") {
-				return result.outcome === "invalid" || result.outcome === "unusable"
-					? result.reason
-					: "The Memory correction could not be saved.";
-			}
-			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
-			return result.outcome === "conflict" ? conflictNotice : null;
-		}),
-	}), [act, conversationId, editing, labels, reextract, refresh, replace]);
+		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => settleCorrection(
+			await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft }),
+			() => setEditing(null),
+		)); },
+		remove: (source: Source, index: number) => void act(source, async () => settleCorrection(
+			await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" }),
+		)),
+	}), [act, conversationId, editing, labels, reextract, refresh, replace, settleCorrection]);
 
 	return {
 		status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,

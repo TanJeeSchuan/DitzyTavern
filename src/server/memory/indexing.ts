@@ -13,8 +13,7 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared/contract/memory";
 import { indexingVariants, registerMemoryWork } from "./work";
 import { sha256 } from "./hash";
-
-const queryBatches = <T>(values: readonly T[]): T[][] => Array.from({ length: Math.ceil(values.length / 500) }, (_, index) => values.slice(index * 500, (index + 1) * 500));
+import { queryBatches } from "../database/query-batches";
 
 const connect = (database: Database) => drizzle(database);
 type MemoryIndexDatabase = ReturnType<typeof connect>;
