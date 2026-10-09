@@ -716,13 +716,36 @@ describe("streaming Provisional Variant content", () => {
 		expect(finished.unplacedObservations).toEqual([]);
 	});
 
-	test("a window detached from the latest Message does not hold stream events for Messages outside it", () => {
+	test("held stream events survive a jump back to the latest Messages, and a snapshot supersedes earlier ones", () => {
+		const observe = (eventId: number, text: string) => ({
+			type: "generation-observed" as const, stream: "content" as const, mode: "append" as const,
+			messageId: 11, variantId: 110, generationId: 55, eventId, text,
+		});
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
 		state = reduceStory(state, { type: "first-page", page: page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }) });
-		state = reduceStory(state, {
-			type: "generation-observed", stream: "content", mode: "append", messageId: 11, variantId: 110, generationId: 55, eventId: 1, text: "Far away",
+		state = [observe(1, "One."), observe(2, " Two."), observe(3, " Three.")].reduce(reduceStory, state);
+		const latest = page({
+			messages: [message({
+				id: 11,
+				variants: [{
+					id: 110, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+					liveGeneration: { generationId: 55, eventId: 1, content: "One.", reasoning: "" },
+				}],
+			})],
 		});
-		expect(state.unplacedObservations).toEqual([]);
+		const returned = reduceStory(state, { type: "first-page", page: latest, activeGenerationIds: [55] });
+		expect(variantContent(returned, 110)?.content).toBe("One. Two. Three.");
+
+		const snapshot = reduceStory(state, {
+			type: "generation-observed", mode: "replace", messageId: 11, variantId: 110, generationId: 55, eventId: 4, content: "One. Two. Three. Four.", reasoning: "",
+		});
+		expect(snapshot.unplacedObservations).toHaveLength(1);
+		const staleSnapshot = reduceStory(state, {
+			type: "generation-observed", mode: "replace", messageId: 11, variantId: 110, generationId: 55, eventId: 1, content: "One.", reasoning: "",
+		});
+		expect(variantContent(reduceStory(staleSnapshot, { type: "first-page", page: latest, activeGenerationIds: [55] }), 110)?.content).toBe("One. Two. Three.");
+		const finished = reduceStory(state, { type: "history-refreshed", page: page(), activeGenerationIds: [] });
+		expect(finished.unplacedObservations).toEqual([]);
 	});
 
 	test("history checkpoint and replay resume share one ordered projection", () => {

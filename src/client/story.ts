@@ -100,8 +100,8 @@ export interface StoryState {
 	preview: StoryPreviewState | null;
 	// @approved
 	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
-	// Message it introduces; they replay once their Variant arrives with the same live Generation. Only a window
-	// attached to the latest Message holds them: a detached window re-reads live content when it returns.
+	// Message it introduces, or after a jump to the latest Messages; they replay once their Variant arrives with
+	// the same live Generation. Snapshots replace covered events; authoritative refreshes retire ended Generations.
 	unplacedObservations: readonly GenerationObservation[];
 }
 
@@ -312,7 +312,10 @@ const findVariant = (state: StoryState, { messageId, variantId }: GenerationObse
 
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
 	if (action.type === "generation-observed" && findVariant(state, action) === undefined) {
-		return state.page?.hasNewer ? state : { ...state, unplacedObservations: [...state.unplacedObservations, action] };
+		const held = action.mode === "replace"
+			? state.unplacedObservations.filter((observation) => observation.generationId !== action.generationId || observation.eventId > action.eventId)
+			: state.unplacedObservations;
+		return { ...state, unplacedObservations: action.mode === "replace" ? [action, ...held] : [...held, action] };
 	}
 	const next = reduceStoryAction(state, action);
 	if (next.messages === state.messages || next.unplacedObservations.length === 0) return next;
@@ -346,12 +349,14 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				page: { ...action.page.page, newestIndex: action.page.page.index },
 				status: "ready",
 				preview: null,
+				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
 		case "history-refreshed":
 			if (state.conversationId !== action.page.conversationId) return state;
 			return {
 				...state,
 				revision: action.page.revision,
+				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || action.activeGenerationIds.includes(generationId)),
 				messages: state.messages.map((message) => {
 					const fresh = action.page.messages.find((entry) => entry.id === message.id);
 					return fresh ? toStoryMessage(fresh, message, new Set(action.activeGenerationIds ?? [])) : message;
