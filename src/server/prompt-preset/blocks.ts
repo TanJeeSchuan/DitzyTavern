@@ -9,7 +9,9 @@ import {
 	singleUseReferenceLabels,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
+	type PromptOutgoingRole,
 	type PromptPresetBlockOccurrence,
+	type PromptPresetBlockReference,
 	type PromptPresetRecipe,
 	hasEnabledMemorySlot,
 } from "../../shared/contract/prompt-preset";
@@ -106,6 +108,44 @@ const applyBlockPatch = (
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
+// @approved
+//  The one construction site for a stored occurrence row. The preset id, the
+//  placement the op names, the storage split (history stores no role; only an
+//  authored instruction stores a name and text), and the outgoing role a new
+//  slot starts with are decided here, so each op supplies only its own slot
+//  data. The stored id comes back so an op that repositions the new row can
+//  splice it into the order it returns.
+const insertOccurrence = (
+	db: Pick<RecipeDatabase, "insert">,
+	presetId: number,
+	position: number,
+	occurrence: {
+		reference: PromptPresetBlockReference;
+		enabled: boolean;
+		role?: PromptOutgoingRole;
+		name?: string;
+		content?: string;
+	},
+): number => {
+	const { reference } = occurrence;
+	const role = reference === "history"
+		? null
+		: occurrence.role ?? (reference === "instruction" ? "system" : defaultOutgoingRoles[reference]);
+	return db
+		.insert(promptPresetBlockTable)
+		.values({
+			preset_id: presetId,
+			position,
+			reference,
+			enabled: occurrence.enabled,
+			role,
+			name: reference === "instruction" ? occurrence.name : null,
+			content: reference === "instruction" ? occurrence.content : null,
+		})
+		.returning({ id: promptPresetBlockTable.id })
+		.get()!.id;
+};
+
 const readRequiredRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
 	const recipe = readPromptPresetRecipe(database, presetId);
 	if (recipe === undefined) throw new PromptPresetNotFoundError(presetId);
@@ -188,20 +228,10 @@ export const addPromptPresetBlock = (
 	withRecipe(database, presetId, (db, recipe) => {
 		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 		const ordered = recipe.slots.map((slot) => slot.id);
-		const inserted = db
-			.insert(promptPresetBlockTable)
-			.values({
-				preset_id: presetId,
-				position: ordered.length + 1,
-				reference,
-				enabled: true,
-				role: reference === "history" ? null : defaultOutgoingRoles[reference],
-			})
-			.returning({ id: promptPresetBlockTable.id })
-			.get()!;
+		const inserted = insertOccurrence(db, presetId, ordered.length + 1, { reference, enabled: true });
 		if (reference !== "author-note") return;
 		const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
-		ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted.id);
+		ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
 		return ordered;
 	});
 
@@ -214,17 +244,12 @@ export const addPromptPresetInstruction = (
 	presetId: number,
 ): PromptPresetRecipe =>
 	withRecipe(database, presetId, (db, recipe) => {
-		db.insert(promptPresetBlockTable)
-			.values({
-				preset_id: presetId,
-				position: recipe.slots.length + 1,
-				reference: "instruction",
-				enabled: true,
-				role: "system",
-				name: "Instruction",
-				content: "",
-			})
-			.run();
+		insertOccurrence(db, presetId, recipe.slots.length + 1, {
+			reference: "instruction",
+			enabled: true,
+			name: "Instruction",
+			content: "",
+		});
 	});
 
 /** @approved Moves one occurrence to a one-based position, shifting the rest. */
@@ -274,35 +299,9 @@ export const duplicatePromptPresetBlock = (
 	withRecipe(database, presetId, (db, recipe) => {
 		const original = requireOccurrence(recipe, presetId, blockId);
 		assertNoSecondUniqueBlock(original.reference, true);
-		// @approved
-		//  The copy's row is placed by re-sequencing, not by its stored
-		// position: the ordered list is read before the insert so the copy is
-		// spliced in exactly once, right after the original.
 		const ordered = recipe.slots.map((slot) => slot.id);
-		// @approved
-		//  Authored instruction rows carry their own name and text;
-		// referenced occurrences store none, so only the instruction branch
-		// contributes them to the copy.
-		const duplicatedRow: typeof promptPresetBlockTable.$inferInsert = {
-			preset_id: presetId,
-			position: ordered.length + 1,
-			reference: original.reference,
-			enabled: original.enabled,
-			role: original.reference === "history" ? null : original.role,
-		};
-		if (original.reference === "instruction") {
-			duplicatedRow.name = original.name;
-			duplicatedRow.content = original.content;
-		}
-		const inserted = db
-			.insert(promptPresetBlockTable)
-			.values(duplicatedRow)
-			.returning({ id: promptPresetBlockTable.id })
-			.get();
-		if (inserted === undefined) {
-			throw new Error("The duplicated Prompt Preset block could not be stored.");
-		}
-		ordered.splice(ordered.indexOf(blockId) + 1, 0, inserted.id);
+		const copy = insertOccurrence(db, presetId, ordered.length + 1, original);
+		ordered.splice(ordered.indexOf(blockId) + 1, 0, copy);
 		return ordered;
 	});
 

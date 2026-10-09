@@ -78,3 +78,20 @@ one new helper under `src/server/database/`, and their tests.
   seam is untouched and no module-local revision check was introduced.
 - **Gates:** `bun run typecheck` 0 errors; `bun run lint` exit 0 (only pre-existing warnings); `bun run check:contracts` exit 0
   (11 pre-existing suspicious cross-layer matches); `bun run test` 1358 pass / 0 fail. Acceptance greps: 0 and none.
+
+Review fix round 1 (Codex gpt-6.1-sol): F5's insert consolidation was unfinished — `addPromptPresetBlock`,
+`addPromptPresetInstruction`, and `duplicatePromptPresetBlock` still built and inserted a block row each. One
+`insertOccurrence(db, presetId, position, { reference, enabled, role?, name?, content? })` helper now constructs the stored
+row for all three and returns its id: it owns the preset id, the storage split (history stores no role; only an authored
+instruction stores a name and text), the outgoing role a new slot starts with (`defaultOutgoingRoles`, `system` for an
+authored instruction), and the id read. `addPromptPresetBlock` supplies `{ reference, enabled: true }`,
+`addPromptPresetInstruction` its blank name and text, `duplicatePromptPresetBlock` the occurrence it read. Same rows, same
+positions, same id order; the duplicate's unreachable "could not be stored" guard left with its scaffold. Contract coverage
+confirmed, no test added: add-reference and duplicate in `prompt-preset-recipe.test.ts` ("saved rearrangement, toggles,
+duplicates, additions and removals…") plus the author-note placement tests, and add-instruction through
+`POST /api/prompt-presets/:presetId/instructions` in `prompt-preset-authored-instructions.test.ts` and its macro suite.
+
+Re-verification after round 1: `bun run typecheck` exit 0; `bun run lint` exit 0 (348 pre-existing warnings; the one in
+`blocks.ts` is the same unapproved-JSDoc warning as before this round, at its shifted line); `bun run check:contracts` exit 0
+(628 structural declarations, 151 `Static<typeof Schema>` derivations, 11 advisory cross-layer matches);
+`bun test src/server/contract` 369 pass / 0 fail; `bun test src/server/lorebook` 25 pass / 0 fail.
