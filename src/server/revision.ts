@@ -1,4 +1,5 @@
 /**
+ * @approved
  * One optimistic-revision seam: every server aggregate that guards writes by
  * a revision counter throws the single `StaleRevisionError` through the
  * single `guardRevision`.

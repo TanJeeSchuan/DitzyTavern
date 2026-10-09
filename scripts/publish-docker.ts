@@ -15,7 +15,8 @@ type Commands = { fetch: (input: string | URL | Request, init?: RequestInit) => 
 
 export async function publishDockerBuild(build: Build, commands: Commands) {
 	if (build.eventName !== "push" || build.ref !== "refs/heads/master") return;
-	if (!Number.isSafeInteger(build.runNumber) || build.runNumber <= 0 || !/^[a-f0-9]{40}$/.test(build.revision) || !/^ghcr\.io\/[a-z0-9._/-]+$/.test(build.image)) throw new Error("Invalid publishing build identity");
+	if (!Number.isSafeInteger(build.runNumber) || build.runNumber <= 0 || !/^[a-f0-9]{40}$/.test(build.revision) ||
+		!/^ghcr\.io\/[a-z0-9._/-]+$/.test(build.image)) throw new Error("Invalid publishing build identity");
 	const repository = build.image.slice("ghcr.io/".length);
 	const read = async (tag: string) => {
 		const tokenResponse = await commands.fetch(`https://ghcr.io/token?service=ghcr.io&scope=repository:${repository}:pull,push`, {

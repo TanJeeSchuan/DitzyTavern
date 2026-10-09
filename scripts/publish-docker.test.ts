@@ -98,7 +98,9 @@ test("lookup failures never authorize a numbered overwrite or latest promotion",
 });
 
 test("unnumbered or malformed indexes fail rather than invent an ordering", async () => {
-	for (const metadata of [{}, { ...annotations(10), "io.ditzytavern.build-number": "0" }, { ...annotations(10), "io.ditzytavern.build-number": "10x" }, { ...annotations(10), "io.ditzytavern.distribution": "custom" }, { ...annotations(10), "org.opencontainers.image.revision": "short" }]) {
+	for (const metadata of [{}, { ...annotations(10), "io.ditzytavern.build-number": "0" }, { ...annotations(10),
+		"io.ditzytavern.build-number": "10x" }, { ...annotations(10), "io.ditzytavern.distribution": "custom" }, { ...annotations(10),
+		"org.opencontainers.image.revision": "short" }]) {
 		const remote = registry();
 		remote.tags.set("latest", { digest: digest10, annotations: metadata });
 		await expect(publishDockerBuild(build, remote)).rejects.toThrow("metadata");

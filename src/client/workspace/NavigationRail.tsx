@@ -95,6 +95,7 @@ export function NavigationRail({
 	);
 }
 
+// @approved
 // Below the desktop breakpoint the rail leaves the frame and drops down as a row under the Story header.
 export function NavigationDrawer({
 	open,

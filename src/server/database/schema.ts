@@ -41,8 +41,10 @@ function portraitColumns() {
 	};
 }
 
-const portraitComplete = (name: string, table: Record<keyof PortraitColumnRow, SQLWrapper>) =>
-	check(name, sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`);
+const portraitComplete = (name: string, table: Record<keyof PortraitColumnRow, SQLWrapper>) => {
+	const [hash, focalX, focalY] = [table.portrait_hash, table.portrait_focal_x, table.portrait_focal_y];
+	return check(name, sql`(${hash} IS NULL AND ${focalX} IS NULL AND ${focalY} IS NULL) OR (${hash} IS NOT NULL AND ${focalX} IS NOT NULL AND ${focalY} IS NOT NULL)`);
+};
 
 export interface PortraitColumnRow {
 	portrait_hash: string | null;
@@ -916,6 +918,7 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 	],
 );
 
+// @approved
 // Model IDs the writer marked as unable to receive Images. Like the Discovery
 // Catalog, the marks live outside the editable settings revision.
 export const connectionProfileTextOnlyModelTable = sqliteTable(

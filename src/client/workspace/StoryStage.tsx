@@ -22,6 +22,7 @@ import type { usePreviewController } from "./usePreviewController";
 import { useStoryMessageActions } from "./useStoryMessageActions";
 import { useStoryViewport } from "./useStoryViewport";
 
+// @approved
 // The story stage: header, preview dock, scrollable message list, and
 // composer. It owns the viewport scroll state, the message commands, and the
 // composer focus; panel coordination and generation remain with the

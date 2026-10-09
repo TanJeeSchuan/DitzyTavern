@@ -45,7 +45,9 @@ const fakeRegistryFetch = async (url: string, init?: RequestInit) => {
 		held.promise.then(pending.resolve);
 		try { await pending.promise; } finally { signal?.removeEventListener("abort", abort); }
 	}
-	return Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": String(reply.buildNumber), "org.opencontainers.image.revision": reply.revision } });
+	return Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json",
+		annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": String(reply.buildNumber),
+		"org.opencontainers.image.revision": reply.revision } });
 };
 
 const refuse = (call: ModelCall) => {
@@ -56,7 +58,9 @@ const refuse = (call: ModelCall) => {
 const sse = (chunks: readonly string[], hold: boolean, chunkDelayMs: number, truncate: boolean) => new Response(new ReadableStream({
 	async pull(controller) {
 		const encoder = new TextEncoder();
-		const send = (delta: { content?: string }, finish: string | null) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: "e2e", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
+		const send = (delta: { content?: string },
+			finish: string | null) =>
+			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: "e2e", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
 		for (const [index, content] of chunks.entries()) {
 			if (index > 0) await Bun.sleep(chunkDelayMs);
 			send({ content }, null);
@@ -181,7 +185,9 @@ const reset = async () => {
 
 const open = async (directory: string, database: ReturnType<typeof provision>) => {
 	updateDirectory = directory;
-	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
+	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build,
+		registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory,
+		"artifacts") }) };
 };
 
 const resumed = process.env.E2E_RESUME;
@@ -192,7 +198,8 @@ if (resumed) {
 } else await reset();
 
 const unsentPlans = async () => {
-	const generations = current!.database.query<{ id: number; conversation_id: number }, []>("SELECT id, conversation_id FROM active_generation UNION SELECT id, conversation_id FROM generation_replay").all();
+	const generations = current!.database.query<{ id: number; conversation_id: number },
+		[]>("SELECT id, conversation_id FROM active_generation UNION SELECT id, conversation_id FROM generation_replay").all();
 	const sent = calls.filter((call) => call.kind === "chat").map((call) => JSON.stringify([call.body.model, call.body.messages]));
 	const unsent: string[] = [];
 	for (const { id, conversation_id } of generations) {
@@ -218,7 +225,8 @@ const server = Bun.serve({
 			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
 			case "/__e2e/updates": {
 				updateScenario = await request.json();
-				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
+				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic",
+					{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
 				const directory = current!.directory;
 				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
 				await current!.close();

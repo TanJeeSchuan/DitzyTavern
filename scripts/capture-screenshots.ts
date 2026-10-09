@@ -357,7 +357,10 @@ writeFileSync(
 <style>body{font:14px system-ui;margin:24px;background:#1b1b1b;color:#ddd}figure{margin:0 0 40px}figcaption{margin-bottom:8px}.shots{display:flex;gap:8px}.shots a{flex:1;min-width:0}.shots img{width:100%;border:1px solid #444}.problems{color:#f88}</style>
 ${captures
 	.map(
-		(s, index) => `<figure id="${index}"><figcaption>${index} · ${escapeHtml(s.path)}${s.problems.length ? ` <span class="problems">⚠ ${escapeHtml(s.problems.join("; "))}</span>` : ""}</figcaption><div class="shots">${SCHEMES.map(
+		(s,
+			index) =>
+			`<figure id="${index}"><figcaption>${index} · ${escapeHtml(s.path)}${s.problems.length ? ` <span class="problems">⚠ ${escapeHtml(s.problems.join(
+			"; "))}</span>` : ""}</figcaption><div class="shots">${SCHEMES.map(
 			(scheme) => `<a href="${scheme}/${s.file}"><img loading="lazy" src="${scheme}/${s.file}"></a>`,
 		).join("")}</div></figure>`,
 	)

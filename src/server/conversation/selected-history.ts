@@ -130,7 +130,8 @@ const readSelectedHistoryFromConnection = (
 		))
 		.all()
 		.map((participant) => participant.id));
-	const toMessage = (message: Pick<typeof messageRows[number], "id" | "position" | "author_participant_id" | "author_name" | "context_human_participant_id" | "context_model_participant_id">): SelectedHistoryMessage => ({
+	type MessageRow = Pick<typeof messageRows[number], "id" | "position" | "author_participant_id" | "author_name" | "context_human_participant_id" | "context_model_participant_id">;
+	const toMessage = (message: MessageRow): SelectedHistoryMessage => ({
 		id: message.id,
 		position: message.position,
 		author: toAuthorStamp(message, castIds),

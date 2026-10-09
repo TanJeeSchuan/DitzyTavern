@@ -8,7 +8,9 @@ afterEach(() => database.close());
 
 const revision = "a".repeat(40);
 const official = { distribution: "official", buildNumber: 9, revision } as const;
-const index = (buildNumber: string, source = revision) => Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": buildNumber, "org.opencontainers.image.revision": source } });
+const index = (buildNumber: string, source = revision) => Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json",
+	annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": buildNumber,
+	"org.opencontainers.image.revision": source } });
 const registry = (...responses: Response[]) => async () => responses.shift() ?? Response.json({ token: "anonymous" });
 
 test("build 10 is available to build 9 even at the same source revision", async () => {
@@ -22,14 +24,16 @@ test("anonymous registry access reads only the latest index with bounded request
 	const responses = [Response.json({ token: "public-pull" }), index("10")];
 	const checker = createUpdateChecker(database, { build: official, registryFetch: async (url, init) => { requests.push({ url, init }); return responses.shift()!; } });
 	await checker.check();
-	expect(requests.map(({ url }) => url)).toEqual(["https://ghcr.io/token?service=ghcr.io&scope=repository:tanjeeschuan/ditzytavern:pull", "https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest"]);
+	expect(requests.map(({ url }) => url)).toEqual(["https://ghcr.io/token?service=ghcr.io&scope=repository:tanjeeschuan/ditzytavern:pull",
+		"https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest"]);
 	expect(new Headers(requests[1].init?.headers).get("authorization")).toBe("Bearer public-pull");
 	expect(requests.every(({ init }) => init?.signal instanceof AbortSignal)).toBe(true);
 });
 
 test("custom builds stay unavailable even after a manual check", async () => {
 	let requests = 0;
-	const checker = createUpdateChecker(database, { build: { distribution: "custom", buildNumber: null, revision: null }, registryFetch: async () => { requests++; throw new Error("Outbound request forbidden"); } });
+	const checker = createUpdateChecker(database, { build: { distribution: "custom", buildNumber: null, revision: null },
+		registryFetch: async () => { requests++; throw new Error("Outbound request forbidden"); } });
 	checker.start();
 	checker.setAutomaticChecks(false);
 	checker.setAutomaticChecks(true);
@@ -48,7 +52,9 @@ test("an initial registry failure reports no successful comparison", async () =>
  expect(await checker.check()).toMatchObject({ result: null, attempt: { status: "failed", error: "Registry authentication failed (503)." } });
 });
 test("invalid official index metadata cannot claim currency", async () => {
- for (const response of [index("0"), index("1.5"), index("9007199254740992"), index("9", "short"), Response.json({ annotations: {} }), Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.manifest.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": "9", "org.opencontainers.image.revision": revision } })]) {
+ for (const response of [index("0"), index("1.5"), index("9007199254740992"), index("9", "short"), Response.json({ annotations: {} }),
+ 	Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.manifest.v1+json", annotations: { "io.ditzytavern.distribution": "official",
+ 	"io.ditzytavern.build-number": "9", "org.opencontainers.image.revision": revision } })]) {
   const checker = createUpdateChecker(database, { build: official, registryFetch: registry(Response.json({ token: "anonymous" }), response) });
   expect(await checker.check()).toMatchObject({ result: null, attempt: { status: "failed", error: "Published index has invalid official build metadata." } });
  }

@@ -17,10 +17,14 @@ export const SAMPLING_FIELD_LABELS = {
 } as const;
 
 export type SamplingField = keyof typeof SAMPLING_FIELD_LABELS;
-export const SAMPLING_FIELDS = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(SAMPLING_FIELD_LABELS) as SamplingField[];
+export const SAMPLING_FIELDS = /* @approved SAFETY: these keys come from the closed field declaration above. */ Object.keys(SAMPLING_FIELD_LABELS) as SamplingField[];
 export type SamplingDrafts = Record<SamplingField, string>;
 export type SamplingValues = Pick<ConversationGenerationSettings, SamplingField>;
-export const makeEmptySamplingDrafts = (): SamplingDrafts => /* SAFETY: mapping every sampling key supplies a string for every field. */ Object.fromEntries(SAMPLING_FIELDS.map((key) => [key, ""])) as SamplingDrafts;
+export const makeEmptySamplingDrafts = (): SamplingDrafts => {
+	// @approved
+	//  SAFETY: mapping every sampling key supplies a string for every field.
+	return Object.fromEntries(SAMPLING_FIELDS.map((key) => [key, ""])) as SamplingDrafts;
+};
 
 export type SamplingDraftValue =
 	| { status: "empty" }
@@ -40,6 +44,7 @@ export function parseSamplingDraft(raw: string): SamplingDraftValue {
 export function samplingDraftsFromSettings(
 	settings: Pick<ConversationGenerationSettings, SamplingField>,
 ): SamplingDrafts {
+	// @approved
 	// SAFETY: mapping the complete field list supplies every key with a string value.
 	return Object.fromEntries(SAMPLING_FIELDS.map((key) => [key, settings[key] === null ? "" : String(settings[key])])) as SamplingDrafts;
 }
@@ -69,10 +74,14 @@ const BUDGET_FIELD_MINIMUM = {
 } as const satisfies Record<BudgetField, number>;
 
 export type BudgetField = keyof typeof BUDGET_FIELD_LABELS;
-export const BUDGET_FIELDS = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(BUDGET_FIELD_LABELS) as BudgetField[];
+export const BUDGET_FIELDS = /* @approved SAFETY: these keys come from the closed field declaration above. */ Object.keys(BUDGET_FIELD_LABELS) as BudgetField[];
 export type BudgetDrafts = Record<BudgetField, string>;
 export type BudgetValues = Pick<ConversationGenerationSettings, BudgetField>;
-export const makeEmptyBudgetDrafts = (): BudgetDrafts => /* SAFETY: mapping every budget key supplies a string for every field. */ Object.fromEntries(BUDGET_FIELDS.map((key) => [key, ""])) as BudgetDrafts;
+export const makeEmptyBudgetDrafts = (): BudgetDrafts => {
+	// @approved
+	//  SAFETY: mapping every budget key supplies a string for every field.
+	return Object.fromEntries(BUDGET_FIELDS.map((key) => [key, ""])) as BudgetDrafts;
+};
 
 export type BudgetDraftValue =
 	| { status: "valid"; value: number }
@@ -96,22 +105,32 @@ export function parseBudgetDraft(field: BudgetField, raw: string): BudgetDraftVa
 export function budgetDraftsFromSettings(
 	settings: Pick<ConversationGenerationSettings, BudgetField>,
 ): BudgetDrafts {
+	// @approved
 	// SAFETY: mapping the complete field list supplies every key with a string value.
 	return Object.fromEntries(BUDGET_FIELDS.map((key) => [key, String(settings[key])])) as BudgetDrafts;
 }
 
-export function resolveBudgetValues(drafts: BudgetDrafts): BudgetValues | null {
-	const entries = BUDGET_FIELDS.map((key) => [key, parseBudgetDraft(key, drafts[key])] as const);
+const resolveValues = <TField extends string, TValue>(
+	drafts: Record<TField, string>,
+	fields: readonly TField[],
+	parse: (field: TField, raw: string) => { status: "valid"; value: TValue } | { status: "invalid" } | { status: "empty" },
+): Record<TField, TValue | null> | null => {
+	const entries = fields.map((key) => [key, parse(key, drafts[key])] as const);
 	if (entries.some(([, parsed]) => parsed.status === "invalid")) return null;
-	// SAFETY: every budget key is present and invalid values were rejected above.
-	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as BudgetValues;
+	// @approved
+	// SAFETY: every entry parsed to valid or empty; invalid entries returned null above.
+	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as Record<TField, TValue | null>;
+};
+
+export function resolveBudgetValues(drafts: BudgetDrafts): BudgetValues | null {
+	// @approved
+	// SAFETY: parseBudgetDraft has no empty status and rejects invalid values, so
+	// resolveValues returned a number for every BudgetField.
+	return resolveValues(drafts, BUDGET_FIELDS, parseBudgetDraft) as BudgetValues | null;
 }
 
 export function resolveSamplingValues(drafts: SamplingDrafts): SamplingValues | null {
-	const entries = SAMPLING_FIELDS.map((key) => [key, parseSamplingDraft(drafts[key])] as const);
-	if (entries.some(([, parsed]) => parsed.status === "invalid")) return null;
-	// SAFETY: every sampling key is present; blanks map to null after rejecting invalid values.
-	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as SamplingValues;
+	return resolveValues(drafts, SAMPLING_FIELDS, (_field, raw) => parseSamplingDraft(raw));
 }
 
 // @approved
@@ -127,7 +146,7 @@ export const OVERRIDES_NAMESPACE_LABELS = {
 	"anthropic-messages": "Anthropic Messages",
 } as const;
 
-export const OVERRIDES_NAMESPACES = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(OVERRIDES_NAMESPACE_LABELS) as OverridesNamespace[];
+export const OVERRIDES_NAMESPACES = /* @approved SAFETY: these keys come from the closed field declaration above. */ Object.keys(OVERRIDES_NAMESPACE_LABELS) as OverridesNamespace[];
 export type OverridesDrafts = Record<OverridesNamespace, JsonData>;
 
 export function makeEmptyOverridesDrafts() {

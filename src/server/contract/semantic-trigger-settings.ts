@@ -3,7 +3,8 @@ import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
-import { semanticTriggerSettings, semanticTriggerSettingsApplied, semanticTriggerSettingsCommandBody, semanticTriggerSettingsConflict, semanticTriggerSettingsInvalid } from "../../shared/contract/semantic-trigger-settings";
+import { semanticTriggerSettings, semanticTriggerSettingsApplied, semanticTriggerSettingsCommandBody, semanticTriggerSettingsConflict,
+	semanticTriggerSettingsInvalid } from "../../shared/contract/semantic-trigger-settings";
 
 const commandResponse = { 200: semanticTriggerSettingsApplied, 409: semanticTriggerSettingsConflict, 422: semanticTriggerSettingsInvalid };
 

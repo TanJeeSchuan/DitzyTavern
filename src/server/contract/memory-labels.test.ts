@@ -11,18 +11,24 @@ import { sha256 } from "../memory/hash";
 import { Value } from "@sinclair/typebox/value";
 import { memoryLabelsMerged, memoryWorkSnapshot, type MemoryCandidateJudgment } from "../../shared/contract/memory";
 
-const memory = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Alice promised Bob a key.", attribution: "Alice said it.", people, evidence: [{ messageId, excerpt: "I promised Bob a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: { support: 1, attribution: 1, usefulness: 1 } } });
+const memory = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Alice promised Bob a key.", attribution: "Alice said it.",
+	people, evidence: [{ messageId, excerpt: "I promised Bob a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain",
+	probabilities: {}, confidence: { support: 1, attribution: 1, usefulness: 1 } } });
 
 const addSource = (database: Database, conversationId: number, position: number, people: string[], selected = true) => {
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-29T00:00:00Z", author_name: "Alice" }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised Bob a key.", selected }).returning().get();
-	db.insert(memoryCollectionTable).values({ conversation_id: conversationId, message_id: message.id, variant_id: variant.id, revision: 1, status: "complete", source_hash: sha256(variant.content), source_snapshot_json: JSON.stringify({ source: { messageId: message.id, variantId: variant.id, speaker: "Alice", content: variant.content }, context: [] }), claims_json: JSON.stringify([memory(message.id, people)]), updated_at: message.timestamp }).run();
+	db.insert(memoryCollectionTable).values({ conversation_id: conversationId, message_id: message.id, variant_id: variant.id, revision: 1,
+		status: "complete", source_hash: sha256(variant.content), source_snapshot_json: JSON.stringify({ source: { messageId: message.id,
+		variantId: variant.id, speaker: "Alice", content: variant.content }, context: [] }), claims_json: JSON.stringify([memory(message.id, people)]),
+		updated_at: message.timestamp }).run();
 	return { messageId: message.id, variantId: variant.id };
 };
 
 const merge = (database: Database, conversationId: number, labels: string[], destination: string, expectedRevision = readConversationMemories(database, conversationId).labelRevision) =>
-	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/merge-labels`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, destination, expectedRevision }) }));
+	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/merge-labels`, { method: "POST",
+		headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, destination, expectedRevision }) }));
 
 describe("Memory label merging", () => {
 	let database: Database;
@@ -56,7 +62,8 @@ describe("Memory label merging", () => {
 		expect((await merge(database, chat.id, ["Alice"], "Narrator")).status).toBe(200);
 		expect((await merge(database, chat.id, ["Narrator"], "assistant")).status).toBe(200);
 		const current = readConversationMemories(database, chat.id).sources[0]!;
-		const corrected = correctMemorySource(database, chat.id, { ...source, expectedRevision: current.revision, index: 0, operation: "edit", claim: "Bob has the key.", attribution: "Alice said it.", people: ["Alice", "Narrator", "Assistant", "Bob"] });
+		const corrected = correctMemorySource(database, chat.id, { ...source, expectedRevision: current.revision, index: 0, operation: "edit",
+			claim: "Bob has the key.", attribution: "Alice said it.", people: ["Alice", "Narrator", "Assistant", "Bob"] });
 		expect(corrected.claims[0]!.people).toEqual(["assistant", "Bob"]);
 	});
 
@@ -119,7 +126,10 @@ describe("Memory label merging", () => {
 			const nextStop = startMemoryWorker(database, { process: async (captured) => [memory(captured.messageId, ["Assistant"])] });
 			try {
 				const deadline = Date.now() + 2000;
-				while (readConversationMemories(database, chat.id).sources.find((item) => item.variantId === source.variantId)?.status !== "complete" && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+				while (readConversationMemories(database,
+					chat.id)
+					.sources.find((item) => item.variantId === source.variantId)?.status !== "complete" && Date.now() < deadline) await new Promise((resolve) =>
+					setTimeout(resolve, 10));
 				expect(readConversationMemories(database, chat.id).sources.find((item) => item.variantId === source.variantId)?.claims[0]?.people).toEqual(["Alice"]);
 			} finally { await nextStop(); }
 		} finally { release.resolve(); await stop(); }

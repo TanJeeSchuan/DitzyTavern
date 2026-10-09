@@ -37,6 +37,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	memoryFocus: null,
 });
 
+// @approved
 // Focus and detail targets only outlive their surface while it stays open;
 // every action that drops a surface drops the focus data with it.
 const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState => ({

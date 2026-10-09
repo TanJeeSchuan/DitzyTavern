@@ -37,6 +37,7 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		setIsAtLatest(following && !hasNewer);
 	};
 
+	// @approved
 	// Scrolling up stops following new content; returning near the bottom resumes it.
 	const onStoryScroll = () => {
 		const root = storyScrollRef.current;

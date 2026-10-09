@@ -68,7 +68,8 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 	attribution,
 	people: ["Maren", "Writer"],
 	evidence: [{ messageId, excerpt }],
-	judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } },
+	judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 },
+		confidence: { support: 1, attribution: 1, usefulness: 1 } },
 });
 
 const queueAndIndex = async (database: Database, conversationId: number, messageId: number, variantId: number, claim: MemoryCandidateJudgment) => {
@@ -148,7 +149,8 @@ describe("Memory recall in Generation preparation", () => {
 			const editedText = "Keep the inspected context for this attempt.";
 			const editedPlan: PromptPlan = { ...preview.promptPlan, blocks: preview.promptPlan.blocks.map((block) => block.kind === "system-instruction" ? { ...block, content: editedText } : block) };
 			const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
-				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
+				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",
+					expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
 			}));
 			expect(accepted.status).toBe(200);
 			const { generationId } = await accepted.json();
@@ -177,13 +179,16 @@ describe("Memory recall in Generation preparation", () => {
 		if (change === "settings" || change === "decision-model" || change === "decision-limit") {
 			const memory = createMemorySettingsModule(database);
 			const { revision, ...settings } = memory.get();
-			memory.apply({ ...settings, expectedRevision: revision, ...(change === "settings" ? { recallRelevanceMinimum: 2 } : change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
+			memory.apply({ ...settings, expectedRevision: revision,
+				...(change === "settings" ? { recallRelevanceMinimum: 2 } : change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel:
+				"cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
 			setMemoryAllowance(database, conversation.id, readMemoryAllowance(database, conversation.id).revision, 1024);
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
 		else resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 1);
 		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision,
+				content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }),
 		}));
 		expect(accepted.status).toBe(422);
 		expect(await accepted.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
@@ -206,7 +211,8 @@ describe("Memory recall in Generation preparation", () => {
 			const { questions } = JSON.parse(String(init?.body));
 			return Response.json({ answers: Object.fromEntries(Object.keys(questions).map(id => [id, { type: "score", score: 2, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } }])) });
 		} });
-		const inspect = () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }) }));
+		const inspect = () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, { method: "POST",
+			headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }) }));
 		const inspected = await inspect();
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
@@ -214,7 +220,9 @@ describe("Memory recall in Generation preparation", () => {
 		const memory = createMemorySettingsModule(database);
 		const { revision, ...settings } = memory.get();
 		memory.apply({ ...settings, expectedRevision: revision, retainProbabilityMinimum: 0.95 });
-		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
+		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST",
+			headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision,
+			content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
 		expect(accepted.status).toBe(200);
 		const { generationId } = await accepted.json();
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
@@ -408,7 +416,8 @@ describe("Memory recall in Generation preparation", () => {
 		expect(restoreMemory.status).toBe(200);
 		await reindexSavedMemories(database, conversation.id, source.variantId);
 		const afterSourceCorrection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
-		expect(await afterSourceCorrection.json()).toMatchObject({ memoryActivation: { finalMemoryText: editedMemoryText, candidates: [{ claim: "Maren now holds Writer's key.", evidence: [{ excerpt: "Maren returned Writer's key." }] }] } });
+		expect(await afterSourceCorrection.json()).toMatchObject({ memoryActivation: { finalMemoryText: editedMemoryText,
+			candidates: [{ claim: "Maren now holds Writer's key.", evidence: [{ excerpt: "Maren returned Writer's key." }] }] } });
 
 		const latest = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1);
 		const variant = latest?.variants.at(-1);
@@ -458,7 +467,8 @@ describe("Memory recall in Generation preparation", () => {
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${siblingGeneration.generationId}/events`))).text();
 		expect(writingRequests.at(-1)).toContainEqual({ role: "system", content: memoryText });
 		const siblingDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${siblingGeneration.variantId}/details`));
-		expect(await siblingDetails.json()).toMatchObject({ memoryActivation: { manuallyEdited: false, finalMemoryText: memoryText, candidates: [{ messageId: source.messageId, variantId: source.variantId }] } });
+		expect(await siblingDetails.json()).toMatchObject({ memoryActivation: { manuallyEdited: false, finalMemoryText: memoryText,
+			candidates: [{ messageId: source.messageId, variantId: source.variantId }] } });
 		expect(embeddingCalls).toBe(3);
 		expect(decisionCalls).toBe(3);
 		const failedApp = createConversationRoutes(database, { masterKey: key, fetch: async () => new Response("provider unavailable", { status: 503 }) });
@@ -547,7 +557,9 @@ describe("Memory recall in Generation preparation", () => {
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "running")).toBe(true);
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "",
+				contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "",
+				decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			release();
 			await worker();
 		} finally { release(); await worker(); }

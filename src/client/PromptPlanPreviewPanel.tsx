@@ -119,6 +119,7 @@ export function PromptPlanPreviewPanel({
 	);
 }
 
+// @approved
 // Consecutive history blocks share one run; every other block is its own run.
 function groupHistoryRuns(blocks: PromptPlan["blocks"]) {
 	const runs: { block: PromptPlan["blocks"][number]; index: number }[][] = [];

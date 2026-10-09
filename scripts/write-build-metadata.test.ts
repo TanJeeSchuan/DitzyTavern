@@ -12,7 +12,9 @@ test("built runtime metadata identifies the official artifact and ordinary build
 			expect(await child.exited).toBe(0);
 			return JSON.parse(await readFile(output, "utf8"));
 		};
-		expect(await generate({ DISTRIBUTION: "official", BUILD_NUMBER: "142", SOURCE_REVISION: "0123456789012345678901234567890123456789" })).toEqual({ distribution: "official", buildNumber: 142, revision: "0123456789012345678901234567890123456789" });
+		expect(await generate({ DISTRIBUTION: "official", BUILD_NUMBER: "142",
+			SOURCE_REVISION: "0123456789012345678901234567890123456789" })).toEqual({ distribution: "official", buildNumber: 142,
+			revision: "0123456789012345678901234567890123456789" });
 		expect(await generate({})).toEqual({ distribution: "custom", buildNumber: null, revision: null });
 	} finally { await rm(directory, { recursive: true }); }
 });

@@ -65,7 +65,8 @@ export async function testConnection(
 			await requestDecisions({ request, questions, selection, fetch: options.fetch });
 			return { outcome: "success", message: "Connection succeeded. The Decision Model answered the test question." };
 		} catch (error) {
-			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : error instanceof DecisionModelError ? error.kind : "endpoint", error instanceof Error ? error.message : "The Decision Model test failed.");
+			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : error instanceof DecisionModelError ? error.kind : "endpoint",
+				error instanceof Error ? error.message : "The Decision Model test failed.");
 		}
 	}
 	if (input.profile.apiFormat !== "chat-completions") {

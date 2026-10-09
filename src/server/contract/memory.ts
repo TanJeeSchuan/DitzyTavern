@@ -4,7 +4,9 @@ import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
 import { mergeMemoryLabels, setMemoryIdentity } from "../memory/label-commands";
-import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup,
+	readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote,
+	startMemoryCatchup } from "../memory/collections";
 import {
 	conversationMemories,
 	conversationMemoryAllowance,
@@ -48,7 +50,8 @@ const labelsResponse = { 200: memoryLabelsMerged, 409: memoryLabelsConflict, 422
 
 export const createMemoryRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, params.id), { params: memoryConversationIdParams, response: conversationMemories })
-	.get("/api/conversations/:id/memories/changes", ({ params, query }) => readConversationMemoryChanges(database, params.id, query.since), { params: memoryConversationIdParams, query: memoryChangesQuery, response: conversationMemoryChanges })
+	.get("/api/conversations/:id/memories/changes", ({ params, query }) => readConversationMemoryChanges(database, params.id, query.since),
+		{ params: memoryConversationIdParams, query: memoryChangesQuery, response: conversationMemoryChanges })
 	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
 		try {
 			setMemoryIdentity(database, params.id, body);
@@ -115,7 +118,8 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 			// mapped onto Memory's captured-message contract.
 			const run = startMemoryCatchup(database, conversationId, () => {
 				const history = readSelectedHistory(database, conversationId);
-				return history === undefined ? undefined : history.messages.flatMap((message) => message.variant === null ? [] : [{ messageId: message.id, variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content }]);
+				return history === undefined ? undefined : history.messages.flatMap((message) => message.variant === null ? [] : [{ messageId: message.id,
+					variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content }]);
 			});
 			return { outcome: "queued" as const, run };
 		}

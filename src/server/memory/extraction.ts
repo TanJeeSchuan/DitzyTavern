@@ -30,7 +30,8 @@ const identityInstructions = (database: Database, messageId: number) => {
 	return cast.flatMap(({ id, names }) => {
 		const identity = identities[id];
 		const [name, ...former] = names;
-		if (identity?.kind === "excluded") return [`${name}${former.length ? ` (also ${former.join(", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`];
+		if (identity?.kind === "excluded") return [`${name}${former.length ? ` (also ${former.join(
+			", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`];
 		if (identity?.kind === "plays") return [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`];
 		return [];
 	}).join("\n");
@@ -87,7 +88,16 @@ const promptPlanOf = (system: string): PromptPlan => ({
 	images: [],
 });
 
-const extractionInstructions = (sourceMessageId: number) => `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${sourceMessageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
+const extractionInstructions = (sourceMessageId: number) =>
+	`Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each ` +
+	`message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when ` +
+	`appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person ` +
+	`names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, ` +
+	`negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON ` +
+	`object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source ` +
+	`text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ` +
+	`${sourceMessageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus ` +
+	`attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
 
 const generatedContent = async (
 	database: Database,
@@ -115,7 +125,8 @@ const generatedContent = async (
 		retainedContext.shift();
 	}
 	const prompt = promptOf(retainedContext);
-	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
+	if (exceedsContext(retainedContext)) throw new Error(
+		"The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
 	const client = createModelClient({ profile, secrets: connectionSettings.getProfileSecrets(profile.id), fetch: fetcher });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
@@ -207,7 +218,8 @@ const candidateQuestions = (candidate: MemoryCandidate) => ({
 	},
 	attribution: {
 		type: "choice",
-		instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "In `source`, is `memory.attribution` the one who narrates, says, witnesses, hears, or believes `memory.claim`?" },
+		instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution },
+			question: "In `source`, is `memory.attribution` the one who narrates, says, witnesses, hears, or believes `memory.claim`?" },
 		criteria: attributionCriteria,
 	},
 	usefulness: {

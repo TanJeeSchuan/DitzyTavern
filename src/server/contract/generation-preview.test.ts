@@ -396,7 +396,8 @@ describe("Prompt Plan inspection", () => {
 		// SAFETY: the successful generation route validates this accepted response shape.
 		const { generationId } = await accepted.json() as { generationId: number };
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
-		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`Writer: ${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
+		expect(captured?.messages.find((message) => message.role === "user")?.content)
+			.toBe(`Writer: ${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
 	});
 
 	test("keeps an inspected plan past the old quarter-hour window", async () => {
@@ -808,7 +809,9 @@ describe("Prompt Plan inspection", () => {
 		const masterKey = new Uint8Array(32).fill(11);
 		const selection = configureDecisionModels(database, masterKey);
 		const connections = createConnectionSettingsModule(database, { masterKey });
-		const saveCredential = (credential: string) => credential ? connections.setCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, credential }) : connections.resetCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, confirmed: true });
+		const saveCredential = (credential: string) => credential ? connections.setCredential({ expectedRevision: connections.get().revision,
+			profileId: selection.decisionProfileId, credential }) : connections.resetCredential({ expectedRevision: connections.get().revision,
+			profileId: selection.decisionProfileId, confirmed: true });
 		saveCredential("original-secret");
 		const app = createConversationRoutes(database, { masterKey, fetch: captureModelFetch(() => {}) });
 		for (const credential of ["replacement-secret", ""]) {

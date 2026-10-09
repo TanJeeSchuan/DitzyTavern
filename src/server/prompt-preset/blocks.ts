@@ -219,7 +219,7 @@ export const savePromptPresetBlockPatches = (
 		patches.forEach((patch) => applyBlockPatch(db, patch));
 	});
 
-/** Adds one reference with its default role; Author Note follows the last history slot. */
+/** @approved Adds one reference with its default role; Author Note follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,

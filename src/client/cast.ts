@@ -98,7 +98,8 @@ export const controlChangeDescription = (
 		const otherSeat: ControlSeat = seat === "human" ? "model" : "human";
 		return {
 			kind,
-			notice: `Swap: ${participants.get(participantId) ?? "this Participant"} and ${participants.get(occupant ?? -1) ?? "the other seat"} exchange the ${seatLabel(seat)} and ${seatLabel(otherSeat)} seats.`,
+			notice:
+				`Swap: ${participants.get(participantId) ?? "this Participant"} and ${participants.get(occupant ?? -1) ?? "the other seat"} exchange the ${seatLabel(seat)} and ${seatLabel(otherSeat)} seats.`,
 		};
 	}
 	return {

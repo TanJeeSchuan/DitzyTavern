@@ -158,6 +158,7 @@ export const packDecisions = <Item>(
 
 export type DecisionTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
 
+// @approved
 // The union's discriminator is `type`; report the error from the branch that matched it.
 const matchingAnswerError = (error: ValueError): ValueError => error.type === ValueErrorType.Union
 	? error.errors.map(errors => [...errors]).find(errors => !errors.some(error => error.path.endsWith("/type")))?.[0] ?? error
@@ -214,6 +215,7 @@ export async function requestDecisions(input: {
 	for (const id of ids) {
 		const question = questions[id];
 		const answer = answers[id];
+		// @approved
 		// Equal lengths plus ids matched here prove the answer count never strays,
 		// so a missing pair is the only way either side reads undefined.
 		if (question === undefined || answer === undefined) {

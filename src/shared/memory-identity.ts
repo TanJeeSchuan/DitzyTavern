@@ -1,8 +1,10 @@
 import type { MemoryIdentities, MemoryIdentity, MemoryLabelMerge } from "./contract/memory";
 
-export const memoryIdentityLabel = (identity: MemoryIdentity | undefined) => identity?.kind === "excluded" ? "Not in the story" : identity?.kind === "plays" ? `Plays ${identity.person}` : "Themselves";
+export const memoryIdentityLabel = (identity: MemoryIdentity | undefined) =>
+	identity?.kind === "excluded" ? "Not in the story" : identity?.kind === "plays" ? `Plays ${identity.person}` : "Themselves";
 
-export const applyMemoryPeople = (people: readonly string[], cast: readonly { id: number; names: readonly string[] }[], identities: MemoryIdentities, merges: readonly MemoryLabelMerge[]): string[] => {
+export const applyMemoryPeople = (people: readonly string[], cast: readonly { id: number; names: readonly string[] }[], identities: MemoryIdentities,
+	merges: readonly MemoryLabelMerge[]): string[] => {
 	const rules = new Map(cast.flatMap(({ id, names }): [string, string | null][] => {
 		const identity = identities[id];
 		return identity?.kind === "excluded" ? names.map((name) => [name, null]) : identity?.kind === "plays" ? names.map((name) => [name, identity.person]) : [];

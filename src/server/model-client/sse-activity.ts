@@ -33,6 +33,7 @@ export function monitorSseActivity(
 		onEvent: ({ data }) => {
 			if (data === "[DONE]") { options.onActivity(); return; }
 			try {
+				// @approved
 				// SAFETY: only optional activity fields are inspected; malformed payloads are caught below.
 				const parsed = JSON.parse(data) as ProviderSseFrame;
 				const choice = parsed.choices?.[0];
@@ -40,7 +41,7 @@ export function monitorSseActivity(
 				if (delta?.content !== undefined || delta?.reasoning !== undefined ||
 					delta?.reasoning_content !== undefined || delta?.reasoning_details !== undefined ||
 					parsed.usage !== undefined || choice?.finish_reason != null) options.onActivity();
-			} catch { /* The AI SDK owns malformed provider payloads. */ }
+			} catch { /* @approved The AI SDK owns malformed provider payloads. */ }
 		},
 	});
 	const cancelReader = () => {

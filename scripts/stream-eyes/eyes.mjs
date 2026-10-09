@@ -50,7 +50,9 @@ await page.addInitScript(() => {
 		const t = now();
 		for (const record of records) {
 			const block = record.target instanceof Element ? record.target.closest(".prose-block") : null;
-			if (block) trace.events.push({ type: "mutation", t, block: [...block.parentElement.children].indexOf(block), target: record.target.nodeName, added: [...record.addedNodes].map((n) => n.nodeName + ":" + n.textContent.length), removed: [...record.removedNodes].map((n) => n.nodeName + ":" + n.textContent.length), html: block.innerHTML.length });
+			if (block) trace.events.push({ type: "mutation", t, block: [...block.parentElement.children].indexOf(block), target: record.target.nodeName,
+				added: [...record.addedNodes].map((n) => n.nodeName + ":" + n.textContent.length),
+				removed: [...record.removedNodes].map((n) => n.nodeName + ":" + n.textContent.length), html: block.innerHTML.length });
 			for (const node of record.addedNodes) {
 				const element = revealOf(node);
 				if (!element) continue;
@@ -78,7 +80,8 @@ await page.addInitScript(() => {
 		const article = [...document.querySelectorAll("article")].at(-1);
 		const blocks = [...(article?.querySelectorAll(".prose-block") ?? [])].map((block) => { const r = block.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
 		const box = article?.getBoundingClientRect();
-		trace.frames.push({ t: now(), chars: article?.querySelector(".prose-block")?.parentElement?.textContent.length ?? 0, progresses, blocks, article: box && [box.left, box.top, box.right, box.bottom] });
+		trace.frames.push({ t: now(), chars: article?.querySelector(".prose-block")?.parentElement?.textContent.length ?? 0, progresses, blocks,
+			article: box && [box.left, box.top, box.right, box.bottom] });
 		requestAnimationFrame(sample);
 	};
 	requestAnimationFrame(sample);
@@ -110,7 +113,8 @@ if (mode === "scrub") {
 	const handle = await page.waitForFunction(() => [...document.querySelectorAll("article")].at(-1)?.querySelectorAll(".prose-block")[1], null, { timeout: 60_000, polling: "raf" });
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.pause()));
 	const block = handle.asElement();
-	const info = await block.evaluate((element) => element.getAnimations({ subtree: true }).map((a) => ({ name: a.animationName, timing: a.effect.getComputedTiming(), keyframes: a.effect.getKeyframes() })));
+	const info = await block.evaluate((element) => element.getAnimations({ subtree: true }).map((a) => ({ name: a.animationName,
+		timing: a.effect.getComputedTiming(), keyframes: a.effect.getKeyframes() })));
 	writeFileSync(join(out, "animations.json"), JSON.stringify(info, null, 1));
 	for (const t of [0, 100, 200, 300, 400, 500, 600]) {
 		await block.evaluate((element, t) => element.getAnimations({ subtree: true }).forEach((animation) => { animation.currentTime = t; }), t);

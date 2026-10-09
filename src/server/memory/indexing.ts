@@ -30,7 +30,8 @@ export type MemoryEmbed = (texts: readonly string[], configuration: MemoryEmbedd
 export const readMemoryEmbeddingConfiguration = (database: Database): MemoryEmbeddingConfiguration => {
 	const { embeddingProfileId, embeddingModel } = createMemorySettingsModule(database).get();
 	const db = connect(database);
-	const profile = embeddingProfileId === null ? undefined : db.select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
+	const profile = embeddingProfileId === null ? undefined : db.select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id,
+		embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
 	if (profile === undefined || profile.timeout_ms === null || embeddingModel.length === 0) return { spaceKey: "", endpoint: "", model: "", deadlineMs: 0 };
 	const secret = db.select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
 	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
@@ -43,7 +44,8 @@ const readMemoryEmbeddingSecrets = (database: Database) => {
 };
 
 export const embedMemoryTexts = (database: Database, fetch?: ModelFetch): MemoryEmbed => (texts, configuration, signal) => {
-	if (readMemoryEmbeddingConfiguration(database).spaceKey !== configuration.spaceKey) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
+	const currentSpaceKey = readMemoryEmbeddingConfiguration(database).spaceKey;
+	if (currentSpaceKey !== configuration.spaceKey) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
 	return requestEmbeddings(texts, { endpoint: configuration.endpoint, model: configuration.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: configuration.deadlineMs, fetch, signal });
 };
 
@@ -83,7 +85,8 @@ const readIndexAttempt = (json: string | null) => {
 };
 
 const indexReadiness = (collection: IndexableCollection, configuration: MemoryEmbeddingConfiguration, cached: ReadonlySet<string>, running: ReadonlySet<number>): MemoryIndexReadiness => {
-	if (collection.ownership === "automatic" && collection.source_changed) return { status: "disabled", pendingCount: 0, error: "This automatic collection is stale. Reset and re-extract it to index the current source." };
+	if (collection.ownership === "automatic" && collection.source_changed) return { status: "disabled", pendingCount: 0,
+		error: "This automatic collection is stale. Reset and re-extract it to index the current source." };
 	let texts: string[];
 	try { texts = renderedClaims(collection.claims_json); } catch { return { status: "failed", pendingCount: 0, error: "Saved Memory text is invalid and cannot be indexed." }; }
 	if (texts.length === 0) return { status: "not-applicable", pendingCount: 0, error: null };
@@ -96,7 +99,8 @@ const indexReadiness = (collection: IndexableCollection, configuration: MemoryEm
 	return { status: "pending", pendingCount, error: null };
 };
 
-export const readMemoryIndexReadinessBatch = (database: Database, collections: readonly IndexableCollection[], enabled: boolean, configuration = readMemoryEmbeddingConfiguration(database)): Map<number, MemoryIndexReadiness> => {
+export const readMemoryIndexReadinessBatch = (database: Database, collections: readonly IndexableCollection[], enabled: boolean,
+	configuration = readMemoryEmbeddingConfiguration(database)): Map<number, MemoryIndexReadiness> => {
 	if (!enabled) return new Map(collections.map((collection) => [collection.variant_id, { status: "disabled", pendingCount: 0, error: null }]));
 	const cached = cachedHashes(database, configuration.spaceKey, collections.flatMap((collection) => { try { return renderedClaims(collection.claims_json); } catch { return []; } }));
 	const running = indexingVariants(database, configuration.spaceKey);

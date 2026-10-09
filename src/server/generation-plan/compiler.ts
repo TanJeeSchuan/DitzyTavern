@@ -141,7 +141,9 @@ export const compileGenerationPlan = (
 	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
 	const memorySlotEnabled = hasEnabledMemorySlot(input.recipe);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
-	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity)) : [];
+	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left,
+		right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition ||
+		left.identity.localeCompare(right.identity)) : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;
 	const memoryAllowance = input.memoryActivation?.allowance ?? 2_048;
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
@@ -239,7 +241,8 @@ export const estimateDynamicBlockTokens = (
 	estimator: (transcript: string) => number = tokenxEstimator,
 ): number => content.length === 0
 	? 0
-	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
+	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [],
+		images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
 
 const withMemoryBudgetEvidence = (
 	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,

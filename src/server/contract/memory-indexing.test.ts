@@ -42,9 +42,12 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 });
 
 const insertSource = (database: Database, conversationId: number, position: number, content: string) => {
-	const message = database.query<{ id: number }, [number, number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-09-23T00:00:00.000Z') RETURNING id").get(conversationId, position);
+	const message = database.query<{ id: number }, [number, number]>(
+		"INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-09-23T00:00:00.000Z') RETURNING id").get(conversationId, position);
 	if (!message) throw new Error("Memory indexing fixture Message insert failed.");
-	const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-09-23T00:00:00.000Z', 1) RETURNING id").get(message.id, content);
+	const variant = database.query<{ id: number }, [number, string]>(
+		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-09-23T00:00:00.000Z', 1) RETURNING id")
+		.get(message.id, content);
 	if (!variant) throw new Error("Memory indexing fixture Variant insert failed.");
 	return { messageId: message.id, variantId: variant.id };
 };
@@ -121,7 +124,8 @@ describe("Memory indexing public lifecycle", () => {
 
 	test("reads readiness beyond SQLite's binding limit and preserves later cached claims", () => {
 		const configuration = { spaceKey: "long-chat", endpoint: "http://embedding.test/v1/embeddings", model: "memory-v1", deadlineMs: 1000 };
-		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic" as const, source_changed: false, index_attempt_json: null, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
+		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic" as const, source_changed: false,
+			index_attempt_json: null, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
 		const cachedText = renderMemoryClaim(candidate(65_536, "Source evidence.", "Event 65536 occurred."));
 		database.query("INSERT INTO memory_embedding_cache (space_key, text_hash, vector) VALUES (?, ?, ?)").run(configuration.spaceKey, sha256(cachedText), Buffer.from(new Float32Array([1, 0]).buffer));
 		const readiness = readMemoryIndexReadinessBatch(database, collections, true, configuration);
@@ -146,14 +150,16 @@ describe("Memory indexing public lifecycle", () => {
 		const connections = createConnectionSettingsModule(database);
 		const profile = connections.get().profiles.find((item) => item.id === settings.embeddingProfileId)!;
 		if (change === "profile") {
-			const next = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...connectionProfileDraftOf(profile), displayName: "Tenant B" }, credential: "tenant-b" }).profiles.find((item) => item.displayName === "Tenant B")!;
+			const next = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...connectionProfileDraftOf(profile),
+				displayName: "Tenant B" }, credential: "tenant-b" }).profiles.find((item) => item.displayName === "Tenant B")!;
 			const memory = createMemorySettingsModule(database);
 			const { revision, ...current } = memory.get();
 			memory.apply({ ...current, expectedRevision: revision, embeddingProfileId: next.id });
 		} else if (change === "credential") {
 			connections.setCredential({ expectedRevision: connections.get().revision, profileId: profile.id, credential: "tenant-b" });
 		} else {
-			connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: connectionProfileDraftOf(profile), headers: [{ operation: "replace", name: "X-Tenant", value: "tenant-b" }] });
+			connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: connectionProfileDraftOf(profile),
+				headers: [{ operation: "replace", name: "X-Tenant", value: "tenant-b" }] });
 		}
 		const current = readMemoryEmbeddingConfiguration(database);
 		expect(current.spaceKey).not.toBe(before.spaceKey);
@@ -239,7 +245,8 @@ describe("Memory indexing public lifecycle", () => {
 		if (!firstCollection) throw new Error("Indexed Memory collection missing.");
 		const corrected = await memories.handle(request(`/api/conversations/${conversation.id}/memories/correct`, {
 			method: "POST",
-			body: JSON.stringify({ messageId: first.messageId, variantId: first.variantId, expectedRevision: firstCollection.revision, index: 0, operation: "edit", claim: "Maren now carries the key.", attribution: "Writer correction", people: ["Maren"] }),
+			body: JSON.stringify({ messageId: first.messageId, variantId: first.variantId, expectedRevision: firstCollection.revision, index: 0,
+				operation: "edit", claim: "Maren now carries the key.", attribution: "Writer correction", people: ["Maren"] }),
 		}));
 		expect(corrected.status).toBe(200);
 		const correctionBody = Value.Parse(memoryCorrectionApplied, await corrected.json());
@@ -340,7 +347,8 @@ describe("Memory indexing public lifecycle", () => {
 			if (!embeddings) throw new Error("Embeddings Connection Profile fixture missing.");
 			const edited = await createConnectionSettingsRoutes(database, { masterKey: key }).handle(request("/api/connection-settings/commands", {
 				method: "POST",
-				body: JSON.stringify({ type: "apply-profile", expectedRevision: connections.revision, profileId: embeddings.id, profile: { ...connectionProfileDraftOf(embeddings), requestUrl: "http://embedding-b.test/v1/embeddings" } }),
+				body: JSON.stringify({ type: "apply-profile", expectedRevision: connections.revision, profileId: embeddings.id,
+					profile: { ...connectionProfileDraftOf(embeddings), requestUrl: "http://embedding-b.test/v1/embeddings" } }),
 			}));
 			expect(edited.status).toBe(200);
 			expect(await waitFor(() => requests.some((item) => item.url === "http://embedding-b.test/v1/embeddings"))).toBe(true);

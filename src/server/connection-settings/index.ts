@@ -323,6 +323,7 @@ export function createConnectionSettingsModule(
 		return replace.immediate();
 	};
 
+	// @approved
 	// The writer's mark is a per-model fact about the provider, not an edit to the
 	// Profile, so it never advances the Connection Settings revision.
 	const setTextOnlyModel = (input: SetTextOnlyModelInput) => {

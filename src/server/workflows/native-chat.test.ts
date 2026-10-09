@@ -200,7 +200,7 @@ describe("Native New Chat workflow", () => {
 		expect(conflict?.actualRevision).toBe(advanced.revision);
 		// SAFETY: the stale conflict's character aggregate always carries the
 		// authoritative current Character snapshot.
-		expect((conflict?.current as { name: string }).name).toBe("Renamed Voss");
+		expect((conflict?.current as { name: string } | undefined)?.name).toBe("Renamed Voss");
 
 		// Atomic: no Conversation, Participants, Control, or greeting exist.
 		expect(countRows(conversationTable)).toBe(0);

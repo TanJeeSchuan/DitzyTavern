@@ -61,9 +61,18 @@ export function useLorebookEditor(bookId: number) {
 			dispatch({ type: "applied", book: result.value.book, submitted, notice: flags.notice ?? null, newEntry: flags.newEntry, enabled: flags.enabled });
 			return result.value.book;
 		}
-		if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, submitted, preserveBookDraft: flags.preserveBookDraft,
-			notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
-		else dispatch({ type: "notice", notice: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "not-found" ? flags.notFoundNotice ?? "That Lorebook no longer exists." : "The Lorebook operation failed." });
+		if (result.outcome === "conflict") dispatch({
+			type: "applied", book: result.currentBook, submitted, preserveBookDraft: flags.preserveBookDraft,
+			notice: "This Lorebook changed elsewhere. Your saved view was refreshed.",
+		});
+		else {
+			const notice = result.outcome === "invalid" || result.outcome === "unusable"
+				? result.reason
+				: result.outcome === "not-found"
+					? flags.notFoundNotice ?? "That Lorebook no longer exists."
+					: "The Lorebook operation failed.";
+			dispatch({ type: "notice", notice });
+		}
 		return null;
 	};
 	const apply = async (action: LorebookCommand, submitted: LorebookEditorState, signal: AbortSignal) => {

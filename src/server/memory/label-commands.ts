@@ -48,7 +48,9 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 			.onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: values })
 			.run();
 		const excluded = Object.entries(state.identities).flatMap(([id, value]) => value.kind === "excluded" ? [Number(id)] : []);
-		const messages = readMessageAuthorsForMemory(database, conversationId).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
+		const messages = readMessageAuthorsForMemory(database,
+			conversationId).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId))
+			.map((message) => message.messageId);
 		const removed = messages.length === 0 ? [] : db
 			.delete(memoryCollectionTable)
 			.where(and(eq(memoryCollectionTable.conversation_id, conversationId), inArray(memoryCollectionTable.message_id, messages)))
@@ -68,8 +70,10 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
 		const destination = command.destination.trim();
 		const labels = new Set(command.labels);
-		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels].every((label) => label === destination)) throw new InvalidMemoryLabelsError("Choose labels and a different destination name.");
-		if (state.merges.some(({ from, to }) => labels.has(from) || (from === destination && !labels.has(to)))) throw new InvalidMemoryLabelsError("A selected name has already been merged. Refresh Memories and choose its current label.");
+		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels]
+			.every((label) => label === destination)) throw new InvalidMemoryLabelsError("Choose labels and a different destination name.");
+		const mergedLabel = state.merges.some(({ from, to }) => labels.has(from) || (from === destination && !labels.has(to)));
+		if (mergedLabel) throw new InvalidMemoryLabelsError("A selected name has already been merged. Refresh Memories and choose its current label.");
 		const merges = new Map(state.merges.map(({ from, to }) => [from, labels.has(to) ? destination : to]));
 		for (const label of labels) merges.set(label, destination);
 		merges.delete(destination);

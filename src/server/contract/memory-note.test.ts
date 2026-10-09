@@ -18,14 +18,17 @@ import { conversationMemoryAllowance, conversationMemoryAllowanceApplied, conver
 const guidance = "\"Trainer\" in narration means Tanjs. Track injuries and promises closely.";
 
 const saveNote = (database: Database, conversationId: number, expectedRevision: number, note: string) =>
-	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-note`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
+	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-note`, { method: "POST",
+		headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
 
 const saveAllowance = (database: Database, conversationId: number, expectedRevision: number, allowance: number) =>
-	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-allowance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
+	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-allowance`, { method: "POST",
+		headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
 
 const source = (database: Database, conversationId: number, position: number, author: { id: number; name: string }) => {
 	const db = drizzle(database);
-	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-10-07T00:00:00Z", author_participant_id: author.id, author_name: author.name }).returning().get();
+	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-10-07T00:00:00Z",
+		author_participant_id: author.id, author_name: author.name }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised a key.", selected: true }).returning().get();
 	return { messageId: message.id, variantId: variant.id };
 };
@@ -65,7 +68,8 @@ describe("Conversation Memory note", () => {
 
 		const stale = await saveNote(database, chat.id, 0, "The second writer's note.");
 		expect(stale.status).toBe(409);
-		expect(Value.Parse(conversationMemoryAllowanceConflict, await stale.json())).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentSettings: { revision: 1, note: guidance } });
+		expect(Value.Parse(conversationMemoryAllowanceConflict, await stale.json())).toMatchObject({ outcome: "conflict", expectedRevision: 0,
+			actualRevision: 1, currentSettings: { revision: 1, note: guidance } });
 
 		const oversized = await saveNote(database, chat.id, 1, "x".repeat(2_001));
 		expect(oversized.status).toBe(422);
@@ -89,11 +93,16 @@ describe("Conversation Memory note", () => {
 			const body = String(init?.body);
 			if (String(input).endsWith("/systemone")) {
 				requests.decisions.push(body);
-				return Response.json({ answers: { candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 } }, candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 1, misattributed: 0, unclear: 0 } }, candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 } } } });
+				return Response.json({ answers: { candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0,
+					not_established: 0 } }, candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 1, misattributed: 0,
+					unclear: 0 } }, candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 } } } });
 			}
 			requests.extraction.push(body);
-			const content = JSON.stringify({ candidates: [{ claim: "Maren promised a key.", attribution: "Narrated event", people: ["Maren"], evidence: [{ messageId: captured.messageId, excerpt: captured.content }] }] });
-			return new Response([{ choices: [{ index: 0, delta: { content }, finish_reason: null }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+			const content = JSON.stringify({ candidates: [{ claim: "Maren promised a key.", attribution: "Narrated event", people: ["Maren"],
+				evidence: [{ messageId: captured.messageId, excerpt: captured.content }] }] });
+			return new Response([{ choices: [{ index: 0, delta: { content }, finish_reason: null }] }, { choices: [{ index: 0, delta: {},
+				finish_reason: "stop" }] }].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n",
+				{ headers: { "content-type": "text/event-stream" } });
 		}, signal) });
 		const reextract = async (expectedPrompts: number) => {
 			const target = readConversationMemories(database, chat.id).sources[0]!;
@@ -112,7 +121,9 @@ describe("Conversation Memory note", () => {
 			await reextract(3);
 
 			expect(requests.extraction).toHaveLength(3);
-			expect(promptOf(requests.extraction[1]!)).toContain(`First person in Maren's Messages refers to Tanjs.\n\nChat note (guidance only, never a source of facts):\n${guidance}\n\nCaptured source and reference context:`);
+			expect(promptOf(requests.extraction[1]!))
+				.toContain(
+				`First person in Maren's Messages refers to Tanjs.\n\nChat note (guidance only, never a source of facts):\n${guidance}\n\nCaptured source and reference context:`);
 			expect(promptOf(requests.extraction[0]!)).not.toContain("Chat note (guidance only");
 			expect(promptOf(requests.extraction[2]!)).toBe(promptOf(requests.extraction[0]!));
 			expect(requests.decisions).toHaveLength(3);

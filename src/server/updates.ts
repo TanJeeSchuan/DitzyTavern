@@ -25,7 +25,9 @@ async function publishedBuild(registryFetch: RegistryFetch, stopping: AbortSigna
 	const tokenBody: unknown = await tokenResponse.json();
 	if (!Value.Check(registryPullToken, tokenBody)) throw new Error("Registry did not return an anonymous pull token.");
 	const { token } = tokenBody;
-	const response = await registryFetch("https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest", { signal, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" } });
+	const response = await registryFetch("https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest", { signal,
+		headers: { authorization: `Bearer ${token}`,
+		accept: "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" } });
 	if (!response.ok) throw new Error(`Registry lookup failed (${response.status}).`);
 	const index: unknown = await response.json();
 	if (!Value.Check(publishedBuildIndex, index)) throw new Error("Published index has invalid official build metadata.");
@@ -56,7 +58,9 @@ export function createUpdateChecker(database: Database, { build = buildMetadata,
 		inFlight = (async () => {
 			try {
 				const available = await publishedBuild(registryFetch, stopping.signal);
-				state = { ...state, result: { ...available, comparison: available.buildNumber > build.buildNumber ? "update_available" : available.buildNumber === build.buildNumber ? "current" : "ahead", checkedAt: new Date().toISOString() }, attempt: { ...attempt, status: "succeeded", error: null } };
+				state = { ...state, result: { ...available,
+					comparison: available.buildNumber > build.buildNumber ? "update_available" : available.buildNumber === build.buildNumber ? "current" : "ahead",
+					checkedAt: new Date().toISOString() }, attempt: { ...attempt, status: "succeeded", error: null } };
 			} catch (error) {
 				state = { ...state, attempt: { ...attempt, status: "failed", error: error instanceof Error ? error.message : "Update check failed." } };
 			} finally { inFlight = undefined; publish(); }

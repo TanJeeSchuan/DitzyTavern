@@ -8,6 +8,7 @@ export const SaveNavigationContext = createContext<(action: () => void) => void>
 
 const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.";
 
+// @approved
 // Owns the guard protocol's navigation half: keeps the registered guard, tracks
 // its saving state, and reduces navigation requests to the Unsaved Changes
 // dialog. Guards register through SaveGuardContext; descendants request

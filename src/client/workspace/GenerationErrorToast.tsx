@@ -7,6 +7,7 @@ import { publishConnectionSettings } from "../connection-settings-query";
 import { setTextOnlyModel } from "../connection-settings";
 import type { GenerationImageModel } from "../../shared/contract/generation-events";
 
+// @approved
 // Horizontally marks the image model after a Generation fails: it owns the
 // toast lifecycle and the mark-text-only flow, fed by the failure read from
 // the generation controller.

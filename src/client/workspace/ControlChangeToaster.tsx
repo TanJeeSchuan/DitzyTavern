@@ -4,6 +4,7 @@ import { useImperativeHandle, useRef, useState, type Ref } from "react";
 
 export type ControlChangeToasterHandle = { show: (text: string) => void };
 
+// @approved
 // Shows the control-change confirmation; controls trigger it through the
 // `show` handle so the toast owns its own lifecycle instead of the workspace.
 export function ControlChangeToaster({ ref }: { ref?: Ref<ControlChangeToasterHandle> }) {

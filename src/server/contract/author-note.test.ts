@@ -33,7 +33,8 @@ beforeEach(() => {
 });
 afterEach(() => database.close());
 
-const command = (app: ReturnType<typeof createConversationRoutes>, id: number, revision: number, action: ConversationAction) => app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {
+const command = (app: ReturnType<typeof createConversationRoutes>, id: number, revision: number,
+	action: ConversationAction) => app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {
 	method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: revision, action }),
 }));
 
@@ -198,7 +199,8 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 	const planned = await preview(app, chat.id);
 	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Include a dragon.");
 	expect(planned.promptPlan.blocks.some((block) => block.kind === "lore")).toBe(false);
-	expect((await command(app, chat.id, current.revision + 1, { type: "create-message", timestamp: "2026-10-07T00:00:00.000Z", variantContents: ["A dragon opens the door."], authorParticipantId: current.control.humanParticipantId! })).status).toBe(200);
+	expect((await command(app, chat.id, current.revision + 1, { type: "create-message", timestamp: "2026-10-07T00:00:00.000Z",
+		variantContents: ["A dragon opens the door."], authorParticipantId: current.control.humanParticipantId! })).status).toBe(200);
 	const story = await preview(app, chat.id);
 	expect(story.promptPlan.blocks.find((block) => block.kind === "lore")?.content).toBe("A dragon sleeps here.");
 });

@@ -127,7 +127,9 @@ describe("Generation capture and provenance", () => {
 			release = resolve;
 		});
 		let receivedInput: { modelId?: string; generationSettings?: unknown } | undefined;
-		const generation = generateTerminalTailFixture(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
+		const generation = generateTerminalTailFixture(database, {connection: createGenerationCoordinator(database,
+			{ masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database,
+			conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			connectionSettings: { masterKey: key },
 			modelClient: {
@@ -237,7 +239,9 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 
-		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
+		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database,
+			{ masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database,
+			conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			kind: "send",
 			content: "Send with narrowed overrides.",
@@ -247,7 +251,8 @@ describe("Generation capture and provenance", () => {
 		const effectiveSettings = preview.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
-		await runGenerationLifecycle(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
+		await runGenerationLifecycle(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database,
+			readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
 			expectedRevision: 2,
 			target: { kind: "send", content: "Send with narrowed overrides." },

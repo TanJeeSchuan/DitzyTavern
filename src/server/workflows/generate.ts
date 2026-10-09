@@ -84,10 +84,13 @@ function acceptCapturedGeneration(database: Database, input: GenerationInput, ca
 	switch (capture.target.kind) {
 		case "send":
 			if (input.expectedRevision === undefined || capture.facts.kind !== "send") throw new Error("Send capture is incomplete.");
-			return acceptConversationTailGeneration(database, { ...fields, expectedRevision: input.expectedRevision, humanContent: capture.target.content, reuseHumanMessageId: capture.facts.reuseHumanMessageId });
+			return acceptConversationTailGeneration(database, { ...fields, expectedRevision: input.expectedRevision, humanContent: capture.target.content,
+				reuseHumanMessageId: capture.facts.reuseHumanMessageId });
 		case "continuation":
 			if (input.expectedRevision === undefined || capture.facts.kind !== "continuation") throw new Error("Continuation capture is incomplete.");
-			return acceptConversationContinuationGeneration(database, { ...fields, expectedRevision: input.expectedRevision, precedingMessageId: capture.facts.precedingMessageId, precedingVariantId: capture.facts.precedingVariantId, generationIntent: capture.facts.intent });
+			return acceptConversationContinuationGeneration(database, { ...fields, expectedRevision: input.expectedRevision,
+				precedingMessageId: capture.facts.precedingMessageId, precedingVariantId: capture.facts.precedingVariantId,
+				generationIntent: capture.facts.intent });
 		case "sibling":
 			return acceptConversationSiblingGeneration(database, { ...fields, messageId: capture.target.messageId, generationIntent: { type: "sibling" } });
 	}

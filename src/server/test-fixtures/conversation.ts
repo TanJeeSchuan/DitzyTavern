@@ -79,6 +79,7 @@ export interface TestConversationSnapshot extends ConversationSummary {
  messages: TestConversationMessage[];
  data: ConversationDataEntry[];
 }
+// @approved
 // Tests assert on every sibling Variant's raw data and on Message-scoped data,
 // which no product read returns (product reads are selected-path or paginated),
 // so this assembles the snapshot from the shared row loader.

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { decisionRequest, largestFittingBatch, packDecisions } from ".";
 
-const build = (batch: readonly { id: string; size: number }[]) => decisionRequest({ model: "jev", stateTokenLimit: 16000 }, {}, Object.fromEntries(batch.map(({ id, size }) => [id, { type: "noul", text: "x".repeat(size) }])));
+const build = (batch: readonly { id: string; size: number }[]) => decisionRequest({ model: "jev", stateTokenLimit: 16000 }, {},
+	Object.fromEntries(batch.map(({ id, size }) => [id, { type: "noul", text: "x".repeat(size) }])));
 const items = (sizes: readonly number[]) => sizes.map((size, index) => ({ id: `q${index}`, size }));
 
 describe("packDecisions", () => {

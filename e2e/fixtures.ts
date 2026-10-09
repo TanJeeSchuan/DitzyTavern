@@ -42,7 +42,8 @@ export const enableDecisionModels = async (request: APIRequestContext) => {
 	const { revision: connectionRevision } = await (await request.get("/api/connection-settings")).json();
 	const { presets } = await (await request.get("/api/connection-settings/presets")).json();
 	const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
-	const created = await (await request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: connectionRevision, profile, credential: "e2e-decision-key" } })).json();
+	const created = await (await request.post("/api/connection-settings/commands", { data: { type: "create-profile",
+		expectedRevision: connectionRevision, profile, credential: "e2e-decision-key" } })).json();
 	const decisionProfileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
 	const selection = { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
 	const { revision: semanticRevision } = await (await request.get("/api/semantic-trigger-settings")).json();

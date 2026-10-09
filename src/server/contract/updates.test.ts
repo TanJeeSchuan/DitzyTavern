@@ -10,7 +10,10 @@ afterEach(() => { jest.useRealTimers(); database.close(); });
 test("HTTP commands and subscribers observe one server-wide update result", async () => {
 	let requests = 0;
 	const pending = Promise.withResolvers<Response>();
-	const checker = createUpdateChecker(database, { build: { distribution: "official", buildNumber: 9, revision: "a".repeat(40) }, registryFetch: async () => ++requests === 1 ? pending.promise : Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": "10", "org.opencontainers.image.revision": "b".repeat(40) } }) });
+	const checker = createUpdateChecker(database, { build: { distribution: "official", buildNumber: 9, revision: "a".repeat(40) },
+		registryFetch: async () => ++requests === 1 ? pending.promise : Response.json({ schemaVersion: 2,
+		mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": "10",
+		"org.opencontainers.image.revision": "b".repeat(40) } }) });
 	const app = createUpdateRoutes(checker);
 	const abort = new AbortController();
 	const subscription = await app.handle(new Request("http://localhost/api/updates/events", { signal: abort.signal }));

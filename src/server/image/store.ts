@@ -19,6 +19,7 @@ export const uploadImage = async (database: Database, bytes: Uint8Array) => {
 };
 
 export const sweepOrphanedImages = (database: Database, now = Date.now()) => database.transaction(() => {
+	// @approved
 	// Every persisted TEXT value is a potential owner: References are found by
 	// their `image:` scheme, and bare hash columns such as Portraits by holding
 	// exactly one hash. Over-matching only keeps an Image longer.

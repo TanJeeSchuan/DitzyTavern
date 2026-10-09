@@ -116,6 +116,7 @@ export function ActiveWritingWorkspace({
 		};
 	}, [theme]);
 
+	// @approved
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
 	const togglePanel = (panel: PrimaryPanelName) => {
 		if (assemblyActive && panel !== "settings") return;

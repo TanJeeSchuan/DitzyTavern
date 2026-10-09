@@ -3,6 +3,7 @@ import type { ThemePreference } from "../workspace";
 
 const THEME_KEY = "ditzytavern-theme";
 
+// @approved
 // Persists the daylight/evening/system choice; applying it to the document
 // stays with the presentation that owns the workspace.
 export function useThemePreference() {
