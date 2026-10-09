@@ -13,6 +13,9 @@ Source: issue #52, **§5 File size**.
 `toPromptChannels` (~:551-559). Those belong to Conversation and Character. `src/server/database/database.ts` carries a raw-SQL
 "fresh database" fixup inserting the author-note block: seed logic, not schema.
 
+Also (found in T8 review): `src/server/database/chat.ts` `listChatSummaries` (~:9) is a Conversation-owned read with a raw
+`FROM messages` subquery living in `database/`. Move it into the Conversation module (ADR-0013) and update its importers.
+
 ## Files owned
 
 `src/server/database/schema.ts`, `src/server/database/database.ts`, the conversation and character modules that receive the moves, the seed module if the fixup belongs there, all importers.
@@ -31,6 +34,7 @@ Source: issue #52, **§5 File size**.
 - [ ] Move constants to Conversation; update the barrel and importers
 - [ ] Move mappers to Character
 - [ ] Relocate the author-note fixup; prove a fresh DB still has it
+- [ ] Move `database/chat.ts` `listChatSummaries` into Conversation
 - [ ] typecheck, lint, check:contracts, `bun run test`
 - [ ] Commit
 
