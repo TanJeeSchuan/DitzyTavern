@@ -30,7 +30,7 @@ import type { MacroValue } from "../shared/contract/macro-variables";
 import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import { conversationPromptPreset } from "../shared/contract/prompt-preset";
-import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
+import { foundOrNull, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 
 export type {
 	ActiveGenerationDetails,
@@ -62,15 +62,11 @@ export async function loadConversation(
 	conversationId: number,
 	signal?: AbortSignal,
 ): Promise<ConversationSummary | null> {
-	const outcome = await requestOutcome(
+	return foundOrNull(await requestOutcome(
 		api.api.conversations({ id: conversationId }).get({ fetch: { signal } }),
 		conversationSummary,
 		notFoundOutcome,
-	);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	));
 }
 
 // @approved
@@ -143,15 +139,11 @@ export async function loadConversationPromptPreset(
 	conversationId: number,
 	signal?: AbortSignal,
 ): Promise<ConversationPromptPreset | null> {
-	const outcome = await requestOutcome(
+	return foundOrNull(await requestOutcome(
 		api.api.conversations({ id: conversationId })["prompt-preset"].get({ fetch: { signal } }),
 		conversationPromptPreset,
 		notFoundOutcome,
-	);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	));
 }
 
 export async function loadMacroVariables(

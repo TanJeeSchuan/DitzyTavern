@@ -1,7 +1,7 @@
 import type { StaticDecode } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE, foundOrNull, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import {
 	lorebook,
 	lorebookCommandErrors,
@@ -34,15 +34,11 @@ export type { LorebookOwnerAttachmentState };
 export type LoreMatchTest = LoreMatchTestResponse;
 
 export async function getLorebookAttachmentState(conversationId: number, signal?: AbortSignal): Promise<LoreAttachmentState | null> {
-	const outcome = await requestOutcome(
+	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.get({ query: { conversationId }, fetch: { signal } }),
 		loreAttachmentState,
 		notFoundOutcome,
-	);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	));
 }
 
 export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand) {
@@ -54,35 +50,23 @@ export async function applyLorebookAttachmentCommand(command: LoreAttachmentComm
 }
 
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
-	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpact, notFoundOutcome);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpact, notFoundOutcome));
 }
 
 export async function getCharacterLorebookAttachments(characterId: number): Promise<LorebookOwnerAttachmentState | null> {
-	const outcome = await requestOutcome(
+	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } }),
 		lorebookOwnerAttachmentState,
 		notFoundOutcome,
-	);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	));
 }
 
 export async function getParticipantLorebookAttachments(participantId: number): Promise<LorebookOwnerAttachmentState | null> {
-	const outcome = await requestOutcome(
+	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } }),
 		lorebookOwnerAttachmentState,
 		notFoundOutcome,
-	);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	));
 }
 
 export async function listLorebooks(signal?: AbortSignal): Promise<LorebookListResponse["books"]> {
@@ -90,11 +74,7 @@ export async function listLorebooks(signal?: AbortSignal): Promise<LorebookListR
 }
 
 export async function getLorebook(bookId: number, signal?: AbortSignal): Promise<LorebookValue | null> {
-	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebook, notFoundOutcome);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebook, notFoundOutcome));
 }
 
 export async function testLorebookMatch(bookId: number, writing: string, signal?: AbortSignal): Promise<LoreMatchTest> {

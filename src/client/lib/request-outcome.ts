@@ -94,6 +94,13 @@ export const requestOutcome = async <
 
 export class NetworkError extends Error {}
 
+export const foundOrNull = <Value>(outcome: RequestOutcome<Value, { outcome: "not-found" }>): Value | null => {
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
+	return outcome.value;
+};
+
 // @approved
 //  The one copy a request the transport never completed throws: read
 // adapters that branch on an outcome throw NetworkError with this notice,

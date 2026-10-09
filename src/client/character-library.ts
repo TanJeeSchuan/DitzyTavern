@@ -1,5 +1,5 @@
 import { api } from "./lib/eden";
-import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome } from "./lib/request-outcome";
+import { foundOrNull, requestData, requestOutcome } from "./lib/request-outcome";
 import {
 	characterCommandApplied,
 	characterCommandErrors,
@@ -45,11 +45,7 @@ export async function listCharacters(): Promise<CharacterSummary[]> {
 export async function getCharacter(
 	characterId: number,
 ): Promise<CharacterSnapshot | null> {
-	const outcome = await requestOutcome(api.api.characters({ id: characterId }).get(), characterSnapshot, notFoundOutcome);
-	if (outcome.outcome === "not-found") return null;
-	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-	return outcome.value;
+	return foundOrNull(await requestOutcome(api.api.characters({ id: characterId }).get(), characterSnapshot, notFoundOutcome));
 }
 
 export async function applyCommand(
