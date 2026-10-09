@@ -63,3 +63,11 @@ Source: issue #52, finding **F11** (client bullets) and the client bullet of **Â
 **Residuals**
 
 - No manual browser check: the change is type contracts plus a pure extraction, `e2e/memory.spec.ts` covers the panel, and the orchestrator runs e2e once at the end.
+
+### Review round 1 (orchestrator fix)
+
+- `GenerationSphere`: points no longer own a circle. The 52 circles are fixed paint slots in DOM order; each frame sorts the point
+  records in place by depth (stable, so ties keep the previous frame's order) and assigns them to successive slots, restoring
+  far-to-near SVG paint order. The round-1 version left DOM order fixed, so far dots covered near ones at ~11% of sampled angles.
+- `MemorySource`: the six-field `MemoryActions` split into `SourceCardActions` (`retry`, `retryIndex`) and `ClaimRowActions`
+  (`label`, `edit`, `save`, `remove`), the fields each consumer uses.

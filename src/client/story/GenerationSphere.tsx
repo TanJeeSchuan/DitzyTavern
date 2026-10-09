@@ -8,7 +8,6 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const TILT = -0.4;
 
 type SpherePoint = {
-	circle: SVGCircleElement;
 	baseX: number;
 	baseY: number;
 	baseZ: number;
@@ -27,13 +26,13 @@ export function GenerationSphere({ authorName }: { authorName: string }) {
 	const circlesRef = useRef<(SVGCircleElement | null)[]>([]);
 
 	useEffect(() => {
-		const points = circlesRef.current.slice(0, POINT_COUNT).flatMap((circle, index): SpherePoint[] => {
-			if (circle === null) return [];
+		const circles = circlesRef.current.slice(0, POINT_COUNT).filter((circle) => circle !== null);
+		if (circles.length !== POINT_COUNT) return;
+		const points = circles.map((_, index): SpherePoint => {
 			const y = 1 - (index / (POINT_COUNT - 1)) * 2;
 			const radius = Math.sqrt(Math.max(0, 1 - y * y));
 			const angle = index * GOLDEN_ANGLE;
-			return [{
-				circle,
+			return {
 				baseX: Math.cos(angle) * radius,
 				baseY: y,
 				baseZ: Math.sin(angle) * radius,
@@ -42,9 +41,8 @@ export function GenerationSphere({ authorName }: { authorName: string }) {
 				radius: 0,
 				opacity: 0,
 				depth: 0,
-			}];
+			};
 		});
-		if (points.length !== POINT_COUNT) return;
 
 		const cosineTilt = Math.cos(TILT);
 		const sineTilt = Math.sin(TILT);
@@ -67,18 +65,20 @@ export function GenerationSphere({ authorName }: { authorName: string }) {
 				point.depth = viewedZ;
 			}
 
-			for (const point of points.toSorted((a, b) => a.depth - b.depth)) {
+			points.sort((a, b) => a.depth - b.depth);
+			points.forEach((point, slot) => {
+				const circle = circles[slot];
 				const normalizedDepth = (point.depth + 1) * 0.5;
-				point.circle.setAttribute("cx", point.screenX.toFixed(2));
-				point.circle.setAttribute("cy", point.screenY.toFixed(2));
-				point.circle.setAttribute("r", point.radius.toFixed(2));
-				point.circle.style.opacity = point.opacity.toFixed(3);
-				point.circle.style.fill = normalizedDepth > 0.78
+				circle.setAttribute("cx", point.screenX.toFixed(2));
+				circle.setAttribute("cy", point.screenY.toFixed(2));
+				circle.setAttribute("r", point.radius.toFixed(2));
+				circle.style.opacity = point.opacity.toFixed(3);
+				circle.style.fill = normalizedDepth > 0.78
 					? "var(--accent)"
 					: normalizedDepth > 0.42
 						? "var(--foreground)"
 						: "var(--text-muted)";
-			}
+			});
 		};
 
 		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

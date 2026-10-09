@@ -11,11 +11,15 @@ import type { ClaimDraft } from "./useConversationMemories";
 type Source = ConversationMemories["sources"][number];
 type Claim = Source["claims"][number];
 
-/** @approved The Memory commands these cards send: corrections, retries, and the label of the source's Message. */
-type MemoryActions = {
-	label: (messageId: number) => string;
+/** @approved The retries a source card sends for its Message. */
+type SourceCardActions = {
 	retry: (source: Source) => void;
 	retryIndex: (source: Source) => void;
+};
+
+/** @approved The corrections a claim row sends, and the label of its source's Message. */
+type ClaimRowActions = {
+	label: (messageId: number) => string;
 	edit: (source: Source, index: number | null) => void;
 	save: (source: Source, index: number, draft: ClaimDraft) => void;
 	remove: (source: Source, index: number) => void;
@@ -28,7 +32,7 @@ export function MemorySourceCard({ conversationId, source, label, busy, enabled,
 	busy: boolean;
 	enabled: boolean;
 	excluded: boolean;
-	actions: MemoryActions;
+	actions: SourceCardActions;
 	onNavigate: () => void;
 	onStep: ((offset: -1 | 1) => void) | null;
 	onClear: () => void;
@@ -79,7 +83,7 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	group: string;
 	busy: boolean;
 	editing: boolean;
-	actions: MemoryActions;
+	actions: ClaimRowActions;
 	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
 }) {
