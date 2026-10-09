@@ -1,6 +1,6 @@
 # T1 — Delete the Lorebook attachment wrappers that bypass the Conversation transaction
 
-Status: TODO
+Status: DONE
 
 Blocked By: None
 
@@ -31,14 +31,21 @@ Production has zero callers; only tests keep them alive.
 
 ## TODO
 
-- [ ] Confirm no production callers: `grep -rn 'attachLorebookToConversation\|saveLoreSettings(' src | grep -v test`
-- [ ] Retarget the three tests onto the guarded command path
-- [ ] Delete both wrappers and any import that becomes unused
-- [ ] typecheck, lint, the three test files, `bun test`
-- [ ] Commit
+- [x] Confirm no production callers: `grep -rn 'attachLorebookToConversation\|saveLoreSettings(' src | grep -v test`
+- [x] Retarget the three tests onto the guarded command path
+- [x] Delete both wrappers and any import that becomes unused
+- [x] typecheck, lint, the three test files, `bun test`
+- [x] Commit
 
 ## Acceptance
 
 `grep -rn 'attachLorebookToConversation\|saveLoreSettings' src` returns nothing.
 
 ## Outcome
+
+Both wrappers and the `attachConversationLorebook` / `saveConversationLoreSettings` import are gone from `src/server/lorebook/attachments.ts`; the acceptance grep over `src` is clean. The three tests moved onto the guarded command path:
+
+- `generate.test.ts` attaches and saves settings through the fixture `applyCommand` seam (two chained commands), and the lifecycle's `expectedRevision` now follows the post-write revision, since every command advances the revision exactly once.
+- `evaluation.test.ts` and `generation-capture-coherence.test.ts` dispatch `attach-chat` via `executeConversationCommand` and open their databases with the fixture `openObservedDatabase()` — an unobserved database throws `ConversationWriteObserverMissingError` the moment a lore command reports its memory change, which is exactly the guard the wrappers used to bypass. `test-fixtures/conversation.ts` needed no extension.
+
+Verification: typecheck, lint, lint:rules, typecheck:tools, the three test files (29 pass), and full `bun test src` (1353 pass, 0 fail).

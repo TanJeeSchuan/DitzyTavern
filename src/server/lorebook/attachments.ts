@@ -13,10 +13,6 @@ import {
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
 import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
-import {
-	attachConversationLorebook,
-	saveConversationLoreSettings,
-} from "../conversation";
 import { StaleLoreAttachmentOwnerRevisionError } from "./errors";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";
@@ -77,14 +73,6 @@ export const attachLorebookToCharacter = (
 		set: { enabled: input.enabled ?? true },
 	}).run();
 };
-
-/** @approved Public Lorebook seam for the Conversation-owned Chat attachment
- * write; the authoritative implementation is the Conversation command
- * handler, so the seam and the revisioned command cannot drift. */
-export const attachLorebookToConversation = (
-	database: Database,
-	input: { conversationId: number; bookId: number; enabled?: boolean },
-) => attachConversationLorebook(connect(database), input);
 
 export const detachLorebookFromCharacter = (database: Database, characterId: number, bookId: number, scope: Exclude<LoreAttachmentScope, "chat">) =>
 	connect(database).delete(characterLorebookAttachmentTable).where(and(
@@ -262,14 +250,6 @@ export const readLoreSettings = (database: Database, conversationId: number): Lo
 	const row = db.select().from(conversationLoreSettingsTable)
 		.where(eq(conversationLoreSettingsTable.conversation_id, conversationId)).get();
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
-};
-
-/** @approved Public Lorebook seam for the Conversation-owned Chat Lore settings
- * write; the authoritative implementation is the Conversation command
- * handler, so the seam and the revisioned command cannot drift. */
-export const saveLoreSettings = (database: Database, conversationId: number, settings: LoreSettings): LoreSettings => {
-	saveConversationLoreSettings(connect(database), { conversationId, ...settings });
-	return settings;
 };
 
 const advanceCharacterRevision = (db: LoreDatabase, characterId: number, expectedRevision: number) => {
