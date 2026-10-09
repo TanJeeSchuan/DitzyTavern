@@ -38,7 +38,7 @@ const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
 const promptPresetOperationProblem = (
 	outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>,
 	fallback: string,
-): string => outcome.outcome === "invalid"
+): string => outcome.outcome === "invalid" || outcome.outcome === "unusable"
 	? outcome.reason
 	: outcome.outcome === "not-found"
 		? "The selected preset no longer exists."
@@ -136,6 +136,7 @@ export function usePromptPresetRecipe({
 		}
 		if (refresh === "stale") return { status: "aborted" };
 		const live = current();
+		if (Object.entries(submitted).some(([id, draft]) => live.drafts[Number(id)] !== undefined && live.drafts[Number(id)] !== draft)) return { status: "kept" };
 		const freshReady = live.view.status === "ready" ? live.view : null;
 		if (freshReady !== null && dirtyDraftSummary(freshReady.selected, live.drafts).count > 0) {
 			// @approved

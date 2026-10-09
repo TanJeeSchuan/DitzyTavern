@@ -20,12 +20,10 @@ export type DomainErrorResponse<S extends ResponseSchemas> = {
 		: never;
 }[keyof S];
 
-type DomainFailure = {
+type DomainError = Error & {
 	readonly outcome: keyof typeof outcomeStatus;
 	readonly details?: object;
 };
-type DomainError = Error & DomainFailure;
-export type RecoverDomainError = (error: DomainError) => DomainFailure;
 
 const isDomainError = (cause: unknown): cause is DomainError =>
 	cause instanceof Error && "outcome" in cause && typeof cause.outcome === "string" &&
@@ -35,13 +33,11 @@ const isDomainError = (cause: unknown): cause is DomainError =>
 export function presentDomainError<S extends ResponseSchemas>(
 	cause: unknown,
 	responses: S,
-	recover?: RecoverDomainError,
 ): DomainErrorResponse<S> {
 	if (!isDomainError(cause)) throw cause;
-	const error = recover === undefined ? cause : recover(cause);
-	const code = outcomeStatus[error.outcome];
+	const code = outcomeStatus[cause.outcome];
 	const schema = responses[code];
-	const body = { outcome: error.outcome, ...error.details };
+	const body = { outcome: cause.outcome, ...cause.details };
 	if (schema === undefined || !Value.Check(schema, body)) throw cause;
 	// @approved
 	// SAFETY: the route's declared schema validated this status and its payload.

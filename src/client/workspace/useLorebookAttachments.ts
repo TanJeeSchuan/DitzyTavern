@@ -3,6 +3,7 @@ import { applyLorebookAttachmentCommand, getLorebookAttachmentState, type LoreAt
 import { loadConversationPromptPreset } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
+import { conversationKey, publishConversation } from "../conversation-query";
 
 export function useLorebookAttachments(conversationId: number) {
 	const client = useQueryClient();
@@ -15,7 +16,9 @@ export function useLorebookAttachments(conversationId: number) {
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", conversationId] });
 			await client.invalidateQueries({ queryKey: ["lorebook-attachments", conversationId] });
-			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
+			if (result.outcome === "conflict" && "currentConversation" in result) publishConversation(client, result.currentConversation);
+			if (result.outcome === "available") void client.invalidateQueries({ queryKey: conversationKey(conversationId) });
+			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			return true;
 		},
 	});
@@ -39,5 +42,3 @@ export function useLorebookAttachments(conversationId: number) {
 		enableLoreSlot: () => enable.mutate(),
 	};
 }
-
-export type LorebookAttachmentsController = ReturnType<typeof useLorebookAttachments>;

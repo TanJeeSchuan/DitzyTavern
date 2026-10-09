@@ -17,7 +17,7 @@ export class LoreActivationRecordParseError extends Error {
 	}
 }
 
-/** Decode persisted JSON without turning malformed or invalid records into an absent record. */
+/** @approved Decode persisted JSON without turning malformed or invalid records into an absent record. */
 const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | null => {
 	let parsed: unknown;
 	try {
@@ -29,6 +29,7 @@ const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | n
 	if (!Value.Check(loreActivationRecord, parsed)) {
 		throw new LoreActivationRecordParseError("Persisted Lore Activation Record does not match the canonical schema.");
 	}
+	// @approved
 	// SAFETY: Value.Check establishes the complete canonical record shape before this cast.
 	return parsed as LoreActivationRecord;
 };

@@ -20,5 +20,3 @@ export function useLoreMatchTester() {
 		runMatchTest: (bookId: number) => { void client.invalidateQueries({ queryKey: ["lorebook-match", bookId, writing] }); setSubmitted({ bookId, writing }); },
 	};
 }
-
-export type LoreMatchTesterController = ReturnType<typeof useLoreMatchTester>;

@@ -11,6 +11,7 @@ import {
 	connectConversationDatabase,
 	findConversation,
 	groupRowsByNumber,
+	hasRetainedParticipantReference,
 	readActiveCast,
 	readControlAssignment,
 	type ConversationDatabase,
@@ -116,22 +117,11 @@ const deriveParticipantRemovalFromDatabase = (
 		};
 	}
 
-	const referenced =
-		db
-			.select({ id: messageTable.id })
-			.from(messageTable)
-			.where(
-				and(
-					eq(messageTable.conversation_id, conversationId),
-					or(
-						eq(messageTable.author_participant_id, participantId),
-						eq(messageTable.context_human_participant_id, participantId),
-						eq(messageTable.context_model_participant_id, participantId),
-					),
-				),
-			)
-			.limit(1)
-			.get() !== undefined;
+	const referenced = hasRetainedParticipantReference(
+		db,
+		conversationId,
+		participantId,
+	);
 
 	const affectedGenerationCount =
 		!playable || castIds.length === 0

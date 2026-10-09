@@ -8,7 +8,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import { conversationMemories, conversationMemoryChanges, type MemoryCandidateJudgment } from "../../shared/contract/memory";
 import { correctMemorySource, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory/collections";
-import { mergeMemoryLabels } from "../memory/labels";
+import { mergeMemoryLabels } from "../memory/label-commands";
 import { sha256 } from "../memory/hash";
 import { configureMemoryEmbeddings, createChat, key } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";

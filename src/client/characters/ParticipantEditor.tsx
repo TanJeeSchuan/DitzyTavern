@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { createConversationCommands } from "../createConversationCommands";
+import { runConversationCommand } from "../conversation-command-runner";
 import { emptyPromptChannels } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
@@ -44,7 +44,12 @@ export function ParticipantEditor({
 	draftRef.current = draft;
 
 	const dirty = participant !== undefined && !sameDefinition(draft, definitionOf(participant));
-	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+	const surface = {
+		conversationId: conversation.id,
+		revision: () => conversation.revision,
+		onConversationChange,
+		setNotice,
+	};
 
 	const apply = async () => {
 		if (participant === undefined || !dirty || pending || draft.name.trim() === "") return false;
@@ -52,13 +57,15 @@ export function ParticipantEditor({
 		let appliedSuccessfully = false;
 		setPending(true);
 		try {
-			await run({ type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }, { notices: EDITOR_NOTICES, onNotPlayable: setNotice,
+			await runConversationCommand(surface, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }, {
+				notices: EDITOR_NOTICES,
 				onApplied: (applied) => {
-						appliedSuccessfully = true;
-						const saved = applied.cast.find((candidate) => candidate.id === participant.id);
-						if (saved) setDraft((current) => current === submitted ? definitionOf(saved) : current);
-						setNotice(null);
-					} });
+					appliedSuccessfully = true;
+					const saved = applied.cast.find((candidate) => candidate.id === participant.id);
+					if (saved) setDraft((current) => current === submitted ? definitionOf(saved) : current);
+					setNotice(null);
+				},
+			});
 		} finally {
 			setPending(false);
 		}

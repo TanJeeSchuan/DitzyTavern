@@ -1,6 +1,8 @@
 import { applyConversationCommand, loadConversation, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
+import { requestData } from "./lib/request-outcome";
 import type { Portrait } from "../shared/contract/image";
+import { workspaceResponse } from "../shared/contract/workspace";
 
 export type ThemePreference = "system" | "daylight" | "evening";
 
@@ -36,10 +38,7 @@ export function resolveWorkspaceActiveChat(
 }
 
 const fetchWorkspace = async () => {
-	const { data, error } = await api.api.workspace.get();
-	if (error || !data) {
-		throw new Error("Unable to load workspace");
-	}
+	const data = await requestData(api.api.workspace.get(), workspaceResponse);
 	return {
 		...data,
 		chats: data.chats.map((chat): ChatSummary => ({
@@ -69,7 +68,7 @@ export async function renameChat(chatId: string, name: string): Promise<{ outcom
 	let outcome = await applyConversationCommand(current.id, current.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
-	return { outcome: "failed", reason: outcome.outcome === "invalid" ? outcome.reason : "The Chat could not be renamed." };
+	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }
 
 export const workspaceClient: WorkspaceClient = {

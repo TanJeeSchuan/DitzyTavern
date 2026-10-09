@@ -222,6 +222,26 @@ interface ArgumentSeparator {
 	readonly length: 1 | 2;
 }
 
+interface MacroScanStep {
+	/** @approved Advanced cursor when the token at `cursor` is an escaped comment or backslash pair. */
+	readonly skipTo: number | null;
+	/** @approved End of the nested macro opening at `cursor`, when it closes inside the scan. */
+	readonly nestedEnd: number | null;
+}
+
+/** @approved One step both the argument-separator scan and the node parser take: escaped comments and backslash pairs advance past their token, and a nested macro contributes its end only when it closes inside the scan. */
+const macroScanStep = (source: string, cursor: number, end: number): MacroScanStep => {
+	const token = scanMacroToken(source, cursor, () => true);
+	if (token.kind === "escaped-comment" || token.kind === "backslash-pair") {
+		return { skipTo: Math.min(token.end, end), nestedEnd: null };
+	}
+	const nestedEnd = macroEnd(source, cursor, true);
+	return {
+		skipTo: null,
+		nestedEnd: nestedEnd !== null && nestedEnd <= end ? nestedEnd : null,
+	};
+};
+
 const argumentSeparators = (
 	source: string,
 	start: number,
@@ -229,14 +249,13 @@ const argumentSeparators = (
 ): readonly ArgumentSeparator[] => {
 	const doubles: ArgumentSeparator[] = [];
 	for (let cursor = start; cursor < end;) {
-		const token = scanMacroToken(source, cursor, () => true);
-		if (token.kind === "escaped-comment" || token.kind === "backslash-pair") {
-			cursor = Math.min(token.end, end);
+		const step = macroScanStep(source, cursor, end);
+		if (step.skipTo !== null) {
+			cursor = step.skipTo;
 			continue;
 		}
-		const nestedEnd = macroEnd(source, cursor, true);
-		if (nestedEnd !== null && nestedEnd <= end) {
-			cursor = nestedEnd;
+		if (step.nestedEnd !== null) {
+			cursor = step.nestedEnd;
 			continue;
 		}
 		if (source.startsWith("::", cursor)) {
@@ -361,19 +380,18 @@ function parseNodes(source: string, start: number, end: number): MacroDocumentNo
 		if (textStart < textEnd) nodes.push(textNode(source, textStart, textEnd));
 	};
 	for (let cursor = start; cursor < end;) {
-		const token = scanMacroToken(source, cursor, () => true);
-		if (token.kind === "escaped-comment" || token.kind === "backslash-pair") {
-			cursor = Math.min(token.end, end);
+		const step = macroScanStep(source, cursor, end);
+		if (step.skipTo !== null) {
+			cursor = step.skipTo;
 			continue;
 		}
-		const nestedEnd = macroEnd(source, cursor, true);
-		if (nestedEnd === null || nestedEnd > end) {
+		if (step.nestedEnd === null) {
 			cursor += 1;
 			continue;
 		}
 		pushText(cursor);
-		nodes.push(parseMacro(source, cursor, nestedEnd));
-		cursor = nestedEnd;
+		nodes.push(parseMacro(source, cursor, step.nestedEnd));
+		cursor = step.nestedEnd;
 		textStart = cursor;
 	}
 	pushText(end);

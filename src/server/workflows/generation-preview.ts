@@ -60,7 +60,7 @@ export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
 export interface GenerationPreviewStore {
 	previews: Map<number, GenerationPreviewRecord>;
 	versions: Map<number, number>;
-	/** Evicts preview records past their expiry; the process-state tick drives this while idle. */
+	/** @approved Evicts preview records past their expiry; the process-state tick drives this while idle. */
 	sweep(now?: number): void;
 	dispose(): void;
 }

@@ -5,6 +5,7 @@ import { imageSrc } from "../lib/image";
 import { useOpenImageAt } from "../ImageDialog";
 
 const QUOTE = 0x22;
+// @approved
 // markdown-it's own text terminators plus the dialogue quotes, so the text rule stops at them.
 const terminator = /[\n!#$%&*+\-:<=>@[\\\]^_`{}~"“”]/g;
 
@@ -41,6 +42,7 @@ const toTag = (token: Token | undefined, type: string, nesting: 1 | -1) => {
 	Object.assign(token, { type, tag: "span", nesting, markup: token.content, content: "" });
 };
 
+// @approved
 // An opening quote left unmatched closes where its enclosing element closes, without a
 // closing mark: multi-paragraph dialogue opens a quote per paragraph, and a streaming
 // quote is styled before its closing mark arrives.
@@ -83,7 +85,8 @@ md.renderer.rules.image = (tokens, index) => {
 	const name = md.utils.escapeHtml(token?.content ?? "");
 	const hash = String(token?.attrGet("hash") ?? "");
 	if (hash === "") return name;
-	return `<button type="button" class="prose-image" data-image-hash="${hash}" data-image-name="${name}"><img src="${imageSrc(hash)}" alt="${name}" loading="lazy"><span class="prose-image-anchor">${md.utils.escapeHtml(imageAnchor(token?.content ?? ""))}</span></button>`;
+	const anchor = md.utils.escapeHtml(imageAnchor(token?.content ?? ""));
+	return `<button type="button" class="prose-image" data-image-hash="${hash}" data-image-name="${name}"><img src="${imageSrc(hash)}" alt="${name}" loading="lazy"><span class="prose-image-anchor">${anchor}</span></button>`;
 };
 
 export function renderBlocks(text: string): string[] {
@@ -98,6 +101,7 @@ export function renderBlocks(text: string): string[] {
 
 const FIRST = 80;
 const CHUNK = 300;
+// @approved
 // A soft edge 6em wide wipes each span from left to right. An inline span's mask runs along
 // its lines laid end to end, so the edge travels in reading order, line after line.
 const WIPE = "animate-wipe-in mask-no-repeat mask-size-[calc(200%+6em)_100%] mask-r-from-[calc(50%-3em)] mask-r-to-[calc(50%+3em)]";
@@ -111,6 +115,7 @@ const lineStart = (text: string, line: number) => {
 	return offset;
 };
 
+// @approved
 // How much of a streaming text to show: every block before the last in full, and the
 // last block up to a sentence end. A reveal falls due each time CHUNK more characters
 // have streamed (FIRST for the opening one, so the first ink lands quickly) and shows up
@@ -139,6 +144,7 @@ function wipeTextAfter(root: HTMLElement, offset: number) {
 		if (seen + length > offset) {
 			const fresh = offset > seen ? node.splitText(offset - seen) : node;
 			const span = Object.assign(document.createElement("span"), { className: WIPE });
+			// @approved
 			// Each span starts when the edge reaches its first character, so spans split by
 			// markup read as one continuous wipe.
 			span.style.animationDelay = `${(Math.max(seen, offset) - offset) * MS_PER_CHAR}ms`;
@@ -150,6 +156,7 @@ function wipeTextAfter(root: HTMLElement, offset: number) {
 	}
 }
 
+// @approved
 // Once a Prose has streamed, blocks it mounts wipe in whole and text added to a mounted
 // block wipes in from where it previously ended. History that never streamed stays still.
 // Memoized because React rewrites dangerouslySetInnerHTML on every render, which would drop

@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
-import { CONVERSATION_CONFLICT_RELOAD_NOTICE, CONVERSATION_UNREACHABLE_NOTICE } from "../conversation-command-runner";
+import {
+	CONVERSATION_CONFLICT_RELOAD_NOTICE,
+	CONVERSATION_UNREACHABLE_NOTICE,
+	runConversationCommand,
+} from "../conversation-command-runner";
 import {
 	addCharacterToCast,
 	loadConversation,
 	saveParticipantAsCharacter,
 	type ConversationSummary,
 } from "../conversation";
-import { createConversationCommands } from "../createConversationCommands";
 import type { CharacterSnapshot } from "../character-library";
 import { controlChangeDescription } from "../cast";
 import { emptyPromptChannels } from "../../shared/definition";
@@ -89,7 +92,12 @@ export function useCastActions({
 		character: SavedCharacterReference;
 	} | null>(null);
 
-	const { run } = createConversationCommands(conversationId, { revision: () => conversation?.revision ?? null, onConversationChange, setNotice });
+	const surface = {
+		conversationId,
+		revision: () => conversation?.revision ?? null,
+		onConversationChange,
+		setNotice,
+	};
 
 	const refreshConversation = async () => {
 		try {
@@ -112,20 +120,23 @@ export function useCastActions({
 		setRemoveTargetId(null);
 		setPending(true);
 		try {
-			await run({
-						type: "remove-participant",
-						participantId: participant.id,
-					}, { notices: {
+			await runConversationCommand(surface, {
+				type: "remove-participant",
+				participantId: participant.id,
+			}, {
+				notices: {
 					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				onApplied: () => setNotice(null), onNotRemovable: () => {
-						setNotice(
-							`${participant.duplicateLabel} now holds a Control seat; reassign it before removing.`,
-						);
-						void refreshConversation();
-					}, onNotPlayable: (reason) => setNotice(reason) });
+				onApplied: () => setNotice(null),
+				onNotRemovable: () => {
+					setNotice(
+						`${participant.duplicateLabel} now holds a Control seat; reassign it before removing.`,
+					);
+					void refreshConversation();
+				},
+			});
 		} finally {
 			setPending(false);
 		}
@@ -135,42 +146,45 @@ export function useCastActions({
 		if (conversation === null) return;
 		setPending(true);
 		try {
-			await run<AddCharacterOperation>(async (expectedRevision) => {
-					const outcome = await addCharacterToCast({
-						conversationId,
-						expectedConversationRevision: expectedRevision,
-						characterId,
-						expectedCharacterRevision,
-					});
-					if (outcome.outcome === "conflict") {
-						if ("currentConversation" in outcome) {
-							// @approved
-							//  A conversation conflict carries the authoritative snapshot.
-							return outcome;
-						}
+			await runConversationCommand<AddCharacterOperation>(surface, async (expectedRevision) => {
+				const outcome = await addCharacterToCast({
+					conversationId,
+					expectedConversationRevision: expectedRevision,
+					characterId,
+					expectedCharacterRevision,
+				});
+				if (outcome.outcome === "conflict") {
+					if ("currentConversation" in outcome) {
 						// @approved
-						//  A library conflict names the changed Character instead of
-						// carrying a Conversation snapshot: the runner must not
-						// adopt or word it, so it is forwarded as an operation
-						// outcome for the drawer's typed callback.
-						return {
-							outcome: "operation",
-							operation: {
-								kind: "character-changed",
-								currentCharacterName: outcome.currentCharacter.name,
-							},
-						};
+						//  A conversation conflict carries the authoritative snapshot.
+						return outcome;
 					}
-					return outcome;
-				}, { notices: ADD_CHARACTER_NOTICES,
-				onApplied: () => setNotice(null), onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE), onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE), onOperation: (operation) => {
-						if (operation.kind === "character-changed") {
-							void refreshConversation();
-							setNotice(
-								`${operation.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
-							);
-						}
-					} });
+					// @approved
+					//  A library conflict names the changed Character instead of
+					// carrying a Conversation snapshot: the runner must not
+					// adopt or word it, so it is forwarded as an operation
+					// outcome for the drawer's typed callback.
+					return {
+						outcome: "operation",
+						operation: {
+							kind: "character-changed",
+							currentCharacterName: outcome.currentCharacter.name,
+						},
+					};
+				}
+				return outcome;
+			}, {
+				notices: ADD_CHARACTER_NOTICES,
+				onApplied: () => setNotice(null),
+				onOperation: (operation) => {
+					if (operation.kind === "character-changed") {
+						void refreshConversation();
+						setNotice(
+							`${operation.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
+						);
+					}
+				},
+			});
 		} finally {
 			setPending(false);
 		}
@@ -181,14 +195,16 @@ export function useCastActions({
 		let added: number | null = null;
 		setPending(true);
 		try {
-			await run({
-						type: "add-participant",
-						definition: { name, prompt: emptyPromptChannels(), openings: [] },
-					}, { notices: ADD_ADHOC_NOTICES, onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
+			await runConversationCommand(surface, {
+				type: "add-participant",
+				definition: { name, prompt: emptyPromptChannels(), openings: [] },
+			}, {
+				notices: ADD_ADHOC_NOTICES,
 				onApplied: (applied) => {
-						added = applied.cast.at(-1)?.id ?? null;
-						setNotice(null);
-					} });
+					added = applied.cast.at(-1)?.id ?? null;
+					setNotice(null);
+				},
+			});
 		} finally {
 			setPending(false);
 		}
@@ -199,8 +215,10 @@ export function useCastActions({
 		if (conversation === null || controlChangeDescription(conversation, seat, participantId).kind === "no-change") return;
 		setPending(true);
 		try {
-			await run({ type: "assign-control", seat, participantId }, { notices: ADD_ADHOC_NOTICES,
-				onApplied: () => setNotice(null), onNotPlayable: (reason) => setNotice(reason), onNotRemovable: (reason) => setNotice(reason) });
+			await runConversationCommand(surface, { type: "assign-control", seat, participantId }, {
+				notices: ADD_ADHOC_NOTICES,
+				onApplied: () => setNotice(null),
+			});
 		} finally {
 			setPending(false);
 		}
@@ -221,38 +239,41 @@ export function useCastActions({
 		setSaveConfirmation(null);
 		setPending(true);
 		try {
-			await run<SaveParticipantOperation>(async (expectedRevision) => {
-					const outcome = await saveParticipantAsCharacter({
-						conversationId,
-						expectedConversationRevision: expectedRevision,
-						participantId: participant.id,
-					});
-					// @approved
-					//  The save workflow leaves the Conversation untouched: the
-					// applied outcome carries the new Character and no snapshot
-					// to adopt, so it is forwarded as an operation outcome.
-					if (outcome.outcome === "available") {
-						return {
-							outcome: "operation",
-							operation: { kind: "participant-saved", character: outcome.value.character },
-						};
-					}
-					return outcome;
-				}, { notices: {
+			await runConversationCommand<SaveParticipantOperation>(surface, async (expectedRevision) => {
+				const outcome = await saveParticipantAsCharacter({
+					conversationId,
+					expectedConversationRevision: expectedRevision,
+					participantId: participant.id,
+				});
+				// @approved
+				//  The save workflow leaves the Conversation untouched: the
+				// applied outcome carries the new Character and no snapshot
+				// to adopt, so it is forwarded as an operation outcome.
+				if (outcome.outcome === "available") {
+					return {
+						outcome: "operation",
+						operation: { kind: "participant-saved", character: outcome.value.character },
+					};
+				}
+				return outcome;
+			}, {
+				notices: {
 					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
 					unreachable: LIBRARY_UNREACHABLE_NOTICE,
-				}, onNotPlayable: (reason) => setNotice(reason), onNotRemovable: (reason) => setNotice(reason), onOperation: (operation) => {
-						if (operation.kind === "participant-saved") {
-							setSaveConfirmation({
-								participantLabel: participant.duplicateLabel,
-								character: {
-									id: operation.character.id,
-									name: operation.character.name,
-								},
-							});
-						}
-					} });
+				},
+				onOperation: (operation) => {
+					if (operation.kind === "participant-saved") {
+						setSaveConfirmation({
+							participantLabel: participant.duplicateLabel,
+							character: {
+								id: operation.character.id,
+								name: operation.character.name,
+							},
+						});
+					}
+				},
+			});
 		} finally {
 			setPending(false);
 		}

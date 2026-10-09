@@ -25,7 +25,7 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 		setPending(true); setError(null);
 		try {
 			const result = await saveMemoryNote(conversationId, revision, note);
-			if (result.outcome === "invalid") setError(result.reason);
+			if (result.outcome === "available") { onSettings(result.value.settings); onSaved(); }
 			else if (result.outcome === "conflict") {
 				onSettings(result.currentSettings); setRevision(result.currentSettings.revision);
 				setError(
@@ -33,7 +33,8 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 						? "Memory settings changed elsewhere. Save again to keep this note."
 						: "The note changed elsewhere. Saving again replaces it with this text.",
 				);
-			} else { onSettings(result.settings); onSaved(); }
+			}
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Memory note could not be saved. Try again.");
 		} catch { setError("The Memory note could not be saved. Try again."); }
 		finally { setPending(false); }
 	};

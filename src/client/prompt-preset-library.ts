@@ -2,8 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
 import type { EdenResponse } from "./lib/eden";
 import { invalidOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
-import { requestOutcome } from "./lib/request-outcome";
-import { decodeWirePayload } from "./lib/wire-decode";
+import { requestData, requestOutcome } from "./lib/request-outcome";
 import {
 	nativePromptPreset,
 	promptPresetCommandApplied,
@@ -67,24 +66,12 @@ export async function applyPromptPresetCommand(
 	);
 }
 
-export async function listPromptPresets(): Promise<PromptPresetSummary[]> {
-	const { data, error } = await api.api["prompt-presets"].get();
-	if (error || !data) {
-		throw new Error("Unable to list Prompt Presets");
-	}
-	const decoded = decodeWirePayload(promptPresetListResponse, data);
-	if (decoded === null) throw new Error("Unable to list Prompt Presets");
-	return decoded.presets;
+export async function listPromptPresets(signal?: AbortSignal): Promise<PromptPresetSummary[]> {
+	return (await requestData(api.api["prompt-presets"].get({ fetch: { signal } }), promptPresetListResponse)).presets;
 }
 
 export async function loadNativePromptPreset(presetId: number): Promise<NativePromptPreset> {
-	const { data, error } = await api.api["prompt-presets"]({ presetId }).export.get();
-	if (error || !data) {
-		throw new Error("Unable to export the Prompt Preset.");
-	}
-	const decoded = decodeWirePayload(nativePromptPreset, data);
-	if (decoded === null) throw new Error("Unable to export the Prompt Preset.");
-	return decoded;
+	return requestData(api.api["prompt-presets"]({ presetId }).export.get(), nativePromptPreset);
 }
 
 export function parseNativePromptPreset(text: string): NativePromptPreset | null {

@@ -36,11 +36,12 @@ export function MemoryIdentityDialog({ conversationId, participant, memories, in
 		event.preventDefault(); setPending(true); setError(null);
 		try {
 			const result = await saveMemoryIdentity(conversationId, { expectedRevision: snapshot.labelRevision, participantId: participant.id, identity });
-			if (result.outcome === "invalid") setError(result.reason);
+			if (result.outcome === "available") onSaved(result.value.memories);
 			else if (result.outcome === "conflict") {
 				setSnapshot(result.memories);
 				setError("Memory settings changed elsewhere. Review the updated preview before applying again.");
-			} else onSaved(result.memories);
+			}
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory identity could not be saved. Try again.");
 		} catch { setError("Memory identity could not be saved. Try again."); }
 		finally { setPending(false); }
 	};

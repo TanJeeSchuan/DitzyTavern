@@ -12,36 +12,6 @@ export class PromptPresetNotFoundError extends Error {
 	}
 }
 
-// @approved
-//  Typed revision conflict. Carries the authoritative current preset
-// so callers can recover without overwriting their local draft.
-export class StalePromptPresetRevisionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	readonly presetId: number;
-	readonly expectedRevision: number;
-	readonly actualRevision: number;
-	readonly currentPreset: PromptPresetSummary;
-
-	constructor(
-		presetId: number,
-		expectedRevision: number,
-		actualRevision: number,
-		currentPreset: PromptPresetSummary,
-	) {
-		super(
-			`Expected Prompt Preset ${presetId} revision ${expectedRevision}, but the current revision is ${actualRevision}.`,
-		);
-		this.name = "StalePromptPresetRevisionError";
-		this.presetId = presetId;
-		this.expectedRevision = expectedRevision;
-		this.actualRevision = actualRevision;
-		this.currentPreset = currentPreset;
-		this.details = { reason: "stale-revision" as const, expectedRevision, actualRevision, currentPreset };
-	}
-}
-
 export class InvalidPromptPresetCommandError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };

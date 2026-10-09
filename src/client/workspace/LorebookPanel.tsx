@@ -54,7 +54,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 	const create = () => creation.mutate(undefined, {
 		onSuccess: (result) => {
 			if (result.outcome === "available" && result.value.outcome === "applied") { tester.reset(); setBookId(result.value.book.id); setSelectName(true); setNotice("Lorebook created."); }
-			else setNotice(result.outcome === "invalid" ? result.reason : "The Lorebook operation failed.");
+			else setNotice(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Lorebook operation failed.");
 		},
 	});
 	const importFile = (file: File) => importing.mutate(file, {
@@ -62,7 +62,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 			if (result.outcome === "available" && result.value.outcome === "applied") {
 				tester.reset(); setBookId(result.value.book.id); setSelectName(false);
 				setNotice(result.value.warnings.length === 0 ? "Lorebook imported." : result.value.warnings.join(" "));
-			} else setNotice(result.outcome === "invalid" ? result.reason : "The Lorebook import failed.");
+			} else setNotice(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Lorebook import failed.");
 		},
 		onError: () => setNotice("The selected file is not valid JSON."),
 	});

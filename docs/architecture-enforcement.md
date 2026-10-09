@@ -5,7 +5,7 @@ Oxlint, the custom rule tests, the whole-repository contract audit, both
 TypeScript projects, and the Bun tests. Clone detection is a separate advisory
 command.
 
-The `ditzy` Oxlint plugin owns five project rules:
+The `ditzy` Oxlint plugin owns six project rules:
 
 - `no-contract-definition-outside-contract` rejects TypeBox schema construction
   in client and server consumers. Canonical schemas belong in
@@ -22,6 +22,9 @@ The `ditzy` Oxlint plugin owns five project rules:
   `Value.Decode` is the replacement.
 - `no-manual-conversation-transaction` rejects direct Conversation transaction
   construction outside the `runConversationTransaction` owner.
+- `no-conversation-internal-imports` rejects imports of Conversation internals
+  and of the Message, Variant, and Active Generation tables from outside the
+  Conversation module; other modules use its public barrel and read seams.
 
 The `no-contract-definition-outside-contract` Oxlint rule is the primary hard
 gate for schema ownership. `scripts/check-contract-ownership.ts` repeats a
@@ -37,7 +40,7 @@ classic compiler API.
 
 ## Existing violations
 
-The five rules are fully enforced with no baseline violations: the Elysia
+The six rules are fully enforced with no baseline violations: the Elysia
 route adapters live in `src/server/contract/**` and import every wire schema
 from `src/shared/contract/**`, the migrated client transports decode payloads
 with `Value.Decode` against the canonical schemas, and every Conversation

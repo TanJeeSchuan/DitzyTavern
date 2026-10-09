@@ -1,7 +1,7 @@
-import { useMemo, useReducer, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useReducer } from "react";
 import {
 	loadConnectionPresets,
-	loadConnectionSettings,
 	refreshDiscoveryCatalog,
 	saveConnectionCommand,
 	testConnectionDraft,
@@ -11,20 +11,20 @@ import {
 	type ConnectionPreset,
 	type ConnectionSettings,
 	type ConnectionSettingsCommand,
-	type ConnectionSettingsResult,
 	type TestConnectionDraftInput,
 	type TestConnectionResult,
 } from "../../connection-settings";
 import {
 	createConnectionSettingsControllerState,
 	reduceConnectionSettingsController,
-		type ConnectionSettingsConflict,
+	type ConnectionSettingsConflict,
+	type ConnectionSettingsEditorSnapshot,
 	type HeaderEditorData,
 	copyDraft,
 	headerEditorDataFor,
 } from "../../connection-settings-state";
+import { connectionSettingsKey as settingsKey, publishConnectionSettings, useConnectionSettingsQuery } from "../../connection-settings-query";
 import { connectionDraftValidationError } from "../../connection-settings-draft";
-import { useAsyncEffect } from "../../lib/use-async";
 import { resolveRequestUrl } from "../../../shared/connection-url";
 
 export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
@@ -40,8 +40,16 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 // conflict variant is passed per command because it names what was preserved.
 const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
 const PROFILE_NOT_FOUND_ERROR = "The selected Profile no longer exists.";
+const LOAD_ERROR = "Connection Settings could not be loaded.";
 
-type AppliedConnectionSettings = Extract<ConnectionSettingsResult, { outcome: "applied" }>;
+// @approved
+//  One submission shape per Profile command family, so the shared command
+// mutation can adopt the server's copy for the editor that sent it.
+type ConnectionCommandSubmission =
+	| { type: "apply"; command: ConnectionSettingsCommand; draftDisplayName: string; submitted: ConnectionSettingsEditorSnapshot }
+	| { type: "delete"; command: ConnectionSettingsCommand; deletedProfileId: number; deletedDisplayName: string }
+	| { type: "reset-credential"; command: ConnectionSettingsCommand };
+
 
 export type ConnectionSettingsController = {
 	settings: ConnectionSettings | null;
@@ -87,20 +95,19 @@ export type ConnectionSettingsController = {
 };
 
 /** @approved
- * Owns the Connection Settings editor state. The former single patch-any-field
- * store is split into focused slices — server catalog, editable Profile
- * draft, selection and menus, and user-facing feedback — and the Profile
- * command handlers share one runConnectionCommand failure path.
+ * Owns the Connection Settings editor: the server catalog lives in the
+ * react-query cache, while this hook reduces the focused slices the editor
+ * edits — Profile draft, selection and menus, test result, and user-facing
+ * feedback. The Profile command handlers share one command mutation.
  */
 export function useConnectionSettingsController(): ConnectionSettingsController {
+	const client = useQueryClient();
 	const [state, dispatch] = useReducer(
 		reduceConnectionSettingsController,
 		undefined,
 		createConnectionSettingsControllerState,
 	);
 	const {
-		settings,
-		presets,
 		selectedProfileId,
 		draft,
 		credentialDraft,
@@ -112,35 +119,99 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		conflict,
 		notice,
 		error,
-		editorVersion,
 	} = state;
-	const [loading, setLoading] = useState(true);
-	const [testPending, setTestPending] = useState(false);
-	const [discoveryPending, setDiscoveryPending] = useState(false);
-	const [saving, setSaving] = useState(false);
-	const commandIdRef = useRef(0);
-	const editorVersionRef = useRef(editorVersion);
-	editorVersionRef.current = editorVersion;
+	const settingsQuery = useConnectionSettingsQuery();
+	const presetsQuery = useQuery({
+		queryKey: ["connection-settings", "presets"],
+		staleTime: Infinity,
+		queryFn: async ({ signal }) => {
+			await Promise.resolve();
+			signal.throwIfAborted();
+			return loadConnectionPresets(signal);
+		},
+	});
+	const settings = settingsQuery.data ?? null;
+	const presets = presetsQuery.data ?? [];
+	const loadError = settingsQuery.isError || presetsQuery.isError ? LOAD_ERROR : null;
+	// @approved
+	//  A conflict carries the revision it saw; when the cache already holds a
+	//  newer one the conflict is stale and only its snapshot is folded in.
+	const conflictIsStale = (actualRevision: number): boolean => {
+		const current = client.getQueryData<ConnectionSettings>(settingsKey);
+		return current !== undefined && actualRevision < current.revision;
+	};
+
+	const command = useMutation({
+		mutationKey: ["connection-settings", "command"],
+		mutationFn: (submission: ConnectionCommandSubmission) => saveConnectionCommand(submission.command),
+			onSuccess: (result, submission) => {
+			if (result.outcome === "conflict") {
+				publishConnectionSettings(client, result.currentSettings);
+				if (submission.type === "reset-credential") dispatch({ type: "set-error", message: "Credential reset failed." });
+				else if (!conflictIsStale(result.actualRevision)) dispatch({ type: "command-conflict", conflict: result, message: APPLY_CONFLICT_ERROR });
+				return;
+			}
+			if (result.outcome !== "available") {
+				dispatch({
+					type: "set-error",
+					message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "network" ? "The connection could not be reached." : PROFILE_NOT_FOUND_ERROR,
+				});
+				return;
+			}
+			const applied = publishConnectionSettings(client, result.value.settings) ?? result.value.settings;
+			if (submission.type === "apply") dispatch({ type: "apply-succeeded", settings: applied, draftDisplayName: submission.draftDisplayName, submitted: submission.submitted });
+			else if (submission.type === "delete") dispatch({ type: "delete-succeeded", deletedProfileId: submission.deletedProfileId, deletedDisplayName: submission.deletedDisplayName });
+			else dispatch({ type: "reset-credential-succeeded" });
+		},
+		onError: () => dispatch({ type: "set-error", message: "Connection settings could not be saved." }),
+	});
+	const test = useMutation({
+		mutationKey: ["connection-settings", "test"],
+		mutationFn: testConnectionDraft,
+		onSuccess: (result) => dispatch({ type: "test-succeeded", result }),
+		onError: () => dispatch({ type: "test-failed", message: "Test Connection could not be completed." }),
+	});
+	const refresh = useMutation({
+		mutationKey: ["connection-settings", "discovery"],
+		mutationFn: refreshDiscoveryCatalog,
+		onSuccess: (result) => {
+			if (result.outcome === "conflict") {
+				publishConnectionSettings(client, result.currentSettings);
+				if (!conflictIsStale(result.actualRevision)) dispatch({
+					type: "command-conflict",
+					conflict: result,
+					message: "Connection Settings changed while models were refreshing. Your draft is preserved.",
+				});
+				return;
+			}
+			if (result.outcome !== "available") {
+				dispatch({
+				type: "refresh-failed",
+				message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason
+					: result.outcome === "not-found" ? PROFILE_NOT_FOUND_ERROR : "Model catalog refresh could not be completed.",
+			});
+				return;
+			}
+			if (result.value.outcome === "success") {
+				const refreshed = result.value.profile;
+				const settingsRevision = result.value.settingsRevision;
+				void client.cancelQueries({ queryKey: settingsKey });
+				client.setQueryData<ConnectionSettings>(settingsKey, (current) => current === undefined || settingsRevision < current.revision
+					? current
+					: { revision: settingsRevision, profiles: current.profiles.map((profile) => profile.id === refreshed.id ? refreshed : profile) });
+				dispatch({ type: "refresh-succeeded", notice: `Model catalog refreshed. ${refreshed.discoveryCatalog.length} model IDs are available for autocomplete.` });
+				return;
+			}
+			dispatch({ type: "refresh-failed", message: result.value.outcome === "failure" ? result.value.message : PROFILE_NOT_FOUND_ERROR });
+		},
+		onError: () => dispatch({ type: "refresh-failed", message: "Model catalog refresh could not be completed." }),
+	});
 
 	const setDraft = (value: ConnectionProfileDraft) => dispatch({ type: "set-draft", draft: value });
 	const setCredentialDraft = (value: string) => dispatch({ type: "set-credential-draft", value });
 	const setHeaderEditorData = (value: HeaderEditorData) => dispatch({ type: "set-header-editor-data", value });
 	const setTestModelId = (value: string) => dispatch({ type: "set-test-model-id", value });
 	const setPendingDeletionProfileId = (value: number | null) => dispatch({ type: "set-pending-deletion", value });
-
-	useAsyncEffect((isCancelled) => {
-		void Promise.all([loadConnectionSettings(), loadConnectionPresets()])
-			.then(([loadedSettings, loadedPresets]) => {
-				if (isCancelled()) return;
-				dispatch({ type: "load-succeeded", settings: loadedSettings, presets: loadedPresets });
-			})
-			.catch(() => {
-				if (!isCancelled()) dispatch({ type: "load-failed", message: "Connection Settings could not be loaded." });
-			})
-			.finally(() => {
-				if (!isCancelled()) setLoading(false);
-			});
-	}, []);
 
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selectedProfileId);
 	const pendingDeletionProfile = settings?.profiles.find((profile) => profile.id === pendingDeletionProfileId);
@@ -150,7 +221,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			? "Enter a Models URL before refreshing."
 			: selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()
 				? "Save the Models URL before refreshing."
-				: discoveryPending
+				: refresh.isPending
 					? "A model refresh is already in progress."
 					: undefined;
 	const resolvedRequestUrl = useMemo(() => {
@@ -163,32 +234,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	}, [draft.apiFormat, draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
 	const canSave = settings !== null && validationError === null;
-	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);
-
-	// @approved
-	//  Runs one Connection Settings command and owns the failure wording
-	// repeated by every Profile command handler: a conflict preserves the
-	// editor state in the reducer, an invalid outcome surfaces the
-	// server reason, and anything else reads as a missing Profile. Returns
-	// the applied result, or null after the error slice is set.
-	const runConnectionCommand = async (
-		command: () => Promise<ConnectionSettingsResult>,
-		conflictError: string,
-		commandId?: number,
-	): Promise<AppliedConnectionSettings | null> => {
-		const result = await command();
-		if (result.outcome === "applied") return result;
-		if (result.outcome === "conflict") {
-			dispatch({ type: "command-conflict", conflict: result, message: conflictError, commandId });
-		} else {
-				dispatch({
-					type: "set-error",
-					message: result.outcome === "invalid" ? result.reason : PROFILE_NOT_FOUND_ERROR,
-					commandId,
-			});
-		}
-		return null;
-	};
+	const dirty = editorOpen && (selectedProfile === undefined
+		|| JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile))
+		|| JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers))
+		|| credentialDraft.length > 0);
 
 	const choosePreset = (preset: ConnectionPreset) => {
 		dispatch({ type: "choose-preset", preset });
@@ -214,42 +263,22 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			dispatch({ type: "set-error", message: "Enter a model ID before testing this Connection Profile." });
 			return;
 		}
-		setTestPending(true);
 		dispatch({ type: "test-started" });
-		try {
-			const request: TestConnectionDraftInput = {
-				profile: draft,
-				modelId: testModelId,
-				headers: headerOperationsFor(headerEditorData),
-			};
-			if (selectedProfileId !== null) request.profileId = selectedProfileId;
-			const result = await testConnectionDraft(request);
-			dispatch({ type: "test-succeeded", result });
-		} catch {
-			dispatch({ type: "test-failed", message: "Test Connection could not be completed." });
-		} finally {
-			setTestPending(false);
-		}
+		const request: TestConnectionDraftInput = {
+			profile: draft,
+			modelId: testModelId,
+			headers: headerOperationsFor(headerEditorData),
+		};
+		if (selectedProfileId !== null) request.profileId = selectedProfileId;
+		test.mutate(request);
 	};
 
 	const refreshModels = async () => {
 		if (selectedProfileId === null) { dispatch({ type: "set-error", message: "Save this connection before refreshing its Models URL." }); return; }
 		if (draft.modelsUrl.trim().length === 0) { dispatch({ type: "set-error", message: "Refresh requires an exact Models URL." }); return; }
 		if (selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()) { dispatch({ type: "set-error", message: "Save the Models URL change before refreshing the catalog." }); return; }
-		setDiscoveryPending(true);
 		dispatch({ type: "refresh-started" });
-		try {
-			const result = await refreshDiscoveryCatalog(selectedProfileId);
-			if (result.outcome === "success") {
-				if (settings !== null) dispatch({ type: "refresh-succeeded", settings: { ...settings, profiles: settings.profiles.map((profile) => profile.id === result.profile.id ? result.profile : profile) }, notice: `Model catalog refreshed. ${result.profile.discoveryCatalog.length} model IDs are available for autocomplete.` });
-			} else if (result.outcome === "failure") dispatch({ type: "refresh-failed", message: result.message });
-			else if (result.outcome === "invalid") dispatch({ type: "refresh-failed", message: result.reason });
-			else if (result.outcome === "conflict") {
-				dispatch({ type: "command-conflict", conflict: result, message: "Connection Settings changed while models were refreshing. Your draft is preserved." });
-			}
-			else dispatch({ type: "refresh-failed", message: PROFILE_NOT_FOUND_ERROR });
-		} catch { dispatch({ type: "refresh-failed", message: "Model catalog refresh could not be completed." }); }
-		finally { setDiscoveryPending(false); }
+		refresh.mutate(selectedProfileId);
 	};
 
 	const applyDraft = async () => {
@@ -262,35 +291,17 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		try { headers = headerOperationsFor(headerEditorData); }
 		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return false; }
 		dispatch({ type: "clear-feedback" });
-		const appliedProfileId = selectedProfileId;
-		const appliedDraftDisplayName = draft.displayName;
-		const requestEditorVersion = editorVersion;
-		const commandId = ++commandIdRef.current;
-		setSaving(true);
-		dispatch({ type: "command-started", commandId });
-		const command: ConnectionSettingsCommand = selectedProfileId === null
+		const commandPayload: ConnectionSettingsCommand = selectedProfileId === null
 			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
 			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
-		if (credentialDraft.length > 0) command.credential = credentialDraft;
-		try {
-		const applied = await runConnectionCommand(
-			() => saveConnectionCommand(command),
-			APPLY_CONFLICT_ERROR,
-			commandId,
-		);
-		if (applied === null) return false;
-		dispatch({
-			type: "apply-succeeded",
-			settings: applied.settings,
-			selectedProfileId: appliedProfileId,
-			draftDisplayName: appliedDraftDisplayName,
-			credentialWasProvided: false,
-			editorVersion: requestEditorVersion,
-			commandId,
+		if (credentialDraft.length > 0) commandPayload.credential = credentialDraft;
+		const result = await command.mutateAsync({
+			type: "apply",
+			command: commandPayload,
+			draftDisplayName: draft.displayName,
+			submitted: { selectedProfileId, editorIdentity: state.editorIdentity },
 		});
-		return editorVersionRef.current === requestEditorVersion;
-		} catch { dispatch({ type: "set-error", message: "Connection settings could not be saved." }); return false; }
-		finally { setSaving(false); }
+		return result.outcome === "available";
 	};
 	const discardDraft = () => selectedProfile === undefined ? dispatch({ type: "discard-draft" }) : dispatch({ type: "choose-profile", profile: selectedProfile });
 
@@ -304,63 +315,44 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const deletePendingProfile = async () => {
 		if (settings === null || pendingDeletionProfileId === null || !pendingDeletionProfile) return;
 		dispatch({ type: "clear-feedback" });
-		const deletedDisplayName = pendingDeletionProfile.displayName;
-		const requestEditorVersion = editorVersion;
-		const commandId = ++commandIdRef.current;
-		dispatch({ type: "command-started", commandId });
-		const applied = await runConnectionCommand(
-			() => saveConnectionCommand({ type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id }),
-			APPLY_CONFLICT_ERROR,
-			commandId,
-		);
-		if (applied === null) return;
-		dispatch({
-			type: "delete-succeeded",
-			settings: applied.settings,
-			deletedDisplayName,
-			editorVersion: requestEditorVersion,
-			commandId,
+		await command.mutateAsync({
+			type: "delete",
+			command: { type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id },
+			deletedProfileId: pendingDeletionProfile.id,
+			deletedDisplayName: pendingDeletionProfile.displayName,
 		});
 	};
 
 	const resetCredential = async () => {
 		if (settings === null || selectedProfileId === null) return;
 		dispatch({ type: "clear-feedback" });
-		let result: ConnectionSettingsResult;
-		try {
-			result = await saveConnectionCommand({ type: "reset-credential", expectedRevision: settings.revision, profileId: selectedProfileId, confirmed: true });
-		} catch {
-			dispatch({ type: "set-error", message: "Credential reset failed." });
-			return;
-		}
-		// @approved
-		//  Reset deliberately skips preserveConflict: the credential draft is
-		// cleared either way, so a conflict reads as a plain failure here.
-		if (result.outcome !== "applied") { dispatch({ type: "set-error", message: result.outcome === "invalid" ? result.reason : "Credential reset failed." }); return; }
-		dispatch({ type: "reset-credential-succeeded", settings: result.settings });
+		await command.mutateAsync({
+			type: "reset-credential",
+			command: { type: "reset-credential", expectedRevision: settings.revision, profileId: selectedProfileId, confirmed: true },
+		});
 	};
 
 	return {
 		settings,
 		presets,
-		loading,
+		loading: settingsQuery.isPending || presetsQuery.isPending,
 		selectedProfileId,
 		draft,
 		credentialDraft,
 		headerEditorData,
 		testModelId,
 		testResult,
-		testPending,
-		discoveryPending,
+		testPending: test.isPending,
+		discoveryPending: refresh.isPending,
 		pendingDeletionProfileId,
 		editorOpen,
 		canSave,
 		dirty,
-		saving,
+		saving: command.isPending,
 		validationError,
 		conflict,
 		notice,
-		error,
+		error: error ?? loadError,
 		selectedProfile,
 		pendingDeletionProfile,
 		refreshModelsDisabledReason,

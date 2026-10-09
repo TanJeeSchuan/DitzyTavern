@@ -39,7 +39,9 @@ async function publishedBuild(registryFetch: RegistryFetch, stopping: AbortSigna
 export function createUpdateChecker(database: Database, { build = buildMetadata, registryFetch = fetch, scheduleInterval: schedule = scheduleInterval }: UpdateCheckerOptions = {}) {
 	const db = drizzle(database);
 	db.insert(updateSettingsTable).values({ id: 1 }).onConflictDoNothing().run();
-	let state: UpdateStatus = { build, automaticChecks: db.select().from(updateSettingsTable).get()!.automatic_checks, result: null, attempt: null };
+	const storedSettings = db.select().from(updateSettingsTable).get();
+	if (storedSettings === undefined) throw new Error("Update settings row missing.");
+	let state: UpdateStatus = { build, automaticChecks: storedSettings.automatic_checks, result: null, attempt: null };
 	let inFlight: Promise<UpdateStatus> | undefined;
 	const stopping = new AbortController();
 	const listeners = new Map<(state: UpdateStatus) => void, (() => void) | undefined>();
@@ -49,13 +51,14 @@ export function createUpdateChecker(database: Database, { build = buildMetadata,
 	const check = (): Promise<UpdateStatus> => {
 		if (build.distribution === "custom" || stopping.signal.aborted) return Promise.resolve(state);
 		if (inFlight) return inFlight;
-		state = { ...state, attempt: { status: "checking", startedAt: new Date().toISOString(), error: null } };
+		const attempt: NonNullable<UpdateStatus["attempt"]> = { status: "checking", startedAt: new Date().toISOString(), error: null };
+		state = { ...state, attempt };
 		inFlight = (async () => {
 			try {
 				const available = await publishedBuild(registryFetch, stopping.signal);
-				state = { ...state, result: { ...available, comparison: available.buildNumber > build.buildNumber ? "update_available" : available.buildNumber === build.buildNumber ? "current" : "ahead", checkedAt: new Date().toISOString() }, attempt: { ...state.attempt!, status: "succeeded", error: null } };
+				state = { ...state, result: { ...available, comparison: available.buildNumber > build.buildNumber ? "update_available" : available.buildNumber === build.buildNumber ? "current" : "ahead", checkedAt: new Date().toISOString() }, attempt: { ...attempt, status: "succeeded", error: null } };
 			} catch (error) {
-				state = { ...state, attempt: { ...state.attempt!, status: "failed", error: error instanceof Error ? error.message : "Update check failed." } };
+				state = { ...state, attempt: { ...attempt, status: "failed", error: error instanceof Error ? error.message : "Update check failed." } };
 			} finally { inFlight = undefined; publish(); }
 			return state;
 		})();

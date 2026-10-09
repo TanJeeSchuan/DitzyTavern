@@ -32,9 +32,10 @@ export function deletionConfirmationCopy(
 			confirmLabel: "Yes, delete permanently",
 		};
 	}
+	const referenceCount = `${impact.provenanceReferenceCount} Participant${impact.provenanceReferenceCount === 1 ? "" : "s"}`;
 	return {
 		title,
-		impact: `This Character is referenced by ${impact.provenanceReferenceCount} Participant${impact.provenanceReferenceCount === 1 ? "" : "s"} in your Chats, so deleting it removes it from the Library permanently and retains a hidden tombstone that keeps their provenance traceable. Existing Chat Participants keep their definitions and are unchanged.`,
+		impact: `This Character is referenced by ${referenceCount} in your Chats, so deleting it removes it from the Library permanently and retains a hidden tombstone that keeps their provenance traceable. Existing Chat Participants keep their definitions and are unchanged.`,
 		confirmLabel:
 			impact.deletionMode === "tombstone"
 				? "Yes, retain a hidden tombstone"

@@ -1,83 +1,132 @@
-import type { ConversationMemories, ConversationMemoryAllowance, ConversationMemoryChanges, MemoryCatchup, MemoryCorrectionCommand, MemoryIdentityCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
-import { api, domainOutcome } from "./lib/eden";
+import { api } from "./lib/eden";
+import { requestData, requestOutcome } from "./lib/request-outcome";
+import {
+	conversationMemoryAllowance,
+	conversationMemoryAllowanceApplied,
+	conversationMemories,
+	conversationMemoryChanges,
+	memoryAllowanceCommandErrors,
+	memoryCatchupCancelled,
+	memoryCatchupQueued,
+	memoryCatchupCommandErrors,
+	memoryCatchupRead,
+	memoryCollectionCommandErrors,
+	memoryCorrectionApplied,
+	memoryLabelsCommandErrors,
+	memoryLabelsMerged,
+	memoryQueued,
+	memoryTrace,
+	type ConversationMemories,
+	type ConversationMemoryAllowance,
+	type ConversationMemoryChanges,
+	type MemoryCatchup,
+	type MemoryCorrectionCommand,
+	type MemoryIdentityCommand,
+	type MemoryLabelMergeCommand,
+	type MemorySourceTarget,
+	type MemoryTraceStep,
+} from "../shared/contract/memory";
 
 const conversation = (conversationId: number) => api.api.conversations({ id: String(conversationId) });
 
+export type MemoryCatchupResult = Awaited<ReturnType<typeof startMemoryCatchup | typeof cancelMemoryCatchup>>;
+
 export async function saveMemoryIdentity(conversationId: number, command: MemoryIdentityCommand) {
-	const { data, error } = await conversation(conversationId).memories.identity.post(command);
-	return error === null ? data : domainOutcome(error.value, "Memory identity could not be saved.");
+	return requestOutcome(
+		conversation(conversationId).memories.identity.post(command),
+		memoryLabelsMerged,
+		memoryLabelsCommandErrors,
+	);
 }
 
 export async function mergeMemoryLabels(conversationId: number, command: MemoryLabelMergeCommand) {
-	const { data, error } = await conversation(conversationId).memories["merge-labels"].post(command);
-	return error === null ? data : domainOutcome(error.value, "Labels could not be merged.");
+	return requestOutcome(
+		conversation(conversationId).memories["merge-labels"].post(command),
+		memoryLabelsMerged,
+		memoryLabelsCommandErrors,
+	);
 }
 
 export async function loadConversationMemories(conversationId: number, signal?: AbortSignal): Promise<ConversationMemories> {
-	const { data, error } = await conversation(conversationId).memories.get({ fetch: { signal } });
-	if (error || data === undefined) throw new Error("Memories could not be loaded.");
-	return data;
+	return requestData(conversation(conversationId).memories.get({ fetch: { signal } }), conversationMemories);
 }
 
 export async function loadMemoryChanges(conversationId: number, since: string, signal?: AbortSignal): Promise<ConversationMemoryChanges> {
-	const { data, error } = await conversation(conversationId).memories.changes.get({ query: { since }, fetch: { signal } });
-	if (error || data === undefined) throw new Error("Memory changes could not be loaded.");
-	return data;
+	return requestData(
+		conversation(conversationId).memories.changes.get({ query: { since }, fetch: { signal } }),
+		conversationMemoryChanges,
+	);
 }
 
 export async function loadMemoryTrace(conversationId: number, variantId: number): Promise<MemoryTraceStep[]> {
-	const { data, error } = await conversation(conversationId).memories({ variantId: String(variantId) }).trace.get();
-	if (error || data === undefined) throw new Error("Memory trace could not be loaded.");
-	return data.steps;
+	const trace = await requestData(conversation(conversationId).memories({ variantId: String(variantId) }).trace.get(), memoryTrace);
+	return trace.steps;
 }
 
 export async function loadMemoryCatchup(conversationId: number, signal?: AbortSignal): Promise<MemoryCatchup | null> {
-	const { data, error } = await conversation(conversationId).memories.catchup.get({ fetch: { signal } });
-	if (error || data === undefined) throw new Error("History catch-up status could not be loaded.");
-	return data.run;
+	const read = await requestData(conversation(conversationId).memories.catchup.get({ fetch: { signal } }), memoryCatchupRead);
+	return read.run;
 }
 
 export async function loadMemoryAllowance(conversationId: number, signal?: AbortSignal): Promise<ConversationMemoryAllowance> {
-	const { data, error } = await conversation(conversationId)["memory-allowance"].get({ fetch: { signal } });
-	if (error || data === undefined) throw new Error("Memory Allowance could not be loaded.");
-	return data;
+	return requestData(conversation(conversationId)["memory-allowance"].get({ fetch: { signal } }), conversationMemoryAllowance);
 }
 
 export async function resetAndReextract(conversationId: number, target: MemorySourceTarget) {
-	const { data, error } = await conversation(conversationId).memories.reextract.post(target);
-	return error === null ? data : domainOutcome(error.value, "Memory work could not be queued.");
+	return requestOutcome(
+		conversation(conversationId).memories.reextract.post(target),
+		memoryQueued,
+		memoryCollectionCommandErrors,
+	);
 }
 
 export async function correctMemory(conversationId: number, command: MemoryCorrectionCommand) {
-	const { data, error } = await conversation(conversationId).memories.correct.post(command);
-	return error === null ? data : domainOutcome(error.value, "Memory correction could not be saved.");
+	return requestOutcome(
+		conversation(conversationId).memories.correct.post(command),
+		memoryCorrectionApplied,
+		memoryCollectionCommandErrors,
+	);
 }
 
 export async function retryMemoryIndex(conversationId: number, target: MemorySourceTarget) {
-	const { data, error } = await conversation(conversationId).memories.indexing.retry.post(target);
-	return error === null ? data : domainOutcome(error.value, "Memory indexing could not be retried.");
+	return requestOutcome(
+		conversation(conversationId).memories.indexing.retry.post(target),
+		memoryQueued,
+		memoryCollectionCommandErrors,
+	);
 }
 
-export type MemoryCatchupResult = Awaited<ReturnType<typeof startMemoryCatchup | typeof cancelMemoryCatchup>>;
-
 export async function startMemoryCatchup(conversationId: number) {
-	const { data, error } = await conversation(conversationId).memories.catchup.post({});
-	return error === null ? data : domainOutcome(error.value, "History catch-up could not be started.");
+	return requestOutcome(
+		conversation(conversationId).memories.catchup.post({}),
+		memoryCatchupQueued,
+		memoryCatchupCommandErrors,
+	);
 }
 
 export async function cancelMemoryCatchup(conversationId: number, runId: number) {
-	const { data, error } = await conversation(conversationId).memories.catchup({ runId: String(runId) }).delete();
-	return error === null ? data : domainOutcome(error.value, "History catch-up could not be cancelled.");
+	return requestOutcome(
+		conversation(conversationId).memories.catchup({ runId: String(runId) }).delete(),
+		memoryCatchupCancelled,
+		memoryCatchupCommandErrors,
+	);
 }
 
 export async function saveMemoryAllowance(conversationId: number, expectedRevision: number, allowance: number) {
-	const { data, error } = await conversation(conversationId)["memory-allowance"].post({ expectedRevision, allowance });
-	return error === null ? data : domainOutcome(error.value, "Memory Allowance could not be saved.");
+	return requestOutcome(
+		conversation(conversationId)["memory-allowance"].post({ expectedRevision, allowance }),
+		conversationMemoryAllowanceApplied,
+		memoryAllowanceCommandErrors,
+	);
 }
 
 export async function saveMemoryNote(conversationId: number, expectedRevision: number, note: string) {
-	const { data, error } = await conversation(conversationId)["memory-note"].post({ expectedRevision, note });
-	return error === null ? data : domainOutcome(error.value, "The Memory note could not be saved.");
+	return requestOutcome(
+		conversation(conversationId)["memory-note"].post({ expectedRevision, note }),
+		conversationMemoryAllowanceApplied,
+		memoryAllowanceCommandErrors,
+	);
 }
 
 export type { ConversationMemories, ConversationMemoryAllowance, ConversationMemoryChanges, MemoryCatchup };
+export type { MemoryTraceStep };

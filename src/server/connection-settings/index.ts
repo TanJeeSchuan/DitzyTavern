@@ -9,12 +9,12 @@ import {
 import {
 	getConnectionSecretKey,
 } from "../connection-secrets";
+import { guardRevision, StaleRevisionError } from "../revision";
 import {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
 	InvalidConnectionProfileError,
-	StaleConnectionSettingsRevisionError,
 } from "./errors";
 import {
 	listConnectionPresets,
@@ -148,7 +148,7 @@ export function createConnectionSettingsModule(
 		const write = database.transaction(() => {
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
-			requireRevision(read, settings.revision, input.expectedRevision);
+			guardRevision("settings", input.expectedRevision, settings, read);
 			input.mutate({ db, settings });
 			advanceRevision(db, settings.revision);
 			return read();
@@ -308,11 +308,7 @@ export function createConnectionSettingsModule(
 				settings.revision !== expectedRevision ||
 				profile.models_url !== expectedModelsUrl
 			) {
-				throw new StaleConnectionSettingsRevisionError(
-					expectedRevision,
-					settings.revision,
-					read(),
-				);
+				throw new StaleRevisionError("settings", expectedRevision, settings.revision, read());
 			}
 			db.delete(connectionProfileDiscoveryModelTable)
 				.where(eq(connectionProfileDiscoveryModelTable.profile_id, profileId))
@@ -327,6 +323,7 @@ export function createConnectionSettingsModule(
 		return replace.immediate();
 	};
 
+	// @approved
 	// The writer's mark is a per-model fact about the provider, not an edit to the
 	// Profile, so it never advances the Connection Settings revision.
 	const setTextOnlyModel = (input: SetTextOnlyModelInput) => {
@@ -383,14 +380,7 @@ export function createConnectionSettingsModule(
 	};
 }
 
-function requireRevision(
-	read: () => ConnectionSettingsSnapshot,
-	actualRevision: number,
-	expectedRevision: number,
-): void {
-	if (actualRevision === expectedRevision) return;
-	throw new StaleConnectionSettingsRevisionError(expectedRevision, actualRevision, read());
-}
+
 
 export {
 	applyConnectionHeaderOperations,
@@ -399,7 +389,6 @@ export {
 	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
 	InvalidConnectionProfileError,
-	StaleConnectionSettingsRevisionError,
 	listConnectionPresets,
 	validateConnectionProfileDraft,
 };

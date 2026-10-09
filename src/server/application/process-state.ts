@@ -18,21 +18,21 @@ import type { RunningWork } from "../memory/work";
 const PROCESS_STATE_SWEEP_INTERVAL_MS = 60_000;
 
 export interface ProcessState {
-	/** Generation fan-out and replay registry; drain semantics live on the registry. */
+	/** @approved Generation fan-out and replay registry; drain semantics live on the registry. */
 	readonly generationRuntimes: GenerationRuntimeRegistry;
 	readonly generationPreviews: GenerationPreviewStore;
-	/** In-flight memory work by variant id: registration and abort only; no expiry semantics. */
+	/** @approved In-flight memory work by variant id: registration and abort only; no expiry semantics. */
 	readonly memoryWork: Map<number, Set<RunningWork>>;
 	readonly stagedImports: StagedImportStore;
-	/** One tick expiring terminal runtime replay state, preview records, and staged sessions. */
+	/** @approved One tick expiring terminal runtime replay state, preview records, and staged sessions. */
 	sweep(now?: number): void;
-	/** Drop every process-local store for this database and stop the sweep tick. */
+	/** @approved Drop every process-local store for this database and stop the sweep tick. */
 	dispose(): void;
 }
 
 const states = new WeakMap<Database, ProcessState>();
 
-/** Resolve the process-owned state container for one database scope. */
+/** @approved Resolve the process-owned state container for one database scope. */
 export function processStateFor(database: Database): ProcessState {
 	const existing = states.get(database);
 	if (existing !== undefined) return existing;

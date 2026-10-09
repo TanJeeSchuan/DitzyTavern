@@ -80,6 +80,7 @@ export function StoryMessageView({
 	onInspect?: (messageId: number, variantId: number) => void;
 	onMemories?: (messageId: number) => void;
 	onDelete?: (messageId: number) => void;
+	// @approved
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
 	// takes when it ends, so the story does not jump.
 	generationControls?: ReactNode;

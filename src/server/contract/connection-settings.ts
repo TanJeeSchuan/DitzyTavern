@@ -10,6 +10,7 @@ import {
 	type ConnectionSettingsSnapshot,
 } from "../connection-settings";
 import { discoverModels, testConnection, type TestConnectionResult } from "../model-client";
+import { invalidResponse, notFoundResponse } from "./responses";
 
 import {
 	connectionCommandBody,
@@ -84,15 +85,12 @@ export const createConnectionSettingsRoutes = (
 		)
 		.post(
 			"/api/connection-settings/discovery",
-			async ({ body, status }) => {
+			async ({ body }) => {
 				const snapshot = settings.get();
 				const profile = snapshot.profiles.find((entry) => entry.id === body.profileId);
-				if (profile === undefined) return status(404, { outcome: "not-found" as const });
+				if (profile === undefined) return notFoundResponse();
 				if (profile.modelsUrl.trim().length === 0) {
-					return status(422, {
-						outcome: "invalid" as const,
-						reason: "Refresh requires an exact Models URL.",
-					});
+					return invalidResponse("Refresh requires an exact Models URL.");
 				}
 				const discovered = await discoverModels(
 					{ profile, secrets: settings.getProfileSecrets(profile.id) },
@@ -167,28 +165,14 @@ export const createConnectionSettingsRoutes = (
 			"/api/connection-settings/commands",
 			({ body }) => {
 				try {
-					let result: ConnectionSettingsSnapshot;
 					switch (body.type) {
-						case "create-profile":
-							result = settings.createProfile(body);
-							break;
-						case "apply-profile":
-							result = settings.applyProfile(body);
-							break;
-						case "set-credential":
-							result = settings.setCredential(body);
-							break;
-						case "reset-credential":
-							result = settings.resetCredential(body);
-							break;
-						case "delete-profile":
-							result = settings.deleteProfile(body);
-							break;
-						case "set-pinned-models":
-							result = settings.setPinnedModels(body);
-							break;
+						case "create-profile": return { outcome: "applied" as const, settings: toSettingsPayload(settings.createProfile(body)) };
+						case "apply-profile": return { outcome: "applied" as const, settings: toSettingsPayload(settings.applyProfile(body)) };
+						case "set-credential": return { outcome: "applied" as const, settings: toSettingsPayload(settings.setCredential(body)) };
+						case "reset-credential": return { outcome: "applied" as const, settings: toSettingsPayload(settings.resetCredential(body)) };
+						case "delete-profile": return { outcome: "applied" as const, settings: toSettingsPayload(settings.deleteProfile(body)) };
+						case "set-pinned-models": return { outcome: "applied" as const, settings: toSettingsPayload(settings.setPinnedModels(body)) };
 					}
-					return { outcome: "applied" as const, settings: toSettingsPayload(result) };
 				} catch (error) {
 					return presentDomainError(error, commandResponse);
 				}

@@ -1,18 +1,9 @@
 // @approved
 //  Canonical Import Projection: the pure source-to-native derivation shared
-// by the developer import and the Staged Import.
-// The SillyTavern adapter decodes and validates the source one way; the
-// projection then owns everything that maps decoded source into native
-// Conversation creation data — resolved author ownership, Message stamping,
-// Control derivation, archive/report entries, and duplicate warning
-// composition. Each import path supplies a different resolution: the
-// developer import uses the Default Import Policy (trimmed author grouping,
-// empty imported Definitions), and the Staged Import supplies the
-// user-confirmed Resolved Participant Plan.
-// The projection is deliberately pure: no database, filesystem, staging
-// state, or exact-artifact concerns. Plan validation, Profile resolution,
-// duplicate gating, and artifact finalization stay with the paths that own
-// them.
+// by the developer import and the Staged Import. It owns author ownership,
+// Message stamping, Control derivation, report/data entries, and warnings;
+// the paths that own staging, Profile resolution, and artifact storage keep
+// their concerns out of it.
 import type {
 	ConversationControlSeed,
 	ConversationCreationMessage,
@@ -39,9 +30,7 @@ export { UNKNOWN_IMPORTED_AUTHOR_NAME };
 
 // @approved
 //  Imported Participants start with an empty typed Prompt and no openings:
-// the history itself is the preserved record, and no identity content is
-// fabricated. Names follow the shared Definition rules (leading and trailing
-// whitespace removed, case and Unicode preserved).
+// the history itself is the preserved record.
 export const emptyImportedDefinition = (name: string): ParticipantDefinition => ({
 	name,
 	prompt: emptyPromptChannels(),
@@ -49,13 +38,9 @@ export const emptyImportedDefinition = (name: string): ParticipantDefinition => 
 });
 
 // @approved
-//  Deterministic import Control from the resolved Participant count: the
-// first resolved Participant becomes human, the second model, and later
-// Participants stay unseated. A one-Participant import reserves only the
-// human seat so that adding the missing Participant later preserves it and
-// fills the model seat; zero Participants commit with no Control (both seats
-// stay incomplete). The projection derives Control from the resolution
-// itself; resolutions carry no Control field.
+//  Zero-, one-, and two-Participant imports start at the human seat so that
+// adding a missing Participant later preserves it. Resolutions carry no
+// Control field, so the projection derives Control from the count alone.
 export const deterministicImportControl = (
 	groupCount: number,
 ): ConversationControlSeed | undefined => {
@@ -66,47 +51,25 @@ export const deterministicImportControl = (
 
 // @approved
 //  One initial author group keyed on the resolved (trimmed) captured author
-// name. The exact raw captured value stays untouched in preserved source
-// data (`author.name` entry and canonical archive); grouping by the resolved
-// value never reinterprets roles, `is_user`, or the literal `Writer` name.
+// name.
 export interface ImportAuthorGroup {
-	// @approved
-	//  The trimmed captured author name; null for the single
-	// blank/whitespace-only group.
 	key: string | null;
-	// @approved
-	//  1-based record positions whose Messages belong to this group.
 	positions: number[];
-	// @approved
-	//  Variant count of each retained Message, parallel to `positions`.
 	variantCounts: number[];
 }
 
 // @approved
-//  The resolved group key: the trimmed captured author name, or null for the
-// single blank/whitespace-only group. Grouping by the resolved value — never
-// by `is_user`, header roles, or the literal `Writer` name — gives one
-// Participant per exact resolved author group in first-appearance order.
-const authorGroupKey = (rawName: string): string | null => {
-	const trimmed = rawName.trim();
-	return trimmed === "" ? null : trimmed;
-};
-
-// @approved
-//  The single author-grouping primitive. Both import paths consume it: the
-// Default Import Policy groups on it directly, and the staged preview builds
-// its initial groups from it (the user then merges or splits whole Messages
-// through the Resolved Participant Plan). Whitespace variants and every
-// blank captured name collapse into one group each; case and Unicode stay
-// distinct, and nothing is case-folded, aliased, merged, or split beyond
-// that.
+//  Both import paths group on this one primitive; whitespace variants and
+// blank names collapse into one group each, and nothing is case-folded or
+// aliased.
 export const groupImportedAuthors = (
 	authors: readonly SillyTavernExactAuthor[],
 ): ImportAuthorGroup[] => {
 	const indexByKey = new Map<string | null, number>();
 	const groups: ImportAuthorGroup[] = [];
 	for (const author of authors) {
-		const key = authorGroupKey(author.name);
+		const trimmed = author.name.trim();
+		const key = trimmed === "" ? null : trimmed;
 		let index = indexByKey.get(key);
 		if (index === undefined) {
 			index = groups.length;
@@ -124,10 +87,8 @@ export const groupImportedAuthors = (
 };
 
 // @approved
-//  One resulting native Participant in the resolution: the complete
-// Definition, optional Character Provenance, and the staged-only
-// create-with-Character flag. The developer path's Default Import Policy
-// always yields ad-hoc (Chat-only) Participants with empty definitions.
+//  One resulting native Participant: the complete Definition plus the
+// staged-only Character provenance flags.
 export interface ImportProjectionParticipant {
 	definition: ParticipantDefinition;
 	sourceCharacterId?: number | undefined;
@@ -135,27 +96,20 @@ export interface ImportProjectionParticipant {
 }
 
 // @approved
-//  The resolution input to the Import Projection: an ordered Participant set
-// plus the per-Message ownership the projection stamps onto every Message.
-// This is data, never a policy implementation — the projection stays the
-// only place native creation data is assembled, and tests can compare
-// different resolutions through one `projectImport`.
+//  The ordered Participant set plus the per-Message ownership the projection
+// stamps; data, never a policy implementation.
 export interface ImportProjectionResolution {
 	participants: readonly ImportProjectionParticipant[];
 	// @approved
-	//  1-based record position → zero-based Participant index. Must assign
-	// every retained position exactly once.
+	//  1-based record position → zero-based Participant index, assigned once.
 	messageOwners: ReadonlyMap<number, number>;
 }
 
 // @approved
-//  The Default Import Policy: the developer import's implicit
-// author-resolution rules expressed as an Import Projection resolution. One
-// Participant per trimmed author group in first-appearance order with an
-// empty imported Definition and the shared blank-placeholder name, and the
-// exact Message-to-Participant mapping the developer command always
-// committed. The Staged Import never uses this function; it builds its
-// resolution from the user-confirmed Resolved Participant Plan instead.
+//  The developer import's implicit author-resolution rules: one Participant
+// per trimmed group in first-appearance order, with the exact
+// Message-to-Participant mapping the command always committed. The Staged
+// Import never calls this.
 export const defaultImportResolution = (
 	decoded: Pick<SillyTavernDecodedImportSource, "authors">,
 ): ImportProjectionResolution => {
@@ -175,13 +129,9 @@ export const defaultImportResolution = (
 };
 
 // @approved
-//  Prior-import evidence classified by its match kind. Exact matches (raw
-// SHA-256) and related matches (declared integrity only) both produce one
-// independent-copy warning; only exact matches demand the staged
-// confirmation gate, which stays with the Staged Import.
-//  One copy warning per matching prior Chat, mirroring the wording both
-// import paths always used. Each warning names an independent copy: import
-// never deduplicates, matches, or reuses prior Chats.
+//  One copy warning per matching prior Chat. Exact matches (raw SHA-256) and
+// related matches (declared integrity only) both warn; only exact matches
+// demand the staged confirmation gate, which stays with the Staged Import.
 const duplicateCopyWarnings = (
 	duplicates: ChatImportDuplicateEvidence,
 ): string[] =>
@@ -191,11 +141,8 @@ const duplicateCopyWarnings = (
 	);
 
 // @approved
-//  The native creation data the projection produces: Participants (with
-// provenance flags), derived Control, stamped Messages, and the complete
-// Conversation-scoped data entry set. The caller supplies the Chat name and
-// the exact-artifact metadata; staging, plan validation, Profile resolution,
-// duplicate gating, and artifact storage never enter this module.
+//  The native creation data plus the report; staging, plan validation,
+// Profile resolution, and artifact storage never enter this module.
 export interface ProjectedImport {
 	input: {
 		authorNote: string;
@@ -210,18 +157,13 @@ export interface ProjectedImport {
 }
 
 // @approved
-//  Conversation-scoped entries derived from the final report. They are built
-// by the projection after duplicate-warning composition so the persisted
-// warnings and report match the Conversation they are stored with. The
-// namespace is import-owned (shared/import-data): these entries commit
-// through the creation seam, and the generic put-data/delete-data commands
-// can never address them afterwards.
+//  Conversation-scoped entries derived from the final report, built after
+// duplicate-warning composition so persisted warnings and report match. The
+// namespace is import-owned: generic data commands can never address these
+// entries afterwards.
 export const importProvenanceEntries = (
 	report: SillyTavernImportReport,
 ): ConversationDataEntry[] => {
-	// @approved
-	//  The report is canonical; every flat query-index value is derived from
-	// this same committed value so the two persistence mirrors cannot drift.
 	const entries: ConversationDataEntry[] = [];
 	if (report.source.integrity !== undefined) {
 		entries.push({
@@ -271,14 +213,9 @@ export const importProvenanceEntries = (
 };
 
 // @approved
-//  The canonical Import Projection: maps decoded source and one resolution
-// into native creation data. It stamps every retained Message with its
-// resolved Participant, derives Control deterministically from the resolved
-// Participant count, and assembles the final report and data entries —
-// archive and source-identity entries from the decode, plus the composed
-// warnings and JSON report. Every Message must be assigned; resolutions
-// guarantee it by construction (grouping for the default policy, plan
-// validation for the staged path).
+//  Maps decoded source and one resolution into native creation data,
+// stamping every retained Message and deriving Control from the count.
+// Every Message must be assigned; the resolutions guarantee it.
 export function projectImport(
 	decoded: SillyTavernDecodedImportSource,
 	resolution: ImportProjectionResolution,

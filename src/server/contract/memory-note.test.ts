@@ -7,7 +7,7 @@ import { messageTable, messageVariantTable } from "../database/schema";
 import { createChat, key, profile } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
 import { queueMemorySource, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory/collections";
-import { setMemoryIdentity } from "../memory/labels";
+import { setMemoryIdentity } from "../memory/label-commands";
 import { extractAndJudgeMemorySource } from "../memory/extraction";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";

@@ -1,7 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
+import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "../generation-settings-query";
 import type { ConnectionProfile } from "../connection-settings";
 import {
 	loadConversationGenerationSettings,
@@ -9,8 +10,7 @@ import {
 	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "../conversation";
-import type { ConversationCommandReconciliation } from "../conversation-command-runner";
-import { createConversationCommands } from "../createConversationCommands";
+import { runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import {
 	budgetDraftsFromSettings,
 	makeEmptyBudgetDrafts,
@@ -30,6 +30,14 @@ import {
 	type SamplingField,
 	type SamplingValues,
 } from "../generation-settings-draft";
+
+export type GenerationSettingsDraftStatus = "loading" | "load-error" | "saving" | "ready";
+
+/** @approved Whether the selected Connection Profile can carry Request Overrides, and under which namespace. */
+export type TransmittingNamespace =
+	| { status: "loading" }
+	| { status: "no-active-profile" }
+	| { status: "known"; namespace: OverridesNamespace };
 
 // @approved
 //  The Generation Settings save wording: each notice names what this surface
@@ -57,11 +65,10 @@ export interface GenerationSettingsDraftValues {
 export interface SaveGenerationSettingsDraftOptions {
 	conversation: ConversationSummary;
 	drafts: GenerationSettingsDraftValues;
-	reconciliation: ConversationCommandReconciliation;
-	onApplied: (settings: ConversationGenerationSettings) => void;
+	surface: ConversationCommandSurface;
+	onApplied: (settings: ConversationGenerationSettings, conversation: ConversationSummary) => void;
+	signal?: AbortSignal;
 	onConflict?: (conversation: ConversationSummary) => void;
-	onNotPlayable: (reason: string) => void;
-	onNotRemovable: (reason: string) => void;
 }
 
 // @approved
@@ -74,15 +81,18 @@ export interface SaveGenerationSettingsDraftOptions {
 export async function saveGenerationSettingsDraft(
 	options: SaveGenerationSettingsDraftOptions,
 ): Promise<void> {
-	const base = await loadConversationGenerationSettings(options.conversation.id);
+	options.signal?.throwIfAborted();
+	const base = await loadConversationGenerationSettings(options.conversation.id, options.signal);
+	options.signal?.throwIfAborted();
 	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return createConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
-		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
-				type: "update-generation-settings",
-				settings: next,
-			}, { notices: SAVE_NOTICES,
-				onApplied: () => options.onApplied(next),
-				onConflict: options.onConflict, onNotPlayable: options.onNotPlayable, onNotRemovable: options.onNotRemovable });
+	return runConversationCommand(options.surface, {
+		type: "update-generation-settings",
+		settings: next,
+	}, {
+		notices: SAVE_NOTICES,
+		onApplied: (conversation) => options.onApplied(next, conversation),
+		onConflict: options.onConflict,
+	});
 }
 
 // @approved
@@ -145,11 +155,7 @@ export function useGenerationSettingsDraft({
 }: GenerationSettingsDraftOptions) {
 	const client = useQueryClient();
 	const conversationId = conversation?.id ?? null;
-	const query = useQuery({
-		queryKey: ["generation-settings", conversationId],
-		queryFn: ({ signal }) => loadConversationGenerationSettings(conversationId!, signal),
-		enabled: conversationId !== null,
-	});
+	const query = useGenerationSettingsQuery(conversation);
 	const settings = query.data ?? null;
 	const form = useForm<GenerationSettingsFields>({ defaultValues: {
 		instruction: "", strategy: "instruction", prefillSuffix: "", imagePlacement: "last",
@@ -157,14 +163,14 @@ export function useGenerationSettingsDraft({
 	} });
 	const { reset, getValues, setValue, watch, formState: { isDirty } } = form;
 	const { instruction, strategy, prefillSuffix, imagePlacement, samplingDrafts, budgetDrafts, overridesDrafts } = watch();
-	const [saving, setSaving] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
-	const conversationIdRef = useRef(conversationId);
+	const session = useRef({ cancellation: new AbortController(), editorIdentity: Symbol(), saving: false });
 	const initializedConversation = useRef<number | null>(null);
-	const draftVersionRef = useRef(0);
-	const saveVersionRef = useRef(0);
-	conversationIdRef.current = conversationId;
-	const status = settings === null ? query.isError ? "load-error" : "loading" : saving ? "saving" : "ready";
+	useEffect(() => {
+		session.current = { cancellation: new AbortController(), editorIdentity: Symbol(), saving: false };
+		setProblem(null);
+		return () => session.current.cancellation.abort();
+	}, [conversationId]);
 	const resetDraft = (authoritative: ConversationGenerationSettings, preserve: boolean) => {
 		const current = getValues();
 		reset(fieldsFromSettings(authoritative));
@@ -178,24 +184,24 @@ export function useGenerationSettingsDraft({
 	});
 	useEffect(() => { syncDraft(); }, [conversationId, settings]);
 	const selectedProfile = connectionProfiles?.find((profile) => profile.id === settings?.connectionProfileId);
-	const transmittingNamespace = settings === null || connectionProfiles === undefined
-		? { status: "loading" as const }
+	const transmittingNamespace: TransmittingNamespace = settings === null || connectionProfiles === undefined
+		? { status: "loading" }
 		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings" || selectedProfile.apiFormat === "system-one"
-			? { status: "no-active-profile" as const }
-			: { status: "known" as const, namespace: selectedProfile.apiFormat };
+			? { status: "no-active-profile" }
+			: { status: "known", namespace: selectedProfile.apiFormat };
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
 	const overridesValues = resolveOverridesValues(overridesDrafts);
-	const canSave =
-		status === "ready" &&
+	const validDraft =
+		!query.isError &&
 		settings !== null &&
 		samplingValues !== null &&
 		budgetValues !== null &&
 		overridesValues !== null &&
 		instruction.trim() !== "";
 	const dirty = settings !== null && isDirty;
-	const edited = () => { draftVersionRef.current += 1; setProblem(null); };
+	const edited = () => { session.current.editorIdentity = Symbol(); setProblem(null); };
 	const updateSampling = (field: SamplingField, raw: string) => { edited(); setValue("samplingDrafts", { ...getValues("samplingDrafts"), [field]: raw }, { shouldDirty: true }); };
 	const updateBudget = (field: BudgetField, raw: string) => { edited(); setValue("budgetDrafts", { ...getValues("budgetDrafts"), [field]: raw }, { shouldDirty: true }); };
 	const updateOverrides = (namespace: OverridesNamespace, value: JsonData) => { edited(); setValue("overridesDrafts", { ...getValues("overridesDrafts"), [namespace]: value }, { shouldDirty: true }); };
@@ -204,68 +210,59 @@ export function useGenerationSettingsDraft({
 	const updatePrefillSuffix = (value: ContinuationPrefillSuffix) => { edited(); setValue("prefillSuffix", value, { shouldDirty: true }); };
 	const updateImagePlacement = (value: GenerationSettingsFields["imagePlacement"]) => { edited(); setValue("imagePlacement", value, { shouldDirty: true }); };
 
+	const write = useMutation({
+		mutationKey: ["generation-settings", conversationId, "save"],
+		mutationFn: async (submission: { conversation: ConversationSummary; drafts: GenerationSettingsDraftValues; signal: AbortSignal; editorIdentity: symbol }) => {
+			let applied = false;
+			const ownsEditor = () => !submission.signal.aborted && session.current.editorIdentity === submission.editorIdentity;
+			try {
+				await saveGenerationSettingsDraft({
+					...submission,
+					surface: {
+						conversationId: submission.conversation.id,
+						revision: () => submission.conversation.revision,
+						isCurrent: () => !submission.signal.aborted,
+						onConversationChange: (current) => {
+							const authority = client.getQueryData<{ revision: number }>(generationSettingsKey(current.id));
+							if (authority === undefined || authority.revision <= current.revision) onConversationChange(current);
+						},
+						setNotice: (message) => { if (ownsEditor()) setProblem(message); },
+					},
+					onApplied: (next, current) => {
+						if (submission.signal.aborted) return;
+						const authority = publishGenerationSettings(client, current, next);
+						if (authority?.revision !== current.revision || !ownsEditor()) return;
+						applied = true;
+						resetDraft(next, false);
+						setProblem(null);
+					},
+					onConflict: (current) => {
+						if (!submission.signal.aborted) void client.invalidateQueries({ queryKey: generationSettingsKey(current.id) });
+					},
+				});
+			} catch {
+				if (ownsEditor()) setProblem(SAVE_NOTICES.unreachable);
+			} finally {
+				if (!submission.signal.aborted) session.current.saving = false;
+			}
+			return applied && ownsEditor();
+		},
+	});
+	const resetWrite = write.reset;
+	useEffect(() => { resetWrite(); }, [conversationId, resetWrite]);
+	const status: GenerationSettingsDraftStatus = settings === null ? query.isError ? "load-error" : "loading" : write.isPending ? "saving" : "ready";
+	const canSave = status === "ready" && validDraft;
 	const save = async () => {
-		if (
-			conversation === null ||
-			!canSave ||
-			samplingValues === null ||
-			budgetValues === null ||
-			overridesValues === null
-		) return false;
-		const conversationId = conversation.id;
-		const draftVersion = draftVersionRef.current;
-		const saveVersion = ++saveVersionRef.current;
-		let applied = false;
-		setSaving(true);
-		const ownsSave = () => saveVersionRef.current === saveVersion && conversationIdRef.current === conversationId;
-		const showUnreachable = () => {
-			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
-		};
-		try {
-			await saveGenerationSettingsDraft({
-				conversation,
-				drafts: {
-					sampling: samplingValues,
-					budget: budgetValues,
-					overrides: overridesValues,
-					strategy,
-					instruction,
-					prefillSuffix,
-					imagePlacement,
-				},
-				reconciliation: {
-					adoptSnapshot: (snapshot) => {
-						if (conversationIdRef.current === conversationId) onConversationChange(snapshot);
-					},
-					showNotice: (message) => {
-						if (ownsSave()) setProblem(message);
-					},
-				},
-				onApplied: (next) => {
-					void client.cancelQueries({ queryKey: ["generation-settings", conversationId] });
-					client.setQueryData(["generation-settings", conversationId], next);
-					if (!ownsSave()) return;
-					applied = true;
-					resetDraft(next, draftVersionRef.current !== draftVersion);
-					setProblem(null);
-				},
-				onConflict: (current) => { void client.invalidateQueries({ queryKey: ["generation-settings", current.id] }); },
-				onNotPlayable: showUnreachable,
-				onNotRemovable: showUnreachable,
-			});
-		} catch {
-			// @approved
-			//  The write-time read can fail before any command is sent; this
-			// surface owns the unreachable presentation for that case too.
-			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
-		} finally {
-			if (saveVersionRef.current === saveVersion) setSaving(false);
-		}
-		return applied && draftVersionRef.current === draftVersion;
+		if (conversation === null || !canSave || samplingValues === null || budgetValues === null || overridesValues === null || session.current.saving) return false;
+		session.current.saving = true;
+		return write.mutateAsync({
+			conversation, signal: session.current.cancellation.signal, editorIdentity: session.current.editorIdentity,
+			drafts: { sampling: samplingValues, budget: budgetValues, overrides: overridesValues, strategy, instruction, prefillSuffix, imagePlacement },
+		});
 	};
 	const discard = () => {
 		if (settings === null) return;
-		draftVersionRef.current += 1;
+		session.current.editorIdentity = Symbol();
 		reset(fieldsFromSettings(settings));
 		setProblem(null);
 	};
@@ -295,5 +292,3 @@ export function useGenerationSettingsDraft({
 		discard,
 	};
 }
-
-export type GenerationSettingsDraftController = ReturnType<typeof useGenerationSettingsDraft>;

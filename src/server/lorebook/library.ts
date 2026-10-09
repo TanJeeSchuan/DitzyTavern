@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
@@ -12,12 +12,13 @@ import {
 	type NativeLorebook,
 } from "../../shared/contract/lorebook";
 import { lorebookEntryTable, lorebookTable } from "../database/schema";
+import { resequence } from "../database/resequence";
 import {
 	InvalidLorebookCommandError,
 	LorebookEntryNotFoundError,
 	LorebookNotFoundError,
-	StaleLorebookRevisionError,
 } from "./errors";
+import { guardRevision } from "../revision";
 import { validateLorebookExpressions } from "./matching";
 
 const connect = (database: Database) => drizzle(database);
@@ -78,9 +79,7 @@ const requireBook = (db: LorebookDatabase, bookId: number): Lorebook => {
 
 const requireCurrentRevision = (db: LorebookDatabase, bookId: number, revision: number): Lorebook => {
 	const current = requireBook(db, bookId);
-	if (current.revision !== revision) {
-		throw new StaleLorebookRevisionError(bookId, revision, current.revision, current);
-	}
+	guardRevision("lorebook", revision, current, () => current);
 	return current;
 };
 
@@ -135,13 +134,20 @@ export const readLorebook = (database: Database, bookId: number): Lorebook | und
 
 export const listLorebooks = (database: Database): LorebookSummary[] => {
 	const db = connect(database);
-	const books = db.select().from(lorebookTable).orderBy(asc(lorebookTable.id)).all();
-	return books.map((book) => ({
+	const entryCounts = new Map(
+		db
+			.select({ bookId: lorebookEntryTable.lorebook_id, entryCount: count() })
+			.from(lorebookEntryTable)
+			.groupBy(lorebookEntryTable.lorebook_id)
+			.all()
+			.map((row) => [row.bookId, row.entryCount]),
+	);
+	return db.select().from(lorebookTable).orderBy(asc(lorebookTable.id)).all().map((book) => ({
 		id: book.id,
 		name: book.name,
 		description: book.description,
 		revision: book.revision,
-		entryCount: db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, book.id)).all().length,
+		entryCount: entryCounts.get(book.id) ?? 0,
 	}));
 };
 
@@ -280,45 +286,35 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 	}), warnings };
 };
 
-const reorder = (db: LorebookDatabase, bookId: number, entryId: number, toPosition: number) => {
-	const rows = db.select().from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, bookId)).orderBy(asc(lorebookEntryTable.position)).all();
-	const index = rows.findIndex((row) => row.id === entryId);
-	if (index < 0) throw new LorebookEntryNotFoundError(entryId);
-	if (toPosition < 1 || toPosition > rows.length) throw new InvalidLorebookCommandError("Lorebook entry position is out of range.");
-	const [entry] = rows.splice(index, 1);
-	rows.splice(toPosition - 1, 0, entry);
-	rows.forEach((row, position) => db.update(lorebookEntryTable).set({ position: -(position + 1) }).where(eq(lorebookEntryTable.id, row.id)).run());
-	rows.forEach((row, position) => db.update(lorebookEntryTable).set({ position: position + 1 }).where(eq(lorebookEntryTable.id, row.id)).run());
-};
-
 export const executeLorebookCommand = (database: Database, command: LorebookCommand): Lorebook | { deleted: number } => {
 	const db = connect(database);
 	return database.transaction(() => {
+		if (command.type === "create") {
+			const inserted = db.insert(lorebookTable).values({ name: textValue(command.name, "name"), description: command.description ?? "" }).returning({ id: lorebookTable.id }).get();
+			if (inserted === undefined) throw new Error("The Lorebook could not be created.");
+			return requireBook(db, inserted.id);
+		}
+
+		// @approved
+		//  One guard-and-bump for the dispatcher: every command below guards the
+		//  same book revision, and the five mutating commands share one advance
+		//  after their switch; "duplicate" and "delete" genuinely do not bump, so
+		//  they return before it.
+		const book = requireCurrentRevision(db, command.bookId, command.expectedRevision);
 		switch (command.type) {
-			case "create": {
-				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name, "name"), description: command.description ?? "" }).returning({ id: lorebookTable.id }).get();
-				if (inserted === undefined) throw new Error("The Lorebook could not be created.");
-				return requireBook(db, inserted.id);
-			}
-			case "update-book": {
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
-				db.update(lorebookTable).set({ name: textValue(command.name, "name"), description: command.description }).where(eq(lorebookTable.id, command.bookId)).run();
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
-			}
 			case "duplicate": {
-				const source = requireCurrentRevision(db, command.bookId, command.expectedRevision);
-				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name ?? `Copy of ${source.name}`, "name"), description: source.description }).returning({ id: lorebookTable.id }).get();
+				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name ?? `Copy of ${book.name}`, "name"), description: book.description }).returning({ id: lorebookTable.id }).get();
 				if (inserted === undefined) throw new Error("The Lorebook could not be duplicated.");
-				createEntries(db, inserted.id, source.entries.map(({ id: _id, position: _position, ...entry }) => entry));
+				createEntries(db, inserted.id, book.entries.map(({ id: _id, position: _position, ...entry }) => entry));
 				return requireBook(db, inserted.id);
 			}
 			case "delete":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				db.delete(lorebookTable).where(eq(lorebookTable.id, command.bookId)).run();
 				return { deleted: command.bookId };
+			case "update-book":
+				db.update(lorebookTable).set({ name: textValue(command.name, "name"), description: command.description }).where(eq(lorebookTable.id, command.bookId)).run();
+				break;
 			case "save-entry": {
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				const entry = validateEntry(command.entry);
 				if (command.entryId === undefined) {
 					const count = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).all().length;
@@ -328,30 +324,29 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 					if (existing === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 					db.update(lorebookEntryTable).set(entryValues(entry)).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				}
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 			}
 			case "delete-entry":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.delete(lorebookEntryTable).where(eq(lorebookEntryTable.id, command.entryId)).run();
-				{
-					const rows = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).orderBy(asc(lorebookEntryTable.position)).all();
-					rows.forEach((row, index) => db.update(lorebookEntryTable).set({ position: index + 1 }).where(eq(lorebookEntryTable.id, row.id)).run());
-				}
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
-			case "reorder-entry":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
-				reorder(db, command.bookId, command.entryId, command.toPosition);
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, book.entries.filter((entry) => entry.id !== command.entryId).map((entry) => entry.id));
+				break;
+			case "reorder-entry": {
+				const index = book.entries.findIndex((entry) => entry.id === command.entryId);
+				if (index < 0) throw new LorebookEntryNotFoundError(command.entryId);
+				if (command.toPosition < 1 || command.toPosition > book.entries.length) throw new InvalidLorebookCommandError("Lorebook entry position is out of range.");
+				const ordered = book.entries.map((entry) => entry.id);
+				const [entry] = ordered.splice(index, 1);
+				ordered.splice(command.toPosition - 1, 0, entry);
+				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, ordered);
+				break;
+			}
 			case "set-entry-enabled":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 		}
+		incrementRevision(db, command.bookId);
+		return requireBook(db, command.bookId);
 	}).immediate();
 };

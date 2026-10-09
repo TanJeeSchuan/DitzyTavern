@@ -13,11 +13,7 @@ import {
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
 import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
-import {
-	attachConversationLorebook,
-	saveConversationLoreSettings,
-} from "../conversation";
-import { StaleLoreAttachmentOwnerRevisionError } from "./errors";
+import { guardRevision, StaleRevisionError } from "../revision";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";
 
@@ -52,16 +48,6 @@ export class LoreAttachmentOwnerNotFoundError extends Error {
 const connect = (database: Database) => drizzle(database);
 type LoreDatabase = ReturnType<typeof connect>;
 
-const requireScope = (scope: LoreAttachmentScope): Exclude<LoreAttachmentScope, "chat"> => {
-	if (scope === "chat") throw new Error("Character and Participant Lore uses cannot have Chat scope.");
-	return scope;
-};
-
-const participantScope = (scope: string): Exclude<LoreAttachmentScope, "chat"> => {
-	if (scope === "controlled-participant" || scope === "cast") return scope;
-	throw new Error(`Unknown Participant Lore scope: ${scope}`);
-};
-
 export const attachLorebookToCharacter = (
 	database: Database,
 	input: { characterId: number; bookId: number; scope: Exclude<LoreAttachmentScope, "chat">; enabled?: boolean },
@@ -70,7 +56,7 @@ export const attachLorebookToCharacter = (
 	db.insert(characterLorebookAttachmentTable).values({
 		character_id: input.characterId,
 		lorebook_id: input.bookId,
-		scope: requireScope(input.scope),
+		scope: input.scope,
 		enabled: input.enabled ?? true,
 	}).onConflictDoUpdate({
 		target: [characterLorebookAttachmentTable.character_id, characterLorebookAttachmentTable.lorebook_id, characterLorebookAttachmentTable.scope],
@@ -78,27 +64,18 @@ export const attachLorebookToCharacter = (
 	}).run();
 };
 
-/** @approved Public Lorebook seam for the Conversation-owned Chat attachment
- * write; the authoritative implementation is the Conversation command
- * handler, so the seam and the revisioned command cannot drift. */
-export const attachLorebookToConversation = (
-	database: Database,
-	input: { conversationId: number; bookId: number; enabled?: boolean },
-) => attachConversationLorebook(connect(database), input);
-
 export const detachLorebookFromCharacter = (database: Database, characterId: number, bookId: number, scope: Exclude<LoreAttachmentScope, "chat">) =>
 	connect(database).delete(characterLorebookAttachmentTable).where(and(
 		eq(characterLorebookAttachmentTable.character_id, characterId),
 		eq(characterLorebookAttachmentTable.lorebook_id, bookId),
-		eq(characterLorebookAttachmentTable.scope, requireScope(scope)),
+		eq(characterLorebookAttachmentTable.scope, scope),
 	)).run();
 
 /** @approved Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
-export const readLorebookAttachmentEligibility = (
-	database: Database,
+const readLorebookAttachmentEligibilityFrom = (
+	db: LoreDatabase,
 	conversationId: number,
 ): LoreAttachmentEligibility[] => {
-	const db = connect(database);
 	const control = readControlAssignment(db, conversationId);
 	const controlled = new Set([control.humanParticipantId, control.modelParticipantId]
 		.filter((participantId): participantId is number => participantId !== null));
@@ -127,7 +104,7 @@ export const readLorebookAttachmentEligibility = (
 			owner: "participant",
 			ownerId: attachment.participant_id,
 			bookId: attachment.lorebook_id,
-			scope: participantScope(attachment.scope),
+			scope: attachment.scope,
 			enabled: attachment.enabled,
 			eligible,
 			reason: !attachment.enabled ? "disabled" : eligible ? "eligible" : attachment.scope === "cast" ? "not-in-cast" : "not-controlled",
@@ -136,6 +113,11 @@ export const readLorebookAttachmentEligibility = (
 	return rows;
 };
 
+export const readLorebookAttachmentEligibility = (
+	database: Database,
+	conversationId: number,
+): LoreAttachmentEligibility[] => readLorebookAttachmentEligibilityFrom(connect(database), conversationId);
+
 export const readLorebookAttachmentState = (
 	database: Database,
 	conversationId: number,
@@ -143,13 +125,13 @@ export const readLorebookAttachmentState = (
 	const db = connect(database);
 	const conversation = findConversation(db, conversationId);
 	if (conversation === undefined) return undefined;
-	const settings = readLoreSettings(database, conversationId);
+	const settings = readLoreSettingsFrom(db, conversationId);
 	return {
 		conversationId,
 		revision: conversation.revision,
 		scanDepth: settings.scanDepth,
 		allowance: settings.allowance,
-		attachments: readLorebookAttachmentEligibility(database, conversationId),
+		attachments: readLorebookAttachmentEligibilityFrom(db, conversationId),
 	};
 };
 
@@ -174,7 +156,7 @@ export const readLorebookAttachmentImpact = (
 				.innerJoin(characterTable, eq(characterTable.id, characterLorebookAttachmentTable.character_id))
 				.where(eq(characterLorebookAttachmentTable.lorebook_id, bookId))
 				.all()
-				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "character" as const })),
+				.map((row) => ({ ...row, owner: "character" as const })),
 			...db
 				.select({
 					id: participantLorebookAttachmentTable.id,
@@ -187,7 +169,7 @@ export const readLorebookAttachmentImpact = (
 				.innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id))
 				.where(eq(participantLorebookAttachmentTable.lorebook_id, bookId))
 				.all()
-				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "participant" as const })),
+				.map((row) => ({ ...row, owner: "participant" as const })),
 			...db
 				.select({
 					id: conversationLorebookAttachmentTable.id,
@@ -220,8 +202,7 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 			.select(ownerAttachmentSelection(characterLorebookAttachmentTable))
 			.from(characterLorebookAttachmentTable)
 			.where(eq(characterLorebookAttachmentTable.character_id, characterId))
-			.all()
-			.map(ownerAttachmentOf),
+			.all(),
 	};
 };
 
@@ -252,35 +233,29 @@ export const readParticipantLorebookAttachments = (database: Database, participa
 			.select(ownerAttachmentSelection(participantLorebookAttachmentTable))
 			.from(participantLorebookAttachmentTable)
 			.where(eq(participantLorebookAttachmentTable.participant_id, participantId))
-			.all()
-			.map(ownerAttachmentOf),
+			.all(),
 	};
 };
 
-export const readLoreSettings = (database: Database, conversationId: number): LoreSettings => {
-	const db = connect(database);
+export const readLoreSettings = (database: Database, conversationId: number): LoreSettings =>
+	readLoreSettingsFrom(connect(database), conversationId);
+
+const readLoreSettingsFrom = (db: LoreDatabase, conversationId: number): LoreSettings => {
 	const row = db.select().from(conversationLoreSettingsTable)
 		.where(eq(conversationLoreSettingsTable.conversation_id, conversationId)).get();
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
 };
 
-/** @approved Public Lorebook seam for the Conversation-owned Chat Lore settings
- * write; the authoritative implementation is the Conversation command
- * handler, so the seam and the revisioned command cannot drift. */
-export const saveLoreSettings = (database: Database, conversationId: number, settings: LoreSettings): LoreSettings => {
-	saveConversationLoreSettings(connect(database), { conversationId, ...settings });
-	return settings;
-};
-
-const advanceCharacterRevision = (db: LoreDatabase, characterId: number, expectedRevision: number) => {
+const advanceCharacterRevision = (database: Database, db: LoreDatabase, characterId: number, expectedRevision: number) => {
 	const advanced = db.update(characterTable)
 		.set({ revision: sql`${characterTable.revision} + 1` })
 		.where(and(eq(characterTable.id, characterId), eq(characterTable.revision, expectedRevision)))
 		.returning({ revision: characterTable.revision })
 		.get();
 	if (advanced === undefined) {
-		const current = db.select({ revision: characterTable.revision }).from(characterTable).where(eq(characterTable.id, characterId)).get();
-		throw new StaleLoreAttachmentOwnerRevisionError(characterId, expectedRevision, current?.revision ?? expectedRevision);
+		const current = readCharacterLorebookAttachments(database, characterId);
+		if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
+		throw new StaleRevisionError("lore-attachment", expectedRevision, current.revision, current);
 	}
 };
 
@@ -304,12 +279,14 @@ export const executeLorebookAttachmentCommand = (
 			.where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at)))
 			.get();
 		if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
-		if (owner.revision !== command.expectedRevision) {
-			throw new StaleLoreAttachmentOwnerRevisionError(command.characterId, command.expectedRevision, owner.revision);
-		}
+		guardRevision("lore-attachment", command.expectedRevision, owner, () => {
+			const current = readCharacterLorebookAttachments(database, command.characterId);
+			if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
+			return current;
+		});
 		if (command.type === "attach-character") attachLorebookToCharacter(database, command);
 		else detachLorebookFromCharacter(database, command.characterId, command.bookId, command.scope);
-		advanceCharacterRevision(db, command.characterId, command.expectedRevision);
+		advanceCharacterRevision(database, db, command.characterId, command.expectedRevision);
 	}).immediate();
 };
 
@@ -318,9 +295,4 @@ const ownerAttachmentSelection = (table: typeof characterLorebookAttachmentTable
 	bookId: table.lorebook_id,
 	scope: table.scope,
 	enabled: table.enabled,
-});
-
-const ownerAttachmentOf = (row: { id: number; bookId: number; scope: string; enabled: boolean }) => ({
-	...row,
-	scope: participantScope(row.scope),
 });

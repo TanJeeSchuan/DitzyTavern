@@ -1,7 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MemorySourceTarget } from "../../shared/contract/memory";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryChanges, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup, type MemoryCatchupResult } from "../memories";
+import {
+	cancelMemoryCatchup,
+	correctMemory,
+	loadConversationMemories,
+	loadMemoryAllowance,
+	loadMemoryCatchup,
+	loadMemoryChanges,
+	resetAndReextract,
+	retryMemoryIndex,
+	startMemoryCatchup,
+	type ConversationMemories,
+	type ConversationMemoryAllowance,
+	type MemoryCatchup,
+	type MemoryCatchupResult,
+} from "../memories";
 
 type Source = ConversationMemories["sources"][number];
 type MemoryData = { memories: ConversationMemories; catchup: MemoryCatchup | null; settings: ConversationMemoryAllowance };
@@ -9,7 +23,9 @@ export type ClaimDraft = { claim: string; attribution: string; people: string[] 
 const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
 const targetOf = ({ messageId, variantId, revision }: Source): MemorySourceTarget => ({ messageId, variantId, expectedRevision: revision });
 const inFlight = (status: string) => status === "pending" || status === "running";
-const workInFlight = (data: MemoryData | undefined) => data !== undefined && (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
+const workInFlight = (data: MemoryData | undefined) =>
+	data !== undefined
+	&& (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
 
 export function useConversationMemories(conversationId: number, conversationRevision: number) {
 	const client = useQueryClient();
@@ -68,8 +84,8 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	}, []);
 	const reextract = useCallback((source: Source) => act(source, async () => {
 		const result = await resetAndReextract(conversationId, targetOf(source));
-		if (result.outcome === "invalid") return result.reason;
-		await replace(result.collection);
+		if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory work could not be queued.";
+		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 		await refresh();
 		return result.outcome === "conflict" ? conflictNotice : null;
 	}), [act, conversationId, refresh, replace]);
@@ -77,34 +93,43 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		setCatchupBusy(true); setNotice(null);
 		try {
 			const result = await task();
-			if (result.outcome === "invalid") setNotice(result.reason); else { await update((current) => ({ ...current, catchup: result.run })); await refresh(); }
+			if (result.outcome === "available") { await update((current) => ({ ...current, catchup: result.value.run })); await refresh(); }
+			else setNotice(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "History catch-up could not be changed.");
 		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
 	const labels = useMemo(() => new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`])), [memories?.path]);
+	const settleCorrection = useCallback(async (
+		result: Awaited<ReturnType<typeof correctMemory>>,
+		afterReplace?: () => void,
+	) => {
+		if (result.outcome !== "conflict" && result.outcome !== "available") {
+			return result.outcome === "invalid" || result.outcome === "unusable"
+				? result.reason
+				: "The Memory correction could not be saved.";
+		}
+		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
+		afterReplace?.();
+		return result.outcome === "conflict" ? conflictNotice : null;
+	}, [replace]);
 	const actions = useMemo(() => ({
 		label: (messageId: number) => labels.get(messageId) ?? "Earlier Message",
 		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
 		retryIndex: (source: Source) => void act(source, async () => {
 			const result = await retryMemoryIndex(conversationId, targetOf(source));
-			if (result.outcome === "invalid") return result.reason;
-			await replace(result.collection);
+			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory indexing could not be retried.";
+			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 			await refresh();
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
 		edit: (source: Source, index: number | null) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
-		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
-			const result = await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft });
-			if (result.outcome === "invalid") return result.reason;
-			await replace(result.collection); setEditing(null);
-			return result.outcome === "conflict" ? conflictNotice : null;
-		}); },
-		remove: (source: Source, index: number) => void act(source, async () => {
-			const result = await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" });
-			if (result.outcome === "invalid") return result.reason;
-			await replace(result.collection);
-			return result.outcome === "conflict" ? conflictNotice : null;
-		}),
-	}), [act, conversationId, editing, labels, reextract, refresh, replace]);
+		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => settleCorrection(
+			await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft }),
+			() => setEditing(null),
+		)); },
+		remove: (source: Source, index: number) => void act(source, async () => settleCorrection(
+			await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" }),
+		)),
+	}), [act, conversationId, editing, labels, reextract, refresh, replace, settleCorrection]);
 
 	return {
 		status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,
@@ -113,9 +138,16 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
 		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },
 		cancelReset: () => setResetTarget(null),
-		identitySaved: async (updated: ConversationMemories) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(null); await refresh(); },
-		labelsMerged: async (updated: ConversationMemories, destination: string) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(`Labels merged into ${destination}.`); },
+		identitySaved: async (updated: ConversationMemories) => {
+			await update((current) => ({ ...current, memories: updated }));
+			setEditing(null);
+			setNotice(null);
+			await refresh();
+		},
+		labelsMerged: async (updated: ConversationMemories, destination: string) => {
+			await update((current) => ({ ...current, memories: updated }));
+			setEditing(null);
+			setNotice(`Labels merged into ${destination}.`);
+		},
 	};
 }
-
-export type ConversationMemoryActions = ReturnType<typeof useConversationMemories>["actions"];

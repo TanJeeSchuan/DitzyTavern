@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { connectionProfileTable, conversationPromptPresetTable, memorySettingsTable } from "../database/schema";
 import { createRevisionedSettings, InvalidSettingsError } from "../revisioned-settings";
+import { readConversationPromptPresetRecipe, readConversationPromptPresetRecipes } from "../prompt-preset";
+import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import { refreshMemoryForConversation } from "./sync";
 import type { MemorySettingsCommand, MemorySettingsPayload } from "../../shared/contract/memory-settings";
 import { validateDecisionSelection } from "../decision-model";
@@ -82,7 +84,22 @@ export const createMemorySettingsModule = (database: Database) => {
 	return { get: settings.get, apply };
 };
 
-export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean =>
-	createMemorySettingsModule(database).get().enabled && database
-		.query<{ enabled: number }, [number]>("SELECT 1 AS enabled FROM conversation_prompt_preset p JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id WHERE p.conversation_id = ? AND b.reference = 'memory' AND b.enabled = 1")
-		.get(conversationId) !== null;
+export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean => {
+	if (!createMemorySettingsModule(database).get().enabled) return false;
+	const recipe = readConversationPromptPresetRecipe(database, conversationId);
+	return recipe !== undefined && hasEnabledMemorySlot(recipe.slots);
+};
+
+/** @approved
+ * The same per-Conversation rule as `isMemoryEnabledForConversation`, decided
+ * once for a set of Conversations. Index claiming reads this set instead of
+ * re-reading a recipe per candidate.
+ */
+export const readMemoryEnabledConversationIds = (database: Database, conversationIds: readonly number[]): Set<number> => {
+	if (!createMemorySettingsModule(database).get().enabled) return new Set();
+	return new Set(
+		[...readConversationPromptPresetRecipes(database, conversationIds)]
+			.filter(([, recipe]) => hasEnabledMemorySlot(recipe.slots))
+			.map(([conversationId]) => conversationId),
+	);
+};

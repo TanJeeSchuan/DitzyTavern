@@ -1,17 +1,14 @@
 import { Value } from "@sinclair/typebox/value";
 import { updateStatus, type UpdateStatus } from "../shared/contract/updates";
 import { api } from "./lib/eden";
+import { requestData } from "./lib/request-outcome";
 
 export async function checkUpdates(): Promise<UpdateStatus> {
-	const { data, error } = await api.api.updates.check.post();
-	if (error || !data) throw new Error("Update check could not be requested.");
-	return data;
+	return requestData(api.api.updates.check.post(), updateStatus);
 }
 
 export async function setAutomaticUpdateChecks(enabled: boolean): Promise<UpdateStatus> {
-	const { data, error } = await api.api.updates.automatic.post({ enabled });
-	if (error || !data) throw new Error("Automatic update checks could not be saved.");
-	return data;
+	return requestData(api.api.updates.automatic.post({ enabled }), updateStatus);
 }
 
 export function observeUpdates(onStatus: (state: UpdateStatus) => void, onError: () => void) {

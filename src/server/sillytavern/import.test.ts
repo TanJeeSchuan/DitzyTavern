@@ -1,5 +1,4 @@
 import { readConversationSummary } from "../conversation";
-import { readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";

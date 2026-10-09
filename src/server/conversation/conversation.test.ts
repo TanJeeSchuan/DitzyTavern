@@ -30,9 +30,9 @@ import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 	type AcceptContinuationGenerationInput,
 } from ".";
+import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 
 describe("Conversation module", () => {
@@ -107,7 +107,7 @@ describe("Conversation module", () => {
 					authorParticipantId: humanId,
 				},
 			}),
-		).toThrow(StaleConversationRevisionError);
+		).toThrow(StaleRevisionError);
 		expect(readTestConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
 	});
 

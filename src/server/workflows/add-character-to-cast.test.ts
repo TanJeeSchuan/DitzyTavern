@@ -11,10 +11,10 @@ import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	CharacterNotFoundError,
-	StaleCharacterRevisionError,
 } from "../character-library";
+import { StaleRevisionError } from "../revision";
 import type { CharacterDefinition } from "../character-library";
-import { ConversationNotFoundError, StaleConversationRevisionError, type ConversationSummary } from "../conversation";
+import { ConversationNotFoundError, type ConversationSummary } from "../conversation";
 import { requireSnapshot } from "../test-fixtures/conversation";
 import { addCharacterToCast, createNativeConversation } from ".";
 
@@ -127,7 +127,7 @@ describe("Add Character to Cast workflow", () => {
 		});
 		const conversation = playableConversation();
 
-		let conflict: StaleCharacterRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			addCharacterToCast(database, {
 				conversationId: conversation.id,
@@ -136,13 +136,15 @@ describe("Add Character to Cast workflow", () => {
 				expectedCharacterRevision: source.revision,
 			});
 		} catch (error) {
-			if (error instanceof StaleCharacterRevisionError) conflict = error;
+			if (error instanceof StaleRevisionError) conflict = error;
 		}
 
 		expect(conflict).toBeDefined();
 		expect(conflict?.expectedRevision).toBe(source.revision);
 		expect(conflict?.actualRevision).toBe(advanced.revision);
-		expect(conflict?.currentCharacter.name).toBe("Renamed Voss");
+		// SAFETY: the stale conflict's character aggregate always carries the
+		// authoritative current Character snapshot.
+		expect((conflict?.current as { name: string } | undefined)?.name).toBe("Renamed Voss");
 		// Atomic: no Participant rows were appended.
 		expect(countRows(participantTable)).toBe(2);
 		expect(
@@ -166,7 +168,7 @@ describe("Add Character to Cast workflow", () => {
 			},
 		});
 
-		let conflict: StaleConversationRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			addCharacterToCast(database, {
 				conversationId: conversation.id,
@@ -175,7 +177,7 @@ describe("Add Character to Cast workflow", () => {
 				expectedCharacterRevision: source.revision,
 			});
 		} catch (error) {
-			if (error instanceof StaleConversationRevisionError) conflict = error;
+			if (error instanceof StaleRevisionError) conflict = error;
 		}
 
 		expect(conflict).toBeDefined();

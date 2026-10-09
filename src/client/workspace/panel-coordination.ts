@@ -1,3 +1,4 @@
+import type { GenerationDetailsTarget } from "../GenerationDetailsPanel";
 import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 export type SplitInspector = "generation";
@@ -8,6 +9,8 @@ export interface PanelCoordinationState {
 	inspector: SplitInspector | null;
 	detailsSurface: DetailsSurface | null;
 	previewMode: boolean;
+	generationDetailsTarget: GenerationDetailsTarget | null;
+	memoryFocus: { messageId: number } | null;
 }
 
 export type PanelCoordinationAction =
@@ -17,9 +20,9 @@ export type PanelCoordinationAction =
 	| { type: "inspector-opened"; inspector: SplitInspector }
 	| { type: "inspector-closed" }
 	| { type: "chat-info-opened" }
-	| { type: "generation-details-opened" }
+	| { type: "generation-details-opened"; target: GenerationDetailsTarget }
 	| { type: "macro-variables-opened" }
-	| { type: "memories-opened" }
+	| { type: "memories-opened"; focus: { messageId: number } | null }
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
 	| { type: "preview-exited" }
@@ -30,6 +33,17 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	inspector: null,
 	detailsSurface: null,
 	previewMode: false,
+	generationDetailsTarget: null,
+	memoryFocus: null,
+});
+
+// @approved
+// Focus and detail targets only outlive their surface while it stays open;
+// every action that drops a surface drops the focus data with it.
+const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState => ({
+	...state,
+	generationDetailsTarget: null,
+	memoryFocus: null,
 });
 
 const openDetailSurface = (
@@ -38,7 +52,7 @@ const openDetailSurface = (
 ): PanelCoordinationState => state.previewMode
 	? state
 	: {
-			...state,
+			...dropFocusData(state),
 			primaryPanel: null,
 			inspector: null,
 			detailsSurface,
@@ -52,7 +66,7 @@ export function reducePanelCoordination(
 		case "primary-toggled": {
 			const primaryPanel = state.primaryPanel === action.panel ? null : action.panel;
 			return {
-				...state,
+				...dropFocusData(state),
 				primaryPanel,
 				inspector: null,
 				detailsSurface: null,
@@ -60,32 +74,32 @@ export function reducePanelCoordination(
 		}
 		case "primary-opened":
 			return {
-				...state,
+				...dropFocusData(state),
 				primaryPanel: action.panel,
 				inspector: null,
 				detailsSurface: null,
 			};
 		case "primary-closed":
-			return { ...state, primaryPanel: null, inspector: null, detailsSurface: null };
+			return { ...dropFocusData(state), primaryPanel: null, inspector: null, detailsSurface: null };
 		case "inspector-opened":
 			return state.previewMode || state.primaryPanel !== action.inspector
 				? state
-				: { ...state, inspector: action.inspector, detailsSurface: null };
+				: { ...dropFocusData(state), inspector: action.inspector, detailsSurface: null };
 		case "inspector-closed":
 			return { ...state, inspector: null };
 		case "chat-info-opened":
 			return openDetailSurface(state, "chat-info");
 		case "generation-details-opened":
-			return openDetailSurface(state, "generation-details");
+			return { ...openDetailSurface(state, "generation-details"), generationDetailsTarget: action.target };
 		case "macro-variables-opened":
 			return openDetailSurface(state, "macro-variables");
 		case "memories-opened":
-			return openDetailSurface(state, "memories");
+			return { ...openDetailSurface(state, "memories"), memoryFocus: action.focus };
 		case "details-closed":
-			return { ...state, detailsSurface: null };
+			return { ...dropFocusData(state), detailsSurface: null };
 		case "preview-entered":
 			return {
-				...state,
+				...dropFocusData(state),
 				previewMode: true,
 				primaryPanel: null,
 				inspector: null,
@@ -94,6 +108,6 @@ export function reducePanelCoordination(
 		case "preview-exited":
 			return { ...state, previewMode: false };
 		case "workspace-reset":
-			return { ...state, primaryPanel: null, inspector: null, detailsSurface: null };
+			return { ...dropFocusData(state), primaryPanel: null, inspector: null, detailsSurface: null };
 	}
 }

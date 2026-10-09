@@ -30,7 +30,7 @@ export interface GenerationRuntimeState {
 	readonly latestEventId: number;
 	readonly status: "active" | "complete" | "stopped" | "failed";
 	readonly terminalReason: string | null;
-	/** Set on a failure whose request carried Images. */
+	/** @approved Set on a failure whose request carried Images. */
 	readonly imageModel?: GenerationImageModel;
 }
 
@@ -142,7 +142,7 @@ export class GenerationRuntimeRegistry {
 		return task;
 	}
 
-	/** Join detached work before releasing replay state. The application owns the shutdown deadline. */
+	/** @approved Join detached work before releasing replay state. The application owns the shutdown deadline. */
 	async drain(): Promise<void> {
 		this.beginShutdown();
 		this.stopAll();

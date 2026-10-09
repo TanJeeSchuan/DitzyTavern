@@ -5,7 +5,7 @@ import { connectCharacterLibraryDatabase } from "./internal";
 import { listCharacters, readCharacterSnapshot } from "./snapshot";
 import type {
 	CharacterDeletionResult,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterDeletionCommand,
 	CharacterMutationCommand,
 	CharacterLibraryModule,
@@ -16,12 +16,15 @@ export {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
 	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
 } from "./errors";
 // @approved
 //  Narrow garbage-collection hook for the Conversation domain: removes an
 // already-tombstoned Character when its final provenance reference disappears.
 export { collectReleasedCharacterTombstones } from "./cleanup";
+// @approved
+//  Storage codec for the Prompt channels and Portrait columns shared by
+//  Character Definitions and Conversation Participants.
+export { fromPortraitColumns, toPromptChannelRow, toPromptChannels } from "./prompt-rows";
 // @approved
 //  Canonical copy-into-Conversation seam: the Library validates the
 // revision the caller read and projects the Definition with its provenance.
@@ -31,12 +34,12 @@ export type {
 	CharacterDeletionMode,
 	CharacterDeletionResult,
 	CharacterDefinition,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterDeletionCommand,
 	CharacterMutationCommand,
 	CharacterLibraryModule,
 	CharacterSnapshot,
-	CharacterSummary,
+	CharacterLibrarySummary,
 } from "./types";
 
 export function createCharacterLibraryModule(
@@ -53,7 +56,7 @@ export function createCharacterLibraryModule(
 		command: CharacterMutationCommand,
 	): CharacterSnapshot;
 	function execute(
-		command: CharacterLibraryCommand,
+		command: CharacterCommand,
 	): CharacterSnapshot | CharacterDeletionResult {
 		return executeCharacterCommand(database, command);
 	}

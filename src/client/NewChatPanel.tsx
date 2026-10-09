@@ -225,6 +225,7 @@ export function NewChatPanel({
 					setProblem("A chosen Character no longer exists. Pick another.");
 					break;
 				case "invalid":
+				case "unusable":
 					setProblem(outcome.reason);
 					break;
 				default:

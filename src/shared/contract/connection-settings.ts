@@ -222,6 +222,16 @@ export const connectionSettingsApplied = Type.Object({
 export const connectionInvalidResponse = invalidOutcome;
 export const connectionNotFoundResponse = notFoundOutcome;
 
+// @approved
+//  The Connection Settings command and discovery routes' modeled error
+// union: the composed 404/409/422 envelopes both routes declare, so the
+// client decodes an error body against exactly the union its route models.
+export const connectionCommandErrors = Type.Union([
+	connectionSettingsConflict,
+	connectionNotFoundResponse,
+	connectionInvalidResponse,
+]);
+
 export type ConnectionProfileDraftPayload = Static<typeof profileDraft>;
 export type ConnectionProfilePayload = Static<typeof profile>;
 export type ConnectionSettingsPayload = Static<typeof settings>;

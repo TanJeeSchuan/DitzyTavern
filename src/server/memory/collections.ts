@@ -31,17 +31,9 @@ import { sha256 } from "./hash";
 import { projectImageAnchors } from "../../shared/image-reference";
 import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState, type MemoryLabelState } from "./labels";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
+import { guardRevision, StaleRevisionError } from "../revision";
 
-export class StaleMemoryCollectionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	constructor(readonly collection: MemoryCollectionView) {
-		super("This Memory collection changed in another session.");
-		this.name = "StaleMemoryCollectionError";
-		this.details = { collection };
-	}
-}
+const connect = (database: Database) => drizzle(database);
 
 export class InvalidMemorySourceError extends Error {
 	readonly outcome = "invalid" as const;
@@ -114,7 +106,7 @@ const readSourceVariant = (database: Database, conversationId: number, messageId
 	readVariantsForMemory(database, conversationId, { variantIds: [variantId], includeActive: true }).find((variant) => variant.messageId === messageId);
 
 const readCollection = (database: Database, variantId: number) =>
-	drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
+	connect(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
 
 const writeQueuedCollection = (database: Database, conversationId: number, messageId: number, source: CapturedMemorySource, catchupRunId: number | null, current: CollectionRow | undefined) => {
 	const values: typeof memoryCollectionTable.$inferInsert = {
@@ -135,7 +127,7 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 		index_attempt_json: null,
 		updated_at: new Date().toISOString(),
 	};
-	const row = drizzle(database)
+	const row = connect(database)
 		.insert(memoryCollectionTable)
 		.values(values)
 		.onConflictDoUpdate({ target: memoryCollectionTable.variant_id, set: values })
@@ -155,10 +147,15 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
 		const current = readCollection(database, variantId);
-		if (!variant.selected || (current?.revision ?? 0) !== expectedRevision) {
-			if (current) throw new StaleMemoryCollectionError(toView(current, variant, readMemoryIndexReadiness(database, current, enabled)));
-			if (!variant.selected || variant.content.trim().length === 0) throw new InvalidMemorySourceError("This source is no longer available for extraction.");
-			throw new StaleMemoryCollectionError(unprocessedView(variant, enabled));
+		if (current) {
+			const view = () => toView(current, variant, readMemoryIndexReadiness(database, current, enabled));
+			if (!variant.selected) throw new StaleRevisionError("collection", expectedRevision, current.revision, view());
+			guardRevision("collection", expectedRevision, current, view);
+		} else if (!variant.selected) {
+			throw new InvalidMemorySourceError("This source is no longer available for extraction.");
+		} else if (expectedRevision !== 0) {
+			if (variant.content.trim().length === 0) throw new InvalidMemorySourceError("This source is no longer available for extraction.");
+			throw new StaleRevisionError("collection", expectedRevision, expectedRevision + 1, unprocessedView(variant, enabled));
 		}
 		const row = writeQueuedCollection(database, conversationId, messageId, capture(database, conversationId, messageId), null, current);
 		return toView(row, variant, readMemoryIndexReadiness(database, row, enabled));
@@ -175,7 +172,7 @@ export function queueMemorySource(database: Database, conversationId: number, me
 	if (current?.ownership === "writer") return false;
 	if (current && current.source_hash === source.sourceHash && (current.status === "pending" || current.status === "running")) {
 		if (current.catchup_run_id !== null && current.catchup_run_id !== catchupRunId) {
-			drizzle(database)
+			connect(database)
 				.update(memoryCollectionTable)
 				.set({ catchup_run_id: catchupRunId, updated_at: new Date().toISOString() })
 				.where(eq(memoryCollectionTable.variant_id, current.variant_id))
@@ -203,7 +200,7 @@ export function startMemoryCatchup(database: Database, conversationId: number, r
 		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering history.");
 		const sources = readSources();
 		if (!sources) throw new InvalidMemorySourceError("This Chat no longer exists.");
-		const run = drizzle(database)
+		const run = connect(database)
 			.insert(memoryCatchupRunTable)
 			.values({ conversation_id: conversationId, created_at: new Date().toISOString() })
 			.returning()
@@ -222,7 +219,7 @@ export function startMemoryCatchup(database: Database, conversationId: number, r
 }
 
 const readMemoryCatchup = (database: Database, run: typeof memoryCatchupRunTable.$inferSelect): MemoryCatchup => {
-	const jobs = drizzle(database)
+	const jobs = connect(database)
 		.select({ status: memoryCollectionTable.status, messageId: memoryCollectionTable.message_id, error: memoryCollectionTable.error })
 		.from(memoryCollectionTable)
 		.where(eq(memoryCollectionTable.catchup_run_id, run.id))
@@ -236,7 +233,7 @@ const readMemoryCatchup = (database: Database, run: typeof memoryCatchupRunTable
 };
 
 export function readLatestMemoryCatchup(database: Database, conversationId: number): MemoryCatchup | null {
-	const run = drizzle(database)
+	const run = connect(database)
 		.select()
 		.from(memoryCatchupRunTable)
 		.where(eq(memoryCatchupRunTable.conversation_id, conversationId))
@@ -247,7 +244,7 @@ export function readLatestMemoryCatchup(database: Database, conversationId: numb
 
 export function cancelMemoryCatchup(database: Database, conversationId: number, runId: number): MemoryCatchup {
 	return database.transaction(() => {
-		const db = drizzle(database);
+		const db = connect(database);
 		const run = db
 			.select()
 			.from(memoryCatchupRunTable)
@@ -306,7 +303,7 @@ export function readConversationMemories(database: Database, conversationId: num
 	const cursor = new Date().toISOString();
 	const state = readMemoryLabelState(database, conversationId);
 	const path = readMessageAuthorsForMemory(database, conversationId);
-	const collections = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
+	const collections = connect(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
 	return {
 		revision: readConversationRevision(database, conversationId) ?? 0,
 		cursor,
@@ -323,7 +320,7 @@ export function readConversationMemoryChanges(database: Database, conversationId
 	const cursor = new Date().toISOString();
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	const running = [...new Set([...registeredMemoryVariants(database), ...indexingVariants(database, configuration.spaceKey)])];
-	const collections = drizzle(database).select().from(memoryCollectionTable).where(and(
+	const collections = connect(database).select().from(memoryCollectionTable).where(and(
 		eq(memoryCollectionTable.conversation_id, conversationId),
 		or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`, running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running)),
 	)).all();
@@ -339,7 +336,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		const row = readCollection(database, variantId);
 		if (!row) throw new InvalidMemorySourceError("This source has no saved Memory collection to correct.");
 		const enabled = isMemoryEnabledForConversation(database, conversationId);
-		if (row.revision !== expectedRevision) throw new StaleMemoryCollectionError(toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
+		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		const claims = parseClaims(row.claims_json);
 		if (!claims) throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid.");
 		if (!Number.isSafeInteger(index) || index < 0 || index >= claims.length) throw new InvalidMemorySourceError("This Memory no longer exists in the source collection.");
@@ -351,7 +348,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		} else {
 			claims.splice(index, 1);
 		}
-		const updated = drizzle(database)
+		const updated = connect(database)
 			.update(memoryCollectionTable)
 			.set({
 				revision: row.revision + 1,
@@ -377,10 +374,10 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		const row = readCollection(database, variantId);
 		if (!variant || !row) throw new InvalidMemorySourceError("This source has no saved Memory collection to index.");
 		const enabled = isMemoryEnabledForConversation(database, conversationId);
-		if (row.revision !== expectedRevision) throw new StaleMemoryCollectionError(toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
+		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		if (row.status !== "complete") throw new InvalidMemorySourceError("Indexing requires a completed saved Memory collection.");
 		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
-		const updated = drizzle(database)
+		const updated = connect(database)
 			.update(memoryCollectionTable)
 			.set({ index_attempt_json: null, updated_at: new Date().toISOString() })
 			.where(eq(memoryCollectionTable.variant_id, variantId))
@@ -388,21 +385,6 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 			.get()!;
 		return toView(updated, variant, readMemoryIndexReadiness(database, updated, enabled));
 	}).immediate();
-}
-
-export class StaleMemorySettingsError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	constructor(
-		readonly expectedRevision: number,
-		readonly actualRevision: number,
-		readonly currentSettings: { revision: number; allowance: number; note: string; enabled: boolean },
-	) {
-		super("Memory settings changed in another session.");
-		this.name = "StaleMemorySettingsError";
-		this.details = { expectedRevision, actualRevision, currentSettings };
-	}
 }
 
 // @approved
@@ -413,7 +395,7 @@ export function invalidateMemoryWorkForVariant(database: Database, variantId: nu
 	const failed = row.ownership === "automatic"
 		? { status: "failed" as const, error: "This source changed after its Memory collection was created. Reset and re-extract it to create a collection for the current source version." }
 		: {};
-	drizzle(database)
+	connect(database)
 		.update(memoryCollectionTable)
 		.set({ work_epoch: row.work_epoch + 1, source_changed: true, updated_at: new Date().toISOString(), ...failed })
 		.where(eq(memoryCollectionTable.variant_id, variantId))
@@ -422,7 +404,7 @@ export function invalidateMemoryWorkForVariant(database: Database, variantId: nu
 }
 
 const ensureChatState = (database: Database, conversationId: number) => {
-	const db = drizzle(database);
+	const db = connect(database);
 	db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId }).onConflictDoNothing().run();
 	const state = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
 	if (!state) throw new InvalidMemorySourceError("This Chat no longer exists.");
@@ -437,37 +419,35 @@ export function readMemoryAllowance(database: Database, conversationId: number) 
 	return memorySettingsView(database, conversationId, ensureChatState(database, conversationId));
 }
 
+const updateChatState = (
+	database: Database,
+	conversationId: number,
+	expectedRevision: number,
+	patch: Partial<Pick<typeof conversationMemorySettingsTable.$inferSelect, "allowance" | "memory_note">>,
+) =>
+	database.transaction(() => {
+		const current = ensureChatState(database, conversationId);
+		guardRevision("settings", expectedRevision, current, () => memorySettingsView(database, conversationId, current));
+		const next = { ...current, ...patch, revision: current.revision + 1 };
+		connect(database)
+			.update(conversationMemorySettingsTable)
+			.set({ ...patch, revision: next.revision })
+			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
+			.run();
+		return memorySettingsView(database, conversationId, next);
+	}).immediate();
+
 export function setMemoryAllowance(database: Database, conversationId: number, expectedRevision: number, allowance: number) {
 	if (!Number.isSafeInteger(allowance) || allowance < 0) {
 		throw new InvalidMemorySourceError("Memory Allowance must be a non-negative whole number of estimated tokens.");
 	}
-	return database.transaction(() => {
-		const current = ensureChatState(database, conversationId);
-		if (current.revision !== expectedRevision) throw new StaleMemorySettingsError(expectedRevision, current.revision, memorySettingsView(database, conversationId, current));
-		const next = current.revision + 1;
-		drizzle(database)
-			.update(conversationMemorySettingsTable)
-			.set({ allowance, revision: next })
-			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
-			.run();
-		return memorySettingsView(database, conversationId, { ...current, allowance, revision: next });
-	}).immediate();
+	return updateChatState(database, conversationId, expectedRevision, { allowance });
 }
 
 export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {
 	const memoryNote = note.trim();
 	if (memoryNote.length > 2_000) throw new InvalidMemorySourceError("The Memory note is limited to 2,000 characters.");
-	return database.transaction(() => {
-		const current = ensureChatState(database, conversationId);
-		if (current.revision !== expectedRevision) throw new StaleMemorySettingsError(expectedRevision, current.revision, memorySettingsView(database, conversationId, current));
-		const next = current.revision + 1;
-		drizzle(database)
-			.update(conversationMemorySettingsTable)
-			.set({ memory_note: memoryNote, revision: next })
-			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
-			.run();
-		return memorySettingsView(database, conversationId, { ...current, memory_note: memoryNote, revision: next });
-	}).immediate();
+	return updateChatState(database, conversationId, expectedRevision, { memory_note: memoryNote });
 }
 
 export interface MemoryWorkerOptions {
@@ -477,7 +457,7 @@ export interface MemoryWorkerOptions {
 }
 
 const claimNextMemoryJob = (database: Database) => database.transaction(() => {
-	const db = drizzle(database);
+	const db = connect(database);
 	const extraction = db
 		.select()
 		.from(memoryCollectionTable)
@@ -498,7 +478,7 @@ const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 }).immediate();
 
 const runMemoryExtraction = async (database: Database, job: CollectionRow, process: MemoryWorkerOptions["process"], shutdown: AbortSignal) => {
-	const db = drizzle(database);
+	const db = connect(database);
 	const current = and(
 		eq(memoryCollectionTable.variant_id, job.variant_id),
 		eq(memoryCollectionTable.work_epoch, job.work_epoch),
@@ -557,7 +537,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 			else await runMemoryIndexJob(database, next.job, embed, shutdown.signal);
 		}
 	};
-	drizzle(database)
+	connect(database)
 		.update(memoryCollectionTable)
 		.set({ status: "pending", updated_at: new Date().toISOString() })
 		.where(and(eq(memoryCollectionTable.status, "running"), eq(memoryCollectionTable.ownership, "automatic")))
@@ -570,7 +550,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 }
 
 export function readMemoryTrace(database: Database, conversationId: number, variantId: number): MemoryTraceStep[] {
-	const row = drizzle(database)
+	const row = connect(database)
 		.select({ trace: memoryCollectionTable.trace_json })
 		.from(memoryCollectionTable)
 		.where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.conversation_id, conversationId)))

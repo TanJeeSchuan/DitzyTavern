@@ -9,7 +9,6 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
-import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "../database/schema";
 import {
 	isRepeatedImagePlacement,
 	type CanonicalGenerationSettings,
@@ -28,6 +27,8 @@ const DEFAULT_REQUEST_OVERRIDES = {
 	"anthropic-messages": {},
 } as const;
 
+export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
+export const DEFAULT_CONTINUATION_STRATEGY = "instruction";
 export const DEFAULT_SAFETY_ALLOWANCE = 500;
 export const DEFAULT_CONTINUATION_INSTRUCTION =
 	"Continue the narrative naturally without repeating the previous text.";

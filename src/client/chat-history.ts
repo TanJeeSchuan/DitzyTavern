@@ -51,9 +51,11 @@ export type ChatSourceDownloadOutcome =
 	| { outcome: "not-found" }
 	| { outcome: "network" };
 
+// @approved
 // Reads one stable chronological page of native Messages; the outcome is
 // the wire's own: the page under `available`, the typed 404 envelope
-// verbatim, and network for everything the seam could not classify.
+// verbatim, network when the transport could not complete the request, and
+// the shared unusable fallback when the response could not be read.
 export async function loadHistoryPage(
 	conversationId: number,
 	request?: ChatHistoryPageRequest,
@@ -80,11 +82,13 @@ export async function loadImportDetails(conversationId: number) {
 	);
 }
 
+// @approved
 // The exact-source base targets like the Eden boundary: the page origin in
 // the browser, a local default where the browser object is absent.
 const importSourceBase =
 	globalThis.window === undefined ? "http://localhost" : window.location.origin;
 
+// @approved
 // The exact-source download is this module's one byte-protocol read: the
 // archive streams raw under its own media type instead of decoded wire, so
 // — like the Generation and update streams — its response is read directly;

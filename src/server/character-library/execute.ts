@@ -5,13 +5,12 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	toPromptChannelRow,
 } from "../database/schema";
+import { toPromptChannelRow } from "./prompt-rows";
 import { createCharacter } from "./create";
 import { deleteCharacter } from "./delete-character";
 import {
 	CharacterNotFoundError,
-	StaleCharacterRevisionError,
 } from "./errors";
 import {
 	connectCharacterLibraryDatabase,
@@ -20,9 +19,10 @@ import {
 	requireCommandOpenings,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
+import { guardRevision } from "../revision";
 import type {
 	CharacterDeletionResult,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterSnapshot,
 } from "./types";
 
@@ -36,7 +36,7 @@ import type {
 // nonrestorable tombstone, and neither remains readable through the seam.
 export function executeCharacterCommand(
 	database: Database,
-	command: CharacterLibraryCommand,
+	command: CharacterCommand,
 ): CharacterSnapshot | CharacterDeletionResult {
 	if (command.type === "create") {
 		return createCharacter(database, command.definition);
@@ -45,18 +45,11 @@ export function executeCharacterCommand(
 	const db = connectCharacterLibraryDatabase(database);
 	const execute = database.transaction(() => {
 		const character = requireActiveCharacter(db, command.characterId);
-		if (character.revision !== command.expectedRevision) {
+		guardRevision("character", command.expectedRevision, character, () => {
 			const current = readCharacterSnapshot(db, character.id);
-			if (current === undefined) {
-				throw new CharacterNotFoundError(command.characterId);
-			}
-			throw new StaleCharacterRevisionError(
-				command.characterId,
-				command.expectedRevision,
-				character.revision,
-				current,
-			);
-		}
+			if (current === undefined) throw new CharacterNotFoundError(command.characterId);
+			return current;
+		});
 
 		if (command.type === "delete") {
 			// @approved

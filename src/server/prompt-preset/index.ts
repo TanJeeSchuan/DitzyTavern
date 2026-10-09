@@ -8,6 +8,7 @@
 export {
 	readConversationPromptPresetRecipe,
 	readConversationPromptPresetRecipeFromConnection,
+	readConversationPromptPresetRecipes,
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
 	selectConversationPromptPreset,
@@ -40,7 +41,6 @@ export {
 	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
-	StalePromptPresetRevisionError,
 } from "./errors";
 export type {
 	PromptBlockReference,

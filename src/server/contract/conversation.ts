@@ -1,4 +1,3 @@
-import { recoverConversationConflict } from "./domain-error-recovery";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -145,14 +144,6 @@ const deleteResponse = {
 	200: conversationDeleted,
 	404: notFoundOutcome,
 	422: invalidOutcome,
-};
-
-const readConversationOr404 = <T>(
-	database: Database,
-	read: (conversationDatabase: Database) => T | undefined,
-): T | ReturnType<typeof notFoundResponse> => {
-	const value = read(database);
-	return value === undefined ? notFoundResponse() : value;
 };
 
 // @approved
@@ -370,12 +361,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/:generationId/inspection",
 			({ params }) => {
 				try {
-					return readConversationOr404(database, (conversationModule) =>
-						readActiveGenerationDetails(conversationModule,
-							params.id,
-							params.generationId,
-						),
-					);
+					return readActiveGenerationDetails(database, params.id, params.generationId) ?? notFoundResponse();
 				} catch (error) {
 					return presentDomainError(error, generationInspectionResponse);
 				}
@@ -389,13 +375,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
 			({ params }) => {
 				try {
-					return readConversationOr404(database, (conversationModule) =>
-						readVariantDetails(conversationModule,
-							params.id,
-							params.messageId,
-							params.variantId,
-						),
-					);
+					return readVariantDetails(database, params.id, params.messageId, params.variantId) ?? notFoundResponse();
 				} catch (error) {
 					return presentDomainError(error, variantDetailsResponse);
 				}
@@ -408,9 +388,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id",
 			({ params }) =>
-				readConversationOr404(database, (conversationModule) => {
-					return readConversationSummary(conversationModule, params.id);
-				}),
+				readConversationSummary(database, params.id) ?? notFoundResponse(),
 			{
 				params: conversationIdParams,
 				response: {
@@ -435,13 +413,13 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/macro-variables",
-			({ params, query, status }) => {
+			({ params, query }) => {
 				try {
 					const variables = readMacroVariables(database, params.id, {
 							position: query.position,
 							promptPresetId: query.promptPresetId,
 						});
-					return variables ?? status(404, { outcome: "not-found" as const });
+					return variables ?? notFoundResponse();
 				} catch (error) {
 					return presentDomainError(error, macroVariablesReadResponse);
 				}
@@ -467,9 +445,7 @@ export const createConversationRoutes = (
 						});
 					return { outcome: "applied" as const, ...edited };
 				} catch (error) {
-					return presentDomainError(error,
-						macroVariablesEditResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, macroVariablesEditResponse);
 				}
 			},
 			{
@@ -481,13 +457,11 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/history",
 			({ params, query }) =>
-				readConversationOr404(database, (conversationModule) =>
-					readChatHistory(conversationModule, params.id, {
-						page: query.page,
-						aroundMessageId: query.aroundMessageId,
-						pageSize: query.pageSize,
-					}),
-				),
+				readChatHistory(database, params.id, {
+					page: query.page,
+					aroundMessageId: query.aroundMessageId,
+					pageSize: query.pageSize,
+				}) ?? notFoundResponse(),
 			{
 				params: conversationIdParams,
 				query: historyPageQuery,
@@ -499,10 +473,10 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/generation-settings",
-			({ params, status }) => {
+			({ params }) => {
 				const settings = readConversationGenerationSettings(database, params.id);
 				if (settings === undefined) {
-					return status(404, { outcome: "not-found" as const });
+					return notFoundResponse();
 				}
 				// @approved
 				//  The module read returns a fresh plain object in the canonical
@@ -601,9 +575,7 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						commandResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, commandResponse);
 				}
 			},
 			{
@@ -627,9 +599,7 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						addCastCharacterResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, addCastCharacterResponse);
 				}
 			},
 			{
@@ -653,9 +623,7 @@ export const createConversationRoutes = (
 						character: toCharacterPayload(character),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						saveParticipantResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, saveParticipantResponse);
 				}
 			},
 			{

@@ -30,11 +30,12 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 		setPending(true); setError(null);
 		try {
 			const result = await mergeMemoryLabels(conversationId, { expectedRevision: snapshot.labelRevision, labels, destination: target });
-			if (result.outcome === "invalid") setError(result.reason);
+			if (result.outcome === "available") onMerged(result.value.memories, target);
 			else if (result.outcome === "conflict") {
 				setSnapshot(result.memories); setLabels([]);
 				setError("These labels changed elsewhere. Review the current labels and select them again.");
-			} else onMerged(result.memories, target);
+			}
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Labels could not be merged. Try again.");
 		} catch { setError("Labels could not be merged. Try again."); }
 		finally { setPending(false); }
 	};

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { loadConnectionSettings, type ConnectionSettings } from "../connection-settings";
+import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
 import type { MemorySettingsCommand } from "../../shared/contract/memory-settings";
 import { useAsyncEffect } from "../lib/use-async";
@@ -16,36 +16,37 @@ import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
 type Draft = Omit<MemorySettings, "revision" | "enabled">;
-type State = { settings: MemorySettings | null; connections: ConnectionSettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };
-const initial: State = { settings: null, connections: null, draft: null, loading: true, pending: false, error: null, notice: null };
+type State = { settings: MemorySettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };
+const initial: State = { settings: null, draft: null, loading: true, pending: false, error: null, notice: null };
 const draftOf = ({ revision: _revision, enabled: _enabled, ...draft }: MemorySettings): Draft => draft;
 
 export function MemorySettingsEditor() {
 	const [state, setState] = useState<State>(initial);
-	const applyLoaded = useCallback((settings: MemorySettings, connections: ConnectionSettings | null) => setState({
-		settings, connections, draft: draftOf(settings), loading: false, pending: false, error: null, notice: null,
+	const connectionsQuery = useConnectionSettingsQuery({ refreshOnOpen: true });
+	const connections = connectionsQuery.data ?? null;
+	const applyLoaded = useCallback((settings: MemorySettings) => setState({
+		settings, draft: draftOf(settings), loading: false, pending: false, error: null, notice: null,
 	}), []);
-	const load = useCallback(() => Promise.all([loadMemorySettings(), loadConnectionSettings()]), []);
+	const load = useCallback(() => loadMemorySettings(), []);
 	const refresh = useCallback(async () => {
 		setState((current) => ({ ...current, loading: true, error: null }));
-		try { const [settings, connections] = await load(); applyLoaded(settings, connections); }
+		try { const settings = await load(); applyLoaded(settings); }
 		catch { setState((current) => ({ ...current, loading: false, error: "Memory Settings could not be loaded." })); }
 	}, [applyLoaded, load]);
 	useAsyncEffect((cancelled) => {
 		void load()
-		.then(([settings, connections]) => {
-			if (!cancelled()) applyLoaded(settings, connections);
+		.then((settings) => {
+			if (!cancelled()) applyLoaded(settings);
 		})
 		.catch(() => {
 			if (!cancelled()) setState((current) => ({ ...current, loading: false, error: "Memory Settings could not be loaded." }));
 		});
 	}, [applyLoaded, load]);
 	const update = (patch: Partial<Draft>) => setState((current) => current.draft === null ? current : ({ ...current, draft: { ...current.draft, ...patch }, error: null, notice: null }));
-	const setConnections = (connections: ConnectionSettings) => setState((current) => ({ ...current, connections }));
 	const save = async (command: MemorySettingsCommand, applied: (settings: MemorySettings) => void) => {
 		setState((current) => ({ ...current, pending: true, error: null, notice: null }));
 		const result = await saveMemorySettings(command);
-		if (result.outcome === "applied") applied(result.settings);
+		if (result.outcome === "available") applied(result.value.settings);
 		else if (result.outcome === "conflict") {
 			setState((current) => ({
 				...current,
@@ -54,10 +55,10 @@ export function MemorySettingsEditor() {
 				notice: "Memory Settings changed elsewhere. Review the current values before saving again.",
 			}));
 		}
-		else setState((current) => ({ ...current, pending: false, error: result.reason }));
-		return result.outcome === "applied";
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory Settings could not be saved." }));
+		return result.outcome === "available";
 	};
-	const { settings, draft, connections } = state;
+	const { settings, draft } = state;
 	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
 	const submit = async () =>
 		settings !== null &&
@@ -85,7 +86,9 @@ export function MemorySettingsEditor() {
 					: { ...current, draft: draftOf(current.settings), error: null, notice: null },
 			),
 	});
-	if (state.loading) return <div className="panel-body settings-panel-body"><section aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section></div>;
+	if (state.loading || connectionsQuery.isPending) return (
+		<div className="panel-body settings-panel-body"><section aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section></div>
+	);
 	if (settings === null || draft === null) {
 		return (
 			<div className="panel-body settings-panel-body">
@@ -114,6 +117,7 @@ export function MemorySettingsEditor() {
 				{!settings.enabled && <p className="settings-feedback" role="status">Memory is off. No Memories are recalled into prompts and no new Memories are extracted.</p>}
 				<p>Extraction runs separately from writing generations.</p>
 				{draft.decisionProfileId === null && <p className="settings-feedback" role="status">Choose a Decision Model to enable Memory judgment and recall.</p>}
+				{connectionsQuery.isError && <p className="settings-feedback-error" role="alert">Connection Settings could not be loaded.</p>}
 				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
 				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && (
 					<p className="settings-feedback" role="status">
@@ -127,8 +131,6 @@ export function MemorySettingsEditor() {
 				<div className="grid grid-cols-1 gap-4">
 					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
 						<ProfileModelPicker
-							settings={connections}
-							onSettingsChange={setConnections}
 							selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }}
 							onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })}
 							emptyLabel="Add a chat connection in Connections to choose a model."
@@ -136,12 +138,10 @@ export function MemorySettingsEditor() {
 							/>
 					</Field>
 					<Field label="Decision Model" helper="Judges proposed Memories and scores saved Memories during recall. System One connections only.">
-						<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={update} label="Memory Decision Model" />
+						<DecisionModelPicker selection={draft} onChange={update} label="Memory Decision Model" />
 					</Field>
 					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
 						<ProfileModelPicker
-							settings={connections}
-							onSettingsChange={setConnections}
 							apiFormat="embeddings"
 							selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }}
 							onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })}

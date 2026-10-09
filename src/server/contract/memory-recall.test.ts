@@ -25,7 +25,7 @@ import { generationPreview, type PromptPlan } from "../../shared/contract/conver
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
 import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
-import { mergeMemoryLabels } from "../memory/labels";
+import { mergeMemoryLabels } from "../memory/label-commands";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;

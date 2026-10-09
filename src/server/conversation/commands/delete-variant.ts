@@ -1,5 +1,6 @@
-import { and, asc, eq, gt } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
+import { resequence } from "../../database/resequence";
 import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
@@ -9,31 +10,6 @@ export interface DeleteVariantInput {
 	conversationId: number;
 	messageId: number;
 	variantId: number;
-}
-
-function compactVariantPositions(
-	db: ConversationDatabase,
-	messageId: number,
-	removedPosition: number,
-) {
-	const laterVariants = db
-		.select({ id: messageVariantTable.id, position: messageVariantTable.position })
-		.from(messageVariantTable)
-		.where(
-			and(
-				eq(messageVariantTable.message_id, messageId),
-				gt(messageVariantTable.position, removedPosition),
-			),
-		)
-		.orderBy(asc(messageVariantTable.position))
-		.all();
-
-	for (const variant of laterVariants) {
-		db.update(messageVariantTable)
-			.set({ position: variant.position - 1 })
-			.where(eq(messageVariantTable.id, variant.id))
-			.run();
-	}
 }
 
 export function deleteVariant(
@@ -81,7 +57,15 @@ export function deleteVariant(
 	db.delete(messageVariantTable)
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
-	compactVariantPositions(db, input.messageId, variant.position);
+	resequence(
+		db,
+		messageVariantTable,
+		messageVariantTable.message_id,
+		input.messageId,
+		siblings
+			.filter((sibling) => sibling.id !== input.variantId)
+			.map((sibling) => sibling.id),
+	);
 	// @approved
 	//  The replacing Swipe re-derives its Memory collection; the
 	// removed Variant's in-flight work is abandoned in both cases so a deleted

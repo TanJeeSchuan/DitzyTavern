@@ -174,24 +174,30 @@ function createSession() {
 				prefillSuffix: "",
 				imagePlacement: "last",
 			},
-			reconciliation: { adoptSnapshot, showNotice: showError },
+			surface: {
+				conversationId: conversation.id,
+				revision: () => conversation.revision,
+				onConversationChange: adoptSnapshot,
+				setNotice: showError,
+			},
 			onApplied: () => {
 				events.push("panel-applied");
 			},
-			onNotPlayable: showError,
-			onNotRemovable: showError,
 		});
 	};
 	const commitModel = async (modelId: string) => {
 		await commitConversationModel({
-			conversation,
 			connectionProfileId: 9,
 			modelId,
-			reconciliation: { adoptSnapshot, showNotice: showError },
+			surface: {
+				conversationId: conversation.id,
+				revision: () => conversation.revision,
+				onConversationChange: adoptSnapshot,
+				setNotice: showError,
+			},
 			onCommitted: (committed) => {
 				events.push(`model-committed:${committed}`);
 			},
-			onUnavailable: showError,
 		});
 	};
 	return { events, savePanelDraft, commitModel, conversation: () => conversation };

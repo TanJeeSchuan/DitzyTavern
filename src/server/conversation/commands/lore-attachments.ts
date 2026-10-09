@@ -1,15 +1,14 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
 	conversationLoreSettingsTable,
 	conversationLorebookAttachmentTable,
 	participantLorebookAttachmentTable,
-	participantTable,
 } from "../../database/schema";
 import {
 	InvalidConversationCommandError,
 	ParticipantNotFoundError,
 } from "../errors";
-import type { ConversationDatabase } from "../internal";
+import { type ConversationDatabase, findActiveParticipant } from "../internal";
 import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // @approved
@@ -36,18 +35,7 @@ const requireConversationLoreParticipant = (
 	conversationId: number,
 	participantId: number,
 ): void => {
-	const participant = db
-		.select({ id: participantTable.id })
-		.from(participantTable)
-		.where(
-			and(
-				eq(participantTable.id, participantId),
-				eq(participantTable.conversation_id, conversationId),
-				isNull(participantTable.deleted_at),
-			),
-		)
-		.get();
-	if (participant === undefined) {
+	if (findActiveParticipant(db, conversationId, participantId) === undefined) {
 		throw new ParticipantNotFoundError(conversationId, participantId);
 	}
 };

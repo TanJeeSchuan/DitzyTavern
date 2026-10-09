@@ -7,9 +7,10 @@
 // only exact matches demand the explicit duplicate-copy confirmation later.
 
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { conversationDataTable, conversationTable } from "../database/schema";
+import { readConversationDataBatch } from "../conversation";
+import { conversationDataTable } from "../database/schema";
 import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 import {
 	decodeSillyTavernImportReport,
@@ -56,24 +57,17 @@ export function findPriorImportsBySource(
 	if (rows.length === 0) return { exact: [], related: [] };
 
 	const candidateIds = [...new Set(rows.map((row) => row.conversationId))];
-	const readableIds = new Set(
-		db
-			.select({
-				conversationId: conversationDataTable.conversation_id,
-				value: conversationDataTable.value,
-			})
-			.from(conversationDataTable)
-			.where(
-				and(
-					eq(conversationDataTable.namespace, IMPORT_NAMESPACE),
-					eq(conversationDataTable.key, IMPORT_KEYS.reportJson),
-					inArray(conversationDataTable.conversation_id, candidateIds),
-				),
-			)
-			.all()
-			.filter((row) => decodeSillyTavernImportReport(row.value) !== null)
-			.map((row) => row.conversationId),
-	);
+	// @approved
+	//  Each candidate's name and readable report come through the
+	//  Conversation-scoped data seam in one bounded batch. Only the
+	//  cross-Conversation search for matching digests stays a direct read: the
+	//  seam cannot search by entry value.
+	const readable = new Map<number, string>();
+	const reads = readConversationDataBatch(database, candidateIds, { namespace: IMPORT_NAMESPACE, keys: [IMPORT_KEYS.reportJson] });
+	for (const conversationId of candidateIds) {
+		const data = reads.get(conversationId);
+		if (data && data.entries.some((entry) => decodeSillyTavernImportReport(entry.value) !== null)) readable.set(conversationId, data.name);
+	}
 
 	// @approved
 	//  Exact evidence is authoritative and collected first; a Chat matching
@@ -84,34 +78,22 @@ export function findPriorImportsBySource(
 	const relatedIds: number[] = [];
 	const seenRelated = new Set<number>();
 	for (const row of rows) {
-		if (!readableIds.has(row.conversationId)) continue;
+		if (!readable.has(row.conversationId)) continue;
 		if (row.key !== IMPORT_KEYS.sha256) continue;
 		if (seenExact.has(row.conversationId)) continue;
 		seenExact.add(row.conversationId);
 		exactIds.push(row.conversationId);
 	}
 	for (const row of rows) {
-		if (!readableIds.has(row.conversationId)) continue;
+		if (!readable.has(row.conversationId)) continue;
 		if (row.key !== IMPORT_KEYS.integrity) continue;
 		if (seenExact.has(row.conversationId) || seenRelated.has(row.conversationId)) continue;
 		seenRelated.add(row.conversationId);
 		relatedIds.push(row.conversationId);
 	}
 
-	const orderedIds = [...exactIds, ...relatedIds];
-	if (orderedIds.length === 0) return { exact: [], related: [] };
-
-	const names = new Map<number, string>();
-	for (const row of db
-		.select({ id: conversationTable.id, name: conversationTable.name })
-		.from(conversationTable)
-		.where(inArray(conversationTable.id, orderedIds))
-		.all()) {
-		names.set(row.id, row.name);
-	}
-
 	return {
-		exact: exactIds.map((id) => ({ id, name: names.get(id) ?? "" })),
-		related: relatedIds.map((id) => ({ id, name: names.get(id) ?? "" })),
+		exact: exactIds.map((id) => ({ id, name: readable.get(id) ?? "" })),
+		related: relatedIds.map((id) => ({ id, name: readable.get(id) ?? "" })),
 	};
 }

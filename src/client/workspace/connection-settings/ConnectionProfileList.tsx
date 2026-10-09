@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
-import type { SemanticTriggerSettingsController } from "../SemanticTriggerSettingsEditor";
+import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
+
+/** @approved The Semantic Trigger settings the Connections list previews. */
+type SemanticTriggerSettingsPreview = { settings: SemanticTriggerSettings | null; loading: boolean };
 
 const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
@@ -13,7 +16,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
-	semanticTriggers: SemanticTriggerSettingsController;
+	semanticTriggers: SemanticTriggerSettingsPreview;
 	onOpenSemanticTrigger: () => void;
 }) {
 	const pending = controller.pendingDeletionProfile;
@@ -147,7 +150,7 @@ function ProfileRows({ label, profiles, controller, describe, badge, empty }: {
 	);
 }
 
-function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: SemanticTriggerSettingsController }) {
+function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: SemanticTriggerSettingsPreview }) {
 	const { settings } = semanticTriggers;
 	if (settings === null) {
 		return (

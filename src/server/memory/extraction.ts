@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule, connectionSnapshotOf } from "../connection-settings";
+import { conversationIdOfMessage, memoryNoteOf } from "../conversation";
 import { createModelClient, collectModelClientGeneration, type ModelFetch } from "../model-client";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { PromptPlan } from "../prompt-compiler";
@@ -23,9 +24,9 @@ const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
 
 const identityInstructions = (database: Database, messageId: number) => {
-	const message = database.query<{ conversation_id: number }, [number]>("SELECT conversation_id FROM messages WHERE id = ?").get(messageId);
-	if (!message) return "";
-	const { cast, identities } = readMemoryLabelState(database, message.conversation_id);
+	const conversationId = conversationIdOfMessage(database, messageId);
+	if (conversationId === undefined) return "";
+	const { cast, identities } = readMemoryLabelState(database, conversationId);
 	return cast.flatMap(({ id, names }) => {
 		const identity = identities[id];
 		const [name, ...former] = names;
@@ -36,9 +37,7 @@ const identityInstructions = (database: Database, messageId: number) => {
 };
 
 const noteInstructions = (database: Database, messageId: number) => {
-	const note = database.query<{ memory_note: string }, [number]>(`
-		SELECT s.memory_note FROM messages m JOIN conversation_memory_settings s ON s.conversation_id = m.conversation_id
-		WHERE m.id = ?`).get(messageId)?.memory_note ?? "";
+	const note = memoryNoteOf(database, messageId);
 	return note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
 };
 

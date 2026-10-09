@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
-import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, conversationMemorySettingsTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
 
@@ -86,6 +86,39 @@ export const readMemoryTailMessageId = (database: Database, conversationId: numb
 	connectConversationDatabase(database).select({ id: messageTable.id }).from(messageTable)
 		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position)).limit(1).get()?.id;
+
+export const conversationIdOfMessage = (database: Database, messageId: number): number | undefined =>
+	connectConversationDatabase(database).select({ conversationId: messageTable.conversation_id }).from(messageTable)
+		.where(eq(messageTable.id, messageId)).get()?.conversationId;
+
+export interface MemoryCastMember {
+	id: number;
+	name: string;
+	removed: boolean;
+}
+
+// @approved
+//  Every Participant row in Cast order, tombstones included: Memory labels
+//  apply to names captured before a Participant was removed, and the label
+//  commands read active membership (removed === false) from the same rows.
+//  Removal writes the tombstone's sentinel position 0, so tombstones order
+//  before the active Cast exactly as the row order Memory always consumed.
+//  The active-Cast read stays readConversationSummary / readActiveCast.
+export const readCastForMemory = (database: Database, conversationId: number): MemoryCastMember[] =>
+	connectConversationDatabase(database).select({
+		id: participantTable.id,
+		name: participantTable.name,
+		deletedAt: participantTable.deleted_at,
+	}).from(participantTable)
+		.where(eq(participantTable.conversation_id, conversationId))
+		.orderBy(asc(participantTable.position), asc(participantTable.id))
+		.all()
+		.map(({ id, name, deletedAt }) => ({ id, name, removed: deletedAt !== null }));
+
+export const memoryNoteOf = (database: Database, messageId: number): string =>
+	connectConversationDatabase(database).select({ note: conversationMemorySettingsTable.memory_note }).from(messageTable)
+		.innerJoin(conversationMemorySettingsTable, eq(conversationMemorySettingsTable.conversation_id, messageTable.conversation_id))
+		.where(eq(messageTable.id, messageId)).get()?.note ?? "";
 
 export const readActiveVariantIds = (database: Database, conversationId: number): Set<number> =>
 	new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)

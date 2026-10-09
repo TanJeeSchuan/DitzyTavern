@@ -1,21 +1,36 @@
-import { useRef } from "react";
+import { useEffectEvent, useRef } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSaveGuard } from "../SaveGuard";
-import type { LorebookCommand } from "../lorebook-library";
+import type { LoreAttachmentCommand, LoreAttachmentState, LorebookCommand, LoreMatchTest } from "../lorebook-library";
 import { EntryEditor, MatchTester, UnsavedLorebookDialog } from "./LorebookPanelEditors";
 import { useLorebookEditor } from "./useLorebookEditor";
-import type { LoreMatchTesterController } from "./useLoreMatchTester";
 import type { LeaveIntent } from "./lorebook-editor-state";
-import type { LorebookAttachmentsController } from "./useLorebookAttachments";
+
+/** @approved The Lorebook attachment state the editor shows and its one command. */
+type LorebookEditorAttachments = {
+	attachmentState: LoreAttachmentState | null;
+	attachmentPending: boolean;
+	updateAttachment: (command: LoreAttachmentCommand) => Promise<boolean>;
+};
+
+/** @approved The match-tester state and command the editor's writing field drives. */
+type LorebookEditorTester = {
+	testWriting: string;
+	setTestWriting: (value: string) => void;
+	testResult: LoreMatchTest | null;
+	testError: string | null;
+	testPending: boolean;
+	runMatchTest: (bookId: number) => void;
+};
 
 export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selectName, mutationsDisabled, attachments, tester }: {
 	bookId: number; conversationId: number; onOpenBook: (id: number | null, notice?: string) => void;
-	selectName: boolean; mutationsDisabled: boolean; attachments: LorebookAttachmentsController;
-	tester: LoreMatchTesterController;
+	selectName: boolean; mutationsDisabled: boolean; attachments: LorebookEditorAttachments;
+	tester: LorebookEditorTester;
 }) {
 	const editor = useLorebookEditor(bookId);
 	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, pending, notice, leaveIntent,
@@ -30,7 +45,8 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 	};
 	const requestLeave = (intent: LeaveIntent) => { if (dirty) setLeaveIntent(intent); else performLeave(intent); };
 	const discardAndLeave = () => { editor.discard(); const intent = leaveIntent; setLeaveIntent(null); if (intent) performLeave(intent); };
-	const saveAndLeave = async () => { if (leaveIntent && await saveDirty()) { setLeaveIntent(null); performLeave(leaveIntent); } };
+	const currentLeaveIntent = useEffectEvent(() => leaveIntent);
+	const saveAndLeave = async () => { if (leaveIntent && await saveDirty() && currentLeaveIntent() === leaveIntent) { setLeaveIntent(null); performLeave(leaveIntent); } };
 	const saveAll = () => saveDirty();
 	const execute = (command: LorebookCommand, success?: string) => editor.executeLorebookCommand(command, success, onOpenBook);
 	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });

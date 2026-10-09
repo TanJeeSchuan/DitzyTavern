@@ -1,8 +1,8 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import {
@@ -10,7 +10,6 @@ import {
 	selectConversationPromptPreset,
 } from "../prompt-preset";
 import { importNativeLorebook, executeLorebookCommand } from "../lorebook/library";
-import { attachLorebookToConversation } from "../lorebook/attachments";
 import { captureGeneration } from "./generate-capture";
 import {
 	createGenerationPreviewAsync,
@@ -30,7 +29,7 @@ const prompt = {
 };
 
 const setup = () => {
-	const database = openInitializedDatabase({ path: ":memory:" });
+	const database = openObservedDatabase();
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
 	configureDecisionModels(database);
 	const conversation = createConversationWithHistory(database, {
@@ -71,7 +70,11 @@ const setup = () => {
 			enabled: true,
 		}],
 	});
-	attachLorebookToConversation(database, { conversationId: conversation.id, bookId: book.id });
+	executeConversationCommand(database, {
+		conversationId: conversation.id,
+		expectedRevision: conversation.revision,
+		action: { type: "attach-chat", bookId: book.id },
+	});
 	return { database, conversationId: conversation.id, targetMessageId: conversation.messages.at(-1)?.id, book };
 };
 

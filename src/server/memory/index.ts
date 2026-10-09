@@ -11,8 +11,8 @@ export {
 	setMemoryAllowance,
 	startMemoryWorker,
 	startMemoryCatchup,
-	StaleMemoryCollectionError,
 } from "./collections";
+export { mergeMemoryLabels, setMemoryIdentity } from "./label-commands";
 export type { MemoryWorkerOptions } from "./collections";
 export { embedMemoryTexts } from "./indexing";
 export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";

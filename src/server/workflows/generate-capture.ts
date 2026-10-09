@@ -2,7 +2,6 @@ import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { generationProvenanceEntry } from "./generate-capture-projections";
 export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
 import {
 	authorRoleOf,
 	continuationEligibility,
@@ -57,7 +56,6 @@ import {
 	type AttemptEnvironment,
 } from "../../shared/prompt-macro-engine";
 import {
-	conversationGenerationSettings,
 	type GenerationFormattingContext,
 } from "../../shared/contract/conversation-schema";
 import type {
@@ -93,14 +91,6 @@ interface ParticipatingHistory {
 }
 
 type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
-
-const participatingHistoryFromRead = (
-	read: SelectedHistoryRead,
-	control: ConversationSummary["control"],
-): ParticipatingHistory => ({
-	messages: read.messages,
-	control,
-});
 
 // @approved
 //  Selected-history entries for prompt compilation, derived from each
@@ -331,9 +321,6 @@ export function prepareGenerationInputsSnapshot(
 			return { summary, recipe, settings, selected, variantData };
 		},
 	);
-	if (!Value.Check(conversationGenerationSettings, settings)) {
-		throw new Error("Conversation Generation Settings are corrupt.");
-	}
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
 	if (target.kind === "sibling") {
 		const eligibility = deriveMessageSwipeEligibility(summary.playable, selected.target?.historicalContext ?? null, summary.cast.map((participant) => participant.id));
@@ -342,12 +329,15 @@ export function prepareGenerationInputsSnapshot(
 			throw new SiblingVariantUnavailableError(eligibility.reason);
 		}
 	}
-	const participation = participatingHistoryFromRead(selected, {
-		humanParticipantId: selected.target?.historicalContext?.humanParticipantId
-			?? summary.control.humanParticipantId,
-		modelParticipantId: selected.target?.historicalContext?.modelParticipantId
-			?? summary.control.modelParticipantId,
-	});
+	const participation: ParticipatingHistory = {
+		messages: selected.messages,
+		control: {
+			humanParticipantId: selected.target?.historicalContext?.humanParticipantId
+				?? summary.control.humanParticipantId,
+			modelParticipantId: selected.target?.historicalContext?.modelParticipantId
+				?? summary.control.modelParticipantId,
+		},
+	};
 	const human = summary.cast.find((participant) =>
 		participant.id === participation.control.humanParticipantId);
 	const model = summary.cast.find((participant) =>

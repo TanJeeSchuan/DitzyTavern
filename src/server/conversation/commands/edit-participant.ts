@@ -4,8 +4,8 @@ import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
-	toPromptChannelRow,
 } from "../../database/schema";
+import { toPromptChannelRow } from "../../character-library";
 import {
 	type ConversationDatabase,
 	requireParticipant,

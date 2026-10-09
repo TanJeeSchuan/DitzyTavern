@@ -110,7 +110,7 @@ export function ImportChatPanel({
 				: {
 						type: "stage-failed",
 						reason:
-							outcome.outcome === "invalid"
+							outcome.outcome === "invalid" || outcome.outcome === "unusable"
 								? outcome.reason
 								: "The file could not be uploaded. Check the connection and choose it again.",
 					},
@@ -152,7 +152,7 @@ export function ImportChatPanel({
 		onDispatch({
 			type: "commit-failed",
 			reason:
-				outcome.outcome === "invalid"
+				outcome.outcome === "invalid" || outcome.outcome === "unusable"
 					? outcome.reason
 					: outcome.outcome === "expired" || outcome.outcome === "unavailable"
 						? "This staged import is no longer available. Go back and choose the file again."

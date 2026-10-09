@@ -1,20 +1,23 @@
+import { api } from "./lib/eden";
+import { requestData, requestOutcome } from "./lib/request-outcome";
 import type { SemanticTriggerSettingsCommand, SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
-import { api, domainOutcome } from "./lib/eden";
+import {
+	semanticTriggerSettings,
+	semanticTriggerSettingsApplied,
+	semanticTriggerSettingsCommandErrors,
+} from "../shared/contract/semantic-trigger-settings";
 
 export type SemanticTriggerSettings = SemanticTriggerSettingsPayload;
 export type SemanticTriggerSettingsResult = Awaited<ReturnType<typeof saveSemanticTriggerSettings>>;
 
 export async function loadSemanticTriggerSettings(): Promise<SemanticTriggerSettings> {
-	const { data, error } = await api.api["semantic-trigger-settings"].get();
-	if (error || data === undefined || data === null) throw new Error("Semantic Trigger Settings could not be loaded.");
-	return data;
+	return requestData(api.api["semantic-trigger-settings"].get(), semanticTriggerSettings);
 }
 
 export async function saveSemanticTriggerSettings(command: SemanticTriggerSettingsCommand) {
-	const reason = "Semantic Trigger Settings could not be saved.";
-	try {
-		const { data, error } = await api.api["semantic-trigger-settings"].commands.post(command);
-		return error === null ? data : domainOutcome(error.value, reason);
-	} catch { return { outcome: "invalid" as const, reason }; }
+	return requestOutcome(
+		api.api["semantic-trigger-settings"].commands.post(command),
+		semanticTriggerSettingsApplied,
+		semanticTriggerSettingsCommandErrors,
+	);
 }
-

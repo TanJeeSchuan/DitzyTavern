@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { invalidOutcome } from "./outcomes";
 import { numericWire } from "./wire";
 
 export const memoryCandidate = Type.Object({
@@ -83,3 +84,12 @@ export const memoryTraceSteps = Type.Array(Type.Object({ label: Type.String(), a
 export type MemoryTraceStep = Static<typeof memoryTraceSteps>[number];
 export const memoryTraceParams = Type.Object({ id: numericWire, variantId: numericWire });
 export const memoryTrace = Type.Object({ steps: memoryTraceSteps });
+
+// @approved
+//  The Conversation memory command families' modeled error unions: the
+// composed 409/422 (and catchup 422) envelopes each route declares, so the
+// client decodes an error body against exactly the union its route models.
+export const memoryLabelsCommandErrors = Type.Union([memoryLabelsConflict, invalidOutcome]);
+export const memoryCollectionCommandErrors = Type.Union([memoryCollectionConflict, invalidOutcome]);
+export const memoryAllowanceCommandErrors = Type.Union([conversationMemoryAllowanceConflict, invalidOutcome]);
+export const memoryCatchupCommandErrors = invalidOutcome;

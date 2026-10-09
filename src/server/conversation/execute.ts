@@ -100,6 +100,7 @@ export function executeConversationCommand(
 			db,
 			command.conversationId,
 			command.expectedRevision,
+			"conversation",
 		);
 		if (
 			quietOnly.has(command.action.type) &&

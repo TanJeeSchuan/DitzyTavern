@@ -4,8 +4,8 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	toPromptChannelRow,
 } from "../database/schema";
+import { toPromptChannelRow } from "./prompt-rows";
 import {
 	connectCharacterLibraryDatabase,
 	requireDefinition,

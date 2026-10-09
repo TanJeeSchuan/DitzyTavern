@@ -7,15 +7,14 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	fromPortraitColumns,
 	participantTable,
-	toPromptChannels,
 } from "../database/schema";
+import { fromPortraitColumns, toPromptChannels } from "./prompt-rows";
 import type { CharacterDatabase } from "./internal";
 import type {
 	CharacterDeletionImpact,
 	CharacterSnapshot,
-	CharacterSummary,
+	CharacterLibrarySummary,
 } from "./types";
 
 // @approved
@@ -24,7 +23,7 @@ import type {
 // duplicate tie-breaker.
 const collator = new Intl.Collator("en", { usage: "sort", numeric: true });
 
-const compareByLibraryOrder = (a: CharacterSummary, b: CharacterSummary) => {
+const compareByLibraryOrder = (a: CharacterLibrarySummary, b: CharacterLibrarySummary) => {
 	if (a.pinned !== b.pinned) {
 		return a.pinned ? -1 : 1;
 	}
@@ -94,7 +93,7 @@ export function readCharacterSnapshot(
 	};
 }
 
-export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
+export function listCharacters(db: CharacterDatabase): CharacterLibrarySummary[] {
 	// @approved
 	//  One global projection of provenance references drives every summary's
 	// used count, so the list never issues a per-Character reference query.

@@ -1,10 +1,11 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { collectReleasedCharacterTombstones } from "../../character-library";
 import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
 } from "../../database/schema";
+import { resequence } from "../../database/resequence";
 import { ParticipantNotRemovableError } from "../errors";
 import {
 	type ConversationDatabase,
@@ -95,16 +96,26 @@ export function removeParticipant(
 	}
 
 	// @approved
-	//  Compacting later active Cast positions transactionally keeps the active
-	// roster contiguous after either removal path.
-	db.update(participantTable)
-		.set({ position: sql`${participantTable.position} - 1` })
+	//  Compacting the active Cast positions transactionally keeps the active
+	// roster contiguous after either removal path: resequencing the rows that
+	// remain re-densifies them onto 1..N, which is what shifting every later
+	// position down by one maintained while positions are dense.
+	const remaining = db
+		.select({ id: participantTable.id })
+		.from(participantTable)
 		.where(
 			and(
 				eq(participantTable.conversation_id, input.conversationId),
-				gt(participantTable.position, participant.position),
 				isNull(participantTable.deleted_at),
 			),
 		)
-		.run();
+		.orderBy(asc(participantTable.position))
+		.all();
+	resequence(
+		db,
+		participantTable,
+		participantTable.conversation_id,
+		input.conversationId,
+		remaining.map((row) => row.id),
+	);
 }

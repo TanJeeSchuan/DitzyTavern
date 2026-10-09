@@ -22,8 +22,8 @@ import {
 	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
-	StalePromptPresetRevisionError,
 } from "./errors";
+import { guardRevision } from "../revision";
 import {
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
@@ -240,14 +240,7 @@ export function executePromptPresetCommand(
 		}
 
 		const preset = requireSummary(db, command.presetId);
-		if (preset.revision !== command.expectedRevision) {
-			throw new StalePromptPresetRevisionError(
-				preset.id,
-				command.expectedRevision,
-				preset.revision,
-				preset,
-			);
-		}
+		guardRevision("preset", command.expectedRevision, preset, () => preset);
 
 		if (command.type === "delete") {
 			if (preset.isDefault) throw new DefaultPromptPresetNotRemovableError();

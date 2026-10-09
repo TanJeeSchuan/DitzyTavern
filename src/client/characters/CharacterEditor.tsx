@@ -80,6 +80,7 @@ export function CharacterEditor({
 					onClosed("That Character is no longer in the Library.");
 					return false;
 				case "invalid":
+				case "unusable":
 					setNotice(outcome.reason);
 					return false;
 				default:

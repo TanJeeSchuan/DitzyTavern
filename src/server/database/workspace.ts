@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { listChatSummaries } from "./chat";
+import { listChatSummaries } from "../conversation";
 
 export const getWorkspace = (database: Database) => {
 	const chats = listChatSummaries(database);

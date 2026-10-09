@@ -15,10 +15,10 @@ import {
 	InvalidConversationCommandError,
 	ParticipantNotRemovableError,
 	SiblingVariantUnavailableError,
-	StaleConversationRevisionError,
 	type ConversationAction,
 	type ParticipantDefinition,
 } from ".";
+import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
@@ -157,7 +157,7 @@ describe("Participant removal", () => {
 				expectedRevision: snapshot.revision + 99,
 				action: { type: "remove-participant", participantId: humanId },
 			}),
-		).toThrow(StaleConversationRevisionError);
+		).toThrow(StaleRevisionError);
 
 		const other = createConversationWithHistory(database, {
 			name: "Other",

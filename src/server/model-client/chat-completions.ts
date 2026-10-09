@@ -36,6 +36,7 @@ export interface ChatCompletionsModelClientOptions {
 	readonly profile: ConnectionProfile;
 	readonly secrets: ConnectionProfileSecretSnapshot | null;
 	readonly fetch?: ModelFetch;
+	// @approved
 	// Reads the bytes of an Image the plan sends. Without it, Images send only their anchors.
 	readonly loadImage?: ImageLoader;
 }

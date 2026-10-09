@@ -1,10 +1,10 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
 import { createCharacter } from "../character-library/create";
 import { importNativeLorebook } from "./library";
-import { attachLorebookToCharacter, attachLorebookToConversation, readLorebookAttachmentEligibility } from "./attachments";
+import { attachLorebookToCharacter, readLorebookAttachmentEligibility } from "./attachments";
 import { evaluateScopedLore } from "./evaluation";
 
 const prompt = {
@@ -17,7 +17,7 @@ const prompt = {
 
 describe("scoped Lore activation", () => {
 	let database: Database;
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => { database = openObservedDatabase(); });
 	afterEach(() => database.close());
 
 	test("inherits Character uses, resolves scope before deduplication, and scans pending text", () => {
@@ -46,7 +46,11 @@ describe("scoped Lore activation", () => {
 			],
 			control: { human: 1, model: 0 },
 		});
-		attachLorebookToConversation(database, { conversationId: chat.id, bookId: book.id });
+		executeConversationCommand(database, {
+			conversationId: chat.id,
+			expectedRevision: chat.revision,
+			action: { type: "attach-chat", bookId: book.id },
+		});
 		const uses = readLorebookAttachmentEligibility(database, chat.id);
 		expect(uses.filter((use) => use.eligible)).toHaveLength(2);
 		const result = evaluateScopedLore({ database, conversationId: chat.id, messages: [], pendingHumanText: "Silver Keep" });

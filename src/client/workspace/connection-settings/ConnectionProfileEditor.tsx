@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { CONNECTION_ADAPTER_LABELS, type ConnectionProfileDraft, type TestConnectionResult } from "../../connection-settings";
 import { SaveFooter } from "../../SaveFooter";
-import { useSaveGuard, useSaveNavigation } from "../../SaveGuard";
+import { useSaveGuard, useNavigationRequest } from "../../SaveGuard";
 import { CredentialField } from "./CredentialField";
 import { HeaderEditor } from "./HeaderEditor";
 import { ModelCombobox } from "./ModelCombobox";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 export function ConnectionProfileEditor({ controller }: { controller: ConnectionSettingsController }) {
-	const navigate = useSaveNavigation();
+	const navigate = useNavigationRequest();
 	const [validationVisible, setValidationVisible] = useState(false);
 	const {
 		draft,
@@ -241,12 +241,12 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 }
 
 function TestOutcome({ result }: { result: TestConnectionResult }) {
-	const passed = result.outcome === "success";
+	const passed = result.outcome === "available" && result.value.outcome === "success";
 	const Icon = passed ? CircleCheck : CircleX;
 	return (
 		<p role="status" className={`flex items-start gap-1.5 text-xs ${passed ? "text-foreground" : "text-destructive"}`}>
 			<Icon className={`mt-px size-3.5 shrink-0 ${passed ? "text-primary" : ""}`} aria-hidden="true" />
-			{result.outcome === "invalid" ? result.reason : result.message}
+			{result.outcome === "available" ? result.value.message : result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The connection could not be reached."}
 		</p>
 	);
 }

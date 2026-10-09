@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient } from "@tanstack/react-query";
+import { flushHook, renderHook } from "../test-fixtures/render-hook";
 import { NetworkError } from "../lib/request-outcome";
 import { createStoryState, type StoryAction } from "../story";
 import type { ChatHistoryPage } from "../chat-history";
@@ -44,6 +44,8 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
+interface HistoryRefreshResult { conversation: ConversationSummary | null; failure?: unknown }
+
 async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
 		id: 1, name: "Chat", revision: 1, authorNote: "", cast: [],
@@ -57,23 +59,32 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 		},
 		activeGenerations: [],
 	};
+	let refreshing = false;
 	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) =>
-		String(input).includes("/history") ? historyResponse() : Response.json(conversation),
+		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation),
 	{ preconnect: () => {} });
-	let session: ReturnType<typeof useConversationSession> | undefined;
 	const dispatched: StoryAction[] = [];
 	const activeChat = { id: "1", title: "Chat", updatedAt: "", cast: [], excerpt: "" };
-	renderToStaticMarkup(createElement(() => {
-		session = useConversationSession({
-			initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
-			story: { ...createStoryState(), conversationId: 1 },
-			dispatchStory: (action) => { dispatched.push(action); },
-		});
-		return null;
-	}));
-	if (!session) throw new Error("The session hook did not render.");
-	const loaded = await session.refreshStory(1);
-	return { conversation: loaded, dispatched };
+	const dispatchStory = (action: StoryAction) => { dispatched.push(action); };
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const hook = await renderHook(() => useConversationSession({
+		initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
+		story: { ...createStoryState(), conversationId: 1 },
+		dispatchStory,
+	}), client);
+	await flushHook();
+	dispatched.length = 0;
+	refreshing = true;
+	const result: HistoryRefreshResult = { conversation: null };
+	await hook.act(async () => {
+		try { result.conversation = await hook.current.refreshStory(1); } catch (error) { result.failure = error; }
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	await flushHook();
+	await hook.unmount();
+	client.clear();
+	if (result.failure) throw result.failure;
+	return { conversation: result.conversation, dispatched };
 }
 
 describe("history refresh error classification", () => {
@@ -112,6 +123,11 @@ describe("history refresh error classification", () => {
 		await expect(refresh).rejects.toBeInstanceOf(NetworkError);
 	});
 
+	// The refresh's error classification is requestOutcome's own: the modeled
+	// 404 envelope is the skip above, and every response the seam cannot
+	// classify — HTTP failures and malformed pages alike — is a plain Error, so
+	// the generation-session runner backs off and retries only an unreachable
+	// transport.
 	test.each([
 		["server 500", () => Response.json({ error: "Server bug" }, { status: 500 })],
 		["malformed 404", () => Response.json({ error: "Unknown response" }, { status: 404 })],

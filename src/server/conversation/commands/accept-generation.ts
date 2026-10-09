@@ -29,7 +29,7 @@ import {
 	type ConversationDatabase,
 	type ParticipantRow,
 } from "../internal";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../../database/schema";
+import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-settings";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,
@@ -300,7 +300,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 	input: AcceptGenerationTargetInput<Validation>,
 ): AcceptedGenerationTarget<Validation> {
 	return runConversationTransaction(database, (db, reportChange) => {
-		requireConversationRevision(db, input.conversationId, input.expectedRevision);
+		requireConversationRevision(db, input.conversationId, input.expectedRevision, "generation");
 		input.preflight?.();
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(
@@ -488,11 +488,23 @@ export function acceptConversationContinuationGeneration(
 				)
 				.get();
 			if (selected === undefined) throw new InvalidConversationCommandError("Continue requires the selected terminal Variant.");
-			const reason = continuationEligibility({
-				authorRole: authorRoleOf({ author: toAuthorStamp(preceding, new Set([human.id, model.id])), historicalContext: toHistoricalContext(preceding) }, { humanParticipantId: human.id, modelParticipantId: model.id }),
-				content: selected.content,
-				hasReasoning: (readVariantData(db, [input.precedingVariantId], ["reasoning"]).get(input.precedingVariantId)?.reasoning?.length ?? 0) > 0,
-			}, generationJsonObject(input.generationIntent)?.strategy === "assistant-prefill" ? "assistant-prefill" : "instruction");
+			const authorRole = authorRoleOf(
+				{
+					author: toAuthorStamp(preceding, new Set([human.id, model.id])),
+					historicalContext: toHistoricalContext(preceding),
+				},
+				{ humanParticipantId: human.id, modelParticipantId: model.id },
+			);
+			const hasReasoning =
+				(readVariantData(db, [input.precedingVariantId], ["reasoning"]).get(input.precedingVariantId)?.reasoning?.length ?? 0) > 0;
+			const strategy =
+				generationJsonObject(input.generationIntent)?.strategy === "assistant-prefill"
+					? "assistant-prefill"
+					: "instruction";
+			const reason = continuationEligibility(
+				{ authorRole, content: selected.content, hasReasoning },
+				strategy,
+			);
 			if (reason !== null) throw new InvalidConversationCommandError("Continue requires terminal model output eligible for this strategy.");
 			return { humanMessageId: null, position: latest.position + 1 };
 		},

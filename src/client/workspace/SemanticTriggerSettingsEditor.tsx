@@ -3,13 +3,13 @@ import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { DecisionModelPicker } from "../DecisionModelPicker";
-import { loadConnectionSettings, type ConnectionSettings } from "../connection-settings";
+import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { Slider } from "@/components/ui/slider";
 import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type SemanticTriggerSettings, type SemanticTriggerSettingsResult } from "../semantic-trigger-settings";
 import type { SemanticTriggerSettingsCommand } from "../../shared/contract/semantic-trigger-settings";
 import { useAsyncEffect } from "../lib/use-async";
 import { SaveFooter } from "../SaveFooter";
-import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
+import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
 import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
@@ -19,7 +19,18 @@ type State = { settings: SemanticTriggerSettings | null; draft: Draft | null; lo
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
 const draftOf = ({ revision: _revision, ...draft }: SemanticTriggerSettings): Draft => draft;
 
-export type SemanticTriggerSettingsController = ReturnType<typeof useSemanticTriggerSettings>;
+/** @approved The Semantic Trigger draft and commands the editor surface reads and writes. */
+type SemanticTriggerDraftEditor = {
+	settings: SemanticTriggerSettings | null;
+	draft: Draft | null;
+	dirty: boolean;
+	pending: boolean;
+	error: string | null;
+	reload: () => void;
+	update: (patch: Partial<Draft>) => void;
+	discard: () => void;
+	save: () => Promise<boolean>;
+};
 
 export function useSemanticTriggerSettings() {
 	const [state, setState] = useState<State>({ settings: null, draft: null, loading: true, pending: false, error: null });
@@ -31,10 +42,10 @@ export function useSemanticTriggerSettings() {
 	useAsyncEffect((isCancelled) => { void load(isCancelled); }, [load]);
 
 	const settle = (result: SemanticTriggerSettingsResult, keepDraft: (draft: Draft | null) => boolean) => {
-		if (result.outcome === "applied") setState((current) => ({ ...loaded(result.settings), draft: keepDraft(current.draft) ? current.draft : draftOf(result.settings) }));
+		if (result.outcome === "available") setState((current) => ({ ...loaded(result.value.settings), draft: keepDraft(current.draft) ? current.draft : draftOf(result.value.settings) }));
 		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, error: CONFLICT_ERROR }));
-		else setState((current) => ({ ...current, pending: false, error: result.reason }));
-		return result.outcome === "applied";
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Semantic Trigger Settings could not be saved." }));
+		return result.outcome === "available";
 	};
 
 	const { settings, draft } = state;
@@ -57,14 +68,9 @@ export function useSemanticTriggerSettings() {
 	};
 }
 
-export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerSettingsController; onBack: () => void }) {
-	const navigate = useSaveNavigation();
-	const [connections, setConnections] = useState<ConnectionSettings | null>(null);
-	const [connectionError, setConnectionError] = useState<string | null>(null);
-	const loadConnections = useCallback((isCancelled: () => boolean = () => false) => loadConnectionSettings()
-		.then((settings) => { if (!isCancelled()) { setConnections(settings); setConnectionError(null); } })
-		.catch(() => { if (!isCancelled()) setConnectionError("Connection Settings could not be loaded."); }), []);
-	useAsyncEffect((isCancelled) => { void loadConnections(isCancelled); }, [loadConnections]);
+export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerDraftEditor; onBack: () => void }) {
+	const navigate = useNavigationRequest();
+	const connections = useConnectionSettingsQuery({ refreshOnOpen: true });
 	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
 	const { settings, draft } = semanticTriggers;
 	return (
@@ -81,11 +87,11 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 						</div>
 					) : (
 						<div className="grid gap-4">
-							{connectionError !== null ? <div className="grid justify-items-start gap-2">
-								<p className="text-xs text-destructive" role="alert">{connectionError}</p>
-								<Button type="button" size="sm" variant="outline" onClick={() => void loadConnections()}>Try again</Button>
+							{connections.isError ? <div className="grid justify-items-start gap-2">
+								<p className="text-xs text-destructive" role="alert">Connection Settings could not be loaded.</p>
+								<Button type="button" size="sm" variant="outline" onClick={() => void connections.refetch()}>Try again</Button>
 							</div> : <Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
-								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
+								<DecisionModelPicker selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
 							</Field>}
 							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
 								<NumberRow

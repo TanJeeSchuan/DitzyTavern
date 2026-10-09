@@ -14,10 +14,10 @@ import {
 	participantPromptTable,
 	participantLorebookAttachmentTable,
 	participantTable,
-	fromPortraitColumns,
-	toPromptChannelRow,
 } from "../database/schema";
+import { fromPortraitColumns, toPromptChannelRow } from "../character-library";
 import type { Portrait } from "../../shared/contract/image";
+import { readConversationSummaryFromConnection } from "./snapshot";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
@@ -25,8 +25,8 @@ import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from "./errors";
+import { guardRevision } from "../revision";
 
 export const connectConversationDatabase = (database: Database) => drizzle(database);
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
@@ -247,12 +247,16 @@ export const requireParticipantDefinition = (
 
 export type ParticipantRow = typeof participantTable.$inferSelect;
 
-export const requireParticipant = (
+// @approved
+//  The active Participant row of a Conversation, or undefined: the one
+// ownership lookup shared by commands that need the row and by callers that
+// map a missing Participant to their own typed error.
+export const findActiveParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
 	participantId: number,
-): ParticipantRow => {
-	const participant = db
+): ParticipantRow | undefined =>
+	db
 		.select()
 		.from(participantTable)
 		.where(
@@ -263,6 +267,13 @@ export const requireParticipant = (
 			),
 		)
 		.get();
+
+export const requireParticipant = (
+	db: ConversationDatabase,
+	conversationId: number,
+	participantId: number,
+): ParticipantRow => {
+	const participant = findActiveParticipant(db, conversationId, participantId);
 
 	if (participant === undefined) {
 		throw new InvalidConversationCommandError(
@@ -308,15 +319,25 @@ export const requireConversation = (
 
 // @approved
 //  The shared revision prelude every revisioned command runs first:
-// existence, then the stale check, both as the module's typed errors.
+// existence, then the shared stale check. The aggregate names the wire
+// envelope the conflict presents as: command routes carry the full
+// Conversation conflict, while generation-start routes (which declare only
+// the prose reason envelope) pass "generation".
 export const requireConversationRevision = (
 	db: ConversationDatabase,
 	conversationId: number,
 	expectedRevision: number,
+	aggregate: "conversation" | "generation",
 ): ConversationProbe => {
 	const conversation = requireConversation(db, conversationId);
-	if (conversation.revision !== expectedRevision) {
-		throw new StaleConversationRevisionError(expectedRevision, conversation.revision);
+	if (aggregate === "generation") {
+		guardRevision("generation", expectedRevision, conversation);
+	} else {
+		guardRevision("conversation", expectedRevision, conversation, () => {
+			const current = readConversationSummaryFromConnection(db, conversationId);
+			if (current === undefined) throw new ConversationNotFoundError(conversationId);
+			return current;
+		});
 	}
 	return conversation;
 };

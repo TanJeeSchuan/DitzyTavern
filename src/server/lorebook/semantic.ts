@@ -31,10 +31,13 @@ const splitMessage = (sceneFits: SceneFits, text: string): string[] => {
 
 const sceneChunks = (sceneFits: SceneFits, messages: readonly LoreScanMessage[]): string[][] => {
 	const chunks: string[][] = [[]];
+	let current = chunks[0];
 	for (const piece of messages.flatMap((message) => splitMessage(sceneFits, message.content))) {
-		const current = chunks.at(-1)!;
 		if (sceneFits([...current, piece])) current.push(piece);
-		else chunks.push([piece]);
+		else {
+			current = [piece];
+			chunks.push(current);
+		}
 	}
 	return chunks;
 };
@@ -73,16 +76,17 @@ export async function evaluateSemanticLore(input: {
 	const controller = new AbortController();
 	const signal = input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
 	try {
-		const scores = new Map<string, number>();
+		const scored = triggerItems.map((item) => ({ ...item, score: 0 }));
 		const requests = sceneChunks(sceneFits, input.messages).flatMap(requestsFor);
 		for (let start = 0; start < requests.length; start += 2) {
 			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request, questions }) => requestDecisions({ request, questions, selection, fetch: input.fetch, signal })));
 			for (const answers of responses) for (const [id, answer] of answers) {
 				if (answer.type !== "noul") throw new Error("Decision Model returned a malformed Semantic Trigger answer.");
-				scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
+				const item = scored.find((candidate) => candidate.id === id);
+				if (item !== undefined) item.score = Math.max(item.score, answer.noul);
 			}
 		}
-		const matches = triggers.map((trigger, index) => ({ trigger, score: scores.get(`trigger_${index}`)! }));
+		const matches = scored.map(({ question: { instructions: { situation } }, score }) => ({ trigger: situation, score }));
 		return { available: true, threshold: settings.triggerThreshold, matches };
 	} catch (error) {
 		controller.abort();

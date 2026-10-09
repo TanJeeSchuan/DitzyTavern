@@ -1,14 +1,17 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
+import { resequence } from "../database/resequence";
 import {
 	defaultOutgoingRoles,
 	isSingleUseReference,
 	singleUseReferenceLabels,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
+	type PromptOutgoingRole,
 	type PromptPresetBlockOccurrence,
+	type PromptPresetBlockReference,
 	type PromptPresetRecipe,
 	hasEnabledMemorySlot,
 } from "../../shared/contract/prompt-preset";
@@ -105,54 +108,100 @@ const applyBlockPatch = (
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
-const refreshSelectedMemoryTails = (database: Database, presetId: number, before: PromptPresetRecipe) => {
-	const after = readPromptPresetRecipe(database, presetId);
-	if (after === undefined || hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
-	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) refreshMemoryForConversation(database, conversationId);
+// @approved
+//  The one construction site for a stored occurrence row. The preset id, the
+//  placement the op names, the storage split (history stores no role; only an
+//  authored instruction stores a name and text), and the outgoing role a new
+//  slot starts with are decided here, so each op supplies only its own slot
+//  data. The stored id comes back so an op that repositions the new row can
+//  splice it into the order it returns.
+const insertOccurrence = (
+	db: Pick<RecipeDatabase, "insert">,
+	presetId: number,
+	position: number,
+	occurrence: {
+		reference: PromptPresetBlockReference;
+		enabled: boolean;
+		role?: PromptOutgoingRole;
+		name?: string;
+		content?: string;
+	},
+): number => {
+	const { reference } = occurrence;
+	const role = reference === "history"
+		? null
+		: occurrence.role ?? (reference === "instruction" ? "system" : defaultOutgoingRoles[reference]);
+	return db
+		.insert(promptPresetBlockTable)
+		.values({
+			preset_id: presetId,
+			position,
+			reference,
+			enabled: occurrence.enabled,
+			role,
+			name: reference === "instruction" ? occurrence.name : null,
+			content: reference === "instruction" ? occurrence.content : null,
+		})
+		.returning({ id: promptPresetBlockTable.id })
+		.get()!.id;
+};
+
+const readRequiredRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
+	const recipe = readPromptPresetRecipe(database, presetId);
+	if (recipe === undefined) throw new PromptPresetNotFoundError(presetId);
+	return recipe;
+};
+
+const requireOccurrence = (
+	recipe: PromptPresetRecipe,
+	presetId: number,
+	blockId: number,
+): PromptPresetBlockOccurrence => {
+	const occurrence = recipe.slots.find((slot) => slot.id === blockId);
+	if (occurrence === undefined) throw new PromptPresetBlockNotFoundError(presetId, blockId);
+	return occurrence;
 };
 
 // @approved
-//  The stored position of every slot is a dense 1-based order, so a
-// move target and a duplicate's neighbor stay meaningful. Renumbering goes
-// through one offset pass first because `position` is unique per preset:
-// every row briefly moves past the end, then takes its final place.
-const renumber = (
-	database: Pick<RecipeDatabase, "update">,
+//  Memory re-tailing is decided from the operation's own two reads: the
+//  authoritative recipe before the mutation and the single fresh read after
+//  it. An operation that cannot move the Memory slot costs no extra read to
+//  prove it.
+const refreshSelectedMemoryTails = (
+	database: Database,
 	presetId: number,
-	orderedIds: readonly number[],
+	before: PromptPresetRecipe,
+	after: PromptPresetRecipe,
 ): void => {
-	database
-		.update(promptPresetBlockTable)
-		.set({ position: sql`${promptPresetBlockTable.position} + 65536` })
-		.where(eq(promptPresetBlockTable.preset_id, presetId))
-		.run();
-	orderedIds.forEach((id, index) => {
-		database
-			.update(promptPresetBlockTable)
-			.set({ position: index + 1 })
-			.where(eq(promptPresetBlockTable.id, id))
-			.run();
-	});
+	if (hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
+	const selected = drizzle(database)
+		.select({ conversation_id: conversationPromptPresetTable.conversation_id })
+		.from(conversationPromptPresetTable)
+		.where(eq(conversationPromptPresetTable.prompt_preset_id, presetId))
+		.all();
+	for (const { conversation_id: conversationId } of selected) refreshMemoryForConversation(database, conversationId);
 };
 
-const orderedIdsOf = (
-	database: Pick<RecipeDatabase, "select">,
+// @approved
+//  One transactional boundary for every occurrence-addressed write: the
+//  recipe is read once before the mutation, the mutation returns the new
+//  dense order only when it moved one, and the single post-write read is both
+//  the response and the Memory-toggle diff. The occurrence an operation
+//  addresses must belong to the preset before any of its statements run.
+const withRecipe = (
+	database: Database,
 	presetId: number,
-): number[] =>
-	database
-		.select({ id: promptPresetBlockTable.id })
-		.from(promptPresetBlockTable)
-		.where(eq(promptPresetBlockTable.preset_id, presetId))
-		.orderBy(asc(promptPresetBlockTable.position))
-		.all()
-		.map((row) => row.id);
-
-const requireRecipe = (
-	recipe: PromptPresetRecipe | undefined,
-	presetId: number,
+	mutate: (db: RecipeDatabase, recipe: PromptPresetRecipe) => readonly number[] | undefined,
 ): PromptPresetRecipe => {
-	if (recipe === undefined) throw new PromptPresetNotFoundError(presetId);
-	return recipe;
+	const db = drizzle(database);
+	return database.transaction(() => {
+		const before = readRequiredRecipe(database, presetId);
+		const order = mutate(db, before);
+		if (order !== undefined) resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, presetId, order);
+		const after = readRequiredRecipe(database, presetId);
+		refreshSelectedMemoryTails(database, presetId, before, after);
+		return after;
+	}).immediate();
 };
 
 /** @approved
@@ -164,71 +213,27 @@ export const savePromptPresetBlockPatches = (
 	database: Database,
 	presetId: number,
 	patches: readonly PromptPresetBlockPatch[],
-): PromptPresetRecipe => {
-	const db = drizzle(database);
-	return database.transaction(() => {
-		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+): PromptPresetRecipe =>
+	withRecipe(database, presetId, (db, recipe) => {
 		validateBlockPatches(recipe, patches);
 		patches.forEach((patch) => applyBlockPatch(db, patch));
-		if (patches.length > 0) refreshSelectedMemoryTails(database, presetId, recipe);
-		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	}).immediate();
-};
+	});
 
-// @approved
-//  One transactional boundary for the occurrence-addressed writes: the
-// occurrence must belong to the preset before any statement of the operation
-// runs, the write sees the verified occurrence, and the response is the
-// stored recipe as a fresh read.
-const writePromptPresetBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	write: (
-		db: Pick<RecipeDatabase, "select" | "update" | "insert" | "delete">,
-		occurrence: PromptPresetBlockOccurrence,
-	) => void,
-): PromptPresetRecipe => {
-	const db = drizzle(database);
-	return database.transaction(() => {
-		const before = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-		const occurrence = before.slots.find((slot) => slot.id === blockId);
-		if (occurrence === undefined) throw new PromptPresetBlockNotFoundError(presetId, blockId);
-		write(db, occurrence);
-		refreshSelectedMemoryTails(database, presetId, before);
-		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	}).immediate();
-};
-
-/** Adds one reference with its default role; Author Note follows the last history slot. */
+/** @approved Adds one reference with its default role; Author Note follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
 	reference: PromptBlockReference,
-): PromptPresetRecipe => {
-	const db = drizzle(database);
-	return database.transaction(() => {
-		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+): PromptPresetRecipe =>
+	withRecipe(database, presetId, (db, recipe) => {
 		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
-		const ordered = orderedIdsOf(db, presetId);
-		const inserted = db.insert(promptPresetBlockTable)
-			.values({
-				preset_id: presetId,
-				position: ordered.length + 1,
-				reference,
-				enabled: true,
-				role: reference === "history" ? null : defaultOutgoingRoles[reference],
-			})
-			.returning({ id: promptPresetBlockTable.id }).get()!;
-		if (reference === "author-note") {
-			const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
-			ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted.id);
-			renumber(db, presetId, ordered);
-		}
-		refreshSelectedMemoryTails(database, presetId, recipe);
-		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	}).immediate();
-};
+		const ordered = recipe.slots.map((slot) => slot.id);
+		const inserted = insertOccurrence(db, presetId, ordered.length + 1, { reference, enabled: true });
+		if (reference !== "author-note") return;
+		const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
+		ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
+		return ordered;
+	});
 
 /** @approved Appends one blank authored instruction occurrence. The name, text, and
  * outgoing role are authored through the block editor's Save boundary; the
@@ -237,26 +242,15 @@ export const addPromptPresetBlock = (
 export const addPromptPresetInstruction = (
 	database: Database,
 	presetId: number,
-): PromptPresetRecipe => {
-	const db = drizzle(database);
-	return database.transaction(() => {
-		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-		const count = orderedIdsOf(db, presetId).length;
-		db.insert(promptPresetBlockTable)
-			.values({
-				preset_id: presetId,
-				position: count + 1,
-				reference: "instruction",
-				enabled: true,
-				role: "system",
-				name: "Instruction",
-				content: "",
-			})
-			.run();
-		refreshSelectedMemoryTails(database, presetId, recipe);
-		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	}).immediate();
-};
+): PromptPresetRecipe =>
+	withRecipe(database, presetId, (db, recipe) => {
+		insertOccurrence(db, presetId, recipe.slots.length + 1, {
+			reference: "instruction",
+			enabled: true,
+			name: "Instruction",
+			content: "",
+		});
+	});
 
 /** @approved Moves one occurrence to a one-based position, shifting the rest. */
 export const movePromptPresetBlock = (
@@ -265,8 +259,9 @@ export const movePromptPresetBlock = (
 	blockId: number,
 	toPosition: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (db) => {
-		const ordered = orderedIdsOf(db, presetId);
+	withRecipe(database, presetId, (_db, recipe) => {
+		requireOccurrence(recipe, presetId, blockId);
+		const ordered = recipe.slots.map((slot) => slot.id);
 		if (toPosition < 1 || toPosition > ordered.length) {
 			throw new InvalidPromptPresetOperationError(
 				`Position ${toPosition} is outside the recipe's ${ordered.length} slots.`,
@@ -274,7 +269,7 @@ export const movePromptPresetBlock = (
 		}
 		const without = ordered.filter((id) => id !== blockId);
 		without.splice(toPosition - 1, 0, blockId);
-		renumber(db, presetId, without);
+		return without;
 	});
 
 /** @approved Enables or disables one occurrence without moving it. */
@@ -284,7 +279,8 @@ export const setPromptPresetBlockEnabled = (
 	blockId: number,
 	enabled: boolean,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (db) => {
+	withRecipe(database, presetId, (db, recipe) => {
+		requireOccurrence(recipe, presetId, blockId);
 		db.update(promptPresetBlockTable)
 			.set({ enabled })
 			.where(eq(promptPresetBlockTable.id, blockId))
@@ -300,39 +296,13 @@ export const duplicatePromptPresetBlock = (
 	presetId: number,
 	blockId: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
+	withRecipe(database, presetId, (db, recipe) => {
+		const original = requireOccurrence(recipe, presetId, blockId);
 		assertNoSecondUniqueBlock(original.reference, true);
-		// @approved
-		//  The copy's row is placed by renumbering, not by its stored
-		// position: the ordered list is read before the insert so the copy is
-		// spliced in exactly once, right after the original.
-		const ordered = orderedIdsOf(db, presetId);
-		// @approved
-		//  Authored instruction rows carry their own name and text;
-		// referenced occurrences store none, so only the instruction branch
-		// contributes them to the copy.
-		const duplicatedRow: typeof promptPresetBlockTable.$inferInsert = {
-			preset_id: presetId,
-			position: ordered.length + 1,
-			reference: original.reference,
-			enabled: original.enabled,
-			role: original.reference === "history" ? null : original.role,
-		};
-		if (original.reference === "instruction") {
-			duplicatedRow.name = original.name;
-			duplicatedRow.content = original.content;
-		}
-		const inserted = db
-			.insert(promptPresetBlockTable)
-			.values(duplicatedRow)
-			.returning({ id: promptPresetBlockTable.id })
-			.get();
-		if (inserted === undefined) {
-			throw new Error("The duplicated Prompt Preset block could not be stored.");
-		}
-		const withCopy = [...ordered];
-		withCopy.splice(withCopy.indexOf(blockId) + 1, 0, inserted.id);
-		renumber(db, presetId, withCopy);
+		const ordered = recipe.slots.map((slot) => slot.id);
+		const copy = insertOccurrence(db, presetId, ordered.length + 1, original);
+		ordered.splice(ordered.indexOf(blockId) + 1, 0, copy);
+		return ordered;
 	});
 
 /** @approved Removes one occurrence; no slot is forced to remain. */
@@ -341,9 +311,10 @@ export const removePromptPresetBlock = (
 	presetId: number,
 	blockId: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (db) => {
+	withRecipe(database, presetId, (db, recipe) => {
+		requireOccurrence(recipe, presetId, blockId);
 		db.delete(promptPresetBlockTable)
 			.where(eq(promptPresetBlockTable.id, blockId))
 			.run();
-		renumber(db, presetId, orderedIdsOf(db, presetId));
+		return recipe.slots.map((slot) => slot.id).filter((id) => id !== blockId);
 	});

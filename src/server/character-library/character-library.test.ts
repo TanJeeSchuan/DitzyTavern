@@ -15,8 +15,8 @@ import {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
 	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
 } from ".";
+import { StaleRevisionError } from "../revision";
 import type { CharacterDefinition } from ".";
 import { type ParticipantDefinition } from "../conversation";
 import { applyCommand } from "../test-fixtures/conversation";
@@ -312,7 +312,7 @@ describe("Character Library", () => {
 			name: "Authoritative Name",
 		});
 
-		let conflict: StaleCharacterRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			library.execute({
 				type: "replace-openings",
@@ -321,7 +321,7 @@ describe("Character Library", () => {
 				openings: ["Stale draft opening"],
 			});
 		} catch (error) {
-			if (error instanceof StaleCharacterRevisionError) {
+			if (error instanceof StaleRevisionError) {
 				conflict = error;
 			}
 		}
@@ -329,7 +329,8 @@ describe("Character Library", () => {
 		expect(conflict).toBeDefined();
 		expect(conflict?.expectedRevision).toBe(created.revision);
 		expect(conflict?.actualRevision).toBe(advanced.revision);
-		expect(conflict?.currentCharacter).toEqual(advanced);
+		expect(conflict?.aggregate).toBe("character");
+		expect(conflict?.current).toEqual(advanced);
 
 		const reread = library.get(created.id);
 		expect(reread).toEqual(advanced);
@@ -720,7 +721,7 @@ describe("Character deletion", () => {
 			name: "Renamed Voss",
 		});
 
-		let conflict: StaleCharacterRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			library.execute({
 				type: "delete",
@@ -728,7 +729,7 @@ describe("Character deletion", () => {
 				expectedRevision: created.revision,
 			});
 		} catch (error) {
-			if (error instanceof StaleCharacterRevisionError) {
+			if (error instanceof StaleRevisionError) {
 				conflict = error;
 			}
 		}
@@ -736,7 +737,7 @@ describe("Character deletion", () => {
 		expect(conflict).toBeDefined();
 		expect(conflict?.expectedRevision).toBe(created.revision);
 		expect(conflict?.actualRevision).toBe(renamed.revision);
-		expect(conflict?.currentCharacter).toEqual(renamed);
+		expect(conflict?.current).toEqual(renamed);
 		expect(library.get(created.id)).toEqual(renamed);
 	});
 });

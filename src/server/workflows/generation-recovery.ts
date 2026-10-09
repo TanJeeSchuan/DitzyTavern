@@ -77,7 +77,7 @@ export function recoverActiveGenerations(
 export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
-/** Stop preparation and providers, terminalize persisted rows, then join detached work before closing the database. */
+/** @approved Stop preparation and providers, terminalize persisted rows, then join detached work before closing the database. */
 export async function gracefullyShutdownGenerations(
 	database: Database,
 	runtime: GenerationRuntimeRegistry = generationRuntimeFor(database),

@@ -1,4 +1,4 @@
-import { presentDomainError, type ResponseSchemas } from "./domain-error";
+import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import {
@@ -57,17 +57,14 @@ const recipeResponseSchema = {
 	422: invalidOutcome,
 };
 
-const respond = <T, R, S extends ResponseSchemas>(
-	operation: () => T,
-	responses: S,
-	applied: (value: T) => R,
-) => {
-	try { return applied(operation()); }
-	catch (error) { return presentDomainError(error, responses); }
+const recipeResponse = (operation: () => void) => {
+	try {
+		operation();
+		return { outcome: "applied" as const };
+	} catch (error) {
+		return presentDomainError(error, recipeResponseSchema);
+	}
 };
-
-const recipeResponse = <T>(operation: () => T) =>
-	respond(operation, recipeResponseSchema, () => ({ outcome: "applied" as const }));
 
 export const createPromptPresetRoutes = (database: Database) =>
 	new Elysia()
@@ -77,11 +74,11 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return respond(
-					() => reviewSillyTavernPromptPreset(body),
-					sillyTavernReviewResponse,
-					(preview) => preview,
-				);
+				try {
+					return reviewSillyTavernPromptPreset(body);
+				} catch (error) {
+					return presentDomainError(error, sillyTavernReviewResponse);
+				}
 			},
 			{
 				body: sillyTavernImportRequest,
@@ -94,11 +91,11 @@ export const createPromptPresetRoutes = (database: Database) =>
 				if (!isSillyTavernJsonValue(body)) {
 					return invalidResponse("SillyTavern JSON must be valid JSON.");
 				}
-				return respond(
-					() => importSillyTavernPromptPreset(database, body),
-					sillyTavernImportResponse,
-					(imported) => imported,
-				);
+				try {
+					return importSillyTavernPromptPreset(database, body);
+				} catch (error) {
+					return presentDomainError(error, sillyTavernImportResponse);
+				}
 			},
 			{
 				body: sillyTavernImportRequest,
@@ -118,12 +115,14 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/import",
-			({ body }) =>
-				respond(
-					() => importNativePromptPreset(database, body),
-					nativeImportResponse,
-					(preset) => ({ outcome: "applied" as const, preset }),
-				),
+			({ body }) => {
+				try {
+					const preset = importNativePromptPreset(database, body);
+					return { outcome: "applied" as const, preset };
+				} catch (error) {
+					return presentDomainError(error, nativeImportResponse);
+				}
+			},
 			{
 				body: nativePromptPreset,
 				response: nativeImportResponse,
@@ -138,18 +137,20 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/commands",
-			({ body }) =>
-				respond(
-					// @approved
-					//  SAFETY: Elysia validates the discriminated command shape at this
-					// boundary; the library then guards the revision and derives the
-					// deletion impact from the selections present in the transaction.
-					() => executePromptPresetCommand(database, body),
-					commandResponse,
-					(outcome) => outcome.kind === "deleted"
+			({ body }) => {
+				// @approved
+				//  SAFETY: Elysia validates the discriminated command shape at this
+				// boundary; the library then guards the revision and derives the
+				// deletion impact from the selections present in the transaction.
+				try {
+					const outcome = executePromptPresetCommand(database, body);
+					return outcome.kind === "deleted"
 						? { outcome: "deleted" as const, result: outcome.result }
-						: { outcome: "applied" as const, preset: outcome.preset },
-				),
+						: { outcome: "applied" as const, preset: outcome.preset };
+				} catch (error) {
+					return presentDomainError(error, commandResponse);
+				}
+			},
 			{
 				body: promptPresetCommandBody,
 				response: commandResponse,

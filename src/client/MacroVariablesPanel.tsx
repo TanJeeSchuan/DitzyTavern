@@ -21,12 +21,16 @@ type PanelState =
 	| { status: "ready"; variables: MacroVariables }
 	| { status: "error"; message: string };
 
-const errorText = (outcome: "not-found" | "network" | "invalid") =>
-	outcome === "not-found"
+type MacroVariablesReadOutcome = Exclude<Awaited<ReturnType<typeof loadMacroVariables>>, { outcome: "available" }>;
+
+const errorText = (outcome: MacroVariablesReadOutcome) =>
+	outcome.outcome === "not-found"
 		? "Macro Variables are no longer available for this Chat."
-		: outcome === "invalid"
+		: outcome.outcome === "invalid"
 			? "This history position is not available."
-			: "Macro Variables could not be loaded.";
+			: outcome.outcome === "unusable"
+				? outcome.reason
+				: "Macro Variables could not be loaded.";
 
 const isStringMacroValue = (value: MacroValue): value is string => typeof value === "string";
 
@@ -52,7 +56,7 @@ export function handleMacroVariableOutcome(
 	}
 	if (outcome.outcome === "conflict") callbacks.onConflict(outcome.currentConversation);
 	callbacks.onNotice(
-		outcome.outcome === "invalid"
+		outcome.outcome === "invalid" || outcome.outcome === "unusable"
 			? outcome.reason
 			: outcome.outcome === "conflict"
 				? "The Conversation changed elsewhere; reopen this panel to continue."
@@ -93,7 +97,7 @@ export function MacroVariablesPanel({
 				setState({ status: "ready", variables: outcome.value });
 				return;
 			}
-			setState({ status: "error", message: errorText(outcome.outcome) });
+			setState({ status: "error", message: errorText(outcome) });
 		});
 	}, [conversationId, position]);
 

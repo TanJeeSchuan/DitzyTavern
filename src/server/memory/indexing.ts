@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createMemorySettingsModule } from "./settings";
+import { createMemorySettingsModule, readMemoryEnabledConversationIds } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -13,8 +13,10 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared/contract/memory";
 import { indexingVariants, registerMemoryWork } from "./work";
 import { sha256 } from "./hash";
+import { queryBatches } from "../database/query-batches";
 
-const queryBatches = <T>(values: readonly T[]): T[][] => Array.from({ length: Math.ceil(values.length / 500) }, (_, index) => values.slice(index * 500, (index + 1) * 500));
+const connect = (database: Database) => drizzle(database);
+type MemoryIndexDatabase = ReturnType<typeof connect>;
 
 export interface MemoryEmbeddingConfiguration {
 	readonly spaceKey: string;
@@ -27,9 +29,10 @@ export type MemoryEmbed = (texts: readonly string[], configuration: MemoryEmbedd
 
 export const readMemoryEmbeddingConfiguration = (database: Database): MemoryEmbeddingConfiguration => {
 	const { embeddingProfileId, embeddingModel } = createMemorySettingsModule(database).get();
-	const profile = embeddingProfileId === null ? undefined : drizzle(database).select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
+	const db = connect(database);
+	const profile = embeddingProfileId === null ? undefined : db.select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
 	if (profile === undefined || profile.timeout_ms === null || embeddingModel.length === 0) return { spaceKey: "", endpoint: "", model: "", deadlineMs: 0 };
-	const secret = drizzle(database).select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
+	const secret = db.select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
 	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
 	return { spaceKey: sha256(JSON.stringify([profile.id, secret?.nonce ?? null, endpoint, embeddingModel])), endpoint, model: embeddingModel, deadlineMs: profile.timeout_ms };
 };
@@ -40,7 +43,8 @@ const readMemoryEmbeddingSecrets = (database: Database) => {
 };
 
 export const embedMemoryTexts = (database: Database, fetch?: ModelFetch): MemoryEmbed => (texts, configuration, signal) => {
-	if (readMemoryEmbeddingConfiguration(database).spaceKey !== configuration.spaceKey) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
+	const currentSpaceKey = readMemoryEmbeddingConfiguration(database).spaceKey;
+	if (currentSpaceKey !== configuration.spaceKey) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
 	return requestEmbeddings(texts, { endpoint: configuration.endpoint, model: configuration.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: configuration.deadlineMs, fetch, signal });
 };
 
@@ -51,8 +55,9 @@ const encodeVector = (vector: readonly number[]) => Buffer.from(new Float32Array
 const decodeVector = (bytes: Uint8Array): number[] => [...new Float32Array(new Uint8Array(bytes).buffer)];
 
 export const readCachedMemoryVectors = (database: Database, spaceKey: string, texts: readonly string[]): Map<string, number[]> => {
+	const db = connect(database);
 	const byHash = new Map(texts.map((text) => [sha256(text), text]));
-	const rows = queryBatches([...byHash.keys()]).flatMap((batch) => drizzle(database)
+	const rows = queryBatches([...byHash.keys()]).flatMap((batch) => db
 		.select({ hash: memoryEmbeddingCacheTable.text_hash, vector: memoryEmbeddingCacheTable.vector })
 		.from(memoryEmbeddingCacheTable)
 		.where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch)))
@@ -60,13 +65,15 @@ export const readCachedMemoryVectors = (database: Database, spaceKey: string, te
 	return new Map(rows.map(({ hash, vector }) => [byHash.get(hash)!, decodeVector(vector)]));
 };
 
-const cachedHashes = (database: Database, spaceKey: string, texts: readonly string[]): Set<string> =>
-	new Set(queryBatches([...new Set(texts.map(sha256))]).flatMap((batch) => drizzle(database)
+const cachedHashes = (database: Database, spaceKey: string, texts: readonly string[]): Set<string> => {
+	const db = connect(database);
+	return new Set(queryBatches([...new Set(texts.map(sha256))]).flatMap((batch) => db
 		.select({ hash: memoryEmbeddingCacheTable.text_hash })
 		.from(memoryEmbeddingCacheTable)
 		.where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch)))
 		.all()
 		.map(({ hash }) => hash)));
+};
 
 const renderedClaims = (claimsJson: string): string[] => Value.Parse(memoryCandidates, JSON.parse(claimsJson)).map(renderMemoryClaim);
 
@@ -107,34 +114,52 @@ export interface MemoryIndexJob {
 	readonly claims: readonly MemoryCandidateJudgment[];
 }
 
-const markIndexed = (database: Database, job: Pick<MemoryIndexJob, "variantId" | "workEpoch" | "configuration">, error: string | null) =>
-	drizzle(database)
+const markIndexed = (db: MemoryIndexDatabase, job: Pick<MemoryIndexJob, "variantId" | "workEpoch" | "configuration">, error: string | null) =>
+	db
 		.update(memoryCollectionTable)
 		.set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }), updated_at: new Date().toISOString() })
 		.where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch)))
 		.run();
 
+const claimableCollectionConditions = (configuration: MemoryEmbeddingConfiguration, running: readonly number[]) => and(
+	eq(memoryCollectionTable.status, "complete"),
+	ne(memoryCollectionTable.claims_json, "[]"),
+	or(eq(memoryCollectionTable.ownership, "writer"), eq(memoryCollectionTable.source_changed, false)),
+	or(
+		isNull(memoryCollectionTable.index_attempt_json),
+		ne(sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.spaceKey')`, configuration.spaceKey),
+	),
+	running.length === 0 ? undefined : notInArray(memoryCollectionTable.variant_id, [...running]),
+);
+
 export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefined => {
 	if (!createMemorySettingsModule(database).get().enabled) return undefined;
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	if (configuration.spaceKey === "") return undefined;
-	const row = database.query<{ variant_id: number; work_epoch: number; claims_json: string }, [string, string]>(`
-		SELECT c.variant_id, c.work_epoch, c.claims_json FROM memory_collection c
-		WHERE c.status = 'complete' AND c.claims_json <> '[]' AND NOT (c.ownership = 'automatic' AND c.source_changed)
-			AND (c.index_attempt_json IS NULL OR json_extract(c.index_attempt_json, '$.spaceKey') <> ?1) AND c.variant_id NOT IN (SELECT value FROM json_each(?2))
-			AND EXISTS (
-				SELECT 1 FROM conversation_prompt_preset p
-				JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id
-				WHERE p.conversation_id = c.conversation_id AND b.reference = 'memory' AND b.enabled = 1
-			)
-		ORDER BY c.updated_at LIMIT 1`).get(configuration.spaceKey, JSON.stringify([...indexingVariants(database, configuration.spaceKey)]));
-	if (!row) return undefined;
-	const job = { variantId: row.variant_id, workEpoch: row.work_epoch, configuration };
-	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claims_json)) }; }
-	catch { markIndexed(database, job, "Saved Memory text is invalid and cannot be indexed."); return undefined; }
+	const db = connect(database);
+	const running = [...indexingVariants(database, configuration.spaceKey)];
+	const conditions = claimableCollectionConditions(configuration, running);
+	const candidates = db.selectDistinct({ conversationId: memoryCollectionTable.conversation_id })
+		.from(memoryCollectionTable).where(conditions).all().map(({ conversationId }) => conversationId);
+	if (candidates.length === 0) return undefined;
+	const enabled = readMemoryEnabledConversationIds(database, candidates);
+	if (enabled.size === 0) return undefined;
+	const row = db.select({
+		variantId: memoryCollectionTable.variant_id,
+		workEpoch: memoryCollectionTable.work_epoch,
+		claimsJson: memoryCollectionTable.claims_json,
+	}).from(memoryCollectionTable).where(and(
+		conditions,
+		inArray(memoryCollectionTable.conversation_id, [...enabled]),
+	)).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
+	if (row === undefined) return undefined;
+	const job = { variantId: row.variantId, workEpoch: row.workEpoch, configuration };
+	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claimsJson)) }; }
+	catch { markIndexed(db, job, "Saved Memory text is invalid and cannot be indexed."); return undefined; }
 };
 
 export const runMemoryIndexJob = async (database: Database, job: MemoryIndexJob, embed: MemoryEmbed, shutdown: AbortSignal) => {
+	const db = connect(database);
 	const { signal, unregister } = registerMemoryWork(database, job.variantId, job.configuration.spaceKey);
 	try {
 		const texts = [...new Set(job.claims.map(renderMemoryClaim))];
@@ -145,15 +170,15 @@ export const runMemoryIndexJob = async (database: Database, job: MemoryIndexJob,
 		if (vectors.length !== missing.length || vectors.some((vector) => vector.length === 0)) throw new Error("The embedding endpoint returned an incomplete Memory index.");
 		database.transaction(() => {
 			for (const [index, text] of missing.entries()) {
-				drizzle(database)
+				db
 					.insert(memoryEmbeddingCacheTable)
 					.values({ space_key: job.configuration.spaceKey, text_hash: sha256(text), vector: encodeVector(vectors[index]!) })
 					.onConflictDoNothing()
 					.run();
 			}
-			markIndexed(database, job, null);
+			markIndexed(db, job, null);
 		}).immediate();
 	} catch (error) {
-		if (!shutdown.aborted && !signal.aborted) markIndexed(database, job, error instanceof Error ? error.message.slice(0, 1024) : "Memory indexing failed.");
+		if (!shutdown.aborted && !signal.aborted) markIndexed(db, job, error instanceof Error ? error.message.slice(0, 1024) : "Memory indexing failed.");
 	} finally { unregister(); }
 };

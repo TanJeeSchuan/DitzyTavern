@@ -22,7 +22,6 @@ import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
-import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 
 const prompt = (
@@ -717,14 +716,22 @@ describe("Generation runtime behavior", () => {
 				enabled: true,
 			}],
 		});
-		attachLorebookToConversation(database, { conversationId, bookId: book.id });
-		saveLoreSettings(database, conversationId, { scanDepth: 3, allowance: 2048 });
+		const withLore = applyCommand(conversation, {
+			conversationId,
+			expectedRevision: withRecentHistory.revision,
+			action: { type: "attach-chat", bookId: book.id },
+		});
+		const withLoreSettings = applyCommand(conversation, {
+			conversationId,
+			expectedRevision: withLore.revision,
+			action: { type: "save-settings", scanDepth: 3, allowance: 2048 },
+		});
 
 		const plans: PromptPlan[] = [];
 		let attempts = 0;
 		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
-			expectedRevision: withRecentHistory.revision,
+			expectedRevision: withLoreSettings.revision,
 			target: { kind: "send", content: "Please try again." },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				plans.push(promptPlan);

@@ -1,8 +1,10 @@
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { foundOrNull, requestData, requestOutcome } from "./lib/request-outcome";
 import {
 	characterCommandApplied,
 	characterCommandErrors,
+	characterListResponse,
+	characterSnapshot,
 	type CharacterCommand,
 	type CharacterDeletionImpact,
 	type CharacterDeletionMode,
@@ -10,6 +12,7 @@ import {
 	type CharacterLibrarySummary as CharacterSummary,
 	type CharacterSnapshot,
 } from "../shared/contract/character-library";
+import { notFoundOutcome } from "../shared/contract/outcomes";
 
 // @approved
 //  Typed client for the Character Library transport adapters. Outcomes mirror
@@ -30,29 +33,19 @@ export type {
 // @approved
 // The Character command route's outcome is the wire's own: the applied
 //  response (applied snapshot or derived deletion result) under `available`,
-// the typed 409/404/422 envelopes verbatim, and network for everything the
-// seam could not classify.
+// the typed 409/404/422 envelopes verbatim, network when the transport could
+// not complete the request, and the shared unusable fallback when the response
+// could not be read.
 export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;
 
 export async function listCharacters(): Promise<CharacterSummary[]> {
-	const { data, error } = await api.api.characters.get();
-	if (error || !data) {
-		throw new Error("Unable to list Characters");
-	}
-	return data.characters;
+	return (await requestData(api.api.characters.get(), characterListResponse)).characters;
 }
 
 export async function getCharacter(
 	characterId: number,
 ): Promise<CharacterSnapshot | null> {
-	const { data, error } = await api.api.characters({ id: characterId }).get();
-	if (error !== null && error !== undefined) {
-		if (error.status === 404) {
-			return null;
-		}
-		throw new Error(`Unable to load Character ${characterId}`);
-	}
-	return data ?? null;
+	return foundOrNull(await requestOutcome(api.api.characters({ id: characterId }).get(), characterSnapshot, notFoundOutcome));
 }
 
 export async function applyCommand(

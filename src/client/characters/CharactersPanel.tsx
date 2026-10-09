@@ -65,7 +65,9 @@ export function CharactersPanel({
 		setCreating(true);
 		const outcome = await applyCommand({ type: "create", definition: { name: "New Character", prompt: emptyPromptChannels(), openings: [] } });
 		setCreating(false);
-		if (outcome.outcome !== "available" || "result" in outcome.value) return setLibraryNotice(outcome.outcome === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
+		if (outcome.outcome !== "available" || "result" in outcome.value) {
+			return setLibraryNotice(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
+		}
 		setLibraryNotice(null);
 		loadCharacters();
 		setView({ kind: "character", id: outcome.value.character.id, fresh: true });

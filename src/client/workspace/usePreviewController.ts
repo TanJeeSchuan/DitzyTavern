@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { createConversationCommands } from "../createConversationCommands";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	confirmPreviewSelection,
 	type StoryAction,
@@ -45,7 +45,12 @@ export function usePreviewController({
 		previewConfirmInFlightRef.current = false;
 	}, [story.preview]);
 
-	const { run } = createConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: setPreviewError });
+	const surface = {
+		conversationId: story.conversationId,
+		revision: () => conversation?.revision ?? story.revision,
+		onConversationChange: setConversation,
+		setNotice: setPreviewError,
+	};
 
 	const clearPreviewError = () => setPreviewError(null);
 
@@ -78,12 +83,14 @@ export function usePreviewController({
 					variantId: preview.variantId,
 				},
 				async (selection) => {
-					await run({
-								type: "select-variant",
-								messageId: selection.messageId,
-								variantId: selection.variantId,
-							}, { notices: PREVIEW_NOTICES, onNotPlayable: setPreviewError, onNotRemovable: setPreviewError,
-				onApplied: () => dispatchStory({ type: "preview-confirmed" }) });
+					await runConversationCommand(surface, {
+						type: "select-variant",
+						messageId: selection.messageId,
+						variantId: selection.variantId,
+					}, {
+						notices: PREVIEW_NOTICES,
+						onApplied: () => dispatchStory({ type: "preview-confirmed" }),
+					});
 				},
 			);
 		} finally {

@@ -3,13 +3,46 @@ import { ChevronRight } from "lucide-react";
 import { AppSelect } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import type { ConversationSummary } from "../conversation";
+import type { ConversationGenerationSettings, ContinuationPrefillSuffix, ConversationSummary } from "../conversation";
 import { getLorebookAttachmentState } from "../lorebook-library";
-import { OVERRIDES_NAMESPACE_LABELS, requestOverridesSummary } from "../generation-settings-draft";
+import {
+	OVERRIDES_NAMESPACE_LABELS,
+	requestOverridesSummary,
+	type BudgetDrafts,
+	type BudgetField,
+	type OverridesDrafts,
+	type SamplingDrafts,
+	type SamplingField,
+} from "../generation-settings-draft";
 import { BudgetEditor, SamplingEditor, SiblingGenerationEditor } from "./GenerationSettingsEditors";
-import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import type { GenerationSettingsDraftStatus, TransmittingNamespace } from "./useGenerationSettingsDraft";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard } from "../SaveGuard";
+
+/** @approved The Generation Settings draft this panel edits and the commands that change it. */
+export type GenerationPanelDraft = {
+	settings: ConversationGenerationSettings | null;
+	status: GenerationSettingsDraftStatus;
+	problem: string | null;
+	transmittingNamespace: TransmittingNamespace;
+	instruction: string;
+	strategy: ConversationGenerationSettings["continuationStrategy"];
+	setStrategy: (value: ConversationGenerationSettings["continuationStrategy"]) => void;
+	prefillSuffix: ContinuationPrefillSuffix;
+	setPrefillSuffix: (value: ContinuationPrefillSuffix) => void;
+	imagePlacement: ConversationGenerationSettings["repeatedImagePlacement"];
+	setImagePlacement: (value: ConversationGenerationSettings["repeatedImagePlacement"]) => void;
+	updateInstruction: (value: string) => void;
+	canSave: boolean;
+	dirty: boolean;
+	save: () => Promise<boolean>;
+	discard: () => void;
+	samplingDrafts: SamplingDrafts;
+	updateSampling: (field: SamplingField, raw: string) => void;
+	budgetDrafts: BudgetDrafts;
+	updateBudget: (field: BudgetField, raw: string) => void;
+	overridesDrafts: OverridesDrafts;
+};
 
 export function GenerationPanel({
 	conversation,
@@ -17,7 +50,7 @@ export function GenerationPanel({
 	onOpenInspector,
 }: {
 	conversation: ConversationSummary | null;
-	controller: GenerationSettingsDraftController;
+	controller: GenerationPanelDraft;
 	onOpenInspector: () => void;
 }) {
 	if (conversation === null) {
@@ -36,7 +69,7 @@ function GenerationSettings({
 	onOpenInspector,
 }: {
 	conversationId: number;
-	controller: GenerationSettingsDraftController;
+	controller: GenerationPanelDraft;
 	onOpenInspector: () => void;
 }) {
 	const {

@@ -18,6 +18,10 @@ describe("Conversation refresh transport", () => {
 		await expect(loadConversation(42)).rejects.toBeInstanceOf(NetworkError);
 	});
 
+	// The read upgrade is requestOutcome's own: the modeled 404 envelope is the
+	// typed null below, and a response the seam cannot classify — HTTP failure
+	// and undecodable body alike — is a plain Error, never the retryable
+	// NetworkError an unreachable transport raises.
 	for (const [label, response] of [
 		["HTTP failure", () => Response.json({ error: "Unavailable" }, { status: 503 })],
 		["invalid payload", () => Response.json({ invalid: true })],
