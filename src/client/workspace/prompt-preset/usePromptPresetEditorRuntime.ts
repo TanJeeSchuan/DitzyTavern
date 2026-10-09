@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { queryOptions, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
 	loadConversationPromptPreset,
 	type ConversationSummary,
@@ -48,29 +50,52 @@ export function usePromptPresetEditorRuntime({
 }: {
 	conversation: ConversationSummary | null;
 }): PromptPresetEditorRuntime {
+	const client = useQueryClient();
+	const recipeOptions = queryOptions({
+		queryKey: ["prompt-preset-editor", conversation?.id ?? null, conversation?.revision ?? null] as const,
+		staleTime: Infinity,
+		refetchOnReconnect: false,
+		queryFn: conversation === null ? skipToken : async ({ signal }: { signal: AbortSignal }) => {
+			await Promise.resolve();
+			signal.throwIfAborted();
+			return loadConversationPromptPreset(conversation.id, signal);
+		},
+	});
+	const libraryOptions = queryOptions({
+		queryKey: ["prompt-presets"] as const,
+		staleTime: Infinity,
+		queryFn: async ({ signal }: { signal: AbortSignal }) => {
+			await Promise.resolve();
+			signal.throwIfAborted();
+			return listPromptPresets(signal);
+		},
+	});
+	const recipeQuery = useQuery(recipeOptions);
+	const libraryQuery = useQuery(libraryOptions);
 	const sessionKey = `conversation:${conversation?.id ?? "none"}`;
 	const [state, setState] = useState(() =>
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
-	const stateRef = useRef(state);
 
 	// @approved
 	//  Unmounting the panel invalidates every in-flight response, callback,
 	// download and deferred leave: once the editor is gone no operation may settle or continue,
 	// and dispatch becomes a no-op so no state update or deferred action can escape it.
 	const alive = useRef(true);
-	useEffect(() => () => { alive.current = false; }, []);
+	useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
-	const current = (): PromptPresetEditorState => stateRef.current;
+	const current = useEffectEvent((): PromptPresetEditorState => state);
 
+	// @approved
+	// Operations read their claim immediately after dispatch, and leave handoffs read
+	// the settled state before starting selection. Commit the reducer update synchronously.
 	const dispatch = (event: PromptPresetEditorEvent): void => {
 		if (!alive.current) return;
-		const next = reducePromptPresetEditorState(stateRef.current, event);
-		stateRef.current = next;
-		setState(next);
+		if (event.type === "operation-started" && event.effects.supersedesReads) void client.cancelQueries({ queryKey: recipeOptions.queryKey });
+		flushSync(() => setState((previous) => reducePromptPresetEditorState(previous, event)));
 	};
 
 	const ownsOperation = (claim: OperationClaim): boolean =>
-		alive.current && operationApplies(stateRef.current, claim);
+		alive.current && operationApplies(current(), claim);
 
 	// @approved
 	//  One operation settlement owner: a flow declares its start effects and
@@ -81,7 +106,7 @@ export function usePromptPresetEditorRuntime({
 	const runOperation = createPromptPresetEditorOperationRunner({
 		current,
 		dispatch,
-		canStart: () => alive.current && !stateRef.current.busy,
+		canStart: () => alive.current && !current().busy,
 		ownsOperation,
 	});
 
@@ -95,23 +120,26 @@ export function usePromptPresetEditorRuntime({
 
 	const readSelectedRecipe = async (
 		isCancelled?: () => boolean,
+		refresh = true,
 	): Promise<SelectedRecipeRead> => {
 		if (conversation === null) {
 			dispatch({ type: "recipe-unavailable" });
 			return { status: "not-found" };
 		}
 		dispatch({ type: "read-started" });
-		const claim = readClaim(stateRef.current);
+		const claim = readClaim(current());
 		try {
-			const selected = await loadConversationPromptPreset(conversation.id);
-			if (isCancelled?.() || !readApplies(stateRef.current, claim)) return { status: "stale" };
+			const selected = refresh ? (await recipeQuery.refetch({ throwOnError: true })).data
+				: await client.fetchQuery(recipeOptions);
+			if (selected === undefined) return { status: "stale" };
+			if (!alive.current || isCancelled?.() || !readApplies(current(), claim)) return { status: "stale" };
 			if (selected === null) {
 				dispatch({ type: "recipe-unavailable" });
 				return { status: "not-found" };
 			}
 			return { status: "ready", claim, selected };
 		} catch {
-			if (isCancelled?.() || !readApplies(stateRef.current, claim)) return { status: "stale" };
+			if (!alive.current || isCancelled?.() || !readApplies(current(), claim)) return { status: "stale" };
 			dispatch({ type: "load-failed" });
 			return { status: "network" };
 		}
@@ -125,16 +153,16 @@ export function usePromptPresetEditorRuntime({
 	// library-list failure; otherwise either request failure is a network outcome that retains the
 	// last ready view (or shows unavailable on initial load). Every call cancels the previous read
 	// regardless of caller.
-	const load = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
+	const load = async (isCancelled?: () => boolean, refresh = true): Promise<EditorLoadResult> => {
 		const [presetsResult, selectedRead] = await Promise.all([
-			listPromptPresets().then(
+			(refresh ? libraryQuery.refetch({ throwOnError: true }).then((result) => result.data ?? []) : client.fetchQuery(libraryOptions)).then(
 				(presets) => ({ status: "ready" as const, presets }),
 				() => ({ status: "network" as const }),
 			),
-			readSelectedRecipe(isCancelled),
+			readSelectedRecipe(isCancelled, refresh),
 		]);
 		if (selectedRead.status !== "ready") return selectedRead.status;
-		if (isCancelled?.() || !readApplies(stateRef.current, selectedRead.claim)) return "stale";
+		if (!alive.current || isCancelled?.() || !readApplies(current(), selectedRead.claim)) return "stale";
 		if (presetsResult.status === "ready") {
 			dispatch({
 				type: "recipe-adopted",
@@ -164,6 +192,14 @@ export function usePromptPresetEditorRuntime({
 		return "ready";
 	};
 
+	useAsyncEffect(async (isCancelled) => {
+		await Promise.resolve();
+		if (isCancelled() || !alive.current || recipeQuery.isFetching || recipeQuery.data === undefined || libraryQuery.data === undefined) return;
+		if (current().session.key !== sessionKey) return;
+		if (recipeQuery.data === null) dispatch({ type: "recipe-unavailable" });
+		else dispatch({ type: "recipe-adopted", claim: readClaim(current()), selected: recipeQuery.data, presets: libraryQuery.data });
+	}, [recipeQuery.data, recipeQuery.isFetching, libraryQuery.data, sessionKey]);
+
 	const { view, drafts } = state;
 	const ready = view.status === "ready" ? view : null;
 	const { dirty, count } = ready === null
@@ -171,8 +207,10 @@ export function usePromptPresetEditorRuntime({
 		: dirtyDraftSummary(ready.selected, drafts);
 	const dirtyCount = count;
 
-	useAsyncEffect((isCancelled) => {
-		const currentState = stateRef.current;
+	useAsyncEffect(async (isCancelled) => {
+		await Promise.resolve();
+		if (isCancelled()) return;
+		const currentState = current();
 		if (currentState.session.key !== sessionKey) {
 			// @approved
 			//  Every Chat transition starts clean; a same-session revision refresh
@@ -188,7 +226,7 @@ export function usePromptPresetEditorRuntime({
 				conversationRevision: conversation?.revision ?? null,
 			});
 		}
-		void load(isCancelled);
+		void load(isCancelled, false);
 	}, [conversation?.id, conversation?.revision]);
 
 	return { state, current, ready, dirty, dirtyCount, dispatch, load, loadRecipe, runOperation, ownsOperation };

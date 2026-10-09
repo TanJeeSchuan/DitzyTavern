@@ -66,8 +66,8 @@ export async function applyPromptPresetCommand(
 	);
 }
 
-export async function listPromptPresets(): Promise<PromptPresetSummary[]> {
-	return (await requestData(api.api["prompt-presets"].get(), promptPresetListResponse)).presets;
+export async function listPromptPresets(signal?: AbortSignal): Promise<PromptPresetSummary[]> {
+	return (await requestData(api.api["prompt-presets"].get({ fetch: { signal } }), promptPresetListResponse)).presets;
 }
 
 export async function loadNativePromptPreset(presetId: number): Promise<NativePromptPreset> {

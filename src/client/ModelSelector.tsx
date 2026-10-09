@@ -1,7 +1,8 @@
 import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ConversationSummary } from "./conversation";
+import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "./generation-settings-query";
 import { commitConversationModel } from "./model-selection-command";
 import { type ConnectionProfile } from "./connection-settings";
 import { useConnectionSettingsQuery } from "./connection-settings-query";
@@ -14,7 +15,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
 	const client = useQueryClient();
-	const generation = useQuery({ queryKey: ["generation-settings", conversation.id], queryFn: ({ signal }) => loadConversationGenerationSettings(conversation.id, signal) });
+	const generation = useGenerationSettingsQuery(conversation);
 	const selected: ProfileModelChoice | null = generation.data === undefined ? null : { connectionProfileId: generation.data.connectionProfileId, modelId: generation.data.modelId };
 	const connections = useConnectionSettingsQuery();
 	const settings = connections.data ?? null;
@@ -39,11 +40,10 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 					onConversationChange,
 					setNotice: setError,
 				},
-				onCommitted: () => {
-					const queryKey = ["generation-settings", conversation.id];
-					void client.cancelQueries({ queryKey });
-					client.setQueryData<ConversationGenerationSettings>(queryKey, (current) => current && { ...current, connectionProfileId: profile.id, modelId });
-					void client.invalidateQueries({ queryKey });
+				onCommitted: (_modelId, current) => {
+					if (generation.data) publishGenerationSettings(client, current, { ...generation.data, connectionProfileId: profile.id, modelId });
+					void client.cancelQueries({ queryKey: generationSettingsKey(conversation.id) });
+					void client.invalidateQueries({ queryKey: generationSettingsKey(conversation.id) });
 					setNotice(`Model set to ${profile.displayName} / ${modelId}.`);
 				},
 			});

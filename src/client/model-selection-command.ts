@@ -1,3 +1,4 @@
+import type { ConversationSummary } from "./conversation";
 import { runConversationCommand, type ConversationCommandSurface } from "./conversation-command-runner";
 
 // @approved
@@ -18,7 +19,7 @@ export interface CommitConversationModelOptions {
 	// @approved
 	//  Applied-commit work owned by the selector's own state (display sync,
 	// closing the combobox).
-	onCommitted: (modelId: string) => void;
+	onCommitted: (modelId: string, conversation: ConversationSummary) => void;
 }
 
 // @approved
@@ -34,6 +35,6 @@ export function commitConversationModel(options: CommitConversationModelOptions)
 		modelId: options.modelId,
 	}, {
 		notices: MODEL_COMMIT_NOTICES,
-		onApplied: () => options.onCommitted(options.modelId),
+		onApplied: (conversation) => options.onCommitted(options.modelId, conversation),
 	});
 }

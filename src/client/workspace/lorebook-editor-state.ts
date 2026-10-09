@@ -30,7 +30,9 @@ export const selectEntry = (state: LorebookEditorState, id: number | null): Lore
 	return { ...state, entryId: id, entryDraft: entry === undefined ? blankEntry() : fieldsOf(entry) };
 };
 export type EditorAction =
+	| { type: "reset" }
 	| { type: "loaded"; book: Lorebook }
+	| { type: "refreshed"; book: Lorebook }
 	| { type: "book-edited"; draft: LorebookEditorState["bookDraft"] }
 	| { type: "entry-edited"; draft: LoreEntryFields }
 	| { type: "entry-selected"; id: number | null }
@@ -42,7 +44,17 @@ export type EditorAction =
 	| { type: "applied"; book: Lorebook; submitted: LorebookEditorState; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean; notice: string | null };
 export function reduceLorebookEditor(state: LorebookEditorState, action: EditorAction): LorebookEditorState {
 	switch (action.type) {
+		case "reset": return initialEditorState();
 		case "loaded": return selectEntry({ ...initialEditorState(), book: action.book, bookDraft: action.book }, action.book.entries[0]?.id ?? null);
+		case "refreshed": {
+			if (state.book?.id !== action.book.id) return reduceLorebookEditor(state, { type: "loaded", book: action.book });
+			if (state.book.revision > action.book.revision) return state;
+			const entry = state.book.entries.find((entry) => entry.id === state.entryId);
+			const cleanEntry = sameEntry(state.entryDraft, entry === undefined ? blankEntry() : fieldsOf(entry));
+			const bookDraft = state.bookDraft.name === state.book.name && state.bookDraft.description === state.book.description ? action.book : state.bookDraft;
+			const next = { ...state, book: action.book, bookDraft };
+			return cleanEntry ? selectEntry(next, state.entryId) : next;
+		}
 		case "book-edited": return { ...state, bookDraft: action.draft, draftVersion: state.draftVersion + 1 };
 		case "entry-edited": return { ...state, entryDraft: action.draft, draftVersion: state.draftVersion + 1 };
 		case "entry-selected": return { ...selectEntry(state, action.id), draftVersion: state.draftVersion + 1 };

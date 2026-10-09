@@ -142,11 +142,11 @@ export function usePromptPresetLibrary({
 
 	const applySelection = (presetId: number): void => {
 		if (conversation === null) return;
-		void runOperation(SELECTION_EFFECTS, async () => {
+		void runOperation(SELECTION_EFFECTS, async (claim) => {
 			const conversationClaim = conversationOperationClaim(runtime.current());
 			await runConversationCommand({
 				...surface,
-				isCurrent: () => conversationOperationApplies(runtime.current(), conversationClaim),
+				isCurrent: () => ownsOperation(claim) && conversationOperationApplies(runtime.current(), conversationClaim),
 			}, {
 				type: "select-prompt-preset",
 				promptPresetId: presetId,
