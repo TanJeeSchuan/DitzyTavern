@@ -107,23 +107,25 @@ describe("history refresh error classification", () => {
 		expect(dispatched.some(({ type }) => type === "history-failed")).toBe(false);
 	});
 
-	test("a failed fetch rejects with the shared NetworkError", async () => {
+	test("a rejected fetch stays an offline NetworkError", async () => {
 		const refresh = historyRefresh(async () => { throw new TypeError("fetch failed"); });
 		await expect(refresh).rejects.toBeInstanceOf(NetworkError);
 	});
 
 	// The refresh's error classification is requestOutcome's own: the modeled
 	// 404 envelope is the skip above, and every response the seam cannot
-	// classify — failed fetch and HTTP failures alike — is the one NetworkError
-	// the generation session runner backs off and retries with.
+	// classify — HTTP failures and malformed pages alike — is a plain Error, so
+	// the generation-session runner backs off and retries only an unreachable
+	// transport.
 	test.each([
 		["server 500", () => Response.json({ error: "Server bug" }, { status: 500 })],
 		["malformed 404", () => Response.json({ error: "Unknown response" }, { status: 404 })],
 		["invalid response", () => Response.json({ outcome: "invalid", reason: "Invalid history" }, { status: 422 })],
 		["malformed history page", () => Response.json({ messages: [] })],
 		["invalid JSON", () => new Response("{", { headers: { "content-type": "application/json" } })],
-	])("%s rejects with the same NetworkError", async (_name, response) => {
+	])("%s throws a plain Error", async (_name, response) => {
 		const refresh = historyRefresh(async () => response());
-		await expect(refresh).rejects.toBeInstanceOf(NetworkError);
+		await expect(refresh).rejects.toBeInstanceOf(Error);
+		await expect(refresh).rejects.not.toBeInstanceOf(NetworkError);
 	});
 });

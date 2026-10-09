@@ -41,6 +41,7 @@ export async function getLorebookAttachmentState(conversationId: number, signal?
 	);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
@@ -56,6 +57,7 @@ export async function getLorebookAttachmentImpact(bookId: number): Promise<Loreb
 	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpact, notFoundOutcome);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
@@ -67,6 +69,7 @@ export async function getCharacterLorebookAttachments(characterId: number): Prom
 	);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
@@ -78,6 +81,7 @@ export async function getParticipantLorebookAttachments(participantId: number): 
 	);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
@@ -89,6 +93,7 @@ export async function getLorebook(bookId: number, signal?: AbortSignal): Promise
 	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebook, notFoundOutcome);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
@@ -100,10 +105,11 @@ export async function testLorebookMatch(bookId: number, writing: string, signal?
 	);
 	// @approved
 	//  The missing-Lorebook race is the one domain condition a match test
-	// declares: its notice stays verbatim, while everything unclassifiable
-	// reads as the shared unreachable failure.
+	// declares: its notice stays verbatim, while an unreachable transport is
+	// the retryable NetworkError and an unreadable response a plain Error.
 	if (outcome.outcome === "not-found") throw new Error("That Lorebook no longer exists.");
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 

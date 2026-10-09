@@ -27,7 +27,8 @@ export type ChatImportCommitInput = Omit<ChatImportCommitBody, "sha256">;
 
 // The import route family's outcome is the wire's own: the staged/available/
 // committed responses under `available`, the typed 410/422 envelopes verbatim,
-// and network for everything the seam could not classify.
+// network when the transport could not complete the request, and the shared
+// invalid fallback when the response could not be read.
 
 // @approved
 //  Uploads the selected bytes exactly once and receives the staged token

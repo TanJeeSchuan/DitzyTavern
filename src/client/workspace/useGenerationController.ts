@@ -41,14 +41,15 @@ import { useAssemblyController } from "./useAssemblyController";
 
 // @approved
 //  Maps a transport Stop outcome onto the machine's stop-command vocabulary.
-// The transport's network outcome is the machine's failed stop; the reason is
-// owned here because the transport no longer words per-route failures.
+// Every outcome that is not the typed not-found or the applied stop is the
+// machine's failed stop; the reason is owned here because the transport no
+// longer words per-route failures.
 const stopCommandOutcome = (
 	result: GenerationStopResult,
 ): GenerationStopCommandOutcome => {
 	if (result.outcome === "not-found") return { outcome: "not-found" };
-	if (result.outcome === "network") return { outcome: "failed", reason: "Generation could not be stopped." };
-	return { outcome: "stopped" };
+	if (result.outcome === "available") return { outcome: "stopped" };
+	return { outcome: "failed", reason: "Generation could not be stopped." };
 };
 
 type GenerationControllerOptions = {

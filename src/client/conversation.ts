@@ -69,13 +69,15 @@ export async function loadConversation(
 	);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 
 // @approved
 // The Conversation command route's outcome is the wire's own: the applied
 //  response under `available`, the typed 409/404/422 envelopes verbatim,
-// and network for everything the seam could not classify.
+// network when the transport could not complete the request, and the shared
+// invalid fallback when the response could not be read.
 export type CommandOutcome = Awaited<ReturnType<typeof applyConversationCommand>>;
 
 export async function applyConversationCommand(
@@ -148,6 +150,7 @@ export async function loadConversationPromptPreset(
 	);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
 	return outcome.value;
 }
 

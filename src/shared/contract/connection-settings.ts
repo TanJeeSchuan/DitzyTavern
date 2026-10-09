@@ -223,17 +223,10 @@ export const connectionInvalidResponse = invalidOutcome;
 export const connectionNotFoundResponse = notFoundOutcome;
 
 // @approved
-//  The Connection Settings command families' modeled error unions: the
-// composed 404/409/422 (and discovery 409) envelopes each command route
-// declares, so the client decodes an error body against exactly the union
-// its route models. The test and discovery routes share the same envelope
-// set; each keeps its own name so a route change surfaces at the client.
+//  The Connection Settings command and discovery routes' modeled error
+// union: the composed 404/409/422 envelopes both routes declare, so the
+// client decodes an error body against exactly the union its route models.
 export const connectionCommandErrors = Type.Union([
-	connectionSettingsConflict,
-	connectionNotFoundResponse,
-	connectionInvalidResponse,
-]);
-export const connectionDiscoveryErrors = Type.Union([
 	connectionSettingsConflict,
 	connectionNotFoundResponse,
 	connectionInvalidResponse,

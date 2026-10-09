@@ -12,7 +12,6 @@ import type {
 } from "../shared/contract/connection-settings";
 import {
 	connectionCommandErrors,
-	connectionDiscoveryErrors,
 	connectionDiscoveryResponse,
 	connectionInvalidResponse,
 	connectionPresetsResponse,
@@ -47,7 +46,7 @@ export type ConnectionSettingsResult = RequestOutcome<
 
 export type DiscoveryResult = RequestOutcome<
 	StaticDecode<typeof connectionDiscoveryResponse>,
-	StaticDecode<typeof connectionDiscoveryErrors>
+	StaticDecode<typeof connectionCommandErrors>
 >;
 
 // @approved
@@ -92,7 +91,7 @@ export async function refreshDiscoveryCatalog(profileId: number): Promise<Discov
 	return requestOutcome(
 		api.api["connection-settings"].discovery.post({ profileId }),
 		connectionDiscoveryResponse,
-		connectionDiscoveryErrors,
+		connectionCommandErrors,
 	);
 }
 

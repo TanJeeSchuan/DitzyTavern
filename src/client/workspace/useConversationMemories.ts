@@ -68,11 +68,10 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	}, []);
 	const reextract = useCallback((source: Source) => act(source, async () => {
 		const result = await resetAndReextract(conversationId, targetOf(source));
-		if (result.outcome === "conflict") { await replace(result.collection); await refresh(); return conflictNotice; }
-		if (result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory work could not be queued.";
-		await replace(result.value.collection);
+		if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory work could not be queued.";
+		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 		await refresh();
-		return null;
+		return result.outcome === "conflict" ? conflictNotice : null;
 	}), [act, conversationId, refresh, replace]);
 	const catchupAction = async (task: () => Promise<MemoryCatchupResult>) => {
 		setCatchupBusy(true); setNotice(null);
@@ -88,26 +87,24 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
 		retryIndex: (source: Source) => void act(source, async () => {
 			const result = await retryMemoryIndex(conversationId, targetOf(source));
-			if (result.outcome === "conflict") { await replace(result.collection); await refresh(); return conflictNotice; }
-			if (result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory indexing could not be retried.";
-			await replace(result.value.collection);
+			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory indexing could not be retried.";
+			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 			await refresh();
-			return null;
+			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
 		edit: (source: Source, index: number | null) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
 		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft });
-			if (result.outcome === "conflict") { await replace(result.collection); setEditing(null); return conflictNotice; }
-			if (result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
-			await replace(result.value.collection); setEditing(null);
-			return null;
+			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
+			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
+			setEditing(null);
+			return result.outcome === "conflict" ? conflictNotice : null;
 		}); },
 		remove: (source: Source, index: number) => void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" });
-			if (result.outcome === "conflict") { await replace(result.collection); return conflictNotice; }
-			if (result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
-			await replace(result.value.collection);
-			return null;
+			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
+			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
+			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
 	}), [act, conversationId, editing, labels, reextract, refresh, replace]);
 
