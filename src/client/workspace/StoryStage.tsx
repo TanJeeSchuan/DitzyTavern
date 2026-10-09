@@ -71,6 +71,8 @@ export function StoryStage({
 		hasNewer: story.page?.hasNewer === true,
 	});
 	const storyActions = useStoryMessageActions({
+		signal: session.signal,
+		refreshHistoryPage: session.refreshHistoryPage,
 		story,
 		conversation,
 		dispatchStory,

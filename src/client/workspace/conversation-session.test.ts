@@ -7,6 +7,7 @@ import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 
 const { useConversationSession } = await import("./useConversationSession");
+const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
 const summary = (id = 1, revision = 5): ConversationSummary => ({
@@ -19,7 +20,8 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
 	conversationId: id, revision, name: `Chat ${id}`, cast: [],
 	messages: Array.from({ length: 2 }, (_, i) => ({
 		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
-		modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null, variants: [],
+		modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
+		variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
 	})),
 	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });
@@ -39,7 +41,12 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const [story, dispatch] = useReducer(reduceStory, undefined, createStoryState);
 		const dispatchStory = useCallback((action: StoryAction) => { actions.push(action); dispatch(action); }, []);
 		const session = useConversationSession({ initialWorkspace, story, dispatchStory });
-		return { ...session, story };
+		const commands = useStoryMessageActions({
+			signal: session.signal, refreshHistoryPage: session.refreshHistoryPage,
+			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
+			queueSwipeScroll() {}, clearPreviewError() {}, canEnterPreview: true, onEnterPreview() {},
+		});
+		return { ...session, ...commands, story };
 	}, client, strict);
 	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 0; } });
 	await flushHook();
@@ -332,4 +339,102 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	await flushHook();
 	expect(reopened.current.story.revision).toBe(8);
 	expect(reopened.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
+test("Delete settling after A to B to A cannot remove a replacement Story Message", async () => {
+	const late = Promise.withResolvers<Response>();
+	const h = await harness(({ url, init }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		return init?.method === "POST" ? late.promise : Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(id) : summary(id)));
+	});
+	let command = Promise.resolve();
+	await h.hook.act(async () => { command = h.hook.current.deleteStoryMessage(105); });
+	await h.switchTo(2);
+	await h.switchTo(1);
+	await h.hook.act(async () => { late.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })); await command; });
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(h.hook.current.conversation?.revision).toBe(5);
+});
+
+test("Edit history settling after refresh cannot roll back the Story revision", async () => {
+	const late = Promise.withResolvers<Response>();
+	let revision = 5;
+	const h = await harness(({ url, init }) => Promise.resolve(init?.method === "POST"
+		? Response.json({ outcome: "applied", conversation: summary(1, 6) })
+		: url.searchParams.has("aroundMessageId") ? late.promise
+			: Response.json(url.pathname.endsWith("history") ? page(1, 1, revision) : summary(1, revision))));
+	await h.hook.act(async () => h.hook.current.editStoryMessage(105, "Edited"));
+	await flushHook();
+	revision = 8;
+	await h.hook.act(async () => h.hook.current.refreshStory(1));
+	const stale = page(1, 1, 6);
+	stale.messages[0]!.variants[0]!.content = "Obsolete edit";
+	await h.hook.act(async () => late.resolve(Response.json(stale)));
+	await flushHook();
+	expect(h.hook.current.story.revision).toBe(8);
+	expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Before");
+	expect(h.hook.current.conversation?.revision).toBe(8);
+});
+
+test("initial history behind Conversation authority refetches and finishes opening", async () => {
+	const fresh = Promise.withResolvers<Response>();
+	let reads = 0;
+	const h = await harness(({ url }) => url.pathname.endsWith("history")
+		? ++reads === 1 ? Promise.resolve(Response.json(page())) : fresh.promise
+		: Promise.resolve(Response.json(summary(1, 6))), true);
+	for (let i = 0; i < 5; i++) await h.hook.rerender();
+	expect(reads).toBe(2);
+	expect(h.hook.current.story.status).toBe("loading-first");
+	await h.hook.act(async () => fresh.resolve(Response.json(page(1, 1, 6))));
+	await flushHook();
+	expect(h.hook.current.story.status).toBe("ready");
+	expect(h.hook.current.story.revision).toBe(6);
+	expect(h.requests).toHaveLength(3);
+});
+
+test("refresh retains older Messages loaded while its latest page is pending", async () => {
+	const late = Promise.withResolvers<Response>();
+	let reads = 0;
+	const h = await harness(({ url }) => Promise.resolve(url.pathname.endsWith("history")
+		? url.searchParams.has("aroundMessageId") ? Response.json(page(1, 2)) : ++reads === 1 ? Response.json(page()) : late.promise
+		: Response.json(summary())));
+	let refresh: Promise<unknown> = Promise.resolve();
+	await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1); });
+	await flushHook();
+	await h.hook.act(async () => h.hook.current.loadMoreHistory());
+	await h.hook.act(async () => { late.resolve(Response.json(page())); await refresh; });
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+	expect(h.hook.current.story.page?.hasOlder).toBe(true);
+});
+
+test("navigation to a visible Message cancels paging and permits another older page", async () => {
+	const late = Promise.withResolvers<Response>();
+	let reads = 0;
+	const h = await harness(({ url }) => url.searchParams.has("aroundMessageId") && ++reads === 1 ? late.promise
+		: Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(1, url.searchParams.has("aroundMessageId") ? 2 : 1) : summary())));
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	let paging = Promise.resolve();
+	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
+	await flushHook();
+	const signal = h.requests.at(-1)?.init?.signal;
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
+	expect(signal?.aborted).toBe(true);
+	expect(h.hook.current.story.status).toBe("ready");
+	await h.hook.act(async () => { late.resolve(Response.json(page(1, 2))); await paging; });
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	await h.hook.act(async () => h.hook.current.loadMoreHistory());
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+});
+
+test("batched A to B to A selection creates a usable replacement owner", async () => {
+	const h = await harness();
+	const oldPublication = h.hook.current.setConversation;
+	const oldSignal = h.hook.current.signal;
+	await h.hook.act(async () => { h.hook.current.selectChat("2"); h.hook.current.selectChat("1"); });
+	await flushHook();
+	expect(oldSignal.aborted).toBe(true);
+	expect(h.hook.current.signal.aborted).toBe(false);
+	await h.hook.act(async () => { oldPublication(summary(1, 9)); h.hook.current.setConversation(summary(1, 6)); });
+	await flushHook();
+	expect(h.hook.current.conversation?.revision).toBe(6);
 });

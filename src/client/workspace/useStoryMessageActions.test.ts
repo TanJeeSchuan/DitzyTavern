@@ -164,6 +164,8 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 
 	const swipe = (messageId: number, direction: -1 | 1) =>
 		useStoryMessageActions({
+			signal: new AbortController().signal,
+			refreshHistoryPage: async () => {},
 			story,
 			conversation,
 			dispatchStory,

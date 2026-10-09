@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type Dispatch } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type Dispatch } from "react";
 import { flushSync } from "react-dom";
 import { loadHistoryPage, type ChatHistoryPageRequest } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
@@ -33,16 +33,16 @@ const historyQuery = (client: QueryClient, id: number, request: ChatHistoryPageR
 		return outcome.outcome === "available" && current?.outcome === "available" && current.value.revision > outcome.value.revision ? current : outcome;
 	},
 });
+const selection = (activeChatId: string) => ({ activeChatId, owner: { cancellation: new AbortController(), opened: false, paging: false, window: new AbortController(), navigating: false } });
 const afterRender = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
 
 /** @approved Coordinates the selected Chat's authoritative snapshot and paginated reading history. */
 export function useConversationSession({ initialWorkspace, story, dispatchStory }: ConversationSessionOptions) {
 	const client = useQueryClient();
-	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
+	const [{ activeChatId, owner }, setSelection] = useState(() => selection(initialWorkspace.activeChat.id));
 	const activeChatIdRef = useRef(activeChatId);
 	const id = Number(activeChatId);
 	const conversationId = Number.isInteger(id) && id > 0 ? id : null;
-	const owner = useMemo(() => ({ cancellation: new AbortController(), opened: false, paging: false, window: new AbortController(), navigating: false }), [activeChatId]);
 	const currentSession = useEffectEvent(() => ({ story, owner }));
 	const applyStory = useCallback((action: StoryAction) => { flushSync(() => dispatchStory(action)); }, [dispatchStory]);
 	const conversationRead = useConversationQuery(conversationId);
@@ -65,12 +65,15 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 
 	useEffect(() => {
 		if (owner.opened || owner.cancellation.signal.aborted || conversationRead.data === undefined || history.data === undefined || history.isFetching) return;
-		if (history.data.outcome === "available" && history.data.value.revision < (conversation?.revision ?? 0)) return;
+		if (history.data.outcome === "available" && history.data.value.revision < (conversation?.revision ?? 0)) {
+			void history.refetch();
+			return;
+		}
 		owner.opened = true;
 		if (history.data.outcome === "available") {
 			dispatchStory({ type: "first-page", page: history.data.value, activeGenerationIds: conversation?.activeGenerations.map(({ generationId }) => generationId) });
 		} else dispatchStory({ type: "history-failed" });
-	}, [conversationRead.data, conversation, history.data, history.isFetching, owner, dispatchStory]);
+	}, [conversationRead.data, conversation, history.data, history.isFetching, history.refetch, owner, dispatchStory]);
 
 	const listedChat = initialWorkspace.chats.find((chat) => chat.id === activeChatId) ?? initialWorkspace.activeChat;
 	const activeChat = conversation !== null && String(conversation.id) === listedChat.id ? { ...listedChat, title: conversation.name } : listedChat;
@@ -83,7 +86,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		void client.invalidateQueries({ queryKey: conversationKey(Number(chatId)), refetchType: "none" });
 		void client.invalidateQueries({ queryKey: historyKey(Number(chatId)), refetchType: "none" });
 		activeChatIdRef.current = chatId;
-		setActiveChatId(chatId);
+		setSelection(selection(chatId));
 	};
 
 	const readHistory = useCallback((id: number, request: ChatHistoryPageRequest, signal: AbortSignal) =>
@@ -96,6 +99,13 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		applyStory(action.type === "next-page-arrived" ? action : { ...action, activeGenerationIds: authority?.activeGenerations.map(({ generationId }) => generationId) });
 		return true;
 	}, [client, applyStory]);
+
+	const refreshHistoryPage = (messageId: number) => {
+		const signal = AbortSignal.any([owner.cancellation.signal, owner.window.signal]);
+		return readHistory(id, { aroundMessageId: messageId }, signal).then((outcome) => {
+			if (outcome.outcome === "available") applyPage({ type: "history-refreshed", page: outcome.value }, signal);
+		}).catch(() => undefined);
+	};
 
 	const loadMoreHistory = async (direction: "older" | "newer" = "older") => {
 		const current = currentSession().story;
@@ -126,6 +136,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		owner.window = new AbortController();
 		owner.navigating = true;
 		owner.paging = false;
+		applyStory({ type: "paging-cancelled" });
 		return AbortSignal.any([owner.cancellation.signal, owner.window.signal]);
 	};
 
@@ -167,7 +178,10 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 			if (outcome.outcome === "not-found") continue;
 			if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
 			if (outcome.outcome === "unusable") throw new Error(outcome.reason);
-			applyPage({ type: detached ? "history-refreshed" : "first-page", page: outcome.value, activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId) }, signal);
+			const type = currentSession().story.page === null ? "first-page" : "history-refreshed";
+			if (applyPage({ type, page: outcome.value }, signal) && !detached && type === "history-refreshed") {
+				applyPage({ type: "next-page-arrived", page: outcome.value }, signal);
+			}
 		}
 		return freshConversation;
 	}, [client, readHistory, applyPage]);
@@ -194,5 +208,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 	const ensureLatest = async () => currentSession().story.page?.hasNewer ? jumpToLatest() : client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 
-	return { activeChatId, activeChat, conversation, setConversation, activeChatIdRef, selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory };
+	return {
+		refreshHistoryPage, signal: owner.cancellation.signal, activeChatId, activeChat, conversation, setConversation, activeChatIdRef,
+		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory,
+	};
 }

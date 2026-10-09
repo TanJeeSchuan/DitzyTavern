@@ -118,6 +118,7 @@ export type StoryAction =
 	//  The view requested an adjacent page; further requests are ignored until
 	// it arrives or fails.
 	| { type: "load-more-started" }
+	| { type: "paging-cancelled" }
 	| { type: "history-failed" }
 	| { type: "message-deleted"; messageId: number; revision: number }
 	// @approved
@@ -357,6 +358,8 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			return (state.status === "ready" || state.status === "error") && (state.page?.hasOlder === true || state.page?.hasNewer === true)
 				? { ...state, status: "loading-more" }
 				: state;
+		case "paging-cancelled":
+			return state.status === "loading-more" ? { ...state, status: "ready" } : state;
 		case "history-failed":
 			return { ...state, status: "error" };
 		case "message-deleted": {

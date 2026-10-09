@@ -1,5 +1,4 @@
 import type { Dispatch } from "react";
-import { loadHistoryPage } from "../chat-history";
 import {
 	type ConversationSummary,
 } from "../conversation";
@@ -27,6 +26,8 @@ const STORY_COMMAND_NOTICES = {
 const noPresentation = () => undefined;
 
 type StoryMessageActionsOptions = {
+	signal: AbortSignal;
+	refreshHistoryPage: (messageId: number) => Promise<void>;
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
@@ -47,6 +48,8 @@ type StoryMessageActionsOptions = {
  * history refresh for the edited Message without replacing the reading window.
  */
 export function useStoryMessageActions({
+	signal,
+	refreshHistoryPage,
 	story,
 	conversation,
 	dispatchStory,
@@ -61,6 +64,7 @@ export function useStoryMessageActions({
 		revision: () => conversation?.revision ?? story.revision,
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
+		isCurrent: () => !signal.aborted,
 	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
@@ -138,18 +142,7 @@ export function useStoryMessageActions({
 			content,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => {
-				// @approved
-				//  Reload the edited Message's page so authoritative content replaces the
-				// local edit without drifting from the server's read model.
-				void loadHistoryPage(conversationId, { aroundMessageId: messageId }).then(
-					(freshHistory) => {
-						if (freshHistory.outcome === "available") {
-							dispatchStory({ type: "history-refreshed", page: freshHistory.value });
-						}
-					},
-				);
-			},
+			onApplied: () => { void refreshHistoryPage(messageId); },
 		});
 	};
 

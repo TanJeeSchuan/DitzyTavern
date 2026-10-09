@@ -155,3 +155,96 @@ five existing Vite font 403s and no React warnings/errors.
 **Limits:** no e2e suite was run, as requested. Browser Generation/history were scripted; a real provider
 Generation was not verified. Combined hook test runs emit React act warnings; the existing session test
 file passes without them in isolation. Transient T9b failures were not edited by this ticket. Existing contract/font warnings remain.
+
+### Review fix round 1
+
+- [x] Reproduce and classify all seven findings against `099abf7~1`; inspect production session callers.
+- [x] Pin and fix every introduced finding and small reachable pre-existing finding.
+- [x] Run required verification and independent Standards / Spec review.
+- [x] Record exact counts and commit owned paths.
+
+**Classification:** ran all seven mounted-hook reproductions against a `/tmp` tree extracted with
+`git archive 099abf7~1 src package.json tsconfig.json`, reusing only current `render-hook.ts` and the
+installed dependencies. Pre-T9c: **3 pass / 4 fail / 8 assertions across 1 file**; those passing are
+#3, #5, #6. Replacing the session with the T9c source and adding its `conversation-query.ts` produced
+**0 pass / 7 fail / 7 assertions across 1 file**. The fixture sends deferred real HTTP responses through
+Eden; no internal hook or command runner is mocked. Diagnostic scripts and logs stay under `/tmp`.
+
+1. **PRE-EXISTING — fixed.** Start Delete of Message 105, select A→B→A, then resolve Delete.
+   Both sources removed 105 from the replacement Story; pre-T9c also adopted the old summary.
+   Pin: “Delete settling after A to B to A cannot remove a replacement Story Message”.
+   The command runner's `surface.isCurrent` now checks the captured session signal before all effects.
+2. **PRE-EXISTING — fixed.** Edit starts an around-Message history read, refresh settles revision 8,
+   then resolve Edit history at revision 6. Both sources rolled the Story back to 6.
+   Pin: “Edit history settling after refresh cannot roll back the Story revision”.
+   Edit now uses the session's keyed history read and revision-checked settlement.
+3. **INTRODUCED — fixed.** Open with summary revision 6 and history revision 5. Pre-T9c became ready;
+   T9c remained `loading-first`. Pin: “initial history behind Conversation authority refetches and
+   finishes opening”. The subscribed query refetches its current key with its cancellation signal;
+   fetching state deduplicates StrictMode and repeated renders (two history GETs, one summary GET).
+4. **PRE-EXISTING — fixed.** Hold refresh's latest page, page older to [103,104,105,106], then resolve
+   refresh. Both sources reduced the window to [105,106]. Pin: “refresh retains older Messages loaded
+   while its latest page is pending”. Refresh updates the current committed window and merges the
+   latest page; explicit source/latest navigation still replaces the window.
+5. **INTRODUCED — fixed.** Start older paging, navigate to visible Message 105, resolve the old paging,
+   then page again. Pre-T9c let paging finish and remained usable; T9c aborted it but stayed
+   `loading-more`. Pin: “navigation to a visible Message cancels paging and permits another older page”.
+   A `paging-cancelled` reducer transition restores `ready` while the signal cancels the old work.
+6. **INTRODUCED — fixed.** Batch A→B→A selections before commit, then publish revision 6.
+   Pre-T9c accepted 6; T9c kept its aborted memoized owner and ignored it. Pin: “batched A to B to A
+   selection creates a usable replacement owner”. Selection state now carries a fresh owner per
+   transition, keeping the synchronous active-Chat pointer and rejecting the old owner's publication.
+7. **PRE-EXISTING / NOT REACHABLE — follow-up.** Both sources leave the second Story at revision 5
+   after the first of two same-Conversation sessions refreshes to 6. No permanent pinning test was
+   added because the user explicitly excludes unreachable findings from this fix round.
+   Diagnostic pin: “#7 two session Stories share refresh” in the temporary reproduction file.
+
+**Counts:** **3 introduced / 4 pre-existing; 6 fixed / 1 follow-up; 6 added regression tests**, each
+observed failing before its fix and passing after. All prior session assertions remain intact.
+The three reachable pre-existing fixes each change fewer than 40 production lines.
+
+**Removed:** value-only selection ownership and Edit's direct unguarded HTTP/reducer completion.
+**Introduced:** selection-owned cancellation identity, runner signal guard, one session page-refresh
+entry point, an opening refetch, and one paging-cancelled reducer transition.
+**Behavior changed:** stale commands and Edit pages cannot affect replacement/newer Stories;
+revision-skewed opens finish, refresh preserves loaded pages, and cancelled paging remains usable.
+No compatibility path, request counter, reducer mirror, or additional query key was added.
+
+#### Follow-ups
+
+#7 requires two simultaneous session/Story owners for one Conversation. Production has one hook call,
+`ActiveWritingWorkspace.tsx:72`; `StoryStage` receives that session and does not mount another one.
+The app renders one active workspace. FFF omitted these consumer matches, so the permitted `rg`
+fallback verified the callers. Reproduction: mount two sessions with one QueryClient at revision 5,
+serve summary/history revision 6 to `first.refreshStory(1)`, then inspect the second Story: still 5.
+If production gains a second session, add subscribed revision-aware history-window reconciliation and
+pin both readers' Messages and revisions. Summary-only readers already share the authoritative key.
+
+**Review:** independent Luna Standards review **0 findings**; independent Luna Spec review **0 findings**.
+Both received the seven original findings, classification results, rejected approaches, and the owned
+uncommitted diff against `099abf7`. No unresolved review objections.
+
+**Verification:**
+
+- `bun run typecheck`: final exit 0. An earlier run saw eight transient errors in other tickets'
+  editor/Generation Settings/Memory files; their owners corrected them, with no changes here.
+- `bun run lint`: exit 0; **355 warnings / 0 errors**, none in this change's code.
+- `bun run check:contracts`: exit 0; **640 structural declarations, 151 schema derivations,
+  11 existing suspicious cross-layer matches**.
+- `bun test src/client`: **358 pass / 0 fail / 1220 assertions across 34 files**.
+- Three targeted hook files: **39 pass / 0 fail / 121 assertions across 3 files**.
+- Owned-path `git diff --check`: clean.
+- `bun run test`: exit 1; **1431 pass / 3 fail / 6033 assertions across 161 files**.
+  All three failures are timeouts outside owned code: `prose.test.ts` (“never takes back revealed text
+  as the stream grows”, 5s), `import-validation.test.ts` (“rejects a source that is not valid UTF-8”,
+  setup/teardown timeout), `shutdown.test.ts` (“one process deadline bounds unfinished HTTP, worker,
+  and generation work without closing their database”, 10s).
+- Isolated rerun of those three files: **10 pass / 1 fail / 1 unhandled error / 34 assertions
+  across 3 files**. Both server files passed, including both timed-out cases; prose could not import
+  because it relies on other client tests establishing `window`. A minimal `/tmp` browser-location
+  preload then allowed the prose file to run: **12 pass / 0 fail / 15 assertions across 1 file**,
+  including its timed-out case. No unrelated production or test source was edited for these reruns.
+
+No e2e, browser/server process, dependency installation, or worktree creation was used.
+Combined hook runs retain the existing React act warnings; isolated session tests pass without them.
+Concurrent edits outside the seven owned paths are excluded from staging.
