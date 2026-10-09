@@ -22,7 +22,7 @@ const draftOf = ({ revision: _revision, enabled: _enabled, ...draft }: MemorySet
 
 export function MemorySettingsEditor() {
 	const [state, setState] = useState<State>(initial);
-	const connectionsQuery = useConnectionSettingsQuery();
+	const connectionsQuery = useConnectionSettingsQuery({ refreshOnOpen: true });
 	const connections = connectionsQuery.data ?? null;
 	const applyLoaded = useCallback((settings: MemorySettings) => setState({
 		settings, draft: draftOf(settings), loading: false, pending: false, error: null, notice: null,

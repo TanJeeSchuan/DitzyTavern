@@ -70,7 +70,7 @@ export function useSemanticTriggerSettings() {
 
 export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerDraftEditor; onBack: () => void }) {
 	const navigate = useNavigationRequest();
-	const connections = useConnectionSettingsQuery();
+	const connections = useConnectionSettingsQuery({ refreshOnOpen: true });
 	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
 	const { settings, draft } = semanticTriggers;
 	return (

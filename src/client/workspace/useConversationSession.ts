@@ -94,7 +94,9 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		const current = currentSession().story;
 		const authority = client.getQueryData<ConversationSummary | null>(conversationKey(action.page.conversationId));
 		if (current.conversationId !== action.page.conversationId || action.page.revision < Math.max(current.revision ?? 0, authority?.revision ?? 0)) return false;
-		applyStory(action.type === "next-page-arrived" ? action : { ...action, activeGenerationIds: authority?.activeGenerations.map(({ generationId }) => generationId) });
+		if (action.type === "next-page-arrived") { applyStory(action); return true; }
+		const cachedGenerationIds = authority?.activeGenerations.map(({ generationId }) => generationId);
+		applyStory({ ...action, activeGenerationIds: action.activeGenerationIds ?? cachedGenerationIds });
 		return true;
 	}, [client, applyStory]);
 

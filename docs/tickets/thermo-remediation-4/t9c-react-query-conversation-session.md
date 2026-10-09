@@ -264,3 +264,14 @@ Concurrent edits outside the seven owned paths are excluded from staging.
   history to `[103..106]`, resolve refresh → `[105,106]`.
 - **#7 (pre-existing, unreachable):** two `useConversationSession` instances for one Conversation don't share history updates.
   Production mounts one session.
+
+### Final e2e (orchestrator fix)
+
+- `e2e/recovery.spec.ts` "a graceful restart keeps the partial reply" failed ~40% of runs after 099abf7 (0/26 on 3257675). Stream
+  events for the Provisional Variant landed before the refresh page that introduces its Message — the query-backed read settles a few
+  milliseconds later than the old direct read — and the reducer dropped them; the page then placed the Variant with the empty
+  pre-stream snapshot and no further events came. The story now holds `unplacedObservations` and replays them when a page places a
+  Variant with the same live Generation (events already reflected in the page's `liveGeneration.eventId` are skipped; a Variant whose
+  Generation finished drops them). `applyPage` also keeps a caller-supplied `activeGenerationIds` (the fresh Conversation in
+  `refreshStory`) instead of always substituting the cached summary. 0/28 after the fix. Pinned by story.test.ts "stream events that
+  land before the page placing their Variant replay once it arrives".

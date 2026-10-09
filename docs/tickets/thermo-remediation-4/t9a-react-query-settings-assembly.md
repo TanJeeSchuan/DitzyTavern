@@ -139,3 +139,10 @@ and lint warnings were not changed.
   closed B's confirmation and reported "A deleted." The action now carries `deletedProfileId`; it leaves state untouched when a
   different profile's confirmation is open. Server authority still publishes to the shared cache unconditionally.
   Pinned by "a late deletion result leaves another profile's deletion confirmation open" (fails without the guard).
+
+### Final e2e (orchestrator fix)
+
+- `e2e/connections.spec.ts` "Semantic Trigger settings read failure" failed after c5cd09b: with one shared Connection Settings cache the
+  Semantic Trigger and Memory settings editors no longer re-read on open (pre-T9a they did), so a failing read and profiles changed in
+  another tab never surfaced. `useConnectionSettingsQuery({ refreshOnOpen: true })` refetches on mount for those two editors only;
+  passive readers keep one shared request (the StrictMode dedup test still holds).

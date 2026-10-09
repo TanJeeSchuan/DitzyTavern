@@ -9,10 +9,11 @@ export const publishConnectionSettings = (client: QueryClient, settings: Connect
 	return client.setQueryData<ConnectionSettings>(connectionSettingsKey, (current) => newerSettings(current ?? null, settings));
 };
 
-export function useConnectionSettingsQuery() {
+export function useConnectionSettingsQuery({ refreshOnOpen = false } = {}) {
 	return useQuery({
 		queryKey: connectionSettingsKey,
 		staleTime: Infinity,
+		refetchOnMount: refreshOnOpen ? "always" : true,
 		queryFn: async ({ signal }) => {
 			await Promise.resolve();
 			signal.throwIfAborted();

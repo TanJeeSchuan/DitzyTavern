@@ -690,6 +690,32 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
 	});
 
+	test("stream events that land before the page placing their Variant replay once it arrives", () => {
+		const observe = (eventId: number, text: string) => ({
+			type: "generation-observed" as const, stream: "content" as const, mode: "append" as const,
+			messageId: 11, variantId: 110, generationId: 55, eventId, text,
+		});
+		const provisional = (live: { eventId: number; content: string } | null, content = "") => {
+			const variant: ChatHistoryPage["messages"][number]["variants"][number] = {
+				id: 110, position: 1, content, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+			};
+			if (live) variant.liveGeneration = { generationId: 55, eventId: live.eventId, content: live.content, reasoning: "" };
+			return page({ messages: [message({ id: 11, variants: [variant] })] });
+		};
+		const early = [observe(1, "The tide."), observe(2, " The lights."), observe(3, " Then the")]
+			.reduce(reduceStory, reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }));
+
+		const live = reduceStory(early, { type: "first-page", page: provisional({ eventId: 0, content: "" }), activeGenerationIds: [55] });
+		expect(variantContent(live, 110)?.content).toBe("The tide. The lights. Then the");
+
+		const checkpointed = reduceStory(early, { type: "first-page", page: provisional({ eventId: 2, content: "The tide. The lights." }), activeGenerationIds: [55] });
+		expect(variantContent(checkpointed, 110)?.content).toBe("The tide. The lights. Then the");
+
+		const finished = reduceStory(early, { type: "first-page", page: provisional(null, "The tide. The lights. Then the end.") });
+		expect(variantContent(finished, 110)?.content).toBe("The tide. The lights. Then the end.");
+		expect(finished.unplacedObservations).toEqual([]);
+	});
+
 	test("history checkpoint and replay resume share one ordered projection", () => {
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
 		state = reduceStory(state, {

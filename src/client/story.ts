@@ -98,7 +98,13 @@ export interface StoryState {
 	page: StoryPaging | null;
 	status: "idle" | "loading-first" | "loading-more" | "ready" | "error";
 	preview: StoryPreviewState | null;
+	// @approved
+	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
+	// Message it introduces; they replay once their Variant arrives with the same live Generation.
+	unplacedObservations: readonly GenerationObservation[];
 }
+
+type GenerationObservation = Extract<StoryAction, { type: "generation-observed" }>;
 
 export type StoryAction =
 	// @approved
@@ -168,6 +174,7 @@ export const createStoryState = (): StoryState => ({
 	page: null,
 	status: "idle",
 	preview: null,
+	unplacedObservations: [],
 });
 
 // @approved
@@ -299,7 +306,23 @@ const acceptsGenerationObservation = (
 		variant.generationId === generationId) &&
 	(eventId === undefined || eventId > (variant.lastEventId ?? 0));
 
+const findVariant = (state: StoryState, { messageId, variantId }: GenerationObservation) =>
+	state.messages.find((message) => message.id === messageId)?.swipes.find((variant) => variant.id === variantId);
+
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
+	if (action.type === "generation-observed" && findVariant(state, action) === undefined) {
+		return { ...state, unplacedObservations: [...state.unplacedObservations, action] };
+	}
+	const next = reduceStoryAction(state, action);
+	if (next.messages === state.messages || next.unplacedObservations.length === 0) return next;
+	const placed = next.unplacedObservations.filter((observation) => findVariant(next, observation) !== undefined);
+	if (placed.length === 0) return next;
+	const replayable = placed.filter((observation) => findVariant(next, observation)?.generationId === observation.generationId);
+	const unplacedObservations = next.unplacedObservations.filter((observation) => !placed.includes(observation));
+	return replayable.reduce(reduceStoryAction, { ...next, unplacedObservations });
+}
+
+function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 	switch (action.type) {
 		case "chat-opened":
 			return {
