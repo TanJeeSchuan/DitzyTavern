@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { DecisionModelPicker } from "../DecisionModelPicker";
-import { loadConnectionSettings, type ConnectionSettings } from "../connection-settings";
+import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { Slider } from "@/components/ui/slider";
 import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type SemanticTriggerSettings, type SemanticTriggerSettingsResult } from "../semantic-trigger-settings";
 import type { SemanticTriggerSettingsCommand } from "../../shared/contract/semantic-trigger-settings";
@@ -59,12 +59,7 @@ export function useSemanticTriggerSettings() {
 
 export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerSettingsController; onBack: () => void }) {
 	const navigate = useNavigationRequest();
-	const [connections, setConnections] = useState<ConnectionSettings | null>(null);
-	const [connectionError, setConnectionError] = useState<string | null>(null);
-	const loadConnections = useCallback((isCancelled: () => boolean = () => false) => loadConnectionSettings()
-		.then((settings) => { if (!isCancelled()) { setConnections(settings); setConnectionError(null); } })
-		.catch(() => { if (!isCancelled()) setConnectionError("Connection Settings could not be loaded."); }), []);
-	useAsyncEffect((isCancelled) => { void loadConnections(isCancelled); }, [loadConnections]);
+	const connections = useConnectionSettingsQuery();
 	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
 	const { settings, draft } = semanticTriggers;
 	return (
@@ -81,11 +76,11 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 						</div>
 					) : (
 						<div className="grid gap-4">
-							{connectionError !== null ? <div className="grid justify-items-start gap-2">
-								<p className="text-xs text-destructive" role="alert">{connectionError}</p>
-								<Button type="button" size="sm" variant="outline" onClick={() => void loadConnections()}>Try again</Button>
+							{connections.isError ? <div className="grid justify-items-start gap-2">
+								<p className="text-xs text-destructive" role="alert">Connection Settings could not be loaded.</p>
+								<Button type="button" size="sm" variant="outline" onClick={() => void connections.refetch()}>Try again</Button>
 							</div> : <Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
-								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
+								<DecisionModelPicker selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
 							</Field>}
 							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
 								<NumberRow

@@ -2,7 +2,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
 import { ChevronsUpDown, ImageOff, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { loadConnectionSettings, saveConnectionCommand, setTextOnlyModel, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
+import { saveConnectionCommand, setTextOnlyModel, type ConnectionProfile } from "./connection-settings";
+import { useQueryClient } from "@tanstack/react-query";
+import { publishConnectionSettings, useConnectionSettingsQuery } from "./connection-settings-query";
 import { commitModelId, modelSuggestions, togglePinnedModel } from "./model-selection";
 
 export interface ProfileModelChoice {
@@ -10,9 +12,7 @@ export interface ProfileModelChoice {
 	modelId: string;
 }
 
-export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "chat-completions", selected, onSelect, disabled = false, side = "bottom", emptyLabel, label = "Model", children }: {
-	settings: ConnectionSettings | null;
-	onSettingsChange: (settings: ConnectionSettings) => void;
+export function ProfileModelPicker({ apiFormat = "chat-completions", selected, onSelect, disabled = false, side = "bottom", emptyLabel, label = "Model", children }: {
 	apiFormat?: ConnectionProfile["apiFormat"];
 	selected: ProfileModelChoice | null;
 	onSelect: (profile: ConnectionProfile, modelId: string) => Promise<void> | void;
@@ -22,6 +22,9 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 	label?: string;
 	children?: ReactElement;
 }) {
+	const client = useQueryClient();
+	const connections = useConnectionSettingsQuery();
+	const settings = connections.data ?? null;
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
 	const [pending, setPending] = useState(false);
@@ -55,10 +58,10 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 		try {
 			const result = await saveConnectionCommand({ type: "set-pinned-models", expectedRevision: settings.revision, profileId: profile.id, pinnedModels });
 			if (result.outcome === "available") {
-				onSettingsChange(result.value.settings);
+				publishConnectionSettings(client, result.value.settings);
 				setNotice(pinnedModels.includes(modelId) ? `${modelId} pinned.` : `${modelId} unpinned.`);
 			} else if (result.outcome === "conflict") {
-				onSettingsChange(result.currentSettings);
+				publishConnectionSettings(client, result.currentSettings);
 				setError("Connection Settings changed elsewhere; pins were not changed.");
 			} else if (result.outcome === "invalid" || result.outcome === "unusable") {
 				setError(result.reason);
@@ -81,7 +84,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 			if (next === null) {
 				setError("The text-only mark could not be saved.");
 			} else {
-				onSettingsChange(next);
+				publishConnectionSettings(client, next);
 				setNotice(textOnly ? `${modelId} marked text-only.` : `${modelId} accepts Images again.`);
 			}
 		} finally {
@@ -95,7 +98,6 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 			if (next) {
 				setQuery("");
 				setError(null);
-				void loadConnectionSettings().then(onSettingsChange).catch(() => setError("Connection Settings could not be loaded."));
 			}
 		}}>
 			<PopoverTrigger asChild>
@@ -171,7 +173,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 						</CommandGroup>)}
 						{settings !== null && profiles.length === 0 && <p className="model-selector-empty">{emptyLabel}</p>}
 						{profiles.length > 0 && groups.length === 0 && <p className="model-selector-empty">Search or enter a model ID to choose it for a connection.</p>}
-						{error !== null && <p className="model-selector-empty is-error" role="alert">{error}</p>}
+						{(error !== null || connections.isError) && <p className="model-selector-empty is-error" role="alert">{error ?? "Connection Settings could not be loaded."}</p>}
 					</CommandList>
 				</Command>
 				{notice !== null && <span className="sr-only" role="status">{notice}</span>}

@@ -3,8 +3,8 @@ import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
 import { commitConversationModel } from "./model-selection-command";
-import { loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
-import { useAsyncEffect } from "./lib/use-async";
+import { type ConnectionProfile } from "./connection-settings";
+import { useConnectionSettingsQuery } from "./connection-settings-query";
 import { ProfileModelPicker, type ProfileModelChoice } from "./ProfileModelPicker";
 
 export function ModelSelector({ conversation, disabled = false, disabledReason, onConversationChange }: {
@@ -16,15 +16,12 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	const client = useQueryClient();
 	const generation = useQuery({ queryKey: ["generation-settings", conversation.id], queryFn: ({ signal }) => loadConversationGenerationSettings(conversation.id, signal) });
 	const selected: ProfileModelChoice | null = generation.data === undefined ? null : { connectionProfileId: generation.data.connectionProfileId, modelId: generation.data.modelId };
-	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
+	const connections = useConnectionSettingsQuery();
+	const settings = connections.data ?? null;
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const reasonId = useId();
-
-	useAsyncEffect((isCancelled) => {
-		void loadConnectionSettings().then((connections) => { if (!isCancelled()) setSettings(connections); }).catch(() => { if (!isCancelled()) setError("Model settings could not be loaded."); });
-	}, [conversation.id]);
 
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
 
@@ -58,8 +55,6 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	return (
 		<div className="model-selector">
 			<ProfileModelPicker
-			settings={settings}
-			onSettingsChange={setSettings}
 			selected={selected}
 			onSelect={updateSelection}
 			disabled={disabled || pending}
@@ -75,7 +70,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 				</button>
 			</ProfileModelPicker>
 			{disabledReason && <small id={reasonId} className="model-selector-note">{disabledReason}</small>}
-			{(error !== null || generation.isError) && <small className="model-selector-note is-error" role="alert">{error ?? "Model settings could not be loaded."}</small>}
+			{(error !== null || generation.isError || connections.isError) && <small className="model-selector-note is-error" role="alert">{error ?? "Model settings could not be loaded."}</small>}
 			{notice !== null && <span className="sr-only" role="status">{notice}</span>}
 		</div>
 	);

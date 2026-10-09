@@ -35,67 +35,100 @@ Client "latest-wins" concurrency is hand-rolled ~40 times with `useRef(0)` reque
 - [x] typecheck, lint, `bun run test`; drive the connection-settings and assembly panels in the app with playwright-cli
 - [x] Commit
 
+## Review fix round 1
+
+- [x] Retain editable previews across reconnects; explicit Refresh still replaces the plan.
+- [x] Reject save results after A→B→A editor changes.
+- [x] Cancel session ownership on switch/unmount; reject every late mutation effect.
+- [x] Prevent late settings reads from rolling back authoritative writes.
+- [x] Share the connection query across all readers and publish all writes/conflicts.
+- [x] Restore lifecycle/conflict/deletion behavior tests; run required checks and commit.
+
 ## Acceptance
 
 No request/version counter refs remain in either file.
 
 ## Outcome
 
-**Before.** The grep matched `commandIdRef = useRef(0)` and the `editorVersionRef` mirror in
-`useConnectionSettingsController.ts` (plus the reducer's `editorVersion`/`latestCommandId` fields and the
-`command-started`/`commandId` action plumbing), and `nextAssemblyRequestIdRef = useRef(1)` in
-`useAssemblyController.ts` (plus `issueAssemblyRequestId` / `invalidateAssemblyRequests` /
-`isCurrentAssemblyRequest` / `canApplyAssemblyEffect`, `assemblyMountedRef`, `preparingRef`, the
-`lastGenerationRef` state ref, and the whole `reduceAssemblySession` request-id reducer with its 9 actions).
+Initial implementation: `23c211e`. Review fix round 1 replaces its serialized editor matching and closes
+its reconnect, session-ownership, and settings-cache races. No request/version counter refs remain.
 
-**Removed.**
-- `useConnectionSettingsController`: both counter refs; the `editorVersion`/`latestCommandId` reducer machinery
-  (`editorChanged`, `ownsEditorResult`, `command-started`, the `commandId` guards on `set-error` /
-  `command-conflict` / `apply-succeeded` / `delete-succeeded`); the `useAsyncEffect` load; the
-  `loading`/`testPending`/`discoveryPending`/`saving` flag states; `runConnectionCommand`.
-- `connection-settings-state`: `settings` and `presets` left the reducer (server data now lives in the query
-  cache); `load-succeeded`/`load-failed` actions; the dead `credentialWasProvided` notice branch (it was
-  hardcoded `false`).
-- `useAssemblyController`: every `useRef`; the assembly request-id reducer and `assembly-session.test.ts`
-  with it; the manual `dispatchAssembly` lifecycle.
-- `assembly-session.ts`: `reduceAssemblySession`, `AssemblySessionAction`, `ownsRequest`; `AssemblySession` is
-  now `{ phase, preview, error }`.
+**Removed:** `sameEditorSnapshot` and its serialized field comparisons; conversation-id-only mutation
+ownership; independent Connection Settings state and fetches in ModelSelector, ProfileModelPicker, Memory,
+and Semantic Trigger settings; the pickers' `settings`/`onSettingsChange` props and their forwarding.
 
-**Introduced.**
-- `useConnectionSettingsController`: `useQuery` for `["connection-settings","settings"]` and
-  `["connection-settings","presets"]` with `signal`; one `mutationKey`-scoped command mutation for
-  create/apply/delete/reset, one for Test Connection, one for discovery. Results fold into the cache through
-  `newerSettings`; the reducer receives editor/feedback actions. `sameEditorSnapshot` replaces the version
-  counters: a command result adopts the server's Profile only while the submitted selection, draft, credential,
-  and headers still match the editor that sent it. Stale conflicts (an `actualRevision` below the cached
-  revision) are folded into the cache but not surfaced, matching the old guard.
-- `useAssemblyController`: `useQuery` keyed by the assembly request (`skipToken` while closed) running
-  `previewConversationGeneration(..., signal)`; plan edits go through `setQueryData`; two `mutationKey`-scoped
-  start mutations (direct, acceptance) share one `issueGeneration`; `phase` is derived from
-  `isFetching`/`isPending`/error. Cancel and conversation switch clear the request state and cancel the preview
-  queries.
-- `loadConnectionSettings`, `loadConnectionPresets`, `previewConversationGeneration` take an `AbortSignal` and
-  pass `{ fetch: { signal } }`.
+**Introduced:** a reducer-owned immutable `editorIdentity` replaced on edit/selection/discard; a session
+AbortController captured by every Generation submission and aborted on switch/unmount; a synchronous
+one-shot start gate; `connection-settings-query.ts` with one shared key, read options, and authoritative
+publication that cancels pending reads before folding revisions into the cache. Settings and presets defer
+transport to the next microtask so StrictMode's superseded subscription aborts before making a request.
+Discovery uses its `settingsRevision` when merging a returned Profile, rejecting older results.
 
-**Behavior changed.** Reads and the preview abort in flight on cancel/key change instead of being ignored on
-return; stale suppression is react-query's. `applyDraft` returns whether the command applied instead of
-"editor unchanged since submit"; the reducer still refuses to overwrite a newer draft (only the modal SaveGuard
-path consumed the difference, and its dialog makes the editor unreachable while saving). Reset-credential
-conflicts now fold the authoritative snapshot into the cache (feedback unchanged).
+**Behavior changed:** reconnect cannot replace an edited preview; only explicit Refresh reassembles it.
+Reopening a closed preview fetches a fresh plan. Returning an editor from A to B to A cannot adopt an old
+save, clear its credential draft, or report success. Late Generation completions cannot close a new panel,
+clear its draft, or report acceptance. Reads cannot roll back saved settings, including text-only writes that
+keep the same revision. Every connection reader sees writes and conflicts without reloading.
+Memory Settings and Semantic Trigger Settings are different resources: their own drafts/reads remain;
+only their independent reads of the Connection Settings resource were removed.
 
-**Verification.**
-- `grep -nE 'Ref = useRef\((0|1)\)|VersionRef|requestIdRef'` over both controllers: no match.
-- `bun run typecheck` exit 0; `bun run lint` exit 0, no new warnings (the controller's two pre-existing
-  >200-column lines remain); `bun run check:contracts` exit 0; `bun run test` 1357 pass / 0 fail; the two
-  settings panels and the assembly panel driven in the dev app with playwright-cli (create/save/adopt profile,
-  edit+save, test-connection failure outcome, discovery failure, delete, SaveGuard "Save and leave"; preview
-  open/edit/refresh-discards-edit/cancel, mocked preview failure + Retry success, acceptance failure alert with
-  the panel retained, direct-start failure toast). Only the expected HTTP-error console entries; no React
-  errors. `.playwright-cli/` artifacts deleted.
-- The dev server on port 3000 was stale (pre-T2) and returned 500 on the commands route; restarted from the
-  current worktree for the browser check.
+**Behavior constraints and evidence:**
 
-**Residuals.**
-- A discovery refresh that completes after a concurrent Profile save still merges the pre-save profile snapshot
-  into the cache; pre-existing race, unchanged and out of scope.
-- The two pre-existing >200-column warnings in the controller stay for T12.
+- **Latest wins:** `assembly-session.test.ts` — “conversation switch closes the preview and rejects the
+  older read”; Connection controller test — “a late settings read cannot roll back a successful save”.
+  `connection-settings-state.test.ts` — “a save result cannot adopt after editing A to B and back to A”.
+- **Abort:** assembly cancel/switch tests assert the HTTP signal is aborted. “a settings request aborts
+  when its last reader unmounts” also rejects a late response. Generation transport accepts the submission
+  signal for send/continuation/sibling; `issueGeneration` checks it before/after `ensureLatest` and after HTTP.
+- **No duplicate fetch:** “StrictMode mount and repeated readers share one settings request and all see
+  writes” and “StrictMode and rerenders issue one settings read and one presets read”. Assembly uses one
+  request-keyed query; “an edited plan survives reconnect; explicit Refresh replaces it” asserts one read
+  through edits/reconnect and exactly one additional read for explicit Refresh.
+- **No resurrection:** assembly tests cover acceptance after unmount, A→B→A, switching while waiting for
+  latest, switching during `refreshStory`, and preparation resolving after unmount. `finishStart` and both
+  mutation error callbacks check the captured session signal; completion after story refresh checks it again.
+  Editor identity rejects save adoption into a later selection/draft; cache authority remains shared server data.
+- **Optimistic revision / 409 adoption:** Connection hook tests “a conflict adopts authority for every
+  reader while retaining the edited Profile” and “deletion adopts authority for every reader and clears
+  pending deletion” restore the lost assertions. They check command bodies, revisions, cache authority,
+  retained draft/credential, and deletion feedback. Assembly success checks submitted `expectedRevision`.
+- **Cache freshness:** all readers call `useConnectionSettingsQuery`; profile commands, pin commands,
+  text-only writes (including GenerationErrorToast), and conflict results call `publishConnectionSettings`.
+  Discovery cancels reads before its revision-aware cache update. “a late read cannot undo a text-only write
+  at the same revision” covers the resource's non-revision-bumping write. Infinite staleTime avoids a second
+  fetch on panel mounts; successful writes directly notify every observer.
+- **Cost:** the shared-read test mounts 21 simultaneous readers, rerenders, then mounts another reader
+  after publication: one HTTP read throughout. Neither query has a per-Profile request.
+
+**Restored assembly coverage:** stale-response rejection; edited-plan retention through acceptance failure
+and retry; one-shot acceptance (two calls in one render); closure on success, cancel, and Conversation
+switch. Additional tests cover fresh reopen, reconnect retention, and the session cancellation races above.
+Targeted behavior tests: **28 pass / 0 fail / 116 assertions across 3 files**.
+
+**Regression verification against `23c211e`:** a temporary source archive (no worktree or install) ran the
+new ABA reducer test, acceptance-after-unmount hook test, and late-settings-read hook test. Each failed
+for the reported behavior: “Local edit” became “Saved”; clear/refresh/accepted fired after unmount;
+revision 3 became 2. The temporary archive was removed. All three pass with the fixes.
+
+**Required verification:**
+
+- `bun run typecheck`: exit 0.
+- `bun run lint`: exit 0; **343 existing warnings, 0 errors**; no new warnings in changed code.
+- `bun run check:contracts`: exit 0; **631 structural declarations, 151 schema derivations,
+  11 existing suspicious cross-layer matches**.
+- `bun test src/client`: **301 pass / 0 fail / 1038 assertions, 30 files**.
+- `bun run test`: **1377 pass / 0 fail / 5858 assertions, 157 files**.
+- Code-review skill: independent Luna Standards and Spec reviewers, **0 findings on each axis**.
+
+**Browser:** port 3000 was free; started owned server/Vite processes. T3 preview opening was unavailable
+because AppArmor blocked its browser sandbox, so the installed playwright-cli was used. Created/saved a
+temporary Profile; the composer picker saw it without reload; pin and text-only changes reached Memory's
+picker and the Connection list; opened Semantic Trigger settings. Mocked assembly preview/start responses
+verified edited-plan retention after offline/online events and two failed acceptance requests, explicit Refresh
+(two preview reads total), and Cancel preserving the draft. Deleted the temporary Profile, closed the named
+browser, removed `.playwright-cli/`, and stopped only the two owned servers. Browser console contained
+five pre-existing Vite font 403s and two intentional mocked HTTP 422s; no React errors.
+
+**Limits:** no e2e suite was run, as requested. Generation success is covered with the real hook/transport
+and scripted HTTP response; no paid provider generation was attempted. The existing contract-audit matches
+and lint warnings were not changed.

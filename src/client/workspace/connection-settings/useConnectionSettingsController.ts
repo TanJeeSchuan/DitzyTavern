@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useReducer } from "react";
 import {
 	loadConnectionPresets,
-	loadConnectionSettings,
 	refreshDiscoveryCatalog,
 	saveConnectionCommand,
 	testConnectionDraft,
@@ -17,7 +16,6 @@ import {
 } from "../../connection-settings";
 import {
 	createConnectionSettingsControllerState,
-	newerSettings,
 	reduceConnectionSettingsController,
 	type ConnectionSettingsConflict,
 	type ConnectionSettingsEditorSnapshot,
@@ -25,6 +23,7 @@ import {
 	copyDraft,
 	headerEditorDataFor,
 } from "../../connection-settings-state";
+import { connectionSettingsKey as settingsKey, publishConnectionSettings, useConnectionSettingsQuery } from "../../connection-settings-query";
 import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { resolveRequestUrl } from "../../../shared/connection-url";
 
@@ -42,8 +41,6 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
 const PROFILE_NOT_FOUND_ERROR = "The selected Profile no longer exists.";
 const LOAD_ERROR = "Connection Settings could not be loaded.";
-
-const settingsKey = ["connection-settings", "settings"] as const;
 
 // @approved
 //  One submission shape per Profile command family, so the shared command
@@ -123,13 +120,15 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		notice,
 		error,
 	} = state;
-	const settingsQuery = useQuery({
-		queryKey: settingsKey,
-		queryFn: ({ signal }) => loadConnectionSettings(signal),
-	});
+	const settingsQuery = useConnectionSettingsQuery();
 	const presetsQuery = useQuery({
 		queryKey: ["connection-settings", "presets"],
-		queryFn: ({ signal }) => loadConnectionPresets(signal),
+		staleTime: Infinity,
+		queryFn: async ({ signal }) => {
+			await Promise.resolve();
+			signal.throwIfAborted();
+			return loadConnectionPresets(signal);
+		},
 	});
 	const settings = settingsQuery.data ?? null;
 	const presets = presetsQuery.data ?? [];
@@ -147,7 +146,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		mutationFn: (submission: ConnectionCommandSubmission) => saveConnectionCommand(submission.command),
 			onSuccess: (result, submission) => {
 			if (result.outcome === "conflict") {
-				client.setQueryData<ConnectionSettings>(settingsKey, (current) => newerSettings(current ?? null, result.currentSettings));
+				publishConnectionSettings(client, result.currentSettings);
 				if (submission.type === "reset-credential") dispatch({ type: "set-error", message: "Credential reset failed." });
 				else if (!conflictIsStale(result.actualRevision)) dispatch({ type: "command-conflict", conflict: result, message: APPLY_CONFLICT_ERROR });
 				return;
@@ -159,7 +158,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 				});
 				return;
 			}
-			const applied = client.setQueryData<ConnectionSettings>(settingsKey, (current) => newerSettings(current ?? null, result.value.settings)) ?? result.value.settings;
+			const applied = publishConnectionSettings(client, result.value.settings) ?? result.value.settings;
 			if (submission.type === "apply") dispatch({ type: "apply-succeeded", settings: applied, draftDisplayName: submission.draftDisplayName, submitted: submission.submitted });
 			else if (submission.type === "delete") dispatch({ type: "delete-succeeded", deletedDisplayName: submission.deletedDisplayName });
 			else dispatch({ type: "reset-credential-succeeded" });
@@ -177,7 +176,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		mutationFn: refreshDiscoveryCatalog,
 		onSuccess: (result) => {
 			if (result.outcome === "conflict") {
-				client.setQueryData<ConnectionSettings>(settingsKey, (current) => newerSettings(current ?? null, result.currentSettings));
+				publishConnectionSettings(client, result.currentSettings);
 				if (!conflictIsStale(result.actualRevision)) dispatch({
 					type: "command-conflict",
 					conflict: result,
@@ -186,14 +185,20 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 				return;
 			}
 			if (result.outcome !== "available") {
-				dispatch({ type: "refresh-failed", message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "not-found" ? PROFILE_NOT_FOUND_ERROR : "Model catalog refresh could not be completed." });
+				dispatch({
+				type: "refresh-failed",
+				message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason
+					: result.outcome === "not-found" ? PROFILE_NOT_FOUND_ERROR : "Model catalog refresh could not be completed.",
+			});
 				return;
 			}
 			if (result.value.outcome === "success") {
 				const refreshed = result.value.profile;
-				client.setQueryData<ConnectionSettings>(settingsKey, (current) => current === undefined
+				const settingsRevision = result.value.settingsRevision;
+				void client.cancelQueries({ queryKey: settingsKey });
+				client.setQueryData<ConnectionSettings>(settingsKey, (current) => current === undefined || settingsRevision < current.revision
 					? current
-					: { ...current, profiles: current.profiles.map((profile) => profile.id === refreshed.id ? refreshed : profile) });
+					: { revision: settingsRevision, profiles: current.profiles.map((profile) => profile.id === refreshed.id ? refreshed : profile) });
 				dispatch({ type: "refresh-succeeded", notice: `Model catalog refreshed. ${refreshed.discoveryCatalog.length} model IDs are available for autocomplete.` });
 				return;
 			}
@@ -229,7 +234,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	}, [draft.apiFormat, draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
 	const canSave = settings !== null && validationError === null;
-	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);
+	const dirty = editorOpen && (selectedProfile === undefined
+		|| JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile))
+		|| JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers))
+		|| credentialDraft.length > 0);
 
 	const choosePreset = (preset: ConnectionPreset) => {
 		dispatch({ type: "choose-preset", preset });
@@ -291,7 +299,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			type: "apply",
 			command: commandPayload,
 			draftDisplayName: draft.displayName,
-			submitted: { selectedProfileId, draft, credentialDraft, headerEditorData },
+			submitted: { selectedProfileId, editorIdentity: state.editorIdentity },
 		});
 		return result.outcome === "available";
 	};

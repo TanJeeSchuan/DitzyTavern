@@ -53,6 +53,7 @@ export const headerEditorDataFor = (
 };
 
 export type ConnectionSettingsControllerState = {
+	editorIdentity: symbol;
 	selectedProfileId: number | null;
 	draft: ConnectionProfileDraft;
 	credentialDraft: string;
@@ -67,6 +68,7 @@ export type ConnectionSettingsControllerState = {
 };
 
 export const createConnectionSettingsControllerState = (): ConnectionSettingsControllerState => ({
+	editorIdentity: Symbol(),
 	selectedProfileId: null,
 	draft: connectionProfileDraftOf(blankConnectionProfileDraft),
 	credentialDraft: "",
@@ -88,31 +90,14 @@ export const newerSettings = (
 	incoming: ConnectionSettings,
 ): ConnectionSettings => current === null || incoming.revision >= current.revision ? incoming : current;
 
-// @approved
-//  The editor fields a Profile command submits; the command result may adopt
-//  the server's copy only while every one of them still matches the editor
-//  that sent it.
-export type ConnectionSettingsEditorSnapshot = {
-	selectedProfileId: number | null;
-	draft: ConnectionProfileDraft;
-	credentialDraft: string;
-	headerEditorData: HeaderEditorData;
-};
-
-const sameEditorSnapshot = (
-	state: ConnectionSettingsControllerState,
-	submitted: ConnectionSettingsEditorSnapshot,
-): boolean =>
-	state.selectedProfileId === submitted.selectedProfileId &&
-	state.credentialDraft === submitted.credentialDraft &&
-	JSON.stringify(state.draft) === JSON.stringify(submitted.draft) &&
-	JSON.stringify(state.headerEditorData) === JSON.stringify(submitted.headerEditorData);
+export type ConnectionSettingsEditorSnapshot = Pick<ConnectionSettingsControllerState, "editorIdentity" | "selectedProfileId">;
 
 const profileEditorState = (
 	state: ConnectionSettingsControllerState,
 	profile: ConnectionProfile,
 ): ConnectionSettingsControllerState => ({
 		...state,
+		editorIdentity: Symbol(),
 		selectedProfileId: profile.id,
 		draft: copyDraft(profile),
 		credentialDraft: "",
@@ -157,6 +142,7 @@ export function reduceConnectionSettingsController(
 		case "choose-preset":
 			return {
 				...state,
+				editorIdentity: Symbol(),
 				selectedProfileId: null,
 				draft: copyDraft(action.preset.profile),
 				credentialDraft: "",
@@ -172,15 +158,18 @@ export function reduceConnectionSettingsController(
 		case "choose-profile":
 			return profileEditorState(state, action.profile);
 		case "set-draft":
-			return { ...state, draft: action.draft };
+			return { ...state, editorIdentity: Symbol(), draft: action.draft };
 		case "discard-draft":
-			return { ...state, selectedProfileId: null, draft: emptyConnectionProfileDraft, credentialDraft: "", headerEditorData: {}, editorOpen: false, notice: null, error: null, conflict: null };
+			return {
+				...state, editorIdentity: Symbol(), selectedProfileId: null, draft: emptyConnectionProfileDraft,
+				credentialDraft: "", headerEditorData: {}, editorOpen: false, notice: null, error: null, conflict: null,
+			};
 		case "set-credential-draft":
-			return { ...state, credentialDraft: action.value };
+			return { ...state, editorIdentity: Symbol(), credentialDraft: action.value };
 		case "set-header-editor-data":
-			return { ...state, headerEditorData: action.value };
+			return { ...state, editorIdentity: Symbol(), headerEditorData: action.value };
 		case "set-test-model-id":
-			return { ...state, testModelId: action.value };
+			return { ...state, editorIdentity: Symbol(), testModelId: action.value };
 		case "set-pending-deletion":
 			return { ...state, pendingDeletionProfileId: action.value };
 		case "request-deletion":
@@ -209,13 +198,14 @@ export function reduceConnectionSettingsController(
 		case "command-conflict":
 			return { ...state, conflict: action.conflict, error: action.message };
 		case "apply-succeeded": {
-			if (!sameEditorSnapshot(state, action.submitted)) return state;
+			if (state.editorIdentity !== action.submitted.editorIdentity) return state;
 			const saved = action.settings.profiles.find((profile) =>
 				(action.submitted.selectedProfileId !== null && profile.id === action.submitted.selectedProfileId) ||
 				(action.submitted.selectedProfileId === null && profile.displayName === action.draftDisplayName.trim().replace(/\s+/g, " ")),
 			);
 			const next = {
 				...state,
+				editorIdentity: Symbol(),
 				conflict: null,
 				testResult: null,
 				notice: "Changes saved. No provider request was made.",

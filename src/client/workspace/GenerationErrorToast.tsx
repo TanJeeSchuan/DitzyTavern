@@ -2,6 +2,8 @@ import { CircleAlert, X } from "lucide-react";
 import { Toast } from "radix-ui";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { publishConnectionSettings } from "../connection-settings-query";
 import { setTextOnlyModel } from "../connection-settings";
 import type { GenerationImageModel } from "../../shared/contract/generation-events";
 
@@ -14,6 +16,7 @@ export function GenerationErrorToast({ error, imageModel, retry, acknowledge }: 
 	retry: (() => void) | null;
 	acknowledge: () => void;
 }) {
+	const client = useQueryClient();
 	const [open, setOpen] = useState(false);
 	const [marking, setMarking] = useState(false);
 	const [markError, setMarkError] = useState<string | null>(null);
@@ -27,8 +30,10 @@ export function GenerationErrorToast({ error, imageModel, retry, acknowledge }: 
 		if (model === null || marking) return;
 		setMarking(true);
 		setMarkError(null);
-		if (await setTextOnlyModel(model.connectionProfileId, model.modelId, true) === null) setMarkError("The text-only mark could not be saved.");
+		const settings = await setTextOnlyModel(model.connectionProfileId, model.modelId, true);
+		if (settings === null) setMarkError("The text-only mark could not be saved.");
 		else {
+			publishConnectionSettings(client, settings);
 			acknowledge();
 			if (afterMark) retry?.();
 		}

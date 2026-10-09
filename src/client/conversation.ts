@@ -232,9 +232,10 @@ export async function startConversationGeneration(
 	content: string,
 	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
+	signal?: AbortSignal,
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, ...formatting, ...preview }, { fetch: { signal } }),
 		generationAccepted,
 		generationStartErrors,
 	);
@@ -245,13 +246,14 @@ export async function startConversationSiblingGeneration(
 	messageId: number,
 	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
+	signal?: AbortSignal,
 ) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
 			kind: "sibling",
 			...formatting,
 			...preview,
-		}),
+		}, { fetch: { signal } }),
 		generationAccepted,
 		generationPreviewErrors,
 	);
@@ -262,9 +264,10 @@ export async function startConversationContinuationGeneration(
 	expectedRevision: number,
 	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
+	signal?: AbortSignal,
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }, { fetch: { signal } }),
 		generationAccepted,
 		generationStartErrors,
 	);

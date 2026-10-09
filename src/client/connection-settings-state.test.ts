@@ -159,6 +159,24 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.notice).toBe("First deleted.");
 	});
 
+	test("a save result cannot adopt after editing A to B and back to A", () => {
+		const submitted = controllerState();
+		const changed = reduceConnectionSettingsController(submitted, {
+			type: "set-draft", draft: { ...submitted.draft, displayName: "B" },
+		});
+		const restored = reduceConnectionSettingsController(changed, { type: "set-draft", draft: submitted.draft });
+		const next = reduceConnectionSettingsController(restored, {
+			type: "apply-succeeded",
+			settings: { revision: 3, profiles: [profile(1, "Saved")] },
+			draftDisplayName: "Local edit",
+			submitted,
+		});
+
+		expect(next.draft.displayName).toBe("Local edit");
+		expect(next.credentialDraft).toBe("secret");
+		expect(next.notice).toBe("old notice");
+	});
+
 	test("a save result adopts the saved profile while the editor still matches", () => {
 		const state = controllerState();
 		const next = reduceConnectionSettingsController(state, {
@@ -167,9 +185,7 @@ describe("reduceConnectionSettingsController", () => {
 			draftDisplayName: "Local edit",
 			submitted: {
 				selectedProfileId: 1,
-				draft: state.draft,
-				credentialDraft: state.credentialDraft,
-				headerEditorData: state.headerEditorData,
+				editorIdentity: state.editorIdentity,
 			},
 		});
 
@@ -190,9 +206,7 @@ describe("reduceConnectionSettingsController", () => {
 			draftDisplayName: "Local edit",
 			submitted: {
 				selectedProfileId: 1,
-				draft: { ...emptyConnectionProfileDraft, displayName: "Local edit" },
-				credentialDraft: "secret",
-				headerEditorData: editing.headerEditorData,
+				editorIdentity: Symbol(),
 			},
 		});
 
