@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
 import {
 	type StoryMessage,
 	displayedVariantId as getDisplayedVariantId,
@@ -121,6 +121,29 @@ export function StoryMessageView({
 		if (atLastSwipe) onSibling?.(message.id);
 		else onMoveSwipe(message.id, 1);
 	};
+	const touchStart = useRef<{ x: number; y: number } | null>(null);
+	const startTouch = (event: TouchEvent<HTMLElement>) => {
+		const touch = event.touches[0];
+		const onControl = event.target instanceof Element && event.target.closest("button, textarea, input") !== null;
+		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
+	};
+	const endTouch = (event: TouchEvent<HTMLElement>) => {
+		const start = touchStart.current;
+		const touch = event.changedTouches[0];
+		touchStart.current = null;
+		if (start === null || touch === undefined) return;
+		const dx = touch.clientX - start.x;
+		const dy = touch.clientY - start.y;
+		if (Math.hypot(dx, dy) < 10) {
+			event.currentTarget.focus({ preventScroll: true });
+			setAdvancedActionsSelected(true);
+			return;
+		}
+		if (isEditing || Math.abs(dx) < 64 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+		if (event.target instanceof Element && event.target.closest("pre") !== null) return;
+		if (dx < 0 && !nextSwipeDisabled) moveNext();
+		if (dx > 0 && !previousSwipeDisabled) movePrevious();
+	};
 
 	return (
 		<article
@@ -144,12 +167,9 @@ export function StoryMessageView({
 					moveNext();
 				}
 			}}
-			onPointerUp={(event) => {
-				if (event.pointerType !== "touch") return;
-				if (event.target instanceof Element && event.target.closest("button, textarea, input")) return;
-				event.currentTarget.focus({ preventScroll: true });
-				setAdvancedActionsSelected(true);
-			}}
+			onTouchStart={startTouch}
+			onTouchEnd={endTouch}
+			onTouchCancel={() => { touchStart.current = null; }}
 			onBlur={(event) => {
 				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
 					setAdvancedActionsSelected(false);
