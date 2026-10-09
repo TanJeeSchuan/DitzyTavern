@@ -5,7 +5,7 @@ import { connectCharacterLibraryDatabase } from "./internal";
 import { listCharacters, readCharacterSnapshot } from "./snapshot";
 import type {
 	CharacterDeletionResult,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterDeletionCommand,
 	CharacterMutationCommand,
 	CharacterLibraryModule,
@@ -31,12 +31,12 @@ export type {
 	CharacterDeletionMode,
 	CharacterDeletionResult,
 	CharacterDefinition,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterDeletionCommand,
 	CharacterMutationCommand,
 	CharacterLibraryModule,
 	CharacterSnapshot,
-	CharacterSummary,
+	CharacterLibrarySummary,
 } from "./types";
 
 export function createCharacterLibraryModule(
@@ -53,7 +53,7 @@ export function createCharacterLibraryModule(
 		command: CharacterMutationCommand,
 	): CharacterSnapshot;
 	function execute(
-		command: CharacterLibraryCommand,
+		command: CharacterCommand,
 	): CharacterSnapshot | CharacterDeletionResult {
 		return executeCharacterCommand(database, command);
 	}

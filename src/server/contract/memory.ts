@@ -48,43 +48,43 @@ const allowanceResponse = { 200: conversationMemoryAllowanceApplied, 409: conver
 const labelsResponse = { 200: memoryLabelsMerged, 409: memoryLabelsConflict, 422: invalidOutcome };
 
 export const createMemoryRoutes = (database: Database) => new Elysia()
-	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, Number(params.id)), { params: memoryConversationIdParams, response: conversationMemories })
-	.get("/api/conversations/:id/memories/changes", ({ params, query }) => readConversationMemoryChanges(database, Number(params.id), query.since), { params: memoryConversationIdParams, query: memoryChangesQuery, response: conversationMemoryChanges })
+	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, params.id), { params: memoryConversationIdParams, response: conversationMemories })
+	.get("/api/conversations/:id/memories/changes", ({ params, query }) => readConversationMemoryChanges(database, params.id, query.since), { params: memoryConversationIdParams, query: memoryChangesQuery, response: conversationMemoryChanges })
 	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
 		try {
-			setMemoryIdentity(database, Number(params.id), body);
-			return { outcome: "applied" as const, memories: readConversationMemories(database, Number(params.id)) };
+			setMemoryIdentity(database, params.id, body);
+			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
 		} catch (error) {
-			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, Number(params.id))));
+			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, params.id)));
 		}
 	}, { params: memoryConversationIdParams, body: memoryIdentityCommand, response: labelsResponse })
 	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => {
 		try {
-			mergeMemoryLabels(database, Number(params.id), body);
-			return { outcome: "applied" as const, memories: readConversationMemories(database, Number(params.id)) };
+			mergeMemoryLabels(database, params.id, body);
+			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
 		} catch (error) {
-			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, Number(params.id))));
+			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, params.id)));
 		}
 	}, { params: memoryConversationIdParams, body: memoryLabelMergeCommand, response: labelsResponse })
-	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => ({ steps: readMemoryTrace(database, Number(params.id), Number(params.variantId)) }), { params: memoryTraceParams, response: memoryTrace })
-	.get("/api/conversations/:id/memory-allowance", ({ params }) => readMemoryAllowance(database, Number(params.id)), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
+	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => ({ steps: readMemoryTrace(database, params.id, params.variantId) }), { params: memoryTraceParams, response: memoryTrace })
+	.get("/api/conversations/:id/memory-allowance", ({ params }) => readMemoryAllowance(database, params.id), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
 	.post("/api/conversations/:id/memory-allowance", ({ params, body }) => {
 		try {
-			return { outcome: "applied" as const, settings: setMemoryAllowance(database, Number(params.id), body.expectedRevision, body.allowance) };
+			return { outcome: "applied" as const, settings: setMemoryAllowance(database, params.id, body.expectedRevision, body.allowance) };
 		} catch (error) {
 			return presentDomainError(error, allowanceResponse);
 		}
 	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: allowanceResponse })
 	.post("/api/conversations/:id/memory-note", ({ params, body }) => {
 		try {
-			return { outcome: "applied" as const, settings: setMemoryNote(database, Number(params.id), body.expectedRevision, body.note) };
+			return { outcome: "applied" as const, settings: setMemoryNote(database, params.id, body.expectedRevision, body.note) };
 		} catch (error) {
 			return presentDomainError(error, allowanceResponse);
 		}
 	}, { params: memoryConversationIdParams, body: conversationMemoryNoteCommand, response: allowanceResponse })
 	.post("/api/conversations/:id/memories/reextract", ({ params, body }) => {
 		try {
-			const collection = resetAndReextractMemorySource(database, Number(params.id), body.messageId, body.variantId, body.expectedRevision);
+			const collection = resetAndReextractMemorySource(database, params.id, body.messageId, body.variantId, body.expectedRevision);
 			return { outcome: "queued" as const, collection };
 		} catch (error) {
 			return presentDomainError(error, queueCollectionResponse);
@@ -92,7 +92,7 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 	}, { params: memoryConversationIdParams, body: memorySourceTarget, response: queueCollectionResponse })
 	.post("/api/conversations/:id/memories/correct", ({ params, body }) => {
 		try {
-			const collection = correctMemorySource(database, Number(params.id), body);
+			const collection = correctMemorySource(database, params.id, body);
 			return { outcome: "applied" as const, collection };
 		} catch (error) {
 			return presentDomainError(error, correctCollectionResponse);
@@ -100,16 +100,16 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 	}, { params: memoryConversationIdParams, body: memoryCorrectionCommand, response: correctCollectionResponse })
 	.post("/api/conversations/:id/memories/indexing/retry", ({ params, body }) => {
 		try {
-			const collection = retryMemorySourceIndex(database, Number(params.id), body.messageId, body.variantId, body.expectedRevision);
+			const collection = retryMemorySourceIndex(database, params.id, body.messageId, body.variantId, body.expectedRevision);
 			return { outcome: "queued" as const, collection };
 		} catch (error) {
 			return presentDomainError(error, queueCollectionResponse);
 		}
 	}, { params: memoryConversationIdParams, body: memorySourceTarget, response: queueCollectionResponse })
-	.get("/api/conversations/:id/memories/catchup", ({ params }) => ({ run: readLatestMemoryCatchup(database, Number(params.id)) }), { params: memoryConversationIdParams, response: memoryCatchupRead })
+	.get("/api/conversations/:id/memories/catchup", ({ params }) => ({ run: readLatestMemoryCatchup(database, params.id) }), { params: memoryConversationIdParams, response: memoryCatchupRead })
 	.post("/api/conversations/:id/memories/catchup", ({ params }) => {
 		try {
-			const conversationId = Number(params.id);
+			const conversationId = params.id;
 			// @approved
 			//  The selected path is composed here from Conversation's own
 			// read model, invoked inside startMemoryCatchup's transaction, and
@@ -125,7 +125,7 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 		}
 	}, { params: memoryConversationIdParams, body: memoryCatchupCommand, response: startCatchupResponse })
 	.delete("/api/conversations/:id/memories/catchup/:runId", ({ params }) => {
-		try { return { outcome: "cancelled" as const, run: cancelMemoryCatchup(database, Number(params.id), Number(params.runId)) }; }
+		try { return { outcome: "cancelled" as const, run: cancelMemoryCatchup(database, params.id, params.runId) }; }
 		catch (error) {
 			return presentDomainError(error, cancelCatchupResponse);
 		}

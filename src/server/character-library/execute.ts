@@ -22,7 +22,7 @@ import {
 import { readCharacterSnapshot } from "./snapshot";
 import type {
 	CharacterDeletionResult,
-	CharacterLibraryCommand,
+	CharacterCommand,
 	CharacterSnapshot,
 } from "./types";
 
@@ -36,7 +36,7 @@ import type {
 // nonrestorable tombstone, and neither remains readable through the seam.
 export function executeCharacterCommand(
 	database: Database,
-	command: CharacterLibraryCommand,
+	command: CharacterCommand,
 ): CharacterSnapshot | CharacterDeletionResult {
 	if (command.type === "create") {
 		return createCharacter(database, command.definition);

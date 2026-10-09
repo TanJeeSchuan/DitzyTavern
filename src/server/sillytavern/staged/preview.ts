@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import {
 	createCharacterLibraryModule,
-	type CharacterSummary,
+	type CharacterLibrarySummary,
 } from "../../character-library";
 import type {
 	SillyTavernChatInspection,
@@ -67,7 +67,7 @@ const tierRank = (tier: SuggestionMatchKind): number =>
 // then id), so the first candidate of the winning tier is the strongest.
 const strongestSuggestion = (
 	key: string,
-	characters: readonly CharacterSummary[],
+	characters: readonly CharacterLibrarySummary[],
 ): ChatImportSuggestion | null => {
 	let best: { name: string; characterId: number; tier: SuggestionMatchKind } | null =
 		null;
@@ -89,7 +89,7 @@ const strongestSuggestion = (
 
 const buildGroups = (
 	authors: readonly SillyTavernExactAuthor[],
-	characters: readonly CharacterSummary[],
+	characters: readonly CharacterLibrarySummary[],
 ): ChatImportGroup[] =>
 	groupImportedAuthors(authors).map((group) => ({
 		// @approved

@@ -11,9 +11,8 @@ import type {
 // Public contract of the deep Character Library seam. The module owns
 // Character lifecycle, Definitions, revisions, and ordering; callers see
 // only these types plus command execution outcomes. Every Character shape
-// is the canonical shared wire schema's Static type, re-exported under the
-// seam's historical names so the domain can never drift from the transport
-// contract.
+// is the canonical shared wire schema's Static type so the domain can
+// never drift from the transport contract.
 
 // A complete reusable identity. Openings are ordered, exact, nonblank
 // text entries; an empty list is valid.
@@ -31,7 +30,7 @@ export type { CharacterDeletionMode, CharacterDeletionImpact };
 // Character picker) can present a useful choice without fetching one detail
 // per Character, and the provenance reference count shows how widely the
 // Character is already used.
-export type { CharacterLibrarySummary as CharacterSummary };
+export type { CharacterLibrarySummary };
 
 // Full authoritative state of one Character.
 export type { CharacterSnapshot };
@@ -40,7 +39,7 @@ export type { CharacterSnapshot };
 // from the reference count at command time, never guessed by the client.
 export type { CharacterDeletionResult };
 
-export type { CharacterCommand as CharacterLibraryCommand };
+export type { CharacterCommand };
 
 export type CharacterDeletionCommand = Extract<CharacterCommand, { type: "delete" }>;
 export type CharacterMutationCommand = Exclude<CharacterCommand, { type: "delete" }>;

@@ -69,7 +69,8 @@ export const resolveDecisionSelection = (database: Database, selection: Decision
 	const profileId = validateDecisionSelection(database, selection);
 	if (profileId === null) return null;
 	const connections = createConnectionSettingsModule(database, options);
-	const profile = connections.get().profiles.find(profile => profile.id === profileId)!;
+	const profile = connections.get().profiles.find(profile => profile.id === profileId);
+	if (profile === undefined) throw new InvalidSettingsError("The selected Decision Model Connection Profile no longer exists. Choose an available profile.");
 	return resolveDecisionProfile(profile, selection.decisionModel, selection.decisionStateTokenLimit, connections.getProfileSecrets(profile.id));
 };
 
@@ -207,11 +208,17 @@ export async function requestDecisions(input: {
 	const { answers } = decoded;
 	const { questions } = input;
 	const ids = Object.keys(questions);
-	if (Object.keys(answers).length !== ids.length || ids.some(id => !Object.hasOwn(answers, id))) {
+	if (Object.keys(answers).length !== ids.length) {
 		throw new DecisionModelError("malformed-response", "Decision Model omitted or added required answers.");
 	}
-	for (const [id, answer] of Object.entries(answers)) {
-		const question = questions[id]!;
+	for (const id of ids) {
+		const question = questions[id];
+		const answer = answers[id];
+		// Equal lengths plus ids matched here prove the answer count never strays,
+		// so a missing pair is the only way either side reads undefined.
+		if (question === undefined || answer === undefined) {
+			throw new DecisionModelError("malformed-response", "Decision Model omitted required answers.");
+		}
 		if (answer.type !== question.type) throw new DecisionModelError("malformed-response", "Decision Model returned the wrong answer type.");
 		if (answer.type === "choice") {
 			const options = Object.keys(question.criteria ?? {});

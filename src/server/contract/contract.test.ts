@@ -5,7 +5,7 @@ import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	type CharacterDefinition,
-	type CharacterLibraryCommand,
+	type CharacterCommand,
 } from "../character-library";
 import type { ConversationAction } from "../conversation";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
@@ -35,7 +35,7 @@ describe("Character Library transport adapters", () => {
 	let database: Database;
 	let app: ReturnType<typeof createCharacterLibraryRoutes>;
 
-	const post = async (command: CharacterLibraryCommand) =>
+	const post = async (command: CharacterCommand) =>
 		app.handle(
 			new Request("http://localhost/api/characters/commands", {
 				method: "POST",
