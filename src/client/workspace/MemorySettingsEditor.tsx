@@ -45,7 +45,7 @@ export function MemorySettingsEditor() {
 	const save = async (command: MemorySettingsCommand, applied: (settings: MemorySettings) => void) => {
 		setState((current) => ({ ...current, pending: true, error: null, notice: null }));
 		const result = await saveMemorySettings(command);
-		if (result.outcome === "applied") applied(result.settings);
+		if (result.outcome === "available") applied(result.value.settings);
 		else if (result.outcome === "conflict") {
 			setState((current) => ({
 				...current,
@@ -54,8 +54,8 @@ export function MemorySettingsEditor() {
 				notice: "Memory Settings changed elsewhere. Review the current values before saving again.",
 			}));
 		}
-		else setState((current) => ({ ...current, pending: false, error: result.reason }));
-		return result.outcome === "applied";
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" ? result.reason : "Memory Settings could not be saved." }));
+		return result.outcome === "available";
 	};
 	const { settings, draft, connections } = state;
 	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));

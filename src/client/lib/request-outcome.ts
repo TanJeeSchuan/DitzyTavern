@@ -77,3 +77,25 @@ export const requestOutcome = async <
 };
 
 export class NetworkError extends Error {}
+
+// @approved
+//  The one copy every unclassifiable read failure throws when a read
+// adapter branches on an outcome instead of throwing: adapters hand bespoke
+// wording to this notice so surfaced failures never drift between modules.
+export const SERVER_UNREACHABLE_NOTICE = "The server could not be reached.";
+
+// @approved
+//  The one "throw on anything but 200" read dialect: every read adapter
+// without a modeled error envelope hands its Treaty request and 200 contract
+// schema here. The decoded 200 payload is returned verbatim; an error status,
+// a body that fails either contract, or a failed fetch is the one
+// unclassifiable failure, thrown as NetworkError with the shared notice.
+export const requestData = async <Request extends TransportRequest, Schema extends TSchema>(
+	request: Request,
+	schema: Schema,
+): Promise<StaticDecode<Schema>> => {
+	const read = await request.catch(() => null);
+	const decoded = read === null || read.error !== null ? null : decodeWirePayload(schema, read.data);
+	if (decoded !== null) return decoded;
+	throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+};

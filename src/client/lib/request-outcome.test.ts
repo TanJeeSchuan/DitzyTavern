@@ -10,7 +10,7 @@ Object.defineProperty(globalThis, "window", {
 	value: { location: { origin: "http://localhost" } } as Window,
 });
 const { api } = await import("./eden");
-const { requestOutcome } = await import("./request-outcome");
+const { NetworkError, SERVER_UNREACHABLE_NOTICE, requestOutcome, requestData } = await import("./request-outcome");
 
 // The macro-variables read is a stand-in route: its 200 payload is an object
 // schema and its modeled errors are the shared not-found/invalid envelopes.
@@ -85,6 +85,39 @@ describe("requestOutcome", () => {
 			outcome: "invalid",
 			reason: "Nope",
 		});
+	});
+});
+
+describe("requestData", () => {
+	test("a 200 payload that satisfies the contract is the decoded value", async () => {
+		installFetch(async () => json({
+			conversationId: 3,
+			promptPresetId: 5,
+			promptPresetName: "Default",
+			position: 0,
+			target: { type: "initial" },
+			variables: [],
+		}, 200));
+		expect(await requestData(macroVariablesRequest(), macroVariables)).toEqual({
+			conversationId: 3,
+			promptPresetId: 5,
+			promptPresetName: "Default",
+			position: 0,
+			target: { type: "initial" },
+			variables: [],
+		});
+	});
+
+	test("an error status, a malformed body, and a failed fetch share one notice", async () => {
+		for (const response of [
+			async () => json({ outcome: "not-found" }, 404),
+			async () => json({ unexpected: true }, 200),
+			async (): Promise<Response> => { throw new TypeError("fetch failed"); },
+		]) {
+			installFetch(response);
+			await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.toThrow(SERVER_UNREACHABLE_NOTICE);
+			await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.toBeInstanceOf(NetworkError);
+		}
 	});
 });
 

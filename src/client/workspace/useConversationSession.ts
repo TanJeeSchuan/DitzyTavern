@@ -8,11 +8,7 @@ import { reduceStory, type StoryAction, type StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { useAsyncEffect } from "../lib/use-async";
 import { adoptConversationSummary } from "./conversation-session-state";
-import { NetworkError } from "../lib/request-outcome";
-import { api } from "../lib/eden";
-import { decodeWirePayload } from "../lib/wire-decode";
-import { chatHistoryPage } from "../../shared/contract/conversation-schema";
-import { notFoundOutcome } from "../../shared/contract/outcomes";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE } from "../lib/request-outcome";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -147,18 +143,13 @@ export function useConversationSession({
 			? current.messages.filter((_, index) => index % current.page!.pageSize === 0 || index === current.messages.length - 1).map((message) => ({ aroundMessageId: message.id }))
 			: [{ page: 1 }];
 		for (const request of requests) {
-			const { data, error, response } = await api.api.conversations({ id: conversationId }).history.get({ query: request, fetch: { signal } });
+			const outcome = await loadHistoryPage(conversationId, request, signal);
 			if (signal?.aborted || navigation !== navigationRef.current || Number(activeChatIdRef.current) !== conversationId) return freshConversation;
-			if (error) {
-				if (response === undefined) throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
-				if (error.status === 404 && decodeWirePayload(notFoundOutcome, error.value) !== null) continue;
-				throw new Error(`Unable to load Conversation ${conversationId} history`);
-			}
-			const history = decodeWirePayload(chatHistoryPage, data);
-			if (history === null) throw new Error(`Unable to load Conversation ${conversationId} history`);
+			if (outcome.outcome === "not-found") continue;
+			if (outcome.outcome !== "available") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
 			applyStory({
 				type: detached ? "history-refreshed" : "first-page",
-				page: history,
+				page: outcome.value,
 				activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId),
 			});
 		}

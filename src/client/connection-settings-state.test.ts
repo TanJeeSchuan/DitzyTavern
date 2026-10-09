@@ -55,7 +55,7 @@ const controllerState = (): ConnectionSettingsControllerState => ({
 	credentialDraft: "secret",
 	headerEditorData: { "X-Client": { configured: true, operation: "replace", replacement: "local" } },
 	testModelId: "local-model",
-	testResult: { outcome: "success", message: "Connected." },
+	testResult: { outcome: "available", value: { outcome: "success", message: "Connected." } },
 	pendingDeletionProfileId: 1,
 	notice: "old notice",
 	error: "old error",

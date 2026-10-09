@@ -1,8 +1,10 @@
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome } from "./lib/request-outcome";
 import {
 	characterCommandApplied,
 	characterCommandErrors,
+	characterListResponse,
+	characterSnapshot,
 	type CharacterCommand,
 	type CharacterDeletionImpact,
 	type CharacterDeletionMode,
@@ -10,6 +12,7 @@ import {
 	type CharacterLibrarySummary as CharacterSummary,
 	type CharacterSnapshot,
 } from "../shared/contract/character-library";
+import { notFoundOutcome } from "../shared/contract/outcomes";
 
 // @approved
 //  Typed client for the Character Library transport adapters. Outcomes mirror
@@ -35,24 +38,16 @@ export type {
 export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;
 
 export async function listCharacters(): Promise<CharacterSummary[]> {
-	const { data, error } = await api.api.characters.get();
-	if (error || !data) {
-		throw new Error("Unable to list Characters");
-	}
-	return data.characters;
+	return (await requestData(api.api.characters.get(), characterListResponse)).characters;
 }
 
 export async function getCharacter(
 	characterId: number,
 ): Promise<CharacterSnapshot | null> {
-	const { data, error } = await api.api.characters({ id: characterId }).get();
-	if (error !== null && error !== undefined) {
-		if (error.status === 404) {
-			return null;
-		}
-		throw new Error(`Unable to load Character ${characterId}`);
-	}
-	return data ?? null;
+	const outcome = await requestOutcome(api.api.characters({ id: characterId }).get(), characterSnapshot, notFoundOutcome);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function applyCommand(

@@ -1,6 +1,5 @@
 import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
-import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
@@ -31,8 +30,7 @@ import type { MacroValue } from "../shared/contract/macro-variables";
 import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import { conversationPromptPreset } from "../shared/contract/prompt-preset";
-import { decodeWirePayload } from "./lib/wire-decode";
-import { NetworkError } from "./lib/request-outcome";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 
 export type {
 	ActiveGenerationDetails,
@@ -64,16 +62,14 @@ export async function loadConversation(
 	conversationId: number,
 	signal?: AbortSignal,
 ): Promise<ConversationSummary | null> {
-	const { data, error, response } = await api.api.conversations({ id: conversationId }).get({ fetch: { signal } });
-	if (error !== null && error !== undefined) {
-		if (response === undefined) throw new NetworkError(`Unable to load Conversation ${conversationId}`);
-		if (error.status === 404) return null;
-		throw new Error(`Unable to load Conversation ${conversationId}`);
-	}
-	if (data === null) return null;
-	const conversation = decodeWirePayload(conversationSummary, data);
-	if (conversation === null) throw new Error(`Unable to load Conversation ${conversationId}`);
-	return conversation;
+	const outcome = await requestOutcome(
+		api.api.conversations({ id: conversationId }).get({ fetch: { signal } }),
+		conversationSummary,
+		notFoundOutcome,
+	);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 // @approved
@@ -135,27 +131,24 @@ export async function loadConversationGenerationSettings(
 	conversationId: number,
 	signal?: AbortSignal,
 ): Promise<ConversationGenerationSettings> {
-	const { data, error } = await api.api.conversations({ id: conversationId })["generation-settings"].get({ fetch: { signal } });
-	if (error || data === undefined) throw new Error("Unable to load Conversation Generation Settings.");
-	const settings = decodeWirePayload(conversationGenerationSettings, data);
-	if (settings === null) throw new Error("Unable to load Conversation Generation Settings.");
-	return settings;
+	return requestData(
+		api.api.conversations({ id: conversationId })["generation-settings"].get({ fetch: { signal } }),
+		conversationGenerationSettings,
+	);
 }
 
 export async function loadConversationPromptPreset(
 	conversationId: number,
 	signal?: AbortSignal,
 ): Promise<ConversationPromptPreset | null> {
-	const { data, error } = await api.api
-		.conversations({ id: conversationId })["prompt-preset"].get({ fetch: { signal } });
-	if (error !== null && error !== undefined) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load the selected Prompt Preset.");
-	}
-	if (data === null) return null;
-	const preset = decodeWirePayload(conversationPromptPreset, data);
-	if (preset === null) throw new Error("Unable to load the selected Prompt Preset.");
-	return preset;
+	const outcome = await requestOutcome(
+		api.api.conversations({ id: conversationId })["prompt-preset"].get({ fetch: { signal } }),
+		conversationPromptPreset,
+		notFoundOutcome,
+	);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function loadMacroVariables(

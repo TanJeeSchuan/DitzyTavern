@@ -31,10 +31,10 @@ export function useSemanticTriggerSettings() {
 	useAsyncEffect((isCancelled) => { void load(isCancelled); }, [load]);
 
 	const settle = (result: SemanticTriggerSettingsResult, keepDraft: (draft: Draft | null) => boolean) => {
-		if (result.outcome === "applied") setState((current) => ({ ...loaded(result.settings), draft: keepDraft(current.draft) ? current.draft : draftOf(result.settings) }));
+		if (result.outcome === "available") setState((current) => ({ ...loaded(result.value.settings), draft: keepDraft(current.draft) ? current.draft : draftOf(result.value.settings) }));
 		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, error: CONFLICT_ERROR }));
-		else setState((current) => ({ ...current, pending: false, error: result.reason }));
-		return result.outcome === "applied";
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" ? result.reason : "Semantic Trigger Settings could not be saved." }));
+		return result.outcome === "available";
 	};
 
 	const { settings, draft } = state;

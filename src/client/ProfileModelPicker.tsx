@@ -54,8 +54,8 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 		const pinnedModels = togglePinnedModel(profile.pinnedModels, modelId);
 		try {
 			const result = await saveConnectionCommand({ type: "set-pinned-models", expectedRevision: settings.revision, profileId: profile.id, pinnedModels });
-			if (result.outcome === "applied") {
-				onSettingsChange(result.settings);
+			if (result.outcome === "available") {
+				onSettingsChange(result.value.settings);
 				setNotice(pinnedModels.includes(modelId) ? `${modelId} pinned.` : `${modelId} unpinned.`);
 			} else if (result.outcome === "conflict") {
 				onSettingsChange(result.currentSettings);
@@ -65,8 +65,6 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 			} else {
 				setError("The connection could not be reached.");
 			}
-		} catch {
-			setError("The connection could not be reached.");
 		} finally {
 			setPending(false);
 		}
@@ -86,8 +84,6 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 				onSettingsChange(next);
 				setNotice(textOnly ? `${modelId} marked text-only.` : `${modelId} accepts Images again.`);
 			}
-		} catch {
-			setError("The connection could not be reached.");
 		} finally {
 			setPending(false);
 		}

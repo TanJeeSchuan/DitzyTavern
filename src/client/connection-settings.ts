@@ -1,16 +1,26 @@
+import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
+import { requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import type {
-	ConnectionDiscoveryResultPayload,
 	ConnectionHeaderOperationPayload,
 	ConnectionPresetPayload,
 	ConnectionProfileDraftPayload,
 	ConnectionProfilePayload,
 	ConnectionSettingsCommandPayload,
-	ConnectionSettingsCommandResultPayload,
 	ConnectionSettingsPayload,
 	ConnectionTestDraftPayload,
-	ConnectionTestResultPayload,
 } from "../shared/contract/connection-settings";
+import {
+	connectionCommandErrors,
+	connectionDiscoveryErrors,
+	connectionDiscoveryResponse,
+	connectionInvalidResponse,
+	connectionPresetsResponse,
+	connectionSettingsResponse,
+	connectionSettingsApplied,
+	connectionTestResponse,
+} from "../shared/contract/connection-settings";
+import { readOutcomeErrors } from "../shared/contract/outcomes";
 
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
@@ -30,62 +40,71 @@ export const CONNECTION_ADAPTER_LABELS = {
 
 export const isEmbeddingsProfile = (profile: ConnectionProfile): boolean => profile.apiFormat === "embeddings";
 
-export type ConnectionSettingsResult = ConnectionSettingsCommandResultPayload;
+export type ConnectionSettingsResult = RequestOutcome<
+	StaticDecode<typeof connectionSettingsApplied>,
+	StaticDecode<typeof connectionCommandErrors>
+>;
 
-export type DiscoveryResult =
-	ConnectionDiscoveryResultPayload
-	| { outcome: "not-found" }
-	| { outcome: "invalid"; reason: string };
+export type DiscoveryResult = RequestOutcome<
+	StaticDecode<typeof connectionDiscoveryResponse>,
+	StaticDecode<typeof connectionDiscoveryErrors>
+>;
 
-export type TestConnectionFailureKind =
-	| "authentication"
-	| "endpoint"
-	| "timeout"
-	| "redirect"
-	| "malformed-response"
-	| "adapter-unavailable";
-
-export type TestConnectionResult =
-	ConnectionTestResultPayload
-	| { outcome: "invalid"; reason: string };
+// @approved
+//  The Test Connection route models only the invalid envelope, so the read
+// passes it as the single-member error union directly.
+export type TestConnectionResult = RequestOutcome<
+	StaticDecode<typeof connectionTestResponse>,
+	StaticDecode<typeof connectionInvalidResponse>
+>;
 
 export type TestConnectionDraftInput = ConnectionTestDraftPayload;
 
 export type ConnectionSettingsCommand = ConnectionSettingsCommandPayload;
 
 export async function loadConnectionSettings(): Promise<ConnectionSettings> {
-	const { data, error } = await api.api["connection-settings"].get();
-	if (error || data === undefined) throw new Error("Unable to load Connection Settings.");
-	return data;
+	return requestData(api.api["connection-settings"].get(), connectionSettingsResponse);
 }
 
 export async function loadConnectionPresets(): Promise<ConnectionPreset[]> {
-	const { data, error } = await api.api["connection-settings"].presets.get();
-	if (error || data === undefined) throw new Error("Unable to load Connection Presets.");
-	return data.presets;
+	return (await requestData(api.api["connection-settings"].presets.get(), connectionPresetsResponse)).presets;
 }
 
 export async function saveConnectionCommand(
 	command: ConnectionSettingsCommand,
 ): Promise<ConnectionSettingsResult> {
-	const { data } = await api.api["connection-settings"].commands.post(command);
-	if (data !== undefined && data !== null) return data;
-	return { outcome: "invalid", reason: "Connection Settings request failed." };
+	return requestOutcome(
+		api.api["connection-settings"].commands.post(command),
+		connectionSettingsApplied,
+		connectionCommandErrors,
+	);
 }
 
 export async function testConnectionDraft(input: TestConnectionDraftInput): Promise<TestConnectionResult> {
-	const { data } = await api.api["connection-settings"]["test-connection"].post(input);
-	if (data !== undefined && data !== null) return data;
-	return { outcome: "invalid", reason: "Test Connection request failed." };
+	return requestOutcome(
+		api.api["connection-settings"]["test-connection"].post(input),
+		connectionTestResponse,
+		connectionInvalidResponse,
+	);
 }
 
 export async function refreshDiscoveryCatalog(profileId: number): Promise<DiscoveryResult> {
-	const { data } = await api.api["connection-settings"].discovery.post({ profileId });
-	if (data !== undefined && data !== null) return data;
-	return { outcome: "invalid", reason: "Model discovery request failed." };
+	return requestOutcome(
+		api.api["connection-settings"].discovery.post({ profileId }),
+		connectionDiscoveryResponse,
+		connectionDiscoveryErrors,
+	);
 }
 
+// @approved
+//  The text-only mark owns the null projection: every consumer reads the
+// boolean failed/applied split and no consumer needs the modeled failure
+// envelopes.
 export async function setTextOnlyModel(profileId: number, modelId: string, textOnly: boolean): Promise<ConnectionSettings | null> {
-	const { data } = await api.api["connection-settings"]["text-only-model"].post({ profileId, modelId, textOnly });
-	return data?.outcome === "applied" ? data.settings : null;
+	const outcome = await requestOutcome(
+		api.api["connection-settings"]["text-only-model"].post({ profileId, modelId, textOnly }),
+		connectionSettingsApplied,
+		readOutcomeErrors,
+	);
+	return outcome.outcome === "available" ? outcome.value.settings : null;
 }

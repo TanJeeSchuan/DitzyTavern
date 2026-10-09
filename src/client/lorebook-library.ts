@@ -1,8 +1,7 @@
 import type { StaticDecode } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import { requestOutcome, type RequestOutcome } from "./lib/request-outcome";
-import { decodeWirePayload } from "./lib/wire-decode";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import {
 	lorebook,
 	lorebookCommandErrors,
@@ -26,7 +25,7 @@ import {
 	type Lorebook as LorebookValue,
 	type LorebookListResponse,
 } from "../shared/contract/lorebook";
-import { readOutcomeErrors } from "../shared/contract/outcomes";
+import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
@@ -35,12 +34,14 @@ export type { LorebookOwnerAttachmentState };
 export type LoreMatchTest = LoreMatchTestResponse;
 
 export async function getLorebookAttachmentState(conversationId: number, signal?: AbortSignal): Promise<LoreAttachmentState | null> {
-	const { data, error } = await api.api.lorebooks.attachments.get({ query: { conversationId }, fetch: { signal } });
-	if (error) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load Lorebook attachments");
-	}
-	return decodeWirePayload(loreAttachmentState, data);
+	const outcome = await requestOutcome(
+		api.api.lorebooks.attachments.get({ query: { conversationId }, fetch: { signal } }),
+		loreAttachmentState,
+		notFoundOutcome,
+	);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand) {
@@ -52,58 +53,58 @@ export async function applyLorebookAttachmentCommand(command: LoreAttachmentComm
 }
 
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
-	const { data, error } = await api.api.lorebooks({ bookId }).attachments.get();
-	if (error) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load Lorebook deletion impact");
-	}
-	return decodeWirePayload(lorebookAttachmentImpact, data);
+	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpact, notFoundOutcome);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function getCharacterLorebookAttachments(characterId: number): Promise<LorebookOwnerAttachmentState | null> {
-	const { data, error } = await api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } });
-	if (error) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load Character Lorebooks");
-	}
-	return decodeWirePayload(lorebookOwnerAttachmentState, data);
+	const outcome = await requestOutcome(
+		api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } }),
+		lorebookOwnerAttachmentState,
+		notFoundOutcome,
+	);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function getParticipantLorebookAttachments(participantId: number): Promise<LorebookOwnerAttachmentState | null> {
-	const { data, error } = await api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } });
-	if (error) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load Participant Lorebooks");
-	}
-	return decodeWirePayload(lorebookOwnerAttachmentState, data);
+	const outcome = await requestOutcome(
+		api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } }),
+		lorebookOwnerAttachmentState,
+		notFoundOutcome,
+	);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function listLorebooks(signal?: AbortSignal): Promise<LorebookListResponse["books"]> {
-	const { data, error } = await api.api.lorebooks.get({ fetch: { signal } });
-	if (error || !data) throw new Error("Unable to list Lorebooks");
-	const decoded = decodeWirePayload(lorebookListResponse, data);
-	if (decoded === null) throw new Error("Unable to list Lorebooks");
-	return decoded.books;
+	return (await requestData(api.api.lorebooks.get({ fetch: { signal } }), lorebookListResponse)).books;
 }
 
 export async function getLorebook(bookId: number, signal?: AbortSignal): Promise<LorebookValue | null> {
-	const { data, error } = await api.api.lorebooks({ bookId }).get({ fetch: { signal } });
-	if (error) {
-		if (error.status === 404) return null;
-		throw new Error("Unable to load Lorebook");
-	}
-	return data === null ? null : decodeWirePayload(lorebook, data);
+	const outcome = await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebook, notFoundOutcome);
+	if (outcome.outcome === "not-found") return null;
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export async function testLorebookMatch(bookId: number, writing: string, signal?: AbortSignal): Promise<LoreMatchTest> {
-	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing }, { fetch: { signal } });
-	if (error || data === undefined || data === null) {
-		if (error?.status === 404) throw new Error("That Lorebook no longer exists.");
-		throw new Error("Lorebook matching could not be tested.");
-	}
-	const decoded = decodeWirePayload(loreMatchTestResponse, data);
-	if (decoded === null) throw new Error("Lorebook matching returned an invalid result.");
-	return decoded;
+	const outcome = await requestOutcome(
+		api.api.lorebooks["match-test"].post({ bookId, writing }, { fetch: { signal } }),
+		loreMatchTestResponse,
+		notFoundOutcome,
+	);
+	// @approved
+	//  The missing-Lorebook race is the one domain condition a match test
+	// declares: its notice stays verbatim, while everything unclassifiable
+	// reads as the shared unreachable failure.
+	if (outcome.outcome === "not-found") throw new Error("That Lorebook no longer exists.");
+	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
+	return outcome.value;
 }
 
 export type LorebookCommandResult = RequestOutcome<StaticDecode<typeof lorebookCommandResponse>, StaticDecode<typeof lorebookCommandErrors>>;
@@ -141,9 +142,5 @@ export async function importSillyTavernLorebook(source: SillyTavernJsonValue) {
 }
 
 export async function exportNativeLorebook(bookId: number): Promise<NativeLorebook> {
-	const { data, error } = await api.api.lorebooks({ bookId }).export.get();
-	if (error || !data) throw new Error("Unable to export Lorebook");
-	const exported = decodeWirePayload(nativeLorebook, data);
-	if (exported === null) throw new Error("Unable to export Lorebook");
-	return exported;
+	return requestData(api.api.lorebooks({ bookId }).export.get(), nativeLorebook);
 }

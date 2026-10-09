@@ -15,6 +15,3 @@ export type EdenResponse<Data, Error> = Promise<
 	| { data: Data; error: null }
 	| { data: null; error: Error }
 >;
-
-export const domainOutcome = <Value extends { outcome: string }>(value: Value, reason: string) =>
-	value?.outcome ? value : { outcome: "invalid" as const, reason };

@@ -27,18 +27,12 @@ export function GenerationErrorToast({ error, imageModel, retry, acknowledge }: 
 		if (model === null || marking) return;
 		setMarking(true);
 		setMarkError(null);
-		try {
-			if (await setTextOnlyModel(model.connectionProfileId, model.modelId, true) === null) {
-				setMarkError("The text-only mark could not be saved.");
-				return;
-			}
+		if (await setTextOnlyModel(model.connectionProfileId, model.modelId, true) === null) setMarkError("The text-only mark could not be saved.");
+		else {
 			acknowledge();
 			if (afterMark) retry?.();
-		} catch {
-			setMarkError("The connection could not be reached.");
-		} finally {
-			setMarking(false);
 		}
+		setMarking(false);
 	};
 
 	if (error === null) return null;

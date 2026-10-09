@@ -1,18 +1,24 @@
+import type { StaticDecode } from "@sinclair/typebox";
+import { api } from "./lib/eden";
+import { requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
 import type { MemorySettingsCommand, MemorySettingsPayload } from "../shared/contract/memory-settings";
-import { api, domainOutcome } from "./lib/eden";
+import { memorySettingsApplied, memorySettingsCommandErrors, memorySettingsResponse } from "../shared/contract/memory-settings";
 
 export type MemorySettings = MemorySettingsPayload;
 
+export type MemorySettingsCommandResult = RequestOutcome<
+	StaticDecode<typeof memorySettingsApplied>,
+	StaticDecode<typeof memorySettingsCommandErrors>
+>;
+
 export async function loadMemorySettings(): Promise<MemorySettings> {
-	const { data, error } = await api.api["memory-settings"].get();
-	if (error || data === undefined || data === null) throw new Error("Memory Settings could not be loaded.");
-	return data;
+	return requestData(api.api["memory-settings"].get(), memorySettingsResponse);
 }
 
 export async function saveMemorySettings(command: MemorySettingsCommand) {
-	const reason = "Memory Settings could not be saved.";
-	try {
-		const { data, error } = await api.api["memory-settings"].commands.post(command);
-		return error === null ? data : domainOutcome(error.value, reason);
-	} catch { return { outcome: "invalid" as const, reason }; }
+	return requestOutcome(
+		api.api["memory-settings"].commands.post(command),
+		memorySettingsApplied,
+		memorySettingsCommandErrors,
+	);
 }

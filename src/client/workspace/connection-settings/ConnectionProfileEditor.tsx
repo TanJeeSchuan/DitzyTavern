@@ -241,12 +241,12 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 }
 
 function TestOutcome({ result }: { result: TestConnectionResult }) {
-	const passed = result.outcome === "success";
+	const passed = result.outcome === "available" && result.value.outcome === "success";
 	const Icon = passed ? CircleCheck : CircleX;
 	return (
 		<p role="status" className={`flex items-start gap-1.5 text-xs ${passed ? "text-foreground" : "text-destructive"}`}>
 			<Icon className={`mt-px size-3.5 shrink-0 ${passed ? "text-primary" : ""}`} aria-hidden="true" />
-			{result.outcome === "invalid" ? result.reason : result.message}
+			{result.outcome === "available" ? result.value.message : result.outcome === "invalid" ? result.reason : "The connection could not be reached."}
 		</p>
 	);
 }

@@ -18,16 +18,18 @@ describe("Conversation refresh transport", () => {
 		await expect(loadConversation(42)).rejects.toBeInstanceOf(NetworkError);
 	});
 
+	// The read upgrade is requestOutcome's own: the modeled 404 envelope is the
+	// typed null below, and every response the seam cannot classify — HTTP
+	// failure and undecodable body alike — is the one NetworkError recovery
+	// logic already retries with.
 	for (const [label, response] of [
 		["HTTP failure", () => Response.json({ error: "Unavailable" }, { status: 503 })],
 		["invalid payload", () => Response.json({ invalid: true })],
 		["malformed JSON", () => new Response("malformed", { headers: { "content-type": "application/json" } })],
 	] as const) {
-		test(`does not classify ${label} as a transport outage`, async () => {
+		test(`classifies ${label} as the shared network failure`, async () => {
 			installFetch(async () => response());
-			const request = loadConversation(42);
-			await expect(request).rejects.toBeInstanceOf(Error);
-			await expect(request).rejects.not.toBeInstanceOf(NetworkError);
+			await expect(loadConversation(42)).rejects.toBeInstanceOf(NetworkError);
 		});
 	}
 

@@ -21,14 +21,19 @@ export function MemoryAllowancePopover({
 		event.preventDefault();
 		setPending(true); setMessage(null);
 		const result = await saveMemoryAllowance(conversationId, revision, Number(value));
-		if (result.outcome === "applied") { onSaved(result.settings); setRevision(result.settings.revision); setValue(String(result.settings.allowance)); setMessage({ tone: "note", text: "Saved." }); }
+		if (result.outcome === "available") {
+			onSaved(result.value.settings);
+			setRevision(result.value.settings.revision);
+			setValue(String(result.value.settings.allowance));
+			setMessage({ tone: "note", text: "Saved." });
+		}
 		else if (result.outcome === "conflict") {
 			onSaved(result.currentSettings);
 			setRevision(result.currentSettings.revision);
 			setValue(String(result.currentSettings.allowance));
 			setMessage({ tone: "problem", text: "The allowance changed elsewhere. Review the current value before saving again." });
 		}
-		else setMessage({ tone: "problem", text: result.reason });
+		else setMessage({ tone: "problem", text: result.outcome === "invalid" ? result.reason : "Memory Allowance could not be saved." });
 		setPending(false);
 	};
 	return <Popover onOpenChange={(open) => { if (open) { setRevision(settings.revision); setValue(String(settings.allowance)); setMessage(null); } }}>
