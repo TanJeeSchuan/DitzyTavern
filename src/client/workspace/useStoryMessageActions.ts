@@ -3,7 +3,7 @@ import { loadHistoryPage } from "../chat-history";
 import {
 	type ConversationSummary,
 } from "../conversation";
-import { createConversationCommands } from "../createConversationCommands";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
 	type StoryAction,
@@ -56,7 +56,12 @@ export function useStoryMessageActions({
 	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
-	const { run } = createConversationCommands(story.conversationId, { revision: () => conversation?.revision ?? story.revision, onConversationChange: setConversation, setNotice: noPresentation });
+	const surface = {
+		conversationId: story.conversationId,
+		revision: () => conversation?.revision ?? story.revision,
+		onConversationChange: setConversation,
+		setNotice: noPresentation,
+	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
@@ -101,19 +106,21 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (conversationId === null) return;
 
-		await run({
-					type: "select-variant",
+		await runConversationCommand(surface, {
+			type: "select-variant",
+			messageId: selection.messageId,
+			variantId: selection.variantId,
+		}, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => {
+				queueSwipeScroll(selection.messageId);
+				dispatchStory({
+					type: "swipe-selected",
 					messageId: selection.messageId,
 					variantId: selection.variantId,
-				}, { notices: STORY_COMMAND_NOTICES,
-				onApplied: () => {
-					queueSwipeScroll(selection.messageId);
-					dispatchStory({
-						type: "swipe-selected",
-						messageId: selection.messageId,
-						variantId: selection.variantId,
-					});
-				} });
+				});
+			},
+		});
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
@@ -124,24 +131,26 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (variantId === undefined || conversationId === null) return;
 
-		await run({
-					type: "edit-variant",
-					messageId,
-					variantId,
-					content,
-				}, { notices: STORY_COMMAND_NOTICES,
-				onApplied: () => {
-					// @approved
-					//  Reload the edited Message's page so authoritative content replaces the
-					// local edit without drifting from the server's read model.
-					void loadHistoryPage(conversationId, { aroundMessageId: messageId }).then(
-						(freshHistory) => {
-							if (freshHistory.outcome === "available") {
-								dispatchStory({ type: "history-refreshed", page: freshHistory.value });
-							}
-						},
-					);
-				} });
+		await runConversationCommand(surface, {
+			type: "edit-variant",
+			messageId,
+			variantId,
+			content,
+		}, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => {
+				// @approved
+				//  Reload the edited Message's page so authoritative content replaces the
+				// local edit without drifting from the server's read model.
+				void loadHistoryPage(conversationId, { aroundMessageId: messageId }).then(
+					(freshHistory) => {
+						if (freshHistory.outcome === "available") {
+							dispatchStory({ type: "history-refreshed", page: freshHistory.value });
+						}
+					},
+				);
+			},
+		});
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {
@@ -149,15 +158,17 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
 
-		await run({
-					type: "delete-message",
-					messageId,
-				}, { notices: STORY_COMMAND_NOTICES,
-				onApplied: (applied) => dispatchStory({
-					type: "message-deleted",
-					messageId,
-					revision: applied.revision,
-				}) });
+		await runConversationCommand(surface, {
+			type: "delete-message",
+			messageId,
+		}, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: (applied) => dispatchStory({
+				type: "message-deleted",
+				messageId,
+				revision: applied.revision,
+			}),
+		});
 	};
 
 	return { changeSwipe, editStoryMessage, deleteStoryMessage };

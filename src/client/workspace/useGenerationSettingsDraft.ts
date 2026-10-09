@@ -9,8 +9,7 @@ import {
 	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "../conversation";
-import type { ConversationCommandReconciliation } from "../conversation-command-runner";
-import { createConversationCommands } from "../createConversationCommands";
+import { runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import {
 	budgetDraftsFromSettings,
 	makeEmptyBudgetDrafts,
@@ -57,11 +56,9 @@ export interface GenerationSettingsDraftValues {
 export interface SaveGenerationSettingsDraftOptions {
 	conversation: ConversationSummary;
 	drafts: GenerationSettingsDraftValues;
-	reconciliation: ConversationCommandReconciliation;
+	surface: ConversationCommandSurface;
 	onApplied: (settings: ConversationGenerationSettings) => void;
 	onConflict?: (conversation: ConversationSummary) => void;
-	onNotPlayable: (reason: string) => void;
-	onNotRemovable: (reason: string) => void;
 }
 
 // @approved
@@ -76,13 +73,14 @@ export async function saveGenerationSettingsDraft(
 ): Promise<void> {
 	const base = await loadConversationGenerationSettings(options.conversation.id);
 	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return createConversationCommands(options.conversation.id, { revision: () => options.conversation.revision,
-		onConversationChange: options.reconciliation.adoptSnapshot, setNotice: options.reconciliation.showNotice }).run({
-				type: "update-generation-settings",
-				settings: next,
-			}, { notices: SAVE_NOTICES,
-				onApplied: () => options.onApplied(next),
-				onConflict: options.onConflict, onNotPlayable: options.onNotPlayable, onNotRemovable: options.onNotRemovable });
+	return runConversationCommand(options.surface, {
+		type: "update-generation-settings",
+		settings: next,
+	}, {
+		notices: SAVE_NOTICES,
+		onApplied: () => options.onApplied(next),
+		onConflict: options.onConflict,
+	});
 }
 
 // @approved
@@ -218,9 +216,6 @@ export function useGenerationSettingsDraft({
 		let applied = false;
 		setSaving(true);
 		const ownsSave = () => saveVersionRef.current === saveVersion && conversationIdRef.current === conversationId;
-		const showUnreachable = () => {
-			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
-		};
 		try {
 			await saveGenerationSettingsDraft({
 				conversation,
@@ -233,11 +228,13 @@ export function useGenerationSettingsDraft({
 					prefillSuffix,
 					imagePlacement,
 				},
-				reconciliation: {
-					adoptSnapshot: (snapshot) => {
+				surface: {
+					conversationId,
+					revision: () => conversation.revision,
+					onConversationChange: (snapshot) => {
 						if (conversationIdRef.current === conversationId) onConversationChange(snapshot);
 					},
-					showNotice: (message) => {
+					setNotice: (message) => {
 						if (ownsSave()) setProblem(message);
 					},
 				},
@@ -250,8 +247,6 @@ export function useGenerationSettingsDraft({
 					setProblem(null);
 				},
 				onConflict: (current) => { void client.invalidateQueries({ queryKey: ["generation-settings", current.id] }); },
-				onNotPlayable: showUnreachable,
-				onNotRemovable: showUnreachable,
 			});
 		} catch {
 			// @approved

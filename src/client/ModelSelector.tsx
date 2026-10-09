@@ -2,7 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
-import { commitConversationModel, MODEL_SELECTION_UNAVAILABLE_NOTICE } from "./model-selection-command";
+import { commitConversationModel } from "./model-selection-command";
 import { loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
 import { ProfileModelPicker, type ProfileModelChoice } from "./ProfileModelPicker";
@@ -34,10 +34,14 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 		setNotice(null);
 		try {
 			await commitConversationModel({
-				conversation,
 				connectionProfileId: profile.id,
 				modelId,
-				reconciliation: { adoptSnapshot: onConversationChange, showNotice: setError },
+				surface: {
+					conversationId: conversation.id,
+					revision: () => conversation.revision,
+					onConversationChange,
+					setNotice: setError,
+				},
 				onCommitted: () => {
 					const queryKey = ["generation-settings", conversation.id];
 					void client.cancelQueries({ queryKey });
@@ -45,7 +49,6 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 					void client.invalidateQueries({ queryKey });
 					setNotice(`Model set to ${profile.displayName} / ${modelId}.`);
 				},
-				onUnavailable: () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE),
 			});
 		} finally {
 			setPending(false);

@@ -1,7 +1,7 @@
 import {
 	type ConversationSummary,
 } from "../../conversation";
-import { createConversationCommands } from "../../createConversationCommands";
+import { runConversationCommand, type ConversationCommandSurface } from "../../conversation-command-runner";
 import {
 	applyPromptPresetCommand,
 	commitSillyTavernPromptPreset,
@@ -130,35 +130,31 @@ export function usePromptPresetLibrary({
 	//  Applies one selection through the authoritative Conversation command.
 	// `selectPreset` decides whether a pending leave must resolve first; the runtime owns the
 	// operation gate once the selection is ready to start.
-	const { run } = createConversationCommands(conversation?.id ?? null, {
+	const surface: ConversationCommandSurface = {
+		conversationId: conversation?.id ?? null,
 		revision: () => conversation?.revision ?? null,
 		onConversationChange: (next) => {
 			dispatch({ type: "conversation-adopted", conversationRevision: next.revision });
 			onConversationChange(next);
 		},
 		setNotice: (notice) => dispatch({ type: "notice-changed", notice }),
-	});
+	};
 
 	const applySelection = (presetId: number): void => {
 		if (conversation === null) return;
 		void runOperation(SELECTION_EFFECTS, async () => {
 			const conversationClaim = conversationOperationClaim(runtime.current());
-			await run({
-						type: "select-prompt-preset",
-						promptPresetId: presetId,
-					}, { notices: PRESET_COMMAND_NOTICES, isCurrent: () => conversationOperationApplies(runtime.current(), conversationClaim), onNotPlayable: () => {
-						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
-							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.conflict });
-						}
-					}, onNotRemovable: (reason) => {
-						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
-							dispatch({ type: "notice-changed", notice: reason });
-						}
-					},
-				onApplied: () => {
-						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
-						dispatch({ type: "notice-changed", notice: null });
-					} });
+			await runConversationCommand({
+				...surface,
+				isCurrent: () => conversationOperationApplies(runtime.current(), conversationClaim),
+			}, {
+				type: "select-prompt-preset",
+				promptPresetId: presetId,
+			}, {
+				notices: PRESET_COMMAND_NOTICES,
+				onNotPlayable: () => dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.conflict }),
+				onApplied: () => dispatch({ type: "notice-changed", notice: null }),
+			});
 		});
 	};
 

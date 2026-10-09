@@ -3,8 +3,7 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { loadConversationPromptPreset, type ConversationSummary } from "./conversation";
-import { createConversationCommands } from "./createConversationCommands";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
+import { runConversationCommand, CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ProseEditor } from "./editor/ProseEditor";
 import { useSaveGuard } from "./SaveGuard";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "./prompt-preset-library";
@@ -34,7 +33,12 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	if (conversation.revision > expectedRevision && conversation.authorNote === saved) setExpectedRevision(conversation.revision);
-	const { run } = createConversationCommands(conversation.id, { revision: () => expectedRevision, onConversationChange, setNotice });
+	const surface = {
+		conversationId: conversation.id,
+		revision: () => expectedRevision,
+		onConversationChange,
+		setNotice,
+	};
 
 	const dirty = draft !== saved;
 	const save = async (): Promise<boolean> => {
@@ -43,14 +47,15 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		setNotice(null);
 		let applied = false;
 		try {
-			await run({ type: "set-author-note", content: draft }, { notices: {
+			await runConversationCommand(surface, { type: "set-author-note", content: draft }, {
+				notices: {
 					conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
 					notFound: CONVERSATION_UNREACHABLE_NOTICE,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
 				onApplied: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); applied = true; },
-				onNotPlayable: setNotice,
-				onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); } });
+				onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); },
+			});
 		} finally { setPending(false); }
 		return applied;
 	};

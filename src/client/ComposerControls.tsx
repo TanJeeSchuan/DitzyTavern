@@ -6,8 +6,7 @@ import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
 } from "./conversation";
-import { createConversationCommands } from "./createConversationCommands";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
+import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "./conversation-command-runner";
 import { ModelSelector } from "./ModelSelector";
 
 // @approved
@@ -37,7 +36,12 @@ export function ComposerControlSelectors({
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 
-	const { run } = createConversationCommands(conversation.id, { revision: () => conversation.revision, onConversationChange, setNotice });
+	const surface = {
+		conversationId: conversation.id,
+		revision: () => conversation.revision,
+		onConversationChange,
+		setNotice,
+	};
 
 	if (conversation.cast.length === 0) {
 		return null;
@@ -56,18 +60,19 @@ export function ComposerControlSelectors({
 		}
 		setPending(true);
 		setNotice(null);
-		const showUnreachable = () => setNotice(CONVERSATION_UNREACHABLE_NOTICE);
 		try {
-			await run({
-						type: "assign-control",
-						seat,
-						participantId,
-					}, { notices: {
+			await runConversationCommand(surface, {
+				type: "assign-control",
+				seat,
+				participantId,
+			}, {
+				notices: {
 					conflict: "The Conversation changed elsewhere; the current seats were reloaded.",
 					notFound: CONVERSATION_UNREACHABLE_NOTICE,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				onApplied: () => onControlChange(description.notice), onNotPlayable: showUnreachable, onNotRemovable: showUnreachable });
+				onApplied: () => onControlChange(description.notice),
+			});
 		} finally {
 			setPending(false);
 		}
