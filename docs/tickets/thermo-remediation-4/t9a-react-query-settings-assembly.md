@@ -132,3 +132,10 @@ five pre-existing Vite font 403s and two intentional mocked HTTP 422s; no React 
 **Limits:** no e2e suite was run, as requested. Generation success is covered with the real hook/transport
 and scripted HTTP response; no paid provider generation was attempted. The existing contract-audit matches
 and lint warnings were not changed.
+
+### Review round 2 (orchestrator fix)
+
+- A late `delete-succeeded` carried no ownership, so deleting A, cancelling, then opening B's deletion confirmation before A resolved
+  closed B's confirmation and reported "A deleted." The action now carries `deletedProfileId`; it leaves state untouched when a
+  different profile's confirmation is open. Server authority still publishes to the shared cache unconditionally.
+  Pinned by "a late deletion result leaves another profile's deletion confirmation open" (fails without the guard).

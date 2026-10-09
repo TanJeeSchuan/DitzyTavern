@@ -131,7 +131,7 @@ export type ConnectionSettingsControllerAction =
 	| { type: "refresh-failed"; message: string }
 	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string }
 	| { type: "apply-succeeded"; settings: ConnectionSettings; submitted: ConnectionSettingsEditorSnapshot; draftDisplayName: string }
-	| { type: "delete-succeeded"; deletedDisplayName: string }
+	| { type: "delete-succeeded"; deletedProfileId: number; deletedDisplayName: string }
 	| { type: "reset-credential-succeeded" };
 
 export function reduceConnectionSettingsController(
@@ -222,6 +222,7 @@ export function reduceConnectionSettingsController(
 					};
 		}
 		case "delete-succeeded":
+			if (state.pendingDeletionProfileId !== null && state.pendingDeletionProfileId !== action.deletedProfileId) return state;
 			return {
 				...state,
 				conflict: null,

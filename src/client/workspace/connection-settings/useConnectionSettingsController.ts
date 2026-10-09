@@ -47,7 +47,7 @@ const LOAD_ERROR = "Connection Settings could not be loaded.";
 // mutation can adopt the server's copy for the editor that sent it.
 type ConnectionCommandSubmission =
 	| { type: "apply"; command: ConnectionSettingsCommand; draftDisplayName: string; submitted: ConnectionSettingsEditorSnapshot }
-	| { type: "delete"; command: ConnectionSettingsCommand; deletedDisplayName: string }
+	| { type: "delete"; command: ConnectionSettingsCommand; deletedProfileId: number; deletedDisplayName: string }
 	| { type: "reset-credential"; command: ConnectionSettingsCommand };
 
 
@@ -160,7 +160,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			}
 			const applied = publishConnectionSettings(client, result.value.settings) ?? result.value.settings;
 			if (submission.type === "apply") dispatch({ type: "apply-succeeded", settings: applied, draftDisplayName: submission.draftDisplayName, submitted: submission.submitted });
-			else if (submission.type === "delete") dispatch({ type: "delete-succeeded", deletedDisplayName: submission.deletedDisplayName });
+			else if (submission.type === "delete") dispatch({ type: "delete-succeeded", deletedProfileId: submission.deletedProfileId, deletedDisplayName: submission.deletedDisplayName });
 			else dispatch({ type: "reset-credential-succeeded" });
 		},
 		onError: () => dispatch({ type: "set-error", message: "Connection settings could not be saved." }),
@@ -318,6 +318,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		await command.mutateAsync({
 			type: "delete",
 			command: { type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id },
+			deletedProfileId: pendingDeletionProfile.id,
 			deletedDisplayName: pendingDeletionProfile.displayName,
 		});
 	};

@@ -151,12 +151,25 @@ describe("reduceConnectionSettingsController", () => {
 	test("deleting a profile clears the pending deletion and reports it", () => {
 		const next = reduceConnectionSettingsController(controllerState(), {
 			type: "delete-succeeded",
+			deletedProfileId: 1,
 			deletedDisplayName: "First",
 		});
 
 		expect(next.pendingDeletionProfileId).toBeNull();
 		expect(next.conflict).toBeNull();
 		expect(next.notice).toBe("First deleted.");
+	});
+
+	test("a late deletion result leaves another profile's deletion confirmation open", () => {
+		const confirmingB = reduceConnectionSettingsController(controllerState(), { type: "request-deletion", profileId: 2 });
+		const next = reduceConnectionSettingsController(confirmingB, {
+			type: "delete-succeeded",
+			deletedProfileId: 1,
+			deletedDisplayName: "First",
+		});
+
+		expect(next.pendingDeletionProfileId).toBe(2);
+		expect(next.notice).toBeNull();
 	});
 
 	test("a save result cannot adopt after editing A to B and back to A", () => {
