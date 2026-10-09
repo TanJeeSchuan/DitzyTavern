@@ -32,8 +32,6 @@ import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
 import { usePreviewController } from "./usePreviewController";
-import { useStoryMessageActions } from "./useStoryMessageActions";
-import { useStoryViewport } from "./useStoryViewport";
 import { useThemePreference } from "../lib/use-theme";
 import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
@@ -68,7 +66,6 @@ export function ActiveWritingWorkspace({
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
-	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const saveNavigation = useSaveNavigation();
 	const [theme, setPersistedTheme] = useThemePreference();
 
@@ -98,11 +95,6 @@ export function ActiveWritingWorkspace({
 	useEffect(() => {
 		if (assemblyActive) dispatchPanel({ type: "workspace-reset" });
 	}, [assemblyActive]);
-	const viewport = useStoryViewport({
-		messages: story.messages,
-		conversationId: story.conversationId,
-		hasNewer: story.page?.hasNewer === true,
-	});
 	const preview = usePreviewController({
 		story,
 		conversation: session.conversation,
@@ -151,25 +143,9 @@ export function ActiveWritingWorkspace({
 		dispatchPanel({ type: "workspace-reset" });
 	};
 
-	const storyActions = useStoryMessageActions({
-		story,
-		conversation: session.conversation,
-		dispatchStory,
-		setConversation: session.setConversation,
-		queueSwipeScroll: viewport.queueSwipeScroll,
-		clearPreviewError: preview.clearPreviewError,
-		canEnterPreview: !assemblyActive,
-		onEnterPreview: () => {
-			dispatchPanel({ type: "preview-entered" });
-			onNewChatClose();
-		},
-	});
-
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const memoryFocus = panelState.memoryFocus;
-
-	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 
 	const openActiveGenerationDetails = () => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
@@ -242,13 +218,14 @@ export function ActiveWritingWorkspace({
 				story={story}
 				dispatchStory={dispatchStory}
 				conversation={conversation}
-				composerIsReceded={composerIsReceded}
 				assemblyActive={assemblyActive}
 				session={session}
 				generation={generation}
-				viewport={viewport}
 				preview={preview}
-				storyActions={storyActions}
+				onEnterPreview={() => {
+					dispatchPanel({ type: "preview-entered" });
+					onNewChatClose();
+				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
 				onOpenAuthorNote={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel: "author-note" }))}
@@ -267,7 +244,6 @@ export function ActiveWritingWorkspace({
 				onInspectVariant={openVariantDetails}
 				onOpenMessageMemories={openMessageMemories}
 				onOpenGenerationDetails={openActiveGenerationDetails}
-				onComposerFocusChange={setIsComposerFocused}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
 

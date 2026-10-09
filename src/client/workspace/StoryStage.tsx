@@ -1,4 +1,4 @@
-import type { Dispatch } from "react";
+import { useState, type Dispatch } from "react";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
 import {
@@ -19,23 +19,22 @@ import {
 import type { useConversationSession } from "./useConversationSession";
 import type { useGenerationController } from "./useGenerationController";
 import type { usePreviewController } from "./usePreviewController";
-import type { useStoryMessageActions } from "./useStoryMessageActions";
-import type { useStoryViewport } from "./useStoryViewport";
+import { useStoryMessageActions } from "./useStoryMessageActions";
+import { useStoryViewport } from "./useStoryViewport";
 
 // The story stage: header, preview dock, scrollable message list, and
-// composer. It owns no state; panel coordination and generation remain with
-// the workspace, which composes the guarded openers passed in below.
+// composer. It owns the viewport scroll state, the message commands, and the
+// composer focus; panel coordination and generation remain with the
+// workspace, which composes the guarded openers passed in below.
 export function StoryStage({
 	story,
 	dispatchStory,
 	conversation,
-	composerIsReceded,
 	assemblyActive,
 	session,
 	generation,
-	viewport,
 	preview,
-	storyActions,
+	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
 	onOpenAuthorNote,
@@ -45,19 +44,16 @@ export function StoryStage({
 	onInspectVariant,
 	onOpenMessageMemories,
 	onOpenGenerationDetails,
-	onComposerFocusChange,
 	onControlChange,
 }: {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
-	composerIsReceded: boolean;
 	assemblyActive: boolean;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
-	viewport: ReturnType<typeof useStoryViewport>;
 	preview: ReturnType<typeof usePreviewController>;
-	storyActions: ReturnType<typeof useStoryMessageActions>;
+	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
 	onOpenAuthorNote: () => void;
@@ -67,9 +63,25 @@ export function StoryStage({
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenMessageMemories: (messageId: number) => void;
 	onOpenGenerationDetails: () => void;
-	onComposerFocusChange: (focused: boolean) => void;
 	onControlChange: (text: string) => void;
 }) {
+	const viewport = useStoryViewport({
+		messages: story.messages,
+		conversationId: story.conversationId,
+		hasNewer: story.page?.hasNewer === true,
+	});
+	const storyActions = useStoryMessageActions({
+		story,
+		conversation,
+		dispatchStory,
+		setConversation: session.setConversation,
+		queueSwipeScroll: viewport.queueSwipeScroll,
+		clearPreviewError: preview.clearPreviewError,
+		canEnterPreview: !assemblyActive,
+		onEnterPreview,
+	});
+	const [isComposerFocused, setIsComposerFocused] = useState(false);
+	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
@@ -209,7 +221,7 @@ export function StoryStage({
 				canWrite={generation.assemblyAvailable}
 				isReceded={composerIsReceded}
 				onDraftChange={generation.setDraft}
-				onFocusChange={onComposerFocusChange}
+				onFocusChange={setIsComposerFocused}
 				onSubmit={generation.submitMessage}
 				onCancel={generation.cancelGeneration}
 				stopPending={generation.stopPending}

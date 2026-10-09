@@ -50,5 +50,16 @@ Because the ≤ 5-state target left no room for detached detail state, `generati
 `memoryFocus` folded into the panel-coordination reducer: `generation-details-opened` carries the
 target, `memories-opened` carries the focus, and every action that drops a surface drops the focus
 data alongside it. The story stage (header, preview dock, message list, composer) moved to
-`StoryStage.tsx`, which owns no state. Behavior unchanged; verified by playwright-cli through the
-dirty-editor save/discard navigation and the theme toggle persisting across reload.
+`StoryStage.tsx`. Behavior unchanged; verified by playwright-cli through the dirty-editor
+save/discard navigation and the theme toggle persisting across reload.
+
+Review round 1: `StoryStage` now owns `useStoryViewport`, `useStoryMessageActions`, and the composer
+focus (`isComposerFocused` + the `composerIsReceded` derivation), so no controller-hook result for
+these three crosses a prop anymore. None of their results is consumed outside the stage
+(`queueSwipeScroll`·`isAtLatest` feed the actions hook and the recede only, and the actions object
+was only rendered), so nothing had to stay behind. The shell keeps solely the panel-coordination
+callbacks, including one new `onEnterPreview` (dispatches `preview-entered` and closes the new-chat
+surface). Shell: 317 lines, 2 `useState`. Checked by playwright-cli on send, regenerate, composer
+focus/de-recede, and the scroll-away recede; jump-to-latest needs the Memories/generation-details
+navigate-to-source path, which the dev seed has no data for, so it is covered by
+`e2e/story-jump.spec.ts` instead.
