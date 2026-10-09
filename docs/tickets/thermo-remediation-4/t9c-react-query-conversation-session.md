@@ -30,6 +30,18 @@ Client "latest-wins" concurrency is hand-rolled ~40 times with `useRef(0)` reque
 
 This is the riskiest hook in the client. Keep `useConversationSession.test.ts` behavior tests passing; rewrite their mechanics only where they drove the removed counters.
 
+## Behavior constraints (acceptance)
+
+Each must hold after the migration; state in the Outcome how each is guaranteed (test name, or code reference if untestable):
+
+- **Latest wins:** switching the key (Conversation, preset, position) while a read is in flight never applies the older response.
+- **Abort:** the superseded request is aborted through `signal`, not just ignored.
+- **No duplicate fetch:** mount, StrictMode double-invoke, and re-render with the same key issue one request, not two.
+- **No resurrection:** a mutation that resolves after its owner unmounted or after the key changed does not write into the new state.
+- **Optimistic revision:** writes still send the current `expectedRevision`; a 409 conflict still adopts the server's current state exactly as before.
+- **Cache freshness:** pick `staleTime` / invalidation so a write in one panel is visible in every other reader of the same key without a manual reload; no stale cache served after a write.
+- **Cost:** request count does not scale with list size or render count.
+
 ## TODO
 
 - [ ] Map every counter in `useConversationSession` to the request it guards
