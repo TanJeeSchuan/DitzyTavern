@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
-import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, placeholder as placeholderExtension, ViewPlugin, WidgetType } from "@codemirror/view";
+import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -73,10 +73,12 @@ const theme = EditorView.theme({
 	".cm-cursor": { borderLeftColor: "currentColor" },
 	"&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground": { background: "color-mix(in oklch, var(--accent) 28%, transparent)" },
 	".cm-line": { padding: "0" },
-	".cm-placeholder": { color: "var(--text-muted)" },
 });
 
 const baseName = (fileName: string) => fileName.replace(/\.[^.]+$/, "");
+
+const contentAttributes = (ariaLabel: string, placeholder: string) =>
+	EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-placeholder": placeholder, "aria-multiline": "true", spellcheck: "true" });
 
 export function ProseEditor({
 	ref,
@@ -104,7 +106,7 @@ export function ProseEditor({
 	const onChangeRef = useRef(onChange);
 	const openImageAt = useOpenImageAt();
 	const [error, setError] = useState<string | null>(null);
-	const [settings] = useState(() => ({ placeholder: new Compartment(), editable: new Compartment(), label: new Compartment() }));
+	const [settings] = useState(() => ({ editable: new Compartment(), label: new Compartment() }));
 	onChangeRef.current = onChange;
 
 	const insert = async (files: readonly File[], at?: number) => {
@@ -169,9 +171,8 @@ export function ProseEditor({
 					EditorView.lineWrapping,
 					chipPlugin,
 					theme,
-					settings.placeholder.of(placeholderExtension(placeholder)),
 					settings.editable.of(EditorView.editable.of(!disabled)),
-					settings.label.of(EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "true" })),
+					settings.label.of(contentAttributes(ariaLabel, placeholder)),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
 							for (const pending of pendingInsertions.current) {
@@ -222,16 +223,15 @@ export function ProseEditor({
 	useEffect(() => {
 		view.current?.dispatch({
 			effects: [
-				settings.placeholder.reconfigure(placeholderExtension(placeholder)),
 				settings.editable.reconfigure(EditorView.editable.of(!disabled)),
-				settings.label.reconfigure(EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "true" })),
+				settings.label.reconfigure(contentAttributes(ariaLabel, placeholder)),
 			],
 		});
 	}, [placeholder, disabled, ariaLabel]);
 
 	return (
 		<div className={cn("prose-editor", className)} data-disabled={disabled} onClick={(event) => openImageAt(event.target)}>
-			<div ref={host} className="prose-editor-host" />
+			<div ref={host} className="prose-editor-host" data-placeholder={value === "" ? placeholder : undefined} />
 			<button type="button" className="prose-editor-add" aria-label="Add an image" title="Add an image" disabled={disabled} onClick={() => picker.current?.click()}>
 				<ImagePlus aria-hidden="true" />
 			</button>

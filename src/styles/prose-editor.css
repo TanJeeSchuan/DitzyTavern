@@ -12,11 +12,22 @@
 }
 
 .prose-editor-host {
+	position: relative;
 	display: flex;
 	min-height: 0;
 	flex: 1 1 auto;
 	overflow-y: auto;
 	scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Drawn outside the contenteditable: Gboard counts placeholder text inside the editing
+   line into its composition and duplicates the first word typed (#53). */
+.prose-editor-host[data-placeholder]::before {
+	content: attr(data-placeholder);
+	position: absolute;
+	inset: 0 1.9rem auto 1px;
+	color: var(--text-muted);
+	pointer-events: none;
 }
 
 .prose-editor-host > .cm-editor {
