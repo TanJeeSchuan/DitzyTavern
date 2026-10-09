@@ -53,8 +53,6 @@ export const headerEditorDataFor = (
 };
 
 export type ConnectionSettingsControllerState = {
-	settings: ConnectionSettings | null;
-	presets: ConnectionPreset[];
 	selectedProfileId: number | null;
 	draft: ConnectionProfileDraft;
 	credentialDraft: string;
@@ -66,13 +64,9 @@ export type ConnectionSettingsControllerState = {
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
-	editorVersion: number;
-	latestCommandId: number;
 };
 
 export const createConnectionSettingsControllerState = (): ConnectionSettingsControllerState => ({
-	settings: null,
-	presets: [],
 	selectedProfileId: null,
 	draft: connectionProfileDraftOf(blankConnectionProfileDraft),
 	credentialDraft: "",
@@ -84,30 +78,35 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	conflict: null,
 	notice: null,
 	error: null,
-	editorVersion: 0,
-	latestCommandId: 0,
 });
 
-const editorChanged = (
-	state: ConnectionSettingsControllerState,
-	patch: Partial<ConnectionSettingsControllerState>,
-): ConnectionSettingsControllerState => ({
-	...state,
-	...patch,
-	editorVersion: state.editorVersion + 1,
-});
-
-const newerSettings = (
+// @approved
+//  Every settings snapshot enters the query cache through this fold, so a
+//  late command result can never replace a newer authoritative revision.
+export const newerSettings = (
 	current: ConnectionSettings | null,
 	incoming: ConnectionSettings,
 ): ConnectionSettings => current === null || incoming.revision >= current.revision ? incoming : current;
 
-const ownsEditorResult = (
+// @approved
+//  The editor fields a Profile command submits; the command result may adopt
+//  the server's copy only while every one of them still matches the editor
+//  that sent it.
+export type ConnectionSettingsEditorSnapshot = {
+	selectedProfileId: number | null;
+	draft: ConnectionProfileDraft;
+	credentialDraft: string;
+	headerEditorData: HeaderEditorData;
+};
+
+const sameEditorSnapshot = (
 	state: ConnectionSettingsControllerState,
-	result: { editorVersion: number; commandId: number; settings: ConnectionSettings },
-): boolean => result.editorVersion === state.editorVersion &&
-	result.commandId === state.latestCommandId &&
-	(state.settings === null || result.settings.revision >= state.settings.revision);
+	submitted: ConnectionSettingsEditorSnapshot,
+): boolean =>
+	state.selectedProfileId === submitted.selectedProfileId &&
+	state.credentialDraft === submitted.credentialDraft &&
+	JSON.stringify(state.draft) === JSON.stringify(submitted.draft) &&
+	JSON.stringify(state.headerEditorData) === JSON.stringify(submitted.headerEditorData);
 
 const profileEditorState = (
 	state: ConnectionSettingsControllerState,
@@ -128,8 +127,6 @@ const profileEditorState = (
 	});
 
 export type ConnectionSettingsControllerAction =
-	| { type: "load-succeeded"; settings: ConnectionSettings; presets: ConnectionPreset[] }
-	| { type: "load-failed"; message: string }
 	| { type: "choose-preset"; preset: ConnectionPreset }
 	| { type: "choose-profile"; profile: ConnectionProfile }
 	| { type: "set-draft"; draft: ConnectionProfileDraft }
@@ -140,31 +137,26 @@ export type ConnectionSettingsControllerAction =
 	| { type: "set-pending-deletion"; value: number | null }
 	| { type: "request-deletion"; profileId: number }
 	| { type: "clear-feedback" }
-	| { type: "set-error"; message: string; commandId?: number }
-	| { type: "command-started"; commandId: number }
+	| { type: "set-error"; message: string }
 	| { type: "test-started" }
 	| { type: "test-succeeded"; result: TestConnectionResult }
 	| { type: "test-failed"; message: string }
 	| { type: "refresh-started" }
-	| { type: "refresh-succeeded"; settings: ConnectionSettings; notice: string }
+	| { type: "refresh-succeeded"; notice: string }
 	| { type: "refresh-failed"; message: string }
-	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string; commandId?: number }
-	| { type: "apply-succeeded"; settings: ConnectionSettings; selectedProfileId: number | null; draftDisplayName: string; credentialWasProvided: boolean; editorVersion: number; commandId: number }
-	| { type: "delete-succeeded"; settings: ConnectionSettings; deletedDisplayName: string; editorVersion: number; commandId: number }
-	| { type: "reset-credential-succeeded"; settings: ConnectionSettings };
+	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string }
+	| { type: "apply-succeeded"; settings: ConnectionSettings; submitted: ConnectionSettingsEditorSnapshot; draftDisplayName: string }
+	| { type: "delete-succeeded"; deletedDisplayName: string }
+	| { type: "reset-credential-succeeded" };
 
 export function reduceConnectionSettingsController(
 	state: ConnectionSettingsControllerState,
 	action: ConnectionSettingsControllerAction,
 ): ConnectionSettingsControllerState {
 	switch (action.type) {
-		case "load-succeeded": {
-			return { ...state, settings: newerSettings(state.settings, action.settings), presets: action.presets };
-		}
-		case "load-failed":
-			return { ...state, error: action.message };
 		case "choose-preset":
-			return editorChanged(state, {
+			return {
+				...state,
 				selectedProfileId: null,
 				draft: copyDraft(action.preset.profile),
 				credentialDraft: "",
@@ -176,17 +168,17 @@ export function reduceConnectionSettingsController(
 				conflict: null,
 				notice: null,
 				error: null,
-			});
+			};
 		case "choose-profile":
-			return editorChanged(state, profileEditorState(state, action.profile));
+			return profileEditorState(state, action.profile);
 		case "set-draft":
-			return editorChanged(state, { draft: action.draft });
+			return { ...state, draft: action.draft };
 		case "discard-draft":
-			return editorChanged(state, { selectedProfileId: null, draft: emptyConnectionProfileDraft, credentialDraft: "", headerEditorData: {}, editorOpen: false, notice: null, error: null, conflict: null });
+			return { ...state, selectedProfileId: null, draft: emptyConnectionProfileDraft, credentialDraft: "", headerEditorData: {}, editorOpen: false, notice: null, error: null, conflict: null };
 		case "set-credential-draft":
-			return editorChanged(state, { credentialDraft: action.value });
+			return { ...state, credentialDraft: action.value };
 		case "set-header-editor-data":
-			return editorChanged(state, { headerEditorData: action.value });
+			return { ...state, headerEditorData: action.value };
 		case "set-test-model-id":
 			return { ...state, testModelId: action.value };
 		case "set-pending-deletion":
@@ -201,11 +193,7 @@ export function reduceConnectionSettingsController(
 		case "clear-feedback":
 			return { ...state, notice: null, error: null };
 		case "set-error":
-			return action.commandId !== undefined && action.commandId !== state.latestCommandId
-				? state
-				: { ...state, error: action.message };
-		case "command-started":
-			return { ...state, latestCommandId: action.commandId };
+			return { ...state, error: action.message };
 		case "test-started":
 			return { ...state, testResult: null, notice: null, error: null };
 		case "test-succeeded":
@@ -215,34 +203,22 @@ export function reduceConnectionSettingsController(
 		case "refresh-started":
 			return { ...state, notice: null, error: null };
 		case "refresh-succeeded":
-			return { ...state, settings: newerSettings(state.settings, action.settings), notice: action.notice, error: null };
+			return { ...state, notice: action.notice, error: null };
 		case "refresh-failed":
 			return { ...state, error: action.message };
 		case "command-conflict":
-			return action.commandId !== undefined && action.commandId !== state.latestCommandId
-				|| (state.settings !== null && action.conflict.actualRevision < state.settings.revision)
-				? state
-				: { ...state, settings: newerSettings(state.settings, action.conflict.currentSettings), conflict: action.conflict, error: action.message };
+			return { ...state, conflict: action.conflict, error: action.message };
 		case "apply-succeeded": {
-			const authoritativeSettings = newerSettings(state.settings, action.settings);
-			if (!ownsEditorResult(state, action) || action.selectedProfileId !== state.selectedProfileId) {
-				return {
-					...state,
-					settings: authoritativeSettings,
-				};
-			}
-			const saved = authoritativeSettings.profiles.find((profile) =>
-				(action.selectedProfileId !== null && profile.id === action.selectedProfileId) ||
-				(action.selectedProfileId === null && profile.displayName === action.draftDisplayName.trim().replace(/\s+/g, " ")),
+			if (!sameEditorSnapshot(state, action.submitted)) return state;
+			const saved = action.settings.profiles.find((profile) =>
+				(action.submitted.selectedProfileId !== null && profile.id === action.submitted.selectedProfileId) ||
+				(action.submitted.selectedProfileId === null && profile.displayName === action.draftDisplayName.trim().replace(/\s+/g, " ")),
 			);
 			const next = {
 				...state,
-				settings: authoritativeSettings,
 				conflict: null,
 				testResult: null,
-				notice: action.selectedProfileId !== null && action.credentialWasProvided
-					? "Profile changes saved. The credential draft is still unsaved."
-					: "Changes saved. No provider request was made.",
+				notice: "Changes saved. No provider request was made.",
 				error: null,
 			};
 			return saved === undefined
@@ -255,24 +231,15 @@ export function reduceConnectionSettingsController(
 						credentialDraft: "",
 					};
 		}
-		case "delete-succeeded": {
-			if (!ownsEditorResult(state, action)) {
-				return {
-					...state,
-					settings: newerSettings(state.settings, action.settings),
-				};
-			}
+		case "delete-succeeded":
 			return {
 				...state,
-				settings: newerSettings(state.settings, action.settings),
 				conflict: null,
 				pendingDeletionProfileId: null,
 				notice: `${action.deletedDisplayName} deleted.`,
 				error: null,
 			};
-		}
 		case "reset-credential-succeeded":
-			return { ...state, settings: newerSettings(state.settings, action.settings), conflict: null, notice: "Credential reset.", error: null };
+			return { ...state, conflict: null, notice: "Credential reset.", error: null };
 	}
 }
-

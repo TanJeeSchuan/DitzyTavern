@@ -5,6 +5,8 @@ import {
 	copyDraft,
 	createConnectionSettingsControllerState,
 	emptyConnectionProfileDraft,
+	headerEditorDataFor,
+	newerSettings,
 	reduceConnectionSettingsController,
 } from "./connection-settings-state";
 
@@ -42,14 +44,8 @@ const preset: ConnectionPreset = {
 	},
 };
 
-const controllerSettings = {
-	revision: 2,
-	profiles: [profile(1, "First"), profile(2, "Second", ["second-model"])],
-};
-
 const controllerState = (): ConnectionSettingsControllerState => ({
 	...createConnectionSettingsControllerState(),
-	settings: controllerSettings,
 	selectedProfileId: 1,
 	draft: { ...emptyConnectionProfileDraft, displayName: "Local edit" },
 	credentialDraft: "secret",
@@ -93,19 +89,18 @@ describe("copyDraft", () => {
 	});
 });
 
-describe("reduceConnectionSettingsController", () => {
-	test("loads settings onto the connection list without opening an editor", () => {
-		const next = reduceConnectionSettingsController(
-			createConnectionSettingsControllerState(),
-			{ type: "load-succeeded", settings: controllerSettings, presets: [preset] },
-		);
+describe("newerSettings", () => {
+	test("an older snapshot never replaces a newer one", () => {
+		const older = { revision: 2, profiles: [profile(1, "Old")] };
+		const newer = { revision: 4, profiles: [profile(1, "Fresh")] };
 
-		expect(next.settings).toBe(controllerSettings);
-		expect(next.presets).toEqual([preset]);
-		expect(next.selectedProfileId).toBeNull();
-		expect(next.editorOpen).toBe(false);
+		expect(newerSettings(older, newer)).toBe(newer);
+		expect(newerSettings(newer, older)).toBe(newer);
+		expect(newerSettings(null, older)).toBe(older);
 	});
+});
 
+describe("reduceConnectionSettingsController", () => {
 	test("choosing a preset creates a clean new-profile draft", () => {
 		const next = reduceConnectionSettingsController(controllerState(), {
 			type: "choose-preset",
@@ -130,7 +125,7 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.editorOpen).toBe(true);
 	});
 
-	test("a command conflict replaces authority while retaining the local editor", () => {
+	test("a command conflict retains the local editor and surfaces the conflict", () => {
 		const conflict = {
 			outcome: "conflict" as const,
 			expectedRevision: 2,
@@ -146,7 +141,6 @@ describe("reduceConnectionSettingsController", () => {
 			message: "Connection Settings changed elsewhere.",
 		});
 
-		expect(next.settings).toBe(conflict.currentSettings);
 		expect(next.conflict).toBe(conflict);
 		expect(next.draft.displayName).toBe("Local edit");
 		expect(next.credentialDraft).toBe("secret");
@@ -154,64 +148,57 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.error).toBe("Connection Settings changed elsewhere.");
 	});
 
-	test("deleting a profile adopts the new settings and clears the pending deletion", () => {
-		const settings = { revision: 3, profiles: [profile(2, "Second")] };
+	test("deleting a profile clears the pending deletion and reports it", () => {
 		const next = reduceConnectionSettingsController(controllerState(), {
 			type: "delete-succeeded",
-			settings,
 			deletedDisplayName: "First",
-			editorVersion: 0,
-			commandId: 0,
 		});
 
-		expect(next.settings).toBe(settings);
 		expect(next.pendingDeletionProfileId).toBeNull();
+		expect(next.conflict).toBeNull();
 		expect(next.notice).toBe("First deleted.");
 	});
 
-	test("late save results preserve a newer profile draft", () => {
+	test("a save result adopts the saved profile while the editor still matches", () => {
+		const state = controllerState();
+		const next = reduceConnectionSettingsController(state, {
+			type: "apply-succeeded",
+			settings: { revision: 3, profiles: [profile(1, "Saved"), profile(2, "Second")] },
+			draftDisplayName: "Local edit",
+			submitted: {
+				selectedProfileId: 1,
+				draft: state.draft,
+				credentialDraft: state.credentialDraft,
+				headerEditorData: state.headerEditorData,
+			},
+		});
+
+		expect(next.draft).toEqual(copyDraft(profile(1, "Saved")));
+		expect(next.headerEditorData).toEqual(headerEditorDataFor(profile(1, "Saved").headers));
+		expect(next.credentialDraft).toBe("");
+		expect(next.notice).toBe("Changes saved. No provider request was made.");
+	});
+
+	test("a save result preserves a draft the editor changed while saving", () => {
 		const editing = reduceConnectionSettingsController(controllerState(), {
 			type: "set-draft",
 			draft: { ...emptyConnectionProfileDraft, displayName: "Newer local edit" },
 		});
 		const next = reduceConnectionSettingsController(editing, {
 			type: "apply-succeeded",
-			settings: {
-				revision: 3,
-				profiles: [profile(1, "Older saved edit"), profile(2, "Second")],
-			},
-			selectedProfileId: 1,
+			settings: { revision: 3, profiles: [profile(1, "Older saved edit"), profile(2, "Second")] },
 			draftDisplayName: "Local edit",
-			credentialWasProvided: false,
-			editorVersion: 0,
-			commandId: 0,
+			submitted: {
+				selectedProfileId: 1,
+				draft: { ...emptyConnectionProfileDraft, displayName: "Local edit" },
+				credentialDraft: "secret",
+				headerEditorData: editing.headerEditorData,
+			},
 		});
 
-		expect(next.settings?.revision).toBe(3);
 		expect(next.selectedProfileId).toBe(1);
 		expect(next.draft.displayName).toBe("Newer local edit");
 		expect(next.notice).toBe(editing.notice);
+		expect(next.testResult).toBe(editing.testResult);
 	});
-
-	test("a stale completion cannot replace newer server settings", () => {
-		const refreshed = reduceConnectionSettingsController(controllerState(), {
-			type: "refresh-succeeded",
-			settings: { revision: 4, profiles: [profile(1, "Fresh"), profile(2, "Second")] },
-			notice: "refreshed",
-		});
-		const next = reduceConnectionSettingsController(refreshed, {
-			type: "apply-succeeded",
-			settings: { revision: 3, profiles: [profile(1, "Stale")] },
-			selectedProfileId: 1,
-			draftDisplayName: "Local edit",
-			credentialWasProvided: false,
-			editorVersion: 0,
-			commandId: 0,
-		});
-
-		expect(next.settings?.revision).toBe(4);
-		expect(next.settings?.profiles[0]?.displayName).toBe("Fresh");
-		expect(next.draft.displayName).toBe("Local edit");
-	});
-
 });

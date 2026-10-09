@@ -211,9 +211,10 @@ export async function loadVariantDetails(
 export async function previewConversationGeneration(
 	conversationId: number,
 	input: GenerationPreviewBody,
+	signal?: AbortSignal,
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.preview.post(input),
+		api.api.conversations({ id: conversationId }).generations.preview.post(input, { fetch: { signal } }),
 		generationPreview,
 		generationPreviewErrors,
 	);

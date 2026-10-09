@@ -61,12 +61,12 @@ export type TestConnectionDraftInput = ConnectionTestDraftPayload;
 
 export type ConnectionSettingsCommand = ConnectionSettingsCommandPayload;
 
-export async function loadConnectionSettings(): Promise<ConnectionSettings> {
-	return requestData(api.api["connection-settings"].get(), connectionSettingsResponse);
+export async function loadConnectionSettings(signal?: AbortSignal): Promise<ConnectionSettings> {
+	return requestData(api.api["connection-settings"].get({ fetch: { signal } }), connectionSettingsResponse);
 }
 
-export async function loadConnectionPresets(): Promise<ConnectionPreset[]> {
-	return (await requestData(api.api["connection-settings"].presets.get(), connectionPresetsResponse)).presets;
+export async function loadConnectionPresets(signal?: AbortSignal): Promise<ConnectionPreset[]> {
+	return (await requestData(api.api["connection-settings"].presets.get({ fetch: { signal } }), connectionPresetsResponse)).presets;
 }
 
 export async function saveConnectionCommand(
