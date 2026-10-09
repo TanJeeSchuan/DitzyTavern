@@ -259,13 +259,9 @@ const advanceCharacterRevision = (database: Database, db: LoreDatabase, characte
 		.returning({ revision: characterTable.revision })
 		.get();
 	if (advanced === undefined) {
-		const current = db.select({ revision: characterTable.revision }).from(characterTable).where(eq(characterTable.id, characterId)).get();
-		throw new StaleRevisionError(
-			"lore-attachment",
-			expectedRevision,
-			current?.revision ?? expectedRevision,
-			readCharacterLorebookAttachments(database, characterId),
-		);
+		const current = readCharacterLorebookAttachments(database, characterId);
+		if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
+		throw new StaleRevisionError("lore-attachment", expectedRevision, current.revision, current);
 	}
 };
 

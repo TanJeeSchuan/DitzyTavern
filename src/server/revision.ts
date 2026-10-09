@@ -22,32 +22,34 @@ import type { MemorySettingsPayload } from "../shared/contract/memory-settings";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
 
-export type RevisionAggregate =
-	| "settings"
-	| "preset"
-	| "lorebook"
-	| "lore-attachment"
-	| "character"
-	| "conversation"
-	| "generation"
-	| "memories"
-	| "collection";
+// @approved
+//  The aggregate → payload map: each state-bearing aggregate declares exactly
+//  the authoritative current read its conflict recovers with, all projected
+//  through the shared wire contracts the 409 schemas declare. Only the prose
+//  "generation" envelope carries no state (`undefined`).
+export type CurrentByAggregate = {
+	settings: ConnectionSettingsPayload | MemorySettingsPayload | SemanticTriggerSettingsPayload | ConversationMemoryAllowance;
+	preset: PromptPresetSummary;
+	lorebook: Lorebook;
+	"lore-attachment": LorebookOwnerAttachmentState;
+	character: CharacterSnapshot;
+	conversation: ConversationSummary;
+	generation: undefined;
+	memories: ConversationMemories;
+	collection: MemoryCollectionView;
+};
+
+export type RevisionAggregate = keyof CurrentByAggregate;
 
 // @approved
-//  The authoritative current reads each aggregate's conflict recovers with,
-// all projected through the shared wire contracts the 409 schemas declare.
-export type StaleRevisionCurrent =
-	| ConnectionSettingsPayload
-	| MemorySettingsPayload
-	| SemanticTriggerSettingsPayload
-	| ConversationMemoryAllowance
-	| PromptPresetSummary
-	| Lorebook
-	| LorebookOwnerAttachmentState
-	| CharacterSnapshot
-	| ConversationSummary
-	| MemoryCollectionView
-	| ConversationMemories;
+//  The discriminated constructor/guard argument tuples derived from the map:
+//  every state-bearing aggregate must pass its mapped payload, and only
+//  "generation" takes none.
+type StaleRevisionArgs = {
+	[K in RevisionAggregate]: CurrentByAggregate[K] extends undefined
+		? [aggregate: K, expectedRevision: number, actualRevision: number]
+		: [aggregate: K, expectedRevision: number, actualRevision: number, current: CurrentByAggregate[K]];
+}[RevisionAggregate];
 
 const staleAggregateLabel = {
 	settings: "settings",
@@ -61,63 +63,40 @@ const staleAggregateLabel = {
 	collection: "Memory collection",
 } satisfies Record<RevisionAggregate, string>;
 
-type StaleRevisionFields = {
-	readonly aggregate: RevisionAggregate;
-	readonly expectedRevision: number;
-	readonly actualRevision: number;
-	readonly current: StaleRevisionCurrent | undefined;
-	readonly message: string;
-};
-
 // @approved
 //  The closed wire-envelope union: one member per aggregate, matching the
-// 409 schema each route family declares. Throw sites no longer hand-roll
-// details and no per-module recovery presenters exist.
-export type StaleRevisionDetails =
-	| { expectedRevision: number; actualRevision: number; currentSettings: StaleRevisionCurrent }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentPreset: StaleRevisionCurrent }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentBook: StaleRevisionCurrent }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentState: StaleRevisionCurrent }
-	| { expectedRevision: number; actualRevision: number; currentCharacter: StaleRevisionCurrent }
-	| { expectedRevision: number; actualRevision: number; currentConversation: StaleRevisionCurrent }
+//  409 schema each route family declares. Throw sites no longer hand-roll
+//  details and no per-module recovery presenters exist.
+type StaleRevisionDetails =
+	| { expectedRevision: number; actualRevision: number; currentSettings: CurrentByAggregate["settings"] }
+	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentPreset: CurrentByAggregate["preset"] }
+	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentBook: CurrentByAggregate["lorebook"] }
+	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentState: CurrentByAggregate["lore-attachment"] }
+	| { expectedRevision: number; actualRevision: number; currentCharacter: CurrentByAggregate["character"] }
+	| { expectedRevision: number; actualRevision: number; currentConversation: CurrentByAggregate["conversation"] }
 	| { reason: string }
-	| { memories: StaleRevisionCurrent }
-	| { collection: StaleRevisionCurrent };
+	| { memories: CurrentByAggregate["memories"] }
+	| { collection: CurrentByAggregate["collection"] };
 
-export const staleRevisionDetails = (fields: StaleRevisionFields): StaleRevisionDetails => {
-	const { aggregate, expectedRevision, actualRevision, current, message } = fields;
-	switch (aggregate) {
+const staleRevisionDetails = (args: StaleRevisionArgs, message: string): StaleRevisionDetails => {
+	const [, expectedRevision, actualRevision] = args;
+	switch (args[0]) {
 		case "settings":
+			return { expectedRevision, actualRevision, currentSettings: args[3] };
 		case "preset":
+			return { reason: "stale-revision", expectedRevision, actualRevision, currentPreset: args[3] };
 		case "lorebook":
+			return { reason: "stale-revision", expectedRevision, actualRevision, currentBook: args[3] };
 		case "lore-attachment":
+			return { reason: "stale-revision", expectedRevision, actualRevision, currentState: args[3] };
 		case "character":
+			return { expectedRevision, actualRevision, currentCharacter: args[3] };
 		case "conversation":
+			return { expectedRevision, actualRevision, currentConversation: args[3] };
 		case "memories":
-		case "collection": {
-			// SAFETY: these aggregates declare the authoritative current read as a
-			// required constructor argument (only the prose "generation" envelope
-			// accepts an absent one), so their wire keys always receive a payload.
-			const payload = current as StaleRevisionCurrent;
-			switch (aggregate) {
-				case "settings":
-					return { expectedRevision, actualRevision, currentSettings: payload };
-				case "preset":
-					return { reason: "stale-revision", expectedRevision, actualRevision, currentPreset: payload };
-				case "lorebook":
-					return { reason: "stale-revision", expectedRevision, actualRevision, currentBook: payload };
-				case "lore-attachment":
-					return { reason: "stale-revision", expectedRevision, actualRevision, currentState: payload };
-				case "character":
-					return { expectedRevision, actualRevision, currentCharacter: payload };
-				case "conversation":
-					return { expectedRevision, actualRevision, currentConversation: payload };
-				case "memories":
-					return { memories: payload };
-				case "collection":
-					return { collection: payload };
-			}
-		}
+			return { memories: args[3] };
+		case "collection":
+			return { collection: args[3] };
 		case "generation":
 			return { reason: message };
 	}
@@ -125,41 +104,53 @@ export const staleRevisionDetails = (fields: StaleRevisionFields): StaleRevision
 
 export class StaleRevisionError extends Error {
 	readonly outcome = "conflict" as const;
+	readonly aggregate: RevisionAggregate;
+	readonly expectedRevision: number;
+	readonly actualRevision: number;
+	readonly current: CurrentByAggregate[RevisionAggregate] | undefined;
 	readonly details: StaleRevisionDetails;
 
-	// The four state-bearing receivers are the client's recovery payload; the
-	// prose-only "generation" envelope takes no state.
-	constructor(
-		readonly aggregate: RevisionAggregate,
-		readonly expectedRevision: number,
-		readonly actualRevision: number,
-		readonly current?: StaleRevisionCurrent,
-	) {
+	constructor(...args: StaleRevisionArgs) {
+		const [aggregate, expectedRevision, actualRevision] = args;
 		super(
 			`Expected ${staleAggregateLabel[aggregate]} revision ${expectedRevision}, but the current revision is ${actualRevision}.`,
 		);
 		this.name = "StaleRevisionError";
-		this.details = staleRevisionDetails({ aggregate, expectedRevision, actualRevision, current, message: this.message });
+		this.aggregate = aggregate;
+		this.expectedRevision = expectedRevision;
+		this.actualRevision = actualRevision;
+		this.current = args.length === 4 ? args[3] : undefined;
+		this.details = staleRevisionDetails(args, this.message);
 	}
 }
 
 // @approved
-//  The one revision guard: an already-read revisioned row that must still
-// carry the expected revision, and a reader for the authoritative current
-// state the conflict envelope recovers with (evaluated on the stale path
-// only). Modules keep their own existence checks and their own revision
-// advances; this seam is only the compare-and-throw.
-/**
- * The current-state reader is optional only for aggregates whose envelope
- * carries nothing but the prose reason ("generation"): their throws have no
- * authoritative state to recover with.
- */
+//  One revision guard: an already-read revisioned row that must still carry
+//  the expected revision, and a reader for the authoritative current state
+//  the conflict envelope recovers with (evaluated on the stale path only).
+//  Modules keep their own existence checks and their own revision advances;
+//  this seam is only the compare-and-throw.
+export function guardRevision(aggregate: "generation", expectedRevision: number, row: { readonly revision: number }): void;
+export function guardRevision<K extends Exclude<RevisionAggregate, "generation">>(
+	aggregate: K,
+	expectedRevision: number,
+	row: { readonly revision: number },
+	current: () => CurrentByAggregate[K],
+): void;
 export function guardRevision(
 	aggregate: RevisionAggregate,
 	expectedRevision: number,
 	row: { readonly revision: number },
-	current: () => StaleRevisionCurrent,
+	current?: () => CurrentByAggregate[RevisionAggregate],
 ): void {
 	if (row.revision === expectedRevision) return;
-	throw new StaleRevisionError(aggregate, expectedRevision, row.revision, current());
+	if (aggregate === "generation") {
+		throw new StaleRevisionError(aggregate, expectedRevision, row.revision);
+	}
+	// @approved
+	//  SAFETY: for this aggregate the state-bearing overload has already
+	//  required its mapped payload and a reader, which is exactly the argument
+	//  tuple the constructor accepts; TypeScript cannot reduce that dependent
+	//  pairing into the constructor's union of tuples at a generic call site.
+	throw new StaleRevisionError(...([aggregate, expectedRevision, row.revision, current!()] as StaleRevisionArgs));
 }

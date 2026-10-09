@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
-import { guardRevision, type StaleRevisionCurrent } from "./revision";
+import { guardRevision, type CurrentByAggregate } from "./revision";
 
 export const SETTINGS_ID = 1;
 
@@ -15,7 +15,11 @@ export class InvalidSettingsError extends Error {
 
 type SettingsTable<Row> = SQLiteTable & { id: AnySQLiteColumn; revision: AnySQLiteColumn; $inferSelect: Row; $inferInsert: Partial<Row> };
 
-export const createRevisionedSettings = <Row extends { id: number; revision: number }, Payload extends StaleRevisionCurrent>(database: Database, table: SettingsTable<Row>, project: (row: Row) => Payload) => {
+export const createRevisionedSettings = <Row extends { id: number; revision: number }, Payload extends CurrentByAggregate["settings"]>(
+	database: Database,
+	table: SettingsTable<Row>,
+	project: (row: Row) => Payload,
+) => {
 	const db = drizzle(database);
 	const row = () => {
 		// @approved

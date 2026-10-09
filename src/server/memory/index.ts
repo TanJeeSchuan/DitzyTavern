@@ -2,7 +2,6 @@ export { createMemorySettingsModule } from "./settings";
 export {
 	cancelMemoryCatchup,
 	correctMemorySource,
-	mergeMemoryLabels,
 	readConversationMemories,
 	readConversationMemoryChanges,
 	readLatestMemoryCatchup,
@@ -10,10 +9,10 @@ export {
 	resetAndReextractMemorySource,
 	retryMemorySourceIndex,
 	setMemoryAllowance,
-	setMemoryIdentity,
 	startMemoryWorker,
 	startMemoryCatchup,
 } from "./collections";
+export { mergeMemoryLabels, setMemoryIdentity } from "./label-commands";
 export type { MemoryWorkerOptions } from "./collections";
 export { embedMemoryTexts } from "./indexing";
 export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";

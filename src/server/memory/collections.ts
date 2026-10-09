@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
-import { conversationMemorySettingsTable, conversationTable, memoryCatchupRunTable, memoryCollectionTable, participantTable } from "../database/schema";
+import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import {
 	claimMemoryIndexJob,
@@ -24,15 +24,12 @@ import {
 	type MemoryCatchup,
 	type MemoryCollectionView,
 	type MemoryCorrectionCommand,
-	type MemoryIdentityCommand,
-	type MemoryLabelMerge,
-	type MemoryLabelMergeCommand,
 } from "../../shared/contract/memory";
 import type { MemoryIndexReadiness, MemoryTraceStep } from "../../shared/contract/memory";
 import { abortMemoryWork, indexingVariants, registerMemoryWork, registeredMemoryVariants } from "./work";
 import { sha256 } from "./hash";
 import { projectImageAnchors } from "../../shared/image-reference";
-import { applyMemoryLabelRules, InvalidMemoryLabelsError, isExcludedMemorySource, readMemoryLabelState, type MemoryLabelState } from "./labels";
+import { applyMemoryLabelRules, isExcludedMemorySource, readMemoryLabelState, type MemoryLabelState } from "./labels";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 import { guardRevision, StaleRevisionError } from "../revision";
 
@@ -148,9 +145,14 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
 		const current = readCollection(database, variantId);
-		if (!variant.selected || (current?.revision ?? 0) !== expectedRevision) {
-			if (current) throw new StaleRevisionError("collection", expectedRevision, current.revision, toView(current, variant, readMemoryIndexReadiness(database, current, enabled)));
-			if (!variant.selected || variant.content.trim().length === 0) throw new InvalidMemorySourceError("This source is no longer available for extraction.");
+		if (current) {
+			const view = () => toView(current, variant, readMemoryIndexReadiness(database, current, enabled));
+			if (!variant.selected) throw new StaleRevisionError("collection", expectedRevision, current.revision, view());
+			guardRevision("collection", expectedRevision, current, view);
+		} else if (!variant.selected) {
+			throw new InvalidMemorySourceError("This source is no longer available for extraction.");
+		} else if (expectedRevision !== 0) {
+			if (variant.content.trim().length === 0) throw new InvalidMemorySourceError("This source is no longer available for extraction.");
 			throw new StaleRevisionError("collection", expectedRevision, expectedRevision + 1, unprocessedView(variant, enabled));
 		}
 		const row = writeQueuedCollection(database, conversationId, messageId, capture(database, conversationId, messageId), null, current);
@@ -332,7 +334,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		const row = readCollection(database, variantId);
 		if (!row) throw new InvalidMemorySourceError("This source has no saved Memory collection to correct.");
 		const enabled = isMemoryEnabledForConversation(database, conversationId);
-		if (row.revision !== expectedRevision) throw new StaleRevisionError("collection", expectedRevision, row.revision, toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
+		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		const claims = parseClaims(row.claims_json);
 		if (!claims) throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid.");
 		if (!Number.isSafeInteger(index) || index < 0 || index >= claims.length) throw new InvalidMemorySourceError("This Memory no longer exists in the source collection.");
@@ -370,7 +372,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		const row = readCollection(database, variantId);
 		if (!variant || !row) throw new InvalidMemorySourceError("This source has no saved Memory collection to index.");
 		const enabled = isMemoryEnabledForConversation(database, conversationId);
-		if (row.revision !== expectedRevision) throw new StaleRevisionError("collection", expectedRevision, row.revision, toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
+		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		if (row.status !== "complete") throw new InvalidMemorySourceError("Indexing requires a completed saved Memory collection.");
 		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
 		const updated = drizzle(database)
@@ -554,78 +556,4 @@ export function readMemoryTrace(database: Database, conversationId: number, vari
 		.where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.conversation_id, conversationId)))
 		.get();
 	return row?.trace ? Value.Parse(memoryTraceSteps, JSON.parse(row.trace)) : [];
-}
-
-// @approved
-//  The Cast-label commands live beside `readConversationMemories` so their
-// stale conflicts carry that authoritative read; the label state itself is
-// read through the labels seam.
-const rewriteCollections = (database: Database, conversationId: number, state: MemoryLabelState) => {
-	const db = drizzle(database);
-	for (const row of db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all()) {
-		const claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json));
-		const updated = applyMemoryLabelRules(claims, state);
-		if (JSON.stringify(claims) === JSON.stringify(updated)) continue;
-		db.update(memoryCollectionTable)
-			.set({ claims_json: JSON.stringify(updated), revision: row.revision + 1, updated_at: new Date().toISOString() })
-			.where(eq(memoryCollectionTable.variant_id, row.variant_id))
-			.run();
-	}
-};
-
-export function setMemoryIdentity(database: Database, conversationId: number, command: MemoryIdentityCommand): void {
-	const removed = database.transaction(() => {
-		const db = drizzle(database);
-		const state = readMemoryLabelState(database, conversationId);
-		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
-		const participant = db
-			.select({ id: participantTable.id })
-			.from(participantTable)
-			.where(and(eq(participantTable.id, command.participantId), eq(participantTable.conversation_id, conversationId), isNull(participantTable.deleted_at)))
-			.get();
-		if (!participant) throw new InvalidMemoryLabelsError("This Participant is no longer in the Cast.");
-		const identity = command.identity.kind === "plays" ? { ...command.identity, person: command.identity.person.trim() } : command.identity;
-		if (identity.kind === "plays" && !identity.person) throw new InvalidMemoryLabelsError("Choose a nonblank person name.");
-		if (identity.kind === "themselves") delete state.identities[command.participantId]; else state.identities[command.participantId] = identity;
-		const values = { identities: JSON.stringify(state.identities), label_revision: state.revision + 1 };
-		db.insert(conversationMemorySettingsTable)
-			.values({ conversation_id: conversationId, ...values })
-			.onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: values })
-			.run();
-		const excluded = Object.entries(state.identities).flatMap(([id, value]) => value.kind === "excluded" ? [Number(id)] : []);
-		const messages = readMessageAuthorsForMemory(database, conversationId).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
-		const removed = messages.length === 0 ? [] : db
-			.delete(memoryCollectionTable)
-			.where(and(eq(memoryCollectionTable.conversation_id, conversationId), inArray(memoryCollectionTable.message_id, messages)))
-			.returning({ id: memoryCollectionTable.variant_id })
-			.all();
-		rewriteCollections(database, conversationId, state);
-		return removed.map(({ id }) => id);
-	}).immediate();
-	abortMemoryWork(database, removed);
-}
-
-export function mergeMemoryLabels(database: Database, conversationId: number, command: MemoryLabelMergeCommand): void {
-	database.transaction(() => {
-		const db = drizzle(database);
-		if (!db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get()) throw new InvalidMemoryLabelsError("This Chat no longer exists.");
-		const state = readMemoryLabelState(database, conversationId);
-		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
-		const destination = command.destination.trim();
-		const labels = new Set(command.labels);
-		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels].every((label) => label === destination)) throw new InvalidMemoryLabelsError("Choose labels and a different destination name.");
-		if (state.merges.some(({ from, to }) => labels.has(from) || (from === destination && !labels.has(to)))) throw new InvalidMemoryLabelsError("A selected name has already been merged. Refresh Memories and choose its current label.");
-		const merges = new Map(state.merges.map(({ from, to }) => [from, labels.has(to) ? destination : to]));
-		for (const label of labels) merges.set(label, destination);
-		merges.delete(destination);
-		const next: MemoryLabelMerge[] = [...merges].map(([from, to]) => ({ from, to }));
-		rewriteCollections(database, conversationId, { ...state, merges: next });
-		db.insert(conversationMemorySettingsTable)
-			.values({ conversation_id: conversationId, label_merges: JSON.stringify(next), label_revision: state.revision + 1 })
-			.onConflictDoUpdate({
-				target: conversationMemorySettingsTable.conversation_id,
-				set: { label_merges: JSON.stringify(next), label_revision: state.revision + 1 },
-			})
-			.run();
-	}).immediate();
 }

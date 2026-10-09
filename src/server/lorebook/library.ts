@@ -292,31 +292,32 @@ const reorder = (db: LorebookDatabase, bookId: number, entryId: number, toPositi
 export const executeLorebookCommand = (database: Database, command: LorebookCommand): Lorebook | { deleted: number } => {
 	const db = connect(database);
 	return database.transaction(() => {
+		if (command.type === "create") {
+			const inserted = db.insert(lorebookTable).values({ name: textValue(command.name, "name"), description: command.description ?? "" }).returning({ id: lorebookTable.id }).get();
+			if (inserted === undefined) throw new Error("The Lorebook could not be created.");
+			return requireBook(db, inserted.id);
+		}
+
+		// @approved
+		//  One guard-and-bump for the dispatcher: every command below guards the
+		//  same book revision, and the five mutating commands share one advance
+		//  after their switch; "duplicate" and "delete" genuinely do not bump, so
+		//  they return before it.
+		const book = requireCurrentRevision(db, command.bookId, command.expectedRevision);
 		switch (command.type) {
-			case "create": {
-				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name, "name"), description: command.description ?? "" }).returning({ id: lorebookTable.id }).get();
-				if (inserted === undefined) throw new Error("The Lorebook could not be created.");
-				return requireBook(db, inserted.id);
-			}
-			case "update-book": {
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
-				db.update(lorebookTable).set({ name: textValue(command.name, "name"), description: command.description }).where(eq(lorebookTable.id, command.bookId)).run();
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
-			}
 			case "duplicate": {
-				const source = requireCurrentRevision(db, command.bookId, command.expectedRevision);
-				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name ?? `Copy of ${source.name}`, "name"), description: source.description }).returning({ id: lorebookTable.id }).get();
+				const inserted = db.insert(lorebookTable).values({ name: textValue(command.name ?? `Copy of ${book.name}`, "name"), description: book.description }).returning({ id: lorebookTable.id }).get();
 				if (inserted === undefined) throw new Error("The Lorebook could not be duplicated.");
-				createEntries(db, inserted.id, source.entries.map(({ id: _id, position: _position, ...entry }) => entry));
+				createEntries(db, inserted.id, book.entries.map(({ id: _id, position: _position, ...entry }) => entry));
 				return requireBook(db, inserted.id);
 			}
 			case "delete":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				db.delete(lorebookTable).where(eq(lorebookTable.id, command.bookId)).run();
 				return { deleted: command.bookId };
+			case "update-book":
+				db.update(lorebookTable).set({ name: textValue(command.name, "name"), description: command.description }).where(eq(lorebookTable.id, command.bookId)).run();
+				break;
 			case "save-entry": {
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				const entry = validateEntry(command.entry);
 				if (command.entryId === undefined) {
 					const count = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).all().length;
@@ -326,30 +327,25 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 					if (existing === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 					db.update(lorebookEntryTable).set(entryValues(entry)).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				}
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 			}
 			case "delete-entry":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.delete(lorebookEntryTable).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				{
 					const rows = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).orderBy(asc(lorebookEntryTable.position)).all();
 					rows.forEach((row, index) => db.update(lorebookEntryTable).set({ position: index + 1 }).where(eq(lorebookEntryTable.id, row.id)).run());
 				}
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 			case "reorder-entry":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				reorder(db, command.bookId, command.entryId, command.toPosition);
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 			case "set-entry-enabled":
-				requireCurrentRevision(db, command.bookId, command.expectedRevision);
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
-				incrementRevision(db, command.bookId);
-				return requireBook(db, command.bookId);
+				break;
 		}
+		incrementRevision(db, command.bookId);
+		return requireBook(db, command.bookId);
 	}).immediate();
 };

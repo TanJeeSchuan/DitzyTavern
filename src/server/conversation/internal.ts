@@ -27,7 +27,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "./errors";
-import { guardRevision, type RevisionAggregate } from "../revision";
+import { guardRevision } from "../revision";
 
 export const connectConversationDatabase = (database: Database) => drizzle(database);
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
@@ -317,14 +317,18 @@ export const requireConversationRevision = (
 	db: ConversationDatabase,
 	conversationId: number,
 	expectedRevision: number,
-	aggregate: RevisionAggregate,
+	aggregate: "conversation" | "generation",
 ): ConversationProbe => {
 	const conversation = requireConversation(db, conversationId);
-	guardRevision(aggregate, expectedRevision, conversation, () => {
-		const current = readConversationSummaryFromConnection(db, conversationId);
-		if (current === undefined) throw new ConversationNotFoundError(conversationId);
-		return current;
-	});
+	if (aggregate === "generation") {
+		guardRevision("generation", expectedRevision, conversation);
+	} else {
+		guardRevision("conversation", expectedRevision, conversation, () => {
+			const current = readConversationSummaryFromConnection(db, conversationId);
+			if (current === undefined) throw new ConversationNotFoundError(conversationId);
+			return current;
+		});
+	}
 	return conversation;
 };
 

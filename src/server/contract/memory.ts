@@ -3,7 +3,7 @@ import { readSelectedHistory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
-import { mergeMemoryLabels, setMemoryIdentity } from "../memory/collections";
+import { mergeMemoryLabels, setMemoryIdentity } from "../memory/label-commands";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup } from "../memory/collections";
 import {
 	conversationMemories,
