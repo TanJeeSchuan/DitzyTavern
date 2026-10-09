@@ -31,3 +31,8 @@ Each ticket names its finding; read that finding in the issue before starting.
 | 6 | T9a → T9b → T9c |
 | 7 | T10 ‖ T11 |
 | 8 | T12 |
+
+## Running the app
+
+The server listens on a hard-coded port 3000. Only client tickets start the app for a manual browser check; server tickets
+verify through tests. Never edit server source to change the port. Delete `.playwright-cli/` artifacts when done.
