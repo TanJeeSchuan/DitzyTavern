@@ -68,7 +68,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	}, []);
 	const reextract = useCallback((source: Source) => act(source, async () => {
 		const result = await resetAndReextract(conversationId, targetOf(source));
-		if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory work could not be queued.";
+		if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory work could not be queued.";
 		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 		await refresh();
 		return result.outcome === "conflict" ? conflictNotice : null;
@@ -78,7 +78,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		try {
 			const result = await task();
 			if (result.outcome === "available") { await update((current) => ({ ...current, catchup: result.value.run })); await refresh(); }
-			else setNotice(result.outcome === "invalid" ? result.reason : "History catch-up could not be changed.");
+			else setNotice(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "History catch-up could not be changed.");
 		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
 	const labels = useMemo(() => new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`])), [memories?.path]);
@@ -87,7 +87,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
 		retryIndex: (source: Source) => void act(source, async () => {
 			const result = await retryMemoryIndex(conversationId, targetOf(source));
-			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "Memory indexing could not be retried.";
+			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory indexing could not be retried.";
 			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 			await refresh();
 			return result.outcome === "conflict" ? conflictNotice : null;
@@ -95,14 +95,22 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		edit: (source: Source, index: number | null) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
 		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft });
-			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
+			if (result.outcome !== "conflict" && result.outcome !== "available") {
+				return result.outcome === "invalid" || result.outcome === "unusable"
+					? result.reason
+					: "The Memory correction could not be saved.";
+			}
 			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 			setEditing(null);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}); },
 		remove: (source: Source, index: number) => void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" });
-			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" ? result.reason : "The Memory correction could not be saved.";
+			if (result.outcome !== "conflict" && result.outcome !== "available") {
+				return result.outcome === "invalid" || result.outcome === "unusable"
+					? result.reason
+					: "The Memory correction could not be saved.";
+			}
 			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),

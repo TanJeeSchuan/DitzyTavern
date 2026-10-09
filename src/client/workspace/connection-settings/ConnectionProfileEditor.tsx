@@ -246,7 +246,7 @@ function TestOutcome({ result }: { result: TestConnectionResult }) {
 	return (
 		<p role="status" className={`flex items-start gap-1.5 text-xs ${passed ? "text-foreground" : "text-destructive"}`}>
 			<Icon className={`mt-px size-3.5 shrink-0 ${passed ? "text-primary" : ""}`} aria-hidden="true" />
-			{result.outcome === "available" ? result.value.message : result.outcome === "invalid" ? result.reason : "The connection could not be reached."}
+			{result.outcome === "available" ? result.value.message : result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The connection could not be reached."}
 		</p>
 	);
 }

@@ -35,7 +35,7 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 				setSnapshot(result.memories); setLabels([]);
 				setError("These labels changed elsewhere. Review the current labels and select them again.");
 			}
-			else setError(result.outcome === "invalid" ? result.reason : "Labels could not be merged. Try again.");
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Labels could not be merged. Try again.");
 		} catch { setError("Labels could not be merged. Try again."); }
 		finally { setPending(false); }
 	};

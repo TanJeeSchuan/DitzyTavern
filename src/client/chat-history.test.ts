@@ -67,9 +67,9 @@ describe("history transport boundary validation", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	test("an unmodeled read outcome is the shared invalid fallback, never a transport failure", async () => {
+	test("an unmodeled read outcome is the shared unusable fallback, never a transport failure", async () => {
 		installFetch(async () => json({ error: "Unavailable" }, 503));
-		expect(await loadFirstPage()).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+		expect(await loadFirstPage()).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 	});
 
 	test("passes cancellation to the history request", async () => {
@@ -83,7 +83,7 @@ describe("history transport boundary validation", () => {
 		expect(signal).toBe(controller.signal);
 	});
 
-	test("trusts a contract-valid page and normalizes a fabricated Swipe state to the invalid fallback", async () => {
+	test("trusts a contract-valid page and normalizes a fabricated Swipe state to the unusable fallback", async () => {
 		installFetch(async () => jsonPage([messagePayload]));
 		const outcome = await loadFirstPage();
 		expect(outcome.outcome).toBe("available");
@@ -102,6 +102,6 @@ describe("history transport boundary validation", () => {
 					swipe: { eligible: true, reason: "missing-historical-context" },
 				},
 			]));
-		expect(await loadFirstPage()).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+		expect(await loadFirstPage()).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 	});
 });

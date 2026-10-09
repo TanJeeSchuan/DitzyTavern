@@ -48,7 +48,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			const result = await applyLorebookAttachmentCommand(command);
 			if (result.outcome !== "available") {
 				if (result.outcome === "conflict") setState(await (owner === "character" ? getCharacterLorebookAttachments(ownerId) : getParticipantLorebookAttachments(ownerId)));
-				throw new Error(result.outcome === "invalid" ? result.reason : "Lorebook attachment changed elsewhere.");
+				throw new Error(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Lorebook attachment changed elsewhere.");
 			}
 			const refreshed = owner === "character" ? await getCharacterLorebookAttachments(ownerId) : await getParticipantLorebookAttachments(ownerId);
 			setState(refreshed);

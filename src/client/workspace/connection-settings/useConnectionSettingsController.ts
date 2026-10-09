@@ -182,7 +182,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		} else {
 				dispatch({
 					type: "set-error",
-					message: result.outcome === "invalid" ? result.reason : result.outcome === "network" ? "The connection could not be reached." : PROFILE_NOT_FOUND_ERROR,
+					message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "network" ? "The connection could not be reached." : PROFILE_NOT_FOUND_ERROR,
 					commandId,
 			});
 		}
@@ -242,7 +242,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			if (result.outcome === "conflict") {
 				dispatch({ type: "command-conflict", conflict: result, message: "Connection Settings changed while models were refreshing. Your draft is preserved." });
 			}
-			else if (result.outcome !== "available") dispatch({ type: "refresh-failed", message: result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? PROFILE_NOT_FOUND_ERROR : "Model catalog refresh could not be completed." });
+			else if (result.outcome !== "available") dispatch({ type: "refresh-failed", message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "not-found" ? PROFILE_NOT_FOUND_ERROR : "Model catalog refresh could not be completed." });
 			else if (result.value.outcome === "success") {
 				const refreshed = result.value.profile;
 				if (settings !== null) dispatch({ type: "refresh-succeeded", settings: { ...settings, profiles: settings.profiles.map((profile) => profile.id === refreshed.id ? refreshed : profile) }, notice: `Model catalog refreshed. ${refreshed.discoveryCatalog.length} model IDs are available for autocomplete.` });
@@ -331,7 +331,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		// @approved
 		//  Reset deliberately skips preserveConflict: the credential draft is
 		// cleared either way, so a conflict reads as a plain failure here.
-		if (result.outcome !== "available") { dispatch({ type: "set-error", message: result.outcome === "invalid" ? result.reason : "Credential reset failed." }); return; }
+		if (result.outcome !== "available") { dispatch({ type: "set-error", message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Credential reset failed." }); return; }
 		dispatch({ type: "reset-credential-succeeded", settings: result.value.settings });
 	};
 

@@ -52,42 +52,42 @@ describe("requestOutcome", () => {
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "not-found" });
 	});
 
-	test("an error body with an unmodeled outcome tag is the shared invalid fallback, never network", async () => {
+	test("an error body with an unmodeled outcome tag is the shared unusable fallback, never network", async () => {
 		installFetch(async () => json({ outcome: "conflict" }, 409));
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
-			outcome: "invalid",
+			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
 
-	test("a modeled tag with missing required fields is the shared invalid fallback", async () => {
+	test("a modeled tag with missing required fields is the shared unusable fallback", async () => {
 		installFetch(async () => json({ outcome: "invalid" }, 422));
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
-			outcome: "invalid",
+			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
 
-	test("an error body without the wire outcome tag is the shared invalid fallback", async () => {
+	test("an error body without the wire outcome tag is the shared unusable fallback", async () => {
 		installFetch(async () => json({ type: "validation", on: "body" }, 422));
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
-			outcome: "invalid",
+			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
 
-	test("a 200 body that fails the contract is the shared invalid fallback", async () => {
+	test("a 200 body that fails the contract is the shared unusable fallback", async () => {
 		installFetch(async () => json({ unexpected: true }, 200));
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
-			outcome: "invalid",
+			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
 
-	test("a body Eden cannot parse is the shared invalid fallback, not a transport failure", async () => {
+	test("a body Eden cannot parse is the shared unusable fallback, not a transport failure", async () => {
 		installFetch(async () => new Response("{", { headers: { "content-type": "application/json" } }));
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
-			outcome: "invalid",
+			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
@@ -104,6 +104,14 @@ describe("requestOutcome", () => {
 		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
 			outcome: "invalid",
 			reason: "Nope",
+		});
+	});
+
+	test("an HTTP failure on a route with a modeled invalid envelope is unusable, never the modeled envelope", async () => {
+		installFetch(async () => json({ name: "Error", message: "boom" }, 500));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+			outcome: "unusable",
+			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
 	});
 });

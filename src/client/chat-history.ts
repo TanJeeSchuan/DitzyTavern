@@ -54,7 +54,7 @@ export type ChatSourceDownloadOutcome =
 // Reads one stable chronological page of native Messages; the outcome is
 // the wire's own: the page under `available`, the typed 404 envelope
 // verbatim, network when the transport could not complete the request, and
-// the shared invalid fallback when the response could not be read.
+// the shared unusable fallback when the response could not be read.
 export async function loadHistoryPage(
 	conversationId: number,
 	request?: ChatHistoryPageRequest,

@@ -109,11 +109,11 @@ export function usePromptPresetLibrary({
 		return false;
 	};
 	const reportImportFailure = (
-		outcome: { outcome: "invalid"; reason: string } | { outcome: "network" },
+		outcome: { outcome: "invalid"; reason: string } | { outcome: "unusable"; reason: string } | { outcome: "network" },
 	): void => {
 		dispatch({
 			type: "notice-changed",
-			notice: outcome.outcome === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
+			notice: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
 		});
 	};
 	// @approved
@@ -216,6 +216,7 @@ export function usePromptPresetLibrary({
 					}
 					case "not-removable":
 					case "invalid":
+					case "unusable":
 						dispatch({ type: "notice-changed", notice: outcome.reason });
 						break;
 					case "not-found":

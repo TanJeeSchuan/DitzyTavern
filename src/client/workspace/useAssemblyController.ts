@@ -111,7 +111,7 @@ export function useAssemblyController({
 				dispatchAssembly({
 					type: "preview-failed",
 					requestId,
-					error: outcome.outcome === "invalid" || outcome.outcome === "not-playable"
+					error: outcome.outcome === "invalid" || outcome.outcome === "unusable" || outcome.outcome === "not-playable"
 						? outcome.reason
 						: outcome.outcome === "not-found"
 							? "The Conversation no longer exists."

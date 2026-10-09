@@ -68,7 +68,7 @@ export async function renameChat(chatId: string, name: string): Promise<{ outcom
 	let outcome = await applyConversationCommand(current.id, current.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
-	return { outcome: "failed", reason: outcome.outcome === "invalid" ? outcome.reason : "The Chat could not be renamed." };
+	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }
 
 export const workspaceClient: WorkspaceClient = {

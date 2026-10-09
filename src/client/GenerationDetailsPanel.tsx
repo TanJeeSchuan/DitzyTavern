@@ -42,13 +42,13 @@ export function GenerationDetailsPanel({
 
 	useAsyncEffect((isCancelled) => {
 		setState({ status: "loading" });
-		const showError = (outcome: "not-found" | "invalid" | "network", reason?: string) => {
+		const showError = (outcome: "not-found" | "invalid" | "unusable" | "network", reason?: string) => {
 			if (isCancelled()) return;
 			setState({
 				status: "error",
 				message: outcome === "not-found"
 					? "These Generation details are no longer available."
-					: outcome === "invalid"
+					: outcome === "invalid" || outcome === "unusable"
 						? reason ?? "Stored Generation details are invalid."
 						: "Generation details could not be loaded.",
 			});
@@ -60,7 +60,7 @@ export function GenerationDetailsPanel({
 					setState({ status: "inspection", details: outcome.value });
 					return;
 				}
-				showError(outcome.outcome, outcome.outcome === "invalid" ? outcome.reason : undefined);
+				showError(outcome.outcome, outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : undefined);
 			});
 		} else {
 			void loadVariantDetails(target.conversationId, target.messageId, target.variantId).then((outcome) => {
@@ -69,7 +69,7 @@ export function GenerationDetailsPanel({
 					setState({ status: "variant", details: outcome.value });
 					return;
 				}
-				showError(outcome.outcome, outcome.outcome === "invalid" ? outcome.reason : undefined);
+				showError(outcome.outcome, outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : undefined);
 			});
 		}
 	}, [target]);

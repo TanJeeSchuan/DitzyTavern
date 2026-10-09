@@ -33,7 +33,7 @@ export function MemoryAllowancePopover({
 			setValue(String(result.currentSettings.allowance));
 			setMessage({ tone: "problem", text: "The allowance changed elsewhere. Review the current value before saving again." });
 		}
-		else setMessage({ tone: "problem", text: result.outcome === "invalid" ? result.reason : "Memory Allowance could not be saved." });
+		else setMessage({ tone: "problem", text: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory Allowance could not be saved." });
 		setPending(false);
 	};
 	return <Popover onOpenChange={(open) => { if (open) { setRevision(settings.revision); setValue(String(settings.allowance)); setMessage(null); } }}>

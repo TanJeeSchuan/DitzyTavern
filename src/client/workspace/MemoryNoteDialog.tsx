@@ -34,7 +34,7 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 						: "The note changed elsewhere. Saving again replaces it with this text.",
 				);
 			}
-			else setError(result.outcome === "invalid" ? result.reason : "The Memory note could not be saved. Try again.");
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Memory note could not be saved. Try again.");
 		} catch { setError("The Memory note could not be saved. Try again."); }
 		finally { setPending(false); }
 	};

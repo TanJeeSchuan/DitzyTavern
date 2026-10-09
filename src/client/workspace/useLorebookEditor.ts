@@ -50,7 +50,7 @@ export function useLorebookEditor(bookId: number) {
 		}
 		if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, submitted, preserveBookDraft: flags.preserveBookDraft,
 			notice: "This Lorebook changed elsewhere. Your saved view was refreshed." });
-		else dispatch({ type: "notice", notice: result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? flags.notFoundNotice ?? "That Lorebook no longer exists." : "The Lorebook operation failed." });
+		else dispatch({ type: "notice", notice: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "not-found" ? flags.notFoundNotice ?? "That Lorebook no longer exists." : "The Lorebook operation failed." });
 		return null;
 	};
 	const apply = async (action: LorebookCommand, submitted: LorebookEditorState) => {

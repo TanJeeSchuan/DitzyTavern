@@ -147,6 +147,7 @@ export async function runConversationCommand<TOperation = never>(
 			options.callbacks.onConflict?.(outcome.currentConversation);
 			return;
 		case "invalid":
+		case "unusable":
 			options.reconciliation.showNotice(outcome.reason);
 			return;
 		case "not-found":

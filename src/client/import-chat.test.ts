@@ -380,12 +380,12 @@ describe("Chat import response decoding", () => {
 		});
 	});
 
-	test("normalizes unexpected top-level response bodies to the shared invalid fallback", async () => {
+	test("normalizes unexpected top-level response bodies to the shared unusable fallback", async () => {
 		const unexpectedBodies: JsonValue[] = [null, "staged", 42, [], {}, "<html>"];
 		for (const payload of unexpectedBodies) {
 			installResponder(() => json(200, payload));
 			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 		}
 	});
 
@@ -413,7 +413,7 @@ describe("Chat import response decoding", () => {
 			installResponder(() =>
 				json(200, { outcome: "staged", token: "tok_1", preview: broken } satisfies WirePayload));
 			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 		}
 
 		// The same holds for a committed receipt: a participant outcome
@@ -436,7 +436,7 @@ describe("Chat import response decoding", () => {
 				duplicateConfirmed: false,
 				participants: [],
 			});
-			expect(outcome).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 		}
 	});
 
@@ -461,7 +461,7 @@ describe("Chat import response decoding", () => {
 		}
 	});
 
-	test("fails closed to the shared invalid fallback when a gone response cannot be decoded", async () => {
+	test("fails closed to the shared unusable fallback when a gone response cannot be decoded", async () => {
 		const malformedGone: JsonValue[] = [
 			{},
 			{ outcome: "unavailable" },
@@ -473,11 +473,11 @@ describe("Chat import response decoding", () => {
 			// An error body outside the modeled union is a response failure,
 			// symmetric with the 200 path: the seam never retries it as a
 			// transport outage.
-			expect(await previewImport("tok", "abc123")).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+			expect(await previewImport("tok", "abc123")).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 		}
 	});
 
-	test("normalizes a malformed invalid-outcome body to the shared invalid fallback", async () => {
+	test("normalizes a malformed invalid-outcome body to the shared unusable fallback", async () => {
 		const malformedInvalid: JsonValue[] = [
 			{ outcome: "invalid" },
 			{ outcome: "invalid", reason: 42 },
@@ -486,7 +486,7 @@ describe("Chat import response decoding", () => {
 		for (const payload of malformedInvalid) {
 			installResponder(() => json(422, payload));
 			const outcome = await previewImport("tok_1", "abc123");
-			expect(outcome).toEqual({ outcome: "invalid", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
+			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 		}
 	});
 

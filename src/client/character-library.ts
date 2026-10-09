@@ -34,7 +34,7 @@ export type {
 // The Character command route's outcome is the wire's own: the applied
 //  response (applied snapshot or derived deletion result) under `available`,
 // the typed 409/404/422 envelopes verbatim, network when the transport could
-// not complete the request, and the shared invalid fallback when the response
+// not complete the request, and the shared unusable fallback when the response
 // could not be read.
 export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;
 
@@ -48,7 +48,7 @@ export async function getCharacter(
 	const outcome = await requestOutcome(api.api.characters({ id: characterId }).get(), characterSnapshot, notFoundOutcome);
 	if (outcome.outcome === "not-found") return null;
 	if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-	if (outcome.outcome === "invalid") throw new Error(outcome.reason);
+	if (outcome.outcome === "unusable") throw new Error(outcome.reason);
 	return outcome.value;
 }
 

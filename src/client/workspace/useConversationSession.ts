@@ -147,7 +147,7 @@ export function useConversationSession({
 			if (signal?.aborted || navigation !== navigationRef.current || Number(activeChatIdRef.current) !== conversationId) return freshConversation;
 			if (outcome.outcome === "not-found") continue;
 			if (outcome.outcome === "network") throw new NetworkError(SERVER_UNREACHABLE_NOTICE);
-			if (outcome.outcome === "invalid") throw new Error(outcome.reason);
+			if (outcome.outcome === "unusable") throw new Error(outcome.reason);
 			applyStory({
 				type: detached ? "history-refreshed" : "first-page",
 				page: outcome.value,

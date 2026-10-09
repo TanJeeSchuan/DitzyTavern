@@ -54,7 +54,7 @@ export function MemorySettingsEditor() {
 				notice: "Memory Settings changed elsewhere. Review the current values before saving again.",
 			}));
 		}
-		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" ? result.reason : "Memory Settings could not be saved." }));
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory Settings could not be saved." }));
 		return result.outcome === "available";
 	};
 	const { settings, draft, connections } = state;

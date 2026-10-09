@@ -38,7 +38,7 @@ const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
 const promptPresetOperationProblem = (
 	outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>,
 	fallback: string,
-): string => outcome.outcome === "invalid"
+): string => outcome.outcome === "invalid" || outcome.outcome === "unusable"
 	? outcome.reason
 	: outcome.outcome === "not-found"
 		? "The selected preset no longer exists."

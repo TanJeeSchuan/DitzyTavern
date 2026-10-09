@@ -60,7 +60,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 			} else if (result.outcome === "conflict") {
 				onSettingsChange(result.currentSettings);
 				setError("Connection Settings changed elsewhere; pins were not changed.");
-			} else if (result.outcome === "invalid") {
+			} else if (result.outcome === "invalid" || result.outcome === "unusable") {
 				setError(result.reason);
 			} else {
 				setError("The connection could not be reached.");

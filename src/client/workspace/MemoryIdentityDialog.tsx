@@ -41,7 +41,7 @@ export function MemoryIdentityDialog({ conversationId, participant, memories, in
 				setSnapshot(result.memories);
 				setError("Memory settings changed elsewhere. Review the updated preview before applying again.");
 			}
-			else setError(result.outcome === "invalid" ? result.reason : "Memory identity could not be saved. Try again.");
+			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory identity could not be saved. Try again.");
 		} catch { setError("Memory identity could not be saved. Try again."); }
 		finally { setPending(false); }
 	};

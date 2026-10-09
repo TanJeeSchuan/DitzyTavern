@@ -24,7 +24,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 			const outcome = slot === undefined
 				? await addPromptPresetReference(selectedPreset.id, "author-note")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
-			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" ? outcome.reason : "The Author Note block could not be updated.");
+			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Author Note block could not be updated.");
 		},
 		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	});
