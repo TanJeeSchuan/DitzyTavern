@@ -20,6 +20,7 @@ import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decisi
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
+import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
 
 export const updateSettingsTable = sqliteTable("update_settings", {
 	id: int().primaryKey().default(1),
@@ -213,7 +214,7 @@ export const characterLorebookAttachmentTable = sqliteTable(
 		id: int().primaryKey({ autoIncrement: true }),
 		character_id: int().notNull().references(() => characterTable.id, { onDelete: "cascade" }),
 		lorebook_id: int().notNull().references(() => lorebookTable.id, { onDelete: "cascade" }),
-		scope: text().notNull().default("cast"),
+		scope: text().$type<Exclude<LoreAttachmentScope, "chat">>().notNull().default("cast"),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 	},
 	(table) => [
@@ -228,7 +229,7 @@ export const participantLorebookAttachmentTable = sqliteTable(
 		id: int().primaryKey({ autoIncrement: true }),
 		participant_id: int().notNull().references(() => participantTable.id, { onDelete: "cascade" }),
 		lorebook_id: int().notNull().references(() => lorebookTable.id, { onDelete: "cascade" }),
-		scope: text().notNull().default("cast"),
+		scope: text().$type<Exclude<LoreAttachmentScope, "chat">>().notNull().default("cast"),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 	},
 	(table) => [

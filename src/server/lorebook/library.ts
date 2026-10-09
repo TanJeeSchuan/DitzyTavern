@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
@@ -12,6 +12,7 @@ import {
 	type NativeLorebook,
 } from "../../shared/contract/lorebook";
 import { lorebookEntryTable, lorebookTable } from "../database/schema";
+import { resequence } from "../database/resequence";
 import {
 	InvalidLorebookCommandError,
 	LorebookEntryNotFoundError,
@@ -133,13 +134,20 @@ export const readLorebook = (database: Database, bookId: number): Lorebook | und
 
 export const listLorebooks = (database: Database): LorebookSummary[] => {
 	const db = connect(database);
-	const books = db.select().from(lorebookTable).orderBy(asc(lorebookTable.id)).all();
-	return books.map((book) => ({
+	const entryCounts = new Map(
+		db
+			.select({ bookId: lorebookEntryTable.lorebook_id, entryCount: count() })
+			.from(lorebookEntryTable)
+			.groupBy(lorebookEntryTable.lorebook_id)
+			.all()
+			.map((row) => [row.bookId, row.entryCount]),
+	);
+	return db.select().from(lorebookTable).orderBy(asc(lorebookTable.id)).all().map((book) => ({
 		id: book.id,
 		name: book.name,
 		description: book.description,
 		revision: book.revision,
-		entryCount: db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, book.id)).all().length,
+		entryCount: entryCounts.get(book.id) ?? 0,
 	}));
 };
 
@@ -278,17 +286,6 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 	}), warnings };
 };
 
-const reorder = (db: LorebookDatabase, bookId: number, entryId: number, toPosition: number) => {
-	const rows = db.select().from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, bookId)).orderBy(asc(lorebookEntryTable.position)).all();
-	const index = rows.findIndex((row) => row.id === entryId);
-	if (index < 0) throw new LorebookEntryNotFoundError(entryId);
-	if (toPosition < 1 || toPosition > rows.length) throw new InvalidLorebookCommandError("Lorebook entry position is out of range.");
-	const [entry] = rows.splice(index, 1);
-	rows.splice(toPosition - 1, 0, entry);
-	rows.forEach((row, position) => db.update(lorebookEntryTable).set({ position: -(position + 1) }).where(eq(lorebookEntryTable.id, row.id)).run());
-	rows.forEach((row, position) => db.update(lorebookEntryTable).set({ position: position + 1 }).where(eq(lorebookEntryTable.id, row.id)).run());
-};
-
 export const executeLorebookCommand = (database: Database, command: LorebookCommand): Lorebook | { deleted: number } => {
 	const db = connect(database);
 	return database.transaction(() => {
@@ -332,14 +329,18 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 			case "delete-entry":
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.delete(lorebookEntryTable).where(eq(lorebookEntryTable.id, command.entryId)).run();
-				{
-					const rows = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).orderBy(asc(lorebookEntryTable.position)).all();
-					rows.forEach((row, index) => db.update(lorebookEntryTable).set({ position: index + 1 }).where(eq(lorebookEntryTable.id, row.id)).run());
-				}
+				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, book.entries.filter((entry) => entry.id !== command.entryId).map((entry) => entry.id));
 				break;
-			case "reorder-entry":
-				reorder(db, command.bookId, command.entryId, command.toPosition);
+			case "reorder-entry": {
+				const index = book.entries.findIndex((entry) => entry.id === command.entryId);
+				if (index < 0) throw new LorebookEntryNotFoundError(command.entryId);
+				if (command.toPosition < 1 || command.toPosition > book.entries.length) throw new InvalidLorebookCommandError("Lorebook entry position is out of range.");
+				const ordered = book.entries.map((entry) => entry.id);
+				const [entry] = ordered.splice(index, 1);
+				ordered.splice(command.toPosition - 1, 0, entry);
+				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, ordered);
 				break;
+			}
 			case "set-entry-enabled":
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
