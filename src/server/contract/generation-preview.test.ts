@@ -396,7 +396,7 @@ describe("Prompt Plan inspection", () => {
 		// SAFETY: the successful generation route validates this accepted response shape.
 		const { generationId } = await accepted.json() as { generationId: number };
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
-		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`Writer: ${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
+		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
 	});
 
 	test("keeps an inspected plan past the old quarter-hour window", async () => {

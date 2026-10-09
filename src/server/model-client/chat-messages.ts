@@ -55,12 +55,10 @@ const renderContent = (
 
 const imagePart = ({ bytes, mediaType }: LoadedImage): UserPart => ({ type: "file", data: bytes, mediaType });
 
-const speakerPrefix = (speakerName: string | null): string => speakerName === null ? "" : `${speakerName}: `;
-
-const userParts = (segments: readonly Segment[], speakerName: string | null): UserPart[] =>
-	segments.map((segment, index): UserPart => "image" in segment
+const userParts = (segments: readonly Segment[]): UserPart[] =>
+	segments.map((segment): UserPart => "image" in segment
 		? imagePart(segment.image)
-		: { type: "text", text: `${index === 0 ? speakerPrefix(speakerName) : ""}${segment.text}` });
+		: { type: "text", text: segment.text });
 
 // @approved
 //  Images only travel in user messages. A system or assistant message keeps
@@ -83,11 +81,11 @@ export function toMessages(
 	const images = new Map(input.promptPlan.images.map((image) => [`${image.block}:${image.start}`, image]));
 	const renderBlock = (blockIndex: number, content: string) =>
 		renderContent(blockIndex, content, images, loadImage);
-	const push = (role: "system" | "user" | "assistant", segments: readonly Segment[], speakerName: string | null = null) => {
+	const push = (role: "system" | "user" | "assistant", segments: readonly Segment[]) => {
 		const sent = segments.some((segment) => "image" in segment);
-		const text = `${speakerPrefix(speakerName)}${segments.map((segment) => "text" in segment ? segment.text : "").join("")}`;
+		const text = segments.map((segment) => "text" in segment ? segment.text : "").join("");
 		if (role === "user") {
-			messages.push({ role, content: sent ? userParts(segments, speakerName) : text });
+			messages.push({ role, content: sent ? userParts(segments) : text });
 			return;
 		}
 		messages.push({ role, content: text });
@@ -135,7 +133,7 @@ export function toMessages(
 				continue;
 			}
 			if (block.content.length > 0) {
-				push(role === "model" ? "assistant" : "user", renderBlock(blockIndex, block.content), block.speakerName);
+				push(role === "model" ? "assistant" : "user", renderBlock(blockIndex, block.content));
 			}
 			continue;
 		}

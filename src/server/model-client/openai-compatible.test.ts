@@ -145,7 +145,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 	});
 
-	test("preserves prompt block presentation roles and history authorship at the transport boundary", async () => {
+	test("preserves prompt roles and history text without adding speaker labels", async () => {
 		let body: CapturedBody | undefined;
 		const client = createOpenAICompatibleModelClient({
 			profile: { ...profile, outputTokenRepresentation: "omit" },
@@ -168,6 +168,7 @@ describe("OpenAI Compatible Model Client", () => {
 					{ kind: "example-dialogue", role: "system", content: "Example" },
 					{ kind: "history", speakerName: "Human", content: "Hello", role: "human" },
 					{ kind: "history", speakerName: "Model", content: "Hi", role: "model" },
+					{ kind: "history", speakerName: "Rulership", content: "Rulership: Authored label", role: "model" },
 					{ kind: "history", speakerName: null, content: "Unattributed", role: null },
 					{ kind: "post-history-instruction", role: "system", content: "Continue" },
 				],
@@ -183,8 +184,9 @@ describe("OpenAI Compatible Model Client", () => {
 			{ role: "assistant", content: "Model identity" },
 			{ role: "system", content: "Scenario" },
 			{ role: "system", content: "Example" },
-			{ role: "user", content: "Human: Hello" },
-			{ role: "assistant", content: "Model: Hi" },
+			{ role: "user", content: "Hello" },
+			{ role: "assistant", content: "Hi" },
+			{ role: "assistant", content: "Rulership: Authored label" },
 			{ role: "user", content: "Unattributed" },
 			{ role: "system", content: "Continue" },
 		]);

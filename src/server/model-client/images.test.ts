@@ -108,7 +108,7 @@ describe("Model Client Image transport", () => {
 		expect(sent.messages()).toEqual([{
 			role: "user",
 			content: [
-				"Writer: Look at [Image: map]",
+				"Look at [Image: map]",
 				"<image/png:AQID>",
 				" and then [Image: mug]",
 				"<image/webp:BAUG>",
@@ -131,7 +131,7 @@ describe("Model Client Image transport", () => {
 			{ role: "user", content: ["[Image: map]", "<image/png:AQID>"] },
 			{ role: "assistant", content: "I wear [Image: mug]." },
 			{ role: "user", content: ["[Image: mug]", "<image/webp:BAUG>"] },
-			{ role: "user", content: "Writer: Hello" },
+			{ role: "user", content: "Hello" },
 		]);
 	});
 
@@ -141,9 +141,9 @@ describe("Model Client Image transport", () => {
 		});
 		await sent.result;
 		expect(sent.messages()).toEqual([
-			{ role: "assistant", content: "Writer: Here [Image: map]" },
+			{ role: "assistant", content: "Here [Image: map]" },
 			{ role: "user", content: ["[Image: map]", "<image/png:AQID>"] },
-			{ role: "user", content: "Maren: Reply" },
+			{ role: "user", content: "Reply" },
 		]);
 	});
 
@@ -178,7 +178,7 @@ describe("Model Client Image transport", () => {
 		if (placement === "first") {
 			await sent.result;
 			expect(sent.messages()).toEqual([
-				{ role: "user", content: ["Writer: First [Image: map]", "<image/png:AQID>"] },
+				{ role: "user", content: ["First [Image: map]", "<image/png:AQID>"] },
 				{ role: "assistant", content: "Earlier [Image: map] " },
 			]);
 		} else {
@@ -217,14 +217,14 @@ describe("Model Client Image transport", () => {
 		await sent.result;
 		expect(sent.messages()).toEqual([
 			{ role: "system", content: "[Image: map]" },
-			{ role: "user", content: "Writer: See [Image: mug]" },
+			{ role: "user", content: "See [Image: mug]" },
 		]);
 	});
 
 	test("a mark on another model leaves this model receiving Images", async () => {
 		const sent = await sentTo({ promptPlan: planOf([history(map)]) }, { textOnlyModels: ["other-model"] });
 		await sent.result;
-		expect(sent.messages()[0]?.content).toEqual(["Writer: [Image: map]", "<image/png:AQID>"]);
+		expect(sent.messages()[0]?.content).toEqual(["[Image: map]", "<image/png:AQID>"]);
 	});
 
 	test("sends only the anchor for a Reference the plan does not send or whose Image is missing", async () => {
@@ -236,15 +236,15 @@ describe("Model Client Image transport", () => {
 		});
 		await sent.result;
 		expect(sent.messages()).toEqual([
-			{ role: "user", content: "Writer: First [Image: map]" },
-			{ role: "user", content: ["Writer: Again [Image: map]", "<image/png:AQID>", " and [Image: mug]"] },
+			{ role: "user", content: "First [Image: map]" },
+			{ role: "user", content: ["Again [Image: map]", "<image/png:AQID>", " and [Image: mug]"] },
 		]);
 	});
 
 	test("sends the anchor when the store no longer holds the bytes", async () => {
 		const sent = await sentTo({ promptPlan: planOf([history(`Look ${map}`)]) }, { loadable: false });
 		await sent.result;
-		expect(sent.messages()).toEqual([{ role: "user", content: "Writer: Look [Image: map]" }]);
+		expect(sent.messages()).toEqual([{ role: "user", content: "Look [Image: map]" }]);
 	});
 
 	test("no hash reaches any outgoing text, including a continuation instruction", async () => {
