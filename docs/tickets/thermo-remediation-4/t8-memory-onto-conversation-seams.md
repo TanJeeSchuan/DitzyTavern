@@ -47,6 +47,7 @@ Source: issue #52, findings **F2** (blocker) and **F3**, plus the memory bullet 
 - [x] `collections.ts` / `indexing.ts` / `labels.ts` single connect per entry point
 - [x] typecheck, lint, check:contracts, `bun run test`
 - [x] Commit
+- [x] Review round 1: batched claim read, batched prior-import read, label-commands on the Conversation seam, tombstone labels restored
 
 ## Acceptance
 
@@ -58,24 +59,44 @@ Source: issue #52, findings **F2** (blocker) and **F3**, plus the memory bullet 
 **Removed.** The three raw SQL strings (`isMemoryEnabledForConversation`'s `SELECT 1 … conversation_prompt_preset`,
 `claimMemoryIndexJob`'s candidate query with the `EXISTS (conversation_prompt_preset ⋈ prompt_preset_block …)` predicate,
 and `extraction.ts`'s `SELECT conversation_id FROM messages` / `messages ⋈ conversation_memory_settings`) and the duplicated
-memory-slot predicate are gone. So are the direct Conversation reads in scope: `labels.ts`'s `participantTable` select became
-`readConversationSummary(...).cast`, and `prior-imports.ts`'s `conversationTable` name map plus its batched `reportJson` check
-became per-candidate `readConversationData(...)` (name and readability from one seam call). F3's 6-site count included two reads
-T4 had already relocated to `memory/label-commands.ts` (not owned here); those are untouched.
+memory-slot predicate are gone. So are the direct Conversation reads in scope: `labels.ts`'s `participantTable` select and
+`prior-imports.ts`'s `conversationTable` name map plus per-candidate `reportJson` reads, and `label-commands.ts`'s
+`participantTable` / `conversationTable` probes. `claimMemoryIndexJob` no longer materializes every eligible collection or
+reads a recipe per candidate. `collections.ts`, `indexing.ts` and `labels.ts` each define one
+`const connect = (database) => drizzle(database)` and route every construction through it.
 
-**Introduced.** `conversation/memory-read.ts` gained `conversationIdOfMessage` and `memoryNoteOf` (exported through the
-Conversation barrel) as the seam `extraction.ts` uses. `isMemoryEnabledForConversation` is now
-`hasEnabledMemorySlot(readConversationPromptPresetRecipe(...).slots)` (early-returning on the global Memory toggle), and
-`claimMemoryIndexJob` selects candidates with a Drizzle query without the slot predicate, then `.find()`s the first row whose
-Conversation is enabled — one recipe read per candidate instead of a correlated subquery. `collections.ts`, `indexing.ts` and
-`labels.ts` each define one `const connect = (database) => drizzle(database)` and route every construction through it.
+**Introduced.** `conversation/memory-read.ts` gained `conversationIdOfMessage` and `memoryNoteOf` (the extraction seam) and
+`readCastForMemory` — every Participant row in Cast order, tombstones included, with `MemoryCastMember.removed` stating
+membership. `conversation/read-data.ts` gained `readConversationDataBatch(database, ids, filter)`; `readConversationData` is now
+its single-id case. `prompt-preset/recipe.ts` gained `readConversationPromptPresetRecipes(database, ids)` — one selection read
+plus batched header and block reads for the distinct presets. `memory/settings.ts` gained
+`readMemoryEnabledConversationIds(database, ids)` = `hasEnabledMemorySlot(recipe.slots)` over that batch;
+`isMemoryEnabledForConversation` stays the single-Conversation rule. `claimMemoryIndexJob` selects the distinct candidate
+Conversations with the claim predicates, filters their ids through the batched slot read, then claims the earliest row with
+`LIMIT 1`; no candidate row and no per-candidate recipe is read.
 
-**Behavior changed.** `claimMemoryIndexJob` does extra reads per claim (accepted in the ticket); `readMemoryLabelState` now sees
-the active Cast (tombstoned Participants are no longer offered to label rules, matching every other Cast read);
+**Behavior changed.** `claimMemoryIndexJob` does batched reads per claim (accepted in the ticket) instead of per-candidate
+reads. Memory label rules see every Participant row again, tombstones included, restoring pre-T8 behavior (verified against
+`git show cd58b06~1:src/server/memory/labels.ts`, whose select had no `deleted_at` filter).
 `isMemoryEnabledForConversation` reads the selected recipe instead of joining the tables itself. No wire change.
 
-- Gates: `bun run typecheck` 0 errors; `bun run lint` exit 0 (no warnings on changed lines); `bun run check:contracts` exit 0
-  (11 pre-existing suspicious cross-layer matches); `bun run test` 1360 pass / 0 fail.
+**Review round 1 (findings 1–4).** Finding 1: the full `.all()` of eligible collections plus `.find()` recipe reads is
+replaced by the distinct-Conversation read, the `readMemoryEnabledConversationIds` batch and an ordered `LIMIT 1` claim; the
+reviewer's 20-disabled-candidate probe now reads no recipe per candidate (one batch for the shared preset), and an idle poll
+returns after the candidate read without touching presets. Selection order (earliest `updated_at`), the immediate transaction
+and one job per call are unchanged. Finding 2: the per-candidate `readConversationData` calls became one
+`readConversationDataBatch` over bounded 500-id batches; duplicate classification is untouched. Finding 3:
+`label-commands.ts` checks active membership through `readCastForMemory(...).find(({ id, removed }) => id === … && !removed)`
+and existence through `conversationExists`. Finding 4: the old code included removed Participants, so that behavior is restored
+through `readCastForMemory`; the tombstone sentinel position 0 keeps the same row order Memory consumed before T8. A new
+`src/server/memory/indexing.test.ts` covers finding 1's behavior: three older complete candidates whose Conversations have no
+enabled Memory slot, plus a newer enabled one, and the enabled job is the one claimed (no SQL-statement assertions).
+
+- Gates (final state): `bun run typecheck` exit 0 (0 errors; an earlier run while the concurrent client ticket was mid-edit reported
+  12 errors confined to `src/client/workspace/useAssemblyController.ts`). `bun run lint` exit 0 (349 pre-existing warnings, no
+  errors). `bun run check:contracts` exit 0 (11 pre-existing suspicious cross-layer matches). `bun run test` 1357 pass / 0
+  fail (155 files); `bun test src/server/memory` 8 pass / 0 fail, `bun test src/server/sillytavern` 88 pass / 0 fail,
+  `bun test src/server/contract` 369 pass / 0 fail (no timeouts).
 - Acceptance 2: `grep -c 'drizzle(database)' src/server/memory/collections.ts` → 1 (the `connect` helper; indexing 6→1, labels 2→1).
 - Acceptance 1: no match in any Memory/SillyTavern file. One pre-existing match remains out of scope: `src/server/database/chat.ts:9`
-  (`listChatSummaries`, also present at the review commit and not in this ticket's files).
+  (moved to T11 by `351482c`; not in this ticket's files).

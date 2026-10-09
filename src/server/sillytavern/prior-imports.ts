@@ -9,7 +9,7 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { readConversationData } from "../conversation";
+import { readConversationDataBatch } from "../conversation";
 import { conversationDataTable } from "../database/schema";
 import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 import {
@@ -59,12 +59,13 @@ export function findPriorImportsBySource(
 	const candidateIds = [...new Set(rows.map((row) => row.conversationId))];
 	// @approved
 	//  Each candidate's name and readable report come through the
-	//  Conversation-scoped data seam. Only the cross-Conversation search for
-	//  matching digests stays a direct read: the seam reads one Conversation
-	//  at a time and cannot search by entry value.
+	//  Conversation-scoped data seam in one bounded batch. Only the
+	//  cross-Conversation search for matching digests stays a direct read: the
+	//  seam cannot search by entry value.
 	const readable = new Map<number, string>();
+	const reads = readConversationDataBatch(database, candidateIds, { namespace: IMPORT_NAMESPACE, keys: [IMPORT_KEYS.reportJson] });
 	for (const conversationId of candidateIds) {
-		const data = readConversationData(database, conversationId, { namespace: IMPORT_NAMESPACE, keys: [IMPORT_KEYS.reportJson] });
+		const data = reads.get(conversationId);
 		if (data && data.entries.some((entry) => decodeSillyTavernImportReport(entry.value) !== null)) readable.set(conversationId, data.name);
 	}
 

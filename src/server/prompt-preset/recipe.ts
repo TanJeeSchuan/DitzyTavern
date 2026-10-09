@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationPromptPresetTable,
@@ -112,26 +112,21 @@ export const selectConversationPromptPreset = (
 		.run();
 };
 
-const storedOccurrences = (
-	db: PromptPresetDatabase,
-	presetId: number,
-): PromptPresetRecipe["slots"] => {
-	// @approved
-	//  SAFETY: prompt_preset_block_shape_check enforces this discriminated row
-	// shape for every insert and update.
-	const slots = db
-		.select(storedPromptPresetBlockSelection)
-		.from(promptPresetBlockTable)
-		.where(eq(promptPresetBlockTable.preset_id, presetId))
-		.orderBy(asc(promptPresetBlockTable.position))
-		.all() as StoredPromptPresetBlock[];
-	// @approved
-	//  An authored instruction always stores its composed name, text,
-	// and outgoing role. The stored value is never normalized or flattened,
-	// including when its content is legitimately empty. The three members are
-	// the stored row's own discriminant; every other projection of it (the
-	// native export) derives from this one instead of restating it.
-	return slots.map((slot) => {
+const queryBatches = <T>(values: readonly T[]): T[][] =>
+	Array.from({ length: Math.ceil(values.length / 500) }, (_, index) =>
+		values.slice(index * 500, (index + 1) * 500),
+	);
+
+// @approved
+//  An authored instruction always stores its composed name, text,
+//  and outgoing role. The stored value is never normalized or flattened,
+//  including when its content is legitimately empty. The three members are
+//  the stored row's own discriminant; every other projection of it (the
+//  native export) derives from this one instead of restating it.
+const toRecipeSlots = (
+	slots: readonly StoredPromptPresetBlock[],
+): PromptPresetRecipe["slots"] =>
+	slots.map((slot) => {
 		if (slot.reference === "history") {
 			return { id: slot.id, reference: slot.reference, enabled: slot.enabled };
 		}
@@ -152,6 +147,21 @@ const storedOccurrences = (
 			role: slot.role,
 		};
 	});
+
+const storedOccurrences = (
+	db: PromptPresetDatabase,
+	presetId: number,
+): PromptPresetRecipe["slots"] => {
+	// @approved
+	//  SAFETY: prompt_preset_block_shape_check enforces this discriminated row
+	// shape for every insert and update.
+	const slots = db
+		.select(storedPromptPresetBlockSelection)
+		.from(promptPresetBlockTable)
+		.where(eq(promptPresetBlockTable.preset_id, presetId))
+		.orderBy(asc(promptPresetBlockTable.position))
+		.all() as StoredPromptPresetBlock[];
+	return toRecipeSlots(slots);
 };
 
 /** @approved
@@ -183,6 +193,70 @@ export const readPromptPresetRecipe = (
 ): PromptPresetRecipe | undefined => {
 	const db = connect(database);
 	return presetRecipeOf(readPromptPresetHeader(db, presetId), db);
+};
+
+/** @approved
+ * The selected recipe per Conversation for a set of Conversations, read in
+ * bounded batches: the set costs one selection read and one block read per
+ * batch instead of one recipe read each. Conversations without a selection
+ * are absent.
+ */
+export const readConversationPromptPresetRecipes = (
+	database: Database,
+	conversationIds: readonly number[],
+): Map<number, PromptPresetRecipe> => {
+	const db = connect(database);
+	const recipes = new Map<number, PromptPresetRecipe>();
+	const selections = queryBatches([...new Set(conversationIds)]).flatMap((batch) => db
+		.select({
+			conversationId: conversationPromptPresetTable.conversation_id,
+			presetId: conversationPromptPresetTable.prompt_preset_id,
+		})
+		.from(conversationPromptPresetTable)
+		.where(inArray(conversationPromptPresetTable.conversation_id, batch))
+		.all());
+	if (selections.length === 0) return recipes;
+
+	const presetIds = [...new Set(selections.map((selection) => selection.presetId))];
+	const headers = new Map(
+		queryBatches(presetIds).flatMap((batch) => db
+			.select({ id: promptPresetTable.id, name: promptPresetTable.name })
+			.from(promptPresetTable)
+			.where(inArray(promptPresetTable.id, batch))
+			.all())
+			.map((header) => [header.id, header]),
+	);
+	const rowsByPreset = new Map<number, StoredPromptPresetBlock[]>();
+	for (const batch of queryBatches(presetIds)) {
+		// @approved
+		//  SAFETY: prompt_preset_block_shape_check enforces this discriminated
+		// row shape for every insert and update.
+		const rows = db
+			.select({
+				presetId: promptPresetBlockTable.preset_id,
+				...storedPromptPresetBlockSelection,
+			})
+			.from(promptPresetBlockTable)
+			.where(inArray(promptPresetBlockTable.preset_id, batch))
+			.orderBy(asc(promptPresetBlockTable.preset_id), asc(promptPresetBlockTable.position))
+			.all() as (StoredPromptPresetBlock & { presetId: number })[];
+		for (const { presetId, ...slot } of rows)
+			rowsByPreset.set(presetId, [
+				...(rowsByPreset.get(presetId) ?? []),
+				slot,
+			]);
+	}
+
+	for (const { conversationId, presetId } of selections) {
+		const header = headers.get(presetId);
+		if (header === undefined) continue;
+		recipes.set(conversationId, {
+			id: header.id,
+			name: header.name,
+			slots: toRecipeSlots(rowsByPreset.get(presetId) ?? []),
+		});
+	}
+	return recipes;
 };
 
 /** @approved

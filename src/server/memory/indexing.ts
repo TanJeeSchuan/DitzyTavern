@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createMemorySettingsModule, isMemoryEnabledForConversation } from "./settings";
+import { createMemorySettingsModule, readMemoryEnabledConversationIds } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -121,29 +121,38 @@ const markIndexed = (db: MemoryIndexDatabase, job: Pick<MemoryIndexJob, "variant
 		.where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch)))
 		.run();
 
+const claimableCollectionConditions = (configuration: MemoryEmbeddingConfiguration, running: readonly number[]) => and(
+	eq(memoryCollectionTable.status, "complete"),
+	ne(memoryCollectionTable.claims_json, "[]"),
+	or(eq(memoryCollectionTable.ownership, "writer"), eq(memoryCollectionTable.source_changed, false)),
+	or(
+		isNull(memoryCollectionTable.index_attempt_json),
+		ne(sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.spaceKey')`, configuration.spaceKey),
+	),
+	running.length === 0 ? undefined : notInArray(memoryCollectionTable.variant_id, [...running]),
+);
+
 export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefined => {
 	if (!createMemorySettingsModule(database).get().enabled) return undefined;
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	if (configuration.spaceKey === "") return undefined;
 	const db = connect(database);
 	const running = [...indexingVariants(database, configuration.spaceKey)];
-	const rows = db.select({
+	const conditions = claimableCollectionConditions(configuration, running);
+	const candidates = db.selectDistinct({ conversationId: memoryCollectionTable.conversation_id })
+		.from(memoryCollectionTable).where(conditions).all().map(({ conversationId }) => conversationId);
+	if (candidates.length === 0) return undefined;
+	const enabled = readMemoryEnabledConversationIds(database, candidates);
+	if (enabled.size === 0) return undefined;
+	const row = db.select({
 		variantId: memoryCollectionTable.variant_id,
 		workEpoch: memoryCollectionTable.work_epoch,
 		claimsJson: memoryCollectionTable.claims_json,
-		conversationId: memoryCollectionTable.conversation_id,
 	}).from(memoryCollectionTable).where(and(
-		eq(memoryCollectionTable.status, "complete"),
-		ne(memoryCollectionTable.claims_json, "[]"),
-		or(eq(memoryCollectionTable.ownership, "writer"), eq(memoryCollectionTable.source_changed, false)),
-		or(
-			isNull(memoryCollectionTable.index_attempt_json),
-			ne(sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.spaceKey')`, configuration.spaceKey),
-		),
-		running.length === 0 ? undefined : notInArray(memoryCollectionTable.variant_id, running),
-	)).orderBy(asc(memoryCollectionTable.updated_at)).all();
-	const row = rows.find((candidate) => isMemoryEnabledForConversation(database, candidate.conversationId));
-	if (!row) return undefined;
+		conditions,
+		inArray(memoryCollectionTable.conversation_id, [...enabled]),
+	)).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
+	if (row === undefined) return undefined;
 	const job = { variantId: row.variantId, workEpoch: row.workEpoch, configuration };
 	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claimsJson)) }; }
 	catch { markIndexed(db, job, "Saved Memory text is invalid and cannot be indexed."); return undefined; }

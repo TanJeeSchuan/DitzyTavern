@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readMessageAuthorsForMemory } from "../conversation";
-import { conversationMemorySettingsTable, conversationTable, memoryCollectionTable, participantTable } from "../database/schema";
+import { conversationExists, readCastForMemory, readMessageAuthorsForMemory } from "../conversation";
+import { conversationMemorySettingsTable, memoryCollectionTable } from "../database/schema";
 import {
 	memoryCandidates,
 	type MemoryIdentityCommand,
@@ -37,11 +37,7 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 		const db = drizzle(database);
 		const state = readMemoryLabelState(database, conversationId);
 		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
-		const participant = db
-			.select({ id: participantTable.id })
-			.from(participantTable)
-			.where(and(eq(participantTable.id, command.participantId), eq(participantTable.conversation_id, conversationId), isNull(participantTable.deleted_at)))
-			.get();
+		const participant = readCastForMemory(database, conversationId).find(({ id, removed }) => id === command.participantId && !removed);
 		if (!participant) throw new InvalidMemoryLabelsError("This Participant is no longer in the Cast.");
 		const identity = command.identity.kind === "plays" ? { ...command.identity, person: command.identity.person.trim() } : command.identity;
 		if (identity.kind === "plays" && !identity.person) throw new InvalidMemoryLabelsError("Choose a nonblank person name.");
@@ -67,7 +63,7 @@ export function setMemoryIdentity(database: Database, conversationId: number, co
 export function mergeMemoryLabels(database: Database, conversationId: number, command: MemoryLabelMergeCommand): void {
 	database.transaction(() => {
 		const db = drizzle(database);
-		if (!db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get()) throw new InvalidMemoryLabelsError("This Chat no longer exists.");
+		if (!conversationExists(database, conversationId)) throw new InvalidMemoryLabelsError("This Chat no longer exists.");
 		const state = readMemoryLabelState(database, conversationId);
 		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
 		const destination = command.destination.trim();

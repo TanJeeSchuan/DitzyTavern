@@ -130,14 +130,14 @@ export { conversationExists, readConversationSummary, readConversationSummaryFro
 export { readConversationGenerationSettings, readConversationGenerationSettingsFromConnection } from "./generation-settings";
 export { readConversationPromptPreset } from "./prompt-preset";
 export { readSelectedHistory, readSelectedHistoryFromConnection } from "./selected-history";
-export { readConversationData } from "./read-data";
+export { readConversationData, readConversationDataBatch } from "./read-data";
 export { editMacroVariables, readMacroVariables } from "./macro-variables";
 export { stopConversationGeneration, stopConversationGenerations } from "./commands/active-generation";
 export { runConversationReadTransaction } from "./commands/transaction";
 export { readMemorySourceAvailability } from "./generation-details";
 export { findConversation, readActiveCast, readControlAssignment } from "./internal";
-export { conversationIdOfMessage, memoryNoteOf, readActiveVariantIds, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory } from "./memory-read";
-export type { MemorySourceVariant } from "./memory-read";
+export { conversationIdOfMessage, memoryNoteOf, readActiveVariantIds, readCastForMemory, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory } from "./memory-read";
+export type { MemoryCastMember, MemorySourceVariant } from "./memory-read";
 
 export { readActiveGenerationsForRecovery } from "./generation-details";
 

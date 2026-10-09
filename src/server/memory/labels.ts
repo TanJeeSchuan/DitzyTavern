@@ -1,4 +1,4 @@
-import { readConversationSummary, readMessageAuthorsForMemory, readSelectedPathForMemory } from "../conversation";
+import { readCastForMemory, readMessageAuthorsForMemory, readSelectedPathForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -35,8 +35,7 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 	const row = connect(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
 	const cast = new Map<number, { id: number; names: string[] }>();
 	const path = readMessageAuthorsForMemory(database, conversationId);
-	const names = readConversationSummary(database, conversationId)?.cast ?? [];
-	for (const { id, name } of names) {
+	for (const { id, name } of readCastForMemory(database, conversationId)) {
 		cast.set(id, { id, names: [...new Set([name, ...path.flatMap((message) => message.authorParticipantId === id && message.author !== null ? [message.author] : [])])] });
 	}
 	return {

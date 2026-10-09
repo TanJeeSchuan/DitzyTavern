@@ -8,6 +8,7 @@
 export {
 	readConversationPromptPresetRecipe,
 	readConversationPromptPresetRecipeFromConnection,
+	readConversationPromptPresetRecipes,
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
 	selectConversationPromptPreset,
