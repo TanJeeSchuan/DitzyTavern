@@ -124,7 +124,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const selectChat = (chatId: string) => {
-		if (preview.previewPending) return;
+		if (preview.previewPending || chatId === session.activeChatId) return;
 		// @approved
 		//  Workspace chat ids are wire strings; the story read model speaks
 		// numeric Conversation ids, so the coercion happens at this boundary.

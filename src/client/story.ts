@@ -100,7 +100,8 @@ export interface StoryState {
 	preview: StoryPreviewState | null;
 	// @approved
 	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
-	// Message it introduces; they replay once their Variant arrives with the same live Generation.
+	// Message it introduces; they replay once their Variant arrives with the same live Generation. Only a window
+	// attached to the latest Message holds them: a detached window re-reads live content when it returns.
 	unplacedObservations: readonly GenerationObservation[];
 }
 
@@ -311,7 +312,7 @@ const findVariant = (state: StoryState, { messageId, variantId }: GenerationObse
 
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
 	if (action.type === "generation-observed" && findVariant(state, action) === undefined) {
-		return { ...state, unplacedObservations: [...state.unplacedObservations, action] };
+		return state.page?.hasNewer ? state : { ...state, unplacedObservations: [...state.unplacedObservations, action] };
 	}
 	const next = reduceStoryAction(state, action);
 	if (next.messages === state.messages || next.unplacedObservations.length === 0) return next;

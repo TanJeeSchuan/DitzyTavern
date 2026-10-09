@@ -225,3 +225,14 @@ test("ModelSelector key switch rejects old Conversation completion", async () =>
 	await flushHook();
 	expect(changes).toEqual([]);
 });
+
+test("returning to a Conversation whose revision moved past its cached settings reads them again", async () => {
+	let instruction = "Before";
+	const h = await harness(async () => Response.json(settings(instruction)));
+	await h.switchTo(2);
+	instruction = "Accepted while away";
+	h.options.conversation = summary(1, 6);
+	await h.hook.rerender();
+	await flushHook();
+	expect(h.hook.current.settings?.continuationInstruction).toBe("Accepted while away");
+});

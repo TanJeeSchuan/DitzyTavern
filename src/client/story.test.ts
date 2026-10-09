@@ -716,6 +716,15 @@ describe("streaming Provisional Variant content", () => {
 		expect(finished.unplacedObservations).toEqual([]);
 	});
 
+	test("a window detached from the latest Message does not hold stream events for Messages outside it", () => {
+		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		state = reduceStory(state, { type: "first-page", page: page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }) });
+		state = reduceStory(state, {
+			type: "generation-observed", stream: "content", mode: "append", messageId: 11, variantId: 110, generationId: 55, eventId: 1, text: "Far away",
+		});
+		expect(state.unplacedObservations).toEqual([]);
+	});
+
 	test("history checkpoint and replay resume share one ordered projection", () => {
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
 		state = reduceStory(state, {
