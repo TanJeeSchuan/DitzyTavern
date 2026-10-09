@@ -20,7 +20,7 @@
 		"check:clones": "jscpd src",
 		"typecheck": "tsc --noEmit",
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",
-		"test": "bun test src",
+		"test": "bun test --preload ./src/client/test-fixtures/window.ts src",
 		"test:publication": "bun test scripts/publish-docker.test.ts scripts/write-build-metadata.test.ts",
 		"check": "bun run lint && bun run lint:rules && bun run check:contracts && bun run typecheck && bun run typecheck:tools && bun run test && bun run test:e2e:harness",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
