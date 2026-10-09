@@ -91,8 +91,8 @@
 	background: var(--surface-raised);
 	color: var(--foreground);
 	font-family: var(--font-reading);
-	font-size: 1.25rem;
-	line-height: 1.65;
+	font-size: var(--font-reading-size);
+	line-height: 1.5;
 }
 
 .message-editor .prose-editor:focus-within {

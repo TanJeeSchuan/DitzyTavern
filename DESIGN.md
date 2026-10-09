@@ -92,7 +92,7 @@ Use a deliberate two-voice sans-serif hierarchy:
 - Application controls, navigation, metadata, and technical details use a crisp, compact sans with high small-size clarity.
 - Story prose, human guidance Messages, and the composer use self-hosted Alegreya Sans with regular, medium, and bold weights and native italics.
 
-Message prose uses a 1.65 line height, with lists tightened to 1.5. H1, H2, and H3 use 1.6em, 1.3em, and 1.1em respectively; H1 and H2 are bold, while H3 is medium weight.
+Message prose uses a 1.5 line height with no added tracking, and displays straight quotes and apostrophes as curly ones. H1, H2, and H3 use 1.6em, 1.3em, and 1.1em respectively; H1 and H2 are bold, while H3 is medium weight.
 
 The prose face must be restrained rather than bubbly. It should not resemble children's software or casual social messaging. The distinction between the two voices should be clear but harmonious.
 

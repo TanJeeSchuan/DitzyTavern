@@ -84,7 +84,7 @@
 	padding: 0.8rem 0.2rem 0.65rem;
 	color: var(--foreground);
 	font-family: var(--font-reading);
-	font-size: 1.25rem;
+	font-size: var(--font-reading-size);
 	line-height: 1.5;
 }
 

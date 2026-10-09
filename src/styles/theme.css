@@ -40,6 +40,7 @@
 	color-scheme: light;
 	--font-control: "Geist Variable", "Segoe UI", sans-serif;
 	--font-reading: "Alegreya Sans", sans-serif;
+	--font-reading-size: 1.1875rem;
 	/* @approved Colours resolve through light-dark() against the color-scheme set below, so light and dark are one map rather than two token blocks. */
 	--background: light-dark(oklch(0.93 0.012 48), oklch(0.145 0.012 35));
 	--foreground: light-dark(oklch(0.22 0.014 38), oklch(0.93 0.01 50));

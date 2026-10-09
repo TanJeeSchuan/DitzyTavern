@@ -1,9 +1,8 @@
 .prose {
 	color: color-mix(in oklch, var(--foreground) 97%, var(--surface));
 	font-family: var(--font-reading);
-	font-size: 1.25rem;
-	line-height: 1.65;
-	letter-spacing: -0.006em;
+	font-size: var(--font-reading-size);
+	line-height: 1.5;
 }
 
 .variant-content[data-swipe-direction="next"] {
@@ -42,7 +41,6 @@
 
 .prose :is(ul, ol) {
 	padding-left: 1.4em;
-	line-height: 1.5;
 }
 
 .prose li > p {

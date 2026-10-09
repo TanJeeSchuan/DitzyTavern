@@ -30,8 +30,8 @@
 	margin: 0;
 	color: color-mix(in oklch, var(--foreground) 88%, var(--accent));
 	font-family: var(--font-reading);
-	font-size: 1.25rem;
-	line-height: 1.62;
+	font-size: var(--font-reading-size);
+	line-height: 1.5;
 }
 
 .story-message {

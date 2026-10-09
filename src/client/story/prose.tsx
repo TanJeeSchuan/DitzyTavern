@@ -9,7 +9,7 @@ const QUOTE = 0x22;
 // markdown-it's own text terminators plus the dialogue quotes, so the text rule stops at them.
 const terminator = /[\n!#$%&*+\-:<=>@[\\\]^_`{}~"“”]/g;
 
-const md = new MarkdownIt({ breaks: true }).disable(["code", "lheading"]);
+const md = new MarkdownIt({ breaks: true, typographer: true }).disable(["code", "lheading", "replacements"]);
 
 md.inline.ruler.at("text", (state, silent) => {
 	terminator.lastIndex = state.pos;
@@ -65,8 +65,8 @@ md.inline.ruler2.before("fragments_join", "dialogue", (state: StateInline) => {
 	}
 });
 
-md.renderer.rules.dialogue_open = (tokens, index) => `<span class="prose-dialogue">${md.utils.escapeHtml(tokens[index]?.markup ?? "")}`;
-md.renderer.rules.dialogue_close = (tokens, index) => `${md.utils.escapeHtml(tokens[index]?.markup ?? "")}</span>`;
+md.renderer.rules.dialogue_open = () => `<span class="prose-dialogue">“`;
+md.renderer.rules.dialogue_close = (tokens, index) => `${tokens[index]?.markup ? "”" : ""}</span>`;
 
 md.inline.ruler.before("image", "image_reference", (state, silent) => {
 	const reference = imageReferenceAt(state.src, state.pos);

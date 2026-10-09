@@ -4,9 +4,9 @@ import { renderBlocks, revealedLength } from "./prose";
 const render = (text: string) => renderBlocks(text).join("");
 
 describe("renderBlocks", () => {
-	test("wraps dialogue with its quote marks and nests emphasis inside it", () => {
+	test("wraps dialogue in curly quotes, curls apostrophes, and nests emphasis inside it", () => {
 		expect(render("\"I don't *think* I'm in charge.\" He left.")).toBe(
-			"<p><span class=\"prose-dialogue\">&quot;I don't <em>think</em> I'm in charge.&quot;</span> He left.</p>\n",
+			"<p><span class=\"prose-dialogue\">“I don’t <em>think</em> I’m in charge.”</span> He left.</p>\n",
 		);
 	});
 
@@ -16,14 +16,14 @@ describe("renderBlocks", () => {
 
 	test("closes an unmatched quote at the end of its paragraph without adding a mark", () => {
 		expect(renderBlocks("\"The first paragraph.\n\n\"The last.\"")).toEqual([
-			"<p><span class=\"prose-dialogue\">&quot;The first paragraph.</span></p>\n",
-			"<p><span class=\"prose-dialogue\">&quot;The last.&quot;</span></p>\n",
+			"<p><span class=\"prose-dialogue\">“The first paragraph.</span></p>\n",
+			"<p><span class=\"prose-dialogue\">“The last.”</span></p>\n",
 		]);
 	});
 
 	test("closes an unmatched quote before the emphasis that contains it", () => {
 		expect(render("*she whispers \"run* now")).toBe(
-			"<p><em>she whispers <span class=\"prose-dialogue\">&quot;run</span></em> now</p>\n",
+			"<p><em>she whispers <span class=\"prose-dialogue\">“run</span></em> now</p>\n",
 		);
 	});
 
@@ -45,7 +45,7 @@ describe("renderBlocks", () => {
 
 	test("splits top-level blocks and keeps single line breaks", () => {
 		expect(renderBlocks("> Air Groove: It's 11.\n> Where are you?\n\n- one")).toEqual([
-			"<blockquote>\n<p>Air Groove: It's 11.<br>\nWhere are you?</p>\n</blockquote>\n",
+			"<blockquote>\n<p>Air Groove: It’s 11.<br>\nWhere are you?</p>\n</blockquote>\n",
 			"<ul>\n<li>one</li>\n</ul>\n",
 		]);
 	});
