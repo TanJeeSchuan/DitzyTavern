@@ -7,10 +7,9 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	fromPortraitColumns,
 	participantTable,
-	toPromptChannels,
 } from "../database/schema";
+import { fromPortraitColumns, toPromptChannels } from "./prompt-rows";
 import type { CharacterDatabase } from "./internal";
 import type {
 	CharacterDeletionImpact,

@@ -14,11 +14,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
-export const DEFAULT_CONTINUATION_STRATEGY = "instruction";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
-import type { Portrait } from "../../shared/contract/image";
-import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
 
@@ -53,11 +49,6 @@ export interface PortraitColumnRow {
 	portrait_focal_x: number | null;
 	portrait_focal_y: number | null;
 }
-
-export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
-	row?.portrait_hash == null
-		? undefined
-		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! };
 
 // @approved
 //  The shared Prompt Preset library. A preset is an ordered assembly recipe
@@ -547,25 +538,6 @@ export interface PromptChannelRow {
 }
 
 // @approved
-//  Maps canonical PromptChannels to database column names shared by
-// character_prompt and participant_prompt tables.
-export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => ({
-	system_instruction: prompt.systemInstruction,
-	identity: prompt.identity,
-	scenario: prompt.scenario,
-	example_dialogue: prompt.exampleDialogue,
-	post_history_instruction: prompt.postHistoryInstruction,
-});
-
-export const toPromptChannels = (row: PromptChannelRow): PromptChannels => ({
-	systemInstruction: row.system_instruction,
-	identity: row.identity,
-	scenario: row.scenario,
-	exampleDialogue: row.example_dialogue,
-	postHistoryInstruction: row.post_history_instruction,
-});
-
-// @approved
 //  Ordered, exact, nonblank Opening rows owned by the Participant.
 export const participantOpeningTable = sqliteTable(
 	"participant_opening",
@@ -848,8 +820,10 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		// @approved
 		//  Maximum number of parallel Sibling Generations at one response
 		// position. Tail and Continuation still use the single-position gate.
-		sibling_generation_limit: int().notNull().default(DEFAULT_SIBLING_GENERATION_LIMIT),
-		continuation_strategy: text().notNull().default(DEFAULT_CONTINUATION_STRATEGY),
+		//  The column default restates the Conversation default literal because
+		//  the schema may not import the domain that names it.
+		sibling_generation_limit: int().notNull().default(4),
+		continuation_strategy: text().notNull().default("instruction"),
 		continuation_instruction: text()
 			.notNull()
 			.default("Continue the narrative naturally without repeating the previous text."),

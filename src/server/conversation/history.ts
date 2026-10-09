@@ -22,7 +22,7 @@ import {
 	activeGenerationTable,
 	messageTable,
 } from "../database/schema";
-import { DEFAULT_CONTINUATION_STRATEGY } from "../database/schema";
+import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-settings";
 import {
 	connectConversationDatabase,
 	groupVariantsByMessage,

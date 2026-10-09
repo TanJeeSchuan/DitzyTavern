@@ -2,7 +2,7 @@ import { type TestConversationSnapshot, createConversationWithHistory } from "..
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
-import { listChatSummaries } from "./chat";
+import { listChatSummaries } from "./chat-summaries";
 
 const prompt = {
 	systemInstruction: "",

@@ -29,7 +29,7 @@ import {
 	type ConversationDatabase,
 	type ParticipantRow,
 } from "../internal";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../../database/schema";
+import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-settings";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,

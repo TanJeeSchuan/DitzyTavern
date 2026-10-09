@@ -14,8 +14,8 @@ export type { ContinuationUnavailableReason } from "./errors";
 export {
 	DEFAULT_CONTINUATION_INSTRUCTION,
 	DEFAULT_SAFETY_ALLOWANCE,
+	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "./generation-settings";
-export { DEFAULT_SIBLING_GENERATION_LIMIT } from "../database/schema";
 export {
 	acceptConversationContinuationGeneration,
 	acceptConversationTailGeneration,
@@ -57,6 +57,10 @@ export { observeConversationWrites } from "./commands/transaction";
 export { executeConversationCommand } from "./execute";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
 export { readConversationRevision } from "./snapshot";
+// @approved
+//  The Workspace Chat list read model: the workspace route reads Chat
+// summaries through the Conversation seam instead of querying its tables.
+export { listChatSummaries } from "./chat-summaries";
 export {
 	cleanupRetainedGenerationInspections,
 	GENERATION_REPLAY_RETENTION_MS,

@@ -14,9 +14,8 @@ import {
 	participantPromptTable,
 	participantLorebookAttachmentTable,
 	participantTable,
-	fromPortraitColumns,
-	toPromptChannelRow,
 } from "../database/schema";
+import { fromPortraitColumns, toPromptChannelRow } from "../character-library";
 import type { Portrait } from "../../shared/contract/image";
 import { readConversationSummaryFromConnection } from "./snapshot";
 import type { ParticipantDefinition } from "./types";

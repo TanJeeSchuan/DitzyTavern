@@ -1,6 +1,11 @@
 import type { Database } from "bun:sqlite";
 import type { Portrait } from "../../shared/contract/image";
 
+// @approved
+//  The Workspace Chat list read model: one row per Conversation in recency
+//  order with its Cast and the selected Variant of its last Message, so the
+//  workspace route never reaches into Conversation tables itself.
+
 export const listChatSummaries = (database: Database) =>
 	database
 			.query<{ id: number; name: string; creation_time: string; last_message_time: string; cast: string; excerpt: string | null }, []>(`
@@ -16,7 +21,8 @@ export const listChatSummaries = (database: Database) =>
 				name: chat.name,
 				creationTime: chat.creation_time,
 				lastMessageTime: chat.last_message_time,
-				// SAFETY: SQLite builds each name/Portrait pair; CHECK constraints require complete Portraits.
+				// @approved
+				//  SAFETY: SQLite builds each name/Portrait pair; CHECK constraints require complete Portraits.
 				cast: JSON.parse(chat.cast) as { name: string; portrait: Portrait | null }[],
 				excerpt: (chat.excerpt ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
 			}));
