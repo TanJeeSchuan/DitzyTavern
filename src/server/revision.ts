@@ -130,27 +130,20 @@ export class StaleRevisionError extends Error {
 //  the conflict envelope recovers with (evaluated on the stale path only).
 //  Modules keep their own existence checks and their own revision advances;
 //  this seam is only the compare-and-throw.
-export function guardRevision(aggregate: "generation", expectedRevision: number, row: { readonly revision: number }): void;
-export function guardRevision<K extends Exclude<RevisionAggregate, "generation">>(
-	aggregate: K,
-	expectedRevision: number,
-	row: { readonly revision: number },
-	current: () => CurrentByAggregate[K],
-): void;
-export function guardRevision(
-	aggregate: RevisionAggregate,
-	expectedRevision: number,
-	row: { readonly revision: number },
-	current?: () => CurrentByAggregate[RevisionAggregate],
-): void {
+type GuardRevisionArgs = {
+	[K in RevisionAggregate]: CurrentByAggregate[K] extends undefined
+		? [aggregate: K, expectedRevision: number, row: { readonly revision: number }]
+		: [aggregate: K, expectedRevision: number, row: { readonly revision: number }, current: () => CurrentByAggregate[K]];
+}[RevisionAggregate];
+
+export function guardRevision(...args: GuardRevisionArgs): void {
+	const [aggregate, expectedRevision, row] = args;
 	if (row.revision === expectedRevision) return;
-	if (aggregate === "generation") {
-		throw new StaleRevisionError(aggregate, expectedRevision, row.revision);
-	}
 	// @approved
-	//  SAFETY: for this aggregate the state-bearing overload has already
-	//  required its mapped payload and a reader, which is exactly the argument
-	//  tuple the constructor accepts; TypeScript cannot reduce that dependent
-	//  pairing into the constructor's union of tuples at a generic call site.
-	throw new StaleRevisionError(...([aggregate, expectedRevision, row.revision, current!()] as StaleRevisionArgs));
+	//  SAFETY: `GuardRevisionArgs` is a union of per-aggregate tuples, so the
+	//  caller's aggregate and reader are already paired; TypeScript cannot carry
+	//  that correlation through the rebuilt constructor tuple.
+	throw new StaleRevisionError(
+		...((args.length === 3 ? [aggregate, expectedRevision, row.revision] : [aggregate, expectedRevision, row.revision, args[3]()]) as StaleRevisionArgs),
+	);
 }

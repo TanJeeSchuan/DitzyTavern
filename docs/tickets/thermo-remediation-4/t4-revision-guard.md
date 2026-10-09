@@ -111,3 +111,10 @@ Every file above, their `errors.ts` siblings, `src/server/contract/domain-error*
   (11 pre-existing suspicious cross-layer matches); `bun test src/server/contract` 369 pass / 0 fail; `bun test src/server/memory` 7 pass / 0 fail;
   `bun test src/server/lorebook` 24 pass / 0 fail; `bun test src/server` 1017 pass / 0 fail. A concurrent-client `src/client/lib/eden.ts`
   error appeared and cleared mid-round; no T4-owned path had a type error.
+
+### Review round 2 (orchestrator fix)
+
+- `guardRevision` takes one rest-tuple union derived from `CurrentByAggregate` instead of a generic overload, so a union-typed
+  aggregate (`"settings" | "lorebook"`) or an explicit union type argument can no longer pair a payload with the wrong aggregate.
+  Probe (deleted): union aggregate, wrong payload, missing reader, and reader on `generation` all fail typecheck; the internal
+  constructor-tuple assertion is now sound under the public signature.
