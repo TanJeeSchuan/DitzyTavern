@@ -61,7 +61,7 @@ describe("Edited Prompt Plan Images", () => {
 		const { generationId } = Value.Decode(generationAccepted, await accepted.json());
 		await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/${generationId}/events`))).text();
 		expect(captured).toMatchObject({ messages: [{ role: "user", content: [
-			{ type: "text", text: "Writer: Look [Image: map]" },
+			{ type: "text", text: "Look [Image: map]" },
 			{ type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(bytes).toString("base64")}` } },
 		] }] });
 	});

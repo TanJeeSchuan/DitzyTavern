@@ -72,7 +72,7 @@ describe("Prompt Preset capture", () => {
 			{ role: "assistant", content: "I am Maren." },
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "Continue." },
 		]);
 
@@ -101,9 +101,9 @@ describe("Prompt Preset capture", () => {
 			{ role: "assistant", content: "I am Maren." },
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
-			{ role: "user", content: "Writer: Set the scene." },
-			{ role: "assistant", content: "Maren: Done." },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
+			{ role: "assistant", content: "Done." },
+			{ role: "user", content: "Set the scene." },
 		]);
 	});
 });
@@ -191,7 +191,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"I am Maren.",
 			"A quiet room.",
 			"Writer: Hello\nMaren: Hello back",
-			"Writer: Set the scene.",
+			"Set the scene.",
 			"Continue.",
 		]);
 
@@ -214,9 +214,9 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			{ role: "system", content: "A quiet room." },
 			// The attempt's own captured history: the first human Message and the
 			// model output the first attempt resolved, then the new tail.
-			{ role: "user", content: "Writer: Set the scene." },
-			{ role: "assistant", content: "Maren: Done." },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
+			{ role: "assistant", content: "Done." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -303,7 +303,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"I write as Writer opposite Maren.",
 			"I am Maren.",
 			"A quiet room.",
-			"Writer: Set the scene.",
+			"Set the scene.",
 			"Continue.",
 		]);
 
@@ -326,9 +326,9 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			// Default again: the Example Dialogue returns, and the resolved first
 			// attempt joins the selected history ahead of the new tail.
 			"Writer: Hello\nMaren: Hello back",
-			"Writer: Set the scene.",
-			"Maren: Done.",
-			"Writer: Set the scene.",
+			"Set the scene.",
+			"Done.",
+			"Set the scene.",
 			"Continue.",
 		]);
 	});

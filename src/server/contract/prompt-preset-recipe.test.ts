@@ -207,7 +207,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "assistant", content: "I am Maren." },
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -315,8 +315,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "I write as Writer opposite Maren." },
 			{ role: "assistant", content: "I am Maren." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
-			{ role: "user", content: "Writer: Set the scene." },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -394,7 +394,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "system", content: "I am Maren." },
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "Continue." },
 		]);
 	});

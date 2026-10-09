@@ -170,7 +170,7 @@ describe("Native Prompt Preset interchange", () => {
 		expect(gate.requests[0]?.messages).toEqual([
 			{ role: "system", content: "Answer briefly." },
 			{ role: "assistant", content: "Speak for Writer to Maren." },
-			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "Continue." },
 		]);
 	});
