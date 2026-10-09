@@ -3,8 +3,7 @@ import { test, expect, send, story } from "./fixtures";
 
 const setInactivityTimeout = async (request: APIRequestContext, timeoutMs: number) => {
 	const settings = await (await request.get("/api/connection-settings")).json();
-	const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers,
-		...draft } = settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
+	const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, ...draft } = settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
 	await request.post("/api/connection-settings/commands", { data: { type: "apply-profile", expectedRevision: settings.revision, profileId: id, profile: { ...draft, timeoutMs } } });
 };
 

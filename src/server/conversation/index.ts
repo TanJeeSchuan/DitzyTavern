@@ -140,8 +140,7 @@ export { stopConversationGeneration, stopConversationGenerations } from "./comma
 export { runConversationReadTransaction } from "./commands/transaction";
 export { readMemorySourceAvailability } from "./generation-details";
 export { findConversation, readActiveCast, readControlAssignment } from "./internal";
-export { conversationIdOfMessage, memoryNoteOf, readActiveVariantIds, readCastForMemory, readMessageAuthorsForMemory, readMemoryTailMessageId,
-	readSelectedPathForMemory, readVariantsForMemory } from "./memory-read";
+export { conversationIdOfMessage, memoryNoteOf, readActiveVariantIds, readCastForMemory, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory } from "./memory-read";
 export type { MemoryCastMember, MemorySourceVariant } from "./memory-read";
 
 export { readActiveGenerationsForRecovery } from "./generation-details";

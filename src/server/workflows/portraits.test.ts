@@ -74,8 +74,7 @@ describe("Portraits", () => {
 		expect(library().list()).toEqual([]);
 		expect(referenced()).toEqual([]);
 
-		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer },
-			{ definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
+		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }], control: { human: 0, model: 1 } });
 		expect(() => executeConversationCommand(conversations(), {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
@@ -101,8 +100,7 @@ describe("Portraits", () => {
 	test("adding a Character to the Cast copies its Portrait", async () => {
 		const carried = await art(4);
 		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: carried.portrait } });
-		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer },
-			{ definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
+		const chat = createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
 		const added = addCharacterToCast(database, {
 			conversationId: chat.id,
 			expectedConversationRevision: chat.revision,

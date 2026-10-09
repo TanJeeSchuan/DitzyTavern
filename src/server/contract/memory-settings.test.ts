@@ -9,9 +9,7 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 });
 const apply = (fields: Record<string, boolean | number | string | null>) => request("/api/memory-settings/commands", {
 	method: "POST",
-	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048,
-		safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000,
-		recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
+	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
 });
 
 describe("Memory Settings public contract", () => {
@@ -24,10 +22,7 @@ describe("Memory Settings public contract", () => {
 	afterEach(() => database.close());
 
 	test("selects an independent System One Decision Model and rejects chat profiles", async () => {
-		const insert = (format: string) =>
-			database.query<{ id: number }, [string]>(
-			"INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES ('Decision test', ?, 'http://localhost:8000/v1/', 'automatic', 'openai-compatible', 15000) RETURNING id")
-			.get(format)!.id;
+		const insert = (format: string) => database.query<{ id: number }, [string]>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES ('Decision test', ?, 'http://localhost:8000/v1/', 'automatic', 'openai-compatible', 15000) RETURNING id").get(format)!.id;
 		const chat = insert("chat-completions");
 		const fields = { decisionProfileId: chat, decisionModel: "clef", decisionStateTokenLimit: 2000, retainProbabilityMinimum: 0.6 };
 		const wrong = await app.handle(apply(fields));
@@ -42,9 +37,7 @@ describe("Memory Settings public contract", () => {
 
 	test("uses independent extraction defaults", async () => {
 		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384,
-			outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "",
-			decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 	});
 
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {
@@ -55,9 +48,7 @@ describe("Memory Settings public contract", () => {
 		expect(invalid.status).toBe(422);
 		expect(await invalid.text()).toContain("positive whole numbers");
 
-		const profile = database.query<{ id: number }, []>(
-			"INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter) VALUES ('Rememberer', 'chat-completions', 'https://example.test/v1/chat/completions', 'automatic', 'openai-compatible') RETURNING id")
-			.get();
+		const profile = database.query<{ id: number }, []>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter) VALUES ('Rememberer', 'chat-completions', 'https://example.test/v1/chat/completions', 'automatic', 'openai-compatible') RETURNING id").get();
 		if (!profile) throw new Error("Memory profile fixture failed.");
 		const configured = await app.handle(apply({ extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100 }));
 		expect(configured.status).toBe(200);
@@ -70,11 +61,7 @@ describe("Memory Settings public contract", () => {
 	});
 
 	test("keeps chat models for extraction and Embeddings connections for recall", async () => {
-		const insert = (name: string,
-			format: string) =>
-			database.query<{ id: number }, [string, string]>(
-			"INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES (?, ?, 'https://example.test/v1/', 'automatic', 'openai-compatible', 5000) RETURNING id")
-			.get(name, format)?.id;
+		const insert = (name: string, format: string) => database.query<{ id: number }, [string, string]>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES (?, ?, 'https://example.test/v1/', 'automatic', 'openai-compatible', 5000) RETURNING id").get(name, format)?.id;
 		const chat = insert("Writer", "chat-completions");
 		const embeddings = insert("Vectors", "embeddings");
 		const wrongExtraction = await app.handle(apply({ extractionProfileId: embeddings ?? null, extractionModel: "text-embedding-3-small" }));

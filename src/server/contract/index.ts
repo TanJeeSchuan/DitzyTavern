@@ -30,8 +30,7 @@ export { createMemorySettingsRoutes } from "./memory-settings";
 export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 export { createMemoryRoutes } from "./memory";
 
-export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(),
-	updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
+export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
 	.use(createUpdateRoutes(updates))

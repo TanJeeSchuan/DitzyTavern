@@ -122,9 +122,7 @@ describe("Chat import transport adapters", () => {
 	};
 
 	test("maps imported participant macros regardless of case", async () => {
-		expect((await importNoteWarnings({ ...header.chat_metadata,
-			note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." })).authorNote)
-			.toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
+		expect((await importNoteWarnings({ ...header.chat_metadata, note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." })).authorNote).toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
 	});
 
 	test("maps spaced participant macros in an imported note while preserving Prompt Comments", async () => {

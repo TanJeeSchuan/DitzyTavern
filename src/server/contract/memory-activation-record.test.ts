@@ -136,8 +136,7 @@ describe("permanent Memory Activation Records", () => {
 		expect(readVariantDetails(module, created.id, generated.id, generatedVariant.id)?.memoryActivation).toEqual(memory);
 
 		const revision = readTestConversationSnapshot(module, created.id)!.revision;
-		executeConversationCommand(module, { conversationId: created.id, expectedRevision: revision, action: { type: "edit-variant", messageId: source.id,
-			variantId: sourceVariant.id, content: "Maren returned the key." } });
+		executeConversationCommand(module, { conversationId: created.id, expectedRevision: revision, action: { type: "edit-variant", messageId: source.id, variantId: sourceVariant.id, content: "Maren returned the key." } });
 		const afterEdit = readVariantDetails(module, created.id, generated.id, generatedVariant.id)!;
 		expect(afterEdit.memoryActivation).toEqual(memory);
 		expect(afterEdit.memorySources.variantIds).toContain(sourceVariant.id);
@@ -204,8 +203,7 @@ describe("permanent Memory Activation Records", () => {
 		expect(readVariantDetails(module, created.id, baseMessage.id, first.provisionalVariantId)).toBeUndefined();
 		expect(readVariantDetails(module, created.id, baseMessage.id, second.provisionalVariantId)?.memoryActivation).toEqual(secondMemory);
 		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
-		const deletedVariantDetails = await createConversationRoutes(database)
-			.handle(new Request(`http://localhost/api/conversations/${created.id}/messages/${baseMessage.id}/variants/${first.provisionalVariantId}/details`));
+		const deletedVariantDetails = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${created.id}/messages/${baseMessage.id}/variants/${first.provisionalVariantId}/details`));
 		expect(deletedVariantDetails.status).toBe(404);
 
 		const interruptedBase = readTestConversationSnapshot(module, created.id)!;

@@ -43,8 +43,7 @@ const profile = {
 };
 
 const streamResponse = () => new Response(
-	["data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Coordinator output.\"},\"finish_reason\":null}]}\n\n",
-		"data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n", "data: [DONE]\n\n"].join(""),
+	["data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Coordinator output.\"},\"finish_reason\":null}]}\n\n", "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n", "data: [DONE]\n\n"].join(""),
 	{ headers: { "content-type": "text/event-stream" } },
 );
 

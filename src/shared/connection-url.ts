@@ -1,7 +1,6 @@
 import type { ConnectionProfileDraftPayload } from "./contract/connection-settings";
 
-const requestPaths = { "chat-completions": "chat/completions", responses: "responses", "anthropic-messages": "messages", embeddings: "embeddings",
-	"system-one": "systemone" } satisfies Record<ConnectionProfileDraftPayload["apiFormat"], string>;
+const requestPaths = { "chat-completions": "chat/completions", responses: "responses", "anthropic-messages": "messages", embeddings: "embeddings", "system-one": "systemone" } satisfies Record<ConnectionProfileDraftPayload["apiFormat"], string>;
 
 export function resolveRequestUrl(requestUrl: string, apiFormat: ConnectionProfileDraftPayload["apiFormat"]): string {
 	const parsed = new URL(requestUrl.trim());

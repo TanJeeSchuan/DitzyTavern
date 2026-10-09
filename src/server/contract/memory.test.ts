@@ -20,23 +20,17 @@ const waitFor = async (check: () => boolean) => {
 	return check();
 };
 const insertMessage = (database: Database, conversationId: number, position: number) => {
-	const row = database.query<{ id: number }, [number, number]>(
-		"INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-09-23T00:00:00.000Z') RETURNING id").get(conversationId, position);
+	const row = database.query<{ id: number }, [number, number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-09-23T00:00:00.000Z') RETURNING id").get(conversationId, position);
 	if (!row) throw new Error("Memory fixture Message insert failed.");
 	return row.id;
 };
 const insertVariant = (database: Database, messageId: number, content: string, selected: boolean) => {
-	const row = database.query<{ id: number }, [number, string, number]>(
-		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-09-23T00:00:00.000Z', ?) RETURNING id")
-		.get(messageId, content, selected ? 1 : 0);
+	const row = database.query<{ id: number }, [number, string, number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-09-23T00:00:00.000Z', ?) RETURNING id").get(messageId, content, selected ? 1 : 0);
 	if (!row) throw new Error("Memory fixture Variant insert failed.");
 	return row.id;
 };
 const resetCommand = (database: Database, messageId: number) => {
-	const source = database.query<{ variantId: number; expectedRevision: number },
-		[number]>(
-		"SELECT v.id AS variantId, coalesce(c.revision, 0) AS expectedRevision FROM message_variant v LEFT JOIN memory_collection c ON c.variant_id = v.id WHERE v.message_id = ? ORDER BY v.selected DESC, v.position DESC LIMIT 1")
-		.get(messageId);
+	const source = database.query<{ variantId: number; expectedRevision: number }, [number]>("SELECT v.id AS variantId, coalesce(c.revision, 0) AS expectedRevision FROM message_variant v LEFT JOIN memory_collection c ON c.variant_id = v.id WHERE v.message_id = ? ORDER BY v.selected DESC, v.position DESC LIMIT 1").get(messageId);
 	if (!source) throw new Error("Memory fixture has no Variant to reset.");
 	return { messageId, ...source };
 };
@@ -104,9 +98,7 @@ describe("Memory source public contract", () => {
 		const stop = startMemoryWorker(database, { process: async (_source, context) => { capturedContext = context; return []; } });
 		try {
 			await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete" || readConversationMemories(database, conversation.id).sources[0]?.status === "failed");
-			expect(database.query<{ status: string; error: string | null },
-				[number]>("SELECT status, error FROM memory_collection WHERE conversation_id = ?").get(conversation.id)).toMatchObject({ status: "complete",
-				error: null });
+			expect(database.query<{ status: string; error: string | null }, [number]>("SELECT status, error FROM memory_collection WHERE conversation_id = ?").get(conversation.id)).toMatchObject({ status: "complete", error: null });
 			expect(capturedContext.map(({ messageId: id }) => id)).toEqual(priorIds.slice(1));
 			expect(capturedContext.at(-2)?.content).toBe("");
 		} finally { await stop(); }
@@ -122,10 +114,7 @@ describe("Memory source public contract", () => {
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
-		const stop = startMemoryWorker(database, { process: async (_source) => { await waiting; return [{ claim: "Late old result.",
-			attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Original story." }], judgment: { support: "supported",
-			attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1,
-			attribution: 1, usefulness: 1 } } }]; } });
+		const stop = startMemoryWorker(database, { process: async (_source) => { await waiting; return [{ claim: "Late old result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Original story." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } } }]; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
 			const conversationRoutes = createConversationRoutes(database);
@@ -176,11 +165,7 @@ describe("Memory source public contract", () => {
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
 		let processCount = 0;
-		const stop = startMemoryWorker(database, { process: async () => { if (++processCount === 1) { await waiting;
-			return [{ claim: "Late pre-disable result.", attribution: "Narrated event", people: [], evidence: [{ messageId,
-			excerpt: "Source around a setting change." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain",
-			probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } } }]; } return [];
-			} });
+		const stop = startMemoryWorker(database, { process: async () => { if (++processCount === 1) { await waiting; return [{ claim: "Late pre-disable result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Source around a setting change." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } } }]; } return []; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
 			const preset = await readPreset(createConversationRoutes(database), conversation.id);
@@ -189,9 +174,7 @@ describe("Memory source public contract", () => {
 			await readOperation(toggleBlock(database, preset.id, memory.id, false));
 			await readOperation(toggleBlock(database, preset.id, memory.id, true));
 			release();
-			expect(await waitFor(() => processCount === 2 &&
-				database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete"))
-				.toBe(true);
+			expect(await waitFor(() => processCount === 2 && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete")).toBe(true);
 			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "complete", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
@@ -203,9 +186,7 @@ describe("Memory source public contract", () => {
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
-		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384,
-			outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "",
-			decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		const firstMessageId = insertMessage(database, conversation.id, 1);
 		const firstVariantId = insertVariant(database, firstMessageId, "First source.", true);
@@ -239,9 +220,7 @@ describe("Memory source public contract", () => {
 		const stop = startMemoryWorker(database, { concurrency: 1, process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
 		try {
 			await waitFor(() => models.length === 1 || database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(firstVariantId)?.status === "failed");
-			expect(database.query<{ status: string; error: string | null },
-				[number]>("SELECT status, error FROM memory_collection WHERE variant_id = ?").get(firstVariantId)).toMatchObject({ status: "running",
-				error: null });
+			expect(database.query<{ status: string; error: string | null }, [number]>("SELECT status, error FROM memory_collection WHERE variant_id = ?").get(firstVariantId)).toMatchObject({ status: "running", error: null });
 			await firstRequest;
 			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, extractionModel: "newer-model" });
 			releaseFirst();
@@ -251,9 +230,7 @@ describe("Memory source public contract", () => {
 		} finally { releaseFirst(); await stop(); }
 	});
 
-	const brassKeyClaim = { claim: "Maren returned the brass key to Writer.", attribution: "Narrated event", people: ["Maren", "Writer"],
-		judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 0.9,
-		"usefulness:retain": 0.8 }, confidence: { support: 0.85, attribution: 0.9, usefulness: 0.6 } } };
+	const brassKeyClaim = { claim: "Maren returned the brass key to Writer.", attribution: "Narrated event", people: ["Maren", "Writer"], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 0.9, "usefulness:retain": 0.8 }, confidence: { support: 0.85, attribution: 0.9, usefulness: 0.6 } } };
 	test.each([
 		{ gate: 0.3, claims: [brassKeyClaim] },
 		{ gate: 0.9, claims: [] },
@@ -265,9 +242,7 @@ describe("Memory source public contract", () => {
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
 		const decision = configureDecisionModels(database, key);
-		settings.apply({ expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model",
-			contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: gate, ...decision, recallRelevanceMinimum: 1.5,
-			embeddingProfileId: null, embeddingModel: "" });
+		settings.apply({ expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: gate, ...decision, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "Maren returned Writer's brass key.", true);
 		const queue = createMemoryRoutes(database);
@@ -284,8 +259,7 @@ describe("Memory source public contract", () => {
 					candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 0.8, omit: 0.2 }, confidence: 0.6 },
 				} });
 			}
-			const content = JSON.stringify({ candidates: [{ claim: "Maren returned the brass key to Writer.", attribution: "Narrated event",
-				people: ["Maren", "Writer"], evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] }] });
+			const content = JSON.stringify({ candidates: [{ claim: "Maren returned the brass key to Writer.", attribution: "Narrated event", people: ["Maren", "Writer"], evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] }] });
 			const encoder = new TextEncoder();
 			const stream = [
 				{ choices: [{ index: 0, delta: { content }, finish_reason: null }] },
@@ -297,8 +271,7 @@ describe("Memory source public contract", () => {
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
 			expect<string | null>(decisionAuthorization).toBe("Bearer decision-secret");
-			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ variantId, status: "complete",
-				claims: claims.map((claim) => ({ ...claim, evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] })) }]);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ variantId, status: "complete", claims: claims.map((claim) => ({ ...claim, evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] })) }]);
 			const response = await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories`));
 			expect(await response.text()).not.toContain("decision-secret");
 		} finally { await stop(); }
@@ -310,9 +283,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model",
-			contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "",
-			decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "A valid but incomplete response.", true);
@@ -343,9 +314,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model",
-			contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "",
-			decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		insertVariant(database, insertMessage(database, conversation.id, 1), "Oldest context. ".repeat(250), true);
 		insertVariant(database, insertMessage(database, conversation.id, 2), "Recent context.", true);
@@ -380,8 +349,7 @@ describe("Memory source public contract", () => {
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
-		const abandoned = startMemoryWorker(database, { process: (_source, _context, signal) => new Promise((_,
-			reject) => signal.addEventListener("abort", () => reject(new Error("shutdown")), { once: true })) });
+		const abandoned = startMemoryWorker(database, { process: (_source, _context, signal) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("shutdown")), { once: true })) });
 		expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
 		await abandoned();
 		expect(database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status).toBe("running");

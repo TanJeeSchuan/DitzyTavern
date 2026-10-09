@@ -9,8 +9,7 @@ export const memorySourceState = (source: MemoryCollectionView | undefined): Mem
 	if (source.status === "unprocessed") return state("unprocessed", "Not remembered yet");
 	if (source.status === "pending") return state("working", "Queued");
 	if (source.status === "running") return state("working", "Remembering");
-	if (source.status === "failed" || source.indexing.status === "failed" ||
-		(source.status === "stale" && source.claims.length === 0)) return state("failed", source.status === "stale" ? "Source changed" : "Needs attention");
+	if (source.status === "failed" || source.indexing.status === "failed" || (source.status === "stale" && source.claims.length === 0)) return state("failed", source.status === "stale" ? "Source changed" : "Needs attention");
 	if (source.claims.length === 0) return state("empty", "Nothing worth remembering");
 	return state("remembered", `${source.claims.length} ${source.claims.length === 1 ? "Memory" : "Memories"}`);
 };

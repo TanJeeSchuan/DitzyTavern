@@ -26,8 +26,7 @@ test("Settings shares manual checks and keeps update instructions after a failed
 
 test("Settings retries an initial failure and shows changes only for a newer differing revision", async ({ page, llm }) => {
 	const revision = "a".repeat(40);
-	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ status: 503 },
-		{ buildNumber: 9, revision }, { buildNumber: 8, revision }, { buildNumber: 10, revision: "b".repeat(40) }] });
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ status: 503 }, { buildNumber: 9, revision }, { buildNumber: 8, revision }, { buildNumber: 10, revision: "b".repeat(40) }] });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await page.getByRole("button", { name: "Check now", exact: true }).click();
@@ -74,8 +73,7 @@ test("server restart cancels an in-flight refresh and clears the cached comparis
 
 for (const mode of ["crash", "graceful"] as const) test(`Settings controls shared automatic checks and retains the preference after ${mode} restart`, async ({ page, llm, context }) => {
 	const revision = "a".repeat(40);
-	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ buildNumber: 10, revision, hold: true },
-		{ buildNumber: 11, revision }, { buildNumber: 12, revision }] });
+	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, replies: [{ buildNumber: 10, revision, hold: true }, { buildNumber: 11, revision }, { buildNumber: 12, revision }] });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	const toggle = page.getByRole("switch", { name: "Automatic update checks" });

@@ -356,10 +356,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const app = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
-				{ identifier: "before", name: "Before",
-					content:
-					"{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}",
-					role: "user", injection_position: 0 },
+				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}", role: "user", injection_position: 0 },
 				{ identifier: "chatHistory", name: "History", content: "", marker: true },
 				{ identifier: "depth-one", name: "Depth one", content: "one", role: "system", injection_position: 1 },
 				{ identifier: "depth-two", name: "Depth two", content: "two", role: "assistant", injection_position: 1 },
@@ -427,9 +424,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				//  SAFETY: the conversation route sends this exact JSON request body
 				// to the configured ModelFetch implementation.
 				captured = JSON.parse(String(init?.body)) as CapturedGenerationRequest;
-				return new Response(
-					"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
-					{ headers: { "content-type": "text/event-stream" } });
+				return new Response("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };

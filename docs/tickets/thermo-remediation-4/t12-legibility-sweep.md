@@ -50,19 +50,19 @@ Whatever the measurements above point at. No other ticket is running at the same
 - `lore-attachments.ts`'s private participant-ownership query: `internal.ts` gained `findActiveParticipant`, which `requireParticipant` and the Lore command both use with their own error mapping.
 - Three copies of `queryBatches` (`conversation/read-data.ts`, `memory/indexing.ts`, `prompt-preset/recipe.ts`) → `database/query-batches.ts`.
 - `theme.css`'s duplicated dark token block: one `:root` map with `light-dark(light, dark)`; the media query and `[data-theme="evening"]` now only set `color-scheme`. `light-dark()` is already the repo's pattern (`prose.css`).
-- `generation-settings-draft.ts`'s two near-identical value resolvers → one `resolveValues`; `memory/collections.ts`'s two revisioned update bodies → `updateChatState`; `useConversationMemories`' save/remove settlement → `settleCorrection`; the client abort dance shared by `conversation-query.ts` and `useConversationSession.ts` → `cancellableFetch`.
+- `memory/collections.ts`'s two revisioned update bodies → `updateChatState`; `useConversationMemories`' save/remove settlement → `settleCorrection`; the client abort dance shared by `conversation-query.ts` and `useConversationSession.ts` → `cancellableFetch`. The proposed `generation-settings-draft.ts` `resolveValues` fold was rejected in review (generic field/parser protocol plus a new `BudgetValues` cast for two short domain-specific resolvers) and reverted; the two resolvers stay direct.
 - Comment trim: `client/import-chat.ts` 41% → 29%, `server/sillytavern/import-projection.ts` 31% → 24%, `client/conversation-command-runner.ts` 22% → 16% (it survived T7). Deleted the outcome-family narration and the defensive justifications; kept the constraints (stage route has no body schema, token/hash binding, byte protocol, namespace ownership, seat rules).
 
 **Introduced**
 
-- `server/database/query-batches.ts`; `findActiveParticipant`; `macroScanStep`; `cancellableFetch`; `settleCorrection`; `updateChatState`; `resolveValues`; `referenceCount` in `character-delete.ts`; `MessageRow` in `selected-history.ts`.
+- `server/database/query-batches.ts`; `findActiveParticipant`; `macroScanStep`; `cancellableFetch`; `settleCorrection`; `updateChatState`; `referenceCount` in `character-delete.ts`; `MessageRow` in `selected-history.ts`.
 - `@approved` markers on the 52 comments the sweep found unapproved; none needed deleting.
 
 **Behavior changed:** none.
 
-**Verification**
+**Review fix round 1 (line-breaking only).** Both T12 commits stand except the overlong-line response. The review found that 9551eee4 changed 283 long lines in 81 files: five genuine restructurings (Lorebook notice, `MessageRow`, portrait-column bindings, `currentSpaceKey`, `mergedLabel`) and 278 mechanical wraps in 78 files (267 whitespace/trailing-comma-only, four template-literal `+` splits, five class-list splits, two expression-body-to-block moves for comment placement). Per the user decision, every mechanical wrap was restored to its pre-9551eee4 single line; only the five genuine restructurings stay, plus four lines where naming a value reads better (`referenceCount` kept in `character-delete.ts`, `anchor` named in `prose.tsx`, and the two `makeEmpty*Drafts` one-liners keep their inline `@approved` marker). The reviewer's adapted audit over the worktree reports 0 remaining mechanical wraps; 9 overlong lines still differ from the pre-image and all 9 are those named restructurings. `git diff --check` is clean (the space-before-tab at `updates.test.ts:56–57` disappeared with the restore). All `@approved` markers survive; per-file counts are unchanged.
 
-- `bun run lint` exit 0, 0 warnings / 0 errors. Baseline re-measured at the start of this ticket: 340 warnings (284 overlong lines, 53 unapproved comments, 2 unsafe optional chains, 1 unused import) across `src/`, `scripts/` and `e2e/`. Overlong lines were wrapped at statement/argument boundaries; every long template literal that must keep its exact text was split with `+` concatenation and verified byte-equal (extraction prompt, cast-remove, character-delete, prose image HTML).
+- `bun run lint` exit 0, **278 warnings / 0 errors**, all `anti-slop(no-overlong-code-lines)` on lines restored to their pre-9551eee4 form, and 0 `no-unapproved-comments` warnings. The 0-warning result reported before review is not achievable under the user's rule: mechanical wrapping is worse than the warning, so the warning stays (283 wrap candidates − 5 genuine restructurings = 278). Baseline re-measured at the start of this ticket: 340 warnings (284 overlong lines, 53 unapproved comments, 2 unsafe optional chains, 1 unused import) across `src/`, `scripts/` and `e2e/`.
 - `bun run typecheck` exit 0.
 - `bun run check:contracts` exit 0 (the 11 cross-layer matches are pre-existing audit output).
 - `bun run test` exit 0: 1434 pass / 0 fail.
@@ -71,5 +71,5 @@ Whatever the measurements above point at. No other ticket is running at the same
 
 **Residuals**
 
-- The lint burn-down wrapped 280 overlong lines across 80 files. Dense test fixtures are wrapped mechanically at commas; production files were hand-tidied where the mechanical break hurt (shadcn `dropdown-menu`/`select`/`switch`/`slider`, connection presets, Lorebook editor notice, memory label merge, settings resolvers, selected-history type alias).
+- Line-breaking residuals: the 278 overlong-line warnings are deliberate; each line is the single line it was before 9551eee4, and they are the only warnings left. The template literals at `memory/extraction.ts:90`, `cast-remove.ts:53`, `prose.tsx:89` and `character-delete.ts:38` are single literals again; `extraction`/`cast-remove` are byte-identical to their pre-image, `character-delete` keeps `referenceCount`, `prose` names `anchor`. `resolveValues` and its callback/type protocol are gone with no new cast at the budget resolver.
 - The CSS/migration clone counts are an artifact of the ticket command's ignore override; they were not edited.

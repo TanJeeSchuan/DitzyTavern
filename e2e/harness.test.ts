@@ -60,9 +60,7 @@ test("stop resolves when the server has already crashed", async (t) => {
 
 test("unscripted discovery, embeddings and extraction are recorded as failures", async () => {
 	const server = await startE2eServer();
-	const call = async (path: string,
-		body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) =>
-		(await fetch(`${server.url}/api/${path}`, {
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
 		method: body === undefined ? "GET" : "POST",
 		headers: { "content-type": "application/json" },
 		body: body === undefined ? undefined : JSON.stringify(body),
@@ -75,8 +73,7 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile: decisionPreset });
 		const decision = created.settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "system-one");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
-		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly,
-			...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
+		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
 		await call("connection-settings/discovery", { profileId: chat.id });
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
 		const { revision, ...settings } = await call("memory-settings");

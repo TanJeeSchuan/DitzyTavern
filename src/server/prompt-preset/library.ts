@@ -262,8 +262,7 @@ export function executePromptPresetCommand(
 				.returning({ conversation_id: conversationPromptPresetTable.conversation_id })
 				.all();
 			db.delete(promptPresetTable).where(eq(promptPresetTable.id, preset.id)).run();
-			for (const { conversation_id: conversationId } of reassigned) refreshMemoryForConversation(database, conversationId,
-				"The selected Prompt Preset was deleted. Choose a preset with Memory and reset this source to process it again.");
+			for (const { conversation_id: conversationId } of reassigned) refreshMemoryForConversation(database, conversationId, "The selected Prompt Preset was deleted. Choose a preset with Memory and reset this source to process it again.");
 			return {
 				kind: "deleted",
 				result: {

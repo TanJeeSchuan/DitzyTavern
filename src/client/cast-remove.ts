@@ -50,9 +50,7 @@ export const removalConfirmationCopy = (
 			impact:
 				affected === 0
 					? `Removing ${participantLabel} leaves a nonrestorable tombstone: history keeps displaying its captured name, but the Participant is gone for good.`
-					:
-						`Removing ${participantLabel} leaves a nonrestorable tombstone: history keeps displaying its captured name, ` +
-						`and ${generationCountPhrase(affected)} lose the ability to generate new sibling Variants.`,
+					: `Removing ${participantLabel} leaves a nonrestorable tombstone: history keeps displaying its captured name, and ${generationCountPhrase(affected)} lose the ability to generate new sibling Variants.`,
 			confirmLabel: "Remove",
 		};
 	}

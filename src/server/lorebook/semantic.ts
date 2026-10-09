@@ -72,8 +72,7 @@ export async function evaluateSemanticLore(input: {
 	const largestByBytes = measured.reduce((largest, item) => item.bytes > largest.bytes ? item : largest);
 	const sizingItems = [...new Set([largestByTokens, largestByBytes])];
 	const sceneFits: SceneFits = (scene) => sizingItems.every(({ id, question }) => decisionRequest(selection, { scene }, { [id]: question }).fits);
-	const requestsFor = (scene: readonly string[]) => packDecisions(triggerItems, (batch) => decisionRequest(selection, { scene },
-		Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Decision Model request.");
+	const requestsFor = (scene: readonly string[]) => packDecisions(triggerItems, (batch) => decisionRequest(selection, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Decision Model request.");
 	const controller = new AbortController();
 	const signal = input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
 	try {

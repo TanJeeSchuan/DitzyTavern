@@ -8,8 +8,7 @@ test("jumping to a source reads one window, pages newer, returns to latest and s
 	for (let position = initial.page.totalMessages + 1; position <= 225; position++) {
 		const response = await request.post(`/api/conversations/${activeChatId}/commands`, { data: {
 			expectedRevision: conversation.revision,
-			action: { type: "create-message", timestamp: new Date(Date.UTC(2026, 0, 1, 0, position)).toISOString(),
-				authorParticipantId: conversation.control.humanParticipantId, variantContents: [`History passage ${position}.`] },
+			action: { type: "create-message", timestamp: new Date(Date.UTC(2026, 0, 1, 0, position)).toISOString(), authorParticipantId: conversation.control.humanParticipantId, variantContents: [`History passage ${position}.`] },
 		} });
 		expect(response.ok()).toBe(true);
 		({ conversation } = await response.json());

@@ -49,8 +49,7 @@ describe("Image Reference lifetime", () => {
 		return { hash, token: formatImageReference("map", hash) };
 	};
 	const referenced = () => { sweepOrphanedImages(database); return database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash); };
-	const orphanedAt = (hash: string) => { sweepOrphanedImages(database);
-		return database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at; };
+	const orphanedAt = (hash: string) => { sweepOrphanedImages(database); return database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at; };
 	const stored = () => database.query<{ hash: string }, []>("SELECT hash FROM image").all().map((row) => row.hash);
 	const conversations = () => database;
 	const library = () => createCharacterLibraryModule(database);
@@ -147,8 +146,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { authorNote: "", name: "Chat",
-				participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
@@ -278,10 +276,8 @@ describe("Image Reference lifetime", () => {
 						library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: definition(to) });
 					} else {
 						const target = chat();
-						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: target.revision,
-							action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
-						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(),
-							target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
+						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
+						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
 					}
 					expect(referenced()).toEqual([art.hash]);
 				});
@@ -536,8 +532,7 @@ describe("Image Reference lifetime", () => {
 			} else {
 				const target = chat();
 				const participantId = target.cast[1]!.id;
-				const execute = (action: ConversationAction) => executeConversationCommand(conversations(), { conversationId: target.id,
-					expectedRevision: readConversationRevision(conversations(), target.id)!, action });
+				const execute = (action: ConversationAction) => executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!, action });
 				execute({ type: "update-participant-definition", participantId, definition });
 				execute({ type: "replace-participant-prompt", participantId, prompt });
 				execute({ type: "replace-participant-openings", participantId, openings: [] });

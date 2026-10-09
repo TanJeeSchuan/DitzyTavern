@@ -320,16 +320,14 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 					const count = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(eq(lorebookEntryTable.lorebook_id, command.bookId)).all().length;
 					db.insert(lorebookEntryTable).values({ lorebook_id: command.bookId, position: count + 1, ...entryValues(entry) }).run();
 				} else {
-					const existing = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId),
-						eq(lorebookEntryTable.lorebook_id, command.bookId))).get();
+					const existing = db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get();
 					if (existing === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 					db.update(lorebookEntryTable).set(entryValues(entry)).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				}
 				break;
 			}
 			case "delete-entry":
-				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId),
-					eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
+				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.delete(lorebookEntryTable).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, book.entries.filter((entry) => entry.id !== command.entryId).map((entry) => entry.id));
 				break;
@@ -344,8 +342,7 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 				break;
 			}
 			case "set-entry-enabled":
-				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId),
-					eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
+				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				break;
 		}

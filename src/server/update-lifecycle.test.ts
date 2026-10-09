@@ -27,10 +27,7 @@ test("an enabled official server checks at startup and every 24 hours until shut
 	const database = openInitializedDatabase({ path: ":memory:" });
 	const time = clock();
 	let number = 9;
-	const checker = createUpdateChecker(database, { build: official, scheduleInterval: time.scheduleInterval,
-		registryFetch: async (url) => url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2,
-		mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official",
-		"io.ditzytavern.build-number": String(++number), "org.opencontainers.image.revision": official.revision } }) });
+	const checker = createUpdateChecker(database, { build: official, scheduleInterval: time.scheduleInterval, registryFetch: async (url) => url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": String(++number), "org.opencontainers.image.revision": official.revision } }) });
 	try {
 		checker.start();
 		checker.start();
@@ -57,8 +54,7 @@ test("custom servers make no registry requests at startup, on preference changes
 	const database = openInitializedDatabase({ path: ":memory:" });
 	const time = clock();
 	let requests = 0;
-	const checker = createUpdateChecker(database, { build: { distribution: "custom", buildNumber: null, revision: null },
-		scheduleInterval: time.scheduleInterval, registryFetch: async () => { requests++; throw new Error("No custom registry access"); } });
+	const checker = createUpdateChecker(database, { build: { distribution: "custom", buildNumber: null, revision: null }, scheduleInterval: time.scheduleInterval, registryFetch: async () => { requests++; throw new Error("No custom registry access"); } });
 	try {
 		checker.start();
 		checker.setAutomaticChecks(false);
@@ -75,10 +71,7 @@ test("automatic-check preference survives reopening while comparison and attempt
 	const path = join(directory, "data.sqlite");
 	let database = openInitializedDatabase({ path });
 	try {
-		const checker = createUpdateChecker(database, { build: official,
-			registryFetch: async (url) => url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2,
-			mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official",
-			"io.ditzytavern.build-number": "10", "org.opencontainers.image.revision": "b".repeat(40) } }) });
+		const checker = createUpdateChecker(database, { build: official, registryFetch: async (url) => url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": "10", "org.opencontainers.image.revision": "b".repeat(40) } }) });
 		expect(checker.get().automaticChecks).toBe(true);
 		checker.setAutomaticChecks(false);
 		await checker.check();
@@ -100,9 +93,7 @@ test("disabled servers skip startup, enabling checks immediately, and disabling 
 	const checker = createUpdateChecker(database, { build: official, scheduleInterval: time.scheduleInterval, registryFetch: async (url) => {
 		requests++;
 		if (requests === 1) return pending.promise;
-		return url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2,
-			mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official",
-			"io.ditzytavern.build-number": "10", "org.opencontainers.image.revision": official.revision } });
+		return url.includes("/token?") ? Response.json({ token: "anonymous" }) : Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": "10", "org.opencontainers.image.revision": official.revision } });
 	} });
 	try {
 		checker.setAutomaticChecks(false);

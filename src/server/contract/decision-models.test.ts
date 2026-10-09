@@ -31,8 +31,7 @@ beforeEach(() => {
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 });
 afterEach(() => database.close());
-const post = (path: string, data: GenerationJsonValue) => new Request(`http://localhost/api/connection-settings/${path}`, { method: "POST",
-	headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+const post = (path: string, data: GenerationJsonValue) => new Request(`http://localhost/api/connection-settings/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
 
 test("Memory and Semantic Trigger settings reject state token limits below 256", () => {
 	const memory = createMemorySettingsModule(database);
@@ -46,8 +45,7 @@ test("Memory and Semantic Trigger settings reject state token limits below 256",
 });
 
 test("Memory extraction reports a missing Decision Model before requesting extraction", async () => {
-	await expect(extractAndJudgeMemorySource(database, { messageId: 1, variantId: 1, speaker: "Maren", content: "Maren kept the key." }, [],
-		async () => { throw new Error("Unexpected network request"); })).rejects.toThrow("Decision Model in Memory Settings");
+	await expect(extractAndJudgeMemorySource(database, { messageId: 1, variantId: 1, speaker: "Maren", content: "Maren kept the key." }, [], async () => { throw new Error("Unexpected network request"); })).rejects.toThrow("Decision Model in Memory Settings");
 });
 
 test("decision presets save independently and require a positive timeout", async () => {
@@ -87,15 +85,12 @@ test("a keyless System One profile saves and tests a real decision at its resolv
 
 test("Test Connection reports the profile deadline when a Decision Model hangs", async () => {
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => new Promise<Response>(() => {}) });
-	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Slow local",
-		apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 5 }, modelId: "clef" }));
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Slow local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 5 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", kind: "timeout", message: expect.stringContaining("timed out") });
 });
 
 test.each([null, 0, -1])("Test Connection rejects a System One timeout of %s before calling the endpoint", async timeoutMs => {
-	const result = await testConnection({ profile: { ...blankConnectionProfileDraft, displayName: "Invalid deadline", apiFormat: "system-one",
-		requestUrl: "http://localhost:8000/decision", timeoutMs }, modelId: "clef" }, { fetch: async () => { throw new Error("Unexpected network request");
-		} });
+	const result = await testConnection({ profile: { ...blankConnectionProfileDraft, displayName: "Invalid deadline", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs }, modelId: "clef" }, { fetch: async () => { throw new Error("Unexpected network request"); } });
 	expect(result).toMatchObject({ outcome: "failure", kind: "endpoint", message: expect.stringContaining("positive timeout") });
 });
 
@@ -108,15 +103,13 @@ test.each([
 		expect(String(url)).toBe("http://localhost:8000/custom-decision");
 		return Response.json({ answers });
 	} });
-	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one",
-		requestUrl: "http://localhost:8000/custom-decision", timeoutMs: 15000 }, modelId: "clef" }));
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/custom-decision", timeoutMs: 15000 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", message: expect.stringContaining(reason) });
 });
 
 test.each([true, "0.9"])("Test Connection rejects a non-numeric noul probability %s", async noul => {
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => Response.json({ answers: { ping: { type: "noul", noul } } }) });
-	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one",
-		requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", kind: "malformed-response" });
 });
 
@@ -125,13 +118,11 @@ test.each([
 	{ body: JSON.stringify({ answers: { ping: { type: "noul", probability: 0.9 } } }), reason: "ping/noul" },
 ])("Test Connection identifies an unreadable response: $reason", async ({ body, reason }) => {
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => new Response(body) });
-	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one",
-		requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", kind: "malformed-response", message: expect.stringContaining(reason) });
 });
 
-const decisionOptions = (stateTokenLimit = 16000) => ({ profile: { displayName: "OpenRouter Decisions", requestUrl: "https://openrouter.ai/api/v1/" },
-	credential: "shared-key", headers: [{ name: "x-title", operation: "replace" as const, value: "DitzyTavern" }], stateTokenLimit });
+const decisionOptions = (stateTokenLimit = 16000) => ({ profile: { displayName: "OpenRouter Decisions", requestUrl: "https://openrouter.ai/api/v1/" }, credential: "shared-key", headers: [{ name: "x-title", operation: "replace" as const, value: "DitzyTavern" }], stateTokenLimit });
 
 const source = { messageId: 1, variantId: 1, speaker: "Maren", content: "Maren kept the brass key." };
 const extracted = { claim: "Maren kept the brass key.", attribution: "Narrated event", people: ["Maren"], evidence: [{ messageId: 1, excerpt: source.content }] };
@@ -143,8 +134,7 @@ const extractionResponse = () => new Response([
 const prepareExtraction = () => {
 	configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions());
 	const connections = createConnectionSettingsModule(database);
-	const profile = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...blankConnectionProfileDraft,
-		displayName: "Extractor", requestUrl: "http://extract.test/v1/" } }).profiles.find(profile => profile.displayName === "Extractor")!;
+	const profile = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...blankConnectionProfileDraft, displayName: "Extractor", requestUrl: "http://extract.test/v1/" } }).profiles.find(profile => profile.displayName === "Extractor")!;
 	const memory = createMemorySettingsModule(database);
 	const { revision, ...settings } = memory.get();
 	memory.apply({ ...settings, expectedRevision: revision, extractionProfileId: profile.id, extractionModel: "writer" });
@@ -156,8 +146,7 @@ const choices = (retain = 0.8, confidence?: number) => ({
 	candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain, omit: 0.05 }, confidence },
 });
 
-test.each([{ retain: 0.8, confidence: 0.01, kept: 1 }, { retain: 0.59, confidence: 1, kept: 0 }, { retain: 0.6, confidence: undefined,
-	kept: 1 }])("Memory uses retain probability $retain regardless of confidence $confidence", async ({ retain, confidence, kept }) => {
+test.each([{ retain: 0.8, confidence: 0.01, kept: 1 }, { retain: 0.59, confidence: 1, kept: 0 }, { retain: 0.6, confidence: undefined, kept: 1 }])("Memory uses retain probability $retain regardless of confidence $confidence", async ({ retain, confidence, kept }) => {
 	prepareExtraction();
 	const result = await extractAndJudgeMemorySource(database, source, [], async (url, init) => {
 		if (!String(url).endsWith("/systemone")) return extractionResponse();
@@ -188,15 +177,11 @@ test.each(["missing answer", "unasked answer", "unknown option", "missing option
 test("recall accepts score answers without confidence or legend and reports the selected profile", async () => {
 	const settings = configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions(2000));
 	const conversation = createChat(database);
-	const snapshot = captureMemoryRecallSnapshot({ database, conversationId: conversation.id, enabled: true, messages: [],
-		pendingHumanText: "A brass key changes hands. ".repeat(2000), humanName: "Writer" });
+	const snapshot = captureMemoryRecallSnapshot({ database, conversationId: conversation.id, enabled: true, messages: [], pendingHumanText: "A brass key changes hands. ".repeat(2000), humanName: "Writer" });
 	expect(snapshot.activation).toMatchObject({ decisionProfileName: "OpenRouter Decisions", decisionModel: "typesafe/jev-1.13", decisionConfigured: true, scanTruncated: true });
 	expect(tokenxEstimator(JSON.stringify({ scene: snapshot.activation.scene }))).toBeLessThanOrEqual(2000);
-	const candidate: MemoryRecallCandidateRecord = { identity: "1:1:1:0", messageId: 1, variantId: 1, collectionRevision: 1, claimIndex: 0,
-		ownership: "automatic", sourceChanged: false, ...extracted, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1,
-		relevance: null, relevanceScore: null, admission: "request-limit" };
-	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5,
-		selection: resolveDecisionSelection(database, settings)!, fetch: async (_url, init) => {
+	const candidate: MemoryRecallCandidateRecord = { identity: "1:1:1:0", messageId: 1, variantId: 1, collectionRevision: 1, claimIndex: 0, ownership: "automatic", sourceChanged: false, ...extracted, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1, relevance: null, relevanceScore: null, admission: "request-limit" };
+	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: resolveDecisionSelection(database, settings)!, fetch: async (_url, init) => {
 		const body = JSON.parse(String(init?.body));
 		expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(2000);
 		return Response.json({ answers: { "candidate_1:1:1:0_relevance": { type: "score", score: 2, probabilities: { 0: 0.01, 1: 0.02, 2: 0.9, 3: 0.02 }, provider: "Clef" } }, usage: { cost: 0.01 } });
@@ -207,8 +192,7 @@ test("recall accepts score answers without confidence or legend and reports the 
 test("Semantic Triggers use Clef Flash with the Memory profile key, chunk the entire scene, and clear to keyword-only matching", async () => {
 	const memory = configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions(2000));
 	const semantic = createSemanticTriggerSettingsModule(database);
-	semantic.apply({ type: "apply", expectedRevision: semantic.get().revision, decisionProfileId: memory.decisionProfileId,
-		decisionModel: "cloudflare/clef-flash", decisionStateTokenLimit: 2000, triggerThreshold: 0.75 });
+	semantic.apply({ type: "apply", expectedRevision: semantic.get().revision, decisionProfileId: memory.decisionProfileId, decisionModel: "cloudflare/clef-flash", decisionStateTokenLimit: 2000, triggerThreshold: 0.75 });
 	let requests = 0;
 	const input = { entries: [{ enabled: true, semanticTriggers: ["ships arrive"] }], messages: [{ content: "The ship arrives. ".repeat(4000) }] };
 	const result = await evaluateSemanticLore({ ...input, settings: captureSemanticSettings(database), fetch: async (_url, init) => {
@@ -221,9 +205,7 @@ test("Semantic Triggers use Clef Flash with the Memory profile key, chunk the en
 	expect(requests).toBeGreaterThan(1);
 	expect(result).toEqual({ available: true, threshold: 0.75, matches: [{ trigger: "ships arrive", score: 0.9 }] });
 	semantic.apply({ type: "apply", expectedRevision: semantic.get().revision, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 2000, triggerThreshold: 0.75 });
-	expect(await evaluateSemanticLore({ ...input, settings: captureSemanticSettings(database),
-		fetch: async () => { throw new Error("Unexpected decision request"); } })).toMatchObject({ available: false,
-		fallbackReason: expect.stringContaining("turned off") });
+	expect(await evaluateSemanticLore({ ...input, settings: captureSemanticSettings(database), fetch: async () => { throw new Error("Unexpected decision request"); } })).toMatchObject({ available: false, fallbackReason: expect.stringContaining("turned off") });
 });
 
 test("Semantic Triggers judge the whole scene at a 32,000-token state limit", async () => {
@@ -250,15 +232,11 @@ test("an oversized extraction source fails visibly with no partial collection", 
 	const conversation = createChat(database);
 	const content = "Maren kept the key. ".repeat(3000);
 	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-10-06') RETURNING id").get(conversation.id)!;
-	const variant = database.query<{ id: number }, [number, string]>(
-		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-06', 1) RETURNING id").get(message.id,
-		content)!;
+	const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-06', 1) RETURNING id").get(message.id, content)!;
 	const app = createMemoryRoutes(database);
-	const queued = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, { method: "POST",
-		headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: message.id, variantId: variant.id, expectedRevision: 0 }) }));
+	const queued = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: message.id, variantId: variant.id, expectedRevision: 0 }) }));
 	expect(queued.status).toBe(200);
-	const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context,
-		async () => { throw new Error("Unexpected network request"); }, signal) });
+	const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, async () => { throw new Error("Unexpected network request"); }, signal) });
 	try {
 		const deadline = Date.now() + 3000;
 		while (readConversationMemories(database, conversation.id).sources[0]?.status !== "failed" && Date.now() < deadline) await Bun.sleep(10);
@@ -289,13 +267,11 @@ test("the preparation fingerprint excludes both Memory and Lore Decision Model c
 	expect(fingerprint).not.toContain(loreCredential);
 });
 
-test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 503, kind: "endpoint" }, { status: 0,
-	kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {
+test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 503, kind: "endpoint" }, { status: 0, kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => {
 		if (status === 0) throw new TypeError("Connection refused");
 		return Response.json({ error: "Unavailable" }, { status });
 	} });
-	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one",
-		requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", kind });
 });

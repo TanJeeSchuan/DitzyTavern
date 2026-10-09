@@ -2,8 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory,
-	readVariantsForMemory, type MemorySourceVariant } from "../conversation";
+import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
 import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import {
@@ -282,8 +281,7 @@ interface MemoryCollectionSource {
 	collection: CollectionRow | undefined;
 }
 
-const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState,
-	configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
+const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
 	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
 	return rows.flatMap(({ variant, collection }) => {
@@ -324,12 +322,10 @@ export function readConversationMemoryChanges(database: Database, conversationId
 	const running = [...new Set([...registeredMemoryVariants(database), ...indexingVariants(database, configuration.spaceKey)])];
 	const collections = connect(database).select().from(memoryCollectionTable).where(and(
 		eq(memoryCollectionTable.conversation_id, conversationId),
-		or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`,
-			running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running)),
+		or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`, running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running)),
 	)).all();
 	const state = readMemoryLabelState(database, conversationId);
-	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources: memoryViews(database,
-		conversationId, collectionSources(database, conversationId, collections, true), state, configuration) };
+	return { cursor, revision: readConversationRevision(database, conversationId) ?? 0, labelRevision: state.revision, sources: memoryViews(database, conversationId, collectionSources(database, conversationId, collections, true), state, configuration) };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {

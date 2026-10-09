@@ -13,19 +13,13 @@ import { sha256 } from "../memory/hash";
 import { configureMemoryEmbeddings, createChat, key } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
 
-const memory = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Alice promised Bob a key.", attribution: "Alice said it.",
-	people, evidence: [{ messageId, excerpt: "I promised Bob a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain",
-	probabilities: {}, confidence: { support: 1, attribution: 1, usefulness: 1 } } });
+const memory = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Alice promised Bob a key.", attribution: "Alice said it.", people, evidence: [{ messageId, excerpt: "I promised Bob a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: { support: 1, attribution: 1, usefulness: 1 } } });
 
 const addSource = (database: Database, conversationId: number, position: number, people: string[], author = "Alice", selected = true, participantId?: number) => {
 	const db = drizzle(database);
-	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-23T00:00:00.000Z",
-		author_name: author, author_participant_id: participantId ?? null }).returning().get();
+	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-23T00:00:00.000Z", author_name: author, author_participant_id: participantId ?? null }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised Bob a key.", selected }).returning().get();
-	db.insert(memoryCollectionTable).values({ conversation_id: conversationId, message_id: message.id, variant_id: variant.id, revision: 1,
-		status: "complete", source_hash: sha256(variant.content), source_snapshot_json: JSON.stringify({ source: { messageId: message.id,
-		variantId: variant.id, speaker: author, content: variant.content }, context: [] }), claims_json: JSON.stringify([memory(message.id, people)]),
-		updated_at: message.timestamp }).run();
+	db.insert(memoryCollectionTable).values({ conversation_id: conversationId, message_id: message.id, variant_id: variant.id, revision: 1, status: "complete", source_hash: sha256(variant.content), source_snapshot_json: JSON.stringify({ source: { messageId: message.id, variantId: variant.id, speaker: author, content: variant.content }, context: [] }), claims_json: JSON.stringify([memory(message.id, people)]), updated_at: message.timestamp }).run();
 	return { messageId: message.id, variantId: variant.id };
 };
 
@@ -56,9 +50,7 @@ describe("Memory change feed public contract", () => {
 		return Value.Parse(conversationMemoryChanges, await response.json());
 	};
 	const save = (conversationId: number, participantId: number, identity: { kind: "excluded" }) =>
-		app.handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST",
-			headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity,
-			expectedRevision: readConversationMemories(database, conversationId).labelRevision }) }));
+		app.handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision: readConversationMemories(database, conversationId).labelRevision }) }));
 
 	test("returns the Conversation revision and a cursor, and only collections changed after it", async () => {
 		const chat = createChat(database);
@@ -74,14 +66,11 @@ describe("Memory change feed public contract", () => {
 		expect(quiet).toMatchObject({ revision: 0, labelRevision: 0, sources: [] });
 
 		const current = readConversationMemories(database, chat.id).sources.find(({ variantId }) => variantId === first.variantId)!;
-		const corrected = correctMemorySource(database, chat.id, { messageId: first.messageId, variantId: first.variantId,
-			expectedRevision: current.revision, index: 0, operation: "edit", claim: "Bob returned the key.", attribution: "Alice said it.",
-			people: ["Alice"] });
+		const corrected = correctMemorySource(database, chat.id, { messageId: first.messageId, variantId: first.variantId, expectedRevision: current.revision, index: 0, operation: "edit", claim: "Bob returned the key.", attribution: "Alice said it.", people: ["Alice"] });
 		await Bun.sleep(2);
 		const delta = await changes(chat.id, full.cursor);
 		expect(delta.cursor > full.cursor).toBe(true);
-		expect(delta.sources).toEqual([expect.objectContaining({ variantId: first.variantId, ownership: "writer", revision: corrected.revision,
-			claims: [expect.objectContaining({ claim: "Bob returned the key.", people: ["Alice"] })] })]);
+		expect(delta.sources).toEqual([expect.objectContaining({ variantId: first.variantId, ownership: "writer", revision: corrected.revision, claims: [expect.objectContaining({ claim: "Bob returned the key.", people: ["Alice"] })] })]);
 		expect((await changes(chat.id, delta.cursor)).sources).toEqual([]);
 	});
 
@@ -139,8 +128,7 @@ describe("Memory change feed public contract", () => {
 		const chat = createChat(database);
 		const failed = addSource(database, chat.id, 1, ["Alice"]);
 		addSource(database, chat.id, 2, ["Maren"]);
-		drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: JSON.stringify({ spaceKey: "earlier",
-			error: "Embedding endpoint refused." }) }).where(eq(memoryCollectionTable.variant_id, failed.variantId)).run();
+		drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: JSON.stringify({ spaceKey: "earlier", error: "Embedding endpoint refused." }) }).where(eq(memoryCollectionTable.variant_id, failed.variantId)).run();
 		const { cursor } = await read(chat.id);
 		expect((await changes(chat.id, cursor)).sources.map(({ variantId }) => variantId)).toEqual([failed.variantId]);
 	});

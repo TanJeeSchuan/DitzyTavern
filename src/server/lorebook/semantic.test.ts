@@ -3,9 +3,7 @@ import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic"
 import { tokenxEstimator } from "../prompt-compiler";
 
 const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
-const settings = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, kind: "ready",
-	decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone",
-	credential: "decision-secret", headers: {}, timeoutMs: 15000 } } satisfies SemanticSettingsSnapshot;
+const settings = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, kind: "ready", decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } } satisfies SemanticSettingsSnapshot;
 const unreachable = async (): Promise<Response> => { throw new Error("The Decision Model must not be called."); };
 
 describe("semantic Lore evaluation", () => {

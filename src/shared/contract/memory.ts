@@ -5,32 +5,24 @@ import { numericWire } from "./wire";
 export const memoryCandidate = Type.Object({
 	claim: Type.String(), attribution: Type.String(), people: Type.Array(Type.String()),
 	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String() })),
-	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]),
-		attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]),
-		usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()),
-		confidence: Type.Object({ support: Type.Optional(Type.Number()), attribution: Type.Optional(Type.Number()),
-		usefulness: Type.Optional(Type.Number()) }) }),
+	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Optional(Type.Number()), attribution: Type.Optional(Type.Number()), usefulness: Type.Optional(Type.Number()) }) }),
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
 export type MemoryCandidateJudgment = Static<typeof memoryCandidate>;
 export const memoryCandidates = Type.Array(memoryCandidate);
 export const memoryIndexing = Type.Object({
-	status: Type.Union([Type.Literal("ready"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("failed"), Type.Literal("disabled"),
-		Type.Literal("unconfigured"), Type.Literal("not-applicable")]),
+	status: Type.Union([Type.Literal("ready"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("failed"), Type.Literal("disabled"), Type.Literal("unconfigured"), Type.Literal("not-applicable")]),
 	pendingCount: Type.Integer(),
 	error: Type.Union([Type.String(), Type.Null()]),
 });
 export const memoryIndexAttempt = Type.Object({ spaceKey: Type.String(), error: Type.Union([Type.String(), Type.Null()]) });
 export type MemoryIndexReadiness = Static<typeof memoryIndexing>;
 export const memoryCollection = Type.Object({
-	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"),
-		Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
-	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"),
-		Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
+	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"), Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
+	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
 export type MemoryCollectionView = Static<typeof memoryCollection>;
-export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }),
-	Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
+export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
 export type MemoryIdentity = Static<typeof memoryIdentity>;
 export const memoryIdentities = Type.Record(Type.String(), memoryIdentity);
 export type MemoryIdentities = Static<typeof memoryIdentities>;
@@ -39,17 +31,12 @@ export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
 export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
 export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
 export const memoryLabelMerges = Type.Array(memoryLabelMerge);
-export const conversationMemories = Type.Object({ revision: Type.Integer(), cursor: Type.String(), labelRevision: Type.Integer(),
-	identities: memoryIdentities, cast: Type.Array(Type.Object({ id: Type.Integer(), names: Type.Array(Type.String(), { minItems: 1,
-	uniqueItems: true }) })), labelMerges: memoryLabelMerges, sources: Type.Array(memoryCollection),
-	path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]),
-	authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })) });
+export const conversationMemories = Type.Object({ revision: Type.Integer(), cursor: Type.String(), labelRevision: Type.Integer(), identities: memoryIdentities, cast: Type.Array(Type.Object({ id: Type.Integer(), names: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) })), labelMerges: memoryLabelMerges, sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]), authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })) });
 export type ConversationMemories = Static<typeof conversationMemories>;
 export const memoryChangesQuery = Type.Object({ since: Type.String({ minLength: 1 }) });
 export const conversationMemoryChanges = Type.Object({ cursor: Type.String(), revision: Type.Integer(), labelRevision: Type.Integer(), sources: Type.Array(memoryCollection) });
 export type ConversationMemoryChanges = Static<typeof conversationMemoryChanges>;
-export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }),
-	{ minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
+export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
 export type MemoryLabelMergeCommand = Static<typeof memoryLabelMergeCommand>;
 export const memoryLabelsMerged = Type.Object({ outcome: Type.Literal("applied"), memories: conversationMemories });
 export const memoryLabelsConflict = Type.Object({ outcome: Type.Literal("conflict"), memories: conversationMemories });
@@ -65,9 +52,7 @@ export const memoryCorrectionCommand = Type.Union([
 ]);
 export type MemoryCorrectionCommand = Static<typeof memoryCorrectionCommand>;
 export const memoryCorrectionApplied = Type.Object({ outcome: Type.Literal("applied"), collection: memoryCollection });
-export const memoryCatchup = Type.Object({ id: Type.Integer(), state: Type.Union([Type.Literal("running"), Type.Literal("complete"),
-	Type.Literal("failed"), Type.Literal("cancelled")]), pending: Type.Integer(), running: Type.Integer(), complete: Type.Integer(),
-	failed: Type.Array(Type.Object({ messageId: Type.Integer(), error: Type.Union([Type.String(), Type.Null()]) })) });
+export const memoryCatchup = Type.Object({ id: Type.Integer(), state: Type.Union([Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed"), Type.Literal("cancelled")]), pending: Type.Integer(), running: Type.Integer(), complete: Type.Integer(), failed: Type.Array(Type.Object({ messageId: Type.Integer(), error: Type.Union([Type.String(), Type.Null()]) })) });
 export const memoryCatchupQueued = Type.Object({ outcome: Type.Literal("queued"), run: memoryCatchup });
 export const memoryCatchupCancelled = Type.Object({ outcome: Type.Literal("cancelled"), run: memoryCatchup });
 export const memoryCatchupRead = Type.Object({ run: Type.Union([memoryCatchup, Type.Null()]) });
@@ -79,8 +64,7 @@ export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(
 export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.Integer(), allowance: Type.Integer() });
 export const conversationMemoryNoteCommand = Type.Object({ expectedRevision: Type.Integer(), note: Type.String() });
 export const conversationMemoryAllowanceApplied = Type.Object({ outcome: Type.Literal("applied"), settings: conversationMemoryAllowance });
-export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });
+export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });
 export type ConversationMemoryAllowance = Static<typeof conversationMemoryAllowance>;
 
 export const memoryExtractionResponse = Type.Object({

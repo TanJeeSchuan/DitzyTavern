@@ -85,9 +85,8 @@ md.renderer.rules.image = (tokens, index) => {
 	const name = md.utils.escapeHtml(token?.content ?? "");
 	const hash = String(token?.attrGet("hash") ?? "");
 	if (hash === "") return name;
-	return `<button type="button" class="prose-image" data-image-hash="${hash}" data-image-name="${name}">` +
-		`<img src="${imageSrc(hash)}" alt="${name}" loading="lazy">` +
-		`<span class="prose-image-anchor">${md.utils.escapeHtml(imageAnchor(token?.content ?? ""))}</span></button>`;
+	const anchor = md.utils.escapeHtml(imageAnchor(token?.content ?? ""));
+	return `<button type="button" class="prose-image" data-image-hash="${hash}" data-image-name="${name}"><img src="${imageSrc(hash)}" alt="${name}" loading="lazy"><span class="prose-image-anchor">${anchor}</span></button>`;
 };
 
 export function renderBlocks(text: string): string[] {

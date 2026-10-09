@@ -112,15 +112,12 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	};
 };
 
-const settings = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, kind: "ready",
-	decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone",
-	credential: "secret", headers: {}, timeoutMs: 15000 } } satisfies SemanticSettingsSnapshot;
+const settings = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, kind: "ready", decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 } } satisfies SemanticSettingsSnapshot;
 
 describe("generation preparation snapshot fingerprint", () => {
 	test("changes when any Semantic Trigger configuration field changes", () => {
 		const baseline = generationPreparationFingerprint(preparationWithSemanticSettings(settings));
-		for (const changed of [{ ...settings, decisionProfileId: null }, { ...settings, decisionStateTokenLimit: 2000 }, { ...settings,
-			triggerThreshold: 0.8 }, { ...settings, decisionModel: "jev-next" }]) {
+		for (const changed of [{ ...settings, decisionProfileId: null }, { ...settings, decisionStateTokenLimit: 2000 }, { ...settings, triggerThreshold: 0.8 }, { ...settings, decisionModel: "jev-next" }]) {
 			expect(generationPreparationFingerprint(preparationWithSemanticSettings(changed))).not.toBe(baseline);
 		}
 	});

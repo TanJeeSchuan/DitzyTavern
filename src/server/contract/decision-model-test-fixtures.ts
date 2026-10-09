@@ -6,13 +6,10 @@ import type { ConnectionProfileDraft, ConnectionHeaderOperation } from "../conne
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
 
-export const configureDecisionModels = (database: Database, masterKey?: Uint8Array, model = "jev-1.13.0",
-	options: { profile?: Partial<ConnectionProfileDraft>; credential?: string; headers?: ConnectionHeaderOperation[];
-	stateTokenLimit?: number } = {}) => {
+export const configureDecisionModels = (database: Database, masterKey?: Uint8Array, model = "jev-1.13.0", options: { profile?: Partial<ConnectionProfileDraft>; credential?: string; headers?: ConnectionHeaderOperation[]; stateTokenLimit?: number } = {}) => {
 	const connections = createConnectionSettingsModule(database, { masterKey });
 	const profile = { ...blankConnectionProfileDraft, displayName: "Decision test", apiFormat: "system-one" as const, requestUrl: "http://decision.test/v1/", timeoutMs: 15000, ...options.profile };
-	const created = connections.createProfile({ expectedRevision: connections.get().revision, profile,
-		credential: options.credential ?? "decision-secret", headers: options.headers }).profiles.find(saved => saved.displayName === profile.displayName)!;
+	const created = connections.createProfile({ expectedRevision: connections.get().revision, profile, credential: options.credential ?? "decision-secret", headers: options.headers }).profiles.find(saved => saved.displayName === profile.displayName)!;
 	const selection = { decisionProfileId: created.id, decisionModel: model, decisionStateTokenLimit: options.stateTokenLimit ?? DEFAULT_DECISION_STATE_TOKEN_LIMIT };
 	const memory = createMemorySettingsModule(database);
 	const { revision, ...settings } = memory.get();

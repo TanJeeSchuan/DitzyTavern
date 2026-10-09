@@ -207,9 +207,7 @@ describe("Lorebook library transport", () => {
 	test("invalid native imports do not partially create a book", async () => {
 		const response = await app.handle(request("/api/lorebooks/import", {
 			method: "POST",
-			body: JSON.stringify({ name: "Broken", description: "", entries: [{ title: "x", content: "x", keywords: [], semanticTriggers: [],
-				matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true,
-				keywordMode: "regex", regexFlags: "invalid flag", priority: 0, enabled: true }] }),
+			body: JSON.stringify({ name: "Broken", description: "", entries: [{ title: "x", content: "x", keywords: [], semanticTriggers: [], matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true, keywordMode: "regex", regexFlags: "invalid flag", priority: 0, enabled: true }] }),
 		}));
 		expect(response.status).toBe(422);
 		expect(await (await app.handle(request("/api/lorebooks"))).json()).toEqual({ books: [] });
@@ -229,8 +227,7 @@ describe("Lorebook library transport", () => {
 		expect(initial.status).toBe(200);
 		expect(await initial.json()).toMatchObject({ conversationId: conversation.id, revision: 0, scanDepth: 4, allowance: 2048, attachments: [] });
 		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-chat", conversationId: conversation.id, bookId: 1, expectedRevision: 0 }) }));
-		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings",
-			conversationId: conversation.id, expectedRevision: 1, scanDepth: 2, allowance: 900 }) }));
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, expectedRevision: 1, scanDepth: 2, allowance: 900 }) }));
 		const updated = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
 		expect(await updated.json()).toMatchObject({ scanDepth: 2, allowance: 900, attachments: [{ bookId: 1, owner: "conversation", scope: "chat", enabled: true, eligible: true, reason: "eligible" }] });
 		void created;
@@ -327,10 +324,8 @@ describe("Lorebook library transport", () => {
 		});
 		const participantId = conversation.cast[0]?.id;
 		if (participantId === undefined) throw new Error("Conversation participant was not created.");
-		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character",
-			characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast", enabled: false }) }));
-		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant",
-			participantId, bookId: 1, expectedRevision: 0, scope: "controlled-participant" }) }));
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast", enabled: false }) }));
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant", participantId, bookId: 1, expectedRevision: 0, scope: "controlled-participant" }) }));
 		const characterState = await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`));
 		const participantState = await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`));
 		expect(await characterState.json()).toMatchObject({ owner: "character", ownerId: character.id, attachments: [{ bookId: 1, scope: "cast", enabled: false }] });
@@ -364,11 +359,9 @@ describe("Lorebook library transport", () => {
 		] as const) {
 			expect((await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify(command) }))).status).toBe(200);
 		}
-		const characterDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
+		const characterDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
 		expect(characterDetach.status).toBe(200);
-		expect(await (await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`))).json())
-			.toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
+		expect(await (await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`))).json()).toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
 
 		for (const command of [
 			{ type: "attach-participant", participantId, bookId: 1, expectedRevision: 0, scope: "cast" },
@@ -376,11 +369,9 @@ describe("Lorebook library transport", () => {
 		] as const) {
 			expect((await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify(command) }))).status).toBe(200);
 		}
-		const participantDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "detach-participant", participantId, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
+		const participantDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-participant", participantId, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
 		expect(participantDetach.status).toBe(200);
-		expect(await (await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`))).json())
-			.toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
+		expect(await (await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`))).json()).toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
 	});
 
 	test("rejects stale attachment and Chat Lore settings writes atomically", async () => {
@@ -403,23 +394,17 @@ describe("Lorebook library transport", () => {
 		});
 		const initialChat = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
 		const initialChatState = await readBody<{ revision: number }>(initialChat);
-		const attached = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-chat",
-			conversationId: conversation.id, bookId: 1, expectedRevision: initialChatState.revision }) }));
+		const attached = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-chat", conversationId: conversation.id, bookId: 1, expectedRevision: initialChatState.revision }) }));
 		expect(attached.status).toBe(200);
-		const staleSettings = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, expectedRevision: initialChatState.revision, scanDepth: 1,
-			allowance: 1 }) }));
+		const staleSettings = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, expectedRevision: initialChatState.revision, scanDepth: 1, allowance: 1 }) }));
 		expect(staleSettings.status).toBe(409);
 		expect(await staleSettings.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentConversation: { id: conversation.id, name: "Story", revision: 1 } });
-		const missingParticipant = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "attach-participant", participantId: 9999, bookId: 1, expectedRevision: 1, scope: "cast" }) }));
+		const missingParticipant = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant", participantId: 9999, bookId: 1, expectedRevision: 1, scope: "cast" }) }));
 		expect(missingParticipant.status).toBe(404);
 
-		const staleCharacter = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast" }) }));
+		const staleCharacter = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast" }) }));
 		expect(staleCharacter.status).toBe(200);
-		const staleDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST",
-			body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 0 }) }));
+		const staleDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 0 }) }));
 		expect(staleDetach.status).toBe(409);
 		expect(await staleDetach.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentState: { revision: 1, attachments: [{ bookId: 1 }] } });
 	});

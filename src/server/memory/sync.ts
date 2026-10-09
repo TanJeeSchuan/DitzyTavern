@@ -31,10 +31,8 @@ export function syncMemorySources(database: Database, change: ConversationMemory
 		abortMemoryWork(database, change.removedVariantIds);
 	}
 	if (change.touchedVariantIds.length > 0) {
-		const collections = new Map(drizzle(database).select().from(memoryCollectionTable).where(inArray(memoryCollectionTable.variant_id,
-			[...change.touchedVariantIds])).all().map((row) => [row.variant_id, row]));
-		const rows = new Map(readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds,
-			includeActive: true }).map((variant) => [variant.variantId, { ...variant, sourceHash: collections.get(variant.variantId)?.source_hash ?? null }]));
+		const collections = new Map(drizzle(database).select().from(memoryCollectionTable).where(inArray(memoryCollectionTable.variant_id, [...change.touchedVariantIds])).all().map((row) => [row.variant_id, row]));
+		const rows = new Map(readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).map((variant) => [variant.variantId, { ...variant, sourceHash: collections.get(variant.variantId)?.source_hash ?? null }]));
 		for (const id of change.touchedVariantIds) {
 			const row = rows.get(id);
 			if (!row) continue;
