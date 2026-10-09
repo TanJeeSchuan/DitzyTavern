@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
-import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, conversationMemorySettingsTable, messageTable, messageVariantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
 
@@ -86,6 +86,15 @@ export const readMemoryTailMessageId = (database: Database, conversationId: numb
 	connectConversationDatabase(database).select({ id: messageTable.id }).from(messageTable)
 		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position)).limit(1).get()?.id;
+
+export const conversationIdOfMessage = (database: Database, messageId: number): number | undefined =>
+	connectConversationDatabase(database).select({ conversationId: messageTable.conversation_id }).from(messageTable)
+		.where(eq(messageTable.id, messageId)).get()?.conversationId;
+
+export const memoryNoteOf = (database: Database, messageId: number): string =>
+	connectConversationDatabase(database).select({ note: conversationMemorySettingsTable.memory_note }).from(messageTable)
+		.innerJoin(conversationMemorySettingsTable, eq(conversationMemorySettingsTable.conversation_id, messageTable.conversation_id))
+		.where(eq(messageTable.id, messageId)).get()?.note ?? "";
 
 export const readActiveVariantIds = (database: Database, conversationId: number): Set<number> =>
 	new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
