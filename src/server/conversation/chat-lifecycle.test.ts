@@ -10,8 +10,8 @@ import {
 	ConversationNotFoundError,
 	deleteConversation,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from ".";
+import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 
 const prompt = {
@@ -60,7 +60,7 @@ describe("Chat rename and deletion", () => {
 		const renamed = rename(chat, "Lantern Hall");
 
 		expect(() => rename(renamed, "   ")).toThrow(InvalidConversationCommandError);
-		expect(() => rename(chat, "Stale Name")).toThrow(StaleConversationRevisionError);
+		expect(() => rename(chat, "Stale Name")).toThrow(StaleRevisionError);
 		expect(readTestConversationSnapshot(module, chat.id)?.name).toBe("Lantern Hall");
 	});
 

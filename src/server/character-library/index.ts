@@ -16,7 +16,6 @@ export {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
 	InvalidCharacterDefinitionError,
-	StaleCharacterRevisionError,
 } from "./errors";
 // @approved
 //  Narrow garbage-collection hook for the Conversation domain: removes an

@@ -1,10 +1,9 @@
-import { recoverMemoryLabelsConflict } from "./domain-error-recovery";
 import { presentDomainError } from "./domain-error";
 import { readSelectedHistory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
-import { mergeMemoryLabels, setMemoryIdentity } from "../memory/labels";
+import { mergeMemoryLabels, setMemoryIdentity } from "../memory/collections";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readConversationMemoryChanges, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup } from "../memory/collections";
 import {
 	conversationMemories,
@@ -55,7 +54,7 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 			setMemoryIdentity(database, params.id, body);
 			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
 		} catch (error) {
-			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, params.id)));
+			return presentDomainError(error, labelsResponse);
 		}
 	}, { params: memoryConversationIdParams, body: memoryIdentityCommand, response: labelsResponse })
 	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => {
@@ -63,7 +62,7 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 			mergeMemoryLabels(database, params.id, body);
 			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
 		} catch (error) {
-			return presentDomainError(error, labelsResponse, recoverMemoryLabelsConflict(() => readConversationMemories(database, params.id)));
+			return presentDomainError(error, labelsResponse);
 		}
 	}, { params: memoryConversationIdParams, body: memoryLabelMergeCommand, response: labelsResponse })
 	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => ({ steps: readMemoryTrace(database, params.id, params.variantId) }), { params: memoryTraceParams, response: memoryTrace })

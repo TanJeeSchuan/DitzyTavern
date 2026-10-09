@@ -12,7 +12,8 @@ import {
 } from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
-import { InvalidConversationCommandError, StaleConversationRevisionError } from ".";
+import { InvalidConversationCommandError } from ".";
+import { StaleRevisionError } from "../revision";
 import type { ConversationAction, ParticipantDefinition } from ".";
 import { applyCommand } from "../test-fixtures/conversation";
 
@@ -292,7 +293,7 @@ describe("Cast and Control management", () => {
 				type: "add-participant",
 				definition: adHoc("Stale Addition"),
 			}),
-		).toThrow(StaleConversationRevisionError);
+		).toThrow(StaleRevisionError);
 		expect(castNames(readTestConversationSnapshot(database, snapshot.id) ?? snapshot)).toEqual([
 			"Writer",
 			"Maren Voss",

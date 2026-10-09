@@ -21,6 +21,7 @@ import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
 import type { ConversationDatabase } from "./internal";
 import { readSelectedHistoryFromConnection } from "./selected-history";
+import { readConversationSummaryFromConnection } from "./snapshot";
 import { readVariantData } from "./variant-data";
 import {
 	advanceConversationRevisionGuarded,
@@ -31,8 +32,8 @@ import {
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from "./errors";
+import { guardRevision } from "../revision";
 
 export interface ReadMacroVariablesInput {
 	promptPresetId?: number | undefined;
@@ -155,9 +156,11 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 			.where(eq(conversationTable.id, input.conversationId))
 			.get();
 		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
-		if (conversation.revision !== input.expectedRevision) {
-			throw new StaleConversationRevisionError(input.expectedRevision, conversation.revision);
-		}
+		guardRevision("conversation", input.expectedRevision, conversation, () => {
+			const current = readConversationSummaryFromConnection(db, input.conversationId);
+			if (current === undefined) throw new ConversationNotFoundError(input.conversationId);
+			return current;
+		});
 		if (!Number.isInteger(input.promptPresetId) || input.promptPresetId <= 0) {
 			throw new InvalidConversationCommandError("Prompt Preset ID must be a positive integer.");
 		}

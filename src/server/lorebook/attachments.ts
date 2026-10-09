@@ -13,7 +13,7 @@ import {
 } from "../database/schema";
 import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
 import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
-import { StaleLoreAttachmentOwnerRevisionError } from "./errors";
+import { guardRevision, StaleRevisionError } from "../revision";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";
 
@@ -252,7 +252,7 @@ export const readLoreSettings = (database: Database, conversationId: number): Lo
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
 };
 
-const advanceCharacterRevision = (db: LoreDatabase, characterId: number, expectedRevision: number) => {
+const advanceCharacterRevision = (database: Database, db: LoreDatabase, characterId: number, expectedRevision: number) => {
 	const advanced = db.update(characterTable)
 		.set({ revision: sql`${characterTable.revision} + 1` })
 		.where(and(eq(characterTable.id, characterId), eq(characterTable.revision, expectedRevision)))
@@ -260,7 +260,12 @@ const advanceCharacterRevision = (db: LoreDatabase, characterId: number, expecte
 		.get();
 	if (advanced === undefined) {
 		const current = db.select({ revision: characterTable.revision }).from(characterTable).where(eq(characterTable.id, characterId)).get();
-		throw new StaleLoreAttachmentOwnerRevisionError(characterId, expectedRevision, current?.revision ?? expectedRevision);
+		throw new StaleRevisionError(
+			"lore-attachment",
+			expectedRevision,
+			current?.revision ?? expectedRevision,
+			readCharacterLorebookAttachments(database, characterId),
+		);
 	}
 };
 
@@ -284,12 +289,14 @@ export const executeLorebookAttachmentCommand = (
 			.where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at)))
 			.get();
 		if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
-		if (owner.revision !== command.expectedRevision) {
-			throw new StaleLoreAttachmentOwnerRevisionError(command.characterId, command.expectedRevision, owner.revision);
-		}
+		guardRevision("lore-attachment", command.expectedRevision, owner, () => {
+			const current = readCharacterLorebookAttachments(database, command.characterId);
+			if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
+			return current;
+		});
 		if (command.type === "attach-character") attachLorebookToCharacter(database, command);
 		else detachLorebookFromCharacter(database, command.characterId, command.bookId, command.scope);
-		advanceCharacterRevision(db, command.characterId, command.expectedRevision);
+		advanceCharacterRevision(database, db, command.characterId, command.expectedRevision);
 	}).immediate();
 };
 

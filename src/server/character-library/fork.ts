@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { CharacterNotFoundError, StaleCharacterRevisionError } from "./errors";
+import { CharacterNotFoundError } from "./errors";
+import { guardRevision } from "../revision";
 import { connectCharacterLibraryDatabase } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type { CharacterDefinition } from "./types";
@@ -28,14 +29,7 @@ export function forkCharacter(
 		characterId,
 	);
 	if (character === undefined) throw new CharacterNotFoundError(characterId);
-	if (character.revision !== expectedRevision) {
-		throw new StaleCharacterRevisionError(
-			character.id,
-			expectedRevision,
-			character.revision,
-			character,
-		);
-	}
+	guardRevision("character", expectedRevision, character, () => character);
 	return {
 		definition: {
 			name: character.name,

@@ -40,7 +40,6 @@ export {
 	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
-	StalePromptPresetRevisionError,
 } from "./errors";
 export type {
 	PromptBlockReference,

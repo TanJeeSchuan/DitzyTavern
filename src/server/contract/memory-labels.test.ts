@@ -5,7 +5,8 @@ import { openInitializedDatabase } from "../database/database";
 import { memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import { createChat } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
-import { correctMemorySource, readConversationMemories, readMemoryAllowance, setMemoryAllowance, resetAndReextractMemorySource, startMemoryCatchup, startMemoryWorker, StaleMemoryCollectionError } from "../memory/collections";
+import { correctMemorySource, readConversationMemories, readMemoryAllowance, setMemoryAllowance, resetAndReextractMemorySource, startMemoryCatchup, startMemoryWorker } from "../memory/collections";
+import { StaleRevisionError } from "../revision";
 import { sha256 } from "../memory/hash";
 import { Value } from "@sinclair/typebox/value";
 import { memoryLabelsMerged, memoryWorkSnapshot, type MemoryCandidateJudgment } from "../../shared/contract/memory";
@@ -45,7 +46,7 @@ describe("Memory label merging", () => {
 			expect(source.claims[0]).toEqual({ ...before.sources[index]!.claims[0]!, people: source.claims[0]!.people });
 		}
 		expect(readConversationMemories(database, other.id).sources[0]!.claims[0]!.people).toEqual(["assistant"]);
-		expect(() => correctMemorySource(database, chat.id, { ...selected, expectedRevision: 1, index: 0, operation: "remove" })).toThrow(StaleMemoryCollectionError);
+		expect(() => correctMemorySource(database, chat.id, { ...selected, expectedRevision: 1, index: 0, operation: "remove" })).toThrow(StaleRevisionError);
 	});
 
 	test("flattens repeated merges, supports renaming back, and applies mappings to manual corrections", async () => {

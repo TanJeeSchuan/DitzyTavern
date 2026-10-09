@@ -14,7 +14,8 @@ import { readConversationSummary } from "../conversation";
 import type { Database } from "bun:sqlite";
 import type { CharacterSnapshot } from "../character-library";
 import { createCharacterLibraryModule } from "../character-library";
-import { ConversationNotFoundError, ParticipantNotFoundError, StaleConversationRevisionError } from "../conversation";
+import { ConversationNotFoundError, ParticipantNotFoundError } from "../conversation";
+import { guardRevision } from "../revision";
 
 export interface SaveParticipantAsCharacterInput {
 	conversationId: number;
@@ -42,12 +43,7 @@ export function saveParticipantAsCharacter(
 		if (conversation === undefined) {
 			throw new ConversationNotFoundError(input.conversationId);
 		}
-		if (conversation.revision !== input.expectedConversationRevision) {
-			throw new StaleConversationRevisionError(
-				input.expectedConversationRevision,
-				conversation.revision,
-			);
-		}
+		guardRevision("conversation", input.expectedConversationRevision, conversation, () => conversation);
 
 		const participant = conversation.cast.find(
 			(candidate) => candidate.id === input.participantId,

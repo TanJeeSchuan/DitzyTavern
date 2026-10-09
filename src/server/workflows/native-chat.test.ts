@@ -14,8 +14,8 @@ import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	CharacterNotFoundError,
-	StaleCharacterRevisionError,
 } from "../character-library";
+import { StaleRevisionError } from "../revision";
 import type { CharacterDefinition } from "../character-library";
 import { createNativeConversation } from ".";
 
@@ -184,7 +184,7 @@ describe("Native New Chat workflow", () => {
 			name: "Renamed Voss",
 		});
 
-		let conflict: StaleCharacterRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			createNativeConversation(database, {
 				name: "Stale Fork",
@@ -192,13 +192,15 @@ describe("Native New Chat workflow", () => {
 				modelSeat: fork(source.id, 0),
 			});
 		} catch (error) {
-			if (error instanceof StaleCharacterRevisionError) conflict = error;
+			if (error instanceof StaleRevisionError) conflict = error;
 		}
 
 		expect(conflict).toBeDefined();
 		expect(conflict?.expectedRevision).toBe(0);
 		expect(conflict?.actualRevision).toBe(advanced.revision);
-		expect(conflict?.currentCharacter.name).toBe("Renamed Voss");
+		// SAFETY: the stale conflict's character aggregate always carries the
+		// authoritative current Character snapshot.
+		expect((conflict?.current as { name: string }).name).toBe("Renamed Voss");
 
 		// Atomic: no Conversation, Participants, Control, or greeting exist.
 		expect(countRows(conversationTable)).toBe(0);

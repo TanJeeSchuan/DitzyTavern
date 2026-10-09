@@ -9,23 +9,6 @@ export class ConversationNotFoundError extends Error {
 	}
 }
 
-export class StaleConversationRevisionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details = { reason: this.message };
-
-	readonly expectedRevision: number;
-	readonly actualRevision: number;
-
-	constructor(expectedRevision: number, actualRevision: number) {
-		super(
-			`Expected Conversation revision ${expectedRevision}, but the current revision is ${actualRevision}.`,
-		);
-		this.name = "StaleConversationRevisionError";
-		this.expectedRevision = expectedRevision;
-		this.actualRevision = actualRevision;
-	}
-}
-
 // @approved
 //  Typed not-found outcome for a Participant that does not exist in (or no
 // longer belongs to) a Conversation. Cross-module workflows surface this

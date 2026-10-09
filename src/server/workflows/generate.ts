@@ -11,11 +11,11 @@ import {
 import type { Database } from "bun:sqlite";
 import {
 	ConversationNotFoundError,
-	StaleConversationRevisionError,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 } from "../conversation";
+import { StaleRevisionError } from "../revision";
 import { generationRuntimeFor } from "./generation-runtime";
 import {
 	runAcceptedGeneration,
@@ -44,7 +44,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	const revision = readConversationRevision(database, input.conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.expectedRevision !== undefined && revision !== input.expectedRevision) {
-		throw new StaleConversationRevisionError(input.expectedRevision, revision);
+		throw new StaleRevisionError("generation", input.expectedRevision, revision);
 	}
 	const capture = input.preview === undefined
 		? await captureGeneration(database, input.target, input)

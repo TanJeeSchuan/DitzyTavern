@@ -15,7 +15,8 @@ import {
 	InvalidCharacterDefinitionError,
 } from "../character-library";
 import type { CharacterDefinition } from "../character-library";
-import { ConversationNotFoundError, ParticipantNotFoundError, StaleConversationRevisionError } from "../conversation";
+import { ConversationNotFoundError, ParticipantNotFoundError } from "../conversation";
+import { StaleRevisionError } from "../revision";
 import { createNativeConversation, saveParticipantAsCharacter } from ".";
 
 const prompt = () => ({
@@ -233,7 +234,7 @@ describe("Save Participant as Character workflow", () => {
 			},
 		});
 
-		let conflict: StaleConversationRevisionError | undefined;
+		let conflict: StaleRevisionError | undefined;
 		try {
 			saveParticipantAsCharacter(database, {
 				conversationId: conversation.id,
@@ -241,7 +242,7 @@ describe("Save Participant as Character workflow", () => {
 				participantId: participant.id,
 			});
 		} catch (error) {
-			if (error instanceof StaleConversationRevisionError) conflict = error;
+			if (error instanceof StaleRevisionError) conflict = error;
 		}
 
 		expect(conflict).toBeDefined();

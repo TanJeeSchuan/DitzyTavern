@@ -5,8 +5,8 @@ import type { ConversationMemoryChange } from "../../../shared/contract/conversa
 import {
 	ConversationNotFoundError,
 	ConversationWriteObserverMissingError,
-	StaleConversationRevisionError,
 } from "../errors";
+import { StaleRevisionError } from "../../revision";
 import {
 	connectConversationDatabase,
 	type ConversationDatabase,
@@ -134,10 +134,10 @@ export function requireConversationSummary(
 
 /** @approved
  * Advance the Conversation revision only while it still matches
- * expectedRevision, throwing the typed stale error otherwise. The stale
- * error's reported current revision is caller-owned: command execution
- * reports the revision read at transaction start, while the acceptance
- * seams report the pre-bump revision as expectedRevision + 1.
+ * expectedRevision, throwing the shared stale-revision conflict otherwise.
+ * The conflict's reported current revision is caller-owned: command
+ * execution reports the revision read at transaction start, while the
+ * acceptance seams report the pre-bump revision as expectedRevision + 1.
  */
 export function advanceConversationRevisionGuarded(
 	db: ConversationDatabase,
@@ -158,9 +158,11 @@ export function advanceConversationRevisionGuarded(
 		.returning({ revision: conversationTable.revision })
 		.get();
 	if (advanced === undefined) {
-		throw new StaleConversationRevisionError(
+		throw new StaleRevisionError(
+			"conversation",
 			expectedRevision,
 			staleActualRevision,
+			requireConversationSummary(db, conversationId),
 		);
 	}
 }

@@ -1,4 +1,3 @@
-import { recoverConversationConflict } from "./domain-error-recovery";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -446,9 +445,7 @@ export const createConversationRoutes = (
 						});
 					return { outcome: "applied" as const, ...edited };
 				} catch (error) {
-					return presentDomainError(error,
-						macroVariablesEditResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, macroVariablesEditResponse);
 				}
 			},
 			{
@@ -578,9 +575,7 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						commandResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, commandResponse);
 				}
 			},
 			{
@@ -604,9 +599,7 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						addCastCharacterResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, addCastCharacterResponse);
 				}
 			},
 			{
@@ -630,9 +623,7 @@ export const createConversationRoutes = (
 						character: toCharacterPayload(character),
 					};
 				} catch (error) {
-					return presentDomainError(error,
-						saveParticipantResponse,
-						recoverConversationConflict(() => readConversationSummary(database, params.id)));
+					return presentDomainError(error, saveParticipantResponse);
 				}
 			},
 			{

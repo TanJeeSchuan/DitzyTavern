@@ -1,5 +1,3 @@
-import type { CharacterSnapshot } from "./types";
-
 export class CharacterNotFoundError extends Error {
 	readonly outcome = "not-found" as const;
 
@@ -9,36 +7,6 @@ export class CharacterNotFoundError extends Error {
 		super(`Character ${characterId} was not found.`);
 		this.name = "CharacterNotFoundError";
 		this.characterId = characterId;
-	}
-}
-
-// @approved
-//  Typed revision conflict. Carries the authoritative current Character so
-// callers can recover without overwriting their local draft.
-export class StaleCharacterRevisionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	readonly characterId: number;
-	readonly expectedRevision: number;
-	readonly actualRevision: number;
-	readonly currentCharacter: CharacterSnapshot;
-
-	constructor(
-		characterId: number,
-		expectedRevision: number,
-		actualRevision: number,
-		currentCharacter: CharacterSnapshot,
-	) {
-		super(
-			`Expected Character ${characterId} revision ${expectedRevision}, but the current revision is ${actualRevision}.`,
-		);
-		this.name = "StaleCharacterRevisionError";
-		this.characterId = characterId;
-		this.expectedRevision = expectedRevision;
-		this.actualRevision = actualRevision;
-		this.currentCharacter = currentCharacter;
-		this.details = { expectedRevision, actualRevision, currentCharacter };
 	}
 }
 

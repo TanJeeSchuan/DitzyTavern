@@ -24,8 +24,7 @@ import type { MemoryActivationRecord } from "../../shared/contract/memory-recall
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
-import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
-import { mergeMemoryLabels } from "../memory/labels";
+import { mergeMemoryLabels, readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;

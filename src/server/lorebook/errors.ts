@@ -1,5 +1,3 @@
-import type { Lorebook } from "../../shared/contract/lorebook";
-
 export class LorebookNotFoundError extends Error {
 	readonly outcome = "not-found" as const;
 
@@ -36,39 +34,3 @@ export class InvalidLorebookExpressionError extends Error {
 	}
 }
 
-export class StaleLorebookRevisionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	constructor(
-		readonly bookId: number,
-		readonly expectedRevision: number,
-		readonly actualRevision: number,
-		readonly currentBook: Lorebook,
-	) {
-		super(`Expected Lorebook ${bookId} revision ${expectedRevision}, but the current revision is ${actualRevision}.`);
-		this.name = "StaleLorebookRevisionError";
-		this.details = { reason: "stale-revision" as const, expectedRevision, actualRevision, currentBook };
-	}
-}
-
-// @approved
-//  Typed revision conflict for the two Character-owned Lore attachment
-// commands: the Character whose Lore attachments the command mutates moved
-// elsewhere between the client's read and this write. The recovery payload
-// re-reads the owner's attachment state, so the error carries only the
-// identifiers the route needs.
-export class StaleLoreAttachmentOwnerRevisionError extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	constructor(
-		readonly characterId: number,
-		readonly expectedRevision: number,
-		readonly actualRevision: number,
-	) {
-		super(`Expected Character ${characterId} revision ${expectedRevision}, but the current revision is ${actualRevision}.`);
-		this.name = "StaleLoreAttachmentOwnerRevisionError";
-		this.details = { reason: "stale-revision" as const, expectedRevision, actualRevision };
-	}
-}

@@ -300,7 +300,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 	input: AcceptGenerationTargetInput<Validation>,
 ): AcceptedGenerationTarget<Validation> {
 	return runConversationTransaction(database, (db, reportChange) => {
-		requireConversationRevision(db, input.conversationId, input.expectedRevision);
+		requireConversationRevision(db, input.conversationId, input.expectedRevision, "generation");
 		input.preflight?.();
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(

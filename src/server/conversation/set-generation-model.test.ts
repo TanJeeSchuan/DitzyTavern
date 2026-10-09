@@ -3,7 +3,8 @@ import { executeConversationCommand, readConversationGenerationSettings } from "
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { InvalidConversationCommandError, StaleConversationRevisionError } from ".";
+import { InvalidConversationCommandError } from ".";
+import { StaleRevisionError } from "../revision";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 import {
 	GENERATION_SETTINGS_FIELDS,
@@ -172,7 +173,7 @@ const createConnection = (database: Database): number => {
 				expectedRevision: conversation.revision + 5,
 				action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
 			}),
-		).toThrow(StaleConversationRevisionError);
+		).toThrow(StaleRevisionError);
 		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe(
 			DEFAULT_CONVERSATION_GENERATION_SETTINGS.modelId,
 		);

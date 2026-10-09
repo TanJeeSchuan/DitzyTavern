@@ -1,4 +1,3 @@
-import { recoverConversationConflict, recoverLoreOwnerConflict } from "./domain-error-recovery";
 import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
@@ -44,7 +43,6 @@ import {
 	readParticipantConversationId,
 } from "../lorebook/attachments";
 import {
-	readConversationSummary,
 	executeConversationCommand,
 	type ConversationCommand,
 } from "../conversation";
@@ -143,9 +141,7 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 		executeConversationCommand(database, command);
 		return { outcome: "applied" as const };
 	} catch (error) {
-		return presentDomainError(error,
-			attachmentCommandResponse,
-			recoverConversationConflict(() => readConversationSummary(database, command.conversationId)));
+		return presentDomainError(error, attachmentCommandResponse);
 	}
 };
 
@@ -172,9 +168,7 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 				executeLorebookAttachmentCommand(database, body);
 				return { outcome: "applied" as const };
 			} catch (error) {
-				return presentDomainError(error,
-					attachmentCommandResponse,
-					recoverLoreOwnerConflict((characterId) => readCharacterLorebookAttachments(database, characterId)));
+				return presentDomainError(error, attachmentCommandResponse);
 			}
 		}
 		if (body.type === "attach-participant" || body.type === "detach-participant") {

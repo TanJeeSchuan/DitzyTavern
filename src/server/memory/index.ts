@@ -2,6 +2,7 @@ export { createMemorySettingsModule } from "./settings";
 export {
 	cancelMemoryCatchup,
 	correctMemorySource,
+	mergeMemoryLabels,
 	readConversationMemories,
 	readConversationMemoryChanges,
 	readLatestMemoryCatchup,
@@ -9,9 +10,9 @@ export {
 	resetAndReextractMemorySource,
 	retryMemorySourceIndex,
 	setMemoryAllowance,
+	setMemoryIdentity,
 	startMemoryWorker,
 	startMemoryCatchup,
-	StaleMemoryCollectionError,
 } from "./collections";
 export type { MemoryWorkerOptions } from "./collections";
 export { embedMemoryTexts } from "./indexing";

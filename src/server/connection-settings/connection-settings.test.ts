@@ -10,8 +10,8 @@ import {
 	connectionSnapshotOf,
 	createConnectionSettingsModule,
 	InvalidConnectionProfileError,
-	StaleConnectionSettingsRevisionError,
 } from ".";
+import { StaleRevisionError } from "../revision";
 import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
@@ -264,12 +264,12 @@ describe("Connection Settings", () => {
 			});
 			throw new Error("Expected a stale revision error.");
 		} catch (error) {
-			expect(error).toBeInstanceOf(StaleConnectionSettingsRevisionError);
+			expect(error).toBeInstanceOf(StaleRevisionError);
 			// SAFETY: the preceding assertion narrows this caught error to the
 			// typed stale-revision class exposed by the module.
-			const conflict = error as StaleConnectionSettingsRevisionError;
+			const conflict = error as StaleRevisionError;
 			expect(conflict.actualRevision).toBe(1);
-			expect(conflict.currentSettings.profiles[0]?.credentialConfigured).toBe(false);
+			expect(conflict.details).toMatchObject({ currentSettings: { profiles: [expect.objectContaining({ credentialConfigured: false })] } });
 		}
 	});
 
@@ -294,12 +294,12 @@ describe("Connection Settings", () => {
 			});
 			throw new Error("Expected a stale revision error.");
 		} catch (error) {
-			expect(error).toBeInstanceOf(StaleConnectionSettingsRevisionError);
+			expect(error).toBeInstanceOf(StaleRevisionError);
 			// SAFETY: the preceding assertion narrows this caught error to the
 			// typed stale-revision class exposed by the module.
-			const conflict = error as StaleConnectionSettingsRevisionError;
+			const conflict = error as StaleRevisionError;
 			expect(conflict.actualRevision).toBe(pinned.revision);
-			expect(conflict.currentSettings).toEqual(settings.get());
+			expect(conflict.details).toMatchObject({ currentSettings: settings.get() });
 		}
 	});
 

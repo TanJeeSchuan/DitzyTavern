@@ -16,8 +16,8 @@ import {
 	InvalidLorebookCommandError,
 	LorebookEntryNotFoundError,
 	LorebookNotFoundError,
-	StaleLorebookRevisionError,
 } from "./errors";
+import { guardRevision } from "../revision";
 import { validateLorebookExpressions } from "./matching";
 
 const connect = (database: Database) => drizzle(database);
@@ -78,9 +78,7 @@ const requireBook = (db: LorebookDatabase, bookId: number): Lorebook => {
 
 const requireCurrentRevision = (db: LorebookDatabase, bookId: number, revision: number): Lorebook => {
 	const current = requireBook(db, bookId);
-	if (current.revision !== revision) {
-		throw new StaleLorebookRevisionError(bookId, revision, current.revision, current);
-	}
+	guardRevision("lorebook", revision, current, () => current);
 	return current;
 };
 

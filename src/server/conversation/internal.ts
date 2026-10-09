@@ -18,6 +18,7 @@ import {
 	toPromptChannelRow,
 } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
+import { readConversationSummaryFromConnection } from "./snapshot";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
@@ -25,8 +26,8 @@ import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	StaleConversationRevisionError,
 } from "./errors";
+import { guardRevision, type RevisionAggregate } from "../revision";
 
 export const connectConversationDatabase = (database: Database) => drizzle(database);
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
@@ -308,16 +309,22 @@ export const requireConversation = (
 
 // @approved
 //  The shared revision prelude every revisioned command runs first:
-// existence, then the stale check, both as the module's typed errors.
+// existence, then the shared stale check. The aggregate names the wire
+// envelope the conflict presents as: command routes carry the full
+// Conversation conflict, while generation-start routes (which declare only
+// the prose reason envelope) pass "generation".
 export const requireConversationRevision = (
 	db: ConversationDatabase,
 	conversationId: number,
 	expectedRevision: number,
+	aggregate: RevisionAggregate,
 ): ConversationProbe => {
 	const conversation = requireConversation(db, conversationId);
-	if (conversation.revision !== expectedRevision) {
-		throw new StaleConversationRevisionError(expectedRevision, conversation.revision);
-	}
+	guardRevision(aggregate, expectedRevision, conversation, () => {
+		const current = readConversationSummaryFromConnection(db, conversationId);
+		if (current === undefined) throw new ConversationNotFoundError(conversationId);
+		return current;
+	});
 	return conversation;
 };
 

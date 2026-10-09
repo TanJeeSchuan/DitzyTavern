@@ -9,7 +9,6 @@ export {
 	ParticipantNotRemovableError,
 	SiblingVariantUnavailableError,
 	ParticipantNotFoundError,
-	StaleConversationRevisionError,
 } from "./errors";
 export type { ContinuationUnavailableReason } from "./errors";
 export {

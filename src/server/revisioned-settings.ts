@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
+import { guardRevision, type StaleRevisionCurrent } from "./revision";
 
 export const SETTINGS_ID = 1;
 
@@ -11,20 +12,10 @@ export class InvalidSettingsError extends Error {
 
 	override name = "InvalidSettingsError";
 }
-export class StaleSettingsError<Payload> extends Error {
-	readonly outcome = "conflict" as const;
-	readonly details;
-
-	override name = "StaleSettingsError";
-	constructor(readonly expectedRevision: number, readonly actualRevision: number, readonly currentSettings: Payload) {
-		super(`Expected settings revision ${expectedRevision}, but the current revision is ${actualRevision}.`);
-		this.details = { expectedRevision, actualRevision, currentSettings };
-	}
-}
 
 type SettingsTable<Row> = SQLiteTable & { id: AnySQLiteColumn; revision: AnySQLiteColumn; $inferSelect: Row; $inferInsert: Partial<Row> };
 
-export const createRevisionedSettings = <Row extends { id: number; revision: number }, Payload>(database: Database, table: SettingsTable<Row>, project: (row: Row) => Payload) => {
+export const createRevisionedSettings = <Row extends { id: number; revision: number }, Payload extends StaleRevisionCurrent>(database: Database, table: SettingsTable<Row>, project: (row: Row) => Payload) => {
 	const db = drizzle(database);
 	const row = () => {
 		// @approved
@@ -37,7 +28,7 @@ export const createRevisionedSettings = <Row extends { id: number; revision: num
 	const get = () => project(row());
 	const commit = (expectedRevision: number, patch: Partial<Row>) => database.transaction(() => {
 		const { revision } = row();
-		if (revision !== expectedRevision) throw new StaleSettingsError(expectedRevision, revision, get());
+		guardRevision("settings", expectedRevision, { revision }, get);
 		db.update(table).set({ ...patch, revision: revision + 1 }).where(eq(table.id, SETTINGS_ID)).run();
 		return get();
 	}).immediate();
