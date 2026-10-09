@@ -42,6 +42,9 @@ Each must hold after the migration; state in the Outcome how each is guaranteed 
 
 ## TODO
 
+- [x] Review fix round 1: pin and fix the seven reported races
+- [x] Review fix round 1: required verification, review, and commit
+
 - [x] Migrate `useGenerationSettingsDraft`
 - [x] Remove the `stateRef.current = reduce(...)` mirror in `usePromptPresetEditorRuntime` and `useLorebookEditor` (use the reducer state / functional updates)
 - [x] typecheck, lint, `bun run test`; drive generation settings, prompt preset editor and lorebook editor in the app with playwright-cli
@@ -132,3 +135,58 @@ removed `.playwright-cli/`, and stopped only the owned Bun server and Vite proce
 behavior is verified through actual hook transport with scripted HTTP responses. T3's native browser could
 not be verified because of the AppArmor sandbox restriction; playwright-cli completed the manual checks.
 Existing font 403s, lint warnings, and contract-audit matches remain outside this ticket.
+
+
+### Review fix round 1
+
+**Removed:** Prompt Preset draft value comparison for retirement; unguarded adoption of older
+Generation and Lorebook command snapshots; unconditional Lorebook save-and-leave completion.
+
+**Introduced:** accepted Generation Settings authority checks before form settlement, cached revision
+checks before Conversation/Lorebook adoption, synchronous Lorebook reducer dispatch for interactions,
+ModelSelector session cancellation and conflict invalidation, immutable submitted Prompt Preset draft
+identity, and Lorebook leave-intent identity checks. Render-time Lorebook reducer calls remain pure.
+No state-ref mirror or request/version counter was reintroduced; the shared query is unchanged.
+
+**Behavior changed and committed regression evidence:** each new race test failed before its fix and
+passed after. The eight added tests cover the seven findings (ModelSelector cancellation has two tests):
+
+1. `generation-settings-session.test.ts` — “late panel save cannot replace a newer saved view”: revision 6
+   settling after published revision 7 retains revision 7 settings, preserves the local dirty form, returns
+   false, and does not notify the Conversation owner with revision 6.
+2. `editor-runtime.test.ts` — “late save conflict cannot roll editor back behind cache”: a delayed revision 2
+   conflict leaves both editors at revision 3.
+3. `editor-runtime.test.ts` — “pending save sees entry selection queued before result”: selecting an entry
+   and resolving the first save in one act prevents the second POST and returns false.
+4. `generation-settings-session.test.ts` — “ModelSelector conflict refreshes cached settings for later
+   readers”: a 409 adopts revision 9 and reopening reads the server model from the shared cache.
+5. `generation-settings-session.test.ts` — “ModelSelector pending write cannot publish after unmount” and
+   “ModelSelector key switch rejects old Conversation completion”: late writes cannot notify the owner or
+   publish the selected model after cancellation. The runner guards adoption/notices/callbacks and the
+   selector guards pending cleanup using the captured session signal.
+6. `editor-runtime.test.ts` — “Prompt Preset ABA edits cannot close the editor”: Submitted→Other→Submitted
+   keeps the later draft identity and prevents save-and-leave closing. Existing retirement tests now submit
+   the reducer-owned draft identity, as the real hook does.
+7. `editor-runtime.test.ts` — “Lorebook save-and-leave preserves a replacement leave intent and does not
+   navigate”: invokes the actual dialog handlers; the old save neither closes the new confirmation nor
+   runs captured navigation, even when the replacement intent has identical values.
+
+Existing latest-wins, signal abort, StrictMode deduplication, cross-reader freshness, optimistic revision,
+and request-cost tests remain passing. No browser or e2e was run for this behavior-only review fix.
+No shared server process was touched. Concurrent T9c paths were neither edited nor staged.
+
+**Review:** gpt-6.1-sol Standards **0 findings**; gpt-6.1-sol Spec **0 findings**.
+
+**Verification:**
+
+- Targeted hook/reducer suites: **52 pass / 0 fail / 148 assertions across 3 files**.
+- `bun run typecheck`: exit 0.
+- `bun run lint`: exit 0; **343 warnings / 0 errors**, no new warnings.
+- `bun run check:contracts`: exit 0; **632 structural declarations, 151 schema derivations,
+  11 existing suspicious cross-layer matches**.
+- `bun test src/client`: **344 pass / 0 fail / 1186 assertions across 33 files**.
+- `bun run test`: **1420 pass / 0 fail / 6006 assertions across 160 files**.
+- `git diff --check`: clean. Deleted `/tmp/t9b-review`.
+
+Counts include the concurrent T9c changes present during verification. Existing lint warnings and
+contract-audit matches remain outside this fix. No residual findings from this review round.

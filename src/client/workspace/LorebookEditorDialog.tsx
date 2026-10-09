@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffectEvent, useRef } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,8 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 	};
 	const requestLeave = (intent: LeaveIntent) => { if (dirty) setLeaveIntent(intent); else performLeave(intent); };
 	const discardAndLeave = () => { editor.discard(); const intent = leaveIntent; setLeaveIntent(null); if (intent) performLeave(intent); };
-	const saveAndLeave = async () => { if (leaveIntent && await saveDirty()) { setLeaveIntent(null); performLeave(leaveIntent); } };
+	const currentLeaveIntent = useEffectEvent(() => leaveIntent);
+	const saveAndLeave = async () => { if (leaveIntent && await saveDirty() && currentLeaveIntent() === leaveIntent) { setLeaveIntent(null); performLeave(leaveIntent); } };
 	const saveAll = () => saveDirty();
 	const execute = (command: LorebookCommand, success?: string) => editor.executeLorebookCommand(command, success, onOpenBook);
 	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });

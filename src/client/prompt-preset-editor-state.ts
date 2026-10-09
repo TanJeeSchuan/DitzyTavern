@@ -73,16 +73,6 @@ export function dirtyDraftSummary(
 	return { dirty: count > 0, count };
 }
 
-// @approved
-//  A save finishes exactly the submitted draft version: after a successful
-// save the editor retires an occurrence's draft only when it still equals
-// what was submitted, so a newer local edit made while saving survives.
-const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
-	if (a.kind === "enabled") return b.kind === "enabled" && a.enabled === b.enabled;
-	if (a.kind === "role") return b.kind === "role" && a.role === b.role && a.enabled === b.enabled;
-	return b.kind === "content" && a.name === b.name && a.content === b.content && a.role === b.role && a.enabled === b.enabled;
-};
-
 export interface DirtyBlockPatches {
 	patches: PromptPresetBlockPatch[];
 	submitted: Record<number, BlockDraft>;
@@ -331,7 +321,7 @@ function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockD
 // the drafts reconcile against it in one pass. Switching presets clears the draft set scoped to
 // the old preset; a reload prunes drafts for occurrences the recipe no longer contains and
 // retires exactly the submitted versions a successful save wrote — only when the fresh recipe
-// reflects them and the current draft still equals what was submitted, never a newer local edit.
+// reflects them and the current draft still has its submitted identity, never a newer local edit.
 function adoptRecipe(
 	state: PromptPresetEditorState,
 	selected: ConversationPromptPreset,
@@ -356,7 +346,7 @@ function adoptRecipe(
 			if (
 				submitted !== undefined
 				&& slotReflectsSubmitted(slot, submitted)
-				&& blockDraftEquals(submitted, draft)
+				&& submitted === draft
 			) {
 				continue;
 			}
@@ -428,7 +418,7 @@ export function reducePromptPresetEditorState(
 			return { ...state, problem: event.problem };
 		case "draft-changed": {
 			const enabled = state.drafts[event.blockId]?.enabled;
-			const draft = enabled === undefined ? event.draft : { ...event.draft, enabled };
+			const draft = enabled === undefined ? { ...event.draft } : { ...event.draft, enabled };
 			return { ...state, drafts: { ...state.drafts, [event.blockId]: draft } };
 		}
 		case "enabled-changed": {

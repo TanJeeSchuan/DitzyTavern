@@ -20,6 +20,7 @@ export interface CommitConversationModelOptions {
 	//  Applied-commit work owned by the selector's own state (display sync,
 	// closing the combobox).
 	onCommitted: (modelId: string, conversation: ConversationSummary) => void;
+	onConflict?: (conversation: ConversationSummary) => void;
 }
 
 // @approved
@@ -36,5 +37,6 @@ export function commitConversationModel(options: CommitConversationModelOptions)
 	}, {
 		notices: MODEL_COMMIT_NOTICES,
 		onApplied: (conversation) => options.onCommitted(options.modelId, conversation),
+		onConflict: options.onConflict,
 	});
 }

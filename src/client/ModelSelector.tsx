@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ConversationSummary } from "./conversation";
 import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "./generation-settings-query";
@@ -22,11 +22,18 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const session = useRef(new AbortController());
+	useEffect(() => {
+		session.current = new AbortController();
+		setPending(false); setError(null); setNotice(null);
+		return () => session.current.abort();
+	}, [conversation.id]);
 	const reasonId = useId();
 
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
 
 	const updateSelection = async (profile: ConnectionProfile, modelId: string) => {
+		const signal = session.current.signal;
 		setPending(true);
 		setError(null);
 		setNotice(null);
@@ -37,10 +44,12 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 				surface: {
 					conversationId: conversation.id,
 					revision: () => conversation.revision,
+					isCurrent: () => !signal.aborted,
 					onConversationChange,
 					setNotice: setError,
 				},
-				onCommitted: (_modelId, current) => {
+				onConflict: () => { if (signal.aborted) return; void client.invalidateQueries({ queryKey: generationSettingsKey(conversation.id) }); },
+			onCommitted: (_modelId, current) => {
 					if (generation.data) publishGenerationSettings(client, current, { ...generation.data, connectionProfileId: profile.id, modelId });
 					void client.cancelQueries({ queryKey: generationSettingsKey(conversation.id) });
 					void client.invalidateQueries({ queryKey: generationSettingsKey(conversation.id) });
@@ -48,7 +57,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 				},
 			});
 		} finally {
-			setPending(false);
+			if (!signal.aborted) setPending(false);
 		}
 	};
 

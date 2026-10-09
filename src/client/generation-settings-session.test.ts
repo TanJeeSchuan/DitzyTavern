@@ -130,3 +130,98 @@ test("a late background read cannot roll back a newer authoritative write", asyn
 	expect(h.hook.current.settings?.continuationInstruction).toBe("New authority");
 	expect(h.hook.current.instruction).toBe("New authority");
 });
+
+test("late panel save cannot replace a newer saved view", async () => {
+	const late = Promise.withResolvers<Response>();
+	const h = await harness(({ init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(settings())));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Submitted at six"));
+	let saving = Promise.resolve(false);
+	await h.hook.act(async () => { saving = h.hook.current.save(); });
+	await flushHook();
+	h.options.conversation = summary(1, 7);
+	await h.hook.rerender();
+	await h.hook.act(async () => publishGenerationSettings(h.client, summary(1, 7), settings("Authority at seven")));
+	await flushHook();
+	await h.hook.act(async () => { late.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })); await saving; });
+	await flushHook();
+	expect(h.hook.current.settings?.continuationInstruction).toBe("Authority at seven");
+	expect(h.hook.current.instruction).toBe("Submitted at six");
+	expect(h.hook.current.dirty).toBe(true);
+	expect(await saving).toBe(false);
+	expect(h.changes).toEqual([]);
+});
+const { ModelSelector } = await import("./ModelSelector");
+const profile = { id: 7, displayName: "Connection", apiFormat: "chat-completions", baseUrl: "http://localhost", apiKey: "", isActive: true, streamInactivityTimeout: 0 };
+const modelSelect = (element: ReturnType<typeof ModelSelector>) => element.props.children[0].props.onSelect;
+test("ModelSelector conflict refreshes cached settings for later readers", async () => {
+	let current = summary();
+	let serverModel = "model";
+	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+		if (init?.method === "POST") {
+			serverModel = "server-model";
+			return Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 });
+		}
+		if (String(input).includes("connection-settings"))
+			return Response.json({ revision: 1, profiles: [], presets: [] });
+		return Response.json({ ...settings(), modelId: serverModel });
+	}, { preconnect() { } });
+	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const options = () => ({ conversation: current, onConversationChange: (next: ConversationSummary) => { current = next; } });
+	const hook = await renderHook(() => ModelSelector(options()), cache);
+	await flushHook();
+	await hook.act(async () => { await modelSelect(hook.current)(profile, "chosen-model"); });
+	await hook.rerender();
+	await flushHook();
+	await hook.unmount();
+	const later = await renderHook(() => ModelSelector(options()), cache);
+	await flushHook();
+	expect(later.current.props.children[0].props.selected.modelId).toBe("server-model");
+});
+test("ModelSelector pending write cannot publish after unmount", async () => {
+	const late = Promise.withResolvers<Response>();
+	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+		if (init?.method === "POST")
+			return late.promise;
+		if (String(input).includes("connection-settings"))
+			return Response.json({ revision: 1, profiles: [], presets: [] });
+		return Response.json(settings());
+	}, { preconnect() { } });
+	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const changes: ConversationSummary[] = [];
+	const hook = await renderHook(() => ModelSelector({ conversation: summary(), onConversationChange: x => changes.push(x) }), cache);
+	await flushHook();
+	let saving = Promise.resolve();
+	await hook.act(async () => { saving = modelSelect(hook.current)(profile, "new-model"); });
+	await flushHook();
+	await hook.unmount();
+	await hook.act(async () => { late.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })); await saving; });
+	await flushHook();
+	expect(changes).toEqual([]);
+	expect(cache.getQueryData<{
+		settings: ConversationGenerationSettings;
+	}>(["generation-settings", 1])?.settings.modelId).toBe("model");
+});
+test("ModelSelector key switch rejects old Conversation completion", async () => {
+	const late = Promise.withResolvers<Response>();
+	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+		if (init?.method === "POST")
+			return late.promise;
+		if (String(input).includes("connection-settings"))
+			return Response.json({ revision: 1, profiles: [], presets: [] });
+		return Response.json(settings());
+	}, { preconnect() { } });
+	let current = summary();
+	const changes: ConversationSummary[] = [];
+	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	const hook = await renderHook(() => ModelSelector({ conversation: current, onConversationChange: x => changes.push(x) }), cache);
+	await flushHook();
+	let saving = Promise.resolve();
+	await hook.act(async () => { saving = modelSelect(hook.current)(profile, "new-model"); });
+	await flushHook();
+	current = summary(2);
+	await hook.rerender();
+	await flushHook();
+	await hook.act(async () => { late.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })); await saving; });
+	await flushHook();
+	expect(changes).toEqual([]);
+});

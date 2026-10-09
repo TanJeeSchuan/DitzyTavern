@@ -187,3 +187,86 @@ test("Lorebook switching to a loading book clears the previous editor before ano
 	await hook.act(async () => late.resolve(Response.json(book(2)))); await flushHook();
 	expect(hook.current.book?.id).toBe(2);
 });
+
+test("late save conflict cannot roll editor back behind cache", async () => {
+	const late = Promise.withResolvers<Response>();
+	install(({ init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(book())));
+	const cache = client();
+	const first = await renderHook(() => useLorebookEditor(1), cache);
+	await flushHook();
+	const second = await renderHook(() => useLorebookEditor(1), cache);
+	await flushHook();
+	await first.act(async () => first.current.setName("Local"));
+	let saving = Promise.resolve(false);
+	await first.act(async () => { saving = first.current.saveDirty(); });
+	await flushHook();
+	await second.act(async () => cache.setQueryData(["lorebook", 1], book(1, 3, "Newer")));
+	await flushHook();
+	expect(first.current.book?.revision).toBe(3);
+	await first.act(async () => {
+		late.resolve(Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 1, actualRevision: 2, currentBook: book(1, 2, "Older") }, { status: 409 }));
+		await saving;
+	});
+	await flushHook();
+	expect(first.current.book?.revision).toBe(3);
+	expect(second.current.book?.revision).toBe(3);
+});
+
+test("pending save sees entry selection queued before result", async () => {
+	const late = Promise.withResolvers<Response>();
+	const requests = install(({ init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(book())));
+	const hook = await renderHook(() => useLorebookEditor(1), client());
+	await flushHook();
+	await hook.act(async () => { hook.current.setName("New book"); hook.current.updateEntryDraft({ ...hook.current.entryDraft, content: "Submitted" }); });
+	let saving = Promise.resolve(false);
+	await hook.act(async () => { saving = hook.current.saveDirty(); });
+	await flushHook();
+	await hook.act(async () => { hook.current.selectEntry(null); late.resolve(Response.json({ outcome: "applied", book: book(1, 2, "New book") })); expect(await saving).toBe(false); });
+	expect(requests.filter(x => x.init?.method === "POST")).toHaveLength(1);
+});
+
+const { usePromptPresetEditor } = await import("./workspace/prompt-preset/usePromptPresetEditor");
+test("Prompt Preset ABA edits cannot close the editor", async () => {
+	const late = Promise.withResolvers<Response>();
+	let saved = false;
+	install(({ url, init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(
+		url.endsWith("/prompt-presets") ? { presets: [] } : { ...recipe(), slots: recipe().slots.map(slot => ({ ...slot, content: saved ? "Submitted" : "Original" })) },
+	)));
+	let closes = 0;
+	const hook = await renderHook(() => usePromptPresetEditor({ conversation: conversation(), onConversationChange: () => { }, onClose: () => { closes++; } }), client());
+	await flushHook();
+	const draft = (content: string) => ({ kind: "content" as const, name: "Voice", content, role: "system" as const });
+	await hook.act(async () => hook.current.setDraft(7, draft("Submitted")));
+	await hook.act(async () => hook.current.requestClose());
+	let saving = Promise.resolve();
+	await hook.act(async () => { saving = hook.current.saveAndLeave(); });
+	await flushHook();
+	await hook.act(async () => { hook.current.setDraft(7, draft("Other")); hook.current.setDraft(7, draft("Submitted")); });
+	await hook.act(async () => { saved = true; late.resolve(Response.json({ outcome: "applied" })); await saving; });
+	await flushHook();
+	expect(closes).toBe(0);
+});
+
+const { LorebookEditorDialog } = await import("./workspace/LorebookEditorDialog");
+test("Lorebook save-and-leave preserves a replacement leave intent and does not navigate", async () => {
+	const late = Promise.withResolvers<Response>();
+	install(({ init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(book())));
+	const leaves: (number | null)[] = [];
+	const hook = await renderHook(() => LorebookEditorDialog({
+		bookId: 1, conversationId: 1, onOpenBook: (id) => { leaves.push(id); }, selectName: false, mutationsDisabled: false,
+		attachments: { attachmentState: null, attachmentPending: false, selectedPreset: null, loreBlockMissing: false, notice: null, enableLoreSlot: async () => { }, updateAttachment: async () => false },
+		tester: { testWriting: "", setTestWriting: () => { }, testResult: null, testError: null, testPending: false, reset: () => { }, runMatchTest: () => { } },
+	}), client());
+	await flushHook();
+	const dialog = () => hook.current.props.children[1];
+	const confirmation = () => hook.current.props.children[2];
+	await hook.act(async () => dialog().props.children.props.children[0].props.children[2].props.onChange({ target: { value: "Local" } }));
+	await hook.act(async () => dialog().props.onOpenChange(false));
+	await hook.act(async () => confirmation().props.onSave());
+	await flushHook();
+	await hook.act(async () => { confirmation().props.onKeepEditing(); dialog().props.onOpenChange(false); });
+	await hook.act(async () => late.resolve(Response.json({ outcome: "applied", book: book(1, 2, "Local") })));
+	await flushHook();
+	expect(leaves).toEqual([]);
+	expect(confirmation().props.open).toBe(true);
+});

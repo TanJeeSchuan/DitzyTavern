@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand, type LorebookCommandResult } from "../lorebook-library";
 import { splitList, type EntryListKey } from "./lorebook-entry-fields";
@@ -20,7 +21,7 @@ export function useLorebookEditor(bookId: number) {
 	}, [bookId]);
 	const current = useEffectEvent(() => state);
 	const dispatch = (action: EditorAction) => {
-		if (!session.current.signal.aborted) reduce(action);
+		if (!session.current.signal.aborted) flushSync(() => reduce(action));
 	};
 	if (state.book !== null && state.book.id !== bookId) reduce({ type: "reset" });
 	else if (state.book === null && !detail.isFetching && detail.data) reduce({ type: "loaded", book: detail.data });
@@ -54,6 +55,8 @@ export function useLorebookEditor(bookId: number) {
 		},
 	});
 	const settle = (result: LorebookCommandResult, submitted: LorebookEditorState, flags: SettleFlags = {}) => {
+		const snapshot = result.outcome === "conflict" ? result.currentBook : result.outcome === "available" && result.value.outcome === "applied" ? result.value.book : null;
+		if (snapshot && (client.getQueryData<Lorebook>(["lorebook", snapshot.id])?.revision ?? 0) > snapshot.revision) return null;
 		if (result.outcome === "available" && result.value.outcome === "applied") {
 			dispatch({ type: "applied", book: result.value.book, submitted, notice: flags.notice ?? null, newEntry: flags.newEntry, enabled: flags.enabled });
 			return result.value.book;
@@ -132,15 +135,15 @@ export function useLorebookEditor(bookId: number) {
 		...state, name: bookDraft.name, description: bookDraft.description, selectedEntry, dirty,
 		pending: command.isPending || save.isPending || exportFile.isPending,
 		loadError: (detail.error ? "The Lorebook could not be loaded." : null) ?? (detail.isSuccess && detail.data === null ? "That Lorebook no longer exists." : null),
-		setName: (name: string) => dispatch({ type: "book-edited", draft: { ...bookDraft, name } }),
-		setDescription: (description: string) => dispatch({ type: "book-edited", draft: { ...bookDraft, description } }),
+		setName: (name: string) => dispatch({ type: "book-edited", draft: { ...current().bookDraft, name } }),
+		setDescription: (description: string) => dispatch({ type: "book-edited", draft: { ...current().bookDraft, description } }),
 		updateEntryDraft: (draft: LorebookEditorState["entryDraft"]) => dispatch({ type: "entry-edited", draft }),
-		updateList: (key: EntryListKey, value: string) => dispatch({ type: "entry-edited", draft: { ...entryDraft, [key]: splitList(value) } }),
+		updateList: (key: EntryListKey, value: string) => dispatch({ type: "entry-edited", draft: { ...current().entryDraft, [key]: splitList(value) } }),
 		setLeaveIntent: (intent: LeaveIntent | null) => dispatch({ type: "leave-requested", intent }),
 		selectEntry: (id: number | null) => dispatch({ type: "entry-selected", id }),
 		discard: () => dispatch({ type: "discard" }),
 		setBookDeleteConfirmation: (confirmation: LorebookEditorState["bookDeleteConfirmation"]) => dispatch({ type: "book-delete-requested", confirmation }),
 		setEntryDeleteConfirmation: (open: boolean) => dispatch({ type: "entry-delete-requested", open }),
-		saveDirty: () => save.mutateAsync({ submitted: state, signal: session.current.signal }), executeLorebookCommand, confirmDeleteBook, exportBook,
+		saveDirty: () => save.mutateAsync({ submitted: current(), signal: session.current.signal }), executeLorebookCommand, confirmDeleteBook, exportBook,
 	};
 }

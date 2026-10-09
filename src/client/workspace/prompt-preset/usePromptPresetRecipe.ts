@@ -136,6 +136,7 @@ export function usePromptPresetRecipe({
 		}
 		if (refresh === "stale") return { status: "aborted" };
 		const live = current();
+		if (Object.entries(submitted).some(([id, draft]) => live.drafts[Number(id)] !== undefined && live.drafts[Number(id)] !== draft)) return { status: "kept" };
 		const freshReady = live.view.status === "ready" ? live.view : null;
 		if (freshReady !== null && dirtyDraftSummary(freshReady.selected, live.drafts).count > 0) {
 			// @approved

@@ -214,13 +214,16 @@ export function useGenerationSettingsDraft({
 						conversationId: submission.conversation.id,
 						revision: () => submission.conversation.revision,
 						isCurrent: () => !submission.signal.aborted,
-						onConversationChange,
+						onConversationChange: (current) => {
+							const authority = client.getQueryData<{ revision: number }>(generationSettingsKey(current.id));
+							if (authority === undefined || authority.revision <= current.revision) onConversationChange(current);
+						},
 						setNotice: (message) => { if (ownsEditor()) setProblem(message); },
 					},
 					onApplied: (next, current) => {
 						if (submission.signal.aborted) return;
-						publishGenerationSettings(client, current, next);
-						if (!ownsEditor()) return;
+						const authority = publishGenerationSettings(client, current, next);
+						if (authority?.revision !== current.revision || !ownsEditor()) return;
 						applied = true;
 						resetDraft(next, false);
 						setProblem(null);
