@@ -35,4 +35,4 @@ Each ticket names its finding; read that finding in the issue before starting.
 ## Running the app
 
 The server listens on a hard-coded port 3000. Only client tickets start the app for a manual browser check; server tickets
-verify through tests. Never edit server source to change the port. Delete `.playwright-cli/` artifacts when done.
+verify through tests. Never edit server source to change the port. Never kill or restart a process you did not start; if port 3000 is taken, skip the browser check and say so in the Outcome. Stop every server you started before finishing. Delete `.playwright-cli/` artifacts when done.
