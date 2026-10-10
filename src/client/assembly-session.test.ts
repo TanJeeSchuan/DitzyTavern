@@ -4,6 +4,7 @@ import { QueryClient, onlineManager } from "@tanstack/react-query";
 import type { ConversationSummary, GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
+import type { SetStateAction } from "react";
 
 const { useAssemblyController } = await import("./workspace/useAssemblyController");
 const originalFetch = globalThis.fetch;
@@ -47,7 +48,9 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 			settle: (_id: number) => { effects.push("settle"); },
 			accepted: (_id: number, target: GenerationAttemptTarget) => { effects.push("accepted"); targets.push(target); },
 		},
-		clearDraft: () => { effects.push("clear"); },
+		dispatchStory: () => {},
+		draft: "Draft",
+		setDraft: (draft: SetStateAction<string>) => { if (draft === "") effects.push("clear"); },
 	};
 	const hook = await renderHook(() => useAssemblyController(options), cache, strict);
 	const open = async (content = "Draft") => {

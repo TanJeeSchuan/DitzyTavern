@@ -75,7 +75,7 @@ const run = (
 	send: ConversationCommandSend,
 	options: ConversationCommandRunOptions = {},
 	surfaceOverrides: Partial<ConversationCommandSurface> = {},
-): Promise<void> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
+): Promise<boolean> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
 
 describe("runConversationCommand", () => {
 	test("an unavailable revision refuses to send and shows the revision notice", async () => {
@@ -224,5 +224,32 @@ describe("runConversationCommand", () => {
 			onOperation: () => undefined,
 		});
 		expect(events).toEqual(["send:7"]);
+	});
+
+	test("a command queued behind another is sent with the revision the earlier one produced", async () => {
+		const events: string[] = [];
+		const first = Promise.withResolvers<CommandOutcome>();
+		const earlier = run(events, async (expectedRevision) => {
+			events.push(`send:${expectedRevision}`);
+			return first.promise;
+		});
+		const later = run(events, applied(events));
+		first.resolve({ outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } });
+		expect(await Promise.all([earlier, later])).toEqual([true, true]);
+		expect(events).toEqual(["send:7", "adopt:8", "send:8", "adopt:7"]);
+	});
+
+	test("a failed command drops the commands queued behind it, and the queue then runs again", async () => {
+		const events: string[] = [];
+		const first = Promise.withResolvers<CommandOutcome>();
+		const earlier = run(events, async (expectedRevision) => {
+			events.push(`send:${expectedRevision}`);
+			return first.promise;
+		});
+		const dropped = run(events, applied(events));
+		first.resolve({ outcome: "network" });
+		expect(await Promise.all([earlier, dropped])).toEqual([false, false]);
+		expect(events).toEqual(["send:7", "notice:unreachable notice"]);
+		expect(await run(events, applied(events))).toBe(true);
 	});
 });

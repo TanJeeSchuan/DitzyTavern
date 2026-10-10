@@ -4,12 +4,12 @@ import {
 	EMPTY_VARIANT_PLACEHOLDER,
 	canOfferSiblingGeneration,
 	classifyVariantSelection,
-	confirmPreviewSelection,
 	createStoryState,
 	displayedVariantId,
 	isPreviewDownstream,
 	previewNavigationNeedsConfirmation,
 	reduceStory,
+	reusesTrailingHumanMessage,
 	visibleVariantContent,
 	type StoryPreviewState,
 	type StoryMessage,
@@ -316,12 +316,6 @@ describe("story reading state", () => {
 		// starts Preview mode, so this lookup is defined here.
 		expect(isPreviewDownstream(previewing.messages[1] as StoryMessage, previewing.preview)).toBe(true);
 		expect(classifyVariantSelection(previewing, 1, 10)).toEqual({ kind: "blocked" });
-		const attemptedSelection = reduceStory(previewing, {
-			type: "swipe-selected",
-			messageId: 1,
-			variantId: 10,
-		});
-		expect(attemptedSelection.messages[0]?.activeSwipe).toBe(0);
 	});
 
 	test("the previewed Message's Variants can be switched freely while Preview stays local", () => {
@@ -442,6 +436,33 @@ describe("story reading state", () => {
 		expect(reloaded.messages[0]?.activeSwipe).toBe(0);
 	});
 
+	test("confirming a second Message keeps the first confirmation shown", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
+		};
+		const confirmFirst = reduceStory(reduceStory(state, { type: "preview-started", messageId: 1, variantId: 11 }), { type: "preview-confirmed" });
+		const confirmBoth = reduceStory(reduceStory(confirmFirst, { type: "preview-started", messageId: 2, variantId: 21 }), { type: "preview-confirmed" });
+		expect([...confirmBoth.requestedSelections]).toEqual([[1, 11], [2, 21]]);
+	});
+
+	test("a confirmation that applies while another Message is previewed settles its Message", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
+		};
+		const confirmed = reduceStory(reduceStory(state, { type: "preview-started", messageId: 1, variantId: 11 }), { type: "preview-confirmed" });
+		const previewingOther = reduceStory(confirmed, { type: "preview-started", messageId: 2, variantId: 21 });
+		const applied = reduceStory(previewingOther, { type: "swipe-selected", messageId: 1, variantId: 11 });
+		expect(applied.requestedSelections.size).toBe(0);
+		expect(applied.messages[0]?.activeSwipe).toBe(1);
+		expect(applied.preview?.messageId).toBe(2);
+	});
+
 	test("confirmation makes the previewed Variant authoritative and leaves later Messages intact", () => {
 		const state: StoryStateForPreview = {
 			...createStoryState(),
@@ -456,36 +477,12 @@ describe("story reading state", () => {
 		});
 		const confirmed = reduceStory(previewing, { type: "preview-confirmed" });
 		expect(confirmed.preview).toBeNull();
-		expect(confirmed.messages[0]?.activeSwipe).toBe(1);
-		expect(confirmed.messages[1]).toEqual(state.messages[1]);
-	});
-
-	test("confirmation transport sends once only for the matching Preview", async () => {
-		const preview: StoryPreviewState = {
-			messageId: 1,
-			targetPosition: 1,
-			variantId: 11,
-			priorVariantId: 10,
-		};
-		const requests: number[] = [];
-		const request = {
-			conversationId: 7,
-			messageId: 1,
-			variantId: 11,
-		};
-		const sent = await confirmPreviewSelection(preview, request, async (value) => {
-			requests.push(value.variantId);
-			return "applied" as const;
-		});
-		expect(sent).toEqual({ status: "sent", result: "applied" });
-		expect(requests).toEqual([11]);
-
-		const notSent = await confirmPreviewSelection(null, request, async () => {
-			requests.push(99);
-			return "applied" as const;
-		});
-		expect(notSent).toEqual({ status: "not-sent" });
-		expect(requests).toEqual([11]);
+		const [confirmedMessage] = confirmed.messages;
+		expect(confirmedMessage && displayedVariantId(confirmedMessage, null, confirmed.requestedSelections)).toBe(11);
+		const applied = reduceStory(confirmed, { type: "swipe-selected", messageId: 1, variantId: 11 });
+		expect(applied.requestedSelections.size).toBe(0);
+		expect(applied.messages[0]?.activeSwipe).toBe(1);
+		expect(applied.messages[1]).toEqual(state.messages[1]);
 	});
 });
 
@@ -775,5 +772,48 @@ describe("detached story windows", () => {
 	test("a detached final visible Message needs Swipe preview", () => {
 		expect(classifyVariantSelection(detach(), 4, 41).kind).toBe("preview");
 		expect(classifyVariantSelection(open(), 8, 81).kind).toBe("immediate");
+	});
+});
+
+describe("Requested Send", () => {
+	const opened = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), {
+		type: "window-received",
+		page: page({ messages: [message()] }),
+	});
+
+	test("stays until a page places its accepted Provisional Variant", () => {
+		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "send", content: "Twice" } });
+		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201, sentRevision: 3 });
+		const stale = reduceStory(accepted, { type: "window-received", page: page({ revision: 4, messages: [message()] }) });
+		expect(stale.requestedGeneration).toEqual({ request: { kind: "send", content: "Twice" }, accepted: { generationId: 9, variantId: 201, sentRevision: 3 } });
+
+		const placed = reduceStory(stale, { type: "window-received", page: page({ revision: 5, messages: [
+			message(),
+			message({ id: 20, position: 2, variants: [{ id: 201, position: 1, content: "", timestamp: "2026-01-01T00:00:01.000Z", selected: true }] }),
+		] }) });
+		expect(placed.requestedGeneration).toBeNull();
+	});
+
+	test("retires once authority shows its accepted Generation ended without placing a Variant", () => {
+		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "send", content: "Twice" } });
+		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201, sentRevision: 3 });
+		const sentBefore = reduceStory(accepted, { type: "window-received", page: page({ revision: 3, messages: [message()] }), activeGenerationIds: [] });
+		expect(sentBefore.requestedGeneration).not.toBeNull();
+		const running = reduceStory(sentBefore, { type: "window-received", page: page({ revision: 4, messages: [message()] }), activeGenerationIds: [9] });
+		expect(running.requestedGeneration).not.toBeNull();
+		const ended = reduceStory(running, { type: "window-received", page: page({ revision: 5, messages: [message()] }), activeGenerationIds: [] });
+		expect(ended.requestedGeneration).toBeNull();
+	});
+
+	test("disappears when the server does not accept it", () => {
+		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "continuation" } });
+		expect(reduceStory(requested, { type: "generation-request-failed" }).requestedGeneration).toBeNull();
+	});
+
+	test("reuses the trailing human Message only when it repeats that Message's text", () => {
+		const state = opened();
+		expect(reusesTrailingHumanMessage(state, 1, "Once")).toBe(true);
+		expect(reusesTrailingHumanMessage(state, 1, "Once more")).toBe(false);
+		expect(reusesTrailingHumanMessage(state, 2, "Once")).toBe(false);
 	});
 });

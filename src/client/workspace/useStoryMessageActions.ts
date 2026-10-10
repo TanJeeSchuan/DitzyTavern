@@ -1,10 +1,13 @@
 import type { Dispatch } from "react";
 import {
+	applyConversationCommand,
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
+	displayedVariantId,
+	shownVariant,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -25,6 +28,11 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
+type RequestedSelection = { messageId: number; variantId: number };
+// Each Chat visit's latest-wins slot, keyed by the visit's signal: whether a select-variant waits in the command
+// queue, and the Variant it will send. A later visit never shares a slot with a command an earlier one queued.
+const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
+
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
 	story: StoryState;
@@ -32,18 +40,16 @@ type StoryMessageActionsOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
-	clearPreviewError: () => void;
 	canEnterPreview: boolean;
 	onEnterPreview: () => void;
 };
 
-/** @approved
- * Coordinates user commands that mutate or preview a story Message. Preview
- * state is immediate local presentation; a selected Variant moves the story
- * read model only after the server applies the command, so a failed Swipe
- * never diverges the two state owners. This hook owns the server command,
- * and the runner owns revision acquisition, exception normalization, and
- * common reconciliation.
+/**
+ * Coordinates user commands that mutate or preview a story Message. Preview state and Requested selections are
+ * immediate local presentation; the persisted selection moves only after the server applies the command, and a
+ * Requested selection whose command fails is dropped, so a failed Swipe never diverges the two state owners.
+ * Selections are latest-wins: at most one select-variant waits in the command queue per Chat, and it sends
+ * whichever Variant is requested when its turn comes.
  */
 export function useStoryMessageActions({
 	signal,
@@ -52,7 +58,6 @@ export function useStoryMessageActions({
 	dispatchStory,
 	setConversation,
 	queueSwipeScroll,
-	clearPreviewError,
 	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
@@ -63,6 +68,26 @@ export function useStoryMessageActions({
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
 	};
+	const requestSelection = async (conversationId: number, requested: RequestedSelection) => {
+		const current = selections.get(signal) ?? { queued: false, requested: null };
+		selections.set(signal, current);
+		current.requested = requested;
+		dispatchStory({ type: "selection-requested", ...requested });
+		if (current.queued) return;
+		current.queued = true;
+		let sent: RequestedSelection | undefined;
+		const applied = await runConversationCommand(surface, (expectedRevision) => {
+			current.queued = false;
+			sent = current.requested ?? requested;
+			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", ...sent });
+		}, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => { if (sent !== undefined) dispatchStory({ type: "swipe-selected", ...sent }); },
+		});
+		current.queued = false;
+		if (!applied || current.requested === sent) current.requested = null;
+		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId: requested.messageId });
+	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
@@ -70,9 +95,8 @@ export function useStoryMessageActions({
 		const preview = story.preview;
 		if (preview !== null && preview.messageId !== messageId) return;
 
-		const currentIndex = preview !== null
-			? storyMessage.swipes.findIndex((variant) => variant.id === preview.variantId)
-			: storyMessage.activeSwipe;
+		const shownId = displayedVariantId(storyMessage, preview, story.requestedSelections);
+		const currentIndex = storyMessage.swipes.findIndex((variant) => variant.id === shownId);
 		if (currentIndex === -1) return;
 		const targetIndex = Math.min(
 			storyMessage.swipes.length - 1,
@@ -83,7 +107,6 @@ export function useStoryMessageActions({
 
 		if (preview !== null) {
 			queueSwipeScroll(messageId);
-			clearPreviewError();
 			dispatchStory({ type: "preview-retargeted", messageId, variantId: target.id });
 			return;
 		}
@@ -94,7 +117,6 @@ export function useStoryMessageActions({
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
 		if (selection.kind === "preview") {
 			onEnterPreview();
-			clearPreviewError();
 			queueSwipeScroll(messageId);
 			dispatchStory({
 				type: "preview-started",
@@ -104,31 +126,16 @@ export function useStoryMessageActions({
 			return;
 		}
 
-		const conversationId = story.conversationId;
-		if (conversationId === null) return;
-
-		await runConversationCommand(surface, {
-			type: "select-variant",
-			messageId: selection.messageId,
-			variantId: selection.variantId,
-		}, {
-			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => {
-				queueSwipeScroll(selection.messageId);
-				dispatchStory({
-					type: "swipe-selected",
-					messageId: selection.messageId,
-					variantId: selection.variantId,
-				});
-			},
-		});
+		if (story.conversationId === null) return;
+		queueSwipeScroll(selection.messageId);
+		await requestSelection(story.conversationId, { messageId: selection.messageId, variantId: selection.variantId });
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
 		if (story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return false;
-		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
+		const variantId = shownVariant(story, storyMessage)?.id;
 		const conversationId = story.conversationId;
 		if (variantId === undefined || conversationId === null) return false;
 

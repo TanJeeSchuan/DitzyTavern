@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import {
 	previewConversationGeneration,
 	startConversationContinuationGeneration,
@@ -11,6 +11,8 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
+import { queueConversationCommand } from "../conversation-command-runner";
+import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
 
 type GenerationStartLifecycle = {
@@ -28,10 +30,14 @@ type AssemblyControllerOptions = {
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
 	generationStart: GenerationStartLifecycle;
-	clearDraft: () => void;
+	dispatchStory: Dispatch<StoryAction>;
+	draft: string;
+	setDraft: Dispatch<SetStateAction<string>>;
 };
 
 type AssemblyRequest = { conversationId: number; request: GenerationPreviewBody };
+// The accepted target and the revision its start was sent on; acceptance always lands on a later one.
+type AcceptedStart = { target: GenerationAttemptTarget; sentRevision: number };
 
 type GenerationStartSubmission = {
 	signal: AbortSignal;
@@ -39,6 +45,8 @@ type GenerationStartSubmission = {
 	conversationId: number;
 	request: GenerationPreviewBody;
 	clearDraft: boolean;
+	// The composer text a direct start cleared up front, put back if the start is not accepted.
+	restoreDraft?: string;
 	preview?: { previewId: string; promptPlan: PromptPlan };
 };
 
@@ -70,7 +78,9 @@ export function useAssemblyController({
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
 	generationStart,
-	clearDraft,
+	dispatchStory,
+	draft,
+	setDraft,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
 	const session = useRef({ cancellation: new AbortController(), starting: false });
@@ -88,36 +98,49 @@ export function useAssemblyController({
 		refetchOnReconnect: false,
 	});
 
-	const issueGeneration = async (submission: GenerationStartSubmission): Promise<GenerationAttemptTarget> => {
+	const startGeneration = async (submission: GenerationStartSubmission, previous: number | null): Promise<AcceptedStart> => {
 		submission.signal.throwIfAborted();
 		const latest = await ensureLatest();
 		submission.signal.throwIfAborted();
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
+		const revision = Math.max(latest.revision, previous ?? 0);
 		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
 		const outcome = submission.request.kind === "send"
-			? await startConversationGeneration(submission.conversationId, latest.revision, submission.request.content, formatting, submission.preview, submission.signal)
+			? await startConversationGeneration(submission.conversationId, revision, submission.request.content, formatting, submission.preview, submission.signal)
 			: submission.request.kind === "continuation"
-				? await startConversationContinuationGeneration(submission.conversationId, latest.revision, formatting, submission.preview, submission.signal)
+				? await startConversationContinuationGeneration(submission.conversationId, revision, formatting, submission.preview, submission.signal)
 				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal);
 		submission.signal.throwIfAborted();
-		if (outcome.outcome === "available") return outcome.value;
+		if (outcome.outcome === "available") return { target: outcome.value, sentRevision: revision };
 		throw new Error(outcome.outcome === "not-found"
 			? "The Conversation no longer exists."
 			: outcome.outcome === "network"
 				? "Generation could not be started."
 				: outcome.reason);
 	};
+	// A start waits its turn behind the Conversation commands already queued, so it builds on what they changed.
+	const issueGeneration = async (submission: GenerationStartSubmission): Promise<AcceptedStart> => {
+		const started = Promise.withResolvers<AcceptedStart>();
+		const settled = await queueConversationCommand(submission.conversationId, async (previous) => {
+			const attempt = startGeneration(submission, previous);
+			attempt.then(started.resolve, started.reject);
+			await attempt;
+			return null;
+		});
+		if (settled === false) started.reject(new Error("An earlier change did not apply, so this was not sent."));
+		return started.promise;
+	};
 
 	// @approved
 	//  Acceptance and a direct start settle through the same completion: the
 	//  accepted target is only reported to the session machine while the Chat
 	//  that started it is still active, and the story refresh never blocks it.
-	const finishStart = (submission: GenerationStartSubmission, target: GenerationAttemptTarget, closeAssembly: boolean) => {
+	const finishStart = (submission: GenerationStartSubmission, { target, sentRevision }: AcceptedStart, closeAssembly: boolean) => {
 		if (submission.signal.aborted) return;
 		session.current.starting = false;
 		if (closeAssembly) setAssemblyRequest(null);
-		if (submission.clearDraft) clearDraft();
-		if (submission.signal.aborted) return;
+		if (submission.clearDraft) setDraft("");
+		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
 		void refreshStory(submission.conversationId, submission.signal).catch(() => null).then(() => {
 			if (!submission.signal.aborted) generationStart.accepted(submission.startId, target);
 		});
@@ -127,9 +150,12 @@ export function useAssemblyController({
 		mutationFn: issueGeneration,
 		onSuccess: (target, submission) => finishStart(submission, target, false),
 		onError: (error, submission) => {
+			const { restoreDraft } = submission;
+			if (restoreDraft !== undefined) setDraft((draft) => draft === "" ? restoreDraft : draft);
 			if (submission.signal.aborted) return;
 			session.current.starting = false;
 			generationStart.settle(submission.startId);
+			dispatchStory({ type: "generation-request-failed" });
 			setDirectStartError(error.message);
 		},
 	});
@@ -206,7 +232,9 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		setDirectStartError(null);
 		setLastGeneration({ conversationId, request });
-		startDirect.mutate({ signal: session.current.cancellation.signal, startId, conversationId, request, clearDraft: request.kind === "send" });
+		dispatchStory({ type: "generation-requested", request });
+		if (request.kind === "send") setDraft("");
+		startDirect.mutate({ signal: session.current.cancellation.signal, startId, conversationId, request, clearDraft: false, restoreDraft: request.kind === "send" ? draft : undefined });
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody) => {

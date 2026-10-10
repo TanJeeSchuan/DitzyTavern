@@ -217,6 +217,17 @@ describe("generation settings client ownership", () => {
 		expect(session.events).toEqual(["adopt:6", "model-committed:qwen3-max"]);
 	});
 
+	test("a panel save started while a model commit is pending keeps the committed model", async () => {
+		const backend = createConversationBackend();
+		installFetch(backend.handler);
+		const session = createSession();
+
+		await Promise.all([session.commitModel("qwen3-max"), session.savePanelDraft({ budget: { contextLimit: 4096 } })]);
+
+		expect(backend.current().modelId).toBe("qwen3-max");
+		expect(backend.current().contextLimit).toBe(4096);
+	});
+
 	test("two editors committing one after the other never restore each other's fields", async () => {
 		const backend = createConversationBackend();
 		installFetch(backend.handler);

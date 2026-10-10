@@ -1,109 +1,53 @@
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import type { Dispatch } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
-	confirmPreviewSelection,
 	type StoryAction,
 	type StoryState,
 } from "../story";
 
-// @approved
-//  The wording this surface shows for each standard command failure. Preview
-// mode stays local on conflict: the runner never touches the story's preview
-// state, so the notice only has to say what the writer still controls.
-const PREVIEW_NOTICES = {
-	conflict:
-		"The Conversation changed elsewhere. Preview remains local until you confirm or cancel it.",
-	notFound: "The Conversation no longer exists.",
-	unreachable: "The Conversation could not be reached.",
-};
-
 type PreviewControllerOptions = {
+	// The Chat visit's signal: a confirmation settling after the writer left never touches a later visit.
+	signal: AbortSignal;
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
 };
 
-/** @approved Owns the local Preview transaction and its revision-guarded confirmation. */
+/**
+ * Owns the local Preview transaction. Confirm Change ends Preview at once and shows the previewed Variant as a
+ * Requested selection; if the revision-guarded command does not apply, the server's selection shows again.
+ */
 export function usePreviewController({
+	signal,
 	story,
 	conversation,
 	dispatchStory,
 	setConversation,
 }: PreviewControllerOptions) {
-	const [previewPending, setPreviewPending] = useState(false);
-	const [previewError, setPreviewError] = useState<string | null>(null);
-	const previewConfirmInFlightRef = useRef(false);
-
-	useEffect(() => {
-		if (story.preview !== null) return;
-		setPreviewPending(false);
-		setPreviewError(null);
-		previewConfirmInFlightRef.current = false;
-	}, [story.preview]);
-
 	const surface = {
 		conversationId: story.conversationId,
 		revision: () => conversation?.revision ?? story.revision,
 		onConversationChange: setConversation,
-		setNotice: setPreviewError,
+		setNotice: () => undefined,
+		isCurrent: () => !signal.aborted,
 	};
 
-	const clearPreviewError = () => setPreviewError(null);
-
-	const cancelPreview = () => {
-		if (previewPending) return;
-		setPreviewError(null);
-		dispatchStory({ type: "preview-cancelled" });
-	};
+	const cancelPreview = () => dispatchStory({ type: "preview-cancelled" });
 
 	const confirmPreview = async () => {
 		const preview = story.preview;
-		const conversationId = story.conversationId;
-		if (preview === null || conversationId === null || previewConfirmInFlightRef.current) {
-			return;
-		}
-
-		previewConfirmInFlightRef.current = true;
-		setPreviewPending(true);
-		setPreviewError(null);
-		try {
-			// @approved
-			//  The transport boundary refuses to send without the matching
-			// client preview; the runner refuses to send without an
-			// authoritative revision and owns every outcome afterwards.
-			await confirmPreviewSelection(
-				preview,
-				{
-					conversationId,
-					messageId: preview.messageId,
-					variantId: preview.variantId,
-				},
-				async (selection) => {
-					await runConversationCommand(surface, {
-						type: "select-variant",
-						messageId: selection.messageId,
-						variantId: selection.variantId,
-					}, {
-						notices: PREVIEW_NOTICES,
-						onApplied: () => dispatchStory({ type: "preview-confirmed" }),
-					});
-				},
-			);
-		} finally {
-			previewConfirmInFlightRef.current = false;
-			setPreviewPending(false);
-		}
+		if (preview === null || story.conversationId === null) return;
+		const { messageId, variantId } = preview;
+		dispatchStory({ type: "preview-confirmed" });
+		const applied = await runConversationCommand(surface, { type: "select-variant", messageId, variantId }, {
+			onApplied: () => dispatchStory({ type: "swipe-selected", messageId, variantId }),
+		});
+		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId });
 	};
 
-	return {
-		previewPending,
-		previewError,
-		clearPreviewError,
-		cancelPreview,
-		confirmPreview,
-	};
+	return { cancelPreview, confirmPreview };
 }

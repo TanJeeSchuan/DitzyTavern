@@ -31,15 +31,3 @@
 .preview-dock-copy span { color: var(--text-muted); }
 .preview-dock-actions button { padding: 0.45rem 0.7rem; }
 
-.preview-error {
-	width: 100%;
-	margin: 0;
-	padding: 0.65rem 0.75rem;
-	border: 1px solid color-mix(in oklch, var(--destructive) 42%, var(--border));
-	border-radius: 0.7rem;
-	background: color-mix(in oklch, var(--destructive) 8%, var(--surface));
-	color: var(--foreground);
-	font-size: 0.76rem;
-	line-height: 1.5;
-}
-
