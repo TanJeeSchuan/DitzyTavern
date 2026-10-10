@@ -285,6 +285,56 @@ _Avoid_: current match test, full Prompt Plan
 An additional lexical requirement or exclusion for a conditional Lore Entry, regardless of whether its primary match came from Keywords or Semantic Triggers.
 _Avoid_: semantic exclusion
 
+## Boxes
+
+**Box**:
+A self-contained story feature that keeps its own state, contributes to Generations through its slot in a Prompt Preset, and may offer its own controls. The Author Note, Memory and a Race are Boxes.
+_Avoid_: plugin, extension, module
+
+**Move**:
+A Box-defined action the human attaches to a Human-authored Message for that Box to resolve in the following Generation. A Human-authored Message may consist of Moves alone, which distinguishes it from a Continuation Generation.
+_Avoid_: chip, action, order
+
+**Writer override**:
+A writer-set value that takes precedence over what a Box worked out automatically for a Variant. It never rewrites that Variant's prose, and removing it restores the automatic value.
+_Avoid_: manual edit, correction
+
+**World Clock**:
+The Box that keeps a Chat's in-world date, time and weather, learned from the passages on the Selected narrative path. Temperature follows from the season, hour, climate and weather.
+_Avoid_: timer, game clock
+
+**Phone**:
+The Box for in-world texting between the human-controlled Participant and Cast members. Texts are written inside Messages and read as threads apart from the prose.
+_Avoid_: messenger, SMS channel
+
+**Race**:
+The Box that simulates a race whose outcomes the narrator writes, one Stretch per Generation. The simulation decides what happens; the prose only tells it.
+_Avoid_: race engine, minigame
+
+**Stretch**:
+The portion of a Race resolved for one Generation. Stretches shorten toward the finish.
+_Avoid_: tick, step, turn
+
+**Runner**:
+An entrant in a Race: a Cast member, or a Roster runner.
+_Avoid_: racer, horse
+
+**Roster runner**:
+A canon runner from the bundled roster who fills a Race slot with stats rolled for that Race only.
+_Avoid_: generated runner, NPC
+
+**Running style**:
+A Runner's race strategy: Front Runner, Pace Chaser, Late Surger or End Closer.
+_Avoid_: leg type, strategy
+
+**Hidden intent**:
+A Runner's decision that the narrator foreshadows but does not reveal until the Stretch where it pays off.
+_Avoid_: secret, spoiler
+
+**Auto mode**:
+A Race setting in which every Runner decides for itself, for the whole Race or until a set distance from the finish, while the human watches.
+_Avoid_: autoplay, spectator mode
+
 ## Chat provenance and imports
 
 **Native Conversation**:
