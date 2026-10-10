@@ -6,6 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
+import { boxSetups, promptBoxReference } from "./box";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -62,7 +63,7 @@ const promptDefinitionBlockKind = Type.Union([
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
 	Type.Literal("memory"),
-	Type.Literal("author-note"),
+	promptBoxReference,
 ]);
 
 const promptBlock = Type.Union([
@@ -217,7 +218,7 @@ const activeGenerations = Type.Array(Type.Object({
 // operations, and a 92-byte Cast command must not re-serialize the entire
 // Chat archive across the wire.
 export const conversationSummary = Type.Object({
-	authorNote: Type.String(),
+	boxSetups,
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -610,7 +611,10 @@ const replaceParticipantOpeningsAction = Type.Object({
 	openings: Type.Array(Type.String()),
 });
 
-const setAuthorNoteAction = Type.Object({ type: Type.Literal("set-author-note"), content: Type.String() });
+// @approved
+//  Replaces one Box's whole setup. The setup is validated against that Box's
+// schema here, so storage only ever holds decodable values.
+const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("author-note"), setup: boxSetups.properties["author-note"] });
 
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
@@ -662,7 +666,7 @@ const conversationCommandAction = Type.Union([
 	removeParticipantAction,
 	selectPromptPresetAction,
 	renameConversationAction,
-	setAuthorNoteAction,
+	setBoxSetupAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

@@ -146,7 +146,7 @@ describe("Prompt Preset library transport", () => {
 			"lore",
 			"memory",
 			"history",
-			"author-note",
+			"box:author-note",
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);

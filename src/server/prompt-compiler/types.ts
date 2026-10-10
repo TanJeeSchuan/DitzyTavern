@@ -6,6 +6,7 @@ import type {
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import type { PromptImageResolution } from "./images";
+import type { BoxItems } from "../box/registry";
 
 export type {
 	AttemptEnvironment,
@@ -68,7 +69,8 @@ export type PromptContextEntry = {
 };
 
 export interface CompilePromptInput {
-	authorNote: string;
+	/** What each Box with an enabled block contributed, captured before compilation. */
+	boxes: BoxItems;
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];

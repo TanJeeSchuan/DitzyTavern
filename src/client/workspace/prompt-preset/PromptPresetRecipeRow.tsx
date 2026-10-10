@@ -75,7 +75,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 			source: "Conversation Memories",
 		};
 	}
-	if (slot.reference === "author-note") return { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" };
+	if (slot.reference === "box:author-note") return { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" };
 	return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };

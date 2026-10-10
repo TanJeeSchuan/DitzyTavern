@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, count, eq, inArray, or } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
+import { readBoxSetups } from "../box/registry";
 import {
 	activeGenerationTable,
 	conversationTable,
@@ -284,7 +285,7 @@ export function readConversationSummaryFromConnection(
 	// enforces, so clients never reconstruct the rule.
 	return {
 		id: conversation.id,
-		authorNote: conversation.author_note,
+		boxSetups: readBoxSetups(db, conversationId),
 		name: conversation.name,
 		revision: conversation.revision,
 		cast: cast.map((participant) => ({

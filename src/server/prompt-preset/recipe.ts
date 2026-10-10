@@ -12,6 +12,7 @@ import {
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
+import { boxIds, boxReference, type PromptBoxReference } from "../../shared/contract/box";
 import { PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
@@ -29,7 +30,7 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference | "memory" | "author-note"; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference | "memory" | PromptBoxReference; role: PromptOutgoingRole; name: null; content: null }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;
@@ -84,20 +85,24 @@ export const selectDefaultPromptPreset = (
 };
 
 // @approved
-//  The Default recipe migration 0000 seeds predates the Author Note slot, and
-//  no later migration may insert it: the intermediate table rebuilds still
-//  reject the reference. A database the migration chain just created therefore
-//  installs the slot here, directly after history, exactly as a new Default
-//  recipe ships. Presets stored by an older database stay untouched; ADR-0048
-//  gives them the explicit Add Author Note Block action instead.
-export function installDefaultPresetAuthorNote(database: Database): void {
+//  The Default recipe migration 0000 seeds predates Boxes, and no later
+//  migration may insert their blocks: the intermediate table rebuilds still
+//  reject the references. A database the migration chain just created therefore
+//  installs every Box block here, directly after history, exactly as a new
+//  Default recipe ships. Presets stored by an older database stay untouched;
+//  ADR-0048 gives them the explicit add-block action instead.
+export function installDefaultPresetBoxes(database: Database): void {
 	database.transaction(() => {
 		database.run(
-			"UPDATE prompt_preset_block SET position = position + 1 WHERE preset_id = (SELECT id FROM prompt_preset WHERE is_default = 1) AND reference = 'model-post-history-instruction'",
+			"UPDATE prompt_preset_block SET position = position + ? WHERE preset_id = (SELECT id FROM prompt_preset WHERE is_default = 1) AND position > (SELECT h.position FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history')",
+			[boxIds.length],
 		);
-		database.run(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + 1, 'author-note', 'system' FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
-		);
+		for (const [index, id] of boxIds.entries()) {
+			database.run(
+				"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + ?, ?, 'system' FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
+				[index + 1, boxReference(id)],
+			);
+		}
 	}).immediate();
 }
 

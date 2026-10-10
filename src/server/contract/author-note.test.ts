@@ -37,18 +37,18 @@ const command = (app: ReturnType<typeof createConversationRoutes>, id: number, r
 	method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: revision, action }),
 }));
 
-const saveNote = (app: ReturnType<typeof createConversationRoutes>, id: number, revision: number, content: string) => command(app, id, revision, { type: "set-author-note", content });
+const saveNote = (app: ReturnType<typeof createConversationRoutes>, id: number, revision: number, content: string) => command(app, id, revision, { type: "set-box-setup", box: "author-note", setup: content });
 
 test("Author Note saves exact text, rejects stale edits, and clears with an empty save", async () => {
 	const chat = createChat(database);
 	const app = createConversationRoutes(database);
-	expect(await readConversation(app, chat.id)).toMatchObject({ authorNote: "" });
+	expect(await readConversation(app, chat.id)).toMatchObject({ boxSetups: { "author-note": "" } });
 	const content = '  *Keep quiet* "{{self}}"\n';
 	expect((await saveNote(app, chat.id, chat.revision, content)).status).toBe(200);
-	expect(await readConversation(app, chat.id)).toMatchObject({ authorNote: content, revision: chat.revision + 1 });
+	expect(await readConversation(app, chat.id)).toMatchObject({ boxSetups: { "author-note": content }, revision: chat.revision + 1 });
 	expect((await saveNote(app, chat.id, chat.revision, "stale")).status).toBe(409);
 	expect((await saveNote(app, chat.id, chat.revision + 1, "")).status).toBe(200);
-	expect(await readConversation(app, chat.id)).toMatchObject({ authorNote: "" });
+	expect(await readConversation(app, chat.id)).toMatchObject({ boxSetups: { "author-note": "" } });
 });
 
 const preview = async (app: ReturnType<typeof createConversationRoutes>, id: number) => {
@@ -65,7 +65,7 @@ test("Default recipe places the expanded Author Note immediately after history",
 	expect((await saveNote(app, chat.id, chat.revision, "{{self}} guides {{other}}. {{// private }}")).status).toBe(200);
 	const { promptPlan } = await preview(app, chat.id);
 	const history = promptPlan.blocks.findIndex((block) => block.kind === "history");
-	expect(promptPlan.blocks[history + 1]).toEqual({ kind: "author-note", role: "system", content: "Writer guides Maren. " });
+	expect(promptPlan.blocks[history + 1]).toEqual({ kind: "box:author-note", role: "system", content: "Writer guides Maren. " });
 });
 
 
@@ -73,18 +73,18 @@ test("Author Note is omitted when blank after expansion or disabled, and follows
 	const chat = createChat(database);
 	const app = createConversationRoutes(database);
 	const blank = await preview(app, chat.id);
-	expect(blank.promptPlan.blocks.some((block) => block.kind === "author-note")).toBe(false);
+	expect(blank.promptPlan.blocks.some((block) => block.kind === "box:author-note")).toBe(false);
 	await saveNote(app, chat.id, chat.revision, " \n{{// hidden }}");
 	const whitespace = await preview(app, chat.id);
-	expect(whitespace.promptPlan.blocks.some((block) => block.kind === "author-note")).toBe(false);
+	expect(whitespace.promptPlan.blocks.some((block) => block.kind === "box:author-note")).toBe(false);
 	expect(whitespace.budget.tokenEstimate).toBe(blank.budget.tokenEstimate);
 	await saveNote(app, chat.id, chat.revision + 1, "Keep the door shut.");
 	const preset = await readPreset(app, chat.id);
-	const slot = preset.slots.find((entry) => entry.reference === "author-note")!;
+	const slot = preset.slots.find((entry) => entry.reference === "box:author-note")!;
 	await readOperation(saveBlockRole(database, preset.id, slot.id, "assistant"));
-	expect((await preview(app, chat.id)).promptPlan.blocks.find((block) => block.kind === "author-note")).toEqual({ kind: "author-note", role: "model", content: "Keep the door shut." });
+	expect((await preview(app, chat.id)).promptPlan.blocks.find((block) => block.kind === "box:author-note")).toEqual({ kind: "box:author-note", role: "model", content: "Keep the door shut." });
 	await readOperation(toggleBlock(database, preset.id, slot.id, false));
-	expect((await preview(app, chat.id)).promptPlan.blocks.some((block) => block.kind === "author-note")).toBe(false);
+	expect((await preview(app, chat.id)).promptPlan.blocks.some((block) => block.kind === "box:author-note")).toBe(false);
 });
 
 test("Author Note variable writes persist in Macro State after sending", async () => {
@@ -94,7 +94,7 @@ test("Author Note variable writes persist in Macro State after sending", async (
 	await saveNote(app, chat.id, chat.revision, "{{setvar::weather::rain}}{{getvar::weather}} for {{other}}");
 	const planned = await preview(app, chat.id);
 	expect(planned.pendingWrites).toContainEqual({ operation: "set", name: "weather", value: "rain" });
-	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("rain for Maren");
+	expect(planned.promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("rain for Maren");
 	const generationId = await startGeneration(app, chat.id, chat.revision + 1);
 	await completeGeneration(app, chat.id, generationId);
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/macro-variables`));
@@ -111,7 +111,7 @@ test("editing during an Active Generation preserves its capture and reaches a la
 	const id = await startGeneration(app, chat.id, chat.revision + 1, gate);
 	const active = await readConversation(app, chat.id);
 	expect((await saveNote(app, chat.id, active.revision, "Current note")).status).toBe(200);
-	expect((await readInspection(app, chat.id, id)).promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Old note");
+	expect((await readInspection(app, chat.id, id)).promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("Old note");
 	gate.release();
 	await completeGeneration(app, chat.id, id);
 	const historyResponse = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/history`));
@@ -123,9 +123,9 @@ test("editing during an Active Generation preserves its capture and reaches a la
 	expect((await command(app, chat.id, current.revision, { type: "create-variant", messageId: humanMessage.id, content: "Another branch" })).status).toBe(200);
 	current = await readConversation(app, chat.id);
 	expect((await command(app, chat.id, current.revision, { type: "select-variant", messageId: humanMessage.id, variantId: oldVariantId })).status).toBe(200);
-	expect((await preview(app, chat.id)).promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Current note");
+	expect((await preview(app, chat.id)).promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("Current note");
 	expect(gate.requests[0]?.messages.some((message) => message.content === "Old note")).toBe(true);
-	expect((await readInspection(app, chat.id, id)).promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Old note");
+	expect((await readInspection(app, chat.id, id)).promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("Old note");
 });
 
 test("oversized Author Note refuses sending instead of dropping the note", async () => {
@@ -137,7 +137,7 @@ test("oversized Author Note refuses sending instead of dropping the note", async
 	await saveNote(app, chat.id, chat.revision, note);
 	const planned = await preview(app, chat.id);
 	expect(planned.budget.budgetFits).toBe(false);
-	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe(note);
+	expect(planned.promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe(note);
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations`, {
 		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send",  expectedRevision: chat.revision + 1, content: "Open the door." }),
 	}));
@@ -196,7 +196,7 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 	const current = await readConversation(app, chat.id);
 	await saveNote(app, chat.id, current.revision, "Include a dragon.");
 	const planned = await preview(app, chat.id);
-	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Include a dragon.");
+	expect(planned.promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("Include a dragon.");
 	expect(planned.promptPlan.blocks.some((block) => block.kind === "lore")).toBe(false);
 	expect((await command(app, chat.id, current.revision + 1, { type: "create-message", timestamp: "2026-10-07T00:00:00.000Z", variantContents: ["A dragon opens the door."], authorParticipantId: current.control.humanParticipantId! })).status).toBe(200);
 	const story = await preview(app, chat.id);
@@ -208,7 +208,7 @@ test("Author Note slot is movable", async () => {
 	const app = createConversationRoutes(database);
 	await saveNote(app, chat.id, chat.revision, "Standing guidance");
 	const preset = await readPreset(app, chat.id);
-	const slot = preset.slots.find((entry) => entry.reference === "author-note")!;
+	const slot = preset.slots.find((entry) => entry.reference === "box:author-note")!;
 	await readOperation(moveBlock(database, preset.id, slot.id, 1));
-	expect((await preview(app, chat.id)).promptPlan.blocks[0]).toEqual({ kind: "author-note", role: "system", content: "Standing guidance" });
+	expect((await preview(app, chat.id)).promptPlan.blocks[0]).toEqual({ kind: "box:author-note", role: "system", content: "Standing guidance" });
 });

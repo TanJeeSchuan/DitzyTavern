@@ -16,23 +16,23 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	const client = useQueryClient();
 	const preset = useQuery({ queryKey: ["conversation-preset", conversation.id], queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal) });
 	const selectedPreset = preset.data;
-	const slot = selectedPreset?.slots.find((slot) => slot.reference === "author-note");
+	const slot = selectedPreset?.slots.find((slot) => slot.reference === "box:author-note");
 	const activate = useMutation({
 		mutationFn: async () => {
 			if (!selectedPreset || preset.isFetching || preset.isError) return;
 			const outcome = slot === undefined
-				? await addPromptPresetReference(selectedPreset.id, "author-note")
+				? await addPromptPresetReference(selectedPreset.id, "box:author-note")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
 			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Author Note block could not be updated.");
 		},
 		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	});
-	const [draft, setDraft] = useState(conversation.authorNote);
+	const [draft, setDraft] = useState(conversation.boxSetups["author-note"]);
 	const [expectedRevision, setExpectedRevision] = useState(conversation.revision);
-	const [saved, setSaved] = useState(conversation.authorNote);
+	const [saved, setSaved] = useState(conversation.boxSetups["author-note"]);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-	if (conversation.revision > expectedRevision && conversation.authorNote === saved) setExpectedRevision(conversation.revision);
+	if (conversation.revision > expectedRevision && conversation.boxSetups["author-note"] === saved) setExpectedRevision(conversation.revision);
 	const surface = {
 		conversationId: conversation.id,
 		revision: () => expectedRevision,
@@ -47,23 +47,23 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		setNotice(null);
 		let applied = false;
 		try {
-			await runConversationCommand(surface, { type: "set-author-note", content: draft }, {
+			await runConversationCommand(surface, { type: "set-box-setup", box: "author-note", setup: draft }, {
 				notices: {
 					conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
 					notFound: CONVERSATION_UNREACHABLE_NOTICE,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				onApplied: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); applied = true; },
-				onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.authorNote); },
+				onApplied: (current) => { setExpectedRevision(current.revision); setSaved(current.boxSetups["author-note"]); applied = true; },
+				onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.boxSetups["author-note"]); },
 			});
 		} finally { setPending(false); }
 		return applied;
 	};
-	const discard = () => { setDraft(conversation.authorNote); setSaved(conversation.authorNote); setExpectedRevision(conversation.revision); setNotice(null); };
+	const discard = () => { setDraft(conversation.boxSetups["author-note"]); setSaved(conversation.boxSetups["author-note"]); setExpectedRevision(conversation.revision); setNotice(null); };
 	useSaveGuard({ dirty, saving: pending, save, discard });
 	return <div className="panel-fill overflow-y-auto p-5">
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
-		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
+		{conversation.boxSetups["author-note"].trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
 			<AlertDescription>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</AlertDescription>
 			<Button
 				type="button"

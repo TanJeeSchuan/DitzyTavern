@@ -12,6 +12,7 @@ import type {
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import type { BoxItems } from "../box/registry";
 
 export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
@@ -65,7 +66,7 @@ export interface CompileGenerationPlanInput {
 	// Captured Conversation state: the resolved Participant Definitions and
 	// the ordered writing context for this one attempt. Each entry carries
 	// its own role, so nothing aligns a second list against this one.
-	readonly authorNote: string;
+	readonly boxes: BoxItems;
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];

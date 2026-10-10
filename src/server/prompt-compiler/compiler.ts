@@ -39,6 +39,7 @@ import type {
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { resolvePromptImages } from "./images";
+import { isBoxReference } from "../../shared/contract/box";
 
 // @approved
 //  Everything a Definition-sourced plan block carries apart from its resolved
@@ -223,14 +224,17 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
-		if (slot.reference === "author-note") {
+		if (isBoxReference(slot.reference)) {
+			// @approved
+			//  A Box's pinned items pass through the Prompt Macro pass as one
+			// block, expanded like preset text.
 			const start = blocks.length;
 			expandInto({
 				blocks,
 				warnings,
-				block: { kind: "author-note" },
+				block: { kind: slot.reference },
 				role: planRoleFor[slot.role],
-				text: input.authorNote,
+				text: (input.boxes[slot.reference] ?? []).map((item) => item.text).join("\n\n"),
 				context: { self: input.human.name, other: input.model.name },
 				blockLabel: singleUseReferenceLabels[slot.reference],
 				macroEnvironment,

@@ -12,6 +12,7 @@ import type {
 	ParticipantDefinition,
 } from "../conversation";
 import { emptyPromptChannels } from "../../shared/definition";
+import { boxSetupEntry } from "../box/registry";
 import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
@@ -145,7 +146,6 @@ const duplicateCopyWarnings = (
 // Profile resolution, and artifact storage never enter this module.
 export interface ProjectedImport {
 	input: {
-		authorNote: string;
 		participants: (ConversationParticipantSeed & {
 			createCharacter?: boolean | undefined;
 		})[];
@@ -240,7 +240,6 @@ export function projectImport(
 
 	return {
 		input: {
-			authorNote: decoded.authorNote,
 			participants: resolution.participants.map((participant) => ({
 				definition: participant.definition,
 				sourceCharacterId: participant.sourceCharacterId,
@@ -248,7 +247,11 @@ export function projectImport(
 			})),
 			control: deterministicImportControl(resolution.participants.length),
 			messages,
-			data: [...decoded.data, ...importProvenanceEntries(report)],
+			data: [
+				...decoded.data,
+				...(decoded.authorNote === "" ? [] : [boxSetupEntry("author-note", decoded.authorNote)]),
+				...importProvenanceEntries(report),
+			],
 		},
 		report,
 	};

@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
+import { promptBoxReference, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -30,8 +31,6 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
-export const promptAuthorNoteReference = Type.Literal("author-note");
-export type PromptAuthorNoteReference = Static<typeof promptAuthorNoteReference>;
 
 export const promptMemoryReference = Type.Literal("memory");
 export type PromptMemoryReference = Static<typeof promptMemoryReference>;
@@ -39,8 +38,8 @@ export type PromptMemoryReference = Static<typeof promptMemoryReference>;
 export const singleUseReferenceLabels = {
 	lore: "Lore",
 	memory: "Memory",
-	"author-note": "Author Note",
-} as const satisfies Record<PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, string>;
+	"box:author-note": "Author Note",
+} as const satisfies Record<PromptLoreReference | PromptMemoryReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
@@ -71,15 +70,15 @@ export const defaultOutgoingRoles = {
 	"model-post-history-instruction": "system",
 	lore: "system",
 	memory: "system",
-	"author-note": "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, PromptOutgoingRole>;
+	"box:author-note": "system",
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
 	promptMemoryReference,
-	promptAuthorNoteReference,
+	promptBoxReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
@@ -114,7 +113,7 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: Type.Union([promptLoreReference, promptMemoryReference, promptAuthorNoteReference]),
+		reference: Type.Union([promptLoreReference, promptMemoryReference, promptBoxReference]),
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
 	}),
@@ -211,7 +210,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
-	Type.Object({ id: Type.Integer(), reference: promptAuthorNoteReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
+	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({ id: Type.Integer(), reference: promptMemoryReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({

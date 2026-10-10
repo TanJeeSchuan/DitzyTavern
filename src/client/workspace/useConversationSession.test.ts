@@ -48,7 +48,7 @@ interface HistoryRefreshResult { conversation: ConversationSummary | null; failu
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, authorNote: "", cast: [],
+		id: 1, name: "Chat", revision: 1, boxSetups: { "author-note": "" }, cast: [],
 		control: { humanParticipantId: null, modelParticipantId: null },
 		controlValidity: { valid: false, reason: "missing-seat" },
 		playable: false,

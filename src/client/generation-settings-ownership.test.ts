@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 const summary = (revision: number): ConversationSummary => ({
-	authorNote: "",
+	boxSetups: { "author-note": "" },
 	id: 1,
 	name: "Seaside Letters",
 	revision,

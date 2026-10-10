@@ -63,7 +63,6 @@ export const createChat = (
 	names: { name?: string; human?: string; model?: string } = {},
 ) =>
 	createConversation(database, {
-		authorNote: "",
 		name: names.name ?? "Preset Chat",
 		participants: [
 			{

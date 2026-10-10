@@ -269,7 +269,7 @@ describe("Chat import response decoding", () => {
 	// The committed response also carries the new Conversation summary; a
 	// minimal summary literal proves the nested summary decodes too.
 	const conversationSummary = {
-		authorNote: "",
+		boxSetups: { "author-note": "" },
 		id: 7,
 		name: "Lantern House",
 		revision: 1,

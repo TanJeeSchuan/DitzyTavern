@@ -112,7 +112,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_memory_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'memory'`),
-		uniqueIndex("prompt_preset_single_author_note_block").on(table.preset_id).where(sql`${table.reference} = 'author-note'`),
+		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(
@@ -146,7 +146,7 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} IN ('memory', 'author-note')
+				(${table.reference} = 'memory' OR ${table.reference} LIKE 'box:%')
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
@@ -278,7 +278,6 @@ export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settin
 });
 
 export const conversationTable = sqliteTable("conversation", {
-	author_note: text().notNull().default(""),
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
 	creation_time: text().notNull(),

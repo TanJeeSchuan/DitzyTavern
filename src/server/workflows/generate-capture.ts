@@ -65,6 +65,7 @@ import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
+import { advanceBoxes, type BoxItems } from "../box/registry";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -128,7 +129,7 @@ const selectedHistoryFrom = (
 const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
-		authorNote: string;
+		boxes: BoxItems;
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
@@ -143,7 +144,7 @@ const compilePlanFrom = (
 	},
 ): GenerationPlan => {
 	const compiled = compileGenerationPlan({
-		authorNote: configuration.authorNote,
+		boxes: configuration.boxes,
 		human: toCompilerDefinition(derivation.human),
 		model: toCompilerDefinition(derivation.model),
 		context: derivation.context,
@@ -184,7 +185,7 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 });
 
 interface AttemptConfiguration {
-	authorNote: string;
+	boxes: BoxItems;
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
@@ -195,7 +196,7 @@ interface AttemptConfiguration {
 }
 
 interface GenerationPreparationBase {
-	readonly authorNote: string;
+	readonly boxes: BoxItems;
 	readonly conversationId: number;
 	readonly semanticTriggerRevision: number;
 	readonly formatting: GenerationFormattingContext;
@@ -389,7 +390,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
-		authorNote: summary.authorNote,
+		boxes: advanceBoxes(recipe.slots, summary.boxSetups),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,
@@ -465,7 +466,7 @@ const captureConfigurationFromPreparation = (
 		variables: preparation.macroState,
 	});
 	return {
-		authorNote: preparation.authorNote,
+		boxes: preparation.boxes,
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,

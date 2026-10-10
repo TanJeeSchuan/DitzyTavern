@@ -25,7 +25,7 @@ const addableReferences = [
 	"model-post-history-instruction",
 	"lore",
 	"memory",
-	"author-note",
+	"box:author-note",
 ] as const satisfies readonly PromptBlockReference[];
 
 const AddBlockMenu = ({

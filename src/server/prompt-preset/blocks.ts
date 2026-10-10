@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
+import { isBoxReference } from "../../shared/contract/box";
 import {
 	defaultOutgoingRoles,
 	isSingleUseReference,
@@ -195,7 +196,7 @@ export const savePromptPresetBlockPatches = (
 		patches.forEach((patch) => applyBlockPatch(db, patch));
 	});
 
-/** @approved Adds one reference with its default role; Author Note follows the last history slot. */
+/** @approved Adds one reference with its default role; a Box block follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
@@ -205,7 +206,7 @@ export const addPromptPresetBlock = (
 		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 		const ordered = recipe.slots.map((slot) => slot.id);
 		const inserted = insertOccurrence(db, presetId, ordered.length + 1, { reference, enabled: true });
-		if (reference !== "author-note") return;
+		if (!isBoxReference(reference)) return;
 		const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
 		ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
 		return ordered;

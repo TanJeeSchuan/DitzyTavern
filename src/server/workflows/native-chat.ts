@@ -61,7 +61,6 @@ export function createNativeConversation(
 		const model = resolveSeat(database, input.modelSeat);
 
 		return createConversation(database, {
-			authorNote: "",
 			name: input.name,
 			participants: [human, model],
 			control: { human: 0, model: 1 },

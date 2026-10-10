@@ -15,7 +15,7 @@ import {
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
-import { setAuthorNote } from "./commands/set-author-note";
+import { setBoxSetup } from "./commands/set-box-setup";
 import { renameConversation } from "./commands/rename-conversation";
 import {
 	attachConversationLorebook,
@@ -79,7 +79,7 @@ const handlers = {
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
-	"set-author-note": setAuthorNote,
+	"set-box-setup": setBoxSetup,
 	"rename-conversation": renameConversation,
 	"attach-chat": attachConversationLorebook,
 	"detach-chat": detachConversationLorebook,

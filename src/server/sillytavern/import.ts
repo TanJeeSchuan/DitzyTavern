@@ -128,7 +128,6 @@ export function importSillyTavernChat(
 
 	const conversation = createImportedConversation(database, {
 		name,
-		authorNote: projected.input.authorNote,
 		participants: projected.input.participants,
 		control: projected.input.control,
 		messages: projected.input.messages,

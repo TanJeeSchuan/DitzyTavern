@@ -22,6 +22,7 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
+import { isBoxReference } from "../../shared/contract/box";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -400,6 +401,11 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 	if (isServerOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
+		);
+	}
+	if (isBoxReference(namespace)) {
+		throw new InvalidConversationCommandError(
+			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
 		);
 	}
 	if (isMacroDataNamespace(namespace)) {

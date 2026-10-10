@@ -36,7 +36,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 		target: { kind: "send", content: "" },
 		facts: { kind: "send", reuseHumanMessageId: undefined },
 		conversationId: 1,
-		authorNote: "",
+		boxes: {},
 		semanticTriggerRevision: 0,
 		formatting: {},
 		derivation: {
