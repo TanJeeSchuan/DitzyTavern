@@ -27,7 +27,6 @@ const noPresentation = () => undefined;
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
-	refreshHistoryPage: (messageId: number) => Promise<void>;
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
@@ -44,12 +43,10 @@ type StoryMessageActionsOptions = {
  * read model only after the server applies the command, so a failed Swipe
  * never diverges the two state owners. This hook owns the server command,
  * and the runner owns revision acquisition, exception normalization, and
- * common reconciliation. The edit command keeps its operation-specific
- * history refresh for the edited Message without replacing the reading window.
+ * common reconciliation.
  */
 export function useStoryMessageActions({
 	signal,
-	refreshHistoryPage,
 	story,
 	conversation,
 	dispatchStory,
@@ -142,7 +139,6 @@ export function useStoryMessageActions({
 			content,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => { void refreshHistoryPage(messageId); },
 		});
 	};
 
@@ -156,11 +152,6 @@ export function useStoryMessageActions({
 			messageId,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: (applied) => dispatchStory({
-				type: "message-deleted",
-				messageId,
-				revision: applied.revision,
-			}),
 		});
 	};
 

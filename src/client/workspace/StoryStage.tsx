@@ -73,7 +73,6 @@ export function StoryStage({
 	});
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
-		refreshHistoryPage: session.refreshHistoryPage,
 		story,
 		conversation,
 		dispatchStory,

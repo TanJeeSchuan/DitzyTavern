@@ -24,7 +24,8 @@ export const cancellableFetch = async <T>(
 export const publishConversation = (client: QueryClient, conversation: ConversationSummary) => {
 	const queryKey = conversationKey(conversation.id);
 	void client.cancelQueries({ queryKey });
-	void client.invalidateQueries({ queryKey: ["conversation-history", conversation.id], refetchType: "none" });
+	const current = client.getQueryData<ConversationSummary | null>(queryKey);
+	if (conversation.revision > (current?.revision ?? 0)) void client.invalidateQueries({ queryKey: ["conversation-history", conversation.id] });
 	return client.setQueryData<ConversationSummary | null>(queryKey, (current) => adoptConversationSummary(current ?? null, conversation, conversation.id));
 };
 
@@ -32,13 +33,14 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 	queryKey: conversationKey(id),
 	staleTime: Infinity,
 	refetchOnReconnect: false,
+	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
 		const incoming = await cancellableFetch(signal, owner, (cancellation) =>
 			loadConversation(id, cancellation),
 		);
 		const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 		if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-			void client.invalidateQueries({ queryKey: ["conversation-history", id], refetchType: "none" });
+			void client.invalidateQueries({ queryKey: ["conversation-history", id] });
 		}
 		return adoptConversationSummary(current, incoming, id);
 	},
