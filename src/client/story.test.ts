@@ -151,131 +151,11 @@ describe("story reading state", () => {
 		})).toBe(false);
 	});
 
-	test("accumulates pages without overlap and keeps stable chronology", () => {
-		const opened = reduceStory(createStoryState(), {
-			type: "chat-opened",
-			conversationId: 7,
-		});
-		// The first page is the latest window of history.
-		const first = reduceStory(opened, {
-			type: "first-page",
-			page: page({
-				messages: [message({ id: 12, position: 3 }), message({ id: 13, position: 4 })],
-			}),
-		});
-		expect(first.status).toBe("ready");
-		expect(first.messages.map((entry) => entry.id)).toEqual([12, 13]);
-		expect(first.page?.hasOlder).toBe(true);
-
-		// An older page arrives and prepends above the accumulated window.
-		const second = reduceStory(first, {
-			type: "next-page-arrived",
-			page: page({
-				page: {
-					index: 2,
-					pageSize: 2,
-					totalMessages: 4,
-					totalPages: 2,
-					hasOlder: false,
-					hasNewer: true,
-				},
-				messages: [message({ id: 10, position: 1 }), message({ id: 11, position: 2 })],
-			}),
-		});
-		expect(second.messages.map((entry) => entry.id)).toEqual([10, 11, 12, 13]);
-		expect(second.page?.hasOlder).toBe(false);
-	});
-
-	test("a repeated page appends no duplicates", () => {
-		const state = reduceStory(
-			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
-			{
-				type: "first-page",
-				page: page({ messages: [message({ id: 10 })] }),
-			},
-		);
-		const refreshed = reduceStory(state, {
-			type: "next-page-arrived",
-			page: page({
-				page: {
-					index: 1,
-					pageSize: 2,
-					totalMessages: 4,
-					totalPages: 2,
-					hasOlder: true,
-					hasNewer: false,
-				},
-				messages: [message({ id: 10 })],
-			}),
-		});
-		expect(refreshed.messages).toHaveLength(1);
-	});
-
-	test("an applied deletion preserves loaded history and rebases the next older page", () => {
-		const opened = reduceStory(createStoryState(), {
-			type: "chat-opened",
-			conversationId: 7,
-		});
-		const first = reduceStory(opened, {
-			type: "first-page",
-			page: page({
-				page: { index: 1, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: false },
-				messages: [message({ id: 14, position: 5 }), message({ id: 15, position: 6 })],
-			}),
-		});
-		const second = reduceStory(first, {
-			type: "next-page-arrived",
-			page: page({
-				page: { index: 2, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: true },
-				messages: [message({ id: 12, position: 3 }), message({ id: 13, position: 4 })],
-			}),
-		});
-
-		const deleted = reduceStory(second, { type: "message-deleted", messageId: 14, revision: 4 });
-
-		expect(deleted.messages.map((entry) => entry.id)).toEqual([12, 13, 15]);
-		expect(deleted.revision).toBe(4);
-		expect(deleted.page).toEqual({
-			index: 2,
-			newestIndex: 1,
-			pageSize: 2,
-			totalMessages: 5,
-			totalPages: 3,
-			hasOlder: true,
-			hasNewer: false,
-		});
-	});
-
-	test("deleting from page one refetches the shifted page before loading older pages", () => {
-		const state = reduceStory(
-			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
-			{
-				type: "first-page",
-				page: page({
-					page: { index: 1, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: false },
-					messages: [message({ id: 14, position: 5 }), message({ id: 15, position: 6 })],
-				}),
-			},
-		);
-		const deleted = reduceStory(state, { type: "message-deleted", messageId: 15, revision: 4 });
-		expect(deleted.page?.index).toBe(1);
-
-		const shiftedPage = reduceStory(deleted, {
-			type: "next-page-arrived",
-			page: page({
-				page: { index: 1, pageSize: 2, totalMessages: 5, totalPages: 3, hasOlder: true, hasNewer: false },
-				messages: [message({ id: 13, position: 4 }), message({ id: 14, position: 5 })],
-			}),
-		});
-		expect(shiftedPage.messages.map((entry) => entry.id)).toEqual([13, 14]);
-		expect(shiftedPage.page?.index).toBe(1);
-	});
-
 	test("swipe selection updates the active Variant position locally", () => {
 		const state = reduceStory(
 			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
 			{
-				type: "first-page",
+				type: "window-received",
 				page: page({
 					messages: [
 						message({
@@ -321,7 +201,7 @@ describe("story reading state", () => {
 		const state = reduceStory(
 			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
 			{
-				type: "first-page",
+				type: "window-received",
 				page: page({
 					messages: [
 						message({
@@ -373,7 +253,7 @@ describe("story reading state", () => {
 		const state = reduceStory(
 			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
 			{
-				type: "first-page",
+				type: "window-received",
 				page: page({ messages: [message({ id: 10 })] }),
 			},
 		);
@@ -555,7 +435,7 @@ describe("story reading state", () => {
 			variantId: 11,
 		});
 		const reloaded = reduceStory(previewing, {
-			type: "first-page",
+			type: "window-received",
 			page: page({ messages: [message({ id: 1 })] }),
 		});
 		expect(reloaded.preview).toBeNull();
@@ -613,7 +493,7 @@ describe("streaming Provisional Variant content", () => {
 	const stateWithProvisional = () => {
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
 		state = reduceStory(state, {
-			type: "first-page",
+			type: "window-received",
 			page: page({
 				revision: 4,
 				messages: [message({
@@ -674,7 +554,7 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
 
 		state = reduceStory(state, {
-			type: "first-page",
+			type: "window-received",
 			page: page({
 				revision: 5,
 				messages: [message({
@@ -705,13 +585,13 @@ describe("streaming Provisional Variant content", () => {
 		const early = [observe(1, "The tide."), observe(2, " The lights."), observe(3, " Then the")]
 			.reduce(reduceStory, reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }));
 
-		const live = reduceStory(early, { type: "first-page", page: provisional({ eventId: 0, content: "" }), activeGenerationIds: [55] });
+		const live = reduceStory(early, { type: "window-received", page: provisional({ eventId: 0, content: "" }), activeGenerationIds: [55] });
 		expect(variantContent(live, 110)?.content).toBe("The tide. The lights. Then the");
 
-		const checkpointed = reduceStory(early, { type: "first-page", page: provisional({ eventId: 2, content: "The tide. The lights." }), activeGenerationIds: [55] });
+		const checkpointed = reduceStory(early, { type: "window-received", page: provisional({ eventId: 2, content: "The tide. The lights." }), activeGenerationIds: [55] });
 		expect(variantContent(checkpointed, 110)?.content).toBe("The tide. The lights. Then the");
 
-		const finished = reduceStory(early, { type: "first-page", page: provisional(null, "The tide. The lights. Then the end.") });
+		const finished = reduceStory(early, { type: "window-received", page: provisional(null, "The tide. The lights. Then the end.") });
 		expect(variantContent(finished, 110)?.content).toBe("The tide. The lights. Then the end.");
 		expect(finished.unplacedObservations).toEqual([]);
 	});
@@ -722,7 +602,7 @@ describe("streaming Provisional Variant content", () => {
 			messageId: 11, variantId: 110, generationId: 55, eventId, text,
 		});
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
-		state = reduceStory(state, { type: "first-page", page: page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }) });
+		state = reduceStory(state, { type: "window-received", page: page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }) });
 		state = [observe(1, "One."), observe(2, " Two."), observe(3, " Three.")].reduce(reduceStory, state);
 		const latest = page({
 			messages: [message({
@@ -733,7 +613,7 @@ describe("streaming Provisional Variant content", () => {
 				}],
 			})],
 		});
-		const returned = reduceStory(state, { type: "first-page", page: latest, activeGenerationIds: [55] });
+		const returned = reduceStory(state, { type: "window-received", page: latest, activeGenerationIds: [55] });
 		expect(variantContent(returned, 110)?.content).toBe("One. Two. Three.");
 
 		const snapshot = reduceStory(state, {
@@ -743,15 +623,15 @@ describe("streaming Provisional Variant content", () => {
 		const staleSnapshot = reduceStory(state, {
 			type: "generation-observed", mode: "replace", messageId: 11, variantId: 110, generationId: 55, eventId: 1, content: "One.", reasoning: "",
 		});
-		expect(variantContent(reduceStory(staleSnapshot, { type: "first-page", page: latest, activeGenerationIds: [55] }), 110)?.content).toBe("One. Two. Three.");
-		const finished = reduceStory(state, { type: "history-refreshed", page: page(), activeGenerationIds: [] });
+		expect(variantContent(reduceStory(staleSnapshot, { type: "window-received", page: latest, activeGenerationIds: [55] }), 110)?.content).toBe("One. Two. Three.");
+		const finished = reduceStory(state, { type: "window-received", page: page(), activeGenerationIds: [] });
 		expect(finished.unplacedObservations).toEqual([]);
 	});
 
 	test("history checkpoint and replay resume share one ordered projection", () => {
 		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
 		state = reduceStory(state, {
-			type: "first-page",
+			type: "window-received",
 			page: page({
 				messages: [message({
 					id: 10,
@@ -801,7 +681,7 @@ describe("streaming Provisional Variant content", () => {
 		let state = createStoryState();
 		state = reduceStory(state, { type: "chat-opened", conversationId: 42 });
 		state = reduceStory(state, {
-			type: "first-page",
+			type: "window-received",
 			page: page({
 				conversationId: 42,
 				revision: 5,
@@ -845,41 +725,30 @@ describe("detached story windows", () => {
 			{ id: position * 10 + 1, position: 2, content: "Alternative", timestamp: "", selected: false },
 		] })),
 	});
-	const open = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), { type: "first-page", page: history(1, [7, 8]) });
-	const detach = () => reduceStory(open(), { type: "first-page", page: history(3, [3, 4]) });
+	const open = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), { type: "window-received", page: history(1, [7, 8]) });
+	const detach = () => reduceStory(open(), { type: "window-received", page: history(3, [3, 4]) });
 
 	test("a source jump replaces the latest window with one page", () => {
 		const state = detach();
 		expect(state.messages.map(({ id }) => id)).toEqual([3, 4]);
-		expect(state.page).toMatchObject({ newestIndex: 3, index: 3, hasNewer: true, hasOlder: true });
+		expect(state.page).toMatchObject({ index: 3, hasNewer: true, hasOlder: true });
 	});
 
-	test("older and newer pages extend a single window until page one reattaches it", () => {
-		const older = reduceStory(detach(), { type: "next-page-arrived", page: history(4, [1, 2]) });
-		expect(older.page).toMatchObject({ newestIndex: 3, index: 4, hasNewer: true, hasOlder: false });
-		const loading = reduceStory(older, { type: "load-more-started" });
-		expect(loading.status).toBe("loading-more");
-		const newer = reduceStory(loading, { type: "next-page-arrived", page: history(2, [5, 6]) });
-		expect(newer.messages.map(({ id }) => id)).toEqual([1, 2, 3, 4, 5, 6]);
-		expect(newer.page).toMatchObject({ newestIndex: 2, index: 4, hasNewer: true, hasOlder: false });
-		const latest = reduceStory(newer, { type: "next-page-arrived", page: history(1, [7, 8]) });
-		expect(latest.messages.map(({ id }) => id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-		expect(latest.page).toMatchObject({ newestIndex: 1, index: 4, hasNewer: false, hasOlder: false });
-	});
-
-	test("shifted overlapping pages stay chronological without duplicates", () => {
-		const state = reduceStory(detach(), { type: "next-page-arrived", page: history(3, [4, 5], 9) });
-		expect(state.messages.map(({ id }) => id)).toEqual([3, 4, 5]);
-		expect(state.page).toMatchObject({ newestIndex: 3, index: 4, hasNewer: true });
-	});
-
-	test("a Message added elsewhere before an older page keeps the window detached until it is loaded", () => {
-		const older = reduceStory(open(), { type: "next-page-arrived", page: history(2, [6, 7], 9) });
-		expect(older.messages.map(({ id }) => id)).toEqual([6, 7, 8]);
-		expect(older.page).toMatchObject({ hasNewer: true });
-		const latest = reduceStory(older, { type: "next-page-arrived", page: history(1, [8, 9], 9) });
-		expect(latest.messages.map(({ id }) => id)).toEqual([6, 7, 8, 9]);
-		expect(latest.page).toMatchObject({ newestIndex: 1, hasNewer: false });
+	test("a refresh preserves Preview until its Variant or Message disappears", () => {
+		const previewing = reduceStory(detach(), { type: "preview-started", messageId: 3, variantId: 31 });
+		const refreshed = reduceStory(previewing, { type: "window-received", page: history(3, [3, 4]) });
+		expect(refreshed.preview).toEqual(previewing.preview);
+		const withoutVariant = history(3, [3, 4]);
+		withoutVariant.messages[0]!.variants.pop();
+		expect(reduceStory(refreshed, { type: "window-received", page: withoutVariant }).preview).toBeNull();
+		expect(reduceStory(refreshed, { type: "window-received", page: history(3, [4]) }).preview).toBeNull();
+		const selectedElsewhere = history(3, [3, 4]);
+		selectedElsewhere.messages[0]!.variants[0]!.selected = false;
+		selectedElsewhere.messages[0]!.variants.push({ id: 32, position: 3, content: "Third", timestamp: "", selected: true });
+		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview?.priorVariantId).toBe(32);
+		selectedElsewhere.messages[0]!.variants[2]!.selected = false;
+		selectedElsewhere.messages[0]!.variants[1]!.selected = true;
+		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview).toBeNull();
 	});
 
 	test("live observations outside the window never insert Messages and visible observations still apply", () => {
@@ -893,25 +762,18 @@ describe("detached story windows", () => {
 
 	test("authoritative refreshes update only loaded Messages and preserve a newer live checkpoint", () => {
 		const state = reduceStory(detach(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
-		const refreshed = reduceStory(state, { type: "history-refreshed", page: history(2, [4, 5], 7), activeGenerationIds: [2] });
+		const refreshed = reduceStory(state, { type: "window-received", page: history(2, [3, 4], 7), activeGenerationIds: [2] });
 		expect(refreshed.messages.map(({ id }) => id)).toEqual([3, 4]);
 		expect(refreshed.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 streaming");
-		const final = history(2, [4, 5], 7);
-		final.messages[0]!.variants[0]!.content = "Finished";
-		const settled = reduceStory(refreshed, { type: "history-refreshed", page: final });
+		const final = history(2, [3, 4], 7);
+		final.messages[1]!.variants[0]!.content = "Finished";
+		const settled = reduceStory(refreshed, { type: "window-received", page: final });
 		expect(settled.messages.at(-1)?.swipes[0]?.content).toBe("Finished");
 		expect(settled.page?.hasNewer).toBe(true);
 	});
 
-	test("a detached final visible Message needs Swipe preview and deletion keeps the window detached", () => {
-		const state = detach();
-		expect(classifyVariantSelection(state, 4, 41).kind).toBe("preview");
-		const deleted = reduceStory(state, { type: "message-deleted", messageId: 4, revision: 4 });
-		expect(deleted.messages.map(({ id }) => id)).toEqual([3]);
-		expect(deleted.page).toMatchObject({ newestIndex: 3, hasNewer: true, totalMessages: 7 });
-		const latest = reduceStory(deleted, { type: "first-page", page: history(1, [7, 8], 7) });
-		expect(latest.messages.map(({ id }) => id)).toEqual([7, 8]);
-		expect(latest.page).toMatchObject({ newestIndex: 1, index: 1, hasNewer: false });
-		expect(classifyVariantSelection(latest, 8, 81).kind).toBe("immediate");
+	test("a detached final visible Message needs Swipe preview", () => {
+		expect(classifyVariantSelection(detach(), 4, 41).kind).toBe("preview");
+		expect(classifyVariantSelection(open(), 8, 81).kind).toBe("immediate");
 	});
 });

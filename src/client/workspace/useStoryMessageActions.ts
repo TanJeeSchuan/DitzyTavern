@@ -27,7 +27,6 @@ const noPresentation = () => undefined;
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
-	refreshHistoryPage: (messageId: number) => Promise<void>;
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
@@ -44,12 +43,10 @@ type StoryMessageActionsOptions = {
  * read model only after the server applies the command, so a failed Swipe
  * never diverges the two state owners. This hook owns the server command,
  * and the runner owns revision acquisition, exception normalization, and
- * common reconciliation. The edit command keeps its operation-specific
- * history refresh for the edited Message without replacing the reading window.
+ * common reconciliation.
  */
 export function useStoryMessageActions({
 	signal,
-	refreshHistoryPage,
 	story,
 	conversation,
 	dispatchStory,
@@ -128,22 +125,24 @@ export function useStoryMessageActions({
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
-		if (story.preview !== null) return;
+		if (story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
-		if (storyMessage === undefined) return;
+		if (storyMessage === undefined) return false;
 		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
 		const conversationId = story.conversationId;
-		if (variantId === undefined || conversationId === null) return;
+		if (variantId === undefined || conversationId === null) return false;
 
-		await runConversationCommand(surface, {
+		let applied = false;
+		await runConversationCommand({ ...surface, revision: () => story.revision }, {
 			type: "edit-variant",
 			messageId,
 			variantId,
 			content,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => { void refreshHistoryPage(messageId); },
+			onApplied: () => { applied = true; },
 		});
+		return applied;
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {
@@ -156,11 +155,6 @@ export function useStoryMessageActions({
 			messageId,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: (applied) => dispatchStory({
-				type: "message-deleted",
-				messageId,
-				revision: applied.revision,
-			}),
 		});
 	};
 

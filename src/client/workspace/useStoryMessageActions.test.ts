@@ -147,7 +147,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 
 	let story: StoryState = reduceStory(
 		reduceStory(createStoryState(), { type: "chat-opened", conversationId: 1 }),
-		{ type: "first-page", page: firstPage(withLaterMessage) },
+		{ type: "window-received", page: firstPage(withLaterMessage) },
 	);
 	let conversation: ConversationSummary | null = summary(5);
 
@@ -165,7 +165,6 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const swipe = (messageId: number, direction: -1 | 1) =>
 		useStoryMessageActions({
 			signal: new AbortController().signal,
-			refreshHistoryPage: async () => {},
 			story,
 			conversation,
 			dispatchStory,

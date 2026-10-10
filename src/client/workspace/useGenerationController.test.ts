@@ -52,7 +52,7 @@ describe("Generation session wiring", () => {
 		let story = createStoryState();
 		story = reduceStory(story, { type: "chat-opened", conversationId: 42 });
 		story = reduceStory(story, {
-			type: "first-page",
+			type: "window-received",
 			page: {
 				conversationId: 42,
 				name: "Lantern House",

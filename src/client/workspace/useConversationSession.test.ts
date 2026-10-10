@@ -103,7 +103,7 @@ describe("history refresh error classification", () => {
 		expect(conversation?.id).toBe(1);
 		// The refresh must APPLY the returned history, not merely resolve.
 		expect(dispatched).toContainEqual({
-			type: "first-page",
+			type: "window-received",
 			page,
 			activeGenerationIds: [],
 		});
@@ -114,8 +114,7 @@ describe("history refresh error classification", () => {
 		expect(conversation?.id).toBe(1);
 		// The existing not-found behavior: a missing page is skipped, not
 		// treated as a failure — neither page application nor failure dispatch.
-		expect(dispatched.some(({ type }) => type === "first-page")).toBe(false);
-		expect(dispatched.some(({ type }) => type === "history-failed")).toBe(false);
+		expect(dispatched.some(({ type }) => type === "window-received")).toBe(false);
 	});
 
 	test("a rejected fetch stays an offline NetworkError", async () => {

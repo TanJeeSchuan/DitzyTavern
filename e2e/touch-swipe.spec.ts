@@ -4,6 +4,7 @@ import { test, expect, send, story } from "./fixtures";
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
 const drag = async (page: Page, on: Locator, fromX: number, toX: number, dy = 0) => {
+	await on.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
 	const box = await on.boundingBox();
 	if (box === null) throw new Error("drag target is not visible");
 	const y = box.y + box.height / 2;

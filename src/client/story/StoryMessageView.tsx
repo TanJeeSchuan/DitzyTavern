@@ -70,7 +70,7 @@ export function StoryMessageView({
 	// other mutation remains locked.
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
-	onEdit: (messageId: number, content: string) => void;
+	onEdit: (messageId: number, content: string) => Promise<boolean>;
 	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -99,18 +99,31 @@ export function StoryMessageView({
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
+	useEffect(() => setIsEditing(false), [active?.id]);
 	useEffect(() => {
-		if (active !== undefined) {
-			setEditText(active.content);
-			setIsEditing(false);
-		}
-	}, [active?.id, active?.content]);
+		if (active !== undefined && !isEditing) setEditText(active.content);
+	}, [active?.id, active?.content, isEditing]);
 
-	const saveEdit = () => {
+	const [editBase, setEditBase] = useState("");
+	const [changedElsewhere, setChangedElsewhere] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const openEditor = () => {
+		setEditBase(active?.content ?? "");
+		setChangedElsewhere(false);
+		setIsEditing(true);
+	};
+	const saveEdit = async () => {
 		const value = editText.trim();
 		if (!value || active === undefined) return;
-		onEdit(message.id, value);
-		setIsEditing(false);
+		if (active.content !== editBase) {
+			setEditBase(active.content);
+			setChangedElsewhere(true);
+			return;
+		}
+		setSaving(true);
+		const applied = await onEdit(message.id, value);
+		setSaving(false);
+		if (applied) setIsEditing(false);
 	};
 	const movePrevious = () => {
 		setSwipeDirection("previous");
@@ -233,12 +246,13 @@ export function StoryMessageView({
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<span>Edit Message</span>
-					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus />
+					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus disabled={saving} />
+					{changedElsewhere && <small className="field-error" role="alert">Changed elsewhere. Save again to overwrite.</small>}
 					<div>
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled}
+							disabled={mutationsDisabled || saving}
 							onClick={() => setIsEditing(false)}
 						>
 							Cancel
@@ -246,7 +260,7 @@ export function StoryMessageView({
 						<button
 							className="primary-button"
 							type="button"
-							disabled={mutationsDisabled}
+							disabled={mutationsDisabled || saving}
 							onClick={saveEdit}
 						>
 							Save
@@ -290,7 +304,7 @@ export function StoryMessageView({
 						className="edit-action"
 						type="button"
 						disabled={mutationsDisabled}
-						onClick={() => setIsEditing(true)}
+						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit
 					</button>
