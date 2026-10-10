@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase } from "../test-fixtures/conversation";
+import { openObservedDatabase, readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { startMemoryWorker } from "../memory";
 import { readConversationMemories } from "../memory/collections";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
@@ -60,23 +60,26 @@ describe("Memory source public contract", () => {
 		} finally { await stop(); }
 	});
 
-	test("remembers a source while the selected Prompt Preset's Memory block is disabled", async () => {
+	test("automatically remembers a new Message while the selected Prompt Preset's Memory block is disabled", async () => {
 		const conversation = createChat(database);
-		const preset = await readPreset(createConversationRoutes(database), conversation.id);
+		const routes = createConversationRoutes(database);
+		const preset = await readPreset(routes, conversation.id);
 		const memory = preset.slots.find((slot) => slot.reference === "memory");
 		if (!memory) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memory.id, false));
-		const messageId = insertMessage(database, conversation.id, 1);
-		const variantId = insertVariant(database, messageId, "Maren returned the key to Writer.", true);
-		const response = await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
+		const humanId = snapshot?.control.humanParticipantId;
+		if (!snapshot || humanId == null) throw new Error("Memory fixture has no Human Control.");
+		const created = await routes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: snapshot.revision, action: { type: "create-message", timestamp: "2026-09-23T00:00:00.000Z", variantContents: ["Maren returned the key to Writer."], authorParticipantId: humanId } }),
 		}));
-		expect(response.status).toBe(200);
+		expect(created.status).toBe(200);
+		expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "pending" }]);
 
 		const stop = startMemoryWorker(database, { process: async () => [] });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
-			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ messageId, variantId, status: "complete" }]);
 		} finally { await stop(); }
 	});
 
