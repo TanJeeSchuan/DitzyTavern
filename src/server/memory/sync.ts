@@ -9,7 +9,7 @@ import { invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail } fr
 import { sha256 } from "./hash";
 import { abortMemoryWork } from "./work";
 
-export function refreshMemoryForConversation(database: Database, conversationId: number, reason?: string): void {
+export function refreshMemoryForConversation(database: Database, conversationId: number, reason: string): void {
 	invalidateMemoryWorkForConversation(database, conversationId, reason);
 	queueMemoryTail(database, conversationId);
 }
@@ -40,5 +40,4 @@ export function syncMemorySources(database: Database, change: ConversationMemory
 			if (row.selected) queueMemorySource(database, change.conversationId, row.messageId);
 		}
 	}
-	if (change.promptPresetChanged) refreshMemoryForConversation(database, change.conversationId);
 }

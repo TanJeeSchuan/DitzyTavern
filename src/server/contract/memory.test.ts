@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase } from "../test-fixtures/conversation";
+import { openObservedDatabase, readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { startMemoryWorker } from "../memory";
 import { readConversationMemories } from "../memory/collections";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
@@ -57,6 +57,29 @@ describe("Memory source public contract", () => {
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
 			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ messageId, variantId, status: "complete", claims: [] }]);
+		} finally { await stop(); }
+	});
+
+	test("automatically remembers a new Message while the selected Prompt Preset's Memory block is disabled", async () => {
+		const conversation = createChat(database);
+		const routes = createConversationRoutes(database);
+		const preset = await readPreset(routes, conversation.id);
+		const memory = preset.slots.find((slot) => slot.reference === "memory");
+		if (!memory) throw new Error("The Default recipe has no Memory block.");
+		await readOperation(toggleBlock(database, preset.id, memory.id, false));
+		const snapshot = readTestConversationSnapshot(database, conversation.id);
+		const humanId = snapshot?.control.humanParticipantId;
+		if (!snapshot || humanId == null) throw new Error("Memory fixture has no Human Control.");
+		const created = await routes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: snapshot.revision, action: { type: "create-message", timestamp: "2026-09-23T00:00:00.000Z", variantContents: ["Maren returned the key to Writer."], authorParticipantId: humanId } }),
+		}));
+		expect(created.status).toBe(200);
+		expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "pending" }]);
+
+		const stop = startMemoryWorker(database, { process: async () => [] });
+		try {
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
 		} finally { await stop(); }
 	});
 
@@ -168,11 +191,9 @@ describe("Memory source public contract", () => {
 		const stop = startMemoryWorker(database, { process: async () => { if (++processCount === 1) { await waiting; return [{ claim: "Late pre-disable result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Source around a setting change." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } } }]; } return []; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
-			const preset = await readPreset(createConversationRoutes(database), conversation.id);
-			const memory = preset.slots.find((slot) => slot.reference === "memory");
-			if (!memory) throw new Error("The Default recipe has no Memory block.");
-			await readOperation(toggleBlock(database, preset.id, memory.id, false));
-			await readOperation(toggleBlock(database, preset.id, memory.id, true));
+			const settings = createMemorySettingsModule(database);
+			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: false });
+			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true });
 			release();
 			expect(await waitFor(() => processCount === 2 && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete")).toBe(true);
 			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "complete", claims: [] }]);

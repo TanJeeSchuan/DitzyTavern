@@ -1,12 +1,11 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationPromptPresetTable,
 	promptPresetBlockTable,
 	promptPresetTable,
 } from "../database/schema";
-import { queryBatches } from "../database/query-batches";
 import {
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
@@ -208,82 +207,6 @@ export const readPromptPresetRecipe = (
 	const db = connect(database);
 	return presetRecipeOf(readPromptPresetHeader(db, presetId), db);
 };
-
-/** @approved
- * The selected recipe per Conversation for a set of Conversations, read in
- * bounded batches: the set costs one selection read and one block read per
- * batch instead of one recipe read each. Conversations without a selection
- * are absent.
- */
-export const readConversationPromptPresetRecipes = (
-	database: Database,
-	conversationIds: readonly number[],
-): Map<number, PromptPresetRecipe> => {
-	const db = connect(database);
-	const recipes = new Map<number, PromptPresetRecipe>();
-	const selections = queryBatches([...new Set(conversationIds)]).flatMap((batch) => db
-		.select({
-			conversationId: conversationPromptPresetTable.conversation_id,
-			presetId: conversationPromptPresetTable.prompt_preset_id,
-		})
-		.from(conversationPromptPresetTable)
-		.where(inArray(conversationPromptPresetTable.conversation_id, batch))
-		.all());
-	if (selections.length === 0) return recipes;
-
-	const presetIds = [...new Set(selections.map((selection) => selection.presetId))];
-	const headers = new Map(
-		queryBatches(presetIds).flatMap((batch) => db
-			.select({ id: promptPresetTable.id, name: promptPresetTable.name })
-			.from(promptPresetTable)
-			.where(inArray(promptPresetTable.id, batch))
-			.all())
-			.map((header) => [header.id, header]),
-	);
-	const rowsByPreset = new Map<number, StoredPromptPresetBlock[]>();
-	for (const batch of queryBatches(presetIds)) {
-		// @approved
-		//  SAFETY: prompt_preset_block_shape_check enforces this discriminated
-		// row shape for every insert and update.
-		const rows = db
-			.select({
-				presetId: promptPresetBlockTable.preset_id,
-				...storedPromptPresetBlockSelection,
-			})
-			.from(promptPresetBlockTable)
-			.where(inArray(promptPresetBlockTable.preset_id, batch))
-			.orderBy(asc(promptPresetBlockTable.preset_id), asc(promptPresetBlockTable.position))
-			.all() as (StoredPromptPresetBlock & { presetId: number })[];
-		for (const { presetId, ...slot } of rows)
-			rowsByPreset.set(presetId, [
-				...(rowsByPreset.get(presetId) ?? []),
-				slot,
-			]);
-	}
-
-	for (const { conversationId, presetId } of selections) {
-		const header = headers.get(presetId);
-		if (header === undefined) continue;
-		recipes.set(conversationId, {
-			id: header.id,
-			name: header.name,
-			slots: toRecipeSlots(rowsByPreset.get(presetId) ?? []),
-		});
-	}
-	return recipes;
-};
-
-/** @approved
- * The recipe a Conversation assembles through. Undefined only when the
- * Conversation itself does not exist; a Conversation always has a selection.
- */
-export const readConversationPromptPresetRecipe = (
-	database: Database,
-	conversationId: number,
-): PromptPresetRecipe | undefined => readConversationPromptPresetRecipeFromConnection(
-	connect(database),
-	conversationId,
-);
 
 /** @approved Read the selected recipe through an existing coherent database view. */
 export const readConversationPromptPresetRecipeFromConnection = (

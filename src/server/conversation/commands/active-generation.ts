@@ -297,7 +297,6 @@ export function resolveConversationGeneration(
 			conversationId: input.conversationId,
 			touchedVariantIds: [active.variant_id],
 			removedVariantIds: [],
-			promptPresetChanged: false,
 		});
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
@@ -341,7 +340,6 @@ export const removeConversationGeneration = (
 			conversationId: input.conversationId,
 			touchedVariantIds: [],
 			removedVariantIds: [active.variant_id],
-			promptPresetChanged: false,
 		});
 		return advanceConversationRevision(db, input.conversationId);
 	});
@@ -566,12 +564,10 @@ export function stopConversationGeneration(
 			conversationId: input.conversationId,
 			touchedVariantIds: [active.variant_id],
 			removedVariantIds: [],
-			promptPresetChanged: false,
 		} : {
 			conversationId: input.conversationId,
 			touchedVariantIds: [],
 			removedVariantIds: [active.variant_id],
-			promptPresetChanged: false,
 		});
 		return advanceConversationRevision(
 			db,
@@ -618,7 +614,6 @@ export function stopConversationGenerations(
 			conversationId: input.conversationId,
 			touchedVariantIds,
 			removedVariantIds,
-			promptPresetChanged: false,
 		});
 		const snapshot = advanceConversationRevision(
 			db,

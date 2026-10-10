@@ -36,7 +36,6 @@ export function deleteConversation(database: Database, conversationId: number) {
 			conversationId,
 			touchedVariantIds: [],
 			removedVariantIds,
-			promptPresetChanged: false,
 		});
 	});
 }

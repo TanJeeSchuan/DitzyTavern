@@ -282,7 +282,6 @@ const tailHumanChange = (
 		.all()
 		.map(({ id }) => id),
 	removedVariantIds: [],
-	promptPresetChanged: false,
 });
 
 /** @approved

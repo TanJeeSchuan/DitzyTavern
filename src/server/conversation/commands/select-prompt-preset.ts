@@ -4,7 +4,6 @@ import {
 } from "../../prompt-preset";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // @approved
 //  One Conversation's authoritative selection of a shared Prompt
@@ -17,19 +16,9 @@ import type { ConversationMemoryChange } from "../../../shared/contract/conversa
 export const selectPromptPreset = (
 	db: ConversationDatabase,
 	input: { conversationId: number; promptPresetId: number },
-): ConversationMemoryChange | void => {
+): void => {
 	try {
 		selectConversationPromptPreset(db, input.conversationId, input.promptPresetId);
-		// @approved
-		//  The Memory context of the whole Chat changed with the selected
-		// Preset; the change record routes the refresh after the write instead
-		// of calling Memory from inside the deep module.
-		return {
-			conversationId: input.conversationId,
-			touchedVariantIds: [],
-			removedVariantIds: [],
-			promptPresetChanged: true,
-		};
 	} catch (error) {
 		if (error instanceof PromptPresetNotFoundError) {
 			throw new InvalidConversationCommandError(

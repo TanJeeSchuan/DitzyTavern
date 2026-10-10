@@ -14,7 +14,7 @@ import {
 	runMemoryIndexJob,
 	type MemoryEmbed,
 } from "./indexing";
-import { isMemoryEnabledForConversation } from "./settings";
+import { isMemoryEnabled } from "./settings";
 import {
 	memoryCandidates,
 	memoryTraceSteps,
@@ -141,8 +141,8 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 //  Queue one explicit replacement using only its selected Variant and four prior selected Messages.
 export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number): MemoryCollectionView {
 	return database.transaction(() => {
-		const enabled = isMemoryEnabledForConversation(database, conversationId);
-		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering a source.");
+		const enabled = isMemoryEnabled(database);
+		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory before remembering a source.");
 		if (isExcludedMemorySource(database, conversationId, messageId)) throw new InvalidMemorySourceError("This author's Messages are not Memory sources.");
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
@@ -165,7 +165,7 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 // @approved
 //  Queue selected source work from an authoritative write transaction.
 export function queueMemorySource(database: Database, conversationId: number, messageId: number, catchupRunId: number | null = null, knownCapture?: CapturedMemorySource): boolean {
-	if (!isMemoryEnabledForConversation(database, conversationId) || isExcludedMemorySource(database, conversationId, messageId)) return false;
+	if (!isMemoryEnabled(database) || isExcludedMemorySource(database, conversationId, messageId)) return false;
 	let source: CapturedMemorySource;
 	try { source = knownCapture ?? capture(database, conversationId, messageId); } catch { return false; }
 	const current = readCollection(database, source.source.variantId);
@@ -197,7 +197,7 @@ export function queueMemoryTail(database: Database, conversationId: number): boo
 // transaction so the path snapshot is consistent with the queued work.
 export function startMemoryCatchup(database: Database, conversationId: number, readSources: () => readonly CapturedMemoryMessage[] | undefined): MemoryCatchup {
 	return database.transaction(() => {
-		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering history.");
+		if (!isMemoryEnabled(database)) throw new InvalidMemorySourceError("Turn on Memory before remembering history.");
 		const sources = readSources();
 		if (!sources) throw new InvalidMemorySourceError("This Chat no longer exists.");
 		const run = connect(database)
@@ -282,7 +282,7 @@ interface MemoryCollectionSource {
 }
 
 const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
-	const enabled = isMemoryEnabledForConversation(database, conversationId);
+	const enabled = isMemoryEnabled(database);
 	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
 	return rows.flatMap(({ variant, collection }) => {
 		if (variant.authorParticipantId !== null && state.identities[variant.authorParticipantId]?.kind === "excluded") return [];
@@ -335,7 +335,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
 		const row = readCollection(database, variantId);
 		if (!row) throw new InvalidMemorySourceError("This source has no saved Memory collection to correct.");
-		const enabled = isMemoryEnabledForConversation(database, conversationId);
+		const enabled = isMemoryEnabled(database);
 		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		const claims = parseClaims(row.claims_json);
 		if (!claims) throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid.");
@@ -373,10 +373,10 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		const row = readCollection(database, variantId);
 		if (!variant || !row) throw new InvalidMemorySourceError("This source has no saved Memory collection to index.");
-		const enabled = isMemoryEnabledForConversation(database, conversationId);
+		const enabled = isMemoryEnabled(database);
 		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		if (row.status !== "complete") throw new InvalidMemorySourceError("Indexing requires a completed saved Memory collection.");
-		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
+		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory before indexing saved Memories.");
 		const updated = connect(database)
 			.update(memoryCollectionTable)
 			.set({ index_attempt_json: null, updated_at: new Date().toISOString() })
@@ -412,7 +412,7 @@ const ensureChatState = (database: Database, conversationId: number) => {
 };
 
 const memorySettingsView = (database: Database, conversationId: number, state: typeof conversationMemorySettingsTable.$inferSelect) => ({
-	revision: state.revision, allowance: state.allowance, note: state.memory_note, enabled: isMemoryEnabledForConversation(database, conversationId),
+	revision: state.revision, allowance: state.allowance, note: state.memory_note, enabled: isMemoryEnabled(database),
 });
 
 export function readMemoryAllowance(database: Database, conversationId: number) {

@@ -25,6 +25,5 @@ export function editVariant(
 		conversationId: input.conversationId,
 		touchedVariantIds: [input.variantId],
 		removedVariantIds: [],
-		promptPresetChanged: false,
 	};
 }
