@@ -133,7 +133,7 @@ export function useStoryMessageActions({
 		if (variantId === undefined || conversationId === null) return false;
 
 		let applied = false;
-		await runConversationCommand(surface, {
+		await runConversationCommand({ ...surface, revision: () => story.revision }, {
 			type: "edit-variant",
 			messageId,
 			variantId,
