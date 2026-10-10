@@ -125,13 +125,14 @@ export function useStoryMessageActions({
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
-		if (story.preview !== null) return;
+		if (story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
-		if (storyMessage === undefined) return;
+		if (storyMessage === undefined) return false;
 		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
 		const conversationId = story.conversationId;
-		if (variantId === undefined || conversationId === null) return;
+		if (variantId === undefined || conversationId === null) return false;
 
+		let applied = false;
 		await runConversationCommand(surface, {
 			type: "edit-variant",
 			messageId,
@@ -139,7 +140,9 @@ export function useStoryMessageActions({
 			content,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => { applied = true; },
 		});
+		return applied;
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {

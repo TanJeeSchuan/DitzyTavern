@@ -115,7 +115,7 @@ function Preview() {
 								continueLabel="Continue as Theodora Kline"
 								onContinue={() => {}}
 								onMoveSwipe={() => {}}
-								onEdit={() => {}}
+								onEdit={async () => false}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls
 										showStopAll={false}

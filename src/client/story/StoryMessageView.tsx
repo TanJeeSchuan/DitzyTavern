@@ -70,7 +70,7 @@ export function StoryMessageView({
 	// other mutation remains locked.
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
-	onEdit: (messageId: number, content: string) => void;
+	onEdit: (messageId: number, content: string) => Promise<boolean>;
 	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -104,11 +104,22 @@ export function StoryMessageView({
 		if (active !== undefined && !isEditing) setEditText(active.content);
 	}, [active?.id, active?.content, isEditing]);
 
-	const saveEdit = () => {
+	const [editBase, setEditBase] = useState("");
+	const [changedElsewhere, setChangedElsewhere] = useState(false);
+	const openEditor = () => {
+		setEditBase(active?.content ?? "");
+		setChangedElsewhere(false);
+		setIsEditing(true);
+	};
+	const saveEdit = async () => {
 		const value = editText.trim();
 		if (!value || active === undefined) return;
-		onEdit(message.id, value);
-		setIsEditing(false);
+		if (active.content !== editBase) {
+			setEditBase(active.content);
+			setChangedElsewhere(true);
+			return;
+		}
+		if (await onEdit(message.id, value)) setIsEditing(false);
 	};
 	const movePrevious = () => {
 		setSwipeDirection("previous");
@@ -232,6 +243,7 @@ export function StoryMessageView({
 				<div className="message-editor">
 					<span>Edit Message</span>
 					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus />
+					{changedElsewhere && <small className="field-error" role="alert">Changed elsewhere. Save again to overwrite.</small>}
 					<div>
 						<button
 							className="secondary-button"
@@ -288,7 +300,7 @@ export function StoryMessageView({
 						className="edit-action"
 						type="button"
 						disabled={mutationsDisabled}
-						onClick={() => setIsEditing(true)}
+						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit
 					</button>

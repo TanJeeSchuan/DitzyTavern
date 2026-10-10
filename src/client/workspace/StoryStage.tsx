@@ -185,7 +185,7 @@ export function StoryStage({
 								/>
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
-							onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
+							onEdit={storyActions.editStoryMessage}
 							onDelete={!assemblyActive && !generation.isGenerating
 								? (messageId) => void storyActions.deleteStoryMessage(messageId)
 								: undefined}
