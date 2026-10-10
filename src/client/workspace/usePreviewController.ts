@@ -9,6 +9,8 @@ import {
 } from "../story";
 
 type PreviewControllerOptions = {
+	// The Chat visit's signal: a confirmation settling after the writer left never touches a later visit.
+	signal: AbortSignal;
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
@@ -20,6 +22,7 @@ type PreviewControllerOptions = {
  * Requested selection; if the revision-guarded command does not apply, the server's selection shows again.
  */
 export function usePreviewController({
+	signal,
 	story,
 	conversation,
 	dispatchStory,
@@ -30,6 +33,7 @@ export function usePreviewController({
 		revision: () => conversation?.revision ?? story.revision,
 		onConversationChange: setConversation,
 		setNotice: () => undefined,
+		isCurrent: () => !signal.aborted,
 	};
 
 	const cancelPreview = () => dispatchStory({ type: "preview-cancelled" });
@@ -42,7 +46,7 @@ export function usePreviewController({
 		const applied = await runConversationCommand(surface, { type: "select-variant", messageId, variantId }, {
 			onApplied: () => dispatchStory({ type: "swipe-selected", messageId, variantId }),
 		});
-		if (!applied) dispatchStory({ type: "selection-dropped", messageId });
+		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId });
 	};
 
 	return { cancelPreview, confirmPreview };

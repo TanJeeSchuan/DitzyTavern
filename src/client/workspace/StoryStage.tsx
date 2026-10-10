@@ -145,10 +145,10 @@ export function StoryStage({
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
-								target.variantId === displayedVariantId(message, story.preview, story.requestedSelection)
+								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
 							)}
 							generationRequested={requested?.kind === "sibling" && requested.messageId === message.id}
-							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelection)}
+							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
 							mutationsDisabled={story.preview !== null}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}

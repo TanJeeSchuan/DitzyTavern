@@ -162,21 +162,23 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		events.push(`adopt:${value?.revision ?? "cleared"}`);
 	}) as Dispatch<SetStateAction<ConversationSummary | null>>;
 
-	const swipe = (messageId: number, direction: -1 | 1) =>
-		useStoryMessageActions({
-			signal: new AbortController().signal,
-			story,
-			conversation,
-			dispatchStory,
-			setConversation,
-			queueSwipeScroll: (target) => {
-				events.push(`scroll:${target}`);
-			},
-			canEnterPreview: true,
-			onEnterPreview: () => {
-				events.push("enter-preview");
-			},
-		}).changeSwipe(messageId, direction);
+	const visit = new AbortController();
+	const actions = () => useStoryMessageActions({
+		signal: visit.signal,
+		story,
+		conversation,
+		dispatchStory,
+		setConversation,
+		queueSwipeScroll: (target) => {
+			events.push(`scroll:${target}`);
+		},
+		canEnterPreview: true,
+		onEnterPreview: () => {
+			events.push("enter-preview");
+		},
+	});
+	const swipe = (messageId: number, direction: -1 | 1) => actions().changeSwipe(messageId, direction);
+	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content);
 
 	const activeVariantId = (): number | null => {
 		const message = story.messages.find((entry) => entry.id === 10);
@@ -186,7 +188,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	};
 	const shownVariantId = (): number | null => {
 		const message = story.messages.find((entry) => entry.id === 10);
-		return message === undefined ? null : displayedVariantId(message, story.preview, story.requestedSelection);
+		return message === undefined ? null : displayedVariantId(message, story.preview, story.requestedSelections);
 	};
 	const hold = () => {
 		const release = Promise.withResolvers<void>();
@@ -199,6 +201,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		commands,
 		fetches,
 		swipe,
+		edit,
 		activeVariantId,
 		shownVariantId,
 		hold,
@@ -222,7 +225,7 @@ describe("Requested selection", () => {
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
 		]);
 		expect(harness.activeVariantId()).toBe(101);
-		expect(harness.story().requestedSelection).toBeNull();
+		expect(harness.story().requestedSelections.size).toBe(0);
 		// No history read rides along: the Swipe applies from the already loaded Variants.
 		expect(harness.fetches).toEqual([
 			{ method: "POST", url: "http://localhost/api/conversations/1/commands" },
@@ -249,6 +252,21 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(103);
 	});
 
+	test("an edit made while a Swipe waits edits the Variant on screen", async () => {
+		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
+
+		const swiping = harness.swipe(10, 1);
+		const editing = harness.edit(10, "Second, revised");
+		release();
+		await Promise.all([swiping, editing]);
+
+		expect(harness.commands.map(({ action }) => [action.type, action.variantId])).toEqual([
+			["select-variant", 101],
+			["edit-variant", 101],
+		]);
+	});
+
 	test("a conflicted Swipe returns to the Variant the server kept", async () => {
 		const harness = createHarness({ kind: "conflict" });
 
@@ -256,7 +274,7 @@ describe("Requested selection", () => {
 
 		expect(harness.conversation()?.revision).toBe(5);
 		expect(harness.shownVariantId()).toBe(100);
-		expect(harness.story().requestedSelection).toBeNull();
+		expect(harness.story().requestedSelections.size).toBe(0);
 	});
 
 	test("every other refused or unreachable Swipe returns to the server's Variant", async () => {

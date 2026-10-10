@@ -96,6 +96,7 @@ export function ActiveWritingWorkspace({
 		if (assemblyActive) dispatchPanel({ type: "workspace-reset" });
 	}, [assemblyActive]);
 	const preview = usePreviewController({
+		signal: session.signal,
 		story,
 		conversation: session.conversation,
 		dispatchStory,

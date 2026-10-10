@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type Dispatch, type RefObject } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import {
 	previewConversationGeneration,
 	startConversationContinuationGeneration,
@@ -32,7 +32,7 @@ type AssemblyControllerOptions = {
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
 	draft: string;
-	setDraft: (draft: string) => void;
+	setDraft: Dispatch<SetStateAction<string>>;
 };
 
 type AssemblyRequest = { conversationId: number; request: GenerationPreviewBody };
@@ -138,7 +138,7 @@ export function useAssemblyController({
 		session.current.starting = false;
 		if (closeAssembly) setAssemblyRequest(null);
 		if (submission.clearDraft) setDraft("");
-		dispatchStory({ type: "generation-request-accepted", variantId: target.variantId });
+		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId });
 		void refreshStory(submission.conversationId, submission.signal).catch(() => null).then(() => {
 			if (!submission.signal.aborted) generationStart.accepted(submission.startId, target);
 		});
@@ -148,11 +148,12 @@ export function useAssemblyController({
 		mutationFn: issueGeneration,
 		onSuccess: (target, submission) => finishStart(submission, target, false),
 		onError: (error, submission) => {
+			const { restoreDraft } = submission;
+			if (restoreDraft !== undefined) setDraft((draft) => draft === "" ? restoreDraft : draft);
 			if (submission.signal.aborted) return;
 			session.current.starting = false;
 			generationStart.settle(submission.startId);
 			dispatchStory({ type: "generation-request-failed" });
-			if (submission.restoreDraft !== undefined) setDraft(submission.restoreDraft);
 			setDirectStartError(error.message);
 		},
 	});

@@ -5,6 +5,7 @@ import { type JsonData } from "json-edit-react";
 import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "../generation-settings-query";
 import type { ConnectionProfile } from "../connection-settings";
 import {
+	applyConversationCommand,
 	loadConversationGenerationSettings,
 	type ContinuationPrefillSuffix,
 	type ConversationGenerationSettings,
@@ -81,16 +82,17 @@ export interface SaveGenerationSettingsDraftOptions {
 export async function saveGenerationSettingsDraft(
 	options: SaveGenerationSettingsDraftOptions,
 ): Promise<boolean> {
-	options.signal?.throwIfAborted();
-	const base = await loadConversationGenerationSettings(options.conversation.id, options.signal);
-	options.signal?.throwIfAborted();
-	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return runConversationCommand(options.surface, {
-		type: "update-generation-settings",
-		settings: next,
+	// The base is read in the save's own queue turn, so a model selection queued ahead of it is never restored.
+	let next: ConversationGenerationSettings | undefined;
+	return runConversationCommand(options.surface, async (expectedRevision) => {
+		options.signal?.throwIfAborted();
+		const base = await loadConversationGenerationSettings(options.conversation.id, options.signal);
+		options.signal?.throwIfAborted();
+		next = applyDraftsToGenerationSettings(base, options.drafts);
+		return applyConversationCommand(options.conversation.id, expectedRevision, { type: "update-generation-settings", settings: next });
 	}, {
 		notices: SAVE_NOTICES,
-		onApplied: (conversation) => options.onApplied(next, conversation),
+		onApplied: (conversation) => { if (next !== undefined) options.onApplied(next, conversation); },
 		onConflict: options.onConflict,
 	});
 }

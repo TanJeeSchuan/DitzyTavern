@@ -7,7 +7,7 @@ import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
 	displayedVariantId,
-	type RequestedSelection,
+	shownVariant,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -28,8 +28,10 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-// Each Chat's latest-wins slot: whether a select-variant waits in the command queue, and the Variant it will send.
-const selections = new Map<number, { queued: boolean; requested: RequestedSelection | null }>();
+type RequestedSelection = { messageId: number; variantId: number };
+// Each Chat visit's latest-wins slot, keyed by the visit's signal: whether a select-variant waits in the command
+// queue, and the Variant it will send. A later visit never shares a slot with a command an earlier one queued.
+const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
@@ -67,8 +69,8 @@ export function useStoryMessageActions({
 		isCurrent: () => !signal.aborted,
 	};
 	const requestSelection = async (conversationId: number, requested: RequestedSelection) => {
-		const current = selections.get(conversationId) ?? { queued: false, requested: null };
-		selections.set(conversationId, current);
+		const current = selections.get(signal) ?? { queued: false, requested: null };
+		selections.set(signal, current);
 		current.requested = requested;
 		dispatchStory({ type: "selection-requested", ...requested });
 		if (current.queued) return;
@@ -93,7 +95,7 @@ export function useStoryMessageActions({
 		const preview = story.preview;
 		if (preview !== null && preview.messageId !== messageId) return;
 
-		const shownId = displayedVariantId(storyMessage, preview, story.requestedSelection);
+		const shownId = displayedVariantId(storyMessage, preview, story.requestedSelections);
 		const currentIndex = storyMessage.swipes.findIndex((variant) => variant.id === shownId);
 		if (currentIndex === -1) return;
 		const targetIndex = Math.min(
@@ -133,7 +135,7 @@ export function useStoryMessageActions({
 		if (story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return false;
-		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
+		const variantId = shownVariant(story, storyMessage)?.id;
 		const conversationId = story.conversationId;
 		if (variantId === undefined || conversationId === null) return false;
 

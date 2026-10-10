@@ -34,6 +34,7 @@ import {
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
+	shownVariant,
 	type StoryAction,
 	type StoryMessage,
 	type StoryState,
@@ -271,7 +272,7 @@ export function useGenerationController({
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
-		const content = latest?.swipes[latest.activeSwipe]?.content;
+		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
 		if (
 			latest?.id !== messageId ||
 			latest.authorParticipantId !== conversation.control.humanParticipantId ||
