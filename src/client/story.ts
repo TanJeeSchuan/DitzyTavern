@@ -99,7 +99,7 @@ export interface StoryState {
 	requestedSelections: ReadonlyMap<number, number>;
 	// A Generation start the server has not accepted yet, and once it has, its accepted target. A page placing the
 	// target's Variant, or authority showing the Generation ended, retires it.
-	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number } | null } | null;
+	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number; sentRevision: number } | null } | null;
 	// @approved
 	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
 	// Message it introduces, or after a jump to the latest Messages; they replay once their Variant arrives with
@@ -126,7 +126,7 @@ export type StoryAction =
 	| { type: "swipe-selected"; messageId: number; variantId: number }
 	| { type: "selection-dropped"; messageId: number }
 	| { type: "generation-requested"; request: RequestedGeneration }
-	| { type: "generation-request-accepted"; generationId: number; variantId: number }
+	| { type: "generation-request-accepted"; generationId: number; variantId: number; sentRevision: number }
 	| { type: "generation-request-failed" }
 	// @approved
 	//  One observation of an Active Generation's stream for the Provisional
@@ -345,7 +345,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				preview,
 				requestedGeneration: accepted !== null && (
 					action.page.messages.some((message) => message.variants.some((variant) => variant.id === accepted.variantId)) ||
-					(action.activeGenerationIds !== undefined && !activeGenerationIds.has(accepted.generationId))
+					(action.page.revision > accepted.sentRevision && action.activeGenerationIds !== undefined && !activeGenerationIds.has(accepted.generationId))
 				) ? null : state.requestedGeneration,
 				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
@@ -368,11 +368,10 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 		case "generation-request-accepted":
 			return state.requestedGeneration === null
 				? state
-				: { ...state, requestedGeneration: { ...state.requestedGeneration, accepted: { generationId: action.generationId, variantId: action.variantId } } };
+				: { ...state, requestedGeneration: { ...state.requestedGeneration, accepted: { generationId: action.generationId, variantId: action.variantId, sentRevision: action.sentRevision } } };
 		case "generation-request-failed":
 			return { ...state, requestedGeneration: null };
 		case "swipe-selected":
-			if (state.preview !== null) return state;
 			return {
 				...state,
 				requestedSelections: state.requestedSelections.get(action.messageId) === action.variantId

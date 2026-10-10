@@ -36,6 +36,8 @@ type AssemblyControllerOptions = {
 };
 
 type AssemblyRequest = { conversationId: number; request: GenerationPreviewBody };
+// The accepted target and the revision its start was sent on; acceptance always lands on a later one.
+type AcceptedStart = { target: GenerationAttemptTarget; sentRevision: number };
 
 type GenerationStartSubmission = {
 	signal: AbortSignal;
@@ -96,7 +98,7 @@ export function useAssemblyController({
 		refetchOnReconnect: false,
 	});
 
-	const startGeneration = async (submission: GenerationStartSubmission, previous: number | null): Promise<GenerationAttemptTarget> => {
+	const startGeneration = async (submission: GenerationStartSubmission, previous: number | null): Promise<AcceptedStart> => {
 		submission.signal.throwIfAborted();
 		const latest = await ensureLatest();
 		submission.signal.throwIfAborted();
@@ -109,7 +111,7 @@ export function useAssemblyController({
 				? await startConversationContinuationGeneration(submission.conversationId, revision, formatting, submission.preview, submission.signal)
 				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal);
 		submission.signal.throwIfAborted();
-		if (outcome.outcome === "available") return outcome.value;
+		if (outcome.outcome === "available") return { target: outcome.value, sentRevision: revision };
 		throw new Error(outcome.outcome === "not-found"
 			? "The Conversation no longer exists."
 			: outcome.outcome === "network"
@@ -117,8 +119,8 @@ export function useAssemblyController({
 				: outcome.reason);
 	};
 	// A start waits its turn behind the Conversation commands already queued, so it builds on what they changed.
-	const issueGeneration = async (submission: GenerationStartSubmission): Promise<GenerationAttemptTarget> => {
-		const started = Promise.withResolvers<GenerationAttemptTarget>();
+	const issueGeneration = async (submission: GenerationStartSubmission): Promise<AcceptedStart> => {
+		const started = Promise.withResolvers<AcceptedStart>();
 		const settled = await queueConversationCommand(submission.conversationId, async (previous) => {
 			const attempt = startGeneration(submission, previous);
 			attempt.then(started.resolve, started.reject);
@@ -133,12 +135,12 @@ export function useAssemblyController({
 	//  Acceptance and a direct start settle through the same completion: the
 	//  accepted target is only reported to the session machine while the Chat
 	//  that started it is still active, and the story refresh never blocks it.
-	const finishStart = (submission: GenerationStartSubmission, target: GenerationAttemptTarget, closeAssembly: boolean) => {
+	const finishStart = (submission: GenerationStartSubmission, { target, sentRevision }: AcceptedStart, closeAssembly: boolean) => {
 		if (submission.signal.aborted) return;
 		session.current.starting = false;
 		if (closeAssembly) setAssemblyRequest(null);
 		if (submission.clearDraft) setDraft("");
-		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId });
+		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
 		void refreshStory(submission.conversationId, submission.signal).catch(() => null).then(() => {
 			if (!submission.signal.aborted) generationStart.accepted(submission.startId, target);
 		});

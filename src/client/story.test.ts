@@ -316,12 +316,6 @@ describe("story reading state", () => {
 		// starts Preview mode, so this lookup is defined here.
 		expect(isPreviewDownstream(previewing.messages[1] as StoryMessage, previewing.preview)).toBe(true);
 		expect(classifyVariantSelection(previewing, 1, 10)).toEqual({ kind: "blocked" });
-		const attemptedSelection = reduceStory(previewing, {
-			type: "swipe-selected",
-			messageId: 1,
-			variantId: 10,
-		});
-		expect(attemptedSelection.messages[0]?.activeSwipe).toBe(0);
 	});
 
 	test("the previewed Message's Variants can be switched freely while Preview stays local", () => {
@@ -452,6 +446,21 @@ describe("story reading state", () => {
 		const confirmFirst = reduceStory(reduceStory(state, { type: "preview-started", messageId: 1, variantId: 11 }), { type: "preview-confirmed" });
 		const confirmBoth = reduceStory(reduceStory(confirmFirst, { type: "preview-started", messageId: 2, variantId: 21 }), { type: "preview-confirmed" });
 		expect([...confirmBoth.requestedSelections]).toEqual([[1, 11], [2, 21]]);
+	});
+
+	test("a confirmation that applies while another Message is previewed settles its Message", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
+		};
+		const confirmed = reduceStory(reduceStory(state, { type: "preview-started", messageId: 1, variantId: 11 }), { type: "preview-confirmed" });
+		const previewingOther = reduceStory(confirmed, { type: "preview-started", messageId: 2, variantId: 21 });
+		const applied = reduceStory(previewingOther, { type: "swipe-selected", messageId: 1, variantId: 11 });
+		expect(applied.requestedSelections.size).toBe(0);
+		expect(applied.messages[0]?.activeSwipe).toBe(1);
+		expect(applied.preview?.messageId).toBe(2);
 	});
 
 	test("confirmation makes the previewed Variant authoritative and leaves later Messages intact", () => {
@@ -774,9 +783,9 @@ describe("Requested Send", () => {
 
 	test("stays until a page places its accepted Provisional Variant", () => {
 		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "send", content: "Twice" } });
-		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201 });
+		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201, sentRevision: 3 });
 		const stale = reduceStory(accepted, { type: "window-received", page: page({ revision: 4, messages: [message()] }) });
-		expect(stale.requestedGeneration).toEqual({ request: { kind: "send", content: "Twice" }, accepted: { generationId: 9, variantId: 201 } });
+		expect(stale.requestedGeneration).toEqual({ request: { kind: "send", content: "Twice" }, accepted: { generationId: 9, variantId: 201, sentRevision: 3 } });
 
 		const placed = reduceStory(stale, { type: "window-received", page: page({ revision: 5, messages: [
 			message(),
@@ -787,8 +796,10 @@ describe("Requested Send", () => {
 
 	test("retires once authority shows its accepted Generation ended without placing a Variant", () => {
 		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "send", content: "Twice" } });
-		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201 });
-		const running = reduceStory(accepted, { type: "window-received", page: page({ revision: 4, messages: [message()] }), activeGenerationIds: [9] });
+		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 201, sentRevision: 3 });
+		const sentBefore = reduceStory(accepted, { type: "window-received", page: page({ revision: 3, messages: [message()] }), activeGenerationIds: [] });
+		expect(sentBefore.requestedGeneration).not.toBeNull();
+		const running = reduceStory(sentBefore, { type: "window-received", page: page({ revision: 4, messages: [message()] }), activeGenerationIds: [9] });
 		expect(running.requestedGeneration).not.toBeNull();
 		const ended = reduceStory(running, { type: "window-received", page: page({ revision: 5, messages: [message()] }), activeGenerationIds: [] });
 		expect(ended.requestedGeneration).toBeNull();
