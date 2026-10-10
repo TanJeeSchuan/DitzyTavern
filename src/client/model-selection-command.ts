@@ -29,7 +29,7 @@ export interface CommitConversationModelOptions {
 //  Generation Settings inside the command transaction. The selector owns no
 //  settings snapshot, so it structurally cannot restore another editor's
 //  fields the way a second full-object writer could.
-export function commitConversationModel(options: CommitConversationModelOptions): Promise<void> {
+export function commitConversationModel(options: CommitConversationModelOptions): Promise<boolean> {
 	return runConversationCommand(options.surface, {
 		type: "set-generation-model",
 		connectionProfileId: options.connectionProfileId,

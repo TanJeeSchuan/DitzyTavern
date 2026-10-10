@@ -11,19 +11,16 @@ Object.defineProperty(globalThis, "window", {
 	value: { location: { origin: "http://localhost" } } as Window,
 });
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
-const { createStoryState, reduceStory } = await import("../story");
+const { createStoryState, displayedVariantId, reduceStory } = await import("../story");
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-// The failed-optimistic-Swipe divergence regression: the story read model and
-// the Conversation snapshot are two state owners, and a failed or conflicted
-// select-variant command must leave them consistent. The seam under test is
-// the hook's changeSwipe against a fake Conversation command transport plus
-// the real story reducer, wired per call exactly like the workspace does per
-// render. The applied and Preview tests guard the success path: the Swipe
-// still applies from the already loaded Variants with no extra read.
+// A Swipe on the final Message shows its Variant at once as a Requested selection; the persisted selection
+// moves only when select-variant applies, and a refused command returns the view to the server's Variant.
+// The seam under test is the hook's changeSwipe against a fake Conversation command transport plus the real
+// story reducer, wired per call exactly like the workspace does per render.
 
 const summary = (revision: number): ConversationSummary => ({
 	authorNote: "",
@@ -70,6 +67,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 			{ id: 100, position: 1, content: "First", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 			{ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false },
 			{ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false },
+			{ id: 103, position: 4, content: "Fourth", timestamp: "2026-01-01T00:00:03.000Z", selected: false },
 		],
 	}, ...(withLaterMessage ? [{
 		id: 11,
@@ -109,12 +107,14 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const commands: RecordedCommand[] = [];
 	const fetches: { method: string; url: string }[] = [];
 	let revision = 5;
+	let gate: Promise<void> = Promise.resolve();
 
 	const handler: FetchHandler = async (input, init) => {
 		const url = String(input instanceof Request ? input.url : input);
 		const method = init?.method ?? "GET";
 		fetches.push({ method, url });
 		if (method === "POST" && url.endsWith("/api/conversations/1/commands")) {
+			await gate;
 			if (mode.kind === "network") throw new TypeError("fetch failed");
 			if (mode.kind === "outcome") {
 				return Response.json(mode.payload, { status: mode.status });
@@ -172,9 +172,6 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 			queueSwipeScroll: (target) => {
 				events.push(`scroll:${target}`);
 			},
-			clearPreviewError: () => {
-				events.push("preview-error-cleared");
-			},
 			canEnterPreview: true,
 			onEnterPreview: () => {
 				events.push("enter-preview");
@@ -183,9 +180,18 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 
 	const activeVariantId = (): number | null => {
 		const message = story.messages.find((entry) => entry.id === 10);
-		// SAFETY: the fixture above gave the Message exactly the three Variants
+		// SAFETY: the fixture above gave the Message exactly the four Variants
 		// every assertion in this file reads between.
 		return message?.swipes[message.activeSwipe]?.id ?? null;
+	};
+	const shownVariantId = (): number | null => {
+		const message = story.messages.find((entry) => entry.id === 10);
+		return message === undefined ? null : displayedVariantId(message, story.preview, story.requestedSelection);
+	};
+	const hold = () => {
+		const release = Promise.withResolvers<void>();
+		gate = release.promise;
+		return release.resolve;
 	};
 
 	return {
@@ -194,100 +200,82 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		fetches,
 		swipe,
 		activeVariantId,
+		shownVariantId,
+		hold,
 		story: () => story,
 		conversation: () => conversation,
 	};
 }
 
-describe("optimistic Swipe reconciliation", () => {
-	test("a conflicted Swipe never moves the story selection", async () => {
-		const harness = createHarness({ kind: "conflict" });
-
-		await harness.swipe(10, 1);
-
-		// The command reached the server, and the canonical conflict reload
-		// adopted the current Conversation; the server kept Variant 100.
-		expect(harness.commands).toEqual([
-			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
-		]);
-		expect(harness.conversation()?.revision).toBe(5);
-		// The story read model stays exactly where the Conversation is: the
-		// selection never moved because the command never applied.
-		expect(harness.activeVariantId()).toBe(100);
-	});
-
-	test("an unreachable server never moves the story selection", async () => {
-		const harness = createHarness({ kind: "network" });
-
-		await harness.swipe(10, 1);
-
-		expect(harness.activeVariantId()).toBe(100);
-	});
-
-	test("every other non-applied outcome leaves the story selection unmoved", async () => {
-		// The remaining typed command failures — with the server statuses the
-		// command route returns — never carry an applied selection, so the story
-		// read model must stay exactly as the Conversation state is.
-		const outcomes: {
-			status: number;
-			payload: FailureOutcomePayload;
-		}[] = [
-			{ status: 404, payload: { outcome: "not-found" } },
-			{ status: 422, payload: { outcome: "invalid", reason: "Unknown Variant." } },
-			{
-				status: 409,
-				payload: { outcome: "not-playable", reason: "The Conversation is not playable." },
-			},
-			{
-				status: 409,
-				payload: { outcome: "not-removable", reason: "This Variant is removable only through Remove." },
-			},
-		];
-		for (const outcome of outcomes) {
-			const harness = createHarness({ kind: "outcome", ...outcome });
-
-			await harness.swipe(10, 1);
-
-			expect(harness.activeVariantId()).toBe(100);
-			expect(harness.events).not.toContain("action:swipe-selected");
-		}
-	});
-
-	test("an applied Swipe moves the story only after the command succeeds", async () => {
+describe("Requested selection", () => {
+	test("a Swipe shows its Variant at once and persists it when the command applies", async () => {
 		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
 
-		await harness.swipe(10, 1);
+		const swiping = harness.swipe(10, 1);
 
+		expect(harness.shownVariantId()).toBe(101);
+		expect(harness.activeVariantId()).toBe(100);
+		release();
+		await swiping;
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
 		]);
-		// Update-after-success: the story update follows the send and the
-		// applied snapshot adoption, never precedes them.
-		expect(harness.events.indexOf("send:5")).toBeLessThan(
-			harness.events.indexOf("action:swipe-selected"),
-		);
-		expect(harness.events).toContain("adopt:6");
 		expect(harness.activeVariantId()).toBe(101);
-		// No history read rides along: the Swipe applies from the already
-		// loaded Variants, so the success path cannot flicker (DESIGN.md).
+		expect(harness.story().requestedSelection).toBeNull();
+		// No history read rides along: the Swipe applies from the already loaded Variants.
 		expect(harness.fetches).toEqual([
 			{ method: "POST", url: "http://localhost/api/conversations/1/commands" },
 		]);
 	});
 
-	test("the next Swipe commands the revision adopted from the previous application", async () => {
+	test("rapid Swipes send only the latest Variant, on the revision the first one produced", async () => {
 		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
 
-		await harness.swipe(10, 1);
-		await harness.swipe(10, 1);
+		const first = harness.swipe(10, 1);
+		await Bun.sleep(0);
+		expect(harness.fetches).toHaveLength(1);
+		const swipes = [first, harness.swipe(10, 1), harness.swipe(10, 1)];
 
-		// The selection walks 100 → 101 → 102 across two applied commands, the
-		// second based on the revision the first application adopted.
+		expect(harness.shownVariantId()).toBe(103);
+		release();
+		await Promise.all(swipes);
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
-			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 102 } },
+			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 103 } },
 		]);
-		expect(harness.activeVariantId()).toBe(102);
+		expect(harness.activeVariantId()).toBe(103);
+		expect(harness.shownVariantId()).toBe(103);
+	});
+
+	test("a conflicted Swipe returns to the Variant the server kept", async () => {
+		const harness = createHarness({ kind: "conflict" });
+
+		await harness.swipe(10, 1);
+
+		expect(harness.conversation()?.revision).toBe(5);
+		expect(harness.shownVariantId()).toBe(100);
+		expect(harness.story().requestedSelection).toBeNull();
+	});
+
+	test("every other refused or unreachable Swipe returns to the server's Variant", async () => {
+		const modes: CommandMode[] = [
+			{ kind: "network" },
+			{ kind: "outcome", status: 404, payload: { outcome: "not-found" } },
+			{ kind: "outcome", status: 422, payload: { outcome: "invalid", reason: "Unknown Variant." } },
+			{ kind: "outcome", status: 409, payload: { outcome: "not-playable", reason: "The Conversation is not playable." } },
+			{ kind: "outcome", status: 409, payload: { outcome: "not-removable", reason: "This Variant is removable only through Remove." } },
+		];
+		for (const mode of modes) {
+			const harness = createHarness(mode);
+
+			await harness.swipe(10, 1);
+
+			expect(harness.shownVariantId()).toBe(100);
+			expect(harness.activeVariantId()).toBe(100);
+			expect(harness.events).not.toContain("action:swipe-selected");
+		}
 	});
 
 	test("a Swipe with later Messages previews locally without a command", async () => {

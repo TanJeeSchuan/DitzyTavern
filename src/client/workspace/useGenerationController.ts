@@ -188,7 +188,9 @@ export function useGenerationController({
 				runner.dispatch({ type: "generation-accepted", target });
 			},
 		},
-		clearDraft: () => setDraft(""),
+		dispatchStory,
+		draft,
+		setDraft,
 	});
 	const {
 		assembly,

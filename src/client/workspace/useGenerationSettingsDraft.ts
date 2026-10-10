@@ -80,7 +80,7 @@ export interface SaveGenerationSettingsDraftOptions {
 // draft is preserved for comparison or retry.
 export async function saveGenerationSettingsDraft(
 	options: SaveGenerationSettingsDraftOptions,
-): Promise<void> {
+): Promise<boolean> {
 	options.signal?.throwIfAborted();
 	const base = await loadConversationGenerationSettings(options.conversation.id, options.signal);
 	options.signal?.throwIfAborted();

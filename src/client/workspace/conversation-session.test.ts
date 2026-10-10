@@ -44,7 +44,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const commands = useStoryMessageActions({
 			signal: session.signal,
 			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
-			queueSwipeScroll() {}, clearPreviewError() {}, canEnterPreview: true, onEnterPreview() {},
+			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview() {},
 		});
 		return { ...session, ...commands, story };
 	}, client, strict);
@@ -92,7 +92,7 @@ for (const transition of ["unmount", "A to B to A"] as const) test(`a command se
 		return init?.method === "POST" ? late.promise : Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(id) : summary(id)));
 	});
 	const adopted = h.hook.current.setConversation;
-	let command: Promise<void> = Promise.resolve();
+	let command: Promise<boolean> = Promise.resolve(true);
 	await h.hook.act(async () => {
 		command = runConversationCommand({ conversationId: 1, revision: () => 5, onConversationChange: adopted, setNotice() {} }, { type: "rename-conversation", name: "Late" });
 	});

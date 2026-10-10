@@ -131,7 +131,6 @@ export function ActiveWritingWorkspace({
 	};
 
 	const selectChat = (chatId: string) => {
-		if (preview.previewPending) return;
 		// @approved
 		//  Workspace chat ids are wire strings; the story read model speaks
 		// numeric Conversation ids, so the coercion happens at this boundary.
@@ -145,7 +144,6 @@ export function ActiveWritingWorkspace({
 		) return;
 
 		dispatchStory({ type: "preview-cancelled" });
-		preview.clearPreviewError();
 		if (chatId !== session.activeChatId) generation.conversationSwitched();
 		session.selectChat(chatId);
 		dispatchPanel({ type: "workspace-reset" });

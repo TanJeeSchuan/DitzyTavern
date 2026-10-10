@@ -34,6 +34,7 @@ export function StoryMessageView({
 	displayedVariantId,
 	mutationsDisabled = false,
 	generationActive = false,
+	generationRequested = false,
 	previewDownstream = false,
 	previewTarget = false,
 	portrait,
@@ -53,12 +54,13 @@ export function StoryMessageView({
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
-	// @approved
-	//  Preview mode supplies a local Variant id for its one target Message.
-	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
+	// The Variant to show when it differs from the persisted selection: a Preview's or a Requested selection's.
+	// Persisted activeSwipe remains untouched until the server applies the selection.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
 	generationActive?: boolean;
+	// A Sibling Generation for this Message waits for the server to accept it.
+	generationRequested?: boolean;
 	// @approved
 	//  Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
@@ -165,7 +167,7 @@ export function StoryMessageView({
 			tabIndex={0}
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}
-			data-previewing={displayedVariantId !== undefined}
+			data-previewing={previewTarget}
 			data-preview-downstream={previewDownstream}
 			inert={previewDownstream || undefined}
 			data-selected={advancedActionsSelected}
@@ -193,7 +195,7 @@ export function StoryMessageView({
 				<Portrait name={authorName} portrait={portrait} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
-					{generationActive && <GenerationSphere authorName={authorName} />}
+					{(generationActive || generationRequested) && <GenerationSphere authorName={authorName} />}
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}

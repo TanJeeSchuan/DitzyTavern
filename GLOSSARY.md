@@ -157,6 +157,14 @@ _Avoid_: serialized prompt, provider request
 A temporary view of a different Variant on a Message that has later Messages. It does not change the Selected narrative path unless the user confirms it. Switching the final Message's Variant applies immediately.
 _Avoid_: pending selection, draft branch
 
+**Requested selection**:
+A Variant the writer has selected, by Swiping the final Message or by Confirm Change, shown before the server has applied it. If the server does not apply it, the view returns to the server-selected Variant.
+_Avoid_: pending selection, optimistic selection, unconfirmed selection
+
+**Requested Send**:
+A Send the writer has submitted that the server has not yet accepted, shown as the writer's Message with a reply in progress. If the server does not accept it, the Message disappears and its text returns to the composer.
+_Avoid_: optimistic message, pending message, unsent message
+
 **Confirm Change**:
 The action that makes a previewed Variant part of the Selected narrative path. Messages after the changed Variant remain unchanged.
 _Avoid_: apply preview, commit branch

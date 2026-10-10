@@ -67,11 +67,15 @@ export interface StoryPreviewState {
 	priorVariantId: number | null;
 }
 
-export interface PreviewSelectionRequest {
-	conversationId: number;
+export interface RequestedSelection {
 	messageId: number;
 	variantId: number;
 }
+
+export type RequestedGeneration =
+	| { kind: "send"; content: string }
+	| { kind: "continuation" }
+	| { kind: "sibling"; messageId: number };
 
 export interface StoryPaging {
 	index: number;
@@ -96,6 +100,11 @@ export interface StoryState {
 	page: StoryPaging | null;
 	status: "idle" | "loading-first" | "loading-more" | "ready" | "error";
 	preview: StoryPreviewState | null;
+	// A Requested selection: shown in place of the persisted selected Variant until its command settles.
+	requestedSelection: RequestedSelection | null;
+	// A Generation start the server has not accepted yet, and once it has, the Provisional Variant whose
+	// arrival in a page retires it.
+	requestedGeneration: { request: RequestedGeneration; variantId: number | null } | null;
 	// @approved
 	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
 	// Message it introduces, or after a jump to the latest Messages; they replay once their Variant arrives with
@@ -117,11 +126,13 @@ export type StoryAction =
 	| { type: "load-more-started" }
 	| { type: "paging-cancelled" }
 	| { type: "history-failed" }
-	// @approved
-	//  An optimistic selected-Variant update following the revisioned
-	// select-variant command; the server response is authoritative but the
-	// local position updates immediately so reading never waits.
+	| { type: "selection-requested"; messageId: number; variantId: number }
+	// The select-variant command applied: the persisted selection moves and a matching Requested selection retires.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
+	| { type: "selection-dropped"; messageId: number }
+	| { type: "generation-requested"; request: RequestedGeneration }
+	| { type: "generation-request-accepted"; variantId: number }
+	| { type: "generation-request-failed" }
 	// @approved
 	//  One observation of an Active Generation's stream for the Provisional
 	// Variant. An authoritative snapshot replaces both accumulated fields
@@ -164,6 +175,8 @@ export const createStoryState = (): StoryState => ({
 	page: null,
 	status: "idle",
 	preview: null,
+	requestedSelection: null,
+	requestedGeneration: null,
 	unplacedObservations: [],
 });
 
@@ -317,6 +330,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 		case "window-received":
 			if (state.conversationId !== action.page.conversationId || action.page.revision < (state.revision ?? 0)) return state;
 			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
+			const acceptedVariantId = state.requestedGeneration?.variantId ?? null;
 			const previewed = action.page.messages.find((message) => message.id === state.preview?.messageId);
 			const selectedId = previewed?.variants.find((variant) => variant.selected)?.id ?? null;
 			const preview = state.preview !== null && selectedId !== state.preview.variantId && previewed?.variants.some((variant) => variant.id === state.preview?.variantId)
@@ -334,6 +348,9 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				page: action.page.page,
 				status: "ready",
 				preview,
+				requestedGeneration: action.page.messages.some((message) => message.variants.some((variant) => variant.id === acceptedVariantId))
+					? null
+					: state.requestedGeneration,
 				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
 		case "load-more-started":
@@ -344,10 +361,25 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 			return state.status === "loading-more" ? { ...state, status: "ready" } : state;
 		case "history-failed":
 			return { ...state, status: "error" };
+		case "selection-requested":
+			return state.messages.some((message) => message.id === action.messageId && message.swipes.some((variant) => variant.id === action.variantId))
+				? { ...state, requestedSelection: { messageId: action.messageId, variantId: action.variantId } }
+				: state;
+		case "selection-dropped":
+			return state.requestedSelection?.messageId === action.messageId ? { ...state, requestedSelection: null } : state;
+		case "generation-requested":
+			return { ...state, requestedGeneration: { request: action.request, variantId: null } };
+		case "generation-request-accepted":
+			return state.requestedGeneration === null ? state : { ...state, requestedGeneration: { ...state.requestedGeneration, variantId: action.variantId } };
+		case "generation-request-failed":
+			return { ...state, requestedGeneration: null };
 		case "swipe-selected":
 			if (state.preview !== null) return state;
 			return {
 				...state,
+				requestedSelection: state.requestedSelection?.messageId === action.messageId && state.requestedSelection.variantId === action.variantId
+					? null
+					: state.requestedSelection,
 				messages: state.messages.map((message) => {
 					if (message.id !== action.messageId) return message;
 					const index = message.swipes.findIndex(
@@ -429,24 +461,10 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 		}
 		case "preview-cancelled":
 			return state.preview === null ? state : { ...state, preview: null };
-		case "preview-confirmed": {
-			if (state.preview === null) return state;
-			const preview = state.preview;
-			const message = state.messages.find((entry) => entry.id === preview.messageId);
-			const activeSwipe = message?.swipes.findIndex(
-				(variant) => variant.id === preview.variantId,
-			);
-			if (message === undefined || activeSwipe === undefined || activeSwipe < 0) {
-				return state;
-			}
-			return {
-				...state,
-				preview: null,
-				messages: state.messages.map((entry) =>
-					entry.id === message.id ? { ...entry, activeSwipe } : entry,
-				),
-			};
-		}
+		case "preview-confirmed":
+			return state.preview === null
+				? state
+				: { ...state, preview: null, requestedSelection: { messageId: state.preview.messageId, variantId: state.preview.variantId } };
 	}
 }
 
@@ -480,21 +498,27 @@ export const classifyVariantSelection = (
 	if (message === undefined) return { kind: "blocked" };
 	const target = message.swipes.find((variant) => variant.id === variantId);
 	if (target === undefined) return { kind: "blocked" };
-	if (message.swipes[message.activeSwipe]?.id === target.id) return { kind: "noop" };
-	return state.page?.hasNewer || state.messages.some((later) => later.position > message.position)
-		? { kind: "preview", messageId, variantId }
-		: { kind: "immediate", messageId, variantId };
+	if (displayedVariantId(message, null, state.requestedSelection) === target.id) return { kind: "noop" };
+	if (!state.page?.hasNewer && !state.messages.some((later) => later.position > message.position)) return { kind: "immediate", messageId, variantId };
+	return state.requestedSelection?.messageId === messageId ? { kind: "blocked" } : { kind: "preview", messageId, variantId };
 };
 
-// @approved
-//  The visible Variant is local-only while Preview mode is active. The stored
-// selected Variant remains untouched until the ordinary command is confirmed.
+// The visible Variant: the Preview's while Preview mode targets the Message, else a Requested selection's,
+// else the persisted selection.
 export const displayedVariantId = (
 	message: StoryMessage,
 	preview: StoryPreviewState | null,
+	requested: RequestedSelection | null = null,
 ): number | null => {
 	if (preview?.messageId === message.id) return preview.variantId;
+	if (requested?.messageId === message.id) return requested.variantId;
 	return message.swipes[message.activeSwipe]?.id ?? null;
+};
+
+// Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text reuses it.
+export const reusesTrailingHumanMessage = (state: StoryState, humanParticipantId: number | null, content: string): boolean => {
+	const latest = state.page?.hasNewer ? undefined : state.messages.at(-1);
+	return latest !== undefined && humanParticipantId !== null && latest.authorParticipantId === humanParticipantId && latest.swipes[latest.activeSwipe]?.content === content;
 };
 
 export const isPreviewDownstream = (
@@ -514,27 +538,3 @@ export const previewNavigationNeedsConfirmation = (
 	nextConversationId: number,
 ): boolean =>
 	preview !== null && currentConversationId !== nextConversationId;
-
-export type PreviewConfirmationResult<Result> =
-	| { status: "not-sent" }
-	| { status: "sent"; result: Result };
-
-// @approved
-//  A transport boundary for confirmation: no request is sent without the
-// matching client preview. The revision guard and outcome reconciliation
-// live in the Conversation command runner the caller composes into `send`;
-// the concrete Conversation transport stays outside the pure story reducer.
-export async function confirmPreviewSelection<Result>(
-	preview: StoryPreviewState | null,
-	request: PreviewSelectionRequest,
-	send: (request: PreviewSelectionRequest) => Promise<Result>,
-): Promise<PreviewConfirmationResult<Result>> {
-	if (
-		preview === null ||
-		preview.messageId !== request.messageId ||
-		preview.variantId !== request.variantId
-	) {
-		return { status: "not-sent" };
-	}
-	return { status: "sent", result: await send(request) };
-}
