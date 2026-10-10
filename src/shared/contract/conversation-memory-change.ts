@@ -16,6 +16,4 @@ export interface ConversationMemoryChange {
 	readonly touchedVariantIds: readonly number[];
 	/** Variant rows deleted by this write; Memory abandons their in-flight work. */
 	readonly removedVariantIds: readonly number[];
-	/** True when the write replaced the selected Prompt Preset and Memory's whole per-Chat context changed. */
-	readonly promptPresetChanged: boolean;
 }

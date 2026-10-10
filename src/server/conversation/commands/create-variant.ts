@@ -22,6 +22,5 @@ export function createVariant(
 		conversationId: input.conversationId,
 		touchedVariantIds: [variantId],
 		removedVariantIds: [],
-		promptPresetChanged: false,
 	};
 }

@@ -2,12 +2,10 @@ import type { Database } from "bun:sqlite";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { memoryCollectionTable } from "../database/schema";
-import { isMemoryEnabledForConversation } from "./settings";
+import { isMemoryEnabled } from "./settings";
 import { abortMemoryWork } from "./work";
 
-const presetChanged = "The selected Prompt Preset changed. Reset and re-extract this source to try again.";
-
-export function invalidateMemoryWorkForConversation(database: Database, conversationId: number, reason = presetChanged) {
+export function invalidateMemoryWorkForConversation(database: Database, conversationId: number, reason: string) {
 	const db = drizzle(database);
 	const superseded = db
 		.update(memoryCollectionTable)
@@ -25,7 +23,7 @@ export function invalidateMemoryWorkForConversation(database: Database, conversa
 		.returning({ id: memoryCollectionTable.variant_id })
 		.all();
 	abortMemoryWork(database, superseded.map(({ id }) => id));
-	if (!isMemoryEnabledForConversation(database, conversationId)) {
+	if (!isMemoryEnabled(database)) {
 		const all = db.select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
 		abortMemoryWork(database, all.map(({ id }) => id));
 	}

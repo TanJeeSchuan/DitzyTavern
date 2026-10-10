@@ -21,7 +21,6 @@ const loreRowsChanged = (conversationId: number): ConversationMemoryChange => ({
 	conversationId,
 	touchedVariantIds: [],
 	removedVariantIds: [],
-	promptPresetChanged: false,
 });
 
 // @approved

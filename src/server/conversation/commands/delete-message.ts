@@ -95,6 +95,5 @@ export function deleteMessage(
 		conversationId: input.conversationId,
 		touchedVariantIds: [],
 		removedVariantIds,
-		promptPresetChanged: false,
 	};
 }

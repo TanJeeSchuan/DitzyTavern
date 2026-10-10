@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createMemorySettingsModule, readMemoryEnabledConversationIds } from "./settings";
+import { createMemorySettingsModule } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -138,20 +138,11 @@ export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefi
 	if (configuration.spaceKey === "") return undefined;
 	const db = connect(database);
 	const running = [...indexingVariants(database, configuration.spaceKey)];
-	const conditions = claimableCollectionConditions(configuration, running);
-	const candidates = db.selectDistinct({ conversationId: memoryCollectionTable.conversation_id })
-		.from(memoryCollectionTable).where(conditions).all().map(({ conversationId }) => conversationId);
-	if (candidates.length === 0) return undefined;
-	const enabled = readMemoryEnabledConversationIds(database, candidates);
-	if (enabled.size === 0) return undefined;
 	const row = db.select({
 		variantId: memoryCollectionTable.variant_id,
 		workEpoch: memoryCollectionTable.work_epoch,
 		claimsJson: memoryCollectionTable.claims_json,
-	}).from(memoryCollectionTable).where(and(
-		conditions,
-		inArray(memoryCollectionTable.conversation_id, [...enabled]),
-	)).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
+	}).from(memoryCollectionTable).where(claimableCollectionConditions(configuration, running)).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
 	if (row === undefined) return undefined;
 	const job = { variantId: row.variantId, workEpoch: row.workEpoch, configuration };
 	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claimsJson)) }; }

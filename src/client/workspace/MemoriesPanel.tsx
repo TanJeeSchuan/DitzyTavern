@@ -111,8 +111,8 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 			{memories !== null && <>
 				{settings?.enabled === false && (
 					<div className="memory-callout">
-						<p>Memory is off for this Chat. Add a Memory Block to its Prompt Preset to start remembering. Saved Memories stay here.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("prompts")}>Open Prompt Presets</Button>
+						<p>Memory is off. Turn it on in Memory Settings to start remembering. Saved Memories stay here.</p>
+						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button>
 					</div>
 				)}
 				{awaitingEmbedding > 0 && (

@@ -28,6 +28,5 @@ export function selectVariant(
 		conversationId: input.conversationId,
 		touchedVariantIds: [input.variantId],
 		removedVariantIds: [],
-		promptPresetChanged: false,
 	};
 }

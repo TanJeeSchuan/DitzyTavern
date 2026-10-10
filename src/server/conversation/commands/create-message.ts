@@ -74,7 +74,6 @@ export function createMessage(
 			conversationId: input.conversationId,
 			touchedVariantIds: variantIds,
 			removedVariantIds: [],
-			promptPresetChanged: false,
 		};
 	}
 }

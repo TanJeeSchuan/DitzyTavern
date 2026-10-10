@@ -6,9 +6,7 @@
 // editing it changes assembly without touching this module.
 
 export {
-	readConversationPromptPresetRecipe,
 	readConversationPromptPresetRecipeFromConnection,
-	readConversationPromptPresetRecipes,
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
 	selectConversationPromptPreset,

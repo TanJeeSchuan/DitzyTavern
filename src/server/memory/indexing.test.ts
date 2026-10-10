@@ -9,7 +9,6 @@ import { executePromptPresetCommand } from "../prompt-preset";
 import { configureMemoryEmbeddings, createChat, key } from "../contract/prompt-preset-test-fixtures";
 import { sha256 } from "./hash";
 import { claimMemoryIndexJob } from "./indexing";
-import { isMemoryEnabledForConversation } from "./settings";
 
 const claim = (messageId: number, text: string) => JSON.stringify([{
 	claim: text,
@@ -25,8 +24,7 @@ const claim = (messageId: number, text: string) => JSON.stringify([{
 	},
 }]);
 
-// One complete collection waiting for its index, with the row's own timestamp
-// so an older row is the one an unfiltered claim would reach first.
+// One complete collection waiting for its index.
 const seedIndexableCollection = (database: Database, conversationId: number, text: string, updatedAt: string): number => {
 	const db = drizzle(database);
 	const message = db.insert(messageTable)
@@ -59,26 +57,18 @@ describe("Memory index claiming", () => {
 	});
 	afterEach(() => database.close());
 
-	test("claims a queued enabled job behind older candidates whose Conversations have no enabled Memory slot", () => {
+	test("claims a queued job whose Conversation's Prompt Preset has no Memory slot", () => {
 		const bare = executePromptPresetCommand(database, { type: "create", name: "No Memory" });
 		if (bare.kind !== "preset") throw new Error("Prompt Preset creation failed.");
-		const disabledConversationIds: number[] = [];
-		for (const [index, name] of ["Disabled A", "Disabled B", "Disabled C"].entries()) {
-			const chat = createChat(database, { name });
-			disabledConversationIds.push(chat.id);
-			seedIndexableCollection(database, chat.id, `${name} source.`, `2026-10-01T00:00:0${index}.000Z`);
-			executeConversationCommand(database, {
-				conversationId: chat.id,
-				expectedRevision: chat.revision,
-				action: { type: "select-prompt-preset", promptPresetId: bare.preset.id },
-			});
-		}
-		const enabled = createChat(database, { name: "Enabled" });
-		const enabledVariantId = seedIndexableCollection(database, enabled.id, "Maren returned Writer's key.", "2026-10-02T00:00:00.000Z");
+		const chat = createChat(database, { name: "No Memory slot" });
+		const variantId = seedIndexableCollection(database, chat.id, "Maren returned Writer's key.", "2026-10-01T00:00:00.000Z");
+		executeConversationCommand(database, {
+			conversationId: chat.id,
+			expectedRevision: chat.revision,
+			action: { type: "select-prompt-preset", promptPresetId: bare.preset.id },
+		});
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "memory-v1");
 
-		expect(isMemoryEnabledForConversation(database, enabled.id)).toBe(true);
-		expect(disabledConversationIds.map((id) => isMemoryEnabledForConversation(database, id))).toEqual([false, false, false]);
-		expect(claimMemoryIndexJob(database)?.variantId).toBe(enabledVariantId);
+		expect(claimMemoryIndexJob(database)?.variantId).toBe(variantId);
 	});
 });

@@ -473,17 +473,12 @@ describe("Memory indexing public lifecycle", () => {
 		});
 		try {
 			await pending.reached;
-			const preset = await readPreset(createConversationRoutes(database), conversation.id);
-			const memoryBlock = preset.slots.find((slot) => slot.reference === "memory");
-			if (!memoryBlock) throw new Error("The Default recipe has no Memory block.");
-			await readOperation(toggleBlock(database, preset.id, memoryBlock.id, false));
+			const settings = createMemorySettingsModule(database);
+			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: false });
 			pending.release();
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "disabled")).toBe(true);
 			expect((await readSources(memories, conversation.id))[0]?.claims).toHaveLength(1);
-			const reenabled = await readPreset(createConversationRoutes(database), conversation.id);
-			const reenabledMemory = reenabled.slots.find((slot) => slot.reference === "memory");
-			if (!reenabledMemory) throw new Error("The Default recipe has no Memory block.");
-			await readOperation(toggleBlock(database, reenabled.id, reenabledMemory.id, true));
+			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true });
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true);
 		} finally { pending.release(); await worker(); }
 		expect(extractions).toBe(1);

@@ -75,13 +75,11 @@ export function deleteVariant(
 			conversationId: input.conversationId,
 			touchedVariantIds: [],
 			removedVariantIds: [input.variantId],
-			promptPresetChanged: false,
 		};
 	}
 	return {
 		conversationId: input.conversationId,
 		touchedVariantIds: [replacementId],
 		removedVariantIds: [input.variantId],
-		promptPresetChanged: false,
 	};
 }

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
+import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
 import {
 	defaultOutgoingRoles,
@@ -13,11 +13,9 @@ import {
 	type PromptPresetBlockOccurrence,
 	type PromptPresetBlockReference,
 	type PromptPresetRecipe,
-	hasEnabledMemorySlot,
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
-import { refreshMemoryForConversation } from "../memory";
 
 // @approved
 //  The authoritative Prompt Preset recipe operations. Every operation
@@ -163,30 +161,10 @@ const requireOccurrence = (
 };
 
 // @approved
-//  Memory re-tailing is decided from the operation's own two reads: the
-//  authoritative recipe before the mutation and the single fresh read after
-//  it. An operation that cannot move the Memory slot costs no extra read to
-//  prove it.
-const refreshSelectedMemoryTails = (
-	database: Database,
-	presetId: number,
-	before: PromptPresetRecipe,
-	after: PromptPresetRecipe,
-): void => {
-	if (hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
-	const selected = drizzle(database)
-		.select({ conversation_id: conversationPromptPresetTable.conversation_id })
-		.from(conversationPromptPresetTable)
-		.where(eq(conversationPromptPresetTable.prompt_preset_id, presetId))
-		.all();
-	for (const { conversation_id: conversationId } of selected) refreshMemoryForConversation(database, conversationId);
-};
-
-// @approved
 //  One transactional boundary for every occurrence-addressed write: the
 //  recipe is read once before the mutation, the mutation returns the new
-//  dense order only when it moved one, and the single post-write read is both
-//  the response and the Memory-toggle diff. The occurrence an operation
+//  dense order only when it moved one, and the single post-write read is the
+//  response. The occurrence an operation
 //  addresses must belong to the preset before any of its statements run.
 const withRecipe = (
 	database: Database,
@@ -198,9 +176,7 @@ const withRecipe = (
 		const before = readRequiredRecipe(database, presetId);
 		const order = mutate(db, before);
 		if (order !== undefined) resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, presetId, order);
-		const after = readRequiredRecipe(database, presetId);
-		refreshSelectedMemoryTails(database, presetId, before, after);
-		return after;
+		return readRequiredRecipe(database, presetId);
 	}).immediate();
 };
 
