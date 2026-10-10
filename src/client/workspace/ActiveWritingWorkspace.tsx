@@ -16,7 +16,7 @@ import {
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 } from "../story";
-import type { Workspace, ChatSummary } from "../workspace";
+import type { Workspace, ChatSummary, ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
@@ -109,11 +109,18 @@ export function ActiveWritingWorkspace({
 
 	useEffect(() => {
 		const root = document.documentElement;
-		if (theme === "system") delete root.dataset.theme;
-		else root.dataset.theme = theme;
-		return () => {
-			delete root.dataset.theme;
+		const statusBars = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+		const apply = (preference: ThemePreference) => {
+			if (preference === "system") delete root.dataset.theme;
+			else root.dataset.theme = preference;
+			for (const meta of statusBars) {
+				meta.media = preference === "system"
+					? `(prefers-color-scheme: ${meta.dataset.theme === "daylight" ? "light" : "dark"})`
+					: meta.dataset.theme === preference ? "all" : "not all";
+			}
 		};
+		apply(theme);
+		return () => apply("system");
 	}, [theme]);
 
 	// @approved
