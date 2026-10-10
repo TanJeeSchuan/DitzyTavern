@@ -28,6 +28,7 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	const history = await (await request.get(`${url}/history`)).json();
 	const editedId = history.messages.at(-1).id;
 	const conflictId = history.messages.at(-2).id;
+	const olderId = (await (await request.get(`${url}/history?page=2`)).json()).messages[0].id;
 	await page.goto("/");
 	await story(page).getByRole("button", { name: "Load more Messages", exact: true }).click();
 	const messages = story(page).locator("article[data-message-id]");
@@ -41,11 +42,16 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	await other.goto("/");
 	await edit(other, editedId, "Edited in the other tab.");
 	await expect(story(other).getByText("Edited in the other tab.", { exact: true })).toBeVisible();
+	await story(other).getByRole("button", { name: "Load more Messages", exact: true }).click();
+	await edit(other, olderId, "Older page edited in the other tab.");
+	await expect(story(other).getByText("Older page edited in the other tab.", { exact: true })).toBeVisible();
+	await expect(story(page).getByText("Older page edited in the other tab.", { exact: true })).toHaveCount(0);
 	await expect(story(page).getByText("Edited in the other tab.", { exact: true })).toHaveCount(0);
 	const conflict = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.status() === 409);
 	await edit(page, conflictId, "This stale edit must not apply.");
 	await conflict;
 	await expect(story(page).getByText("Edited in the other tab.", { exact: true })).toBeVisible();
+	await expect(story(page).getByText("Older page edited in the other tab.", { exact: true })).toBeVisible();
 	await expect(messages).toHaveCount(75);
 	await expect(messages.first()).toHaveAttribute("data-message-id", oldestId!);
 	await expect(story(page).getByText("This stale edit must not apply.", { exact: true })).toHaveCount(0);

@@ -317,6 +317,11 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 		case "window-received":
 			if (state.conversationId !== action.page.conversationId || action.page.revision < (state.revision ?? 0)) return state;
 			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
+			const previewed = action.page.messages.find((message) => message.id === state.preview?.messageId);
+			const selectedId = previewed?.variants.find((variant) => variant.selected)?.id ?? null;
+			const preview = state.preview !== null && selectedId !== state.preview.variantId && previewed?.variants.some((variant) => variant.id === state.preview?.variantId)
+				? { ...state.preview, priorVariantId: selectedId }
+				: null;
 			return {
 				...state,
 				title: action.page.name,
@@ -328,7 +333,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				)),
 				page: action.page.page,
 				status: "ready",
-				preview: action.page.messages.some((message) => message.id === state.preview?.messageId && message.variants.some((variant) => variant.id === state.preview?.variantId)) ? state.preview : null,
+				preview,
 				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
 		case "load-more-started":

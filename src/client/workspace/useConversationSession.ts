@@ -1,4 +1,4 @@
-import { infiniteQueryOptions, useInfiniteQuery, useQueryClient, type InfiniteData, type QueryClient } from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type Dispatch } from "react";
 import { flushSync } from "react-dom";
 import { loadHistoryPage, type ChatHistoryPageRequest } from "../chat-history";
@@ -65,8 +65,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		const last = pages.at(-1);
 		if (!first || !last) return;
 		const authority = client.getQueryData<ConversationSummary | null>(conversationKey(id));
-		const revision = Math.min(...pages.map((page) => page.revision));
-		if (owner.cancellation.signal.aborted || revision < (authority?.revision ?? 0)) return;
+		const { revision } = first;
+		if (owner.cancellation.signal.aborted || revision < (authority?.revision ?? 0) || pages.some((page) => page.revision !== revision)) return;
 		dispatchStory({
 			type: "window-received",
 			page: { ...first, revision,
@@ -91,7 +91,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	}, [conversationRead.data, conversation, history.data, history.isFetching, history.isError, anchor, owner, dispatchStory, receiveWindow]);
 
 	useEffect(() => {
-		if (history.data?.pages.some((page) => page.outcome === "available" && page.value.revision < (conversation?.revision ?? 0))) void history.refetch({ cancelRefetch: false });
+		const revisions = history.data?.pages.flatMap((page) => page.outcome === "available" ? [page.value.revision] : []) ?? [];
+		if (new Set(revisions).size > 1 || revisions.some((revision) => revision < (conversation?.revision ?? 0))) void history.refetch({ cancelRefetch: false });
 	}, [history.data, conversation, history.refetch]);
 
 	const listedChat = initialWorkspace.chats.find((chat) => chat.id === activeChatId) ?? initialWorkspace.activeChat;
@@ -123,7 +124,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		return AbortSignal.any([owner.cancellation.signal, owner.window.signal]);
 	};
 	const openAnchor = async (next: HistoryAnchor, signal: AbortSignal) => {
-		const data = await client.fetchInfiniteQuery({ ...historyQuery(id, next), staleTime: 0 });
+		client.removeQueries({ queryKey: historyQuery(id, next).queryKey, exact: true });
+		const data = await client.fetchInfiniteQuery(historyQuery(id, next));
 		signal.throwIfAborted();
 		flushSync(() => { setAnchor(next); receiveWindow(data); });
 	};

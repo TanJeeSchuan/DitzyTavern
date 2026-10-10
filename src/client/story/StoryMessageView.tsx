@@ -99,12 +99,10 @@ export function StoryMessageView({
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
+	useEffect(() => setIsEditing(false), [active?.id]);
 	useEffect(() => {
-		if (active !== undefined) {
-			setEditText(active.content);
-			setIsEditing(false);
-		}
-	}, [active?.id, active?.content]);
+		if (active !== undefined && !isEditing) setEditText(active.content);
+	}, [active?.id, active?.content, isEditing]);
 
 	const saveEdit = () => {
 		const value = editText.trim();

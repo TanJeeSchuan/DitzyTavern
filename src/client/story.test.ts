@@ -742,6 +742,13 @@ describe("detached story windows", () => {
 		withoutVariant.messages[0]!.variants.pop();
 		expect(reduceStory(refreshed, { type: "window-received", page: withoutVariant }).preview).toBeNull();
 		expect(reduceStory(refreshed, { type: "window-received", page: history(3, [4]) }).preview).toBeNull();
+		const selectedElsewhere = history(3, [3, 4]);
+		selectedElsewhere.messages[0]!.variants[0]!.selected = false;
+		selectedElsewhere.messages[0]!.variants.push({ id: 32, position: 3, content: "Third", timestamp: "", selected: true });
+		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview?.priorVariantId).toBe(32);
+		selectedElsewhere.messages[0]!.variants[2]!.selected = false;
+		selectedElsewhere.messages[0]!.variants[1]!.selected = true;
+		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview).toBeNull();
 	});
 
 	test("live observations outside the window never insert Messages and visible observations still apply", () => {
