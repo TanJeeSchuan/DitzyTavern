@@ -20,7 +20,7 @@ export function StoryHeader({
 	return (
 		<header className="story-header">
 			<button className="brand-mark navigation-button" type="button" onClick={onOpenNavigation} aria-label="Open navigation">
-				DT
+				<img src="/favicon.svg" alt="" />
 			</button>
 			<div className="story-title">
 				<span>Active Chat</span>

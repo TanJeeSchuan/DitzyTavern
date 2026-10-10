@@ -4,7 +4,7 @@
 
 This document is the visual and interaction design source of truth for the first DitzyTavern interface pass. It defines intended outcomes and constraints. It does not select frameworks, component libraries, packages, or implementation techniques.
 
-The initial scope excludes group-chat orchestration, a dedicated co-writer response role, automatic identification of individual speakers inside generated prose, and logo design.
+The initial scope excludes group-chat orchestration, a dedicated co-writer response role, and automatic identification of individual speakers inside generated prose.
 
 Amendments to the initial direction (replacing earlier single-identity composer guidance): the composer exposes **two editable Cast-only Control selectors** — `Writing as <human>` and `Responding as <model>` — reflecting the current human and model Control assignments. Selecting the opposite seat's occupant is described as an atomic swap. Portraits show uploaded artwork wherever identity is rendered, falling back to initials when a Definition has none; character-derived ambient color remains **deferred**. Active/inactive Cast membership and group-chat turn-taking remain out of scope; the Cast is an ordered roster of active Participants with append-only positioning.
 
@@ -108,6 +108,8 @@ DitzyTavern supports an adaptive daylight and evening theme from the start.
 - Evening uses deep charcoal tonal surfaces with softly lifted text and controls.
 - Both modes use the same neutral family and preserve equivalent hierarchy.
 - Muted coral is the single interface accent across both themes.
+
+The brand mark (the wine and amber tavern sign in `public/favicon.svg`) keeps its own colors in both themes. It is identity, not a second interface accent.
 
 Muted coral carries focus, selection, active authorship, and important actions. It should be calm enough for long sessions, with stronger values reserved for focus and primary action states.
 
@@ -357,11 +359,10 @@ Visible copy must not use em dashes, decorative section numbering, version stamp
 
 These items are intentionally nonblocking for the first design pass:
 
-1. **Logo and brand mark:** the slim rail needs a compact identity treatment, but the logo form is deferred.
-2. **Guidance Message alternatives:** margin directions and a separate direction-history surface may be explored after the inline block pattern is validated.
-3. **Group chat:** multi-character response orchestration and criteria for deciding who responds are deferred and should not affect the initial layout.
-4. **Dedicated co-writer actor:** a model role that responds explicitly as a co-writer is work in progress and outside this design scope.
-5. **Character-level prose attribution:** automatic markers inside generated prose would require structured generation metadata or a second interpretation pass and are out of scope.
+1. **Guidance Message alternatives:** margin directions and a separate direction-history surface may be explored after the inline block pattern is validated.
+2. **Group chat:** multi-character response orchestration and criteria for deciding who responds are deferred and should not affect the initial layout.
+3. **Dedicated co-writer actor:** a model role that responds explicitly as a co-writer is work in progress and outside this design scope.
+4. **Character-level prose attribution:** automatic markers inside generated prose would require structured generation metadata or a second interpretation pass and are out of scope.
 
 ## Implementation handoff notes
 

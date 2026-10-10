@@ -23,9 +23,7 @@ export function NavigationRail({
 }) {
 	return (
 		<nav className="navigation-rail" aria-label="Workspace">
-			<div className="brand-mark" aria-label="DitzyTavern">
-				DT
-			</div>
+			<img className="brand-mark" src="/favicon.svg" alt="DitzyTavern" />
 			<div className="rail-actions">
 				<RailButton
 					disabled={inspecting}
