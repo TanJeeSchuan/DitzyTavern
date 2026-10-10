@@ -78,6 +78,8 @@ docker run -d --name ditzytavern --restart unless-stopped \
 
 The app has no login or user isolation. Restrict access through your network or an authenticated proxy. A proxy must pass through `/api` and support unbuffered server-sent events for streaming replies. Docker's `EXPOSE` declaration does not publish a host port by itself.
 
+Chrome and Edge only offer to install DitzyTavern as an app over HTTPS or on `localhost`. To install it on a phone, serve it through an HTTPS proxy such as `tailscale serve`; a plain `http://` LAN address still works in a browser tab.
+
 Provider URLs are resolved from inside the container. `127.0.0.1` in a connection profile means this container, so use the reachable address of your model service.
 
 ## Updates and backups
