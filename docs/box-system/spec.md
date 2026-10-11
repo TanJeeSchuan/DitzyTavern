@@ -29,6 +29,9 @@ See [ADR-0050](../adr/0050-build-story-features-as-boxes.md).
 9. As a writer, I want Box windows I can drag, keep open side by side, and minimize to a dock beside the composer, so that a Box stays in view without covering the story.
 10. As a writer, I want a minimized Box to show a one-line status, so that I can follow it without opening it.
 11. As a writer, I want window positions remembered per Chat, so that each story keeps its layout.
+12. As a writer, I want to insert, disable and remove any Box per Chat, so that each story runs only the features it uses.
+13. As a writer, I want a disabled Box to keep its setup and pick up where it left off when I enable it again, so that pausing a feature costs nothing.
+14. As a writer, I want removing a Box to keep the story's history intact, so that past passages still read the same.
 
 ### Moves
 
@@ -137,11 +140,21 @@ type BlockItem = { text: string; images?: ImageId[]; priority: number; pinned?: 
 4. **Preview.** The captured plan is sent as inspected. The host fingerprints captured setup, state, Moves and seed; a Box `fingerprint` adds dependencies the host cannot see. A mismatch reports the plan as stale.
 5. **Digest.** When a selected Variant resolves, becomes selected without a record, or has its text edited, the host queues its Boxes' digests. The queue runs at most two workers, puts live jobs before catch-up runs, and cancels superseded work by epoch. Results fill the `automatic` slot. Generations never wait for pending digests.
 
+### Lifecycle per Chat
+
+- Each Box is **absent**, **enabled** or **disabled** in each Chat, stored by the host as `enabled` under `box:<id>` in `conversation_data`. An absent Box has no row.
+- Only an enabled Box runs: it contributes to the Prompt Plan, queues digests, accepts staged Moves, and shows its window and dock tab. A disabled or absent Box does none of these.
+- **Insert** enables a Box. **Disable** keeps its Chat-scoped data. **Remove** deletes its Chat-scoped setup and data after confirmation, but keeps every Variant record and Message Move, because history is immutable. Inserting a removed Box again starts it from its initial setup.
+- While a Box is absent or disabled, a stored Move enters history as its stored label instead of through `moves.render`.
+- A new Chat starts with the Author Note and Memory enabled and every other Box absent. No Box is exempt from removal.
+- A Box manager in the composer's Box launcher lists every Box with its state, a switch, and Remove.
+- Per-Box on/off settings are replaced by this lifecycle. The World Clock's `enabled` setup field is removed.
+
 ### Prompt Preset
 
 - A Box block has `reference = 'box:<id>'`, with a partial unique index on `(preset_id, reference)` for `box:` references. This replaces the `author-note` and `memory` references and their indexes.
 - New Default recipes include every Box block. Existing presets gain one through an explicit add action, as in ADR-0048.
-- A Box with nothing to say contributes no block.
+- A Box with nothing to say, or that is not enabled in the Chat, contributes no block. The preset decides where a Box goes; the Chat decides whether it runs.
 
 ### Moves
 
@@ -172,7 +185,7 @@ type BlockItem = { text: string; images?: ImageId[]; priority: number; pinned?: 
 
 ### World Clock Box
 
-- **Setup** (`conversation_data`): an on/off toggle (default off), start date and time (impossible dates such as February 31 are rejected), era suffix (default `AD`), climate preset (temperate, tropical, arid, cold), hemisphere, and unit (default °C). While off, the World Clock contributes nothing and queues no digests.
+- **Setup** (`conversation_data`): start date and time (impossible dates such as February 31 are rejected), era suffix (default `AD`), climate preset (temperate, tropical, arid, cold), hemisphere, and unit (default °C).
 - **Decision Model selection** (`library_data`): profile, model and state token limit, global. Without one, no digest runs, and a Chat with the clock on contributes its last known time.
 - **Digest**: one System One request per selected Variant, reading the passage and one preceding Message, with two `choice` questions:
   - elapsed time: `none, ~5m, ~15m, ~30m, ~1h, ~2h, ~4h, ~8h, overnight, ~1 day, several days`; the exact minutes are drawn within the bin from the Variant's seed;
