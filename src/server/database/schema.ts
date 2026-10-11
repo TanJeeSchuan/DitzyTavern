@@ -473,6 +473,30 @@ export const characterOpeningTable = sqliteTable(
 );
 
 // @approved
+//  Character-scoped Box data, written by a Box window through a host command.
+//  Seeding a Participant copies every row into participant_data, so later
+//  Character edits never reach existing Participants.
+export const characterDataTable = sqliteTable(
+	"character_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		character_id: int()
+			.notNull()
+			.references(() => characterTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("character_data_owner_key_unique").on(
+			table.character_id,
+			table.namespace,
+			table.key,
+		),
+	],
+);
+
+// @approved
 //  Conversation-local identity. Each Participant owns an independent copied
 // Definition (participant_prompt and participant_opening children) and keeps
 // immutable provenance pointing at the Character it forked, if any. The
@@ -561,6 +585,29 @@ export const participantOpeningTable = sqliteTable(
 		uniqueIndex("participant_opening_participant_position_unique").on(
 			table.participant_id,
 			table.position,
+		),
+	],
+);
+
+// @approved
+//  Participant-scoped Box data, copied from the seeding Character and written
+//  by a Box window afterwards. It grows independently of the source Character.
+export const participantDataTable = sqliteTable(
+	"participant_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		participant_id: int()
+			.notNull()
+			.references(() => participantTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("participant_data_owner_key_unique").on(
+			table.participant_id,
+			table.namespace,
+			table.key,
 		),
 	],
 );
