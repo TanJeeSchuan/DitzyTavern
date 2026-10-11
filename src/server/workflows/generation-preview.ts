@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { sameMoves } from "../box/moves";
 import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,
@@ -151,7 +152,7 @@ export const createGenerationPreviewAsync = async (
 	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
 	store.versions.set(input.conversationId, requestVersion);
 	const target: GenerationTarget = input.kind === "send"
-		? { kind: input.kind, content: input.content }
+		? { kind: input.kind, content: input.content, moves: input.moves }
 		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
 	const capture = await captureGeneration(database, target, input);
 	const now = Date.now();
@@ -257,8 +258,8 @@ const assertSubmittedTargetUnchanged = (
 ): void => {
 	switch (recorded.kind) {
 		case "send":
-			if (submitted.kind !== "send" || recorded.content !== submitted.content) {
-				throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
+			if (submitted.kind !== "send" || recorded.content !== submitted.content || !sameMoves(recorded.moves, submitted.moves)) {
+				throw new InvalidConversationCommandError("The submitted Human text or Moves changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
 		case "sibling":

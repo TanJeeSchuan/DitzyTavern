@@ -22,7 +22,7 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
 	messages: Array.from({ length: 2 }, (_, i) => ({
 		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
 		modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
-		variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
+		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
 	})),
 	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });

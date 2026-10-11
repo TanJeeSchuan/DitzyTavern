@@ -1,4 +1,4 @@
-import type { BoxRecords } from "../../shared/contract/box-generation";
+import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -333,6 +333,7 @@ export interface GenerationAcceptanceCapture {
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
 	humanContent: string;
+	humanMoves?: BoxMoves | undefined;
 	// A retry may point at the already accepted trailing human Message. When
 	// omitted, acceptance creates one in the same transaction.
 	reuseHumanMessageId?: number | undefined;

@@ -1,5 +1,6 @@
-import type { RaceInput, RaceRecord, RaceSetup, RaceState, RunningStyle } from "../../shared/contract/race";
+import type { RaceInput, RaceMove, RaceRecord, RaceSetup, RaceState, RunningStyle } from "../../shared/contract/race";
 import { raceRandom } from "../../shared/race-data";
+import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "../../shared/race-moves";
 
 export const initialRaceState = (setup: RaceSetup): RaceState => ({
 	raceId: setup.raceId, stretch: 0, metres: 0, finished: false,
@@ -31,8 +32,10 @@ export const raceStatus = (setup: RaceSetup, state: RaceState | null): string | 
 	return `🏇 ${current.metres}m · ${ordinal(rank)}`;
 };
 
-export function advanceRace({ setup, state, seed, intent }: RaceInput): RaceRecord | undefined {
-	const before = state?.raceId === setup.raceId ? state : initialRaceState(setup);
+export const currentRaceState = (setup: RaceSetup, state: RaceState | null): RaceState => state?.raceId === setup.raceId ? state : initialRaceState(setup);
+
+export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): RaceRecord | undefined {
+	const before = currentRaceState(setup, state);
 	if (setup.phase !== "running" || before.finished || setup.slots.length < 2) return undefined;
 	if (intent === "continue" && (setup.auto === "off" || (setup.auto !== "on" && setup.auto.until > 0 && before.metres >= setup.course.distance - setup.auto.until))) return undefined;
 	const stretch = before.stretch + 1;
@@ -40,14 +43,27 @@ export function advanceRace({ setup, state, seed, intent }: RaceInput): RaceReco
 	if (before.metres >= setup.course.distance) {
 		const winner = before.standings[0]!;
 		const order = before.standings.map((runner, index) => `${index + 1}. ${runner.name} — ${index === 0 ? `${runner.time.toFixed(2)} s` : `+${(runner.time - winner.time).toFixed(2)} s`}`);
-		return { raceId: setup.raceId, stretch, outcome: `${course}\nResults Stretch\n${order.join("\n")}\nNarrate the finish.`, after: { ...before, stretch, finished: true } };
+		const report = moves.map((move) => `${raceMoveLabel(move)}: fizzles. The race is over.`);
+		return { raceId: setup.raceId, stretch, outcome: [course, "Results Stretch", ...order, ...report, "Narrate the finish."].join("\n"), after: { ...before, stretch, finished: true } };
 	}
 	const random = raceRandom(seed);
+	const standings = structuredClone(before.standings);
+	const pace = new Map<string, number>();
+	const resolved: RaceMove[] = [];
+	const report = moves.map((move) => {
+		const check = checkRaceMove(setup, before, resolved, move);
+		if (!check.legal) return { move, fizzle: check.reason };
+		resolved.push(move);
+		const position = standings.find(({ name }) => name === move.runner)!;
+		position.energy = Math.min(1, Math.max(0, position.energy - check.cost));
+		if (random() >= check.odds) return { move, fizzle: `${move.runner} ${move.kind === "overtake" ? "is boxed in" : "finds nothing extra"}.` };
+		pace.set(move.runner, (pace.get(move.runner) ?? 0) + raceMoveCatalog[move.kind].pace);
+		return { move, fizzle: null };
+	});
 	const finalStart = setup.course.distance - 400;
 	let end = Math.min(setup.course.distance, before.metres + (before.metres >= finalStart ? Math.min(100, setup.metresPerStretch) : setup.metresPerStretch));
 	if (before.metres < finalStart) end = Math.min(end, finalStart);
 	if (intent === "continue" && setup.auto !== "off" && setup.auto !== "on") end = Math.min(end, setup.course.distance - setup.auto.until);
-	const standings = structuredClone(before.standings);
 	const runners = new Map(setup.slots.map((runner) => [runner.name, runner]));
 	const stepMetres = (end - before.metres) / 20;
 	for (let step = 0; step < 20; step++) {
@@ -58,7 +74,7 @@ export function advanceRace({ setup, state, seed, intent }: RaceInput): RaceReco
 			const fatigue = Math.max(0, 0.35 - position.energy) * (1 - runner.guts / 1600);
 			const chase = Math.min(0.04, (leader - position.distance) / 1000) * runner.wit / 1200;
 			return (14 + runner.speed / 180 + runner.power / 900 * (phase >= 2 ? 1 : 0.3))
-				* (stylePace[runner.style][phase]! + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
+				* (stylePace[runner.style][phase]! + (pace.get(position.name) ?? 0) + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
 		});
 		const seconds = Math.min(...standings.map((runner, index) => (leader + stepMetres - runner.distance) / speeds[index]!));
 		for (const [index, position] of standings.entries()) {
@@ -81,6 +97,9 @@ export function advanceRace({ setup, state, seed, intent }: RaceInput): RaceReco
 		`${standings.at(-1)!.name} trails by ${(leader.distance - standings.at(-1)!.distance).toFixed(1)} m.`,
 	];
 	const order = standings.map((runner, index) => `${index + 1}. ${runner.name} — ${index === 0 ? "leader" : `+${(leader.distance - runner.distance).toFixed(1)} m`}`);
-	const outcome = `${course}\nStretch ${stretch}: ${before.metres}–${end} m\n${order.join("\n")}\n${events.join("\n")}\nNarrate only this Stretch. Do not go past ${end} m.`;
+	const rank = (list: readonly { name: string }[], name: string) => ordinal(list.findIndex((runner) => runner.name === name) + 1);
+	const moveLines = report.map(({ move, fizzle }) => `${raceMoveLabel(move)}: ${fizzle !== null ? `fizzles. ${fizzle}`
+		: `succeeds. ${move.runner} goes from ${rank(before.standings, move.runner)} to ${rank(standings, move.runner)}.`}`);
+	const outcome = [course, `Stretch ${stretch}: ${before.metres}–${end} m`, ...order, ...events, ...moveLines, `Narrate only this Stretch. Do not go past ${end} m.`].join("\n");
 	return { raceId: setup.raceId, stretch, outcome, after: { raceId: setup.raceId, stretch, metres: end, finished: false, standings } };
 }

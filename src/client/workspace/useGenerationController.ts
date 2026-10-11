@@ -38,6 +38,7 @@ import {
 	type StoryMessage,
 	type StoryState,
 } from "../story";
+import type { BoxMoves } from "../../shared/contract/box-generation";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -81,6 +82,10 @@ export function useGenerationController({
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
+	// @approved Staged Moves belong to the Chat they were staged in.
+	const [staged, setStaged] = useState<{ conversationId: number | undefined; moves: BoxMoves }>({ conversationId: undefined, moves: {} });
+	const moves = staged.conversationId === conversation?.id ? staged.moves : {};
+	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, moves: next });
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {
 		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
@@ -188,7 +193,7 @@ export function useGenerationController({
 				runner.dispatch({ type: "generation-accepted", target });
 			},
 		},
-		clearDraft: () => setDraft(""),
+		clearDraft: () => { setDraft(""); setStaged({ conversationId: undefined, moves: {} }); },
 	});
 	const {
 		assembly,
@@ -251,8 +256,8 @@ export function useGenerationController({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
-		requestGeneration({ kind: "send", content: draft, ...clientFormattingContext() });
+		if (!assemblyAvailable || conversation === null || (draft.trim() === "" && moves.race === undefined)) return;
+		requestGeneration({ kind: "send", content: draft, moves, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -274,9 +279,9 @@ export function useGenerationController({
 			latest?.id !== messageId ||
 			latest.authorParticipantId !== conversation.control.humanParticipantId ||
 			content === undefined ||
-			content.trim() === ""
+			(content.trim() === "" && latest.moves.race === undefined)
 		) return;
-		requestGeneration({ kind: "send", content, ...clientFormattingContext() });
+		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number, reroll = false) => {
@@ -305,6 +310,8 @@ export function useGenerationController({
 	return {
 		draft,
 		setDraft,
+		moves,
+		setMoves,
 		isGenerating,
 		stopPending,
 		generationError,

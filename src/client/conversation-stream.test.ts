@@ -115,7 +115,7 @@ describe("server-owned Generation client", () => {
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		});
 
-		const result = await startConversationGeneration(42, 3, "Keep going.");
+		const result = await startConversationGeneration(42, 3, "Keep going.", undefined);
 		expect(requestUrl).toBe("http://localhost/api/conversations/42/generations");
 		expect(requestBody).toBe(JSON.stringify({ kind: "send", expectedRevision: 3, content: "Keep going." }));
 		expect(result).toEqual({
@@ -170,7 +170,7 @@ describe("server-owned Generation client", () => {
 			});
 		});
 
-		await startConversationGeneration(42, 3, "Keep going.");
+		await startConversationGeneration(42, 3, "Keep going.", undefined);
 		await startConversationSiblingGeneration(42, 9);
 		await startConversationContinuationGeneration(42, 3);
 		await stopConversationGeneration(42, 7);

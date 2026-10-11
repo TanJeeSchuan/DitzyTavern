@@ -1,5 +1,6 @@
 import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
+import type { BoxMoves } from "../shared/contract/box-generation";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
@@ -229,12 +230,13 @@ export async function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	content: string,
+	moves: BoxMoves | undefined,
 	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
 	signal?: AbortSignal,
 ) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, ...formatting, ...preview }, { fetch: { signal } }),
+		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, moves, ...formatting, ...preview }, { fetch: { signal } }),
 		generationAccepted,
 		generationStartErrors,
 	);

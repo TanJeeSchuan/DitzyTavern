@@ -95,7 +95,7 @@ export function useAssemblyController({
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
 		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
 		const outcome = submission.request.kind === "send"
-			? await startConversationGeneration(submission.conversationId, latest.revision, submission.request.content, formatting, submission.preview, submission.signal)
+			? await startConversationGeneration(submission.conversationId, latest.revision, submission.request.content, submission.request.moves, formatting, submission.preview, submission.signal)
 			: submission.request.kind === "continuation"
 				? await startConversationContinuationGeneration(submission.conversationId, latest.revision, formatting, submission.preview, submission.signal)
 				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal, submission.request.reroll);

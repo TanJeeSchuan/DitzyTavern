@@ -71,6 +71,8 @@ import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { foldRecordStates } from "../box/records";
+import { humanMessageText, readMessageMoves, sameMoves } from "../box/moves";
+import type { BoxMoves } from "../../shared/contract/box-generation";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -107,6 +109,7 @@ const selectedHistoryFrom = (
 	messages: readonly ParticipatingHistoryMessage[],
 	humanParticipantId: number,
 	modelParticipantId: number,
+	moves: ReadonlyMap<number, BoxMoves>,
 ): readonly PromptContextEntry[] => {
 	const entries: PromptContextEntry[] = [];
 
@@ -116,7 +119,7 @@ const selectedHistoryFrom = (
 		entries.push({
 			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
-			content: message.variant.content,
+			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content),
 			role: authorRoleOf(message, { humanParticipantId, modelParticipantId }),
 		});
 	}
@@ -236,7 +239,8 @@ export interface Preparation extends PreparationFields {
 const reusableHumanMessageId = (
 	messages: readonly ParticipatingHistoryMessage[],
 	humanParticipantId: number,
-	content: string,
+	target: { readonly content: string; readonly moves?: BoxMoves | undefined },
+	moves: ReadonlyMap<number, BoxMoves>,
 ): number | undefined => {
 	const latest = messages.at(-1);
 	const variant = latest?.variant;
@@ -244,7 +248,8 @@ const reusableHumanMessageId = (
 		variant !== null &&
 		variant !== undefined &&
 		latest.author?.participantId === humanParticipantId &&
-		variant.content === content
+		variant.content === target.content &&
+		sameMoves(moves.get(latest.id), target.moves)
 		? latest.id
 		: undefined;
 };
@@ -256,9 +261,10 @@ function captureFacts(
 	model: CastParticipantSnapshot,
 	settings: ConversationGenerationSettings,
 	variantData: ReadonlyMap<number, VariantDataRecords>,
+	moves: ReadonlyMap<number, BoxMoves>,
 ): GenerationCaptureFacts {
 	switch (target.kind) {
-		case "send": return { kind: "send", reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target.content) };
+		case "send": return { kind: "send", reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
 		case "sibling": return { kind: "sibling" };
 		case "continuation": {
 			const latest = participation.messages.at(-1);
@@ -305,7 +311,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates, siblingSeed } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates, siblingSeed, messageMoves } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -325,7 +331,8 @@ export function prepareGenerationInputsSnapshot(
 			const siblingId = selected.target?.variant?.id;
 			return { summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups) };
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups),
+				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
@@ -355,11 +362,11 @@ export function prepareGenerationInputsSnapshot(
 	const derivation: GenerationDerivation = {
 		human,
 		model,
-		context: selectedHistoryFrom(participation.messages, human.id, model.id),
+		context: selectedHistoryFrom(participation.messages, human.id, model.id, messageMoves),
 	};
-	const facts = captureFacts(target, participation, human, model, settings, variantData);
+	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
-	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? target.content : undefined;
+	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content) : undefined;
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
@@ -398,10 +405,15 @@ export function prepareGenerationInputsSnapshot(
 	const preceding = participation.messages.at(-1);
 	const boxIntent = target.kind === "continuation" || (target.kind === "sibling" && preceding !== undefined
 		&& authorRoleOf(preceding, { humanParticipantId: human.id, modelParticipantId: model.id }) === "model") ? "continue" : "respond";
+	// @approved
+	//  Moves come from the triggering Human-authored Message: the one this Send
+	//  submits, or the one a Sibling answers. A Continuation has none.
+	const moves = boxIntent === "continue" ? {} : target.kind === "send" ? target.moves ?? {}
+		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

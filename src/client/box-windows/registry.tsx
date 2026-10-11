@@ -1,15 +1,20 @@
 import { Flag, Clock, type LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import type { ConversationSummary } from "../conversation";
-import { RaceDockTab, RaceWindow } from "./RaceWindow";
+import { RaceDockTab } from "./RaceWindow";
+import { RacePanel } from "./RaceMoves";
+import type { BoxMoves } from "../../shared/contract/box-generation";
 import { WorldClockDockTab, WorldClockWindow } from "./WorldClockWindow";
+
+/** @approved The composer's staged Moves, which a Box window adds to. */
+export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
 
 export interface BoxWindowDefinition {
 	readonly title: string;
 	readonly icon: LucideIcon;
 	readonly size: { readonly width: number; readonly height: number };
 	readonly DockTab: ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
-	readonly Panel: ComponentType<{ conversation: ConversationSummary; disabled: boolean; onConversationChange: (conversation: ConversationSummary) => void }>;
+	readonly Panel: ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; onConversationChange: (conversation: ConversationSummary) => void }>;
 }
 
 // @approved
@@ -21,7 +26,7 @@ export const windowBoxIds = ["world-clock", "race"] as const;
 export type WindowBoxId = typeof windowBoxIds[number];
 
 export const boxWindows = {
-	race: { title: "Race", icon: Flag, size: { width: 25, height: 32 }, DockTab: RaceDockTab, Panel: RaceWindow },
+	race: { title: "Race", icon: Flag, size: { width: 25, height: 32 }, DockTab: RaceDockTab, Panel: RacePanel },
 	"world-clock": {
 		title: "World Clock",
 		icon: Clock,

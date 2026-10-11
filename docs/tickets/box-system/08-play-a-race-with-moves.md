@@ -1,6 +1,6 @@
 # Play a Race with Moves
 
-Status: TODO
+Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
@@ -18,16 +18,16 @@ The writer's Runner is in the race, so the Race window offers legal Moves with t
 
 ## Work
 
-- [ ] Add `moves` (`schema`, `render`) to the contract.
-- [ ] Store ordered Moves on the Human-authored Message in `messages_data`. A Message may consist of Moves alone.
-- [ ] Composer chips: staged from a Box window, shown above the text, reorderable by drag, removable.
-- [ ] Story view shows a Message's Moves as chips. History sent to the model replaces each Move with `render`.
-- [ ] Editing a Message's Moves and regenerating replays the turn. A Sibling reuses its Message's Moves.
-- [ ] Race Moves for the human-seat Runner, or orders to a chosen Runner when the human seat is not racing. Offer only legal Moves, validated against costs projected from earlier staged Moves. `Hold` skips the Stretch. A Move may fizzle and is narrated. Moves are disabled in Auto mode and in `until` until the set distance.
-- [ ] The advance item reports what each Move achieved.
-- [ ] E2E: a Moves-only turn, Moves with text, a fizzle, a swipe reusing Moves.
-- [ ] Run `bun run check` and `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Add `moves` (`schema`, `render`) to the contract.
+- [x] Store ordered Moves on the Human-authored Message in `messages_data`. A Message may consist of Moves alone.
+- [x] Composer chips: staged from a Box window, shown above the text, reorderable by drag, removable.
+- [x] Story view shows a Message's Moves as chips. History sent to the model replaces each Move with `render`.
+- [x] Editing a Message's Moves and regenerating replays the turn. A Sibling reuses its Message's Moves.
+- [x] Race Moves for the human-seat Runner, or orders to a chosen Runner when the human seat is not racing. Offer only legal Moves, validated against costs projected from earlier staged Moves. `Hold` skips the Stretch. A Move may fizzle and is narrated. Moves are disabled in Auto mode and in `until` until the set distance.
+- [x] The advance item reports what each Move achieved.
+- [x] E2E: a Moves-only turn, Moves with text, a fizzle, a swipe reusing Moves.
+- [x] Run `bun run check` and `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

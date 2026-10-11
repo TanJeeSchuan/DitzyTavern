@@ -55,6 +55,7 @@ const message = (
 	variants: [
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 	],
+	moves: {},
 	...overrides,
 });
 
@@ -75,6 +76,7 @@ const storyMessage = (
 	swipe: { eligible: true, reason: null },
 	inCast: true,
 	activeSwipe: 0,
+	moves: {},
 	swipes: [
 		{ id: id * 10, position: 1, content: `Selected ${id}`, empty: false },
 		{ id: id * 10 + 1, position: 2, content: `Alternative ${id}`, empty: false },

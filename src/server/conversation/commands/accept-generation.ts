@@ -12,6 +12,7 @@ import {
 	messageVariantTable,
 } from "../../database/schema";
 import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
+import { hasMoves, readMessageMoves, sameMoves, writeMessageMoves } from "../../box/moves";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
@@ -387,9 +388,9 @@ export function acceptConversationTailGeneration(
 		lifecycle: "Tail",
 		generationIntent: input.generationIntent ?? { type: "tail" },
 		preflight: () => {
-			if (input.humanContent.trim() === "") {
+			if (input.humanContent.trim() === "" && !hasMoves(input.humanMoves)) {
 				throw new InvalidConversationCommandError(
-					"Send requires non-empty composer content.",
+					"Send requires composer content or Moves.",
 				);
 			}
 		},
@@ -417,7 +418,8 @@ export function acceptConversationTailGeneration(
 					reused.position !== latestPosition ||
 					reused.author_participant_id !== human.id ||
 					reused.author_name !== human.name ||
-					selected?.content !== input.humanContent
+					selected?.content !== input.humanContent ||
+					!sameMoves(readMessageMoves(db, [reused.id]).get(reused.id), input.humanMoves)
 				) {
 					throw new InvalidConversationCommandError(
 						"The unanswered human Message cannot be reused for this Send.",
@@ -439,6 +441,7 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
+			writeMessageMoves(db, humanMessageId, input.humanMoves ?? {});
 			// @approved
 			//  The provisional model target follows the just-inserted Human
 			// Message, so its position is the one this validation created plus one —

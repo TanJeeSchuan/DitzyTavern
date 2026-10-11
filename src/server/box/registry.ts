@@ -8,6 +8,7 @@ import { memoryBox } from "./memory";
 import type { MemoryRecallSnapshot } from "../memory/recall";
 import { authorNoteBox } from "./author-note";
 import type { RecordStates } from "./records";
+import type { BoxMoves } from "../../shared/contract/box-generation";
 import { worldClockBox } from "./world-clock";
 import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices } from "./contract";
 
@@ -23,13 +24,13 @@ interface CapturedBox {
 }
 export type BoxInputs = readonly CapturedBox[];
 
-const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Services extends keyof BoxServices, Rec extends GenerationJsonValue, State>(
+const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Services extends keyof BoxServices, Rec extends GenerationJsonValue, State, Move>(
 	reference: PromptBoxReference,
-	box: Box<Setup, Dependencies, Trace, Services, Rec, State>,
-	input: AdvanceInput<Setup, Dependencies, State>,
+	box: Box<Setup, Dependencies, Trace, Services, Rec, State, Move>,
+	input: AdvanceInput<Setup, Dependencies, State, Move>,
 ): CapturedBox => ({
 	reference,
-	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, dependencies: box.advance?.fingerprint?.(input) }),
+	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) }),
 	run: async (services) => {
 		// @approved
 		// SAFETY: The entries are exactly the services this Box declared in inject.
@@ -44,18 +45,18 @@ const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Serv
 	},
 });
 
-export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue" }): BoxInputs => {
-	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory, state: undefined });
+export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue"; moves: BoxMoves }): BoxInputs => {
+	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory, state: undefined, moves: [] });
 	const enabled = (reference: PromptBoxReference) => slots.some((slot) => slot.enabled && slot.reference === reference);
 	// @approved
 	// Disabled Memory still exposes captured activation evidence in inspection, without running advance.
 	if (!hasEnabledMemorySlot(slots)) capturedMemory.run = async () => ({ items: [], trace: memory.activation });
 	return [
-		...enabled("box:race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent } })] : [],
-		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined })] : [],
+		...enabled("box:race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, moves: generation.moves.race ?? [], dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent } })] : [],
+		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined, moves: [] })] : [],
 		capturedMemory,
 		...enabled("box:world-clock") && setups["world-clock"].enabled
-			? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"] })]
+			? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"], moves: [] })]
 			: [],
 	];
 };

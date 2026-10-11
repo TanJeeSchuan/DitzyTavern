@@ -67,6 +67,7 @@ describe("Generation session wiring", () => {
 					continuable: true,
 					swipe: { eligible: true, reason: null },
 					author: { participantId: 20, capturedName: "Model", inCast: true },
+					moves: {},
 					variants: [
 						{ id: 100, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 					],

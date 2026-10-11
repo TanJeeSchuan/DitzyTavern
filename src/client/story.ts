@@ -57,6 +57,7 @@ export interface StoryMessage {
 	// @approved
 	//  Index of the persisted selected Variant within `swipes`.
 	activeSwipe: number;
+	moves: ChatHistoryMessage["moves"];
 	swipes: StoryVariant[];
 }
 
@@ -218,6 +219,7 @@ const toStoryMessage = (
 		prior?.swipes.find((entry) => entry.id === variant.id),
 		activeGenerationIds,
 	)),
+	moves: message.moves,
 });
 
 // @approved

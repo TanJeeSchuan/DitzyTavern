@@ -38,7 +38,16 @@ export const raceRecord = Type.Object({
 });
 export type RaceRecord = Static<typeof raceRecord>;
 export const raceRecordSlot = Type.Object({ automatic: raceRecord });
-export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: string; intent: "respond" | "continue" };
+// @approved
+//  A Race Move acts on one Runner: the human-seat Runner, or the Runner the
+//  writer orders when the human seat is not racing.
+export const raceMove = Type.Object({
+	kind: Type.Union([Type.Literal("overtake"), Type.Literal("conserve"), Type.Literal("spurt"), Type.Literal("hold")]),
+	runner: Type.String({ minLength: 1, maxLength: 100 }),
+});
+export type RaceMove = Static<typeof raceMove>;
+export type RaceMoveKind = RaceMove["kind"];
+export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: string; intent: "respond" | "continue"; moves: readonly RaceMove[] };
 export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on" || setup.auto === "off" || setup.auto.until < setup.course.distance;
 export const raceRead = Type.Object({
 	conversationId: Type.Integer(), revision: Type.Integer(), status: Type.Union([Type.String(), Type.Null()]),

@@ -11,9 +11,11 @@ export interface BoxServices {
 
 export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxServices, Services> & { readonly signal: AbortSignal };
 
-export interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined> {
+export interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined, Move = never> {
 	readonly inject?: readonly Services[];
 	readonly setup?: { readonly schema: TSchema; readonly initial: Setup };
+	/** @approved Moves the human attaches to a Message for this Box; history sent to the model shows each as `render`. */
+	readonly moves?: { readonly schema: TSchema; render(move: Move): string };
 	readonly records?: {
 		readonly schema: TSchema;
 		readonly initial: State;
@@ -22,14 +24,15 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	};
 	readonly advance?: {
 		readonly trace?: TSchema;
-		run(input: AdvanceInput<Setup, Dependencies, State>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
-		fingerprint?(input: AdvanceInput<Setup, Dependencies, State>): string;
+		run(input: AdvanceInput<Setup, Dependencies, State, Move>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
+		fingerprint?(input: AdvanceInput<Setup, Dependencies, State, Move>): string;
 	};
 	/** @approved The Box's one-line dock status, or null when it has nothing to say. */
 	status?(setup: Setup, state: State): string | null;
 }
 
-export type AdvanceInput<Setup, Dependencies = undefined, State = undefined> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State };
+/** @approved `moves` are the ones on the triggering Human-authored Message, in order; a Continuation has none. */
+export type AdvanceInput<Setup, Dependencies = undefined, State = undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
 export type AdvanceResult<Trace = never, Rec = never> = {
 	readonly items: readonly BlockItem[];
 	readonly allowance?: number;

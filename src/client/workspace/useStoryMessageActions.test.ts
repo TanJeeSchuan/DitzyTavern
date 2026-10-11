@@ -67,6 +67,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		continuable: true,
 		swipe: { eligible: true, reason: null },
 		author: { participantId: 20, capturedName: "Author", inCast: true },
+		moves: {},
 		variants: [
 			{ id: 100, position: 1, content: "First", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 			{ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false },
@@ -80,6 +81,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		continuable: true,
 		swipe: { eligible: true as const, reason: null },
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
+		moves: {},
 		variants: [{ id: 110, position: 1, content: "Later", timestamp: "2026-01-01T00:00:03.000Z", selected: true }],
 	}] : [])],
 });

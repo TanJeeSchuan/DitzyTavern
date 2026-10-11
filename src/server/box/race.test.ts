@@ -5,7 +5,7 @@ import { advanceRace, foldRaceRecords } from "./race-engine";
 const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 
 test("equal Race state and seed produce the same Stretch without mutating inputs", () => {
-	const input = { setup, state: null, seed: "stretch-one", intent: "respond" as const };
+	const input = { setup, state: null, seed: "stretch-one", intent: "respond" as const, moves: [] };
 	const before = structuredClone(input);
 	const first = advanceRace(input)!;
 	expect(first.after.metres).toBe(400);
@@ -19,7 +19,7 @@ test("the last 400 metres shorten to 100-metre Stretches, followed by one Result
 	let state: import("../../shared/contract/race").RaceState | null = null;
 	const ends: number[] = [];
 	for (let i = 0; i < 20; i++) {
-		const record = advanceRace({ setup, state, seed: `stretch-${i}`, intent: "continue" });
+		const record = advanceRace({ setup, state, seed: `stretch-${i}`, intent: "continue", moves: [] });
 		if (!record) break;
 		state = record.after;
 		ends.push(state.metres);
@@ -27,15 +27,15 @@ test("the last 400 metres shorten to 100-metre Stretches, followed by one Result
 	}
 	expect(ends).toEqual([400, 800, 1200, 1600, 2000, 2100, 2200, 2300, 2400, 2400]);
 	expect(state?.finished).toBe(true);
-	expect(advanceRace({ setup, state, seed: "after-finish", intent: "respond" })).toBeUndefined();
+	expect(advanceRace({ setup, state, seed: "after-finish", intent: "respond", moves: [] })).toBeUndefined();
 });
 
 test("resolved later Stretches survive earlier selections and a new race starts from zero", () => {
-	const first = advanceRace({ setup, state: null, seed: "first", intent: "respond" })!;
-	const second = advanceRace({ setup, state: first.after, seed: "second", intent: "respond" })!;
-	const rerolled = advanceRace({ setup, state: null, seed: "other-first", intent: "respond" })!;
+	const first = advanceRace({ setup, state: null, seed: "first", intent: "respond", moves: [] })!;
+	const second = advanceRace({ setup, state: first.after, seed: "second", intent: "respond", moves: [] })!;
+	const rerolled = advanceRace({ setup, state: null, seed: "other-first", intent: "respond", moves: [] })!;
 	expect(foldRaceRecords([rerolled, second], "race-a")?.metres).toBe(800);
-	const next = advanceRace({ setup: { ...setup, raceId: "race-b" }, state: second.after, seed: "first", intent: "respond" })!;
+	const next = advanceRace({ setup: { ...setup, raceId: "race-b" }, state: second.after, seed: "first", intent: "respond", moves: [] })!;
 	expect(next.after.metres).toBe(400);
 	expect(next.stretch).toBe(1);
 	expect(foldRaceRecords([first, next, second], "race-b")?.metres).toBe(400);
@@ -45,13 +45,13 @@ test("resolved later Stretches survive earlier selections and a new race starts 
 
 test("respond advances with Auto off; continue stops at the configured distance from the finish", () => {
 	const off = { ...setup, auto: "off" as const };
-	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "continue" })).toBeUndefined();
-	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "respond" })?.after.metres).toBe(400);
+	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "continue", moves: [] })).toBeUndefined();
+	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "respond", moves: [] })?.after.metres).toBe(400);
 	const until = { ...setup, auto: { until: 2100 } };
-	const first = advanceRace({ setup: until, state: null, seed: "a", intent: "continue" })!;
+	const first = advanceRace({ setup: until, state: null, seed: "a", intent: "continue", moves: [] })!;
 	expect(first.after.metres).toBe(300);
-	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "continue" })).toBeUndefined();
-	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "respond" })?.after.metres).toBe(700);
+	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "continue", moves: [] })).toBeUndefined();
+	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "respond", moves: [] })?.after.metres).toBe(700);
 });
 
 test("Fill field is seeded, preserves slots, and excludes names already in the Cast", () => {
@@ -68,7 +68,7 @@ test("Auto until the finish still contributes a Results Stretch", () => {
 	let state: import("../../shared/contract/race").RaceState | null = null;
 	const outcomes: string[] = [];
 	for (let i = 0; i < 6; i++) {
-		const record = advanceRace({ setup: untilFinish, state, seed: `finish-${i}`, intent: "continue" });
+		const record = advanceRace({ setup: untilFinish, state, seed: `finish-${i}`, intent: "continue", moves: [] });
 		if (record === undefined) break;
 		state = record.after;
 		outcomes.push(record.outcome);
@@ -76,4 +76,18 @@ test("Auto until the finish still contributes a Results Stretch", () => {
 	expect(outcomes).toHaveLength(5);
 	expect(outcomes.at(-1)).toContain("Narrate the finish.");
 	expect(state?.finished).toBe(true);
+});
+
+test("Moves resolve in order against projected energy, the same for equal state, Moves and seed", () => {
+	const runner = setup.slots[1]!.name;
+	const input = { setup: { ...setup, auto: "off" as const }, state: null, seed: "moves", intent: "respond" as const,
+		moves: [{ kind: "conserve" as const, runner }, { kind: "overtake" as const, runner }, { kind: "conserve" as const, runner }, { kind: "spurt" as const, runner }] };
+	const record = advanceRace(input)!;
+	expect(advanceRace(input)).toEqual(record);
+	const lines = record.outcome.split("\n").filter((line) => line.includes(` · ${runner}: `));
+	expect(lines[0]).toBe(`⏳ Conserve · ${runner}: fizzles. ${runner} is already fresh.`);
+	expect(lines[1]).toMatch(/^⚡ Overtake · .*: (succeeds|fizzles)\./);
+	expect(lines[2]).toMatch(/^⏳ Conserve · .*: succeeds\./);
+	expect(lines[3]).toBe(`🔥 Spurt · ${runner}: fizzles. A spurt opens in the final 400 m.`);
+	expect(advanceRace({ ...input, setup })!.outcome).toContain(`⚡ Overtake · ${runner}: fizzles. Moves are off while Auto mode runs.`);
 });

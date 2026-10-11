@@ -1,3 +1,5 @@
+import type { BoxMoves } from "../../shared/contract/box-generation";
+import { MoveChips } from "./MoveChips";
 import {
 	Brain,
 	Dices,
@@ -47,6 +49,7 @@ export function StoryMessageView({
 	onRegenerate,
 	onSibling,
 	onReroll,
+	onMovesChange,
 	onInspect,
 	onMemories,
 	onDelete,
@@ -80,6 +83,7 @@ export function StoryMessageView({
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onReroll?: (messageId: number) => void;
+	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
 	onMemories?: (messageId: number) => void;
 	onDelete?: (messageId: number) => void;
@@ -249,6 +253,8 @@ export function StoryMessageView({
 					)}
 				</div>
 			</header>
+			<MoveChips moves={message.moves} disabled={mutationsDisabled}
+				onChange={onMovesChange === undefined ? undefined : (moves) => onMovesChange(message.id, moves)} />
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<span>Edit Message</span>
@@ -292,7 +298,7 @@ export function StoryMessageView({
 							</Collapsible.Content>
 						</Collapsible.Root>
 					)}
-					<div
+					{!(active?.empty === true && message.moves.race !== undefined) && <div
 						className="prose"
 						data-empty-variant={active?.empty === true && !generationActive}
 						data-generation-active={generationActive}
@@ -300,7 +306,7 @@ export function StoryMessageView({
 						{active !== undefined && !(generationActive && active.empty)
 							? <Prose text={visibleVariantContent(active)} streaming={generationActive} />
 							: null}
-					</div>
+					</div>}
 				</div>
 			)}
 

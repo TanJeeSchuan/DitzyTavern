@@ -96,7 +96,7 @@ describe("history refresh error classification", () => {
 				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
 				modelParticipantIdAtCreation: null, continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
-				author: null, variants: [],
+				author: null, variants: [], moves: {},
 			}],
 			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
 		};

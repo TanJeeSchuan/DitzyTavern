@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import type { BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
-import { boxWindows, windowBoxIds, type WindowBoxId } from "./registry";
+import { boxWindows, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -135,10 +135,11 @@ function FloatingWindow({ title, icon, size, layout, zIndex, onRaise, onMove, on
 	</section>;
 }
 
-export function BoxWindowLayer({ conversation, controller, disabled, onConversationChange }: {
+export function BoxWindowLayer({ conversation, controller, disabled, staging, onConversationChange }: {
 	conversation: ConversationSummary | null;
 	controller: BoxWindowsController;
 	disabled: boolean;
+	staging: MoveStaging;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }): ReactNode {
 	const requestNavigation = useNavigationRequest();
@@ -170,7 +171,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, onConversat
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
-				<definition.Panel conversation={conversation} disabled={disabled} onConversationChange={onConversationChange} />
+				<definition.Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange} />
 			</FloatingWindow>;
 		})}
 	</>;

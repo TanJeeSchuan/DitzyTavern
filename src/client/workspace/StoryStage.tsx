@@ -190,6 +190,9 @@ export function StoryStage({
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 							onEdit={storyActions.editStoryMessage}
+							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
+								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
+								: undefined}
 							onDelete={!assemblyActive && !generation.isGenerating
 								? (messageId) => void storyActions.deleteStoryMessage(messageId)
 								: undefined}
@@ -227,10 +230,13 @@ export function StoryStage({
 					conversation={conversation}
 					controller={composerWindows}
 					disabled={previewMode || assemblyActive}
+					staging={{ moves: generation.moves, onChange: generation.setMoves }}
 					onConversationChange={session.setConversation}
 				/>
 				<Composer
 					draft={generation.draft}
+					moves={generation.moves}
+					onMovesChange={generation.setMoves}
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
 					isReceded={composerIsReceded}
