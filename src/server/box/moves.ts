@@ -1,24 +1,27 @@
 import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { boxMoves, hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { boxReference } from "../../shared/contract/box";
 import { messageDataTable } from "../database/schema";
+import { phoneBox } from "./phone";
 import { raceBox } from "./race";
 
 // @approved
 //  Moves live on the Human-authored Message in messages_data under
 //  `box:<id>`, key `moves`, one ordered list per Box.
 const MOVES_KEY = "moves";
-const moveBoxIds = ["race"] as const satisfies readonly (keyof BoxMoves)[];
+const moveBoxIds = ["race", "phone"] as const satisfies readonly (keyof BoxMoves)[];
 
-export const hasMoves = (moves: BoxMoves | undefined): boolean => moveBoxIds.some((id) => (moves?.[id]?.length ?? 0) > 0);
-
-export const renderMoves = (moves: BoxMoves): string[] => (moves.race ?? []).map(raceBox.moves.render);
+const renderMoves = (moves: BoxMoves, author: string): string[] =>
+	[...(moves.race ?? []).map((move) => raceBox.moves.render(move)), ...(moves.phone ?? []).map((move) => phoneBox.moves.render(move, author))];
 
 /** @approved The text the model reads for a Human-authored Message: each Move's `render`, then the writer's prose. */
-export const humanMessageText = (moves: BoxMoves, content: string): string =>
-	hasMoves(moves) ? [...renderMoves(moves), content].filter((part) => part.trim() !== "").join("\n") : content;
+export const humanMessageText = (moves: BoxMoves, content: string, author: string | null): string => {
+	if (!hasMoves(moves)) return content;
+	if (author === null) throw new Error("A Message with Moves always carries its author's name.");
+	return [...renderMoves(moves, author), content].filter((part) => part.trim() !== "").join("\n");
+};
 
 export const readMessageMoves = (db: BunSQLiteDatabase, messageIds: readonly number[]): Map<number, BoxMoves> => {
 	const result = new Map<number, BoxMoves>();

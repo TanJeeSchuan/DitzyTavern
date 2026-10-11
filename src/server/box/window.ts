@@ -1,4 +1,7 @@
 import type { RaceRead } from "../../shared/contract/race";
+import type { PhoneRead } from "../../shared/contract/phone";
+import { phoneNames, stripPhoneTexts } from "../../shared/phone";
+import { humanMessageText, readMessageMoves } from "./moves";
 import { initialRaceState, raceStatus } from "./race-engine";
 import { and, eq, like } from "drizzle-orm";
 import { boxReference } from "../../shared/contract/box";
@@ -68,6 +71,27 @@ export function readRace(database: Database, conversationId: number): RaceRead |
 			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value }).from(libraryDataTable)
 				.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
 				.map(({ key, value }) => [key.slice(RACE_AVATAR_PREFIX.length), value])),
+		};
+	});
+}
+
+/** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */
+export function readPhone(database: Database, conversationId: number): PhoneRead | undefined {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
+		if (history === undefined) return undefined;
+		const human = summary.cast.find(({ id }) => id === summary.control.humanParticipantId);
+		if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
+		const names = phoneNames(summary.cast, human);
+		const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
+		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts(humanMessageText(moves.get(id) ?? {}, variant.content, author?.capturedName ?? null), names)
+			.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
+			.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
+		return {
+			conversationId, revision: summary.revision, human: human.name,
+			threads: names.contacts.map((contact) => ({ contact, texts: texts.filter(({ from, to }) => from === contact || to === contact) })),
 		};
 	});
 }

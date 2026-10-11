@@ -70,6 +70,7 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { phoneNames } from "../../shared/phone";
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves, sameMoves } from "../box/moves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
@@ -119,7 +120,7 @@ const selectedHistoryFrom = (
 		entries.push({
 			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
-			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content),
+			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null),
 			role: authorRoleOf(message, { humanParticipantId, modelParticipantId }),
 		});
 	}
@@ -368,9 +369,9 @@ export function prepareGenerationInputsSnapshot(
 	};
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
-	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content) : undefined;
+	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name) : undefined;
 	const scanMessages = participation.messages.flatMap((message) => message.variant === null ? []
-		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content) }]);
+		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null) }]);
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
@@ -400,7 +401,7 @@ export function prepareGenerationInputsSnapshot(
 			position: message.position,
 			speakerName: message.author?.capturedName ?? null,
 			role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content),
+			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null),
 		}]),
 		pendingHumanText,
 		humanName: human.name,
@@ -419,7 +420,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves, withdrawn }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves, withdrawn, phone: phoneNames(summary.cast, human) }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,
@@ -461,7 +462,7 @@ export async function prepareGenerationInputsAsync(
 			database: input.database,
 			conversationId: preparation.conversationId,
 			messages: preparation.scanMessages,
-			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content) : undefined,
+			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content, preparation.derivation.human.name) : undefined,
 			fetch: input.preparationFetch,
 			signal,
 		}, preparation.lore.sources)

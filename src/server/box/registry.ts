@@ -10,6 +10,8 @@ import { authorNoteBox } from "./author-note";
 import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { worldClockBox } from "./world-clock";
+import { phoneBox } from "./phone";
+import type { PhoneNames } from "../../shared/phone";
 import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices } from "./contract";
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
@@ -45,7 +47,7 @@ const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Serv
 	},
 });
 
-export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue"; moves: BoxMoves; withdrawn: readonly string[] }): BoxInputs => {
+export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue"; moves: BoxMoves; withdrawn: readonly string[]; phone: PhoneNames }): BoxInputs => {
 	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory, state: undefined, moves: [] });
 	const enabled = (reference: PromptBoxReference) => slots.some((slot) => slot.enabled && slot.reference === reference);
 	// @approved
@@ -55,6 +57,7 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 		...enabled("box:race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, moves: generation.moves.race ?? [], dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent, withdrawn: generation.withdrawn } })] : [],
 		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined, moves: [] })] : [],
 		capturedMemory,
+		...enabled("box:phone") ? [captureBox("box:phone", phoneBox, { setup: undefined, dependencies: generation.phone, state: undefined, moves: generation.moves.phone ?? [] })] : [],
 		...enabled("box:world-clock") && setups["world-clock"].enabled
 			? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"], moves: [] })]
 			: [],

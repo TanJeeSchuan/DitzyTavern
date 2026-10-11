@@ -4,7 +4,7 @@ import { test, expect, story } from "./fixtures";
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
 	await preview.getByText(/^Race ·/).click();
-	return preview.getByRole("textbox").filter({ hasText: "Narrate" }).innerText();
+	return preview.getByRole("textbox", { name: /^box:race block/ }).innerText();
 };
 
 const emptyPrompt = () => ({ systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" });

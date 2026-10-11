@@ -68,6 +68,6 @@ describe("Edited Prompt Plan Images", () => {
 		expect(captured).toMatchObject({ messages: [{ role: "user", content: [
 			{ type: "text", text: "Look [Image: map]" },
 			{ type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(bytes).toString("base64")}` } },
-		] }, { role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" }] });
+		] }, { role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" }, { role: "system", content: expect.stringContaining("Writer has a phone") }] });
 	});
 });

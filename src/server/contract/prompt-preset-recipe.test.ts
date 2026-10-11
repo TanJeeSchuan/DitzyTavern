@@ -32,6 +32,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+const phoneItem = "Writer has a phone and can text Maren. Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.";
+
 // @approved
 //  The owning module guards a move target the transport schema cannot
 // deliver, so a direct caller cannot displace an occurrence either.
@@ -127,6 +129,7 @@ describe("Prompt Preset transport", () => {
 			"box:author-note",
 			"box:world-clock",
 			"box:race",
+			"box:phone",
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -211,6 +214,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
+			{ role: "system", content: phoneItem },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -221,6 +225,7 @@ describe("Prompt Preset transport", () => {
 			"example-dialogue",
 			"history",
 			"box:world-clock",
+			"box:phone",
 			"post-history-instruction",
 		]);
 
@@ -274,6 +279,7 @@ describe("Prompt Preset transport", () => {
 			"box:author-note",
 			"box:world-clock",
 			"box:race",
+			"box:phone",
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -303,6 +309,7 @@ describe("Prompt Preset transport", () => {
 			["box:author-note", true],
 			["box:world-clock", true],
 			["box:race", true],
+			["box:phone", true],
 			["model-scenario", true],
 		]);
 
@@ -326,6 +333,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Set the scene." },
 			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
+			{ role: "system", content: phoneItem },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -351,6 +359,7 @@ describe("Prompt Preset transport", () => {
 			["box:author-note", true],
 			["box:world-clock", true],
 			["box:race", true],
+			["box:phone", true],
 		]);
 	});
 
@@ -407,6 +416,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
+			{ role: "system", content: phoneItem },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -440,6 +450,7 @@ describe("Prompt Preset transport", () => {
 			["box:author-note", true],
 			["box:world-clock", true],
 			["box:race", true],
+			["box:phone", true],
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

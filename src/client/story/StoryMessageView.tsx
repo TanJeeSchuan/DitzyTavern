@@ -1,4 +1,4 @@
-import type { BoxMoves } from "../../shared/contract/box-generation";
+import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import {
 	Brain,
@@ -23,7 +23,7 @@ import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
-import { Prose } from "./prose";
+import { LensedProse, type StoryLens } from "./LensedProse";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -54,6 +54,7 @@ export function StoryMessageView({
 	onMemories,
 	onDelete,
 	generationControls,
+	lens,
 }: {
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
@@ -91,6 +92,7 @@ export function StoryMessageView({
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
 	// takes when it ends, so the story does not jump.
 	generationControls?: ReactNode;
+	lens?: StoryLens | undefined;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
@@ -121,7 +123,7 @@ export function StoryMessageView({
 	};
 	const saveEdit = async () => {
 		const value = editText.trim();
-		if ((!value && message.moves.race === undefined) || active === undefined) return;
+		if ((!value && !hasMoves(message.moves)) || active === undefined) return;
 		if (active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);
@@ -298,13 +300,13 @@ export function StoryMessageView({
 							</Collapsible.Content>
 						</Collapsible.Root>
 					)}
-					{!(active?.empty === true && message.moves.race !== undefined) && <div
+					{!(active?.empty === true && hasMoves(message.moves)) && <div
 						className="prose"
 						data-empty-variant={active?.empty === true && !generationActive}
 						data-generation-active={generationActive}
 					>
 						{active !== undefined && !(generationActive && active.empty)
-							? <Prose text={visibleVariantContent(active)} streaming={generationActive} />
+							? <LensedProse text={visibleVariantContent(active)} streaming={generationActive} lens={lens} />
 							: null}
 					</div>}
 				</div>

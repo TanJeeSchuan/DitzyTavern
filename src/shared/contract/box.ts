@@ -6,7 +6,7 @@ import { numericWire } from "./wire";
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
 // namespace are both `box:<id>`.
-export const boxIds = ["author-note", "memory", "world-clock", "race"] as const;
+export const boxIds = ["author-note", "memory", "world-clock", "race", "phone"] as const;
 export type BoxId = typeof boxIds[number];
 type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
 // SAFETY: mapping each tuple value to its literal schema preserves its position and value type.

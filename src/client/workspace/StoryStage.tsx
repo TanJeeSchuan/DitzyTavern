@@ -13,6 +13,7 @@ import {
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
+import { phoneNames } from "../../shared/phone";
 import {
 	EmptyChat,
 	GenerationControls,
@@ -91,6 +92,8 @@ export function StoryStage({
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
+	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId);
+	const lens = conversation === null || humanParticipant === undefined ? undefined : { names: phoneNames(conversation.cast, humanParticipant), open: composerWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
@@ -142,6 +145,7 @@ export function StoryStage({
 						<StoryMessageView
 							key={message.id}
 							message={message}
+							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={generation.activeGenerationTargets.some((target) =>
@@ -245,7 +249,7 @@ export function StoryStage({
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending}
-					writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
+					writerName={humanParticipant?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							onOpenPanel={onOpenPanel}

@@ -14,8 +14,8 @@ export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxSer
 export interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined, Move = never> {
 	readonly inject?: readonly Services[];
 	readonly setup?: { readonly schema: TSchema; readonly initial: Setup };
-	/** @approved Moves the human attaches to a Message for this Box; history sent to the model shows each as `render`. */
-	readonly moves?: { readonly schema: TSchema; render(move: Move): string };
+	/** @approved Moves the human attaches to a Message for this Box; history sent to the model shows each as `render`, given the Message's author. */
+	readonly moves?: { readonly schema: TSchema; render(move: Move, author: string): string };
 	readonly records?: {
 		readonly schema: TSchema;
 		readonly initial: State;

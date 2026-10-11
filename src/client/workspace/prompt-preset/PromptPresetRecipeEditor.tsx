@@ -28,6 +28,7 @@ const addableReferences = [
 	"box:author-note",
 	"box:world-clock",
 	"box:race",
+	"box:phone",
 ] as const satisfies readonly PromptBlockReference[];
 
 const AddBlockMenu = ({

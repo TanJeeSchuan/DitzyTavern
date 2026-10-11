@@ -12,7 +12,8 @@ import {
 	messageVariantTable,
 } from "../../database/schema";
 import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
-import { hasMoves, readMessageMoves, sameMoves, writeMessageMoves } from "../../box/moves";
+import { readMessageMoves, sameMoves, writeMessageMoves } from "../../box/moves";
+import { hasMoves } from "../../../shared/contract/box-generation";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
