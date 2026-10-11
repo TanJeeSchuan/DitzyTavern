@@ -28,4 +28,4 @@ With the Mood Box inserted, each selected passage is read by a Decision Model th
 
 ## Acceptance
 
-- The Box touches at most 6 files, tests included. Its only host edits are one entry in `boxIds`/`boxDescriptors`, one in the server registry and one in the client registry.
+- The Box touches at most 8 files, tests included: its own shared, server and client modules, its tests, and one entry in `boxIds`/`boxDescriptors`, one in the server registry and one in the client registry.
