@@ -45,7 +45,7 @@ See [ADR-0050](../adr/0050-build-story-features-as-boxes.md).
 19. As a writer, I want weather taken from the prose and forgotten after a day without mention, so that a storm never lasts a week just because nobody looked up.
 20. As a writer, I want to set the start date, era suffix, climate, hemisphere and temperature unit, so that the clock fits my setting.
 21. As a writer, I want to correct a passage's elapsed time or weather, so that a misread passage does not skew everything after it.
-22. As a writer, I want the World Clock inactive until I choose a Decision Model for it, so that nothing runs that I did not configure.
+22. As a writer, I want the World Clock off in each Chat until I turn it on, and its digests idle until I choose a Decision Model, so that nothing reaches the prompt or runs that I did not configure.
 
 ### Race
 
@@ -172,8 +172,8 @@ type BlockItem = { text: string; images?: ImageId[]; priority: number; pinned?: 
 
 ### World Clock Box
 
-- **Setup** (`conversation_data`): start date and time, era suffix (default `AD`), climate preset (temperate, tropical, arid, cold), hemisphere, and unit (default °C).
-- **Decision Model selection** (`library_data`): profile, model and state token limit, global. Without one, no digest runs and `advance` contributes the last known time only.
+- **Setup** (`conversation_data`): an on/off toggle (default off), start date and time (impossible dates such as February 31 are rejected), era suffix (default `AD`), climate preset (temperate, tropical, arid, cold), hemisphere, and unit (default °C). While off, the World Clock contributes nothing and queues no digests.
+- **Decision Model selection** (`library_data`): profile, model and state token limit, global. Without one, no digest runs, and a Chat with the clock on contributes its last known time.
 - **Digest**: one System One request per selected Variant, reading the passage and one preceding Message, with two `choice` questions:
   - elapsed time: `none, ~5m, ~15m, ~30m, ~1h, ~2h, ~4h, ~8h, overnight, ~1 day, several days`; the exact minutes are drawn within the bin from the Variant's seed;
   - weather established: `not mentioned, clear, cloudy, rain, storm, snow, fog`.
