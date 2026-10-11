@@ -98,7 +98,7 @@ export function useAssemblyController({
 			? await startConversationGeneration(submission.conversationId, latest.revision, submission.request.content, formatting, submission.preview, submission.signal)
 			: submission.request.kind === "continuation"
 				? await startConversationContinuationGeneration(submission.conversationId, latest.revision, formatting, submission.preview, submission.signal)
-				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal);
+				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal, submission.request.reroll);
 		submission.signal.throwIfAborted();
 		if (outcome.outcome === "available") return outcome.value;
 		throw new Error(outcome.outcome === "not-found"

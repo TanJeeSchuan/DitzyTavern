@@ -141,6 +141,13 @@
       "when": 1791679773973,
       "tag": "0019_magenta_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791689208906,
+      "tag": "0020_empty_wraith",
+      "breakpoints": true
     }
   ]
 }

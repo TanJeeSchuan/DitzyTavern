@@ -258,6 +258,7 @@ describe("Prompt Preset authored instruction macros", () => {
 			["history", true],
 			["box:author-note", true],
 			["box:world-clock", true],
+			["box:race", true],
 			["instruction", true],
 		]);
 		expect(slotOf(saved, "model-identity")?.role).toBe("user");

@@ -22,7 +22,7 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	};
 	readonly advance?: {
 		readonly trace?: TSchema;
-		run(input: AdvanceInput<Setup, Dependencies, State>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace>>;
+		run(input: AdvanceInput<Setup, Dependencies, State>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
 		fingerprint?(input: AdvanceInput<Setup, Dependencies, State>): string;
 	};
 	/** @approved The Box's one-line dock status, or null when it has nothing to say. */
@@ -30,10 +30,11 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 }
 
 export type AdvanceInput<Setup, Dependencies = undefined, State = undefined> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State };
-export type AdvanceResult<Trace = never> = {
+export type AdvanceResult<Trace = never, Rec = never> = {
 	readonly items: readonly BlockItem[];
 	readonly allowance?: number;
 	readonly trace?: Trace;
+	readonly record?: Rec | undefined;
 };
 
 export type BlockItem = { readonly text: string; readonly priority: number; readonly pinned?: boolean };

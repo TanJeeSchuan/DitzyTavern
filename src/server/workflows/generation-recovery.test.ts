@@ -42,6 +42,7 @@ describe("generation recovery diagnostics", () => {
 			throw new Error("Recovery fixture is incomplete.");
 		}
 		const accepted = (timestamp: string) => acceptConversationSiblingGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			messageId: target.id,
 			timestamp,

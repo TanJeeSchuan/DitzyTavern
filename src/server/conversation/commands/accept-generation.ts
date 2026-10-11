@@ -11,8 +11,7 @@ import {
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
-import { newVariantSeed, SEED_KEY, SEED_NAMESPACE, variantSeedOf } from "../../box/seed";
-import { readVariantSeeds } from "../../box/records";
+import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
@@ -84,7 +83,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites"
+	"provenance" | "macroPresetId" | "macroWrites" | "seed" | "boxRecords"
 >;
 
 type GenerationAcceptanceContext = Omit<GenerationAcceptanceFields, "generationIntent">;
@@ -103,6 +102,7 @@ const persistActiveGeneration = (
 	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
 ): number => {
+	writeVariantSeed(db, input.variantId, input.seed);
 	const loreActivation = input.loreActivation ?? null;
 	if (loreActivation !== null && !isLoreActivationRecord(loreActivation)) {
 		throw new InvalidConversationCommandError(
@@ -138,6 +138,7 @@ const persistActiveGeneration = (
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
+			box_records_json: JSON.stringify(input.boxRecords ?? {}),
 			macro_writes_json: jsonText(
 				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
 				"Macro writes",
@@ -198,7 +199,6 @@ const createProvisionalModelTarget = (
 		timestamp: input.timestamp,
 		selected: true,
 	});
-	writeVariantSeed(db, provisionalVariantId, newVariantSeed());
 	return { modelMessageId, provisionalVariantId };
 };
 
@@ -222,12 +222,6 @@ const createProvisionalSiblingVariant = (
 		content: "",
 		timestamp,
 	});
-	// @approved
-	//  A Sibling rewrites the prose of the same outcome, so it inherits the
-	// selected sibling's seed.
-	writeVariantSeed(db, provisionalVariantId, priorVariantId === null
-		? newVariantSeed()
-		: variantSeedOf(readVariantSeeds(db, [priorVariantId]).get(priorVariantId), priorVariantId));
 	return { provisionalVariantId, priorVariantId };
 };
 

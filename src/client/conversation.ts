@@ -246,10 +246,12 @@ export async function startConversationSiblingGeneration(
 	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
 	signal?: AbortSignal,
+	reroll?: boolean,
 ) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
 			kind: "sibling",
+			reroll,
 			...formatting,
 			...preview,
 		}, { fetch: { signal } }),

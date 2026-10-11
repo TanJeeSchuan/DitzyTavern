@@ -329,3 +329,27 @@
 		padding: 1.1rem;
 	}
 }
+
+.race-window, .race-setup {
+	display: grid;
+	gap: 0.8rem;
+}
+
+.race-setup {
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.race-window p, .race-window ol {
+	margin: 0;
+	font-size: 0.82rem;
+	line-height: 1.6;
+}
+
+.race-actions {
+	display: flex;
+	gap: 0.5rem;
+	justify-content: flex-end;
+}

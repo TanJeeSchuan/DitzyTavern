@@ -33,6 +33,7 @@ const participant = (id: number, name: string) => ({
 const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): PreparationSnapshot => {
 	const settings = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	return {
+		seed: "preview-seed",
 		target: { kind: "send", content: "" },
 		facts: { kind: "send", reuseHumanMessageId: undefined },
 		conversationId: 1,

@@ -1,3 +1,5 @@
+import { Value } from "@sinclair/typebox/value";
+import { boxRecords } from "../../shared/contract/box-generation";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
@@ -67,6 +69,9 @@ export function capturedAcceptanceFields(
 	input: { conversationId: number; timestamp: string },
 ) {
 	return {
+		seed: capture.preparation.seed,
+		boxRecords: Value.Parse(boxRecords, Object.fromEntries(Object.entries(capture.preparation.boxes)
+			.flatMap(([reference, result]) => result.record === undefined ? [] : [[reference.slice(4), result.record]]))),
 		conversationId: input.conversationId,
 		timestamp: input.timestamp,
 		humanParticipantId: capture.control.humanParticipantId,
@@ -88,7 +93,7 @@ export function capturedAcceptanceFields(
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "provenance" |
-		"macroPresetId" | "macroWrites"
+		"macroPresetId" | "macroWrites" | "seed" | "boxRecords"
 	>;
 }
 

@@ -1,6 +1,7 @@
-import { Clock, type LucideIcon } from "lucide-react";
+import { Flag, Clock, type LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import type { ConversationSummary } from "../conversation";
+import { RaceDockTab, RaceWindow } from "./RaceWindow";
 import { WorldClockDockTab, WorldClockWindow } from "./WorldClockWindow";
 
 export interface BoxWindowDefinition {
@@ -16,10 +17,11 @@ export interface BoxWindowDefinition {
 //  `status(setup, state)`; this registry declares the icon, size and Panel,
 //  because Panel is React and the server contract is not. The composer's
 //  launcher and the dock render this list.
-export const windowBoxIds = ["world-clock"] as const;
+export const windowBoxIds = ["world-clock", "race"] as const;
 export type WindowBoxId = typeof windowBoxIds[number];
 
 export const boxWindows = {
+	race: { title: "Race", icon: Flag, size: { width: 25, height: 32 }, DockTab: RaceDockTab, Panel: RaceWindow },
 	"world-clock": {
 		title: "World Clock",
 		icon: Clock,

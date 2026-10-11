@@ -126,6 +126,7 @@ describe("Prompt Preset transport", () => {
 			"history",
 			"box:author-note",
 			"box:world-clock",
+			"box:race",
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -272,6 +273,7 @@ describe("Prompt Preset transport", () => {
 			"history",
 			"box:author-note",
 			"box:world-clock",
+			"box:race",
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -300,6 +302,7 @@ describe("Prompt Preset transport", () => {
 			["history", true],
 			["box:author-note", true],
 			["box:world-clock", true],
+			["box:race", true],
 			["model-scenario", true],
 		]);
 
@@ -347,6 +350,7 @@ describe("Prompt Preset transport", () => {
 			["history", true],
 			["box:author-note", true],
 			["box:world-clock", true],
+			["box:race", true],
 		]);
 	});
 
@@ -435,6 +439,7 @@ describe("Prompt Preset transport", () => {
 			["history", true],
 			["box:author-note", true],
 			["box:world-clock", true],
+			["box:race", true],
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

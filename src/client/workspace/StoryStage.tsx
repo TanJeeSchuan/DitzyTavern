@@ -171,6 +171,7 @@ export function StoryStage({
 									generation.siblingMessage(messageId);
 								}
 								: undefined}
+							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 							onContinue={generation.continueMessage}
 							onRegenerate={(messageId) => {

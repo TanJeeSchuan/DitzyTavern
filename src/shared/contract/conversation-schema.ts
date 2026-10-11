@@ -614,6 +614,7 @@ const replaceParticipantOpeningsAction = Type.Object({
 //  Replaces one Box's whole setup. The setup is validated against that Box's
 // schema here, so storage only ever holds decodable values.
 const setBoxSetupAction = Type.Union([
+	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("race"), setup: boxSetups.properties.race }),
 	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("author-note"), setup: boxSetups.properties["author-note"] }),
 	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("world-clock"), setup: boxSetups.properties["world-clock"] }),
 ]);
@@ -746,6 +747,7 @@ export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
 
 export const siblingGenerationBody = Type.Object({
+	reroll: Type.Optional(Type.Boolean()),
 	kind: Type.Literal("sibling"),
 	...inspectedPlanFields,
 });
@@ -769,6 +771,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("sibling"),
 		messageId: Type.Integer(),
+		reroll: Type.Optional(Type.Boolean()),
 		...generationFormattingContext.properties,
 	}),
 ]);
@@ -781,7 +784,7 @@ export const generationPreviewBody = Type.Union([
 export type GenerationTarget =
 	| { readonly kind: "send"; readonly content: string }
 	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number };
+	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
 
 export type GenerationTargetKind = GenerationTarget["kind"];
 

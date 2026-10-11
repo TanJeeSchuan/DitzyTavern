@@ -1,3 +1,5 @@
+import { boxSeed } from "./seed";
+import { raceBox } from "./race";
 import { Value } from "@sinclair/typebox/value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
@@ -12,16 +14,16 @@ import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServic
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
 export type BoxItems = Partial<Record<PromptBoxReference, readonly (BlockItem & { readonly index: number })[]>>;
 
-export type BoxResults = Partial<Record<PromptBoxReference, AdvanceResult<GenerationJsonValue>>>;
+export type BoxResults = Partial<Record<PromptBoxReference, AdvanceResult<GenerationJsonValue, GenerationJsonValue>>>;
 
 interface CapturedBox {
 	readonly reference: PromptBoxReference;
 	readonly fingerprint: string;
-	run(services: BoxContext<keyof BoxServices>): Promise<AdvanceResult<GenerationJsonValue>>;
+	run(services: BoxContext<keyof BoxServices>): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
 }
 export type BoxInputs = readonly CapturedBox[];
 
-const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Services extends keyof BoxServices, Rec, State>(
+const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Services extends keyof BoxServices, Rec extends GenerationJsonValue, State>(
 	reference: PromptBoxReference,
 	box: Box<Setup, Dependencies, Trace, Services, Rec, State>,
 	input: AdvanceInput<Setup, Dependencies, State>,
@@ -33,18 +35,23 @@ const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Serv
 		// SAFETY: The entries are exactly the services this Box declared in inject.
 		const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, Services>;
 		const result = await box.advance?.run(input, { ...injected, signal: services.signal }) ?? { items: [] };
+		if (result.record !== undefined) {
+			if (box.records === undefined) throw new Error(`${reference} returned a record without declaring records.`);
+			Value.Assert(box.records.schema, result.record);
+		}
 		if (result.trace !== undefined && box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
 		return result;
 	},
 });
 
-export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates): BoxInputs => {
+export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue" }): BoxInputs => {
 	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory, state: undefined });
 	const enabled = (reference: PromptBoxReference) => slots.some((slot) => slot.enabled && slot.reference === reference);
 	// @approved
 	// Disabled Memory still exposes captured activation evidence in inspection, without running advance.
 	if (!hasEnabledMemorySlot(slots)) capturedMemory.run = async () => ({ items: [], trace: memory.activation });
 	return [
+		...enabled("box:race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent } })] : [],
 		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined })] : [],
 		capturedMemory,
 		...enabled("box:world-clock") && setups["world-clock"].enabled

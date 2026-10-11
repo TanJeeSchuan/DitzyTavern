@@ -1,3 +1,5 @@
+import type { RaceRead } from "../../shared/contract/race";
+import { initialRaceState, raceStatus } from "./race-engine";
 import type { Database } from "bun:sqlite";
 import type { WorldClockPassage, WorldClockRead } from "../../shared/contract/box";
 import {
@@ -7,7 +9,7 @@ import {
 } from "../conversation";
 import { readBoxCatchUp } from "./digest";
 import { resolveBoxDecision } from "./decision-settings";
-import { hasAutomaticRecord, effectiveRecord, readRecordSlots } from "./records";
+import { foldRecordStates, hasAutomaticRecord, effectiveRecord, readRecordSlots } from "./records";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 /** @approved The World Clock window and dock read one folded Selected path
@@ -41,5 +43,18 @@ export function readWorldClock(database: Database, conversationId: number): Worl
 			catchUp: readBoxCatchUp(database, conversationId),
 			passages,
 		};
+	});
+}
+
+export function readRace(database: Database, conversationId: number): RaceRead | undefined {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
+		if (history === undefined) return undefined;
+		const setup = summary.boxSetups.race;
+		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
+		const state = foldRecordStates(db, ids, summary.boxSetups).race ?? initialRaceState(setup);
+		return { conversationId, revision: summary.revision, status: raceStatus(setup, state), state };
 	});
 }

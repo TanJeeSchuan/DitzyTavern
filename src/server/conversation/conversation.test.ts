@@ -812,6 +812,7 @@ describe("Conversation module", () => {
 				throw new Error("Greeting missing.");
 			}
 			return acceptConversationContinuationGeneration(module, {
+				seed: "test-generation-seed",
 				conversationId,
 				expectedRevision: snapshot.revision,
 				timestamp: "2026-08-20T12:00:00Z",

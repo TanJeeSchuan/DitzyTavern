@@ -317,7 +317,7 @@ export const createConversationRoutes = (
 					const input = body.kind === "send"
 						? { ...common, kind: body.kind, content: body.content }
 						: body.kind === "sibling"
-							? { ...common, kind: body.kind, messageId: body.messageId }
+							? { ...common, kind: body.kind, messageId: body.messageId, reroll: body.reroll }
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture;
@@ -539,7 +539,7 @@ export const createConversationRoutes = (
 					params.id,
 					() => generationCoordinator.startGeneration({
 						conversationId: params.id,
-						target: { kind: body.kind, messageId: params.messageId },
+						target: { kind: body.kind, messageId: params.messageId, reroll: body.reroll },
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						preview: body.previewId === undefined
 							? undefined

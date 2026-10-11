@@ -1,27 +1,31 @@
+import type { RaceState } from "../../shared/contract/race";
+import { foldRaceRecords } from "./race-engine";
+import type { Static } from "@sinclair/typebox";
+import { boxRecordSlots } from "../../shared/contract/box-generation";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxReference, worldClockRecordSlot, type DigestBoxId, type WorldClockRecord, type WorldClockRecordSlot } from "../../shared/contract/box";
+import { boxReference, type BoxSetups, type DigestBoxId, type WorldClockRecord, type WorldClockRecordSlot } from "../../shared/contract/box";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../memory/hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 // @approved
-//  The Boxes that keep records, by id. Their record slots live in Variant
+//  The Boxes that digest prose, by id. Their record slots live in Variant
 // data under `box:<id>`, key `record`.
-export const recordBoxes = { "world-clock": worldClockBox } as const;
-export type RecordStates = { readonly "world-clock": WorldClockState };
+export const digestBoxes = { "world-clock": worldClockBox } as const;
+export type RecordStates = { readonly "world-clock": WorldClockState; readonly race: RaceState | null };
 
 const RECORD_KEY = "record";
 
-const decodeSlot = (id: DigestBoxId, stored: string): WorldClockRecordSlot => {
+const decodeSlot = <Id extends keyof typeof boxRecordSlots>(id: Id, stored: string): Static<typeof boxRecordSlots[Id]> => {
 	const slot: unknown = JSON.parse(stored);
-	if (!Value.Check(worldClockRecordSlot, slot)) throw new Error(`A stored ${id} Box record does not match its schema. Clear the ${boxReference(id)} namespace.`);
+	if (!Value.Check(boxRecordSlots[id], slot)) throw new Error(`A stored ${id} Box record does not match its schema. Clear the ${boxReference(id)} namespace.`);
 	return slot;
 };
 
-export const readRecordSlots = (db: BunSQLiteDatabase, id: DigestBoxId, variantIds: readonly number[]): Map<number, WorldClockRecordSlot> =>
+export const readRecordSlots = <Id extends keyof typeof boxRecordSlots>(db: BunSQLiteDatabase, id: Id, variantIds: readonly number[]): Map<number, Static<typeof boxRecordSlots[Id]>> =>
 	variantIds.length === 0 ? new Map() : new Map(db
 		.select({ variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value })
 		.from(messageVariantDataTable)
@@ -36,10 +40,12 @@ export const effectiveRecord = (slot: WorldClockRecordSlot | undefined): WorldCl
 export const hasAutomaticRecord = (slot: WorldClockRecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[]): RecordStates => {
+export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups): RecordStates => {
 	const slots = readRecordSlots(db, "world-clock", selectedVariantIds);
-	const { fold, initial } = recordBoxes["world-clock"].records;
+	const raceSlots = readRecordSlots(db, "race", selectedVariantIds);
+	const { fold, initial } = digestBoxes["world-clock"].records;
 	return {
+		race: foldRaceRecords(selectedVariantIds.flatMap((id) => raceSlots.get(id)?.automatic ?? []), setups.race.raceId),
 		"world-clock": selectedVariantIds.reduce<WorldClockState>((state, variantId) => {
 			const record = effectiveRecord(slots.get(variantId));
 			return record === undefined ? state : fold(state, record);

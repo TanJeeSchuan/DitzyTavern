@@ -1,3 +1,4 @@
+import type { BoxRecords } from "../../shared/contract/box-generation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -303,6 +304,8 @@ export type VariantDetails = SharedVariantDetails;
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
 export interface GenerationAcceptanceCapture {
+	seed: string;
+	boxRecords?: BoxRecords;
 	conversationId: number;
 	timestamp: string;
 	humanParticipantId: number;

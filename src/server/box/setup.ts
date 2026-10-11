@@ -1,3 +1,4 @@
+import { raceBox } from "./race";
 import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
@@ -29,6 +30,7 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.all()
 		.map((row) => [row.namespace, row.value]));
 	return {
+		race: decodeSetup("race", raceBox.setup, stored.get(boxReference("race"))),
 		"author-note": decodeSetup("author-note", authorNoteBox.setup, stored.get(boxReference("author-note"))),
 		"world-clock": decodeSetup("world-clock", worldClockBox.setup, stored.get(boxReference("world-clock"))),
 	};

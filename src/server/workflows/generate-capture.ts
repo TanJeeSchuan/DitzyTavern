@@ -1,3 +1,5 @@
+import { newVariantSeed, variantSeedOf } from "../box/seed";
+import { readVariantSeeds } from "../box/records";
 import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { generationProvenanceEntry } from "./generate-capture-projections";
 export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
@@ -215,6 +217,7 @@ export type GenerationCaptureFacts =
 	| { readonly kind: "sibling" };
 
 interface PreparationFields extends GenerationPreparationBase {
+	readonly seed: string;
 	readonly target: GenerationTarget;
 	readonly facts: GenerationCaptureFacts;
 	readonly intent: GenerationIntent | undefined;
@@ -290,6 +293,7 @@ export interface GenerationCaptureOptions {
 export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 	readonly database: Database;
 	readonly target: GenerationTarget;
+	readonly seed?: string | undefined;
 }
 
 /** @approved
@@ -301,7 +305,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates, siblingSeed } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -318,7 +322,10 @@ export function prepareGenerationInputsSnapshot(
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
-			return { summary, recipe, settings, selected, variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds) };
+			const siblingId = selected.target?.variant?.id;
+			return { summary, recipe, settings, selected,
+				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups) };
 		},
 	);
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
@@ -387,9 +394,14 @@ export function prepareGenerationInputsSnapshot(
 		pendingHumanText,
 		humanName: human.name,
 	});
+	const seed = input.seed ?? (target.kind === "sibling" && !target.reroll ? siblingSeed : undefined) ?? newVariantSeed();
+	const preceding = participation.messages.at(-1);
+	const boxIntent = target.kind === "continuation" || (target.kind === "sibling" && preceding !== undefined
+		&& authorRoleOf(preceding, { humanParticipantId: human.id, modelParticipantId: model.id }) === "model") ? "continue" : "respond";
 	const preparation = {
+		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

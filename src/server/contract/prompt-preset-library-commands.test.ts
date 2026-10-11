@@ -148,6 +148,7 @@ describe("Prompt Preset library transport", () => {
 			"history",
 			"box:author-note",
 			"box:world-clock",
+			"box:race",
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);

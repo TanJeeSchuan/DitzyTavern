@@ -760,6 +760,7 @@ export const activeGenerationTable = sqliteTable(
 		// them to the target. An attempt never derives these from completion order.
 		macro_preset_id: int(),
 		macro_writes_json: text().notNull().default("[]"),
+		box_records_json: text().notNull().default("{}"),
 	},
 );
 

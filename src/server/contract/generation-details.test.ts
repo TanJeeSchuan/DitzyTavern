@@ -38,6 +38,7 @@ describe("Generation detail transport", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T10:00:00Z",

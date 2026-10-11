@@ -103,6 +103,7 @@ describe("Chat rename and deletion", () => {
 		const [human, model] = chat.cast;
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
 			timestamp: "2026-09-26T10:00:00.000Z",
@@ -128,6 +129,7 @@ describe("Chat rename and deletion", () => {
 		const [human, model] = busy.cast;
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: busy.id,
 			expectedRevision: busy.revision,
 			timestamp: "2026-09-26T10:00:00.000Z",

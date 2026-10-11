@@ -8,7 +8,7 @@ import { decisionRequest, requestDecisions } from "../decision-model";
 import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, recordBoxes, writeAutomaticRecord } from "./records";
+import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, digestBoxes, writeAutomaticRecord } from "./records";
 import { readBoxSetups } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
@@ -82,7 +82,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	const controller = new AbortController();
 	const running = { controller, source: job.source, catchUp: job.catchUp };
 	queue.running.set(key, running);
-	const box = recordBoxes[job.box];
+	const box = digestBoxes[job.box];
 	try {
 		if (!readBoxSetups(drizzle(database), job.conversationId)[job.box].enabled) return;
 		const decision = resolveBoxDecision(database, job.box);

@@ -1,5 +1,6 @@
 import {
 	Brain,
+	Dices,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -45,6 +46,7 @@ export function StoryMessageView({
 	canRegenerate = false,
 	onRegenerate,
 	onSibling,
+	onReroll,
 	onInspect,
 	onMemories,
 	onDelete,
@@ -77,6 +79,7 @@ export function StoryMessageView({
 	canRegenerate?: boolean;
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
+	onReroll?: (messageId: number) => void;
 	onInspect?: (messageId: number, variantId: number) => void;
 	onMemories?: (messageId: number) => void;
 	onDelete?: (messageId: number) => void;
@@ -211,6 +214,9 @@ export function StoryMessageView({
 							<RefreshCw aria-hidden="true" /> New Swipe
 						</button>
 					)}
+					{onReroll !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}>
+						<Dices aria-hidden="true" /> Re-roll
+					</button>}
 					{onInspect !== undefined && active !== undefined && (
 						<button
 							className="edit-action"

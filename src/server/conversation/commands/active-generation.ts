@@ -1,3 +1,5 @@
+import { Value } from "@sinclair/typebox/value";
+import { boxRecords } from "../../../shared/contract/box-generation";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
@@ -118,6 +120,7 @@ const replayCarriedColumns = (active: ActiveGenerationRow) => {
 		provenance_value: _provenanceValue,
 		macro_preset_id: _macroPresetId,
 		macro_writes_json: _macroWritesJson,
+		box_records_json: _boxRecordsJson,
 		checkpoint_content: _checkpointContent,
 		checkpoint_reasoning: _checkpointReasoning,
 		...carried
@@ -260,7 +263,8 @@ function commitDurableTerminalGenerationInTransaction(
 	persistTerminalVariantData(db, variant.id, {
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
-		suppliedData: input.suppliedData,
+		suppliedData: [...input.suppliedData, ...Object.entries(Value.Parse(boxRecords, JSON.parse(active.box_records_json)))
+			.map(([id, record]) => ({ namespace: `box:${id}`, key: "record", value: JSON.stringify({ automatic: record }) }))],
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
 		memoryActivationData: terminalMemoryActivationData(active),

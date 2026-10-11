@@ -279,7 +279,7 @@ export function useGenerationController({
 		requestGeneration({ kind: "send", content, ...clientFormattingContext() });
 	};
 
-	const siblingMessage = (messageId: number) => {
+	const siblingMessage = (messageId: number, reroll = false) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
@@ -291,7 +291,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		requestGeneration({ kind: "sibling", messageId, ...clientFormattingContext() });
+		requestGeneration({ kind: "sibling", messageId, reroll, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>

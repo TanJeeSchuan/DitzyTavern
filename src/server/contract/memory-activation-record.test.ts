@@ -93,6 +93,7 @@ const createChat = (database: Database) => {
 };
 
 const acceptedInput = (conversation: ReturnType<typeof createChat>, memory: MemoryActivationRecord) => ({
+	seed: "test-generation-seed",
 	conversationId: conversation.id,
 	expectedRevision: conversation.revision,
 	timestamp: "2026-09-23T00:01:00.000Z",
@@ -177,6 +178,7 @@ describe("permanent Memory Activation Records", () => {
 		const baseMessage = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const siblingMemory = (finalMemoryText: string) => activation(source.id, source.variants[0]!.id, finalMemoryText);
 		const acceptSibling = (record: MemoryActivationRecord) => acceptConversationSiblingGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			timestamp: "2026-09-23T00:03:00.000Z",
 			messageId: baseMessage.id,

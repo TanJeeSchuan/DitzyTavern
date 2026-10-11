@@ -74,6 +74,7 @@ describe("Memory source lifecycle public operations", () => {
 		const snapshot = readTestConversationSnapshot(module, conversation.id);
 		if (!snapshot || snapshot.control.humanParticipantId === null || snapshot.control.modelParticipantId === null) throw new Error("Memory fixture has no active Chat controls.");
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: conversation.id,
 			expectedRevision: snapshot.revision,
 			timestamp: "2026-09-23T00:01:00.000Z",

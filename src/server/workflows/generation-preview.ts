@@ -152,7 +152,7 @@ export const createGenerationPreviewAsync = async (
 	store.versions.set(input.conversationId, requestVersion);
 	const target: GenerationTarget = input.kind === "send"
 		? { kind: input.kind, content: input.content }
-		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId } : { kind: input.kind };
+		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
 	const capture = await captureGeneration(database, target, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
@@ -236,6 +236,7 @@ const assertPreviewCurrent = (
 	context: PreviewAcceptanceContext,
 	fingerprint: string,
 	target: GenerationTarget,
+	seed: string,
 ): void => {
 	const input: PrepareGenerationInputs = {
 		database: context.database,
@@ -243,7 +244,7 @@ const assertPreviewCurrent = (
 		connection: context.connection,
 		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
-		target,
+		target, seed,
 	};
 	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
@@ -261,7 +262,7 @@ const assertSubmittedTargetUnchanged = (
 			}
 			return;
 		case "sibling":
-			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId) {
+			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId || Boolean(recorded.reroll) !== Boolean(submitted.reroll)) {
 				throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
@@ -282,6 +283,6 @@ export const captureGenerationPreview = (
 	const { record } = preview;
 	ensureRecord(context.database, record.id, context.conversationId);
 	assertSubmittedTargetUnchanged(record.capture.target, target);
-	assertPreviewCurrent(context, record.fingerprint, target);
+	assertPreviewCurrent(context, record.fingerprint, target, record.capture.preparation.seed);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };

@@ -1,3 +1,4 @@
+import { raceSetup } from "./race";
 import { Type, type Static, type TLiteral } from "@sinclair/typebox";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
@@ -5,7 +6,7 @@ import { numericWire } from "./wire";
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
 // namespace are both `box:<id>`.
-export const boxIds = ["author-note", "memory", "world-clock"] as const;
+export const boxIds = ["author-note", "memory", "world-clock", "race"] as const;
 export type BoxId = typeof boxIds[number];
 export const boxId = Type.Union(boxIds.map((id) => Type.Literal(id)));
 
@@ -149,7 +150,7 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 //  Each Box's Conversation-scoped setup, as the Chat summary carries it and
 // the set-box-setup command writes it. The Author Note's setup is its text,
 // Image References included.
-export const boxSetups = Type.Object({ "author-note": Type.String(), "world-clock": worldClockSetup });
+export const boxSetups = Type.Object({ "author-note": Type.String(), "world-clock": worldClockSetup, race: raceSetup });
 export type BoxSetups = Static<typeof boxSetups>;
 
 // @approved
