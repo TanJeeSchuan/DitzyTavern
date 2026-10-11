@@ -1,6 +1,6 @@
 # Race oval and spectator view
 
-Status: TODO
+Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
@@ -16,13 +16,13 @@ While a race runs, the Race window shows a 2D SVG oval with each Runner's marker
 
 ## Work
 
-- [ ] Replace the text standings with an SVG oval laid out for the course's direction and distance, with Runner markers, gaps and the finish post.
-- [ ] Show Runner names and avatar placeholders. Avatars arrive in tickets 09 and 10.
-- [ ] Show positions and gaps only. No stamina, decisions or intents while running.
-- [ ] Animate markers between Stretches when the selected Variant changes.
-- [ ] Verify manually with playwright-cli at window size and narrow layout. No UI tests.
-- [ ] Run `bun run check`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Replace the text standings with an SVG oval laid out for the course's direction and distance, with Runner markers, gaps and the finish post.
+- [x] Show Runner names and avatar placeholders. Avatars arrive in tickets 09 and 10.
+- [x] Show positions and gaps only. No stamina, decisions or intents while running.
+- [x] Animate markers between Stretches when the selected Variant changes.
+- [x] Verify manually with playwright-cli at window size and narrow layout. No UI tests.
+- [x] Run `bun run check`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

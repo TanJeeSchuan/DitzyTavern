@@ -353,3 +353,139 @@
 	gap: 0.5rem;
 	justify-content: flex-end;
 }
+
+.race-oval {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.race-oval svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.race-oval-band {
+	fill: none;
+	stroke: var(--surface-muted);
+}
+
+.race-oval-rail {
+	fill: none;
+	stroke: var(--border);
+	stroke-width: 1;
+}
+
+.race-oval-start {
+	stroke: var(--border-strong);
+	stroke-width: 2;
+	stroke-dasharray: 4 4;
+}
+
+.race-oval-direction {
+	fill: var(--text-muted);
+	opacity: 0.7;
+}
+
+.race-oval-finish-line {
+	stroke: var(--foreground);
+	stroke-width: 2;
+	stroke-dasharray: 3 3;
+}
+
+.race-oval-post {
+	stroke: var(--text-muted);
+	stroke-width: 2;
+}
+
+.race-oval-flag {
+	fill: var(--foreground);
+}
+
+.race-oval-flag-alt {
+	fill: var(--surface-raised);
+}
+
+.race-oval-label {
+	fill: var(--text-muted);
+	font-family: var(--font-control);
+	font-size: 9px;
+	font-weight: 620;
+	text-anchor: middle;
+}
+
+.race-marker-avatar {
+	fill: var(--surface-raised);
+	stroke: var(--border-strong);
+	stroke-width: 1.4;
+}
+
+.race-marker[data-leader] .race-marker-avatar {
+	stroke: var(--accent);
+	stroke-width: 2.2;
+}
+
+.race-marker-initial {
+	fill: var(--foreground);
+	font-family: var(--font-control);
+	font-size: 9px;
+	font-weight: 680;
+}
+
+.race-marker-place {
+	fill: var(--foreground);
+}
+
+.race-marker[data-leader] .race-marker-place {
+	fill: var(--accent);
+}
+
+.race-marker-rank {
+	fill: var(--surface-raised);
+	font-family: var(--font-control);
+	font-size: 8px;
+	font-weight: 700;
+}
+
+.race-field {
+	display: grid;
+	gap: 0.1rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.race-field li {
+	display: grid;
+	grid-template-columns: 1.1rem 1.55rem minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0.2rem 0.35rem;
+	border-radius: 0.55rem;
+	font-size: 0.8rem;
+}
+
+.race-field li[data-leader] {
+	background: var(--surface-muted);
+}
+
+.race-field-place {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.race-field-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.race-field-gap {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.race-field li[data-leader] .race-field-gap {
+	color: var(--accent);
+}

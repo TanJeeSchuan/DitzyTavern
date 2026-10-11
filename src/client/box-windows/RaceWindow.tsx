@@ -13,10 +13,16 @@ import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { loadRace } from "../race";
 import { useSaveGuard } from "../SaveGuard";
+import { RaceOval } from "./RaceOval";
 
+// @approved
+//  The revision is part of the key so completions refetch, but the previous
+//  read stays mounted as placeholder data: the oval must keep its markers
+//  through a refetch to animate them to the new Stretch.
 const useRace = (conversation: ConversationSummary) => useQuery({
 	queryKey: ["race", conversation.id, conversation.revision],
 	queryFn: ({ signal }) => loadRace(conversation.id, signal),
+	placeholderData: (previous) => previous,
 });
 
 export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
@@ -61,10 +67,11 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 	};
 	const discard = () => { setDraft(current); setSaved(current); setRevision(conversation.revision); setNotice(null); };
 	useSaveGuard({ dirty, saving: pending, save: () => save(), discard });
-	const standings = read.data?.state.standings ?? [];
+	const race = read.data ?? null;
 	return <div className="race-window">
-		<p role="status">{read.isError ? "The Race could not be read." : read.data?.status ?? "Choose a course and fill the field."}</p>
-		<fieldset disabled={locked || running} className="race-setup">
+		<p role="status">{read.isError ? "The Race could not be read." : race?.status ?? "Choose a course and fill the field."}</p>
+		{running && race !== null && <RaceOval key={race.state.raceId} course={draft.course} state={race.state} />}
+		{!running && <fieldset disabled={locked} className="race-setup">
 			<Field label="Course">
 				<Select value={raceCourses.find((course) => JSON.stringify(course) === JSON.stringify(draft.course))?.name ?? "custom"}
 					onValueChange={(name) => update({ course: raceCourses.find((course) => course.name === name) ?? { ...draft.course, name: "Custom course" } })}>
@@ -85,7 +92,7 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 				onChange={(event) => update({ metresPerStretch: Number(event.target.value) })} /></Field>
 			<Button variant="outline" onClick={() => update({ slots: fillRaceField(draft.slots, conversation.cast.map(({ name }) => name), crypto.randomUUID()) })}>Fill field</Button>
 			<ol aria-label="Race field">{draft.slots.map((runner) => <li key={runner.name}>{runner.name} · {runner.style}</li>)}</ol>
-		</fieldset>
+		</fieldset>}
 		<Field label="Auto mode"><SegmentedControl label="Auto mode" disabled={locked} value={draft.auto === "off" || draft.auto === "on" ? draft.auto : "until"}
 			onValueChange={(auto) => update({ auto: auto === "until" ? { until: 400 } : auto })}
 			options={[{ value: "off", label: "Off" }, { value: "on", label: "On" }, { value: "until", label: "Until…" }]} /></Field>
@@ -98,8 +105,5 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 				: <Button disabled={locked || !valid || draft.slots.length < 2} onClick={() => void save({ ...draft, raceId: crypto.randomUUID(), phase: "running" })}>Start race</Button>}
 			<Button variant="outline" disabled={locked || !dirty || !valid} onClick={() => void save()}>Save setup</Button>
 		</div>
-		{running && <ol aria-label="Standings">{standings.map((runner) => <li key={runner.name}>
-			{runner.name} · {read.data?.state.finished ? `${runner.time.toFixed(2)} s` : `${Math.max(0, (standings[0]?.distance ?? 0) - runner.distance).toFixed(1)} m behind`}
-		</li>)}</ol>}
 	</div>;
 }
