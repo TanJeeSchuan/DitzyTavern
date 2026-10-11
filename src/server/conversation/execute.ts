@@ -17,7 +17,7 @@ import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
 import { setBoxSetup } from "./commands/set-box-setup";
-import { writeMessageMoves } from "../box/moves";
+import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
 import {
 	attachConversationLorebook,
@@ -39,7 +39,6 @@ import {
 	isPlayable,
 	readControlAssignment,
 	requireConversationRevision,
-	requireMessage,
 	type ConversationDatabase,
 } from "./internal";
 import {
@@ -68,10 +67,7 @@ const handlers = {
 	"create-variant": createVariant,
 	"select-variant": selectVariant,
 	"edit-variant": editVariant,
-	"set-message-moves": (db, input) => {
-		requireMessage(db, input.conversationId, input.messageId);
-		writeMessageMoves(db, input.messageId, input.moves);
-	},
+	"set-message-moves": setMessageMoves,
 	"delete-variant": deleteVariant,
 	"delete-message": deleteMessage,
 	"add-participant": addParticipant,

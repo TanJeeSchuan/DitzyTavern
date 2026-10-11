@@ -36,6 +36,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 		seed: "preview-seed",
 		target: { kind: "send", content: "" },
 		facts: { kind: "send", reuseHumanMessageId: undefined },
+		scanMessages: [],
 		conversationId: 1,
 		boxes: [],
 		semanticTriggerRevision: 0,

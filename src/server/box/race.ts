@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRaceAutoValid, raceMove, raceRecord, raceSetup, type RaceInput, type RaceMove, type RaceRecord, type RaceSetup, type RaceState } from "../../shared/contract/race";
-import { checkRaceMove, raceMoveCatalog } from "../../shared/race-moves";
+import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "../../shared/race-moves";
 import { initialRaceSetup } from "../../shared/race-data";
 import type { Box } from "./contract";
 import { advanceRace, currentRaceState, foldRace, raceStatus } from "./race-engine";
@@ -15,8 +15,9 @@ export const raceBox = {
 		async run({ setup, state, dependencies, moves }) {
 			const before = currentRaceState(setup, state);
 			const [first] = moves;
-			if (dependencies.intent === "respond" && first?.kind === "hold" && checkRaceMove(setup, before, [], first).legal) {
-				return { items: [{ text: `${setup.course.name}\nHold: the race does not advance this turn. Do not narrate race progress past ${before.metres} m.`, priority: 100, pinned: true }] };
+			if (dependencies.intent === "respond" && moves.length === 1 && first?.kind === "hold" && checkRaceMove(setup, before, [], first).legal) {
+				const text = `${setup.course.name}\n${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`;
+				return { items: [{ text, priority: 100, pinned: true }] };
 			}
 			const record = advanceRace({ setup, state, moves, ...dependencies });
 			return { items: record === undefined ? [] : [{ text: record.outcome, priority: 100, pinned: true }], record };

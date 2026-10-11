@@ -121,7 +121,7 @@ export function StoryMessageView({
 	};
 	const saveEdit = async () => {
 		const value = editText.trim();
-		if (!value || active === undefined) return;
+		if ((!value && message.moves.race === undefined) || active === undefined) return;
 		if (active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);

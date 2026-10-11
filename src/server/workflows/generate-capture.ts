@@ -225,6 +225,8 @@ interface PreparationFields extends GenerationPreparationBase {
 	readonly facts: GenerationCaptureFacts;
 	readonly intent: GenerationIntent | undefined;
 	readonly pendingHumanText: string | undefined;
+	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
+	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -367,11 +369,13 @@ export function prepareGenerationInputsSnapshot(
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content) : undefined;
+	const scanMessages = participation.messages.flatMap((message) => message.variant === null ? []
+		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content) }]);
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
 			conversationId: input.conversationId,
-			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
+			messages: scanMessages,
 			pendingHumanText,
 			connectionSettings: input.connectionSettings,
 		})
@@ -396,7 +400,7 @@ export function prepareGenerationInputsSnapshot(
 			position: message.position,
 			speakerName: message.author?.capturedName ?? null,
 			role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-			content: message.variant.content,
+			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content),
 		}]),
 		pendingHumanText,
 		humanName: human.name,
@@ -428,7 +432,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages };
 }
 
 /** @approved
@@ -454,8 +458,8 @@ export async function prepareGenerationInputsAsync(
 		? evaluateScopedLoreAsync({
 			database: input.database,
 			conversationId: preparation.conversationId,
-			messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-			pendingHumanText: input.target.kind === "send" ? input.target.content : undefined,
+			messages: preparation.scanMessages,
+			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content) : undefined,
 			fetch: input.preparationFetch,
 			signal,
 		}, preparation.lore.sources)

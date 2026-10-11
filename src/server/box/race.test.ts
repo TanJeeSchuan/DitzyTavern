@@ -78,7 +78,7 @@ test("Auto until the finish still contributes a Results Stretch", () => {
 	expect(state?.finished).toBe(true);
 });
 
-test("Moves resolve in order against projected energy, the same for equal state, Moves and seed", () => {
+test("Moves resolve in order against projected energy and per-Runner limits, the same for equal state, Moves and seed", () => {
 	const runner = setup.slots[1]!.name;
 	const input = { setup: { ...setup, auto: "off" as const }, state: null, seed: "moves", intent: "respond" as const,
 		moves: [{ kind: "conserve" as const, runner }, { kind: "overtake" as const, runner }, { kind: "conserve" as const, runner }, { kind: "spurt" as const, runner }] };
@@ -88,6 +88,9 @@ test("Moves resolve in order against projected energy, the same for equal state,
 	expect(lines[0]).toBe(`⏳ Conserve · ${runner}: fizzles. ${runner} is already fresh.`);
 	expect(lines[1]).toMatch(/^⚡ Overtake · .*: (succeeds|fizzles)\./);
 	expect(lines[2]).toMatch(/^⏳ Conserve · .*: succeeds\./);
-	expect(lines[3]).toBe(`🔥 Spurt · ${runner}: fizzles. A spurt opens in the final 400 m.`);
+	expect(lines[3]).toBe(`🔥 Spurt · ${runner}: fizzles. ${runner} already attacks this Stretch.`);
+	const held = advanceRace({ ...input, moves: [{ kind: "hold", runner }, { kind: "overtake", runner }] })!.outcome;
+	expect(held).toContain(`✋ Hold · ${runner}: fizzles. Hold must be the only Move.`);
+	expect(held).toMatch(/⚡ Overtake · .*: (succeeds|fizzles)\. .*(surges|boxed in)/);
 	expect(advanceRace({ ...input, setup })!.outcome).toContain(`⚡ Overtake · ${runner}: fizzles. Moves are off while Auto mode runs.`);
 });

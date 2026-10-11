@@ -1,6 +1,6 @@
 import type { RaceInput, RaceMove, RaceRecord, RaceSetup, RaceState, RunningStyle } from "../../shared/contract/race";
 import { raceRandom } from "../../shared/race-data";
-import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "../../shared/race-moves";
+import { checkRaceMove, FATIGUE_ENERGY, MOVE_METRES, raceMoveCatalog, raceMoveLabel, spendEnergy } from "../../shared/race-moves";
 
 export const initialRaceState = (setup: RaceSetup): RaceState => ({
 	raceId: setup.raceId, stretch: 0, metres: 0, finished: false,
@@ -51,11 +51,12 @@ export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): R
 	const pace = new Map<string, number>();
 	const resolved: RaceMove[] = [];
 	const report = moves.map((move) => {
-		const check = checkRaceMove(setup, before, resolved, move);
+		// @approved A Hold that is not alone fizzles and lets the rest resolve; alone it never reaches the engine.
+		const check = move.kind === "hold" && moves.length > 1 ? { legal: false as const, reason: "Hold must be the only Move." } : checkRaceMove(setup, before, resolved, move);
 		if (!check.legal) return { move, fizzle: check.reason };
 		resolved.push(move);
 		const position = standings.find(({ name }) => name === move.runner)!;
-		position.energy = Math.min(1, Math.max(0, position.energy - check.cost));
+		position.energy = spendEnergy(position.energy, move.kind);
 		if (random() >= check.odds) return { move, fizzle: `${move.runner} ${move.kind === "overtake" ? "is boxed in" : "finds nothing extra"}.` };
 		pace.set(move.runner, (pace.get(move.runner) ?? 0) + raceMoveCatalog[move.kind].pace);
 		return { move, fizzle: null };
@@ -71,10 +72,10 @@ export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): R
 		const leader = Math.max(...standings.map((runner) => runner.distance));
 		const speeds = standings.map((position) => {
 			const runner = runners.get(position.name)!;
-			const fatigue = Math.max(0, 0.35 - position.energy) * (1 - runner.guts / 1600);
+			const fatigue = Math.max(0, FATIGUE_ENERGY - position.energy) * (1 - runner.guts / 1600);
 			const chase = Math.min(0.04, (leader - position.distance) / 1000) * runner.wit / 1200;
 			return (14 + runner.speed / 180 + runner.power / 900 * (phase >= 2 ? 1 : 0.3))
-				* (stylePace[runner.style][phase]! + (pace.get(position.name) ?? 0) + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
+				* (stylePace[runner.style][phase]! + (step * stepMetres < MOVE_METRES ? pace.get(position.name) ?? 0 : 0) + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
 		});
 		const seconds = Math.min(...standings.map((runner, index) => (leader + stepMetres - runner.distance) / speeds[index]!));
 		for (const [index, position] of standings.entries()) {
@@ -98,8 +99,13 @@ export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): R
 	];
 	const order = standings.map((runner, index) => `${index + 1}. ${runner.name} — ${index === 0 ? "leader" : `+${(leader.distance - runner.distance).toFixed(1)} m`}`);
 	const rank = (list: readonly { name: string }[], name: string) => ordinal(list.findIndex((runner) => runner.name === name) + 1);
-	const moveLines = report.map(({ move, fizzle }) => `${raceMoveLabel(move)}: ${fizzle !== null ? `fizzles. ${fizzle}`
-		: `succeeds. ${move.runner} goes from ${rank(before.standings, move.runner)} to ${rank(standings, move.runner)}.`}`);
+	const moveLines = [
+		...report.map(({ move, fizzle }) => `${raceMoveLabel(move)}: ${fizzle !== null ? `fizzles. ${fizzle}` : `succeeds. ${raceMoveCatalog[move.kind].effect(move.runner)}`}`),
+		...[...new Set(resolved.map(({ runner }) => runner))].map((runner) => {
+			const [from, to] = [rank(before.standings, runner), rank(standings, runner)];
+			return from === to ? `${runner} holds ${to}.` : `${runner} goes from ${from} to ${to}.`;
+		}),
+	];
 	const outcome = [course, `Stretch ${stretch}: ${before.metres}–${end} m`, ...order, ...events, ...moveLines, `Narrate only this Stretch. Do not go past ${end} m.`].join("\n");
 	return { raceId: setup.raceId, stretch, outcome, after: { raceId: setup.raceId, stretch, metres: end, finished: false, standings } };
 }
