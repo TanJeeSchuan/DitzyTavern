@@ -1,3 +1,4 @@
+import { boxSetups } from "../test-fixtures/box-setups";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatHistoryPage } from "../chat-history";
@@ -26,7 +27,7 @@ afterEach(() => {
 // still applies from the already loaded Variants with no extra read.
 
 const summary = (revision: number): ConversationSummary => ({
-	boxSetups: { "author-note": "" },
+	boxSetups,
 	id: 1,
 	name: "Seaside Letters",
 	revision,

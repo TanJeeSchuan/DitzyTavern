@@ -38,7 +38,7 @@ export function StoryStage({
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
-	onOpenAuthorNote,
+	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
 	onOpenMemories,
@@ -57,7 +57,7 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenAuthorNote: () => void;
+	onOpenPanel: (panel: "author-note" | "world-clock") => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;
@@ -230,7 +230,7 @@ export function StoryStage({
 				writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
 				controlSelectors={session.conversation !== null ? (
 					<ComposerControlSelectors
-						onAuthorNote={onOpenAuthorNote}
+						onOpenPanel={onOpenPanel}
 						conversation={session.conversation}
 						disabled={story.preview !== null || assemblyActive}
 						disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}

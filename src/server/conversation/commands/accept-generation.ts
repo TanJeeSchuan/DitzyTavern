@@ -8,8 +8,11 @@ import {
 	activeGenerationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
+	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
+import { newVariantSeed, SEED_KEY, SEED_NAMESPACE, variantSeedOf } from "../../box/seed";
+import { readVariantSeeds } from "../../box/records";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
@@ -159,6 +162,9 @@ interface ProvisionalModelTargetInput {
 	position: number;
 }
 
+const writeVariantSeed = (db: ConversationDatabase, variantId: number, seed: string) =>
+	db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: SEED_NAMESPACE, key: SEED_KEY, value: seed }).run();
+
 interface ProvisionalModelTarget {
 	modelMessageId: number;
 	provisionalVariantId: number;
@@ -192,6 +198,7 @@ const createProvisionalModelTarget = (
 		timestamp: input.timestamp,
 		selected: true,
 	});
+	writeVariantSeed(db, provisionalVariantId, newVariantSeed());
 	return { modelMessageId, provisionalVariantId };
 };
 
@@ -215,6 +222,12 @@ const createProvisionalSiblingVariant = (
 		content: "",
 		timestamp,
 	});
+	// @approved
+	//  A Sibling rewrites the prose of the same outcome, so it inherits the
+	// selected sibling's seed.
+	writeVariantSeed(db, provisionalVariantId, priorVariantId === null
+		? newVariantSeed()
+		: variantSeedOf(readVariantSeeds(db, [priorVariantId]).get(priorVariantId), priorVariantId));
 	return { provisionalVariantId, priorVariantId };
 };
 

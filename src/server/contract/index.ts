@@ -13,6 +13,7 @@ import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { createLorebookRoutes } from "./lorebook-routes";
 import { createMemorySettingsRoutes } from "./memory-settings";
 import { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
+import { createBoxDecisionSettingsRoutes } from "./box-decision-settings";
 import { createMemoryRoutes } from "./memory";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 import { createUpdateChecker, type UpdateChecker } from "../updates";
@@ -42,6 +43,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createLorebookRoutes(database, options))
 	.use(createMemorySettingsRoutes(database))
 	.use(createSemanticTriggerSettingsRoutes(database))
+	.use(createBoxDecisionSettingsRoutes(database))
 	.use(createMemoryRoutes(database))
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));

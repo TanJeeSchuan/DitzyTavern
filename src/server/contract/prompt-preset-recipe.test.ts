@@ -125,6 +125,7 @@ describe("Prompt Preset transport", () => {
 			"box:memory",
 			"history",
 			"box:author-note",
+			"box:world-clock",
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -208,6 +209,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -217,6 +219,7 @@ describe("Prompt Preset transport", () => {
 			"scenario",
 			"example-dialogue",
 			"history",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 
@@ -268,6 +271,7 @@ describe("Prompt Preset transport", () => {
 			"history",
 			"history",
 			"box:author-note",
+			"box:world-clock",
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -295,6 +299,7 @@ describe("Prompt Preset transport", () => {
 			["history", true],
 			["history", true],
 			["box:author-note", true],
+			["box:world-clock", true],
 			["model-scenario", true],
 		]);
 
@@ -317,6 +322,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -340,6 +346,7 @@ describe("Prompt Preset transport", () => {
 			["history", true],
 			["history", true],
 			["box:author-note", true],
+			["box:world-clock", true],
 		]);
 	});
 
@@ -395,6 +402,7 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -426,6 +434,7 @@ describe("Prompt Preset transport", () => {
 			["box:memory", true],
 			["history", true],
 			["box:author-note", true],
+			["box:world-clock", true],
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

@@ -36,6 +36,7 @@ export const singleUseReferenceLabels = {
 	lore: "Lore",
 	"box:memory": "Memory",
 	"box:author-note": "Author Note",
+	"box:world-clock": "World Clock",
 } as const satisfies Record<PromptLoreReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
@@ -68,6 +69,7 @@ export const defaultOutgoingRoles = {
 	lore: "system",
 	"box:memory": "system",
 	"box:author-note": "system",
+	"box:world-clock": "system",
 } as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([

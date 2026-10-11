@@ -90,6 +90,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(stopped.messages).toHaveLength(3);
 		expect(variant.content).toBe("Partial answer.");
 		expect(variant.data).toEqual([
+			{ namespace: "box", key: "seed", value: expect.any(String) },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
@@ -198,6 +199,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(variants).toHaveLength(2);
 		expect(variants.find((variant) => variant.selected)?.content).toBe("Alternative answer.");
 		expect(variants[1]?.data).toEqual([
+			{ namespace: "box", key: "seed", value: "variant:1" },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);

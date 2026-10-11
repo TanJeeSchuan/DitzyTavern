@@ -8,7 +8,8 @@ export type ChatReply =
 	| { chunks: string[]; firstChunkDelayMs?: number; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
 
-export type DecisionRule = { match: string[]; answer: DecisionAnswer } | { match: string[]; status: number };
+// `passage`, when given, must also appear in a World Clock digest's passage.
+export type DecisionRule = ({ match: string[]; answer: DecisionAnswer } | { match: string[]; status: number }) & { passage?: string };
 
 export type MemoryClaim = { claim: string; attribution: string; people: string[]; excerpt: string };
 

@@ -23,6 +23,7 @@ import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
 import { isBoxReference } from "../../shared/contract/box";
+import { SEED_NAMESPACE } from "../box/seed";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -403,7 +404,7 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
-	if (isBoxReference(namespace)) {
+	if (namespace === SEED_NAMESPACE || isBoxReference(namespace)) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
 		);

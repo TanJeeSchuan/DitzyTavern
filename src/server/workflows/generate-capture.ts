@@ -68,6 +68,7 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { foldRecordStates } from "../box/records";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -300,7 +301,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -316,8 +317,8 @@ export function prepareGenerationInputsSnapshot(
 				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
-			const variantData = readVariantData(db, selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]), ["reasoning", "macroWrites"]);
-			return { summary, recipe, settings, selected, variantData };
+			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
+			return { summary, recipe, settings, selected, variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds) };
 		},
 	);
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
@@ -388,7 +389,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory()),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

@@ -1,3 +1,4 @@
+import { boxSetups } from "./test-fixtures/box-setups";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ConversationGenerationSettings, ConversationSummary } from "../shared/contract/conversation-schema";
 import type { BudgetValues, SamplingValues } from "./generation-settings-draft";
@@ -33,7 +34,7 @@ afterEach(() => {
 });
 
 const summary = (revision: number): ConversationSummary => ({
-	boxSetups: { "author-note": "" },
+	boxSetups,
 	id: 1,
 	name: "Seaside Letters",
 	revision,

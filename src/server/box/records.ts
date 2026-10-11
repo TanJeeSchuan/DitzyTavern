@@ -1,0 +1,59 @@
+import { Value } from "@sinclair/typebox/value";
+import { and, eq, inArray } from "drizzle-orm";
+import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { boxReference, worldClockRecordSlot, type DigestBoxId, type WorldClockRecord, type WorldClockRecordSlot } from "../../shared/contract/box";
+import { messageVariantDataTable } from "../database/schema";
+import { SEED_KEY, SEED_NAMESPACE } from "./seed";
+import { worldClockBox, type WorldClockState } from "./world-clock";
+
+// @approved
+//  The Boxes that keep records, by id. Their record slots live in Variant
+// data under `box:<id>`, key `record`.
+export const recordBoxes = { "world-clock": worldClockBox } as const;
+export type RecordStates = { readonly "world-clock": WorldClockState };
+
+const RECORD_KEY = "record";
+
+const decodeSlot = (id: DigestBoxId, stored: string): WorldClockRecordSlot => {
+	const slot: unknown = JSON.parse(stored);
+	if (!Value.Check(worldClockRecordSlot, slot)) throw new Error(`A stored ${id} Box record does not match its schema. Clear the ${boxReference(id)} namespace.`);
+	return slot;
+};
+
+export const readRecordSlots = (db: BunSQLiteDatabase, id: DigestBoxId, variantIds: readonly number[]): Map<number, WorldClockRecordSlot> =>
+	variantIds.length === 0 ? new Map() : new Map(db
+		.select({ variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value })
+		.from(messageVariantDataTable)
+		.where(and(inArray(messageVariantDataTable.message_variant_id, [...variantIds]), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, RECORD_KEY)))
+		.all()
+		.map((row) => [row.variantId, decodeSlot(id, row.value)]));
+
+/** @approved State is the fold over effective records of the selected Variants, in Message order. */
+export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[]): RecordStates => {
+	const slots = readRecordSlots(db, "world-clock", selectedVariantIds);
+	const { fold, initial } = recordBoxes["world-clock"].records;
+	return {
+		"world-clock": selectedVariantIds.reduce<WorldClockState>((state, variantId) => {
+			const slot = slots.get(variantId);
+			const record = slot?.writer ?? slot?.automatic;
+			return record === undefined ? state : fold(state, record);
+		}, initial),
+	};
+};
+
+export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number, record: WorldClockRecord, source: string): void => {
+	const current = readRecordSlots(db, id, [variantId]).get(variantId);
+	const value = JSON.stringify({ ...current, automatic: record, source });
+	db.insert(messageVariantDataTable)
+		.values({ message_variant_id: variantId, namespace: boxReference(id), key: RECORD_KEY, value })
+		.onConflictDoUpdate({ target: [messageVariantDataTable.message_variant_id, messageVariantDataTable.namespace, messageVariantDataTable.key], set: { value } })
+		.run();
+};
+
+export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>
+	variantIds.length === 0 ? new Map() : new Map(db
+		.select({ variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value })
+		.from(messageVariantDataTable)
+		.where(and(inArray(messageVariantDataTable.message_variant_id, [...variantIds]), eq(messageVariantDataTable.namespace, SEED_NAMESPACE), eq(messageVariantDataTable.key, SEED_KEY)))
+		.all()
+		.map((row) => [row.variantId, row.value]));

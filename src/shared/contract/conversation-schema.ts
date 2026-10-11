@@ -613,7 +613,10 @@ const replaceParticipantOpeningsAction = Type.Object({
 // @approved
 //  Replaces one Box's whole setup. The setup is validated against that Box's
 // schema here, so storage only ever holds decodable values.
-const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("author-note"), setup: boxSetups.properties["author-note"] });
+const setBoxSetupAction = Type.Union([
+	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("author-note"), setup: boxSetups.properties["author-note"] }),
+	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("world-clock"), setup: boxSetups.properties["world-clock"] }),
+]);
 
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),

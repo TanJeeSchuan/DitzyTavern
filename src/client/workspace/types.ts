@@ -1,5 +1,6 @@
 export type PrimaryPanelName =
 	| "author-note"
+	| "world-clock"
 	| "chats"
 	| "characters"
 	| "lorebooks"

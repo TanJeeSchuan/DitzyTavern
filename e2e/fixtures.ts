@@ -38,13 +38,23 @@ export const send = async (page: Page, text: string) => {
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 };
 
-export const enableDecisionModels = async (request: APIRequestContext) => {
+const createDecisionProfile = async (request: APIRequestContext) => {
 	const { revision: connectionRevision } = await (await request.get("/api/connection-settings")).json();
 	const { presets } = await (await request.get("/api/connection-settings/presets")).json();
 	const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
 	const created = await (await request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: connectionRevision, profile, credential: "e2e-decision-key" } })).json();
 	const decisionProfileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
-	const selection = { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
+	return { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
+};
+
+export const enableWorldClock = async (request: APIRequestContext) => {
+	const selection = await createDecisionProfile(request);
+	const { revision } = await (await request.get("/api/boxes/world-clock/decision-settings")).json();
+	await request.post("/api/boxes/world-clock/decision-settings/commands", { data: { type: "apply", expectedRevision: revision, ...selection } });
+};
+
+export const enableDecisionModels = async (request: APIRequestContext) => {
+	const selection = await createDecisionProfile(request);
 	const { revision: semanticRevision } = await (await request.get("/api/semantic-trigger-settings")).json();
 	await request.post("/api/semantic-trigger-settings/commands", { data: { type: "apply", expectedRevision: semanticRevision, ...selection, triggerThreshold: 0.5 } });
 	const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();

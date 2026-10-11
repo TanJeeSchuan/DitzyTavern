@@ -236,7 +236,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
-				onOpenAuthorNote={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel: "author-note" }))}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					dispatchPanel({ type: "chat-info-opened" });

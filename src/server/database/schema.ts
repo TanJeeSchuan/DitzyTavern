@@ -274,6 +274,16 @@ export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settin
 	trigger_threshold: real().notNull().default(0.5),
 });
 
+// @approved
+//  Library-scoped Box data, written through host commands. The revision
+// guards each value under ADR-0023.
+export const libraryDataTable = sqliteTable("library_data", {
+	namespace: text().notNull(),
+	key: text().notNull(),
+	value: text().notNull(),
+	revision: int().notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.namespace, table.key] })]);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

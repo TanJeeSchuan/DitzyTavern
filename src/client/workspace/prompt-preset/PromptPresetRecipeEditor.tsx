@@ -26,6 +26,7 @@ const addableReferences = [
 	"lore",
 	"box:memory",
 	"box:author-note",
+	"box:world-clock",
 ] as const satisfies readonly PromptBlockReference[];
 
 const AddBlockMenu = ({

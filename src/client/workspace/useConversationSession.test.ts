@@ -1,3 +1,4 @@
+import { boxSetups } from "../test-fixtures/box-setups";
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -48,7 +49,7 @@ interface HistoryRefreshResult { conversation: ConversationSummary | null; failu
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, boxSetups: { "author-note": "" }, cast: [],
+		id: 1, name: "Chat", revision: 1, boxSetups, cast: [],
 		control: { humanParticipantId: null, modelParticipantId: null },
 		controlValidity: { valid: false, reason: "missing-seat" },
 		playable: false,
