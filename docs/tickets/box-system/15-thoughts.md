@@ -1,0 +1,29 @@
+# Thoughts
+
+Status: TODO
+
+Blocked By: 16-generic-box-host
+
+Source: the guide test report and `.scratch/thoughts-box.patch` (a working draft built in a scratch worktree); early Box ideas (inner monologue).
+
+## Goal
+
+The model writes a character's inner monologue as `<thought>…</thought>` inside its prose. With the Thoughts Box inserted in a Chat, the markup leaves the prose view and appears in a Thoughts window, listed along the Selected narrative path. The prompt keeps the markup and carries one item teaching it.
+
+## Ownership
+
+- Thoughts Box (shared parser, server module, client window and lens)
+
+## Work
+
+- [ ] Build the Box on the generic host from ticket 16, using the saved patch as a draft for the parser, lens and window. Keep only what the generic host still needs.
+- [ ] New Chats start without it.
+- [ ] Unit tests for the parser on malformed and nested markup.
+- [ ] E2E: a scripted reply with a thought shows it in the window and not in the prose; inspection shows the teaching item only while the Box is enabled; swiping swaps the thoughts.
+- [ ] Count the files this ticket touches outside tests and record the number in this ticket.
+- [ ] Run `bun run check` and `bun run test:e2e`.
+- [ ] Set this ticket to DONE and commit.
+
+## Acceptance
+
+- The Box touches at most 6 files, tests included, and no host file.
