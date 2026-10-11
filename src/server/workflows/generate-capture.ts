@@ -71,9 +71,9 @@ import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { foldRecordStates } from "../box/records";
-import { humanMessageText, moveBoxIds, readMessageMoves, sameMoves } from "../box/moves";
+import { humanMessageText, readMessageMoves, sameMoves } from "../box/moves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { BoxId, BoxStates } from "../../shared/contract/box";
+import { moveBoxIds, type BoxStates } from "../../shared/contract/box";
 import { readBoxInstances, type BoxInstances } from "../box/setup";
 
 // @approved
@@ -376,9 +376,9 @@ export function prepareGenerationInputsSnapshot(
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
-	const staged: Partial<Record<BoxId, BoxMoves[keyof BoxMoves]>> | undefined = target.kind === "send" ? target.moves : undefined;
+	const staged = target.kind === "send" ? target.moves : undefined;
 	const closed = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined
-		? moveBoxIds().find((id) => staged?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
+		? moveBoxIds.find((id) => staged?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;

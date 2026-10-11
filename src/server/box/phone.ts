@@ -1,8 +1,8 @@
-import { phoneMove, type PhoneMove, type PhoneRead } from "../../shared/contract/phone";
+import type { PhoneMove, PhoneRead } from "../../shared/contract/phone";
 import type { Database } from "bun:sqlite";
 import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
 import { humanMessageText, readMessageMoves } from "./moves";
-import { phoneMoveLabel, phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "../../shared/phone";
+import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "../../shared/phone";
 import type { Box } from "./contract";
 
 // @approved
@@ -10,7 +10,7 @@ import type { Box } from "./contract";
 //  story's lens lifts into the Phone. Without another Cast member there is
 //  nobody to text, so the Phone says nothing.
 export const phoneBox = {
-	moves: { schema: phoneMove, render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }), label: phoneMoveLabel },
+	moves: { render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }) },
 	dependencies: ({ cast, human }) => phoneNames(cast, human),
 	read: readPhone,
 	advance: {

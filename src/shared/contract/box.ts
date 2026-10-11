@@ -1,5 +1,10 @@
-import { raceSetup } from "./race";
-import { Kind, Type, type Static, type TLiteral } from "@sinclair/typebox";
+import { raceMove, raceRecord, raceSetup } from "./race";
+import { Kind, Type, type Static, type TLiteral, type TObject, type TSchema } from "@sinclair/typebox";
+import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "./world-clock";
+import { MAX_PHONE_MOVES, phoneMove } from "./phone";
+import { initialRaceSetup } from "../race-data";
+import { MAX_RACE_MOVES, raceMoveLabel } from "../race-moves";
+import { phoneMoveLabel } from "../phone";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
@@ -10,10 +15,11 @@ import type { PromptOutgoingRole } from "./prompt-preset";
 // namespace are both `box:<id>`.
 export const boxIds = ["author-note", "memory", "world-clock", "race", "phone", "thought"] as const;
 export type BoxId = typeof boxIds[number];
+/** @approved Mapped over a tuple, so Elysia's route types resolve each member. */
 type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
 // SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
-const boxIdSchemas = boxIds.map((id) => Type.Literal(id)) as LiteralSchemas<typeof boxIds>;
-export const boxId = Type.Union(boxIdSchemas);
+const literals = <Values extends readonly string[]>(values: Values) => values.map((value) => Type.Literal(value)) as LiteralSchemas<Values>;
+export const boxId = Type.Union(literals(boxIds));
 
 export const promptBoxReference = Type.TemplateLiteral([Type.Literal("box:"), boxId]);
 export type PromptBoxReference = Static<typeof promptBoxReference>;
@@ -28,133 +34,69 @@ export const boxState = Type.Union([Type.Literal("enabled"), Type.Literal("disab
 export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(boxId, boxState);
 export type BoxStates = Static<typeof boxStates>;
+type BoxDescriptor = {
+	readonly label: string;
+	readonly role: PromptOutgoingRole;
+	readonly startsEnabled: boolean;
+	readonly setup?: { readonly schema: TSchema; readonly initial: unknown };
+	readonly record?: TObject;
+	readonly moves?: { readonly schema: TSchema; readonly max: number; label(move: never): string; readonly seatBound?: true };
+	readonly decision?: { readonly summary: string; readonly description: string; readonly off: string; readonly context: string };
+};
+const setupOf = <Schema extends TSchema>(schema: Schema, initial: Static<Schema>) => ({ schema, initial });
+const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (move: Static<Schema>) => string) => ({ schema, max, label });
+
 // @approved
-//  What the host shows and defaults for each Box: its preset block label, the
-// role its block starts with, and whether a new Chat starts with it enabled.
+//  What the host shows, defaults and stores for each Box: its preset block
+// label, the role its block starts with, and whether a new Chat starts with
+// it enabled. `setup` is its Conversation-scoped setup, which the
+// set-box-setup command accepts. `record` is the schema of the record each
+// Variant holds for it, which Writer overrides accept. `moves` are the Moves
+// the human attaches to a Message, each shown as its chip `label`; seat-bound
+// Moves are dropped from the composer when the human seat changes. A record is
+// an object, so an absent record is never confused with a record's value. `decision`
+// gives the Box a global Decision Model selection, which its digests ask, and
+// the settings copy that selection shows.
 export const boxDescriptors = {
-	"author-note": { label: "Author Note", role: "system", startsEnabled: true },
+	"author-note": { label: "Author Note", role: "system", startsEnabled: true, setup: setupOf(Type.String(), "") },
 	memory: { label: "Memory", role: "system", startsEnabled: true },
-	"world-clock": { label: "World Clock", role: "system", startsEnabled: false },
-	race: { label: "Race", role: "system", startsEnabled: false },
-	phone: { label: "Phone", role: "system", startsEnabled: false },
+	"world-clock": {
+		label: "World Clock", role: "system", startsEnabled: false,
+		setup: setupOf(worldClockSetup, initialWorldClockSetup),
+		record: worldClockRecord,
+		decision: {
+			summary: "Reads how much time passes and the weather in each passage.",
+			description: "Choose a Decision Model to advance each Chat's World Clock from what its passages say. Without one, the clock stays where it is.",
+			off: "The clock stays where it is",
+			context: "Each passage is read with the Message before it.",
+		},
+	},
+	race: {
+		label: "Race", role: "system", startsEnabled: false,
+		setup: setupOf(raceSetup, initialRaceSetup),
+		record: raceRecord,
+		moves: movesOf(raceMove, MAX_RACE_MOVES, raceMoveLabel),
+	},
+	phone: { label: "Phone", role: "system", startsEnabled: false, moves: { ...movesOf(phoneMove, MAX_PHONE_MOVES, phoneMoveLabel), seatBound: true } },
 	thought: { label: "Thoughts", role: "system", startsEnabled: false },
-} as const satisfies Record<BoxId, { readonly label: string; readonly role: PromptOutgoingRole; readonly startsEnabled: boolean }>;
+} as const satisfies Record<BoxId, BoxDescriptor>;
+export type BoxDescriptors = typeof boxDescriptors;
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = boxIds.filter((id) => boxDescriptors[id].startsEnabled);
 
-export const worldClockStartPattern = "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d$";
-
-export const worldClockSetup = Type.Object({
-	/** @approved In-world start as a naive Gregorian `YYYY-MM-DDTHH:mm`. */
-	start: Type.String({ pattern: worldClockStartPattern }),
-	era: Type.String({ maxLength: 16 }),
-	climate: Type.Union([Type.Literal("temperate"), Type.Literal("tropical"), Type.Literal("arid"), Type.Literal("cold")]),
-	hemisphere: Type.Union([Type.Literal("north"), Type.Literal("south")]),
-	unit: Type.Union([Type.Literal("C"), Type.Literal("F")]),
-});
-export type WorldClockSetup = Static<typeof worldClockSetup>;
-
-/** @approved The setup pattern bounds every field; this rejects calendar dates that pattern alone rolls over, such as February 31. */
-export const isWorldClockStart = (start: string): boolean => {
-	if (!new RegExp(worldClockStartPattern).test(start)) return false;
-	const at = new Date(`${start}:00Z`);
-	return !Number.isNaN(at.getTime())
-		&& at.getUTCFullYear() === Number(start.slice(0, 4))
-		&& at.getUTCMonth() === Number(start.slice(5, 7)) - 1
-		&& at.getUTCDate() === Number(start.slice(8, 10));
-};
-
-export const weathers = ["clear", "cloudy", "rain", "storm", "snow", "fog"] as const;
-export type Weather = typeof weathers[number];
-
-// SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
-const weatherSchemas = weathers.map((kind) => Type.Literal(kind)) as LiteralSchemas<typeof weathers>;
-
-// @approved
-//  A World Clock record holds facts about one passage: how many minutes it
-// spans and the weather it establishes, if any.
-export const worldClockRecord = Type.Object({
-	minutes: Type.Integer({ minimum: 0 }),
-	weather: Type.Union([...weatherSchemas, Type.Null()]),
-});
-export type WorldClockRecord = Static<typeof worldClockRecord>;
-
-// @approved
-//  Elapsed-time bins the Decision Model chooses from, with the inclusive
-//  minute range an automatic digest draws its exact duration from and the
-//  label the window's Editor offers. A Writer override names the bin and
-//  stores its midpoint, a value inside the range the digest draws from.
-export const elapsedBins = {
-	none: { minutes: [0, 0], label: "No time passes" },
-	"~5m": { minutes: [3, 8], label: "About 5 minutes" },
-	"~15m": { minutes: [10, 20], label: "About 15 minutes" },
-	"~30m": { minutes: [25, 40], label: "About 30 minutes" },
-	"~1h": { minutes: [45, 80], label: "About 1 hour" },
-	"~2h": { minutes: [90, 150], label: "About 2 hours" },
-	"~4h": { minutes: [180, 300], label: "About 4 hours" },
-	"~8h": { minutes: [360, 540], label: "About 8 hours" },
-	overnight: { minutes: [540, 720], label: "Overnight" },
-	"~1 day": { minutes: [1200, 1680], label: "About 1 day" },
-	"several days": { minutes: [2880, 7200], label: "Several days" },
-} as const satisfies Record<string, { readonly minutes: readonly [number, number]; readonly label: string }>;
-export type ElapsedBin = keyof typeof elapsedBins;
-export const elapsedBinNames = /* @approved SAFETY: Object.keys of the literal table returns exactly its keys. */ Object.keys(elapsedBins) as ElapsedBin[];
-/** @approved Every stored duration is drawn inside a bin or set to one's midpoint, so an override always names a minute count the digest vocabulary represents. */
-export const elapsedBinMinutes = (bin: ElapsedBin): number => {
-	const [low, high] = elapsedBins[bin].minutes;
-	return low + Math.floor((high - low) / 2);
-};
-
-// @approved
-//  One Box record slot per Variant. `source` hashes the digested text, so an
-// edit is digested again and a reselection is not.
-export const worldClockRecordSlot = Type.Object({
-	automatic: Type.Optional(worldClockRecord),
-	writer: Type.Optional(worldClockRecord),
-	source: Type.Optional(Type.String()),
-});
-export type WorldClockRecordSlot = Static<typeof worldClockRecordSlot>;
-
-// @approved
-//  One selected passage in the World Clock window, with its resolved record
-//  (`writer ?? automatic`) and whether a writer set it. A null record means
-//  the passage has not been digested. `digested` reports whether the
-//  automatic result is the one for exactly this text, so the window knows
-//  what a catch-up run would add.
-export const worldClockPassage = Type.Object({
-	messageId: Type.Integer(),
-	variantId: Type.Integer(),
-	author: Type.Union([Type.Null(), Type.String()]),
-	content: Type.String(),
-	record: Type.Union([Type.Null(), worldClockRecord]),
-	overridden: Type.Boolean(),
-	digested: Type.Boolean(),
-});
-export type WorldClockPassage = Static<typeof worldClockPassage>;
-
-// @approved
-//  A catch-up run's window progress: how many passages it set out to digest
-//  and how many are still queued or in flight.
-export const boxCatchUp = Type.Object({
-	total: Type.Integer({ minimum: 0 }),
-	remaining: Type.Integer({ minimum: 0 }),
-});
-export type BoxCatchUp = Static<typeof boxCatchUp>;
-
-// @approved
-//  The World Clock window read: the folded clock's one-line status and the
-//  selected path's passages. The dock and the window share this read.
-//  `digestReady` reports whether a global Decision Model is selected, so the
-//  window can explain why catch-up and pending reads cannot run.
-export const worldClockRead = Type.Object({
-	conversationId: Type.Integer(),
-	revision: Type.Integer(),
-	status: Type.Union([Type.Null(), Type.String()]),
-	digestReady: Type.Boolean(),
-	catchUp: Type.Union([Type.Null(), boxCatchUp]),
-	passages: Type.Array(worldClockPassage),
-});
-export type WorldClockRead = Static<typeof worldClockRead>;
+type BoxIdsWith<Ids extends readonly BoxId[], Hook extends string> = Ids extends readonly [infer Id extends BoxId, ...infer Rest extends readonly BoxId[]]
+	? Hook extends keyof BoxDescriptors[Id] ? [Id, ...BoxIdsWith<Rest, Hook>] : BoxIdsWith<Rest, Hook>
+	: [];
+// SAFETY: filtering keeps the order of boxIds, which the tuple type follows.
+const boxIdsWith = <Hook extends string>(hook: Hook) => boxIds.filter((id) => hook in boxDescriptors[id]) as BoxIdsWith<typeof boxIds, Hook>;
+export const setupBoxIds = boxIdsWith("setup");
+export type SetupBoxId = typeof setupBoxIds[number];
+export const recordBoxIds = boxIdsWith("record");
+export type RecordBoxId = typeof recordBoxIds[number];
+export const moveBoxIds = boxIdsWith("moves");
+export type MoveBoxId = typeof moveBoxIds[number];
+export const digestBoxIds = boxIdsWith("decision");
+export type DigestBoxId = typeof digestBoxIds[number];
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
@@ -173,14 +115,13 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 //  Each Box's Conversation-scoped setup, as the Chat summary carries it and
 // the set-box-setup command writes it. The Author Note's setup is its text,
 // Image References included.
-export const boxSetups = Type.Object({ "author-note": Type.String(), "world-clock": worldClockSetup, race: raceSetup });
+// SAFETY: the entries are exactly the setup Boxes, each with its own schema.
+const setupSchemas = Object.fromEntries(setupBoxIds.map((id) => [id, boxDescriptors[id].setup.schema])) as { [Id in SetupBoxId]: BoxDescriptors[Id]["setup"]["schema"] };
+export const boxSetups = Type.Object(setupSchemas);
 export type BoxSetups = Static<typeof boxSetups>;
 
-// @approved
-//  The Boxes that digest passages in the background, each with its own
-// global Decision Model selection in library_data.
-export const digestBoxId = Type.Literal("world-clock");
-export type DigestBoxId = Static<typeof digestBoxId>;
+export const digestBoxId = Type.Union(literals(digestBoxIds));
+export const recordBoxId = Type.Union(literals(recordBoxIds));
 export const digestBoxParams = Type.Object({ box: digestBoxId });
 export const boxWindowParams = Type.Object({ id: numericWire, box: digestBoxId });
 export const boxReadParams = Type.Object({ id: numericWire, box: boxId });

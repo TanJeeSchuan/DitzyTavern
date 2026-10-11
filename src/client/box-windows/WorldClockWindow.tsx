@@ -8,13 +8,13 @@ import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-	elapsedBinNames, elapsedBins, elapsedBinMinutes, isWorldClockStart, weathers,
+	elapsedBinNames, elapsedBins, elapsedBinMinutes, isWorldClockStart, weathers, worldClockRead,
 	type ElapsedBin, type Weather, type WorldClockPassage, type WorldClockRead, type WorldClockSetup,
-} from "../../shared/contract/box";
+} from "../../shared/contract/world-clock";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useSaveGuard } from "../SaveGuard";
-import { cancelWorldClockCatchUp, loadWorldClock, startWorldClockCatchUp } from "../world-clock";
+import { cancelBoxCatchUp, loadBoxDigest, startBoxCatchUp } from "../box-digest";
 
 const worldClockKey = (conversationId: number) => ["world-clock", conversationId] as const;
 
@@ -24,7 +24,7 @@ const worldClockKey = (conversationId: number) => ["world-clock", conversationId
 function useWorldClock(conversationId: number) {
 	return useQuery({
 		queryKey: worldClockKey(conversationId),
-		queryFn: ({ signal }) => loadWorldClock(conversationId, signal),
+		queryFn: ({ signal }) => loadBoxDigest(conversationId, "world-clock", worldClockRead, signal),
 		refetchInterval: (query) => query.state.data?.catchUp == null ? 2_500 : 750,
 		refetchIntervalInBackground: false,
 	});
@@ -189,12 +189,12 @@ export function WorldClockWindow({ conversation, disabled, onConversationChange 
 			<div className="world-clock-timeline-head">
 				<h3 id="world-clock-passages-title">Passages</h3>
 				{catchUp === null
-					? <Button variant="outline" size="sm" disabled={catchUpDisabled} onClick={() => void runCatchUp(() => startWorldClockCatchUp(conversation.id))}>
+					? <Button variant="outline" size="sm" disabled={catchUpDisabled} onClick={() => void runCatchUp(() => startBoxCatchUp(conversation.id, "world-clock", worldClockRead))}>
 						Digest missing passages
 					</Button>
 					: <span className="world-clock-progress" role="status">
 						Digesting {catchUp.total - catchUp.remaining} of {catchUp.total}…
-						<Button variant="ghost" size="sm" disabled={catchUpBusy} onClick={() => void runCatchUp(() => cancelWorldClockCatchUp(conversation.id))}>Cancel</Button>
+						<Button variant="ghost" size="sm" disabled={catchUpBusy} onClick={() => void runCatchUp(() => cancelBoxCatchUp(conversation.id, "world-clock", worldClockRead))}>Cancel</Button>
 					</span>}
 			</div>
 			{!digestReady && <p className="world-clock-note" role="status">Select a World Clock Decision Model in Connection Settings to digest passages.</p>}

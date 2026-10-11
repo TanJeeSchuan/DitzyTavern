@@ -8,10 +8,8 @@ export const initialRaceState = (setup: RaceSetup): RaceState => ({
 	intents: [], replay: [],
 });
 
-export const foldRaceRecords = (records: readonly RaceRecord[], raceId: string): RaceState | null =>
-	records.reduce<RaceState | null>((state, record) => record.raceId === raceId ? foldRace(state, record) : state, null);
-
-export const foldRace = (_state: RaceState | null, record: RaceRecord): RaceState => record.after;
+/** @approved A record holds the whole state after its Stretch; records of another race leave the current one untouched. */
+export const foldRace = (state: RaceState | null, record: RaceRecord, { raceId }: Pick<RaceSetup, "raceId">): RaceState | null => record.raceId === raceId ? record.after : state;
 
 const stylePace = {
 	"Front Runner": [1.08, 1.03, 0.99, 0.97],

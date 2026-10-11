@@ -3,15 +3,17 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { worldClockRead, type WorldClockSetup } from "../../shared/contract/box";
+import { initialWorldClockSetup, worldClockRead, type WorldClockSetup } from "../../shared/contract/world-clock";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { readRecordSlots, writeAutomaticRecord } from "../box/records";
-import { worldClockBox } from "../box/world-clock";
 import { sha256 } from "../memory/hash";
 import { createContract } from ".";
+import { acceptConversationTailGeneration } from "../conversation";
+import { advanceRace } from "../box/race-engine";
+import { fillRaceField, initialRaceSetup } from "../../shared/race-data";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-const initial = worldClockBox.setup.initial;
+const initial = initialWorldClockSetup;
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
@@ -133,6 +135,25 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	const reset = await command(app, chat.id, revision, { type: "reset-box-record", box: "world-clock", messageId, variantId });
 	expect(reset.status).toBe(200);
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, overridden: false });
+});
+
+test("a Variant still generating takes no Writer override, so its own record can land when it settles", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	insertBox(database, chat.id, "race");
+	const [human, model] = chat.cast;
+	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+	const accepted = acceptConversationTailGeneration(database, {
+		seed: "override-seed", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-08-27T00:00:00.000Z",
+		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
+		promptPlan: { blocks: [], warnings: [], images: [] }, promptContext: [], generationSettings: {}, connection: {},
+	});
+	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
+	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] });
+	if (record === undefined) throw new Error("The Stretch produced no record.");
+	const { messageId, provisionalVariantId: variantId, conversation } = accepted;
+	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record });
+	expect(await response.json()).toEqual({ outcome: "invalid", reason: "This Variant is still generating. Override its record once it settles." });
 });
 
 test("an override outside the Box record schema is refused", async () => {

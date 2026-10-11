@@ -1,10 +1,14 @@
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
-import { boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, type BoxDecisionSettings, type BoxDecisionSettingsCommand } from "../shared/contract/box";
+import { boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, digestBoxIds, type BoxDecisionSettings, type BoxDecisionSettingsCommand, type DigestBoxId } from "../shared/contract/box";
 
-const worldClock = () => api.api.boxes({ box: "world-clock" })["decision-settings"];
+const route = (box: DigestBoxId) => api.api.boxes({ box })["decision-settings"];
 
-export const loadWorldClockDecisionSettings = (): Promise<BoxDecisionSettings> => requestData(worldClock().get(), boxDecisionSettings);
-
-export const saveWorldClockDecisionSettings = (command: BoxDecisionSettingsCommand) =>
-	requestOutcome(worldClock().commands.post(command), boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors);
+// @approved
+//  One load and save pair per digesting Box, built once so a settings draft
+// keyed by them never reloads on render.
+export const boxDecisionClients = digestBoxIds.map((box) => ({
+	box,
+	load: (): Promise<BoxDecisionSettings> => requestData(route(box).get(), boxDecisionSettings),
+	save: (command: BoxDecisionSettingsCommand) => requestOutcome(route(box).commands.post(command), boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors),
+}));

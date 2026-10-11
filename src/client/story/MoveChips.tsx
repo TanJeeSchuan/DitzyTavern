@@ -1,11 +1,8 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortableOperation, useSortable } from "@dnd-kit/react/sortable";
 import { X } from "lucide-react";
-import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { PhoneMove } from "../../shared/contract/phone";
-import type { RaceMove } from "../../shared/contract/race";
-import { raceMoveLabel } from "../../shared/race-moves";
-import { phoneMoveLabel } from "../../shared/phone";
+import { boxDescriptors, moveBoxIds } from "../../shared/contract/box";
+import { hasMoves, moveLabel, replaceMoves, type BoxMove, type BoxMoves } from "../../shared/contract/box-generation";
 
 function MoveChip({ id, index, label, disabled, onRemove }: { id: string; index: number; label: string; disabled: boolean; onRemove?: (() => void) | undefined }) {
 	const { ref, handleRef, isDragging } = useSortable({ id, index, disabled: disabled || onRemove === undefined });
@@ -42,16 +39,9 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 
 /** @approved A Message's Moves per Box. With `onChange` they can be dragged into another order or removed. */
 export function MoveChips({ moves, onChange, disabled = false }: { moves: BoxMoves; onChange?: ((moves: BoxMoves) => void) | undefined; disabled?: boolean }) {
-	const { race = [], phone = [] } = moves;
-	if (race.length + phone.length === 0) return null;
-	const set = onChange === undefined ? undefined : ({ race: nextRace, phone: nextPhone }: BoxMoves) => {
-		const next: BoxMoves = {};
-		if (nextRace !== undefined && nextRace.length > 0) next.race = nextRace;
-		if (nextPhone !== undefined && nextPhone.length > 0) next.phone = nextPhone;
-		onChange(next);
-	};
+	if (!hasMoves(moves)) return null;
 	return <div className="move-chips">
-		<MoveList<RaceMove> name="Race Moves" list={race} label={raceMoveLabel} disabled={disabled} onChange={set && ((next) => set({ ...moves, race: next }))} />
-		<MoveList<PhoneMove> name="Phone Moves" list={phone} label={phoneMoveLabel} disabled={disabled} onChange={set && ((next) => set({ ...moves, phone: next }))} />
+		{moveBoxIds.map((id) => <MoveList<BoxMove> key={id} name={`${boxDescriptors[id].label} Moves`} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
+			onChange={onChange && ((next) => onChange(replaceMoves(moves, id, next)))} />)}
 	</div>;
 }

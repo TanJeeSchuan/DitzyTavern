@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import type { RaceMove, RaceRecord, RaceState } from "../../shared/contract/race";
 import { fillRaceField, initialRaceSetup } from "../../shared/race-data";
-import { advanceRace, foldRaceRecords } from "./race-engine";
+import { advanceRace, foldRace } from "./race-engine";
 
+const foldRaceRecords = (records: readonly RaceRecord[], raceId: string) => records.reduce<RaceState | null>((state, record) => foldRace(state, record, { raceId }), null);
 const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 
 test("equal Race state and seed produce the same Stretch without mutating inputs", () => {

@@ -1,9 +1,8 @@
 import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxIds, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import { boxDescriptors, boxIds, boxReference, setupBoxIds, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import { conversationDataTable } from "../database/schema";
-import { serverBox } from "./registry";
 
 const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
@@ -66,14 +65,13 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.all()
 		.map((row) => [row.namespace, row.value]));
 	// @approved
-	// SAFETY: each entry is decoded with its Box's own setup schema, and the Boxes that declare setup are exactly the keys of boxSetups.
-	return Object.fromEntries(boxIds.flatMap((id) => {
-		const setup = serverBox(id).setup;
+	// SAFETY: the entries are exactly the setup Boxes, each decoded with its own setup schema.
+	return Object.fromEntries(setupBoxIds.map((id) => {
+		const { schema, initial } = boxDescriptors[id].setup;
 		const value = stored.get(boxReference(id));
-		if (setup === undefined) return [];
-		if (value === undefined) return [[id, setup.initial]];
+		if (value === undefined) return [id, initial];
 		const decoded: unknown = JSON.parse(value);
-		if (!Value.Check(setup.schema, decoded)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
-		return [[id, decoded]];
+		if (!Value.Check(schema, decoded)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
+		return [id, decoded];
 	})) as BoxSetups;
 };

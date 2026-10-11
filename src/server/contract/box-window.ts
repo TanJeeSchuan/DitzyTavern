@@ -1,34 +1,33 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { boxRead, boxReadParams, boxWindowParams, worldClockRead } from "../../shared/contract/box";
+import { boxRead, boxReadParams, boxWindowParams } from "../../shared/contract/box";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
-import { cancelBoxCatchUp, startBoxCatchUp } from "../box/digest";
+import { cancelBoxCatchUp, readDigest, startBoxCatchUp } from "../box/digest";
 import { serverBox } from "../box/registry";
-import { readWorldClock } from "../box/world-clock";
 import { notFoundResponse } from "./responses";
 
-const catchUpResponse = { 200: worldClockRead, 404: notFoundOutcome };
+const readResponse = { 200: boxRead, 404: notFoundOutcome };
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/boxes/:box", ({ params }) => serverBox(params.box).read?.(database, params.id) ?? notFoundResponse(),
-		{ params: boxReadParams, response: { 200: boxRead, 404: notFoundOutcome } })
+		{ params: boxReadParams, response: readResponse })
 	// @approved
 	//  Catch-up and cancellation are in-memory queue work, not Conversation
-	//  state, so they are their own routes: the polled window read carries the
+	//  state, so they are their own routes: the polled digest read carries the
 	//  run's progress and the run never touches the Conversation revision.
 	.post(
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
-			startBoxCatchUp(database, params.id);
-			return readWorldClock(database, params.id) ?? notFoundResponse();
+			startBoxCatchUp(database, params.id, params.box);
+			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
-		{ params: boxWindowParams, response: catchUpResponse },
+		{ params: boxWindowParams, response: readResponse },
 	)
 	.delete(
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
-			cancelBoxCatchUp(database, params.id);
-			return readWorldClock(database, params.id) ?? notFoundResponse();
+			cancelBoxCatchUp(database, params.id, params.box);
+			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
-		{ params: boxWindowParams, response: catchUpResponse },
+		{ params: boxWindowParams, response: readResponse },
 	);

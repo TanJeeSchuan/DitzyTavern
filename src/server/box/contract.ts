@@ -18,15 +18,16 @@ export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxSer
 
 export interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined, Move = never> {
 	readonly inject?: readonly Services[];
-	readonly setup?: { readonly schema: TSchema; readonly initial: Setup };
-	/** @approved Moves the human attaches to a Message for this Box; history sent to the model shows each as `render`, given the Message's author, or as its chip `label` once the Box is not enabled. */
-	readonly moves?: { readonly schema: TSchema; render(move: Move, author: string): string; label(move: Move): string };
+	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
+	setupError?(setup: Setup, previous: Setup): string | undefined;
+	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
+	readonly moves?: { render(move: Move, author: string): string };
 	/** @approved What the Box needs beyond its setup, state and Moves, taken from what the host read for this Generation. */
 	dependencies?(read: CaptureRead, setup: Setup): Dependencies;
+	/** @approved How the records the descriptor's `record` schema describes fold into state, in Message order, from `initial`. */
 	readonly records?: {
-		readonly schema: TSchema;
 		readonly initial: State;
-		fold(state: State, record: Rec): State;
+		fold(state: State, record: Rec, setup: Setup): State;
 		readonly digest?: { readonly window: number; run(window: DigestWindow, ctx: DigestContext): Promise<Rec> };
 	};
 	readonly advance?: {

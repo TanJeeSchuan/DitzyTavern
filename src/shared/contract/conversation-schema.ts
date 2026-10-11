@@ -1,4 +1,4 @@
-import { Kind, Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Kind, Type, type Static, type TInteger, type TLiteral, type TObject, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
@@ -6,7 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { boxId, boxSetups, boxState, boxStates, promptBoxReference, worldClockRecord } from "./box";
+import { boxDescriptors, boxId, boxSetups, boxState, boxStates, promptBoxReference, recordBoxId, recordBoxIds, setupBoxIds, type BoxDescriptors, type RecordBoxId, type SetupBoxId } from "./box";
 import { boxMoves, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -625,11 +625,9 @@ const replaceParticipantOpeningsAction = Type.Object({
 // @approved
 //  Replaces one Box's whole setup. The setup is validated against that Box's
 // schema here, so storage only ever holds decodable values.
-const setBoxSetupAction = Type.Union([
-	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("race"), setup: boxSetups.properties.race }),
-	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("author-note"), setup: boxSetups.properties["author-note"] }),
-	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("world-clock"), setup: boxSetups.properties["world-clock"] }),
-]);
+type SetBoxSetupActions<Ids extends readonly SetupBoxId[]> = { -readonly [K in keyof Ids]: TObject<{ type: TLiteral<"set-box-setup">; box: TLiteral<Ids[K]>; setup: BoxDescriptors[Ids[K]]["setup"]["schema"] }> };
+// SAFETY: one action per setup Box in tuple order, each with its own setup schema.
+const setBoxSetupAction = Type.Union(setupBoxIds.map((id) => Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal(id), setup: boxSetups.properties[id] })) as SetBoxSetupActions<typeof setupBoxIds>);
 
 // @approved
 //  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
@@ -640,17 +638,21 @@ const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box
 //  validated against that Box's schema here, so storage only ever holds
 //  decodable values. Reset removes the override and leaves the automatic
 //  record, if any, as the effective value.
-const setBoxRecordAction = Type.Object({
+type SetBoxRecordActions<Ids extends readonly RecordBoxId[]> = {
+	-readonly [K in keyof Ids]: TObject<{ type: TLiteral<"set-box-record">; box: TLiteral<Ids[K]>; messageId: TInteger; variantId: TInteger; record: BoxDescriptors[Ids[K]]["record"] }>
+};
+// SAFETY: one action per record Box in tuple order, each with its own record schema.
+const setBoxRecordAction = Type.Union(recordBoxIds.map((id) => Type.Object({
 	type: Type.Literal("set-box-record"),
-	box: Type.Literal("world-clock"),
+	box: Type.Literal(id),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
-	record: worldClockRecord,
-});
+	record: boxDescriptors[id].record,
+})) as SetBoxRecordActions<typeof recordBoxIds>);
 
 const resetBoxRecordAction = Type.Object({
 	type: Type.Literal("reset-box-record"),
-	box: Type.Literal("world-clock"),
+	box: recordBoxId,
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 });

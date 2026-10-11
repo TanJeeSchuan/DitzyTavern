@@ -71,7 +71,6 @@ export const raceRecord = Type.Object({
 	raceId: Type.String(), stretch: Type.Integer(), outcome: Type.String(), after: raceState,
 });
 export type RaceRecord = Static<typeof raceRecord>;
-export const raceRecordSlot = Type.Object({ automatic: raceRecord });
 // @approved
 //  A Race Move acts on one Runner: the human-seat Runner, or the Runner the
 //  writer orders when the human seat is not racing.

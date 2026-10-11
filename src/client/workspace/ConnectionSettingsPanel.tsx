@@ -3,7 +3,8 @@ import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfile
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
 import { DecisionSettingsEditor, useSettingsDraft } from "./DecisionSettingsEditor";
-import { loadWorldClockDecisionSettings, saveWorldClockDecisionSettings } from "../box-decision-settings";
+import { boxDecisionClients } from "../box-decision-settings";
+import { boxDescriptors, type DigestBoxId } from "../../shared/contract/box";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -21,20 +22,26 @@ export function ConnectionSettingsPanel({
 	activeProfileId: number | null;
 }) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const worldClock = useSettingsDraft("World Clock Settings", loadWorldClockDecisionSettings, saveWorldClockDecisionSettings);
-	const [open, setOpen] = useState<"semantic-triggers" | "world-clock" | null>(null);
+	// @approved
+	//  boxDecisionClients never changes, so these drafts keep their hook order.
+	const boxDecisions = boxDecisionClients.map(({ box, load, save }) => ({ box, editor: useSettingsDraft(`${boxDescriptors[box].label} Settings`, load, save) }));
+	const [open, setOpen] = useState<"semantic-triggers" | DigestBoxId | null>(null);
+	const openBox = boxDecisions.find(({ box }) => box === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
-	if (open === "world-clock") return <DecisionSettingsEditor
-		editor={worldClock}
-		id="world-clock-settings"
-		title="World Clock"
-		description="Choose a Decision Model to advance each Chat's World Clock from what its passages say. Without one, the clock stays where it is."
-		pickerLabel="World Clock Decision Model"
-		pickerHelper="System One connections only."
-		stateDescription="Each passage is read with the Message before it."
-		onBack={() => setOpen(null)}
-	/>;
+	if (openBox !== undefined) {
+		const { label, decision } = boxDescriptors[openBox.box];
+		return <DecisionSettingsEditor
+			editor={openBox.editor}
+			id={`${openBox.box}-settings`}
+			title={label}
+			description={decision.description}
+			pickerLabel={`${label} Decision Model`}
+			pickerHelper="System One connections only."
+			stateDescription={decision.context}
+			onBack={() => setOpen(null)}
+		/>;
+	}
 	return (
 		<div className="panel-body settings-panel-body">
 			{controller.loading ? <p className="panel-note" role="status">Loading Connections…</p>
@@ -46,8 +53,8 @@ export function ConnectionSettingsPanel({
 						activeProfileId={activeProfileId}
 						semanticTriggers={semanticTriggers}
 						onOpenSemanticTrigger={() => setOpen("semantic-triggers")}
-						worldClock={worldClock}
-						onOpenWorldClock={() => setOpen("world-clock")}
+						boxDecisions={boxDecisions}
+						onOpenBoxDecision={setOpen}
 					/>
 				)}
 		</div>

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
-import type { BoxDecisionSettings } from "../../../shared/contract/box";
+import { boxDescriptors, type BoxDecisionSettings, type DigestBoxId } from "../../../shared/contract/box";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 /** @approved The Decision Model settings the Connections list previews. */
@@ -13,15 +13,19 @@ type SettingsPreview<S> = { settings: S | null; loading: boolean };
 
 const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
-export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, worldClock, onOpenWorldClock }: {
+const listOf = (items: readonly string[], conjunction: "and" | "or") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;
+
+export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision }: {
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
 	semanticTriggers: SettingsPreview<SemanticTriggerSettings>;
 	onOpenSemanticTrigger: () => void;
-	worldClock: SettingsPreview<BoxDecisionSettings>;
-	onOpenWorldClock: () => void;
+	boxDecisions: readonly { box: DigestBoxId; editor: SettingsPreview<BoxDecisionSettings> }[];
+	onOpenBoxDecision: (box: DigestBoxId) => void;
 }) {
+	const boxes = boxDecisions.map(({ box }) => `the ${boxDescriptors[box].label}`);
+	const roles = ["Memory", "Semantic Triggers", ...boxes];
 	const pending = controller.pendingDeletionProfile;
 	const feedback = controller.error ?? controller.notice;
 	const embeddingsPreset = controller.presets.find((preset) => preset.profile.apiFormat === "embeddings");
@@ -61,7 +65,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<h3 id="decisions-title">Decision Models</h3>
 					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
 				</div>
-				<p>Judge Memory and Semantic Triggers, and advance the World Clock. Each role chooses its own model.</p>
+				<p>Judge Memory and Semantic Triggers, and read passages for {listOf(boxes, "and")}. Each role chooses its own model.</p>
 				<ProfileRows
 				label="Decision Model connections"
 				profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")}
@@ -69,7 +73,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				describe={profile => hostOf(profile.requestUrl)}
 				badge={() => null}
 				empty={
-					<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory, Semantic Triggers or the World Clock.</EmptyProfiles>
+					<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in {listOf(roles, "or")}.</EmptyProfiles>
 				}
 			/>
 			</section>
@@ -79,12 +83,15 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				<DecisionSummary preview={semanticTriggers} name="Semantic Trigger" onOpen={onOpenSemanticTrigger}
 					describe={(settings) => settings.decisionProfileId === null ? "Keyword-only matching" : `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`} />
 			</section>
-			<section aria-labelledby="worldClock-title">
-				<h3 id="worldClock-title">World Clock</h3>
-				<p>Reads how much time passes and the weather in each passage.</p>
-				<DecisionSummary preview={worldClock} name="World Clock" onOpen={onOpenWorldClock}
-					describe={(settings) => settings.decisionProfileId === null ? "The clock stays where it is" : "Decision Model"} />
-			</section>
+			{boxDecisions.map(({ box, editor }) => {
+				const { label, decision } = boxDescriptors[box];
+				return <section key={box} aria-labelledby={`${box}-title`}>
+					<h3 id={`${box}-title`}>{label}</h3>
+					<p>{decision.summary}</p>
+					<DecisionSummary preview={editor} name={label} onOpen={() => onOpenBoxDecision(box)}
+						describe={(settings) => settings.decisionProfileId === null ? decision.off : "Decision Model"} />
+				</section>;
+			})}
 
 			<Dialog open={pending !== undefined} onOpenChange={(open) => { if (!open) controller.setPendingDeletionProfileId(null); }}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
@@ -92,7 +99,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 						<DialogTitle>Delete {pending?.displayName}?</DialogTitle>
 						<DialogDescription>
 							{pending?.apiFormat === "system-one"
-								? "Memory, Semantic Triggers and the World Clock using it will need another Decision Model."
+								? `${listOf(roles, "and")} using it will need another Decision Model.`
 								: pending?.apiFormat === "embeddings"
 									? "Memory recall stops until you choose another embedding model."
 									: "Chats using it will need another connection before they can generate."}

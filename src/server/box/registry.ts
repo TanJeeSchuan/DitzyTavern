@@ -2,7 +2,10 @@ import { boxSeed } from "./seed";
 import { raceBox } from "./race";
 import { Value } from "@sinclair/typebox/value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxIds, boxReference, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import {
+	boxDescriptors, boxIds, boxReference,
+	type BoxId, type BoxSetups, type BoxStates, type DigestBoxId, type MoveBoxId, type PromptBoxReference, type RecordBoxId,
+} from "../../shared/contract/box";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { memoryBox } from "./memory";
 import { authorNoteBox } from "./author-note";
@@ -16,15 +19,19 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, C
 // @approved
 //  The server module of every Box. A lookup rather than a table, because Box
 // modules read through the Conversation module, which reads Box setups
-// through here: a table would be built before the Boxes it holds.
-export const serverBox = (id: BoxId): HostBox => ({
-	"author-note": authorNoteBox,
-	memory: memoryBox,
-	"world-clock": worldClockBox,
-	race: raceBox,
-	phone: phoneBox,
-	thought: thoughtBox,
-} satisfies Record<BoxId, HostBox>)[id];
+// through here: a table would be built before the Boxes it holds. The
+// descriptor decides which hooks a Box must declare: records for a `record`
+// schema, a digest for a `decision`, and a render for `moves`.
+export const serverBox = <Id extends BoxId>(id: Id): ServerBoxes[Id] => {
+	const boxes: ServerBoxes = { "author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox };
+	return boxes[id];
+};
+
+type Records = NonNullable<HostBox["records"]>;
+type ServerBoxes = { readonly [Id in BoxId]: HostBox
+	& (Id extends RecordBoxId ? { readonly records: Records } : { readonly records?: never })
+	& (Id extends DigestBoxId ? { readonly records: { readonly digest: NonNullable<Records["digest"]> } } : unknown)
+	& (Id extends MoveBoxId ? { readonly moves: NonNullable<HostBox["moves"]> } : { readonly moves?: never }) };
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
 export type BoxItems = Partial<Record<PromptBoxReference, readonly (BlockItem & { readonly index: number })[]>>;
@@ -38,8 +45,8 @@ interface CapturedBox {
 }
 export type BoxInputs = readonly CapturedBox[];
 
-const captureBox = (reference: PromptBoxReference, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, blockEnabled: boolean): CapturedBox => ({
-	reference,
+const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, blockEnabled: boolean): CapturedBox => ({
+	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) }),
 	run: async (services) => {
 		// @approved
@@ -48,8 +55,9 @@ const captureBox = (reference: PromptBoxReference, box: HostBox, input: AdvanceI
 		const withoutBlock = box.advance?.withoutBlock;
 		const result = !blockEnabled && withoutBlock !== undefined ? withoutBlock(input) : await box.advance?.run(input, { ...injected, signal: services.signal }) ?? { items: [] };
 		if (result.record !== undefined) {
-			if (box.records === undefined) throw new Error(`${reference} returned a record without declaring records.`);
-			Value.Assert(box.records.schema, result.record);
+			const descriptor = boxDescriptors[id];
+			if (!("record" in descriptor)) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
+			Value.Assert(descriptor.record, result.record);
 		}
 		if (result.trace !== undefined && box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
 		return result;
@@ -61,7 +69,7 @@ const captureBox = (reference: PromptBoxReference, box: HostBox, input: AdvanceI
 // Box that declares `advance.withoutBlock` is captured without its block.
 export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, boxes: BoxStates, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs => {
 	const setupOf: Partial<Record<BoxId, BoxSetups[keyof BoxSetups]>> = setups;
-	const stateOf: Partial<Record<BoxId, RecordStates[keyof RecordStates]>> = states;
+	const stateOf: { readonly [Id in BoxId]?: RecordStates[RecordBoxId] } = states;
 	const movesOf: Partial<Record<BoxId, BoxMoves[keyof BoxMoves]>> = moves;
 	return boxIds.flatMap((id) => {
 		const box = serverBox(id);
@@ -69,7 +77,7 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 		if (boxes[id] !== "enabled" || (!blockEnabled && box.advance?.withoutBlock === undefined)) return [];
 		const setup = setupOf[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return [captureBox(boxReference(id), box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies }, blockEnabled)];
+		return [captureBox(id, box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies }, blockEnabled)];
 	});
 };
 

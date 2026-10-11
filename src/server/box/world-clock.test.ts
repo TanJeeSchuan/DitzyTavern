@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isWorldClockStart, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
+import { isWorldClockStart, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/world-clock";
 import { clockAt, clockLine, clockStatus, drawMinutes, temperature, worldClockBox } from "./world-clock";
 
 const setup: WorldClockSetup = { start: "2025-12-20T08:41", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" };

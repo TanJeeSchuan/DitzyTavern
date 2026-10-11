@@ -38,7 +38,8 @@ import {
 	type StoryMessage,
 	type StoryState,
 } from "../story";
-import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { hasMoves, pickMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { boxDescriptors } from "../../shared/contract/box";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -83,22 +84,20 @@ export function useGenerationController({
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
 	// @approved
-	//  Staged Moves belong to the Chat they were staged in. Staged texts also
-	//  belong to the human seat that wrote them: after a seat change they
-	//  could name the new seat as their own recipient.
+	//  Staged Moves belong to the Chat they were staged in. Seat-bound Moves,
+	//  such as Phone texts, also belong to the human seat that wrote them:
+	//  after a seat change they could name the new seat as their own recipient.
 	const [staged, setStaged] = useState<{ conversationId: number | undefined; humanParticipantId: number | null | undefined; moves: BoxMoves }>({
 		conversationId: undefined, humanParticipantId: undefined, moves: {},
 	});
 	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
 	// @approved
 	//  A Box that stops being enabled drops its staged Moves for good.
-	const enabledMoves: BoxMoves = {};
-	if (staged.moves.race !== undefined && conversation?.boxes.race === "enabled") enabledMoves.race = staged.moves.race;
-	if (staged.moves.phone !== undefined && conversation?.boxes.phone === "enabled") enabledMoves.phone = staged.moves.phone;
+	const enabledMoves = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled");
 	if (conversation !== null && staged.conversationId === conversation.id && Object.keys(enabledMoves).length !== Object.keys(staged.moves).length) setStaged({ ...staged, moves: enabledMoves });
 	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {}
-		: sameSeat || enabledMoves.phone === undefined ? enabledMoves
-		: enabledMoves.race === undefined ? {} : { race: enabledMoves.race };
+		: sameSeat ? enabledMoves
+		: pickMoves(enabledMoves, (id) => !("seatBound" in boxDescriptors[id].moves));
 	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {
