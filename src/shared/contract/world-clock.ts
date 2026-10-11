@@ -1,5 +1,4 @@
 import { Type, type Static, type TLiteral } from "@sinclair/typebox";
-import { digestRead, type DigestRead } from "./box-digest";
 
 export const worldClockStartPattern = "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d$";
 
@@ -27,45 +26,26 @@ export const isWorldClockStart = (start: string): boolean => {
 export const weathers = ["clear", "cloudy", "rain", "storm", "snow", "fog"] as const;
 export type Weather = typeof weathers[number];
 
+/** @approved Each weather's label, as the passage timeline offers and shows it. */
+export const weatherLabels = {
+	clear: "☀️ Clear",
+	cloudy: "☁️ Cloudy",
+	rain: "🌧️ Rain",
+	storm: "⛈️ Storm",
+	snow: "🌨️ Snow",
+	fog: "🌫️ Fog",
+} as const satisfies Record<Weather, string>;
+
 type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
 // SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
-const weatherSchemas = weathers.map((kind) => Type.Literal(kind)) as LiteralSchemas<typeof weathers>;
+const weatherSchemas = weathers.map((kind) => Type.Literal(kind, { title: weatherLabels[kind] })) as LiteralSchemas<typeof weathers>;
 
 // @approved
 //  A World Clock record holds facts about one passage: how many minutes it
-// spans and the weather it establishes, if any.
+// spans and the weather it establishes, if any. The titles label the passage
+// timeline's Writer override fields.
 export const worldClockRecord = Type.Object({
-	minutes: Type.Integer({ minimum: 0 }),
-	weather: Type.Union([...weatherSchemas, Type.Null()]),
+	minutes: Type.Integer({ minimum: 0, title: "Minutes" }),
+	weather: Type.Union([...weatherSchemas, Type.Null({ title: "Not mentioned" })], { title: "Weather" }),
 });
 export type WorldClockRecord = Static<typeof worldClockRecord>;
-
-// @approved
-//  Elapsed-time bins the Decision Model chooses from, with the inclusive
-//  minute range an automatic digest draws its exact duration from and the
-//  label the window's Editor offers. A Writer override names the bin and
-//  stores its midpoint, a value inside the range the digest draws from.
-export const elapsedBins = {
-	none: { minutes: [0, 0], label: "No time passes" },
-	"~5m": { minutes: [3, 8], label: "About 5 minutes" },
-	"~15m": { minutes: [10, 20], label: "About 15 minutes" },
-	"~30m": { minutes: [25, 40], label: "About 30 minutes" },
-	"~1h": { minutes: [45, 80], label: "About 1 hour" },
-	"~2h": { minutes: [90, 150], label: "About 2 hours" },
-	"~4h": { minutes: [180, 300], label: "About 4 hours" },
-	"~8h": { minutes: [360, 540], label: "About 8 hours" },
-	overnight: { minutes: [540, 720], label: "Overnight" },
-	"~1 day": { minutes: [1200, 1680], label: "About 1 day" },
-	"several days": { minutes: [2880, 7200], label: "Several days" },
-} as const satisfies Record<string, { readonly minutes: readonly [number, number]; readonly label: string }>;
-export type ElapsedBin = keyof typeof elapsedBins;
-export const elapsedBinNames = /* @approved SAFETY: Object.keys of the literal table returns exactly its keys. */ Object.keys(elapsedBins) as ElapsedBin[];
-/** @approved Every stored duration is drawn inside a bin or set to one's midpoint, so an override always names a minute count the digest vocabulary represents. */
-export const elapsedBinMinutes = (bin: ElapsedBin): number => {
-	const [low, high] = elapsedBins[bin].minutes;
-	return low + Math.floor((high - low) / 2);
-};
-
-export const worldClockRead = digestRead(worldClockRecord);
-export type WorldClockRead = DigestRead<typeof worldClockRecord>;
-export type WorldClockPassage = WorldClockRead["passages"][number];

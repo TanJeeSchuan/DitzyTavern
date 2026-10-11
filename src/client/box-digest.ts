@@ -1,24 +1,28 @@
-import type { StaticDecode, TSchema } from "@sinclair/typebox";
-import type { DigestBoxId } from "../shared/contract/box";
+import { boxDescriptors, type BoxDescriptors, type DigestBoxId } from "../shared/contract/box";
+import { digestRead, type DigestRead } from "../shared/contract/box-digest";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import { api } from "./lib/eden";
 import { foundOrNull, requestOutcome } from "./lib/request-outcome";
 
-// @approved
-//  A digesting Box's window read and catch-up, decoded with the Box's own
-// digest read schema.
-const boxRoute = (conversationId: number, box: DigestBoxId) => api.api.conversations({ id: conversationId }).boxes({ box });
+export type BoxDigest = DigestRead<BoxDescriptors[DigestBoxId]["record"]>;
+export type BoxDigestPassage = BoxDigest["passages"][number];
 
-export async function loadBoxDigest<Read extends TSchema>(conversationId: number, box: DigestBoxId, read: Read, signal?: AbortSignal): Promise<StaticDecode<Read> | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).get({ fetch: { signal } }), read, notFoundOutcome));
+// @approved
+//  A digesting Box's passage timeline read and catch-up, decoded with the
+// digest read of the Box's own record schema.
+const boxRoute = (conversationId: number, box: DigestBoxId) => api.api.conversations({ id: conversationId }).boxes({ box });
+const readOf = (box: DigestBoxId) => digestRead(boxDescriptors[box].record);
+
+export async function loadBoxDigest(conversationId: number, box: DigestBoxId, signal?: AbortSignal): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).get({ fetch: { signal } }), readOf(box), notFoundOutcome));
 }
 
 /** @approved Starting resolves with the read that already carries the new run's progress. */
-export async function startBoxCatchUp<Read extends TSchema>(conversationId: number, box: DigestBoxId, read: Read): Promise<StaticDecode<Read> | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].post(), read, notFoundOutcome));
+export async function startBoxCatchUp(conversationId: number, box: DigestBoxId): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].post(), readOf(box), notFoundOutcome));
 }
 
 /** @approved Cancelling resolves with the read that no longer carries a run. */
-export async function cancelBoxCatchUp<Read extends TSchema>(conversationId: number, box: DigestBoxId, read: Read): Promise<StaticDecode<Read> | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].delete(), read, notFoundOutcome));
+export async function cancelBoxCatchUp(conversationId: number, box: DigestBoxId): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].delete(), readOf(box), notFoundOutcome));
 }

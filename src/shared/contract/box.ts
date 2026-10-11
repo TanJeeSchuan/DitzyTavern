@@ -97,6 +97,7 @@ export const moveBoxIds = boxIdsWith("moves");
 export type MoveBoxId = typeof moveBoxIds[number];
 export const digestBoxIds = boxIdsWith("decision");
 export type DigestBoxId = typeof digestBoxIds[number];
+export const isDigestBoxId = (id: BoxId): id is DigestBoxId => digestBoxIds.some((digest) => digest === id);
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,

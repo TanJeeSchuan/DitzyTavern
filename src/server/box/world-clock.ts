@@ -1,26 +1,26 @@
-import { elapsedBinNames, elapsedBins, isWorldClockStart, weathers, type ElapsedBin, type Weather, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/world-clock";
-import { readDigest } from "./digest";
+import { isWorldClockStart, weathers, type Weather, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/world-clock";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { Box } from "./contract";
 import { seededFraction } from "./seed";
 
 // @approved
-//  What each elapsed bin means to the Decision Model. The minute ranges an
-//  automatic digest draws from live in the shared contract, because the
-//  window's Writer Editor offers the same bins as an override.
-const elapsedCriteria = {
-	none: "No time passes beyond the conversation itself",
-	"~5m": "A brief exchange or a few actions",
-	"~15m": "A short scene or a walk across a building",
-	"~30m": "A meal, a short trip, or a long talk",
-	"~1h": "About an hour of activity",
-	"~2h": "A couple of hours",
-	"~4h": "An afternoon, or a long journey",
-	"~8h": "A working day, or most of a day",
-	overnight: "The characters sleep or the night passes",
-	"~1 day": "About a day passes",
-	"several days": "Days pass, as in a time skip",
-} as const satisfies Record<ElapsedBin, string>;
+//  Elapsed-time bins the Decision Model chooses from: what each means to it,
+// and the inclusive minute range a digest draws its exact duration from.
+const elapsedBins = {
+	none: { minutes: [0, 0], criteria: "No time passes beyond the conversation itself" },
+	"~5m": { minutes: [3, 8], criteria: "A brief exchange or a few actions" },
+	"~15m": { minutes: [10, 20], criteria: "A short scene or a walk across a building" },
+	"~30m": { minutes: [25, 40], criteria: "A meal, a short trip, or a long talk" },
+	"~1h": { minutes: [45, 80], criteria: "About an hour of activity" },
+	"~2h": { minutes: [90, 150], criteria: "A couple of hours" },
+	"~4h": { minutes: [180, 300], criteria: "An afternoon, or a long journey" },
+	"~8h": { minutes: [360, 540], criteria: "A working day, or most of a day" },
+	overnight: { minutes: [540, 720], criteria: "The characters sleep or the night passes" },
+	"~1 day": { minutes: [1200, 1680], criteria: "About a day passes" },
+	"several days": { minutes: [2880, 7200], criteria: "Days pass, as in a time skip" },
+} as const satisfies Record<string, { readonly minutes: readonly [number, number]; readonly criteria: string }>;
+type ElapsedBin = keyof typeof elapsedBins;
+const elapsedBinNames = /* @approved SAFETY: Object.keys of the literal table returns exactly its keys. */ Object.keys(elapsedBins) as ElapsedBin[];
 
 const weatherKinds = {
 	clear: { label: "Clear", icon: "☀️", offset: 0, criteria: "Clear or sunny sky" },
@@ -38,7 +38,6 @@ export const drawMinutes = (bin: ElapsedBin, seed: string): number => {
 	const [low, high] = elapsedBins[bin].minutes;
 	return low + Math.floor(seededFraction(seed) * (high - low + 1));
 };
-
 
 // @approved
 //  Minutes since the setup's start, and the latest weather established with
@@ -124,7 +123,7 @@ export const worldClockBox = {
 					elapsed: {
 						type: "choice",
 						instructions: { question: "How much in-world time passes during `passage`?" },
-						criteria: Object.fromEntries(elapsedBinNames.map((bin) => [bin, elapsedCriteria[bin]])),
+						criteria: Object.fromEntries(elapsedBinNames.map((bin) => [bin, elapsedBins[bin].criteria])),
 					},
 					weather: {
 						type: "choice",
@@ -140,5 +139,4 @@ export const worldClockBox = {
 	},
 	advance: { run: async ({ setup, state }) => ({ items: [{ text: clockLine(setup, state), priority: 0, pinned: true }] }) },
 	status: clockStatus,
-	read: (database, conversationId) => readDigest(database, conversationId, "world-clock"),
 } satisfies Box<WorldClockSetup, undefined, never, never, WorldClockRecord, WorldClockState>;

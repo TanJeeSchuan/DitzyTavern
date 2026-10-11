@@ -21,7 +21,9 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, C
 // modules read through the Conversation module, which reads Box setups
 // through here: a table would be built before the Boxes it holds. The
 // descriptor decides which hooks a Box must declare: records for a `record`
-// schema, a digest for a `decision`, and a render for `moves`.
+// schema, a digest for a `decision`, and a render for `moves`. A digesting
+// Box's window read is the host's passage timeline, so it declares no `read`;
+// only that read calls `status`, so no other Box declares one.
 export const serverBox = <Id extends BoxId>(id: Id): ServerBoxes[Id] => {
 	const boxes: ServerBoxes = { "author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox };
 	return boxes[id];
@@ -30,7 +32,7 @@ export const serverBox = <Id extends BoxId>(id: Id): ServerBoxes[Id] => {
 type Records = NonNullable<HostBox["records"]>;
 type ServerBoxes = { readonly [Id in BoxId]: HostBox
 	& (Id extends RecordBoxId ? { readonly records: Records } : { readonly records?: never })
-	& (Id extends DigestBoxId ? { readonly records: { readonly digest: NonNullable<Records["digest"]> } } : unknown)
+	& (Id extends DigestBoxId ? { readonly records: { readonly digest: NonNullable<Records["digest"]> }; readonly read?: never } : { readonly status?: never })
 	& (Id extends MoveBoxId ? { readonly moves: NonNullable<HostBox["moves"]> } : { readonly moves?: never }) };
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */

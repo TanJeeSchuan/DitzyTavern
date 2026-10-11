@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, enableWorldClock, insertBox, send, story } from "./fixtures";
+import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
@@ -44,7 +44,7 @@ const enableClock = async (page: Page) => {
 const dockTab = (page: Page) => page.getByRole("button", { name: /^World Clock: / });
 
 test("the World Clock digests passages in the background and follows the selected Variant", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.decisions(
 		...digest("The storm breaks", "overnight", "storm"),
 		...digest("Snow drifts", "~2h", "snow"),
@@ -89,7 +89,7 @@ test("the World Clock digests passages in the background and follows the selecte
 });
 
 test("the dock status updates when a digest lands without reopening the window", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.decisions(
 		...digest("Wait out the night.", "overnight", "clear"),
 		...digest("Dawn comes", "~1h", "clear"),
@@ -109,7 +109,7 @@ test("the dock status updates when a digest lands without reopening the window",
 });
 
 test("a clock that is off contributes no clock line and queues no digest", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.chat({ chunks: ["The lamp turns above you."] });
 	await page.goto("/");
 	const composer = page.getByRole("textbox", { name: "Message draft" });
@@ -124,7 +124,7 @@ test("a clock that is off contributes no clock line and queues no digest", async
 });
 
 test("a reinserted clock starts from its initial time while a re-enabled one keeps its digested time", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.decisions(
 		...digest("Wait out the night.", "overnight", "clear"),
 		...digest("Dawn comes", "~1h", "clear"),
@@ -169,7 +169,7 @@ test("window layout and setup stay with their Chat", async ({ page }) => {
 });
 
 test("a Writer override survives a late digest, reset restores the automatic value, and catch-up digests an existing path", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.chat(
 		{ chunks: ["The storm breaks over the tower."] },
 		{ chunks: ["Snow drifts against the shutters."] },
@@ -188,8 +188,7 @@ test("a Writer override survives a late digest, reset restores the automatic val
 
 	await passage("The storm breaks").hover();
 	await passage("The storm breaks").getByRole("button", { name: "Edit" }).click();
-	await passage("The storm breaks").getByRole("combobox", { name: "Elapsed time" }).click();
-	await page.getByRole("option", { name: "About 5 minutes" }).click();
+	await passage("The storm breaks").getByRole("spinbutton", { name: "Minutes" }).fill("5");
 	await passage("The storm breaks").getByRole("combobox", { name: "Weather" }).click();
 	await page.getByRole("option", { name: "☀️ Clear" }).click();
 	await passage("The storm breaks").getByRole("button", { name: "Save override" }).click();
@@ -228,7 +227,7 @@ test("a Writer override survives a late digest, reset restores the automatic val
 });
 
 test("catch-up shows its progress and can be cancelled", async ({ page, request, llm }) => {
-	await enableWorldClock(request);
+	await selectBoxDecisionModel(request, "world-clock");
 	await llm.chat({ chunks: ["The storm breaks over the tower."] });
 	await page.goto("/");
 	await send(page, "Wait out the night.");

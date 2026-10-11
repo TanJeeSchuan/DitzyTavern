@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { ConversationSummary } from "../conversation";
-import { boxWindows, windowBoxIds, type BoxWindowDefinition, type LensPiece, type WindowBoxId } from "../box-windows/registry";
+import { boxWindow, windowBoxIds, type LensPiece, type WindowBoxId } from "../box-windows/registry";
 import { Prose } from "./prose";
 
 /** @approved What the story's lenses need: the Chat, which gates each lens, and how a lifted mark opens its Box. */
@@ -11,7 +11,7 @@ export type StoryLens = { readonly conversation: ConversationSummary; open(box: 
 //  A lifted piece is never lensed again.
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
 	const lenses = lens === undefined ? [] : windowBoxIds.flatMap((id) => {
-		const { lens: boxLens }: BoxWindowDefinition = boxWindows[id];
+		const { lens: boxLens } = boxWindow(id);
 		const lift = lens.conversation.boxes[id] === "enabled" ? boxLens?.gate(lens.conversation) : undefined;
 		return boxLens === undefined || lift === undefined ? [] : [{ tag: boxLens.tag, lift: (prose: string) => lift(prose, () => lens.open(id)) }];
 	});

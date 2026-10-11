@@ -1,15 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { boxRead, boxReadParams, boxWindowParams } from "../../shared/contract/box";
+import { boxRead, boxReadParams, boxWindowParams, isDigestBoxId, type BoxId } from "../../shared/contract/box";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, readDigest, startBoxCatchUp } from "../box/digest";
 import { serverBox } from "../box/registry";
 import { notFoundResponse } from "./responses";
 
 const readResponse = { 200: boxRead, 404: notFoundOutcome };
+/** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read`. */
+const readBox = (database: Database, conversationId: number, box: BoxId) =>
+	isDigestBoxId(box) ? readDigest(database, conversationId, box) : serverBox(box).read?.(database, conversationId);
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
-	.get("/api/conversations/:id/boxes/:box", ({ params }) => serverBox(params.box).read?.(database, params.id) ?? notFoundResponse(),
+	.get("/api/conversations/:id/boxes/:box", ({ params }) => readBox(database, params.id, params.box) ?? notFoundResponse(),
 		{ params: boxReadParams, response: readResponse })
 	// @approved
 	//  Catch-up and cancellation are in-memory queue work, not Conversation

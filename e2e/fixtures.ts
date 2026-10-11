@@ -1,5 +1,6 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { startE2eServer, type E2eServer } from "./harness";
+import type { DigestBoxId } from "../src/shared/contract/box";
 
 export { expect };
 
@@ -56,10 +57,11 @@ const createDecisionProfile = async (request: APIRequestContext) => {
 	return { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
 };
 
-export const enableWorldClock = async (request: APIRequestContext) => {
+/** @approved Gives a digesting Box a Decision Model selection, so its digests run against the scripted `/systemone`. */
+export const selectBoxDecisionModel = async (request: APIRequestContext, box: DigestBoxId) => {
 	const selection = await createDecisionProfile(request);
-	const { revision } = await (await request.get("/api/boxes/world-clock/decision-settings")).json();
-	await request.post("/api/boxes/world-clock/decision-settings/commands", { data: { type: "apply", expectedRevision: revision, ...selection } });
+	const { revision } = await (await request.get(`/api/boxes/${box}/decision-settings`)).json();
+	await request.post(`/api/boxes/${box}/decision-settings/commands`, { data: { type: "apply", expectedRevision: revision, ...selection } });
 };
 
 export const enableDecisionModels = async (request: APIRequestContext) => {

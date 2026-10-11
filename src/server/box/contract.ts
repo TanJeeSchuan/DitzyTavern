@@ -37,9 +37,9 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 		/** @approved Declaring this captures the Box while its preset block is disabled, returning this result instead of running. */
 		withoutBlock?(input: AdvanceInput<Setup, Dependencies, State, Move>): AdvanceResult<Trace, Rec>;
 	};
-	/** @approved The Box's one-line dock status, or null when it has nothing to say. */
+	/** @approved A digesting Box's one-line dock status, or null when it has nothing to say; the passage timeline read reports it. */
 	status?(setup: Setup, state: State): string | null;
-	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. */
+	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
 	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
 	/** @approved Deletes Chat-scoped data the Box keeps outside `conversation_data` and `participant_data` when the Box is removed from the Chat. */
 	remove?(db: BunSQLiteDatabase, conversationId: number): void;

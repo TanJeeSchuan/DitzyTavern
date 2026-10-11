@@ -16,7 +16,6 @@ import { advanceRace, currentRaceState, foldRace, initialRaceState, raceStatus }
 export const raceBox = {
 	setupError: raceSetupError,
 	records: { initial: null, fold: foldRace },
-	status: raceStatus,
 	moves: { render: (move) => `(Race Move: ${raceMoveCatalog[move.kind].intent(move.runner)})` },
 	// @approved
 	//  `withdrawn` lists slotted Cast Runners whose Participant has left the

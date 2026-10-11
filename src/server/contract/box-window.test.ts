@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initialWorldClockSetup, worldClockRead, type WorldClockSetup } from "../../shared/contract/world-clock";
+import { initialWorldClockSetup, worldClockRecord, type WorldClockSetup } from "../../shared/contract/world-clock";
+import { digestRead } from "../../shared/contract/box-digest";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { readRecordSlots, writeAutomaticRecord } from "../box/records";
 import { sha256 } from "../memory/hash";
@@ -37,7 +38,7 @@ const saveSetup = (app: ReturnType<typeof createContract>, id: number, revision:
 	command(app, id, revision, { type: "set-box-setup", box: "world-clock", setup });
 
 const readClock = async (app: ReturnType<typeof createContract>, id: number) =>
-	Value.Decode(worldClockRead, await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/world-clock`))).json());
+	Value.Decode(digestRead(worldClockRecord), await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/world-clock`))).json());
 
 const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${id}/generations/preview`, {
@@ -107,6 +108,18 @@ test("a stale automatic result does not report the passage as digested", async (
 	const stale = (await readClock(app, chat.id)).passages[0];
 	expect(stale?.digested).toBe(false);
 	expect(stale?.record).toEqual({ minutes: 60, weather: "rain" });
+});
+
+test("a passage whose prose was cleared leaves the timeline but keeps its record in the status, as in the prompt", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const clock = insertBox(database, chat.id, "world-clock");
+	const { variantId } = addPassage(chat.id, "The lamp turns.");
+	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: null }, sha256("The lamp turns."));
+	database.run("UPDATE message_variant SET content = '' WHERE id = ?", [variantId]);
+	const read = await readClock(app, chat.id);
+	expect(read.passages).toEqual([]);
+	expect(read.status).toBe("9:00 AM");
 });
 
 test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {

@@ -9,7 +9,7 @@ import { decisionRequest, requestDecisions } from "../decision-model";
 import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { effectiveRecord, hasAutomaticRecord, readRecordSlots, readVariantSeeds, writeAutomaticRecord } from "./records";
+import { effectiveRecord, foldRecords, hasAutomaticRecord, readRecordSlots, readVariantSeeds, writeAutomaticRecord } from "./records";
 import { serverBox } from "./registry";
 import { isBoxEnabled, readBoxInstances } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
@@ -280,22 +280,20 @@ export function readDigest(database: Database, conversationId: number, box: Dige
 		if (summary === undefined) return undefined;
 		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
 		if (history === undefined) return undefined;
-		// @approved
-		//  An Active Generation's provisional Variant has no settled prose to
-		//  digest yet, so it is not a passage.
-		const selected = history.messages.flatMap((message) => message.variant === null || message.variant.content.trim() === ""
-			? []
-			: [{ messageId: message.id, author: message.author?.capturedName ?? null, variant: message.variant }]);
-		const slots = readRecordSlots(db, box, readBoxInstances(db, conversationId)[box], selected.map(({ variant }) => variant.id));
+		const variantIds = history.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
+		const slots = readRecordSlots(db, box, readBoxInstances(db, conversationId)[box], variantIds);
 		const { records, status } = serverBox(box);
 		const setupOf: { readonly [Id in BoxId]?: BoxSetups[keyof BoxSetups] } = summary.boxSetups;
 		const setup = setupOf[box];
-		let state = records.initial;
-		const passages = selected.map(({ messageId, author, variant }) => {
+		// @approved
+		//  Status folds every selected record, as Generation capture does. An
+		//  empty Variant, such as an Active Generation's provisional one, has no
+		//  settled prose to digest, so it is not listed as a passage.
+		const state = foldRecords(records, setup, slots, variantIds);
+		const passages = history.messages.flatMap(({ id, author, variant }) => {
+			if (variant === null || variant.content.trim() === "") return [];
 			const slot = slots.get(variant.id);
-			const record = effectiveRecord(slot) ?? null;
-			if (record !== null) state = records.fold(state, record, setup);
-			return { messageId, variantId: variant.id, author, content: variant.content, record, overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content) };
+			return [{ messageId: id, variantId: variant.id, author: author?.capturedName ?? null, content: variant.content, record: effectiveRecord(slot) ?? null, overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content) }];
 		});
 		return {
 			conversationId,

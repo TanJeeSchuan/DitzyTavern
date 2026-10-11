@@ -79,20 +79,23 @@ See [ADR-0050](../adr/0050-build-story-features-as-boxes.md).
 ```ts
 interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined, Move = never> {
   inject?: readonly Services[];
-  setup?: { schema: TSchema; initial: Setup };
-  moves?: { schema: TSchema; render(move: Move, author: string): string };
+  setupError?(setup: Setup, previous: Setup): string | undefined;
+  moves?: { render(move: Move, author: string): string };
+  dependencies?(read: CaptureRead, setup: Setup): Dependencies;
   records?: {
-    schema: TSchema;
     initial: State;
-    fold(state: State, record: Rec): State;
+    fold(state: State, record: Rec, setup: Setup): State;
     digest?: { window: number; run(window: DigestWindow, ctx: DigestContext): Promise<Rec> };
   };
   advance?: {
     trace?: TSchema;
     run(input: AdvanceInput<Setup, Dependencies, State, Move>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
     fingerprint?(input: AdvanceInput<Setup, Dependencies, State, Move>): string;
+    withoutBlock?(input: AdvanceInput<Setup, Dependencies, State, Move>): AdvanceResult<Trace, Rec>;
   };
   status?(setup: Setup, state: State): string | null;
+  read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
+  remove?(db: BunSQLiteDatabase, conversationId: number): void;
 }
 
 type AdvanceInput<S, D, St, M> = { setup: S; dependencies: D; state: St; moves: readonly M[] };
@@ -103,10 +106,11 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 ```
 
 - Every hook is optional. `advance` may return a `record` only when the Box declares `records`; the host throws otherwise.
-- The id is the Box's entry in `boxIds`, not a field. Boxes are wired into the host by hand at fixed places: capture, setup decoding, record folding, Moves rendering and the window registry. `docs/box-system/authoring.md` lists them.
+- The id is the Box's entry in `boxIds`, not a field. Its `boxDescriptors` entry declares the label, default role, whether new Chats start with it, and the setup, record and Move schemas and Decision Model copy it has. A Box is registered once in the descriptor and server registries, and in the client registry when it has a window, and the host derives everything else from them: capture, setup decoding, record folding, Moves, digests, Writer overrides, the Decision Model setting and the window read route. `docs/box-system/authoring.md` is the guide.
 - `dependencies` carry the host-read inputs a Box needs beyond setup, state and Moves, each Box choosing its own type: the Race takes its seed stream, the Generation intent and withdrawn Runners; the Phone takes the human and contact names; Memory takes its recall snapshot.
 - `ctx` exposes only the services named in `inject`, plus an abort signal. A Box reads its data scopes through what the host captures into `dependencies`, or through its window read.
-- The window and the lens are React, so they live in the client registry `boxWindows` as `{ icon, size, DockTab, Panel, lens? }`, with `size` in rem.
+- The window and the lens are React, so they live in the client registry `boxWindows` as `{ icon, size, Panel, DockTab, lens? }`, with `size` in rem. A digesting Box's window ends with the host's passage timeline and its dock tab is the host's, so its entry omits `DockTab`, may omit `Panel`, and may add `describe` to summarize a record.
+- A digesting Box's window read is the host's passage timeline, so it declares no `read`. `status` is called only by that read, so only digesting Boxes declare it. `remove` deletes Chat-scoped data a Box keeps outside its data scopes when it is removed.
 - Every value crossing the wire or the database is decoded against the declared schema. With no backward compatibility, a value that fails to decode after a schema change is an error; clearing the namespace is the remedy.
 - `trace` is asserted against `advance.trace` when the Box declares it, and is never folded. Memory's trace becomes the Variant's Memory activation record; no other trace has a consumer.
 
@@ -122,8 +126,8 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 | Variant | `message_variant_data` (existing) | Host, as `record:<instance>` from `advance` and `digest` results and Writer overrides |
 
 - The namespace is `box:<id>`. A Box cannot read another Box's namespace.
-- Variant data per Box holds the record slot under key `record:<instance>`, stamped with the Box instance that wrote it: `{ automatic?, writer?, source? }` for the World Clock, where `source` hashes the digested text, and `{ automatic }` for the Race. Each Variant also stores one Generation seed shared by all Boxes, under namespace `box`, key `seed`; a Box derives its own stream by hashing the seed with its id. A Variant without a seed, such as an imported one, uses `variant:<id>` as its seed.
-- Window writes to Library, Character and Participant data go through the `put-box-data` command, which takes the Box id rather than a namespace. Values are strings the Box decodes on read.
+- Variant data per Box holds the record slot under key `record:<instance>`, stamped with the Box instance that wrote it: `{ automatic?, writer?, source? }`, where `source` hashes the digested text. The Race's slots hold only `automatic` in practice: it has no override editor, though the generic record commands accept its overrides. Each Variant also stores one Generation seed shared by all Boxes, under namespace `box`, key `seed`; a Box derives its own stream by hashing the seed with its id. A Variant without a seed, such as an imported one, uses `variant:<id>` as its seed.
+- Window writes to Library, Character and Participant data go through the `put-box-data` command, which takes the Box id rather than a namespace. A window builds it with its own Box id, and the host rejects it for a Box not enabled in the Chat. Values are strings the Box decodes on read.
 - Boxes cannot add tables. Configuration edits apply atomically under ADR-0023.
 
 ### History semantics
@@ -171,7 +175,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 - `window.Panel` renders in a floating window. It is draggable, not resizable, and several can be open at once.
 - A minimized window becomes a tab docked at the bottom-right edge beside the composer, showing the Box icon and `status`.
 - Open state, minimization and positions are client-side, per Chat, in local storage. On narrow layouts a window becomes a full-screen layer, per DESIGN.md.
-- The dock tab is the Box's client `DockTab`. The World Clock and Race tabs show `status` from their window reads; the Phone counts unread texts in the client and has no server `status`.
+- A digesting Box's dock tab is the host's, showing `status` from the passage timeline read. Any other Box brings its own `DockTab`: the Race shows the status its read returns, the Thoughts tab counts thoughts, and the Phone counts unread texts in the client.
 - The Author Note and Memory keep their existing side panels; they are not Box windows.
 
 ### Author Note Box
@@ -198,7 +202,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 - **Fold**: time advances by each passage's duration. Weather is the latest established value and becomes unknown 24 in-world hours after its last mention. Temperature is derived from climate, hemisphere, season, hour and weather.
 - **Calendar**: Gregorian, with weekday derived from the date.
 - **Advance**: one item, `8:41 AM | 🗓️ Saturday, December 20, 2025 AD | ☀️ Clear, 3°C`. Unknown weather is omitted.
-- **Window**: a passage timeline with elapsed time and weather per passage, Writer override and reset per passage, and a catch-up action that digests the existing Selected narrative path.
+- **Window**: the setup form, followed by the host's passage timeline: elapsed time and weather per passage, a Writer override of minutes and weather and its reset per passage, and a catch-up action that digests the existing Selected narrative path.
 - **Status**: `8:41 AM · ☀️ 3°C`.
 
 ### Race Box
@@ -212,7 +216,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 - **Engine**: phases opening, middle, final corner and last spurt. Each Stretch is simulated in fixed internal steps. The final 400 m is split into shorter Stretches. Every Runner is driven by engine AI from Running style, stats and position.
 - **Moves**: they control the human-seat Runner, or act as orders to a chosen Runner when the human seat is not racing. The Box offers only legal Moves, with projected cost and odds. A `Hold` Move skips the Stretch. Moves are disabled in Auto mode.
 - **Generation intent**: a respond Generation advances one Stretch. A continue Generation advances one only in Auto mode.
-- **Record**: `{ raceId, stretch, outcome, after }`, where `after` is the full post-Stretch state. The slot holds only `automatic`, since Writer overrides of race records are out of scope. The fold returns `after` for the current `raceId`. `advance` treats state from another `raceId` as initial. A withdrawal is recorded once even when no Stretch runs. A lone legal `Hold` on a respond turn produces no record unless a withdrawal must be persisted.
+- **Record**: `{ raceId, stretch, outcome, after }`, where `after` is the full post-Stretch state. The slot normally holds only `automatic`: the Race has no override editor, though the generic record commands accept a Race override. The fold returns `after` for the current `raceId`. `advance` treats state from another `raceId` as initial. A withdrawal is recorded once even when no Stretch runs. A lone legal `Hold` on a respond turn produces no record unless a withdrawal must be persisted.
 - **Advance item**: the course and Stretch range, standings, two or three salient events weighted toward Cast Runners, Hidden intents to foreshadow, reveals due, and "Narrate only this Stretch. Do not go past N m."
 - **Results Stretch**: finishing order, margins and outstanding reveals, with "Narrate the finish." After it, the Race contributes nothing until a new race.
 - **Window**: a 2D SVG oval with avatars (Portrait for Cast Runners, roster Image otherwise), positions and gaps only while running, Move controls, setup and stat sheets, and a replay of every Runner's decisions per Stretch after the finish.

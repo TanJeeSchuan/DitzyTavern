@@ -163,31 +163,35 @@
 	align-content: start;
 }
 
-.world-clock-note {
-	margin: 0;
-	color: var(--text-muted);
-	font-size: 0.8rem;
-}
-
 .world-clock-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: 0.5rem;
 }
 
-.world-clock-timeline {
+.box-timeline {
 	display: grid;
 	gap: 0.5rem;
+}
+
+.box-timeline:not(:first-child) {
+	margin-top: 0.85rem;
 	padding-top: 0.8rem;
 	border-top: 1px solid var(--border);
 }
 
-.world-clock-timeline h3 {
+.box-timeline-note {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.8rem;
+}
+
+.box-timeline h3 {
 	margin: 0;
 	font-size: 0.85rem;
 }
 
-.world-clock-timeline ol {
+.box-timeline ol {
 	display: grid;
 	gap: 0.45rem;
 	margin: 0;
@@ -195,7 +199,7 @@
 	list-style: none;
 }
 
-.world-clock-timeline li {
+.box-timeline li {
 	display: grid;
 	gap: 0.15rem;
 	padding: 0.5rem 0.6rem;
@@ -203,13 +207,13 @@
 	background: var(--surface-muted);
 }
 
-.world-clock-timeline strong {
+.box-timeline strong {
 	color: var(--text-muted);
 	font-size: 0.75rem;
 	font-weight: 600;
 }
 
-.world-clock-passage-text {
+.box-timeline-text {
 	display: -webkit-box;
 	overflow: hidden;
 	-webkit-box-orient: vertical;
@@ -219,14 +223,14 @@
 	line-height: 1.35;
 }
 
-.world-clock-timeline-head {
+.box-timeline-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.6rem;
 }
 
-.world-clock-progress {
+.box-timeline-progress {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
@@ -234,7 +238,7 @@
 	font-size: 0.78rem;
 }
 
-.world-clock-passage-read {
+.box-timeline-read {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -243,14 +247,14 @@
 	font-size: 0.78rem;
 }
 
-.world-clock-passage-summary {
+.box-timeline-summary {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.45rem;
 	min-width: 0;
 }
 
-.world-clock-override-mark {
+.box-timeline-override-mark {
 	padding: 0.05rem 0.4rem;
 	border: 1px solid var(--border);
 	border-radius: 999px;
@@ -261,7 +265,7 @@
 	text-transform: uppercase;
 }
 
-.world-clock-passage-actions {
+.box-timeline-actions {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.1rem;
@@ -269,26 +273,26 @@
 	transition: opacity 150ms ease;
 }
 
-.world-clock-timeline li:hover .world-clock-passage-actions,
-.world-clock-timeline li:focus-within .world-clock-passage-actions,
-.world-clock-passage-editor .world-clock-passage-actions {
+.box-timeline li:hover .box-timeline-actions,
+.box-timeline li:focus-within .box-timeline-actions,
+.box-timeline-editor .box-timeline-actions {
 	opacity: 1;
 }
 
-.world-clock-passage-editor {
+.box-timeline-editor {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: 0.55rem;
 	align-items: end;
 }
 
-.world-clock-passage-editor .world-clock-passage-actions {
+.box-timeline-editor .box-timeline-actions {
 	grid-column: 1 / -1;
 	justify-content: flex-end;
 }
 
 @media (hover: none) {
-	.world-clock-passage-actions {
+	.box-timeline-actions {
 		opacity: 1;
 	}
 }
