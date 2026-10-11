@@ -129,7 +129,7 @@ export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): R
 	const intents = formed.map((planned) => planned.payoff === null && charged(planned.runner) ? { ...planned, payoff: stretch } : planned);
 	let end = Math.min(setup.course.distance, before.metres + (before.metres >= finalStart ? Math.min(100, setup.metresPerStretch) : setup.metresPerStretch));
 	if (before.metres < finalStart) end = Math.min(end, finalStart);
-	if (intent === "continue" && setup.auto !== "off" && setup.auto !== "on") end = Math.min(end, setup.course.distance - setup.auto.until);
+	if (setup.auto !== "off" && setup.auto !== "on" && before.metres < setup.course.distance - setup.auto.until) end = Math.min(end, setup.course.distance - setup.auto.until);
 	const runners = new Map(setup.slots.map((runner) => [runner.name, runner]));
 	const stepMetres = (end - before.metres) / 20;
 	for (let step = 0; step < 20; step++) {
@@ -140,7 +140,7 @@ export function advanceRace({ setup, state, seed, intent, moves }: RaceInput): R
 			const fatigue = Math.max(0, FATIGUE_ENERGY - position.energy) * (1 - runner.guts / 1600);
 			const chase = Math.min(0.04, (leader - position.distance) / 1000) * runner.wit / 1200;
 			return (14 + runner.speed / 180 + runner.power / 900 * (phase >= 2 ? 1 : 0.3))
-				* (stylePace[runner.style][phase]! + (step * stepMetres < MOVE_METRES ? pace.get(position.name) ?? 0 : 0) + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
+				* (stylePace[runner.style][phase]! + (pace.get(position.name) ?? 0) * Math.min(1, Math.max(0, MOVE_METRES / stepMetres - step)) + chase - fatigue + (random() - 0.5) * (0.12 - runner.wit / 20000));
 		});
 		const seconds = Math.min(...standings.map((runner, index) => (leader + stepMetres - runner.distance) / speeds[index]!));
 		for (const [index, position] of standings.entries()) {

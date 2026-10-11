@@ -45,7 +45,7 @@ test("resolved later Stretches survive earlier selections and a new race starts 
 	expect(foldRaceRecords([first, next, second], "race-c")).toBeNull();
 });
 
-test("respond advances with Auto off; continue stops at the configured distance from the finish", () => {
+test("respond advances with Auto off; both intents stop at the configured distance from the finish, and respond advances past it", () => {
 	const off = { ...setup, auto: "off" as const };
 	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "continue", moves: [] })).toBeUndefined();
 	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "respond", moves: [] })?.after.metres).toBe(400);
@@ -54,6 +54,20 @@ test("respond advances with Auto off; continue stops at the configured distance 
 	expect(first.after.metres).toBe(300);
 	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "continue", moves: [] })).toBeUndefined();
 	expect(advanceRace({ setup: until, state: first.after, seed: "b", intent: "respond", moves: [] })?.after.metres).toBe(700);
+	expect(advanceRace({ setup: until, state: null, seed: "a", intent: "respond", moves: [] })?.after.metres).toBe(300);
+});
+
+test("a Move's pace lasts its 100 m however long the Stretch", () => {
+	// @approved The Pace Chasers draw the same numbers with or without the Overtake, and the faster one leads and times every step, so the time it saves is the Move alone.
+	const stats = { style: "Pace Chaser" as const, stamina: 1200, power: 600, guts: 600, wit: 1200 };
+	const slots = [{ name: "Slow", ...stats, speed: 1 }, { name: "Fast", ...stats, speed: 1200 }];
+	const saved = (metresPerStretch: number) => {
+		const input = { setup: { ...setup, slots, auto: "off" as const, metresPerStretch }, state: null, seed: "pace", intent: "respond" as const };
+		const moved = advanceRace({ ...input, moves: [{ kind: "overtake", runner: "Fast" }] })!.after;
+		expect(moved.replay[0]!.runners.find(({ name }) => name === "Fast")!.decisions).toEqual([{ kind: "overtake", writer: true, success: true }]);
+		return advanceRace({ ...input, moves: [] })!.after.standings[0]!.time - moved.standings[0]!.time;
+	};
+	expect(saved(1500) / saved(400)).toBeCloseTo(1, 1);
 });
 
 test("Fill field is seeded, preserves slots, and excludes names already in the Cast", () => {

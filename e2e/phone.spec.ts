@@ -62,3 +62,23 @@ test("a text staged from the Phone is a turn on its own, sent to the model as ma
 	const [sent] = (await llm.log()).calls.filter((call) => call.kind === "chat");
 	expect(JSON.stringify(sent)).toContain(JSON.stringify(sms("Night Desk", "Theodora Kline", "u up?")).slice(1, -1));
 });
+
+test("a seat change drops staged texts for good", async ({ page }) => {
+	await page.goto("/");
+	await insertBox(page, "Phone");
+	await page.getByRole("button", { name: "Phone", exact: true }).click();
+	const phone = page.getByRole("dialog", { name: "Phone" });
+	await phone.getByRole("textbox", { name: "Text Theodora Kline" }).fill("u up?");
+	await phone.getByRole("button", { name: "Stage text" }).click();
+	const staged = page.locator("form.composer").getByRole("list", { name: "Phone Moves" });
+	await expect(staged.getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+	const writeAs = async (name: string) => {
+		await page.getByRole("combobox", { name: "Writing as" }).click();
+		await page.getByRole("option", { name: new RegExp(`^${name}`) }).click();
+		await expect(page.getByRole("combobox", { name: "Writing as" })).toContainText(name);
+	};
+	await writeAs("Theodora Kline");
+	await expect(staged).toHaveCount(0);
+	await writeAs("Night Desk");
+	await expect(staged).toHaveCount(0);
+});

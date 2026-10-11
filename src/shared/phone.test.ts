@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { stripPhoneTexts } from "./phone";
+import { renderPhoneText, stripPhoneTexts } from "./phone";
 
 const names = { human: "Kai", contacts: ["Elara", "Bram"] };
 const strip = (text: string) => stripPhoneTexts(text, names);
@@ -36,5 +36,14 @@ describe("stripPhoneTexts", () => {
 			{ kind: "sms", text: { from: "Kai", to: "Elara", text: "inner" } },
 			{ kind: "prose", text: " tail</sms>" },
 		]);
+	});
+
+	test("a rendered text round-trips names and bodies that would break the markup, and stays readable", () => {
+		const quoted = { human: "Kai", contacts: ["Elara \"Ellie\"", "<Bram> & co"] };
+		for (const sms of [
+			{ from: "Kai", to: "Elara \"Ellie\"", text: "meet me at </sms> or <sms from=\"x\" to=\"y\">" },
+			{ from: "<Bram> & co", to: "Kai", text: "literally &quot; and &amp;lt; <3" },
+		]) expect(stripPhoneTexts(renderPhoneText(sms), quoted)).toEqual([{ kind: "sms", text: sms }]);
+		expect(renderPhoneText({ from: "Kai", to: "Elara", text: "Tom & Jerry \"tonight\" <3" })).toBe("<sms from=\"Kai\" to=\"Elara\">Tom & Jerry \"tonight\" <3</sms>");
 	});
 });

@@ -16,7 +16,18 @@ const SMS = /<sms\s+from="([^"<>]*)"\s+to="([^"<>]*)"\s*>((?:(?!<\/?sms\b)[\s\S]
 
 export const phoneMoveLabel = ({ to, text }: PhoneMove): string => `📱 ${to}: ${text}`;
 
-export const renderPhoneText = ({ from, to, text }: Sms): string => `<sms from="${from}" to="${to}">${text}</sms>`;
+// @approved
+//  Rendering escapes only what would break the markup: a quote or angle
+//  bracket in a name, `<sms` or `</sms` in a body, and an `&` that would
+//  read as one of these entities. Everything else stays as written.
+const ENTITIES = new Map([["&amp;", "&"], ["&quot;", "\""], ["&lt;", "<"], ["&gt;", ">"]]);
+const CHARACTERS = new Map([...ENTITIES].map(([entity, character]) => [character, entity]));
+const escape = (pattern: RegExp) => (text: string) => text.replace(pattern, (character) => CHARACTERS.get(character)!);
+const escapeName = escape(/&(?=(?:amp|quot|lt|gt);)|["<>]/g);
+const escapeBody = escape(/&(?=(?:amp|quot|lt|gt);)|<(?=\/?sms\b)/g);
+const decode = (text: string) => text.replace(/&(?:amp|quot|lt|gt);/g, (entity) => ENTITIES.get(entity)!);
+
+export const renderPhoneText = ({ from, to, text }: Sms): string => `<sms from="${escapeName(from)}" to="${escapeName(to)}">${escapeBody(text)}</sms>`;
 
 /** @approved Names match ignoring case and surrounding space; the segment carries the Cast spelling. */
 export function stripPhoneTexts(text: string, { human, contacts }: PhoneNames): PhoneSegment[] {
@@ -24,9 +35,9 @@ export function stripPhoneTexts(text: string, { human, contacts }: PhoneNames): 
 	const segments: PhoneSegment[] = [];
 	let at = 0;
 	for (const match of text.matchAll(SMS)) {
-		const from = known(match[1]!);
-		const to = known(match[2]!);
-		const body = match[3]!.trim();
+		const from = known(decode(match[1]!));
+		const to = known(decode(match[2]!));
+		const body = decode(match[3]!).trim();
 		if (from === undefined || to === undefined || from === to || (from !== human && to !== human) || body === "") continue;
 		segments.push({ kind: "prose", text: text.slice(at, match.index) }, { kind: "sms", text: { from, to, text: body } });
 		at = match.index + match[0].length;

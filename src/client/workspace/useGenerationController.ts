@@ -92,12 +92,13 @@ export function useGenerationController({
 	});
 	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
 	// @approved
-	//  A Box that stops being enabled drops its staged Moves for good.
-	const enabledMoves = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled");
-	if (conversation !== null && staged.conversationId === conversation.id && Object.keys(enabledMoves).length !== Object.keys(staged.moves).length) setStaged({ ...staged, moves: enabledMoves });
-	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {}
-		: sameSeat ? enabledMoves
-		: pickMoves(enabledMoves, (id) => !("seatBound" in boxDescriptors[id].moves));
+	//  A Box that stops being enabled, and a seat-bound Box after a seat
+	//  change, drop their staged Moves for good.
+	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !("seatBound" in boxDescriptors[id].moves)));
+	if (conversation !== null && staged.conversationId === conversation.id && (!sameSeat || Object.keys(kept).length !== Object.keys(staged.moves).length)) {
+		setStaged({ ...staged, humanParticipantId: conversation.control.humanParticipantId, moves: kept });
+	}
+	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {} : kept;
 	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {
