@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { test, expect, enableWorldClock, insertBox, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
 
@@ -121,6 +121,42 @@ test("a clock that is off contributes no clock line and queues no digest", async
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("The lamp turns above you.")).toBeVisible();
 	expect((await llm.log()).calls.some((call) => call.kind === "decision")).toBe(false);
+});
+
+test("a reinserted clock starts from its initial time while a re-enabled one keeps its digested time", async ({ page, request, llm }) => {
+	await enableWorldClock(request);
+	await llm.decisions(
+		...digest("Wait out the night.", "overnight", "clear"),
+		...digest("Dawn comes", "~1h", "clear"),
+	);
+	await llm.chat({ chunks: ["Dawn comes over the water."] });
+	await page.goto("/");
+	await enableClock(page);
+	await expect(await sendWithClock(page, "Wait out the night.")).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("Dawn comes")).toBeVisible();
+	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/, { timeout: 15_000 });
+
+	const toggle = async (action: (boxes: Locator) => Promise<void>) => {
+		await page.getByRole("button", { name: "Boxes", exact: true }).click();
+		await action(page.getByRole("list", { name: "Boxes" }));
+		await page.keyboard.press("Escape");
+	};
+	const clockSwitch = (boxes: Locator) => boxes.getByRole("switch", { name: "World Clock in this Chat" });
+	const cancelPreview = () => page.getByRole("complementary", { name: "Prompt Plan preview" }).getByRole("button", { name: "Cancel" }).click();
+
+	await toggle((boxes) => clockSwitch(boxes).click());
+	await toggle((boxes) => clockSwitch(boxes).click());
+	await expect(await sendWithClock(page, "Look outside.")).toHaveText(/^\d{1,2}:\d\d PM \| 🗓️ Sunday, June 1, 2025 AD \| .+ Clear, -?\d+°C$/);
+	await cancelPreview();
+
+	await toggle(async (boxes) => {
+		await boxes.getByRole("button", { name: "Remove World Clock" }).click();
+		await page.getByRole("dialog", { name: "Remove World Clock?" }).getByRole("button", { name: "Remove" }).click();
+	});
+	await insertBox(page, "World Clock");
+	await expect(await sendWithClock(page, "Look outside.")).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
+	await cancelPreview();
 });
 
 test("window layout and setup stay with their Chat", async ({ page }) => {

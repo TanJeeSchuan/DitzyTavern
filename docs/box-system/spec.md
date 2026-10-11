@@ -117,12 +117,12 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 | Library | `library_data (namespace, key, value)` | Box window, through a host command |
 | Character | `character_data (character_id, namespace, key, value)` | Box window, through a host command |
 | Participant | `participant_data (participant_id, namespace, key, value)` | Copied from Character data on seeding; Box window afterwards |
-| Conversation | `conversation_data` (existing) | Host, as `enabled` from the Box manager and `setup` from the Box window |
+| Conversation | `conversation_data` (existing) | Host, as `enabled` and `instance` from the Box manager and `setup` from the Box window |
 | Message | `messages_data` (existing) | Host, as `moves` from staged Moves |
-| Variant | `message_variant_data` (existing) | Host, as `record` from `advance` and `digest` results |
+| Variant | `message_variant_data` (existing) | Host, as `record:<instance>` from `advance` and `digest` results and Writer overrides |
 
 - The namespace is `box:<id>`. A Box cannot read another Box's namespace.
-- Variant data per Box holds the record slot under key `record`: `{ automatic?, writer?, source? }` for the World Clock, where `source` hashes the digested text, and `{ automatic }` for the Race. Each Variant also stores one Generation seed shared by all Boxes, under namespace `box`, key `seed`; a Box derives its own stream by hashing the seed with its id. A Variant without a seed, such as an imported one, uses `variant:<id>` as its seed.
+- Variant data per Box holds the record slot under key `record:<instance>`, stamped with the Box instance that wrote it: `{ automatic?, writer?, source? }` for the World Clock, where `source` hashes the digested text, and `{ automatic }` for the Race. Each Variant also stores one Generation seed shared by all Boxes, under namespace `box`, key `seed`; a Box derives its own stream by hashing the seed with its id. A Variant without a seed, such as an imported one, uses `variant:<id>` as its seed.
 - Window writes to Library, Character and Participant data go through the `put-box-data` command, which takes the Box id rather than a namespace. Values are strings the Box decodes on read.
 - Boxes cannot add tables. Configuration edits apply atomically under ADR-0023.
 
@@ -146,7 +146,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 
 - Each Box is **absent**, **enabled** or **disabled** in each Chat, stored by the host as `enabled` under `box:<id>` in `conversation_data`. An absent Box has no row.
 - Only an enabled Box runs: it contributes to the Prompt Plan, queues digests, accepts staged Moves, and shows its window and dock tab. A disabled or absent Box does none of these.
-- **Insert** enables a Box. **Disable** keeps its Chat-scoped data. **Remove** deletes, after confirmation, its `conversation_data` and this Chat's `participant_data` in its namespace, plus Memory's per-Chat settings for Memory. It keeps Library and Character data and every Variant record and Message Move, because history is immutable. Inserting a removed Box again starts it from its initial setup; its retained records still fold into state unless the Box filters them, as the Race does by `raceId`.
+- **Insert** enables a Box. **Disable** keeps its Chat-scoped data. **Remove** deletes, after confirmation, its `conversation_data` and this Chat's `participant_data` in its namespace, plus Memory's per-Chat settings for Memory. It keeps Library and Character data and every Variant record and Message Move, because history is immutable. Each insert gives the Box a new instance id in `conversation_data`; disabling keeps it and removing deletes it. Records are stamped with their instance and the host fold skips every other instance's, so a removed Box inserted again starts from its initial setup and initial state with no Box-specific filter. Old records stay stored and are never rewritten.
 - Disabling or removing reports `stoppedBox` on the Conversation change, which cancels the Box's background work.
 - While a Box is absent or disabled, a stored Move enters history as its chip label, such as `📱 Elara: hi`, instead of through `moves.render`.
 - A new Chat starts with the Author Note and Memory enabled and every other Box absent. No Box is exempt from removal.
@@ -258,7 +258,7 @@ The authoring guide, `docs/box-system/authoring.md`, is written alongside the Ra
 - Bond tracking.
 - Runtime loading, sandboxing, MCP Apps, Boxes shipped in Character cards, and model-generated Boxes.
 - Capability grants.
-- Several instances of one Box in a Chat.
+- Several instances of one Box present in a Chat at once.
 - Box-to-Box reads.
 - Race:
   - skills;

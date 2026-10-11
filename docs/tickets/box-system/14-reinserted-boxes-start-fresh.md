@@ -1,6 +1,6 @@
 # Reinserted Boxes start fresh
 
-Status: TODO
+Status: DONE
 
 Blocked By: 12-box-authoring-guide, 13-box-lifecycle-per-chat
 
@@ -20,14 +20,14 @@ Today the setup resets, but the old Variant records still fold into state, so th
 
 ## Work
 
-- [ ] Each insert gives the Box a new instance id in its per-Chat state. Disable and re-enable keep the instance; remove followed by insert creates a new one.
-- [ ] The host stamps every automatic and writer record with the instance that wrote it.
-- [ ] The host fold skips records from any other instance. Old records stay stored and visible to inspection, and Variant history is never rewritten.
-- [ ] Keep the Race's `raceId`. It separates races within one instance, which is a different thing.
-- [ ] Remove the "reinserting keeps old records" caveat from the guide and spec, and describe the instance rule instead.
-- [ ] E2E: World Clock digests two passages, is removed and inserted again, and inspection shows its initial time. Re-enabling after a disable still shows the digested time.
-- [ ] Run `bun run check` and `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Each insert gives the Box a new instance id in its per-Chat state. Disable and re-enable keep the instance; remove followed by insert creates a new one.
+- [x] The host stamps every automatic and writer record with the instance that wrote it.
+- [x] The host fold skips records from any other instance. Old records stay stored and visible to inspection, and Variant history is never rewritten.
+- [x] Keep the Race's `raceId`. It separates races within one instance, which is a different thing.
+- [x] Remove the "reinserting keeps old records" caveat from the guide and spec, and describe the instance rule instead.
+- [x] E2E: World Clock digests two passages, is removed and inserted again, and inspection shows its initial time. Re-enabling after a disable still shows the digested time.
+- [x] Run `bun run check` and `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

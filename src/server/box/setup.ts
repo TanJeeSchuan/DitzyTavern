@@ -10,9 +10,27 @@ import { worldClockBox } from "./world-clock";
 
 const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
+const INSTANCE_KEY = "instance";
 
 export const boxStateEntry = (id: BoxId, enabled: boolean) =>
 	({ namespace: boxReference(id), key: ENABLED_KEY, value: JSON.stringify(enabled) });
+
+// @approved
+//  Each insert gives the Box a new instance, kept while it is disabled and
+// deleted with the rest of its Chat-scoped data on removal. Records are
+// stamped with it, so a reinserted Box folds none of its earlier records.
+export const boxInstanceEntry = (id: BoxId) =>
+	({ namespace: boxReference(id), key: INSTANCE_KEY, value: crypto.randomUUID() });
+
+export type BoxInstances = Partial<Record<BoxId, string>>;
+
+/** @approved The instance of every Box present in this Chat; an absent Box has none. */
+export const readBoxInstances = (db: BunSQLiteDatabase, conversationId: number): BoxInstances => Object.fromEntries(db
+	.select({ namespace: conversationDataTable.namespace, value: conversationDataTable.value })
+	.from(conversationDataTable)
+	.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, INSTANCE_KEY)))
+	.all()
+	.flatMap(({ namespace, value }) => boxIds.filter((id) => boxReference(id) === namespace).map((id) => [id, value])));
 
 export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): BoxStates => {
 	const stored = new Map(db

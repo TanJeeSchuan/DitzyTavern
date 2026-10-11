@@ -10,7 +10,8 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { boxReference, type BoxId } from "../../shared/contract/box";
+import type { BoxId } from "../../shared/contract/box";
+import { boxInstanceEntry, boxStateEntry } from "../box/setup";
 import { syncMemorySources } from "../memory";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
@@ -114,6 +115,8 @@ export function createConversationWithHistory(database: Database, input: Convers
 }
 
 /** @approved A new Chat holds only the Author Note and Memory; suites insert any other Box they exercise. */
-export function insertBox(database: Database, conversationId: number, box: BoxId): void {
-	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, 'enabled', 'true')").run(conversationId, boxReference(box));
+export function insertBox(database: Database, conversationId: number, box: BoxId): string {
+	const instance = boxInstanceEntry(box);
+	for (const entry of [boxStateEntry(box, true), instance]) database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(conversationId, entry.namespace, entry.key, entry.value);
+	return instance.value;
 }

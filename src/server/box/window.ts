@@ -18,6 +18,7 @@ import { readBoxCatchUp } from "./digest";
 import { resolveBoxDecision } from "./decision-settings";
 import { foldRecordStates, hasAutomaticRecord, effectiveRecord, readRecordSlots } from "./records";
 import { readRaceCastStats } from "./race-cast";
+import { readBoxInstances } from "./setup";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 /** @approved The World Clock window and dock read one folded Selected path
@@ -34,7 +35,7 @@ export function readWorldClock(database: Database, conversationId: number): Worl
 		const selected = history.messages.flatMap((message) => message.variant === null || message.variant.content.trim() === ""
 			? []
 			: [{ messageId: message.id, author: message.author?.capturedName ?? null, variant: message.variant }]);
-		const slots = readRecordSlots(db, "world-clock", selected.map(({ variant }) => variant.id));
+		const slots = readRecordSlots(db, "world-clock", readBoxInstances(db, conversationId)["world-clock"], selected.map(({ variant }) => variant.id));
 		const { initial, fold } = worldClockBox.records;
 		let state: WorldClockState = initial;
 		const passages = selected.map(({ messageId, author, variant }): WorldClockPassage => {
@@ -62,7 +63,7 @@ export function readRace(database: Database, conversationId: number): RaceRead |
 		if (history === undefined) return undefined;
 		const setup = summary.boxSetups.race;
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const { intents, replay, ...state } = foldRecordStates(db, ids, summary.boxSetups).race ?? initialRaceState(setup);
+		const { intents, replay, ...state } = foldRecordStates(db, ids, summary.boxSetups, readBoxInstances(db, conversationId)).race ?? initialRaceState(setup);
 		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
 		return {
 			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,

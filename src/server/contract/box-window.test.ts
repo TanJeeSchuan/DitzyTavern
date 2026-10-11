@@ -1,4 +1,4 @@
-import { openObservedDatabase, createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
@@ -97,8 +97,9 @@ const addPassage = (conversationId: number, content: string) => {
 test("a stale automatic result does not report the passage as digested", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
+	const clock = insertBox(database, chat.id, "world-clock");
 	const { variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 	expect((await readClock(app, chat.id)).passages[0]?.digested).toBe(true);
 	database.run("UPDATE message_variant SET content = ? WHERE id = ?", ["The lamp goes dark.", variantId]);
 	const stale = (await readClock(app, chat.id)).passages[0];
@@ -109,8 +110,9 @@ test("a stale automatic result does not report the passage as digested", async (
 test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
+	const clock = insertBox(database, chat.id, "world-clock");
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 
 	const override = { minutes: 600, weather: "clear" as const };
 	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override });
@@ -124,7 +126,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	// @approved
 	//  A digest still in flight lands after the override and may only fill
 	//  `automatic`; the effective value stays the Writer's.
-	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
 
 	const revision: number = (await applied.json()).conversation.revision;
@@ -136,11 +138,12 @@ test("a Writer override sets the effective value, survives a later automatic dig
 test("an override outside the Box record schema is refused", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
+	const clock = insertBox(database, chat.id, "world-clock");
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
 		method: "POST", headers: { "content-type": "application/json" },
 		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" } } }),
 	}));
 	expect(response.status).toBe(422);
-	expect(readRecordSlots(drizzle(database), "world-clock", [variantId]).size).toBe(0);
+	expect(readRecordSlots(drizzle(database), "world-clock", clock, [variantId]).size).toBe(0);
 });

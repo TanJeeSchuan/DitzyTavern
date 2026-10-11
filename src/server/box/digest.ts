@@ -9,7 +9,7 @@ import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
 import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, digestBoxes, writeAutomaticRecord } from "./records";
-import { isBoxEnabled } from "./setup";
+import { isBoxEnabled, readBoxInstances } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
 // @approved
@@ -32,6 +32,8 @@ interface DigestJob {
 	readonly messageId: number;
 	readonly variantId: number;
 	readonly box: DigestBoxId;
+	/** @approved The Box instance the job writes its record for, read when it was queued. */
+	readonly instance: string;
 	readonly source: string;
 	readonly epoch: number;
 	readonly catchUp: CatchUpRun | null;
@@ -109,7 +111,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 		const settled = queue.epochs.get(key) === job.epoch && current !== undefined && sha256(current.content) === job.source;
 		const enabled = isBoxEnabled(drizzle(database), job.conversationId, job.box);
 		const catchUpActive = job.catchUp === null || queue.catchUps.get(job.conversationId) === job.catchUp;
-		if (settled && catchUpActive && enabled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.variantId, record, job.source);
+		if (settled && catchUpActive && enabled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (!controller.signal.aborted) console.error(`[box-digest] The ${job.box} digest of Variant ${job.variantId} failed.`, error);
 	} finally {
@@ -172,9 +174,11 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 	if (change.touchedVariantIds.length === 0) return;
 	if (!isBoxEnabled(drizzle(database), change.conversationId, "world-clock")) return;
 	if (resolveBoxDecision(database, "world-clock").kind !== "ready") return;
+	const instance = readBoxInstances(drizzle(database), change.conversationId)["world-clock"];
+	if (instance === undefined) return;
 	const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true })
 		.filter((variant) => variant.selected && !variant.active && variant.content.trim() !== "");
-	const slots = readRecordSlots(drizzle(database), "world-clock", variants.map((variant) => variant.variantId));
+	const slots = readRecordSlots(drizzle(database), "world-clock", instance, variants.map((variant) => variant.variantId));
 	for (const variant of variants) {
 		const source = sha256(variant.content);
 		const key = keyOf(variant.variantId, "world-clock");
@@ -188,7 +192,7 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 		if (hasAutomaticRecord(slots.get(variant.variantId), variant.content) || queued) continue;
 		queue.pending.push({
 			conversationId: change.conversationId, messageId: variant.messageId, variantId: variant.variantId,
-			box: "world-clock", source, epoch: supersede(queue, key), catchUp: null, settled: false,
+			box: "world-clock", instance, source, epoch: supersede(queue, key), catchUp: null, settled: false,
 		});
 	}
 	queueMicrotask(() => pump(database, queue));
@@ -209,10 +213,11 @@ export function startBoxCatchUp(database: Database, conversationId: number): voi
 	if (queue === undefined || queue.stopped || queue.catchUps.has(conversationId)) return;
 	if (!isBoxEnabled(drizzle(database), conversationId, "world-clock")) return;
 	if (resolveBoxDecision(database, "world-clock").kind !== "ready") return;
+	const instance = readBoxInstances(drizzle(database), conversationId)["world-clock"];
 	const path = readSelectedPathForMemory(database, conversationId);
-	if (path === undefined) return;
+	if (path === undefined || instance === undefined) return;
 	const variants = path.flatMap((message) => message.variant === null || message.variant.active || message.variant.content.trim() === "" ? [] : [message.variant]);
-	const slots = readRecordSlots(drizzle(database), "world-clock", variants.map((variant) => variant.variantId));
+	const slots = readRecordSlots(drizzle(database), "world-clock", instance, variants.map((variant) => variant.variantId));
 	const missing = variants.filter((variant) => {
 		const source = sha256(variant.content);
 		const key = keyOf(variant.variantId, "world-clock");
@@ -229,7 +234,7 @@ export function startBoxCatchUp(database: Database, conversationId: number): voi
 		const key = keyOf(variant.variantId, "world-clock");
 		queue.catchUpPending.push({
 			conversationId, messageId: variant.messageId, variantId: variant.variantId,
-			box: "world-clock", source: sha256(variant.content), epoch: supersede(queue, key), catchUp: run, settled: false,
+			box: "world-clock", instance, source: sha256(variant.content), epoch: supersede(queue, key), catchUp: run, settled: false,
 		});
 	}
 	queueMicrotask(() => pump(database, queue));

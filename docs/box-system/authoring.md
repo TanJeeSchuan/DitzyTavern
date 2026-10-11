@@ -53,7 +53,7 @@ The Box's turn in a Generation. The host calls `advance.run` once per Generation
 What the host does with the result:
 
 - `items` go into the Box's preset block and through the Prompt Macro pass. The host admits pinned items first. It then admits unpinned items whole, by descending `priority`, while they fit `allowance`, or the remaining context when there is no allowance. Pinned items ignore the allowance but count toward the context limit, and a plan that overflows it raises `PromptBudgetExceededError`. The host records a reason for each unpinned item (`admitted`, `allowance`, `oversized` or `context-limit`), but only Memory's inspection shows them today.
-- `record` is held on the Active Generation and written to the new Variant as `{ automatic: record }` when it resolves. The host throws if the Box returns a record without declaring `records`, and asserts the record against `records.schema`. Add the Box to `boxRecords` in `src/shared/contract/box-generation.ts`. Acceptance parses records with `Value.Parse`, which strips undeclared keys, so an unregistered record vanishes without an error.
+- `record` is held on the Active Generation with the Box instance captured for it, and written to the new Variant as `{ automatic: record }` under that instance when it resolves. The host throws if the Box returns a record without declaring `records`, and asserts the record against `records.schema`. Add the Box to `boxRecords` in `src/shared/contract/box-generation.ts`. Acceptance parses records with `Value.Parse`, which strips undeclared keys, so an unregistered record vanishes without an error.
 - `trace` is asserted against `advance.trace` when the Box declares that schema. Without one, the host skips validation. Only Memory's trace has a consumer today. It becomes the Generation's Memory activation record. A new Box's trace goes nowhere until you add a consumer.
 
 `dependencies` carry everything else the Box needs, which the host reads at capture: the Variant's seed stream, the Generation intent, Cast names. Each Box picks its own `Dependencies` type. The Race takes `{ seed, intent, withdrawn }`, the Phone takes `{ human, contacts }`, and Memory takes its whole recall snapshot.
@@ -147,9 +147,9 @@ Host wiring: `src/client/story/LensedProse.tsx` and `StoryStage.tsx` hard-code t
 | Library | `library_data (namespace, key, value)` | Box window, through `put-box-data` |
 | Character | `character_data (character_id, namespace, key, value)` | Box window, through `put-box-data` |
 | Participant | `participant_data (participant_id, namespace, key, value)` | Copied from Character data when a Character seeds a Participant, then Box window through `put-box-data` |
-| Conversation | `conversation_data` | Host, as `enabled` and `setup` |
+| Conversation | `conversation_data` | Host, as `enabled`, `instance` and `setup` |
 | Message | `messages_data` | Host, as `moves` |
-| Variant | `message_variant_data` | Host, as `record` from `advance` and digests |
+| Variant | `message_variant_data` | Host, as `record:<instance>` from `advance`, digests and Writer overrides |
 
 The namespace is always `box:<id>`. `put-box-data` takes a Box id and derives the namespace from it, so no command can name a raw namespace. The host does not check which window sent it, so each window must pass its own id. Values are strings. The Box decodes its own and treats a value that fails its schema as an error, never as a row to skip. Character data and Participant data are independent after the copy, so a later Character edit never reaches an existing Participant.
 
@@ -174,11 +174,13 @@ Pick the record's granularity by what an upstream change should do to it.
 
 ## Lifecycle per Chat
 
-Each Box is enabled, disabled or absent in each Chat. The host stores `enabled: true | false` in `conversation_data` under `box:<id>`. No row means absent. Use `isBoxEnabled` or `readBoxStates` from `src/server/box/setup.ts` to check, and `enabledBoxConversations` for background work that spans Chats.
+Each Box is enabled, disabled or absent in each Chat. The host stores `enabled: true | false` and an `instance` id in `conversation_data` under `box:<id>`. No row means absent. Use `isBoxEnabled` or `readBoxStates` from `src/server/box/setup.ts` to check, and `enabledBoxConversations` for background work that spans Chats.
 
 - **Enabled.** The only state where the Box runs. It is captured into the Prompt Plan when its preset block is also enabled, queues digests, accepts Moves, and shows its launcher, window, dock tab and lens. Memory is the one exception to the block rule: it is captured even with its block disabled, to record activation evidence without items.
 - **Disabled.** Nothing runs and nothing reaches the prompt. Setup and data stay. Re-enabling picks up where the Box left off.
-- **Absent.** Removing deletes the Box's `conversation_data` and this Chat's `participant_data` in its namespace (and Memory's per-Chat settings). Library and Character data, Variant records and Message Moves stay, because history is immutable. Inserting the Box again starts from `setup.initial`, but its old records still sit on the selected Variants and still fold into state. The Race avoids that by filtering records by `raceId`. A Box that must restart clean needs the same kind of instance id.
+- **Absent.** Removing deletes the Box's `conversation_data`, its instance included, and this Chat's `participant_data` in its namespace (and Memory's per-Chat settings). Library and Character data, Variant records and Message Moves stay, because history is immutable.
+
+Each insert gives the Box a new instance id; disabling keeps it. The host stamps every record with the instance that wrote it, by storing the slot under key `record:<instance>`, and folds only the current instance's slots. A reinserted Box therefore starts from `setup.initial` and its initial state, with its old records still stored but never folded. You write no filter for this. The Race's `raceId` is a different thing: it separates races within one instance.
 
 A new Chat starts with `defaultBoxIds` enabled, which today are the Author Note and Memory. No Box is exempt from removal. The writer manages all of this in the Box manager in the composer. Disabling or removing returns `stoppedBox` on the change, which is your hook to cancel background work.
 

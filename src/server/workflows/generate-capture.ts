@@ -75,6 +75,7 @@ import { foldRecordStates } from "../box/records";
 import { humanMessageText, moveBoxIds, readMessageMoves, sameMoves } from "../box/moves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { BoxStates } from "../../shared/contract/box";
+import { readBoxInstances, type BoxInstances } from "../box/setup";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -231,6 +232,8 @@ interface PreparationFields extends GenerationPreparationBase {
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
 	readonly boxStates: BoxStates;
+	/** @approved Each present Box's instance, which stamps the records this Generation writes. */
+	readonly boxInstances: BoxInstances;
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -317,7 +320,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates, siblingSeed, messageMoves } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates, boxInstances, siblingSeed, messageMoves } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -335,9 +338,10 @@ export function prepareGenerationInputsSnapshot(
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 			const siblingId = selected.target?.variant?.id;
-			return { summary, recipe, settings, selected,
+			const boxInstances = readBoxInstances(db, input.conversationId);
+			return { boxInstances, summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxInstances),
 				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);
@@ -443,7 +447,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxStates: summary.boxes };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxStates: summary.boxes, boxInstances };
 }
 
 /** @approved

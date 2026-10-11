@@ -4,7 +4,8 @@ import { raceMove, raceRecordSlot, raceRecord } from "./race";
 import { MAX_RACE_MOVES } from "../race-moves";
 import { MAX_PHONE_MOVES, phoneMove } from "./phone";
 
-export const boxRecords = Type.Object({ race: Type.Optional(raceRecord) });
+/** @approved The records one Generation writes, each stamped with the Box instance captured with it. */
+export const boxRecords = Type.Object({ race: Type.Optional(Type.Object({ instance: Type.String(), record: raceRecord })) });
 export type BoxRecords = Static<typeof boxRecords>;
 
 export const boxRecordSlots = { "world-clock": worldClockRecordSlot, race: raceRecordSlot };

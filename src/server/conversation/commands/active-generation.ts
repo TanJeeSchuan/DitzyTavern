@@ -1,5 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { boxRecords } from "../../../shared/contract/box-generation";
+import { recordKey } from "../../box/records";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
@@ -264,7 +265,7 @@ function commitDurableTerminalGenerationInTransaction(
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
 		suppliedData: [...input.suppliedData, ...Object.entries(Value.Parse(boxRecords, JSON.parse(active.box_records_json)))
-			.map(([id, record]) => ({ namespace: `box:${id}`, key: "record", value: JSON.stringify({ automatic: record }) }))],
+			.map(([id, { instance, record }]) => ({ namespace: `box:${id}`, key: recordKey(instance), value: JSON.stringify({ automatic: record }) }))],
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
 		memoryActivationData: terminalMemoryActivationData(active),
