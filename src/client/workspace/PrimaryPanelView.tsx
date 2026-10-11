@@ -102,7 +102,7 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{panel === "author-note" && conversation !== null && (
+					{panel === "author-note" && conversation?.boxes["author-note"] === "enabled" && (
 						<AuthorNotePanel
 							key={conversation.id}
 							conversation={conversation}

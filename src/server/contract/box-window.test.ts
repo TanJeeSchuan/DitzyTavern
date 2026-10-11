@@ -48,18 +48,21 @@ const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 test("an impossible calendar date is rejected instead of rolling into the next month", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
-	const response = await saveSetup(app, chat.id, chat.revision, { ...initial, enabled: true, start: "2025-02-31T08:00" });
+	const response = await saveSetup(app, chat.id, chat.revision, { ...initial, start: "2025-02-31T08:00" });
 	expect(response.status).toBe(422);
 	expect(await response.json()).toEqual({ outcome: "invalid", reason: "Enter a real calendar date and time, such as 2025-06-01T08:00." });
 	expect((await readClock(app, chat.id)).status).toBe("8:00 AM");
 });
 
-test("the World Clock contributes nothing until the Chat turns it on", async () => {
+test("the World Clock runs only while the Chat has it enabled", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
-	expect((await preview(app, chat.id)).promptPlan.blocks.some((block) => block.kind === "box:world-clock")).toBe(false);
-	expect((await saveSetup(app, chat.id, chat.revision, { ...initial, enabled: true })).status).toBe(200);
-	expect((await preview(app, chat.id)).promptPlan.blocks.some((block) => block.kind === "box:world-clock")).toBe(true);
+	const clocked = async () => (await preview(app, chat.id)).promptPlan.blocks.some((block) => block.kind === "box:world-clock");
+	expect(await clocked()).toBe(false);
+	expect((await command(app, chat.id, chat.revision, { type: "set-box-state", box: "world-clock", state: "enabled" })).status).toBe(200);
+	expect(await clocked()).toBe(true);
+	expect((await command(app, chat.id, chat.revision + 1, { type: "set-box-state", box: "world-clock", state: "disabled" })).status).toBe(200);
+	expect(await clocked()).toBe(false);
 });
 
 test("the window read folds the selected passages and reports the dock status", async () => {
@@ -69,7 +72,6 @@ test("the window read folds the selected passages and reports the dock status", 
 	const variant = database.query<{ id: number }, [number, string]>(
 		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-01-01', 1) RETURNING id",
 	).get(message.id, "The lamp turns.")!;
-	expect((await saveSetup(app, chat.id, chat.revision, { ...initial, enabled: true })).status).toBe(200);
 	const read = await readClock(app, chat.id);
 	expect(read.status).toBe("8:00 AM");
 	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false, digested: false }]);

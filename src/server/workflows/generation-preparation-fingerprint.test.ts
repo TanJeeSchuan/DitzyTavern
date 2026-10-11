@@ -37,6 +37,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 		target: { kind: "send", content: "" },
 		facts: { kind: "send", reuseHumanMessageId: undefined },
 		scanMessages: [],
+		boxStates: { "author-note": "enabled", memory: "enabled", "world-clock": "absent", race: "absent", phone: "absent" },
 		conversationId: 1,
 		boxes: [],
 		semanticTriggerRevision: 0,

@@ -86,7 +86,7 @@ export function readPhone(database: Database, conversationId: number): PhoneRead
 		if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
 		const names = phoneNames(summary.cast, human);
 		const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
-		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts(humanMessageText(moves.get(id) ?? {}, variant.content, author?.capturedName ?? null), names)
+		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts(humanMessageText(moves.get(id) ?? {}, variant.content, author?.capturedName ?? null, summary.boxes), names)
 			.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
 			.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
 		return {

@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
-import { createConversationWithHistory, enableWorldClock, openObservedDatabase } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, openObservedDatabase } from "../test-fixtures/conversation";
 import { applyBoxDecisionSettings } from "./decision-settings";
 import { cancelBoxCatchUp, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
@@ -90,7 +90,7 @@ test("catch-up digests every selected Variant without a record and reports its p
 	const chat = createChat();
 	const first = addPassage(chat.id, 1, "The storm breaks over the tower.");
 	const second = addPassage(chat.id, 2, "Snow drifts against the shutters.");
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
@@ -115,7 +115,7 @@ test("catch-up digests every selected Variant without a record and reports its p
 test("cancelling a catch-up run discards its in-flight results", async () => {
 	const chat = createChat();
 	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
@@ -130,10 +130,27 @@ test("cancelling a catch-up run discards its in-flight results", async () => {
 	expect(readRecordSlots(drizzle(database), "world-clock", [passage]).size).toBe(0);
 });
 
+test("a clock that stops running abandons its in-flight digest, even when it is enabled again before the result lands", async () => {
+	const chat = createChat();
+	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+	insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	await waitFor(() => stub.pending() === 1);
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: { id: "world-clock", removed: false } });
+	stub.release();
+	await stopDigests();
+	stopDigests = undefined;
+	expect(readRecordSlots(drizzle(database), "world-clock", [passage]).size).toBe(0);
+});
+
 test("a cancelled run can be restarted for the same Variants before the aborted job settles", async () => {
 	const chat = createChat();
 	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
@@ -152,7 +169,7 @@ test("a cancelled run can be restarted for the same Variants before the aborted 
 test("a live digest takes over a running catch-up job for the same Variant", async () => {
 	const chat = createChat();
 	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
@@ -171,7 +188,7 @@ test("a live digest runs before the catch-up jobs still queued behind it", async
 	addPassage(chat.id, 1, "The storm breaks over the tower.");
 	addPassage(chat.id, 2, "Snow drifts against the shutters.");
 	addPassage(chat.id, 3, "She lights the lamp.");
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });

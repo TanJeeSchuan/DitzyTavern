@@ -9,7 +9,7 @@ import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
 import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, digestBoxes, writeAutomaticRecord } from "./records";
-import { readBoxSetups } from "./setup";
+import { isBoxEnabled } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
 // @approved
@@ -43,7 +43,7 @@ interface DigestQueue {
 	readonly pending: DigestJob[];
 	catchUpPending: DigestJob[];
 	readonly epochs: Map<string, number>;
-	readonly running: Map<string, { readonly controller: AbortController; readonly source: string; readonly catchUp: CatchUpRun | null }>;
+	readonly running: Map<string, { readonly conversationId: number; readonly controller: AbortController; readonly source: string; readonly catchUp: CatchUpRun | null }>;
 	readonly catchUps: Map<number, CatchUpRun>;
 	readonly workers: Set<Promise<void>>;
 	stopped: boolean;
@@ -80,11 +80,11 @@ const supersede = (queue: DigestQueue, key: string): number => {
 const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
 	const key = keyOf(job.variantId, job.box);
 	const controller = new AbortController();
-	const running = { controller, source: job.source, catchUp: job.catchUp };
+	const running = { conversationId: job.conversationId, controller, source: job.source, catchUp: job.catchUp };
 	queue.running.set(key, running);
 	const box = digestBoxes[job.box];
 	try {
-		if (!readBoxSetups(drizzle(database), job.conversationId)[job.box].enabled) return;
+		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
 		const decision = resolveBoxDecision(database, job.box);
 		if (decision.kind !== "ready") return;
 		const path = readSelectedPathForMemory(database, job.conversationId, job.messageId) ?? [];
@@ -107,7 +107,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 		// the selection cleared, while the request ran; neither raises the epoch.
 		const current = readVariantsForMemory(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
 		const settled = queue.epochs.get(key) === job.epoch && current !== undefined && sha256(current.content) === job.source;
-		const enabled = readBoxSetups(drizzle(database), job.conversationId)[job.box].enabled;
+		const enabled = isBoxEnabled(drizzle(database), job.conversationId, job.box);
 		const catchUpActive = job.catchUp === null || queue.catchUps.get(job.conversationId) === job.catchUp;
 		if (settled && catchUpActive && enabled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.variantId, record, job.source);
 	} catch (error) {
@@ -155,9 +155,22 @@ export function startBoxDigests(database: Database, options: { fetch?: ModelFetc
 export function queueBoxDigests(database: Database, change: ConversationMemoryChange): void {
 	const queue = queues.get(database);
 	if (queue === undefined) return;
+	if (change.stoppedBox?.id === "world-clock") {
+		// @approved
+		//  A clock that stops running abandons its Chat's work: raising each
+		//  epoch aborts requests in flight and discards any late result, and
+		//  releasing their running entries lets the same passages queue again.
+		const keys = new Set([...queue.pending, ...queue.catchUpPending].flatMap((job) => job.conversationId === change.conversationId ? [keyOf(job.variantId, job.box)] : []));
+		for (const [key, running] of queue.running) if (running.conversationId === change.conversationId) keys.add(key);
+		for (const key of keys) {
+			supersede(queue, key);
+			queue.running.delete(key);
+		}
+		queue.catchUps.delete(change.conversationId);
+	}
 	for (const variantId of change.removedVariantIds) supersede(queue, keyOf(variantId, "world-clock"));
 	if (change.touchedVariantIds.length === 0) return;
-	if (!readBoxSetups(drizzle(database), change.conversationId)["world-clock"].enabled) return;
+	if (!isBoxEnabled(drizzle(database), change.conversationId, "world-clock")) return;
 	if (resolveBoxDecision(database, "world-clock").kind !== "ready") return;
 	const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true })
 		.filter((variant) => variant.selected && !variant.active && variant.content.trim() !== "");
@@ -194,7 +207,7 @@ export function readBoxCatchUp(database: Database, conversationId: number): BoxC
 export function startBoxCatchUp(database: Database, conversationId: number): void {
 	const queue = queues.get(database);
 	if (queue === undefined || queue.stopped || queue.catchUps.has(conversationId)) return;
-	if (!readBoxSetups(drizzle(database), conversationId)["world-clock"].enabled) return;
+	if (!isBoxEnabled(drizzle(database), conversationId, "world-clock")) return;
 	if (resolveBoxDecision(database, "world-clock").kind !== "ready") return;
 	const path = readSelectedPathForMemory(database, conversationId);
 	if (path === undefined) return;

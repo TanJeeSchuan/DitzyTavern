@@ -1,4 +1,4 @@
-import { test, expect, story } from "./fixtures";
+import { test, expect, story, insertBox } from "./fixtures";
 
 const sms = (from: string, to: string, text: string) => `<sms from="${from}" to="${to}">${text}</sms>`;
 
@@ -8,6 +8,7 @@ test("a text in a reply moves from the prose to the Phone, counts as unread, and
 		{ chunks: [`Theodora sets the phone face down.\n${sms("Theodora Kline", "Night Desk", "nvm, sleep well")}`] },
 	);
 	await page.goto("/");
+	await insertBox(page, "Phone");
 	await page.getByRole("button", { name: "Phone", exact: true }).click();
 	const phone = page.getByRole("dialog", { name: "Phone" });
 	const thread = phone.getByRole("list", { name: "Texts with Theodora Kline" });
@@ -41,6 +42,7 @@ test("a text in a reply moves from the prose to the Phone, counts as unread, and
 test("a text staged from the Phone is a turn on its own, sent to the model as markup", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["Theodora reads it and smiles."] });
 	await page.goto("/");
+	await insertBox(page, "Phone");
 	await page.getByRole("button", { name: "Phone", exact: true }).click();
 	const phone = page.getByRole("dialog", { name: "Phone" });
 	const thread = phone.getByRole("list", { name: "Texts with Theodora Kline" });

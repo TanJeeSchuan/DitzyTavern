@@ -2,7 +2,7 @@ import { boxSeed } from "./seed";
 import { raceBox } from "./race";
 import { Value } from "@sinclair/typebox/value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { boxReference, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { hasEnabledMemorySlot, type PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { memoryBox } from "./memory";
 import type { MemoryRecallSnapshot } from "../memory/recall";
@@ -47,20 +47,24 @@ const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Serv
 	},
 });
 
-export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue"; moves: BoxMoves; withdrawn: readonly string[]; phone: PhoneNames }): BoxInputs => {
-	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory, state: undefined, moves: [] });
-	const enabled = (reference: PromptBoxReference) => slots.some((slot) => slot.enabled && slot.reference === reference);
+export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, boxes: BoxStates, memory: () => MemoryRecallSnapshot, states: RecordStates, generation: { seed: string; intent: "respond" | "continue"; moves: BoxMoves; withdrawn: readonly string[]; phone: PhoneNames }): BoxInputs => {
 	// @approved
-	// Disabled Memory still exposes captured activation evidence in inspection, without running advance.
-	if (!hasEnabledMemorySlot(slots)) capturedMemory.run = async () => ({ items: [], trace: memory.activation });
+	//  The preset decides where a Box goes; the Chat decides whether it runs.
+	const runs = (id: BoxId) => boxes[id] === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id));
+	const captureMemory = () => {
+		const snapshot = memory();
+		const captured = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: snapshot, state: undefined, moves: [] });
+		// @approved
+		// Memory with a disabled slot still exposes captured activation evidence in inspection, without running advance.
+		if (!hasEnabledMemorySlot(slots)) captured.run = async () => ({ items: [], trace: snapshot.activation });
+		return captured;
+	};
 	return [
-		...enabled("box:race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, moves: generation.moves.race ?? [], dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent, withdrawn: generation.withdrawn } })] : [],
-		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined, moves: [] })] : [],
-		capturedMemory,
-		...enabled("box:phone") ? [captureBox("box:phone", phoneBox, { setup: undefined, dependencies: generation.phone, state: undefined, moves: generation.moves.phone ?? [] })] : [],
-		...enabled("box:world-clock") && setups["world-clock"].enabled
-			? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"], moves: [] })]
-			: [],
+		...runs("race") ? [captureBox("box:race", raceBox, { setup: setups.race, state: states.race, moves: generation.moves.race ?? [], dependencies: { seed: boxSeed(generation.seed, "race"), intent: generation.intent, withdrawn: generation.withdrawn } })] : [],
+		...runs("author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined, moves: [] })] : [],
+		...boxes.memory === "enabled" ? [captureMemory()] : [],
+		...runs("phone") ? [captureBox("box:phone", phoneBox, { setup: undefined, dependencies: generation.phone, state: undefined, moves: generation.moves.phone ?? [] })] : [],
+		...runs("world-clock") ? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"], moves: [] })] : [],
 	];
 };
 

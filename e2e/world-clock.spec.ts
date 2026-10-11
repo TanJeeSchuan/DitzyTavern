@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, enableWorldClock, send, story } from "./fixtures";
+import { test, expect, enableWorldClock, insertBox, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
@@ -36,10 +36,8 @@ const openWorldClock = async (page: Page) => {
 };
 
 const enableClock = async (page: Page) => {
+	await insertBox(page, "World Clock");
 	const window = await openWorldClock(page);
-	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
-	await window.getByRole("button", { name: "Save World Clock" }).click();
-	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
 	await window.getByRole("button", { name: "Minimize World Clock" }).click();
 };
 
@@ -131,8 +129,7 @@ test("window layout and setup stay with their Chat", async ({ page }) => {
 	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Chats", exact: true }).click();
 	await page.getByRole("button", { name: /^The Lantern House/ }).click();
 	await expect(dockTab(page)).toHaveCount(0);
-	const window = await openWorldClock(page);
-	await expect(window.getByRole("switch", { name: "Turn on the World Clock" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "World Clock", exact: true })).toHaveCount(0);
 });
 
 test("a Writer override survives a late digest, reset restores the automatic value, and catch-up digests an existing path", async ({ page, request, llm }) => {
@@ -148,10 +145,8 @@ test("a Writer override survives a late digest, reset restores the automatic val
 	await expect(story(page).getByText("Snow drifts")).toBeVisible();
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 
+	await insertBox(page, "World Clock");
 	const window = await openWorldClock(page);
-	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
-	await window.getByRole("button", { name: "Save World Clock" }).click();
-	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
 	const passage = (text: string) => window.getByRole("listitem").filter({ hasText: text });
 	await expect(passage("The storm breaks")).toContainText("Not read yet");
 
@@ -202,10 +197,8 @@ test("catch-up shows its progress and can be cancelled", async ({ page, request,
 	await page.goto("/");
 	await send(page, "Wait out the night.");
 	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await insertBox(page, "World Clock");
 	const window = await openWorldClock(page);
-	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
-	await window.getByRole("button", { name: "Save World Clock" }).click();
-	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
 
 	await llm.decisions(...digest(undefined, "none", "not mentioned", true));
 	await window.getByRole("button", { name: "Digest missing passages" }).click();

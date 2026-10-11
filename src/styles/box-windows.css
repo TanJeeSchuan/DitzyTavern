@@ -163,19 +163,6 @@
 	align-content: start;
 }
 
-.world-clock-toggle {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 1rem;
-}
-
-.world-clock-toggle p {
-	margin: 0.2rem 0 0;
-	color: var(--text-muted);
-	font-size: 0.8rem;
-}
-
 .world-clock-note {
 	margin: 0;
 	color: var(--text-muted);
@@ -731,4 +718,29 @@
 .phone-lens svg {
 	width: 0.85rem;
 	height: 0.85rem;
+}
+
+.box-manager ul {
+	display: grid;
+	gap: 0.6rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.box-manager li {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.box-manager li > div {
+	display: grid;
+	flex: 1;
+	min-width: 0;
+}
+
+.box-manager li span {
+	color: var(--text-muted);
+	font-size: 0.8rem;
 }

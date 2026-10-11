@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, story } from "./fixtures";
+import { test, expect, story, insertBox } from "./fixtures";
 
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
@@ -21,6 +21,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 		participant.sourceCharacterId !== null && participant.id !== conversation.control.humanParticipantId);
 
 	await page.goto("/");
+	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Race", exact: true });
 	await window.getByRole("button", { name: runner.name, exact: true }).click();
@@ -62,6 +63,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	expect(created.outcome).toBe("created");
 	await page.goto("/");
 	expect((await (await request.get("/api/workspace")).json()).activeChatId).toBe(created.conversation.id);
+	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const second = page.getByRole("dialog", { name: "Race", exact: true });
 	await second.getByRole("button", { name: runner.name, exact: true }).click();

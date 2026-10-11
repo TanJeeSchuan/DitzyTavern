@@ -72,8 +72,9 @@ import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { phoneNames } from "../../shared/phone";
 import { foldRecordStates } from "../box/records";
-import { humanMessageText, readMessageMoves, sameMoves } from "../box/moves";
+import { humanMessageText, moveBoxIds, readMessageMoves, sameMoves } from "../box/moves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
+import type { BoxStates } from "../../shared/contract/box";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -111,6 +112,7 @@ const selectedHistoryFrom = (
 	humanParticipantId: number,
 	modelParticipantId: number,
 	moves: ReadonlyMap<number, BoxMoves>,
+	boxes: BoxStates,
 ): readonly PromptContextEntry[] => {
 	const entries: PromptContextEntry[] = [];
 
@@ -120,7 +122,7 @@ const selectedHistoryFrom = (
 		entries.push({
 			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
-			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null),
+			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, boxes),
 			role: authorRoleOf(message, { humanParticipantId, modelParticipantId }),
 		});
 	}
@@ -228,6 +230,7 @@ interface PreparationFields extends GenerationPreparationBase {
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
+	readonly boxStates: BoxStates;
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -365,13 +368,18 @@ export function prepareGenerationInputsSnapshot(
 	const derivation: GenerationDerivation = {
 		human,
 		model,
-		context: selectedHistoryFrom(participation.messages, human.id, model.id, messageMoves),
+		context: selectedHistoryFrom(participation.messages, human.id, model.id, messageMoves, summary.boxes),
 	};
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
+	// @approved
+	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
+	const closed = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined
+		? moveBoxIds.find((id) => target.moves?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
+	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
-	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name) : undefined;
+	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;
 	const scanMessages = participation.messages.flatMap((message) => message.variant === null ? []
-		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null) }]);
+		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes) }]);
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
@@ -401,7 +409,7 @@ export function prepareGenerationInputsSnapshot(
 			position: message.position,
 			speakerName: message.author?.capturedName ?? null,
 			role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null),
+			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes),
 		}]),
 		pendingHumanText,
 		humanName: human.name,
@@ -420,7 +428,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves, withdrawn, phone: phoneNames(summary.cast, human) }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, captureMemory, recordStates, { seed, intent: boxIntent, moves, withdrawn, phone: phoneNames(summary.cast, human) }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,
@@ -435,7 +443,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxStates: summary.boxes };
 }
 
 /** @approved
@@ -462,7 +470,7 @@ export async function prepareGenerationInputsAsync(
 			database: input.database,
 			conversationId: preparation.conversationId,
 			messages: preparation.scanMessages,
-			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content, preparation.derivation.human.name) : undefined,
+			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content, preparation.derivation.human.name, preparation.boxStates) : undefined,
 			fetch: input.preparationFetch,
 			signal,
 		}, preparation.lore.sources)

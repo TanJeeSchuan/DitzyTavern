@@ -1,5 +1,5 @@
 import { createConversation } from "../conversation";
-import { enableWorldClock } from "../test-fixtures/conversation";
+import { insertBox } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -86,7 +86,8 @@ export const createChat = (
 	// @approved
 	// The prompt-preset suites assert the World Clock line, so the
 	// fixture Chat starts with its Clock on.
-	enableWorldClock(database, conversation.id);
+	insertBox(database, conversation.id, "world-clock");
+	insertBox(database, conversation.id, "phone");
 	return conversation;
 };
 

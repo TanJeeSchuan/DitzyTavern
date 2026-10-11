@@ -1,4 +1,4 @@
-import { boxSetups } from "./test-fixtures/box-setups";
+import { boxSetups, boxes } from "./test-fixtures/box-setups";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -270,7 +270,7 @@ describe("Chat import response decoding", () => {
 	// The committed response also carries the new Conversation summary; a
 	// minimal summary literal proves the nested summary decodes too.
 	const conversationSummary = {
-		boxSetups,
+		boxSetups, boxes,
 		id: 7,
 		name: "Lantern House",
 		revision: 1,

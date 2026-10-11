@@ -4,6 +4,8 @@ import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "./RaceWindow";
 import { RacePanel } from "./RaceMoves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
+import { boxReference, type BoxId } from "../../shared/contract/box";
+import { singleUseReferenceLabels } from "../../shared/contract/prompt-preset";
 import { WorldClockDockTab, WorldClockWindow } from "./WorldClockWindow";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "./PhoneWindow";
 import { stripPhoneTexts, type PhoneNames, type PhoneSegment, type Sms } from "../../shared/phone";
@@ -11,8 +13,9 @@ import { stripPhoneTexts, type PhoneNames, type PhoneSegment, type Sms } from ".
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
 
+export const boxTitle = (id: BoxId): string => singleUseReferenceLabels[boxReference(id)];
+
 export interface BoxWindowDefinition {
-	readonly title: string;
 	readonly icon: LucideIcon;
 	readonly size: { readonly width: number; readonly height: number };
 	readonly DockTab: ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
@@ -30,13 +33,12 @@ export const windowBoxIds = ["world-clock", "race", "phone"] as const;
 export type WindowBoxId = typeof windowBoxIds[number];
 
 export const boxWindows = {
-	race: { title: "Race", icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
+	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	"world-clock": {
-		title: "World Clock",
 		icon: Clock,
 		size: { width: 25, height: 30 },
 		DockTab: WorldClockDockTab,
 		Panel: WorldClockWindow,
 	},
-	phone: { title: "Phone", icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: { strip: stripPhoneTexts, View: PhoneLensView } },
+	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: { strip: stripPhoneTexts, View: PhoneLensView } },
 } satisfies Record<WindowBoxId, BoxWindowDefinition>;

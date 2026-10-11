@@ -18,6 +18,7 @@ import { putBoxData } from "./commands/put-box-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
 import { setBoxSetup } from "./commands/set-box-setup";
+import { setBoxState } from "./commands/set-box-state";
 import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
 import {
@@ -85,6 +86,7 @@ const handlers = {
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
 	"set-box-setup": setBoxSetup,
+	"set-box-state": setBoxState,
 	"set-box-record": setBoxRecord,
 	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,

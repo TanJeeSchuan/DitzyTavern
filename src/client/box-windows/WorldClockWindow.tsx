@@ -7,7 +7,6 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import {
 	elapsedBinNames, elapsedBins, elapsedBinMinutes, isWorldClockStart, weathers,
 	type ElapsedBin, type Weather, type WorldClockPassage, type WorldClockRead, type WorldClockSetup,
@@ -160,17 +159,9 @@ export function WorldClockWindow({ conversation, disabled, onConversationChange 
 		} catch { setNotice(CONVERSATION_UNREACHABLE_NOTICE); } finally { setCatchUpBusy(false); }
 	};
 	const missing = passages.some((passage) => !passage.digested);
-	const catchUpDisabled = locked || catchUpBusy || !saved.enabled || !digestReady || !missing;
+	const catchUpDisabled = locked || catchUpBusy || !digestReady || !missing;
 
 	return <div className="world-clock-window">
-		<div className="world-clock-toggle">
-			<div>
-				<strong>Track this Chat</strong>
-				<p>The World Clock sends the current time and weather with each Generation.</p>
-			</div>
-			<Switch checked={draft.enabled} disabled={locked} aria-label={draft.enabled ? "Turn off the World Clock" : "Turn on the World Clock"} onCheckedChange={(enabled) => update({ enabled })} />
-		</div>
-		{!draft.enabled && <p className="world-clock-note" role="status">The clock is off. Turn it on to send the time and read passages.</p>}
 		<Field label="Start" htmlFor="world-clock-start" helper={!valid && startTouched ? "Enter a real calendar date and time." : undefined}>
 			<Input id="world-clock-start" type="datetime-local" value={draft.start} disabled={locked} onChange={(event) => update({ start: event.target.value })} onBlur={() => setStartTouched(true)} />
 		</Field>

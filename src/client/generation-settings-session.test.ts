@@ -1,4 +1,4 @@
-import { boxSetups } from "./test-fixtures/box-setups";
+import { boxSetups, boxes } from "./test-fixtures/box-setups";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { flushHook, renderHook } from "./test-fixtures/render-hook";
@@ -9,7 +9,7 @@ const { useGenerationSettingsQuery, publishGenerationSettings } = await import("
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
 const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: "Chat", boxSetups, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
+	id, revision, name: "Chat", boxSetups, boxes, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
 	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
 	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
 		generate: { available: false, reason: "conversation-not-playable" },

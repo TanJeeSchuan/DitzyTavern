@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, story } from "./fixtures";
+import { test, expect, story, insertBox } from "./fixtures";
 
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
@@ -12,6 +12,7 @@ test("an Auto race retains swiped outcomes, re-rolls a Stretch, and ends after R
 	test.setTimeout(60_000);
 	await llm.chat(...Array.from({ length: 12 }, (_, index) => ({ chunks: [`Race passage ${index + 1}.`] })));
 	await page.goto("/");
+	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Race", exact: true });
 	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");

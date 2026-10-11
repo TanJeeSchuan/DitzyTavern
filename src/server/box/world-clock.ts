@@ -111,7 +111,7 @@ const choiceOf = <Option extends string>(answer: DecisionAnswer | undefined, opt
 export const worldClockBox = {
 	setup: {
 		schema: worldClockSetup,
-		initial: { enabled: false, start: "2025-06-01T08:00", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" },
+		initial: { start: "2025-06-01T08:00", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" },
 	},
 	records: {
 		schema: worldClockRecord,

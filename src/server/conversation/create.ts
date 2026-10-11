@@ -24,6 +24,8 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
+import { boxStateEntry } from "../box/setup";
+import { defaultBoxIds } from "../../shared/contract/box";
 import { macroWritesToData } from "../prompt-macros";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { readConversationSummaryFromConnection } from "./snapshot";
@@ -459,6 +461,7 @@ export function createConversation(
 			(entry) => ({ ...entry, conversation_id: conversation.id }),
 			(rows) => db.insert(conversationDataTable).values(rows).run(),
 		);
+		db.insert(conversationDataTable).values(defaultBoxIds.map((id) => ({ conversation_id: conversation.id, ...boxStateEntry(id, true) }))).onConflictDoNothing().run();
 
 		// @approved
 		//  Artifact metadata rows are Conversation database state and commit

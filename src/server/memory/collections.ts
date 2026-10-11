@@ -15,6 +15,7 @@ import {
 	type MemoryEmbed,
 } from "./indexing";
 import { isMemoryEnabled } from "./settings";
+import { enabledBoxConversations, isBoxEnabled } from "../box/setup";
 import {
 	memoryCandidates,
 	memoryTraceSteps,
@@ -143,6 +144,7 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 	return database.transaction(() => {
 		const enabled = isMemoryEnabled(database);
 		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory before remembering a source.");
+		if (!isBoxEnabled(connect(database), conversationId, "memory")) throw new InvalidMemorySourceError("Insert Memory in this Chat before remembering a source.");
 		if (isExcludedMemorySource(database, conversationId, messageId)) throw new InvalidMemorySourceError("This author's Messages are not Memory sources.");
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
@@ -165,7 +167,7 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 // @approved
 //  Queue selected source work from an authoritative write transaction.
 export function queueMemorySource(database: Database, conversationId: number, messageId: number, catchupRunId: number | null = null, knownCapture?: CapturedMemorySource): boolean {
-	if (!isMemoryEnabled(database) || isExcludedMemorySource(database, conversationId, messageId)) return false;
+	if (!isMemoryEnabled(database) || !isBoxEnabled(connect(database), conversationId, "memory") || isExcludedMemorySource(database, conversationId, messageId)) return false;
 	let source: CapturedMemorySource;
 	try { source = knownCapture ?? capture(database, conversationId, messageId); } catch { return false; }
 	const current = readCollection(database, source.source.variantId);
@@ -198,6 +200,7 @@ export function queueMemoryTail(database: Database, conversationId: number): boo
 export function startMemoryCatchup(database: Database, conversationId: number, readSources: () => readonly CapturedMemoryMessage[] | undefined): MemoryCatchup {
 	return database.transaction(() => {
 		if (!isMemoryEnabled(database)) throw new InvalidMemorySourceError("Turn on Memory before remembering history.");
+		if (!isBoxEnabled(connect(database), conversationId, "memory")) throw new InvalidMemorySourceError("Insert Memory in this Chat before remembering history.");
 		const sources = readSources();
 		if (!sources) throw new InvalidMemorySourceError("This Chat no longer exists.");
 		const run = connect(database)
@@ -461,7 +464,7 @@ const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 	const extraction = db
 		.select()
 		.from(memoryCollectionTable)
-		.where(and(eq(memoryCollectionTable.status, "pending"), eq(memoryCollectionTable.ownership, "automatic")))
+		.where(and(eq(memoryCollectionTable.status, "pending"), eq(memoryCollectionTable.ownership, "automatic"), inArray(memoryCollectionTable.conversation_id, enabledBoxConversations(db, "memory"))))
 		.orderBy(asc(memoryCollectionTable.catchup_run_id), asc(memoryCollectionTable.updated_at))
 		.get();
 	// @approved

@@ -6,7 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { boxId, boxSetups, promptBoxReference, worldClockRecord } from "./box";
+import { boxId, boxSetups, boxState, boxStates, promptBoxReference, worldClockRecord } from "./box";
 import { boxMoves, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -219,6 +219,7 @@ const activeGenerations = Type.Array(Type.Object({
 // Chat archive across the wire.
 export const conversationSummary = Type.Object({
 	boxSetups,
+	boxes: boxStates,
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -631,6 +632,10 @@ const setBoxSetupAction = Type.Union([
 ]);
 
 // @approved
+//  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
+const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: boxId, state: boxState });
+
+// @approved
 //  Sets one Variant's Writer override for a Box record. The record is
 //  validated against that Box's schema here, so storage only ever holds
 //  decodable values. Reset removes the override and leaves the automatic
@@ -720,6 +725,7 @@ const conversationCommandAction = Type.Union([
 	selectPromptPresetAction,
 	renameConversationAction,
 	setBoxSetupAction,
+	setBoxStateAction,
 	setBoxRecordAction,
 	resetBoxRecordAction,
 	putBoxDataAction,

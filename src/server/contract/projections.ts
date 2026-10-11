@@ -24,6 +24,7 @@ export const toConversationSummary = (
 ) => ({
 	id: conversation.id,
 	boxSetups: conversation.boxSetups,
+	boxes: conversation.boxes,
 	name: conversation.name,
 	revision: conversation.revision,
 	cast: conversation.cast,

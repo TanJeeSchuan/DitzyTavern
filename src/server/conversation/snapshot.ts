@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, count, eq, inArray, or } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
-import { readBoxSetups } from "../box/setup";
+import { readBoxSetups, readBoxStates } from "../box/setup";
 import {
 	activeGenerationTable,
 	conversationTable,
@@ -286,6 +286,7 @@ export function readConversationSummaryFromConnection(
 	return {
 		id: conversation.id,
 		boxSetups: readBoxSetups(db, conversationId),
+		boxes: readBoxStates(db, conversationId),
 		name: conversation.name,
 		revision: conversation.revision,
 		cast: cast.map((participant) => ({

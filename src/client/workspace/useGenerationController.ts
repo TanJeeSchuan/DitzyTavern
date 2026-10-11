@@ -90,9 +90,15 @@ export function useGenerationController({
 		conversationId: undefined, humanParticipantId: undefined, moves: {},
 	});
 	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
+	// @approved
+	//  A Box that stops being enabled drops its staged Moves for good.
+	const enabledMoves: BoxMoves = {};
+	if (staged.moves.race !== undefined && conversation?.boxes.race === "enabled") enabledMoves.race = staged.moves.race;
+	if (staged.moves.phone !== undefined && conversation?.boxes.phone === "enabled") enabledMoves.phone = staged.moves.phone;
+	if (conversation !== null && staged.conversationId === conversation.id && Object.keys(enabledMoves).length !== Object.keys(staged.moves).length) setStaged({ ...staged, moves: enabledMoves });
 	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {}
-		: sameSeat || staged.moves.phone === undefined ? staged.moves
-		: staged.moves.race === undefined ? {} : { race: staged.moves.race };
+		: sameSeat || enabledMoves.phone === undefined ? enabledMoves
+		: enabledMoves.race === undefined ? {} : { race: enabledMoves.race };
 	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import type { BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
-import { boxWindows, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
+import { boxTitle, boxWindows, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -145,8 +145,9 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const requestNavigation = useNavigationRequest();
 	const [order, setOrder] = useState<WindowBoxId[]>([]);
 	if (conversation === null) return null;
-	const minimized = windowBoxIds.filter((id) => controller.layouts[id]?.minimized === true);
-	const opened = windowBoxIds.filter((id) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
+	const running = windowBoxIds.filter((id) => conversation.boxes[id] === "enabled");
+	const minimized = running.filter((id) => controller.layouts[id]?.minimized === true);
+	const opened = running.filter((id) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
 	const raise = (id: WindowBoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
@@ -161,7 +162,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			if (layout === undefined) return null;
 			return <FloatingWindow
 				key={id}
-				title={definition.title}
+				title={boxTitle(id)}
 				icon={<definition.icon aria-hidden="true" />}
 				size={definition.size}
 				layout={layout}

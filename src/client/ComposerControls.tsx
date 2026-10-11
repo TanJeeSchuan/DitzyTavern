@@ -2,7 +2,8 @@ import { NotebookPen, Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { boxWindows, windowBoxIds, type WindowBoxId } from "./box-windows/registry";
+import { boxTitle, boxWindows, windowBoxIds, type WindowBoxId } from "./box-windows/registry";
+import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
@@ -113,10 +114,11 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			<Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={() => onOpenPanel("author-note")}><NotebookPen aria-hidden="true" /></Button>
-			{windowBoxIds.map((box) => {
+			<BoxManager conversation={conversation} disabled={disabled} onConversationChange={onConversationChange} />
+			{conversation.boxes["author-note"] === "enabled" && <Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={() => onOpenPanel("author-note")}><NotebookPen aria-hidden="true" /></Button>}
+			{windowBoxIds.filter((box) => conversation.boxes[box] === "enabled").map((box) => {
 				const Icon = boxWindows[box].icon;
-				return <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxWindows[box].title} title={boxWindows[box].title} disabled={disabled} onClick={() => onOpenWindow(box)}><Icon aria-hidden="true" /></Button>;
+				return <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={() => onOpenWindow(box)}><Icon aria-hidden="true" /></Button>;
 			})}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector

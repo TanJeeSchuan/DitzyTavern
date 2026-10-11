@@ -1,4 +1,4 @@
-import type { PhoneText } from "./contract/phone";
+import type { PhoneMove, PhoneText } from "./contract/phone";
 
 /** @approved The names a text may pass between: the human-controlled Participant and the other Cast members. */
 export type PhoneNames = { readonly human: string; readonly contacts: readonly string[] };
@@ -13,6 +13,8 @@ export const phoneNames = (cast: readonly { readonly id: number; readonly name: 
 //  The body may not contain another `<sms` or `</sms`, so in nested markup
 //  only the innermost pair matches and the outer tags stay raw text.
 const SMS = /<sms\s+from="([^"<>]*)"\s+to="([^"<>]*)"\s*>((?:(?!<\/?sms\b)[\s\S])*)<\/sms>/g;
+
+export const phoneMoveLabel = ({ to, text }: PhoneMove): string => `📱 ${to}: ${text}`;
 
 export const renderPhoneText = ({ from, to, text }: Sms): string => `<sms from="${from}" to="${to}">${text}</sms>`;
 

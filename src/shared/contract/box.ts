@@ -19,11 +19,19 @@ export const boxReference = (id: BoxId): PromptBoxReference => `box:${id}`;
 export const isBoxReference = (reference: string): reference is PromptBoxReference =>
 	boxIds.some((id) => boxReference(id) === reference);
 
+// @approved
+//  A Box's lifecycle in one Chat. Only an enabled Box runs; a disabled one
+// keeps its Chat-scoped data; an absent one has none.
+export const boxState = Type.Union([Type.Literal("enabled"), Type.Literal("disabled"), Type.Literal("absent")]);
+export type BoxState = Static<typeof boxState>;
+export const boxStates = Type.Record(boxId, boxState);
+export type BoxStates = Static<typeof boxStates>;
+/** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
+export const defaultBoxIds = ["author-note", "memory"] as const satisfies readonly BoxId[];
+
 export const worldClockStartPattern = "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d$";
 
 export const worldClockSetup = Type.Object({
-	/** @approved The Chat's World Clock toggle. Off by default: an off clock contributes no prompt item and queues no digest. */
-	enabled: Type.Boolean(),
 	/** @approved In-world start as a naive Gregorian `YYYY-MM-DDTHH:mm`. */
 	start: Type.String({ pattern: worldClockStartPattern }),
 	era: Type.String({ maxLength: 16 }),

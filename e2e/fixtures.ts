@@ -30,6 +30,15 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 
 export const story = (page: Page) => page.getByRole("main", { name: "Active Chat" });
 
+/** @approved A new Chat holds only the Author Note and Memory; a spec inserts any other Box through the Box manager. */
+export const insertBox = async (page: Page, title: string) => {
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	const toggle = page.getByRole("switch", { name: `${title} in this Chat` });
+	await toggle.click();
+	await expect(toggle).toBeChecked();
+	await page.keyboard.press("Escape");
+};
+
 export const send = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });
 	await expect(composer).toHaveAttribute("contenteditable", "true");

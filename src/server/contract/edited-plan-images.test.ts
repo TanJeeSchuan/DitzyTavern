@@ -1,4 +1,4 @@
-import { createConversationWithHistory, enableWorldClock } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -35,7 +35,8 @@ const createChat = (database: Database) => {
 		], control: { human: 0, model: 1 },
 	});
 	// @approved The suite asserts the World Clock line in captured plans.
-	enableWorldClock(database, chat.id);
+	insertBox(database, chat.id, "world-clock");
+	insertBox(database, chat.id, "phone");
 	return chat;
 };
 

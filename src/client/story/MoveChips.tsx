@@ -5,6 +5,7 @@ import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { PhoneMove } from "../../shared/contract/phone";
 import type { RaceMove } from "../../shared/contract/race";
 import { raceMoveLabel } from "../../shared/race-moves";
+import { phoneMoveLabel } from "../../shared/phone";
 
 function MoveChip({ id, index, label, disabled, onRemove }: { id: string; index: number; label: string; disabled: boolean; onRemove?: (() => void) | undefined }) {
 	const { ref, handleRef, isDragging } = useSortable({ id, index, disabled: disabled || onRemove === undefined });
@@ -38,8 +39,6 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 		</ol>
 	</DragDropProvider>;
 }
-
-const phoneMoveLabel = ({ to, text }: PhoneMove) => `📱 ${to}: ${text}`;
 
 /** @approved A Message's Moves per Box. With `onChange` they can be dragged into another order or removed. */
 export function MoveChips({ moves, onChange, disabled = false }: { moves: BoxMoves; onChange?: ((moves: BoxMoves) => void) | undefined; disabled?: boolean }) {

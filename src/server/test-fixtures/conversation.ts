@@ -10,7 +10,7 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { worldClockBox } from "../box/world-clock";
+import { boxReference, type BoxId } from "../../shared/contract/box";
 import { syncMemorySources } from "../memory";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
@@ -113,9 +113,7 @@ export function createConversationWithHistory(database: Database, input: Convers
  return requireSnapshot(database, conversation.id);
 }
 
-/** @approved Prompt assembly suites assert the World Clock line; the Clock is
- *  off by default on ordinary Chats, so tests enable it explicitly. */
-export function enableWorldClock(database: Database, conversationId: number): void {
- database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:world-clock', 'setup', ?)")
-  .run(conversationId, JSON.stringify({ ...worldClockBox.setup.initial, enabled: true }));
+/** @approved A new Chat holds only the Author Note and Memory; suites insert any other Box they exercise. */
+export function insertBox(database: Database, conversationId: number, box: BoxId): void {
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, 'enabled', 'true')").run(conversationId, boxReference(box));
 }
