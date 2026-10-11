@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { RaceMove, RaceRecord, RaceState } from "../../shared/contract/race";
 import { fillRaceField, initialRaceSetup } from "../../shared/race-data";
 import { advanceRace, foldRaceRecords } from "./race-engine";
 
@@ -16,7 +17,7 @@ test("equal Race state and seed produce the same Stretch without mutating inputs
 });
 
 test("the last 400 metres shorten to 100-metre Stretches, followed by one Results Stretch", () => {
-	let state: import("../../shared/contract/race").RaceState | null = null;
+	let state: RaceState | null = null;
 	const ends: number[] = [];
 	for (let i = 0; i < 20; i++) {
 		const record = advanceRace({ setup, state, seed: `stretch-${i}`, intent: "continue", moves: [] });
@@ -65,7 +66,7 @@ test("Fill field is seeded, preserves slots, and excludes names already in the C
 
 test("Auto until the finish still contributes a Results Stretch", () => {
 	const untilFinish = { ...setup, course: { ...setup.course, distance: 400 }, auto: { until: 0 } };
-	let state: import("../../shared/contract/race").RaceState | null = null;
+	let state: RaceState | null = null;
 	const outcomes: string[] = [];
 	for (let i = 0; i < 6; i++) {
 		const record = advanceRace({ setup: untilFinish, state, seed: `finish-${i}`, intent: "continue", moves: [] });
@@ -93,4 +94,50 @@ test("Moves resolve in order against projected energy and per-Runner limits, the
 	expect(held).toContain(`✋ Hold · ${runner}: fizzles. Hold must be the only Move.`);
 	expect(held).toMatch(/⚡ Overtake · .*: (succeeds|fizzles)\. .*(surges|boxed in)/);
 	expect(advanceRace({ ...input, setup })!.outcome).toContain(`⚡ Overtake · ${runner}: fizzles. Moves are off while Auto mode runs.`);
+});
+
+const runRace = (fields: { setup: typeof setup; moves?: (state: RaceState | null) => RaceMove[] }) => {
+	let state: RaceState | null = null;
+	const outcomes: string[] = [];
+	const ordered: RaceMove[][] = [];
+	for (let i = 0; i < 30 && state?.finished !== true; i++) {
+		const input = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
+		const record: RaceRecord = advanceRace(input)!;
+		state = record.after;
+		outcomes.push(record.outcome);
+		ordered.push(input.moves);
+	}
+	return { state: state!, outcomes, ordered };
+};
+
+test("no Hidden intent stays unrevealed after the Results Stretch, and each pays off on its first successful charge", () => {
+	const races = Array.from({ length: 12 }, (_, index) => ({ ...setup, raceId: `intent-${index}`, auto: "off" as const, slots: fillRaceField([], [], `intent-field-${index}`) }));
+	const checked = races.flatMap((race) => {
+		// @approved Ordering a planned closer to conserve every turn keeps the engine from launching its charge, so its reveal falls to the Results Stretch.
+		const unspent = race.raceId.endsWith("0") || race.raceId.endsWith("5");
+		const { state, outcomes, ordered } = runRace({ setup: race, moves: (current) => unspent && current !== null && current.intents[0] !== undefined
+			? [{ kind: "conserve", runner: current.intents[0].runner }] : [] });
+		expect(state.replay).toHaveLength(outcomes.length - 1);
+		return state.intents.map(({ runner, formed, payoff }) => {
+			expect(payoff).not.toBeNull();
+			const charged = state.replay.map(({ runners }) => runners.find(({ name }) => name === runner)!.decisions.some(({ kind, success }) => kind === "spurt" && success));
+			expect(charged.indexOf(true) + 1 || outcomes.length).toBe(payoff!);
+			outcomes.forEach((outcome, index) => {
+				const stretch = index + 1;
+				const hinted = stretch >= formed && stretch < payoff! && !outcome.split("\n")[1]!.endsWith("last spurt") && !ordered[index]!.some((move) => move.runner === runner);
+				expect(outcome.includes(`Reveal now: ${runner} `)).toBe(stretch === payoff);
+				expect(outcome.includes(`Foreshadow, do not reveal: ${runner} `)).toBe(hinted);
+			});
+			return outcomes[payoff! - 1]!.includes("Results Stretch") ? "results" : "charge";
+		});
+	});
+	expect(new Set(checked)).toEqual(new Set(["results", "charge"]));
+});
+
+test("salient events favour Cast Runners", () => {
+	const quiet = setup.slots[5]!.name;
+	const mentions = (race: typeof setup) => runRace({ setup: race }).outcomes
+		.filter((outcome) => outcome.split("\n").some((line) => line.startsWith(quiet))).length;
+	const cast = { ...setup, slots: setup.slots.map((slot, index) => index === 5 ? { ...slot, participantId: 1 } : slot) };
+	expect(mentions(cast)).toBeGreaterThan(mentions(setup));
 });

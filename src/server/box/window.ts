@@ -1,5 +1,9 @@
 import type { RaceRead } from "../../shared/contract/race";
 import { initialRaceState, raceStatus } from "./race-engine";
+import { and, eq, like } from "drizzle-orm";
+import { boxReference } from "../../shared/contract/box";
+import { RACE_AVATAR_PREFIX } from "../../shared/race-data";
+import { libraryDataTable } from "../database/schema";
 import type { Database } from "bun:sqlite";
 import type { WorldClockPassage, WorldClockRead } from "../../shared/contract/box";
 import {
@@ -55,11 +59,15 @@ export function readRace(database: Database, conversationId: number): RaceRead |
 		if (history === undefined) return undefined;
 		const setup = summary.boxSetups.race;
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const state = foldRecordStates(db, ids, summary.boxSetups).race ?? initialRaceState(setup);
+		const { intents, replay, ...state } = foldRecordStates(db, ids, summary.boxSetups).race ?? initialRaceState(setup);
 		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
 		return {
 			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
+			replay: state.finished ? { stretches: replay, intents } : null,
 			castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
+			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value }).from(libraryDataTable)
+				.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
+				.map(({ key, value }) => [key.slice(RACE_AVATAR_PREFIX.length), value])),
 		};
 	});
 }

@@ -20,3 +20,5 @@ test_data/
 .scratch/
 
 .sample-format/
+# Local Race roster avatars (canon art cannot ship in this repository)
+race-avatars/

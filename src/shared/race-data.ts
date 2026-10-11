@@ -31,6 +31,9 @@ export const raceRoster: readonly { name: string; style: RunningStyle }[] = [
 	{ name: "King Halo", style: "Late Surger" },
 ];
 
+/** @approved A roster Runner's avatar is Race library data under this key, holding the bare Image hash so the orphan sweep keeps it. */
+export const RACE_AVATAR_PREFIX = "avatar:";
+
 export const initialRaceSetup: RaceSetup = {
 	raceId: "", course: raceCourses[0]!, metresPerStretch: 400, slots: [], auto: "on", phase: "setup",
 };

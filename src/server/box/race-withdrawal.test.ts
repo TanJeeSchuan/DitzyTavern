@@ -91,6 +91,19 @@ test("a Hold cannot skip the walkover when the field is below two", async () => 
 	expect(record.record!.after.finished).toBe(true);
 });
 
+test("a walkover settles the surviving Runner's open Hidden intent", async () => {
+	const two = { ...setup, slots: setup.slots.slice(0, 2) };
+	const survivor = two.slots[1]!;
+	const state = { ...initialRaceState(two), stretch: 1, metres: 400, intents: [{ runner: survivor.name, formed: 1, payoff: null }] };
+	const record = await raceBox.advance!.run({
+		setup: two,
+		state,
+		dependencies: { seed: "intent", intent: "respond" as const, withdrawn: [two.slots[0]!.name] },
+		moves: [],
+	});
+	expect(record.record!.after.intents).toEqual([{ runner: survivor.name, formed: 1, payoff: 2 }]);
+});
+
 test("a Participant that is still in the Cast is not withdrawn", async () => {
 	const runner = setup.slots[0]!;
 	const record = await raceBox.advance!.run({

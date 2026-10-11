@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Flag } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,15 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { Value } from "@sinclair/typebox/value";
 import { raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "../../shared/contract/race";
-import { addRaceRunner, fillRaceField, initialRaceSetup, raceCourses, raceRandom, rollRaceStats } from "../../shared/race-data";
+import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "../../shared/race-data";
 import type { CastParticipant, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
+import { imageAccept, uploadImage } from "../lib/image";
 import { loadRace } from "../race";
 import { useSaveGuard } from "../SaveGuard";
 import { Portrait } from "../story/Portrait";
 import { RaceOval } from "./RaceOval";
+import { RaceReplay } from "./RaceReplay";
 
 // @approved
 //  The revision is part of the key so completions refetch, but the previous
@@ -32,7 +34,7 @@ type StatKey = typeof statKeys[number];
 const statLabels = { speed: "Speed", stamina: "Stamina", power: "Power", guts: "Guts", wit: "Wit" } satisfies Record<StatKey, string>;
 
 // @approved
-//  The wording this window shows when a stat write cannot land; the
+//  The wording this window shows when a stat or avatar write cannot land; the
 //  runner owns when each notice is shown.
 const BOX_DATA_NOTICES = {
 	conflict: "The Chat changed. Review the stats and add again.",
@@ -46,6 +48,18 @@ export function RaceDockTab({ conversation, onRestore }: { conversation: Convers
 		<Flag aria-hidden="true" /><span className="sr-only">Race: </span>
 		<span>{read.isError ? "Unavailable" : read.data?.status ?? "Set up a race"}</span>
 	</button>;
+}
+
+function SetAvatar({ name, onPick }: { name: string; onPick: (file: File) => void }) {
+	const picker = useRef<HTMLInputElement>(null);
+	return <>
+		<Button variant="ghost" size="sm" onClick={() => picker.current?.click()}>Set avatar</Button>
+		<input ref={picker} type="file" accept={imageAccept} hidden aria-label={`Avatar for ${name}`} onChange={(event) => {
+			const file = event.target.files?.[0];
+			event.target.value = "";
+			if (file !== undefined) onPick(file);
+		}} />
+	</>;
 }
 
 export function RaceWindow({ conversation, disabled, onConversationChange }: {
@@ -93,8 +107,12 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 	const discard = () => { setDraft(current); setSaved(current); setRevision(conversation.revision); setNotice(null); };
 	const data = read.data ?? null;
 	const race = data !== null && data.state.raceId === draft.raceId ? data : null;
-	/** @approved A Cast Runner shows its own Portrait, focal point included. */
-	const avatars = new Map(conversation.cast.flatMap(({ name, portrait }) => portrait === undefined ? [] : [[name, portrait] as const]));
+	const avatars = new Map(Object.entries(data?.avatars ?? {}).map(([name, hash]) => [name, { hash, focalX: 0.5, focalY: 0.5 }]));
+	// @approved
+	//  A Cast Runner's own Portrait wins over any roster avatar under the same
+	//  name, focal point included.
+	for (const { name, portrait } of conversation.cast) if (portrait !== undefined) avatars.set(name, portrait);
+	const cast = new Set(conversation.cast.map(({ name }) => name));
 	// @approved
 	//  A stat sheet only opens on a read for the current revision: placeholder
 	//  data would miss saved stats and roll over them.
@@ -151,9 +169,26 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 	//  gate instead of navigating away.
 	const sheetDirty = sheet !== null;
 	useSaveGuard({ dirty: dirty || sheetDirty, saving: pending, save: () => sheetDirty ? addToField() : save(), discard: () => { setSheet(null); discard(); } });
+	const setAvatar = async (name: string, file: File) => {
+		if (locked) return;
+		setPending(true);
+		setNotice(null);
+		try {
+			const { hash } = await uploadImage(file);
+			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, {
+				type: "put-box-data", box: "race", owner: { type: "library" }, key: `${RACE_AVATAR_PREFIX}${name}`, value: hash,
+			}, {
+				notices: { conflict: "The Chat changed. Set the avatar again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
+				onApplied: (next) => setRevision(next.revision),
+			});
+		} catch (cause) {
+			setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
+		} finally { setPending(false); }
+	};
 	return <div className="race-window">
 		<p role="status">{read.isError ? "The Race could not be read." : race?.status ?? "Choose a course and fill the field."}</p>
 		{running && race !== null && <RaceOval key={race.state.raceId} course={draft.course} state={race.state} avatars={avatars} />}
+		{running && race !== null && race.replay !== null && <RaceReplay key={race.state.raceId} replay={race.replay} avatars={avatars} />}
 		{!running && <fieldset disabled={locked} className="race-setup">
 			<Field label="Course">
 				<Select value={raceCourses.find((course) => JSON.stringify(course) === JSON.stringify(draft.course))?.name ?? "custom"}
@@ -186,6 +221,7 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 			<ol className="race-field" aria-label="Race field">{draft.slots.map((runner) => <li key={runner.name}>
 				<Portrait name={runner.name} portrait={avatars.get(runner.name)} size="small" />
 				<span className="race-field-name">{runner.name} · {runner.style}</span>
+				{!cast.has(runner.name) && <SetAvatar name={runner.name} onPick={(file) => void setAvatar(runner.name, file)} />}
 			</li>)}</ol>
 		</fieldset>}
 		{sheet !== null && <section className="race-stat-sheet" aria-label={`Stats for ${sheet.name}`}>

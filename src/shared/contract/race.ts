@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { imageHash } from "./image";
 
 export const runningStyles = ["Front Runner", "Pace Chaser", "Late Surger", "End Closer"] as const;
 export type RunningStyle = typeof runningStyles[number];
@@ -45,11 +46,27 @@ export type RaceSetup = Static<typeof raceSetup>;
 export const raceStanding = Type.Object({
 	name: Type.String(), distance: Type.Number(), energy: Type.Number(), time: Type.Number(),
 });
-export const raceState = Type.Object({
+const raceMoveKind = Type.Union([Type.Literal("overtake"), Type.Literal("conserve"), Type.Literal("spurt"), Type.Literal("hold")]);
+// @approved
+//  A Hidden intent is formed in one Stretch and pays off in a later one; the
+//  Results Stretch settles any still open, so a finished race has none open.
+export const raceIntent = Type.Object({ runner: Type.String(), formed: Type.Integer(), payoff: Type.Union([Type.Integer(), Type.Null()]) });
+export type RaceIntent = Static<typeof raceIntent>;
+export const raceDecision = Type.Object({ kind: raceMoveKind, writer: Type.Boolean(), success: Type.Boolean() });
+export type RaceDecision = Static<typeof raceDecision>;
+export const raceReplayStretch = Type.Object({
+	stretch: Type.Integer(), metres: Type.Number(),
+	runners: Type.Array(Type.Object({ name: Type.String(), energy: Type.Number(), decisions: Type.Array(raceDecision) })),
+});
+export type RaceReplayStretch = Static<typeof raceReplayStretch>;
+const spectatorProperties = {
 	raceId: Type.String(), stretch: Type.Integer(), metres: Type.Number(), finished: Type.Boolean(),
 	standings: Type.Array(raceStanding),
-});
+};
+export const raceState = Type.Object({ ...spectatorProperties, intents: Type.Array(raceIntent), replay: Type.Array(raceReplayStretch) });
 export type RaceState = Static<typeof raceState>;
+export const raceSpectatorState = Type.Object(spectatorProperties);
+export type RaceSpectatorState = Static<typeof raceSpectatorState>;
 export const raceRecord = Type.Object({
 	raceId: Type.String(), stretch: Type.Integer(), outcome: Type.String(), after: raceState,
 });
@@ -59,7 +76,7 @@ export const raceRecordSlot = Type.Object({ automatic: raceRecord });
 //  A Race Move acts on one Runner: the human-seat Runner, or the Runner the
 //  writer orders when the human seat is not racing.
 export const raceMove = Type.Object({
-	kind: Type.Union([Type.Literal("overtake"), Type.Literal("conserve"), Type.Literal("spurt"), Type.Literal("hold")]),
+	kind: raceMoveKind,
 	runner: Type.String({ minLength: 1, maxLength: 100 }),
 });
 export type RaceMove = Static<typeof raceMove>;
@@ -68,7 +85,10 @@ export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: strin
 export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on" || setup.auto === "off" || setup.auto.until < setup.course.distance;
 export const raceRead = Type.Object({
 	conversationId: Type.Integer(), revision: Type.Integer(), status: Type.Union([Type.String(), Type.Null()]),
-	state: raceState,
+	state: raceSpectatorState,
+	// @approved The replay and Hidden intents stay on the server until the finish, so the window cannot spoil them.
+	replay: Type.Union([Type.Null(), Type.Object({ stretches: Type.Array(raceReplayStretch), intents: Type.Array(raceIntent) })]),
+	avatars: Type.Record(Type.String(), imageHash),
 	castStats: Type.Array(raceCastStats),
 });
 export type RaceRead = Static<typeof raceRead>;

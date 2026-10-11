@@ -16,13 +16,17 @@ export const raceBox = {
 			const before = currentRaceState(setup, state);
 			// @approved
 			//  A slotted Cast Runner whose Participant left the Cast is withdrawn:
-			//  the captured slots and folded standings drop them,
+			//  the captured slots, folded standings and Hidden intents drop them,
 			//  and the item reports the withdrawal before narrating the Stretch.
 			const withdrawn = new Set(dependencies.withdrawn ?? []);
 			const withdrawalLines = before.standings.flatMap(({ name }) => withdrawn.has(name) ? [`${name} is withdrawn.`] : []);
 			const captured = withdrawalLines.length === 0 ? { setup, state } : {
 				setup: { ...setup, slots: setup.slots.filter(({ name }) => !withdrawn.has(name)) },
-				state: { ...before, standings: before.standings.filter(({ name }) => !withdrawn.has(name)) },
+				state: {
+					...before,
+					standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
+					intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
+				},
 			};
 			const withWithdrawals = (text: string) => {
 				if (withdrawalLines.length === 0) return text;
@@ -35,7 +39,11 @@ export const raceBox = {
 			//  advances, so it is announced exactly once instead of on every Hold.
 			const withdrawalRecord = (text: string): RaceRecord => ({
 				raceId: setup.raceId, stretch: before.stretch, outcome: text,
-				after: { ...before, standings: before.standings.filter(({ name }) => !withdrawn.has(name)) },
+				after: {
+					...before,
+					standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
+					intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
+				},
 			});
 			const holds = dependencies.intent === "respond" && captured.setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold"
 				&& checkRaceMove(captured.setup, currentRaceState(captured.setup, captured.state), [], first).legal;
@@ -56,9 +64,14 @@ export const raceBox = {
 					const result = standings.length === 0 ? ["The race is called off."] : [`${standings[0]!.name} wins by default.`];
 					const outcome = [setup.course.name, ...withdrawalLines, ...result, "Narrate the finish."].join("\n");
 					const stretch = before.stretch + 1;
+					const intents = before.intents.filter(({ runner }) => !withdrawn.has(runner))
+						.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
 					return {
 						items: [{ text: outcome, priority: 100, pinned: true }],
-						record: { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, standings } },
+						// @approved
+						//  The walkover settles every surviving Runner's open Hidden
+						//  intent, exactly as the Results Stretch does.
+						record: { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, standings, intents } },
 					};
 				}
 				const text = withWithdrawals(`${setup.course.name}\nThe Stretch does not advance this turn.`);

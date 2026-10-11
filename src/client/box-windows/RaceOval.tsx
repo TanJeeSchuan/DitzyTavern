@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
-import type { RaceCourse, RaceState } from "../../shared/contract/race";
+import type { RaceCourse, RaceSpectatorState } from "../../shared/contract/race";
 import { imageSrc } from "../lib/image";
 import { focalPosition, Portrait } from "../story/Portrait";
 
@@ -106,7 +106,7 @@ const usePlacements = (targets: readonly Target[]): ReadonlyMap<string, Placemen
 	return placements;
 };
 
-export function RaceOval({ course, state, avatars }: { course: RaceCourse; state: RaceState; avatars: ReadonlyMap<string, PortraitImage> }) {
+export function RaceOval({ course, state, avatars }: { course: RaceCourse; state: RaceSpectatorState; avatars: ReadonlyMap<string, PortraitImage> }) {
 	const runners = state.standings;
 	const leader = runners[0];
 	const startBehind = wrap(course.distance, LAP_METRES);
