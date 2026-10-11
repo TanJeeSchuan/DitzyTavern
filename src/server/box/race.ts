@@ -14,16 +14,60 @@ export const raceBox = {
 		fingerprint: ({ dependencies }) => JSON.stringify(dependencies),
 		async run({ setup, state, dependencies, moves }) {
 			const before = currentRaceState(setup, state);
+			// @approved
+			//  A slotted Cast Runner whose Participant left the Cast is withdrawn:
+			//  the captured slots and folded standings drop them,
+			//  and the item reports the withdrawal before narrating the Stretch.
+			const withdrawn = new Set(dependencies.withdrawn ?? []);
+			const withdrawalLines = before.standings.flatMap(({ name }) => withdrawn.has(name) ? [`${name} is withdrawn.`] : []);
+			const captured = withdrawalLines.length === 0 ? { setup, state } : {
+				setup: { ...setup, slots: setup.slots.filter(({ name }) => !withdrawn.has(name)) },
+				state: { ...before, standings: before.standings.filter(({ name }) => !withdrawn.has(name)) },
+			};
+			const withWithdrawals = (text: string) => {
+				if (withdrawalLines.length === 0) return text;
+				const [heading, ...rest] = text.split("\n");
+				return [heading, ...withdrawalLines, ...rest].join("\n");
+			};
 			const [first] = moves;
-			if (dependencies.intent === "respond" && moves.length === 1 && first?.kind === "hold" && checkRaceMove(setup, before, [], first).legal) {
-				const text = `${setup.course.name}\n${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`;
-				return { items: [{ text, priority: 100, pinned: true }] };
+			// @approved
+			//  A withdrawal is captured once and persisted even when no Stretch
+			//  advances, so it is announced exactly once instead of on every Hold.
+			const withdrawalRecord = (text: string): RaceRecord => ({
+				raceId: setup.raceId, stretch: before.stretch, outcome: text,
+				after: { ...before, standings: before.standings.filter(({ name }) => !withdrawn.has(name)) },
+			});
+			const holds = dependencies.intent === "respond" && captured.setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold"
+				&& checkRaceMove(captured.setup, currentRaceState(captured.setup, captured.state), [], first).legal;
+			if (holds) {
+				const text = withWithdrawals(`${setup.course.name}\n${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`);
+				return withdrawalLines.length === 0
+					? { items: [{ text, priority: 100, pinned: true }] }
+					: { items: [{ text, priority: 100, pinned: true }], record: withdrawalRecord(text) };
 			}
-			const record = advanceRace({ setup, state, moves, ...dependencies });
-			return { items: record === undefined ? [] : [{ text: record.outcome, priority: 100, pinned: true }], record };
+			const record = advanceRace({ ...captured, moves, ...dependencies });
+			// @approved
+			//  A field reduced below two Runners cannot run another Stretch: the
+			//  withdrawal still becomes a record, and the remaining Runner wins by
+			//  default.
+			if (record === undefined && withdrawalLines.length > 0 && setup.phase === "running" && !before.finished) {
+				if (captured.setup.slots.length < 2) {
+					const standings = before.standings.filter(({ name }) => !withdrawn.has(name));
+					const result = standings.length === 0 ? ["The race is called off."] : [`${standings[0]!.name} wins by default.`];
+					const outcome = [setup.course.name, ...withdrawalLines, ...result, "Narrate the finish."].join("\n");
+					const stretch = before.stretch + 1;
+					return {
+						items: [{ text: outcome, priority: 100, pinned: true }],
+						record: { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, standings } },
+					};
+				}
+				const text = withWithdrawals(`${setup.course.name}\nThe Stretch does not advance this turn.`);
+				return { items: [{ text, priority: 100, pinned: true }], record: withdrawalRecord(text) };
+			}
+			return { items: record === undefined ? [] : [{ text: withWithdrawals(record.outcome), priority: 100, pinned: true }], record };
 		},
 	},
-} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent">, never, never, RaceRecord, RaceState | null, RaceMove>;
+} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, never, RaceRecord, RaceState | null, RaceMove>;
 
 export const raceSetupError = (setup: RaceSetup, previous: RaceSetup): string | undefined => {
 	if (previous.phase !== "setup" && setup.raceId === previous.raceId && !isDeepStrictEqual({ ...setup, auto: previous.auto }, previous)) {

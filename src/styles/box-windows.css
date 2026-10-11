@@ -494,3 +494,71 @@
 	color: var(--foreground);
 	font-weight: 620;
 }
+
+.race-marker-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: 4px;
+	object-fit: cover;
+}
+
+.race-setup .race-field li {
+	grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+}
+
+.race-cast-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.race-cast-list button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.race-cast-empty {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.8rem;
+}
+
+.race-stat-sheet {
+	display: grid;
+	gap: 0.6rem;
+	padding: 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+}
+
+.race-stat-sheet-header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.race-stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
+	gap: 0.45rem;
+}
+
+.race-stat-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.race-stat-save {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.8rem;
+}

@@ -93,7 +93,7 @@ for (const transition of ["unmount", "A to B to A"] as const) test(`a command se
 		return init?.method === "POST" ? late.promise : Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(id) : summary(id)));
 	});
 	const adopted = h.hook.current.setConversation;
-	let command: Promise<void> = Promise.resolve();
+	let command: ReturnType<typeof runConversationCommand> = Promise.resolve(undefined);
 	await h.hook.act(async () => {
 		command = runConversationCommand({ conversationId: 1, revision: () => 5, onConversationChange: adopted, setNotice() {} }, { type: "rename-conversation", name: "Late" });
 	});

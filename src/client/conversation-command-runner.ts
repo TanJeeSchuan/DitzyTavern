@@ -55,13 +55,15 @@ export type ConversationCommandSend<TOperation = never> = (
 
 /** @approved
  * Runs one Conversation command against `surface`: an action goes through the
- * Conversation command route, a function is the surface's own send seam.
+ * Conversation command route, a function is the surface's own send seam. It
+ * returns the applied Conversation on success, so a surface that chains
+ * commands can start the next from the revision this one returned.
  */
 export async function runConversationCommand<TOperation = never>(
 	surface: ConversationCommandSurface,
 	command: ConversationAction | ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation> = {},
-): Promise<void> {
+): Promise<ConversationSummary | undefined> {
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};
@@ -93,7 +95,7 @@ export async function runConversationCommand<TOperation = never>(
 				surface.onConversationChange(outcome.value.conversation);
 				options.onApplied?.(outcome.value.conversation);
 			});
-			return;
+			return outcome.value.conversation;
 		case "conflict":
 			effect(() => {
 				surface.onConversationChange(outcome.currentConversation);

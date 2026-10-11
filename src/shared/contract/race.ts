@@ -1,7 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-export const runningStyle = Type.Union([Type.Literal("Front Runner"), Type.Literal("Pace Chaser"), Type.Literal("Late Surger"), Type.Literal("End Closer")]);
-export type RunningStyle = Static<typeof runningStyle>;
+export const runningStyles = ["Front Runner", "Pace Chaser", "Late Surger", "End Closer"] as const;
+export type RunningStyle = typeof runningStyles[number];
+export const runningStyle = Type.Unsafe<RunningStyle>(Type.Union(runningStyles.map((style) => Type.Literal(style))));
 export const raceCourse = Type.Object({
 	name: Type.String({ minLength: 1, maxLength: 100 }),
 	distance: Type.Integer({ minimum: 400, maximum: 10000 }),
@@ -10,11 +11,27 @@ export const raceCourse = Type.Object({
 });
 export type RaceCourse = Static<typeof raceCourse>;
 const stat = Type.Integer({ minimum: 1, maximum: 1200 });
-export const raceRunner = Type.Object({
-	name: Type.String({ minLength: 1, maxLength: 100 }),
+// @approved
+//  A Runner's race stats, shared by Character data, Participant data, the
+//  stat sheet and the setup slot it produces.
+export const raceStats = Type.Object({
 	style: runningStyle,
 	speed: stat, stamina: stat, power: stat, guts: stat, wit: stat,
 });
+export type RaceStats = Static<typeof raceStats>;
+// @approved
+//  One Cast member's own Participant race stats, as the Race stat sheet reads
+//  them. Participants without stats are simply absent.
+export const raceCastStats = Type.Object({ participantId: Type.Integer(), stats: raceStats });
+export type RaceCastStats = Static<typeof raceCastStats>;
+export const raceRunner = Type.Composite([
+	Type.Object({
+		name: Type.String({ minLength: 1, maxLength: 100 }),
+		// @approved The Participant this slot came from, if any; roster Runners leave it unset. It links the gate back to the Cast for Portrait, stat sheet and withdrawal.
+		participantId: Type.Optional(Type.Integer()),
+	}),
+	raceStats,
+]);
 export type RaceRunner = Static<typeof raceRunner>;
 export const raceSetup = Type.Object({
 	raceId: Type.String(),
@@ -47,10 +64,11 @@ export const raceMove = Type.Object({
 });
 export type RaceMove = Static<typeof raceMove>;
 export type RaceMoveKind = RaceMove["kind"];
-export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: string; intent: "respond" | "continue"; moves: readonly RaceMove[] };
+export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: string; intent: "respond" | "continue"; withdrawn?: readonly string[]; moves: readonly RaceMove[] };
 export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on" || setup.auto === "off" || setup.auto.until < setup.course.distance;
 export const raceRead = Type.Object({
 	conversationId: Type.Integer(), revision: Type.Integer(), status: Type.Union([Type.String(), Type.Null()]),
 	state: raceState,
+	castStats: Type.Array(raceCastStats),
 });
 export type RaceRead = Static<typeof raceRead>;

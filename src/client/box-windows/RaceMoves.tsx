@@ -14,14 +14,15 @@ const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns ex
 
 // @approved
 //  Offers only the Moves legal after the ones already staged, each with its
-//  projected energy cost and odds. The human-seat Runner is the one whose
-//  name matches the human-controlled Participant; otherwise Moves are orders
-//  to the Runner the writer picks.
+//  projected energy cost and odds. The human-seat Runner is the gate whose
+//  Participant is the human-controlled one; otherwise Moves are orders to
+//  the Runner the writer picks.
 function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
 	const read = useQuery({ queryKey: ["race", conversation.id, conversation.revision], queryFn: ({ signal }) => loadRace(conversation.id, signal) });
 	const setup = conversation.boxSetups.race;
-	const seat = conversation.cast.find(({ id }) => id === conversation.control.humanParticipantId)?.name;
-	const seated = setup.slots.some(({ name }) => name === seat);
+	const humanSeatId = conversation.control.humanParticipantId;
+	const seat = humanSeatId === null ? undefined : setup.slots.find(({ participantId }) => participantId === humanSeatId)?.name;
+	const seated = seat !== undefined;
 	const [ordered, setOrdered] = useState<string | undefined>(undefined);
 	const runner = seated ? seat : ordered ?? setup.slots[0]?.name;
 	const state = read.data?.state;

@@ -8,7 +8,10 @@ import { numericWire } from "./wire";
 // namespace are both `box:<id>`.
 export const boxIds = ["author-note", "memory", "world-clock", "race"] as const;
 export type BoxId = typeof boxIds[number];
-export const boxId = Type.Union(boxIds.map((id) => Type.Literal(id)));
+type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
+// SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
+const boxIdSchemas = boxIds.map((id) => Type.Literal(id)) as LiteralSchemas<typeof boxIds>;
+export const boxId = Type.Union(boxIdSchemas);
 
 export const promptBoxReference = Type.TemplateLiteral([Type.Literal("box:"), boxId]);
 export type PromptBoxReference = Static<typeof promptBoxReference>;
@@ -43,7 +46,6 @@ export const isWorldClockStart = (start: string): boolean => {
 export const weathers = ["clear", "cloudy", "rain", "storm", "snow", "fog"] as const;
 export type Weather = typeof weathers[number];
 
-type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
 // SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
 const weatherSchemas = weathers.map((kind) => Type.Literal(kind)) as LiteralSchemas<typeof weathers>;
 

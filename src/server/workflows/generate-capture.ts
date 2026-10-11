@@ -414,10 +414,12 @@ export function prepareGenerationInputsSnapshot(
 	//  submits, or the one a Sibling answers. A Continuation has none.
 	const moves = boxIntent === "continue" ? {} : target.kind === "send" ? target.moves ?? {}
 		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
+	const withdrawn = summary.boxSetups.race.slots.flatMap(({ name, participantId }) =>
+		participantId !== undefined && !summary.cast.some(({ id }) => id === participantId) ? [name] : []);
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory(), recordStates, { seed, intent: boxIntent, moves, withdrawn }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

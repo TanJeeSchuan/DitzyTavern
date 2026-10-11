@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { RaceCourse, RaceState } from "../../shared/contract/race";
-import { Portrait } from "../story/Portrait";
+import { imageSrc } from "../lib/image";
+import { focalPosition, Portrait } from "../story/Portrait";
 
 /** @approved
  *  A spectator's oval: the drawn course is one stylized 1600 m lap, the
@@ -8,8 +10,7 @@ import { Portrait } from "../story/Portrait";
  *  placed as many metres back as the course distance needs. Markers sit at
  *  their Runner's actual distance, fanned into lanes so a bunched field
  *  stays legible; a field tied at one distance is staggered into a gate
- *  line. Initials stand in for avatars until tickets 09 and 10 bring
- *  Portraits and roster images.
+ *  line. A Runner without an avatar shows its initial.
  */
 const VIEW_WIDTH = 460;
 const VIEW_HEIGHT = 278;
@@ -105,7 +106,7 @@ const usePlacements = (targets: readonly Target[]): ReadonlyMap<string, Placemen
 	return placements;
 };
 
-export function RaceOval({ course, state }: { course: RaceCourse; state: RaceState }) {
+export function RaceOval({ course, state, avatars }: { course: RaceCourse; state: RaceState; avatars: ReadonlyMap<string, PortraitImage> }) {
 	const runners = state.standings;
 	const leader = runners[0];
 	const startBehind = wrap(course.distance, LAP_METRES);
@@ -119,7 +120,7 @@ export function RaceOval({ course, state }: { course: RaceCourse; state: RaceSta
 		const target = targets[index]!;
 		const placement = placements.get(runner.name) ?? target;
 		const point = pointBehind(placement.offset, course.direction);
-		return { name: runner.name, rank: index + 1, x: point.x + point.normalX * placement.lane, y: point.y + point.normalY * placement.lane };
+		return { name: runner.name, avatar: avatars.get(runner.name), rank: index + 1, x: point.x + point.normalX * placement.lane, y: point.y + point.normalY * placement.lane };
 	});
 	const finish = pointBehind(0, course.direction);
 	const start = pointBehind(startBehind, course.direction);
@@ -147,9 +148,14 @@ export function RaceOval({ course, state }: { course: RaceCourse; state: RaceSta
 				<rect className="race-oval-flag" x={flagX + 5} y={postTop} width={5} height={5} />
 				<text className="race-oval-label" x={finish.x} y={postTop + 32}>Finish</text>
 			</g>
-			{[...placed].reverse().map(({ name, rank, x, y }) => <g key={name} className="race-marker" data-leader={rank === 1 ? true : undefined} transform={`translate(${x.toFixed(2)} ${y.toFixed(2)})`}>
+			{[...placed].reverse().map(({ name, avatar, rank, x, y }) => <g key={name} className="race-marker" data-leader={rank === 1 ? true : undefined}
+				transform={`translate(${x.toFixed(2)} ${y.toFixed(2)})`}>
 				<rect className="race-marker-avatar" x={-8} y={-8} width={16} height={16} rx={5} />
-				<text className="race-marker-initial" y={3} textAnchor="middle">{initialFor(name)}</text>
+				{avatar !== undefined
+					? <foreignObject x={-7} y={-7} width={14} height={14}>
+						<img className="race-marker-image" src={imageSrc(avatar.hash)} alt="" style={{ objectPosition: focalPosition(avatar) }} />
+					</foreignObject>
+					: <text className="race-marker-initial" y={3} textAnchor="middle">{initialFor(name)}</text>}
 				<rect className="race-marker-place" x={-6} y={-19} width={12} height={10} rx={3} />
 				<text className="race-marker-rank" y={-10.5} textAnchor="middle">{rank}</text>
 			</g>)}
@@ -157,7 +163,7 @@ export function RaceOval({ course, state }: { course: RaceCourse; state: RaceSta
 		<ol className="race-field" aria-label="Race order">
 			{runners.map((runner, index) => <li key={runner.name} data-leader={index === 0 ? true : undefined}>
 				<span className="race-field-place">{index + 1}</span>
-				<Portrait name={runner.name} size="small" />
+				<Portrait name={runner.name} portrait={avatars.get(runner.name)} size="small" />
 				<span className="race-field-name">{runner.name}</span>
 				<span className="race-field-gap">{state.finished
 					? index === 0 ? `${runner.time.toFixed(2)} s` : `+${(runner.time - (leader?.time ?? runner.time)).toFixed(2)} s`

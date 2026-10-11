@@ -1,4 +1,4 @@
-import type { RaceCourse, RaceRunner, RaceSetup, RunningStyle } from "./contract/race";
+import type { RaceCourse, RaceRunner, RaceSetup, RaceStats, RunningStyle } from "./contract/race";
 
 export const raceCourses: readonly RaceCourse[] = [
 	{ name: "Japan Cup · Tokyo", distance: 2400, surface: "turf", direction: "left" },
@@ -46,14 +46,22 @@ export const raceRandom = (seed: string): (() => number) => {
 	};
 };
 
+/** @approved One seeded stat roll biased toward the Running style; the roster draw and the stat sheet share it, so a style always rolls the same way. */
+export function rollRaceStats(style: RunningStyle, random: () => number): RaceStats {
+	const roll = (bonus = 0) => Math.round(450 + random() * 300 + bonus);
+	return { style, speed: roll(style === "Front Runner" ? 100 : 0), stamina: roll(style === "Pace Chaser" ? 100 : 0),
+		power: roll(style === "Late Surger" ? 100 : 0), guts: roll(style === "End Closer" ? 100 : 0), wit: roll() };
+}
+
 export function fillRaceField(slots: readonly RaceRunner[], excludedNames: readonly string[], seed: string, size = 8): RaceRunner[] {
 	const random = raceRandom(seed);
 	const used = new Set([...slots.map((runner) => runner.name), ...excludedNames].map((name) => name.trim().toLowerCase()));
 	const available = raceRoster.filter((runner) => !used.has(runner.name.toLowerCase()))
 		.map((runner) => ({ runner, draw: random() })).sort((a, b) => a.draw - b.draw);
-	return [...slots, ...available.slice(0, Math.max(0, size - slots.length)).map(({ runner }) => {
-		const roll = (bonus = 0) => Math.round(450 + random() * 300 + bonus);
-		return { ...runner, speed: roll(runner.style === "Front Runner" ? 100 : 0), stamina: roll(runner.style === "Pace Chaser" ? 100 : 0),
-			power: roll(runner.style === "Late Surger" ? 100 : 0), guts: roll(runner.style === "End Closer" ? 100 : 0), wit: roll() };
-	})];
+	return [...slots, ...available.slice(0, Math.max(0, size - slots.length)).map(({ runner }) => ({ ...runner, ...rollRaceStats(runner.style, random) }))];
 }
+
+/** @approved Adds a Cast Runner to the field, replacing a roster Runner of the same name (trimmed, case-insensitive, as the setup validator compares) so one name never occupies two gates. */
+export const addRaceRunner = (slots: readonly RaceRunner[], runner: RaceRunner): RaceRunner[] =>
+	[...slots.filter((slot) => slot.participantId !== runner.participantId
+		&& !(slot.participantId === undefined && slot.name.trim().toLowerCase() === runner.name.trim().toLowerCase())), runner];

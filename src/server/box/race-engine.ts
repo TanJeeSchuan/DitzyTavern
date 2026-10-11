@@ -23,13 +23,14 @@ const phaseAt = (metres: number, distance: number): number =>
 const phases = ["opening", "middle", "final corner", "last spurt"];
 const ordinal = (rank: number) => `${rank}${rank === 1 ? "st" : rank === 2 ? "nd" : rank === 3 ? "rd" : "th"}`;
 
-export const raceStatus = (setup: RaceSetup, state: RaceState | null): string | null => {
+// @approved The dock follows the human seat's Runner when it is racing, else the first gate.
+export const raceStatus = (setup: RaceSetup, state: RaceState | null, follows?: string): string | null => {
 	if (setup.phase === "setup") return null;
 	const current = state?.raceId === setup.raceId ? state : initialRaceState(setup);
 	if (current.finished) return `🏁 1st · ${current.standings[0]?.name ?? ""}`;
-	// @approved Until Cast slotting, the dock follows the Runner in the first gate.
-	const rank = current.standings.findIndex(({ name }) => name === setup.slots[0]?.name) + 1;
-	return `🏇 ${current.metres}m · ${ordinal(rank)}`;
+	const followed = current.standings.some(({ name }) => name === follows) ? follows : setup.slots[0]?.name;
+	const rank = current.standings.findIndex(({ name }) => name === followed) + 1;
+	return `🏇 ${current.metres}m · ${ordinal(Math.max(rank, 1))}`;
 };
 
 export const currentRaceState = (setup: RaceSetup, state: RaceState | null): RaceState => state?.raceId === setup.raceId ? state : initialRaceState(setup);

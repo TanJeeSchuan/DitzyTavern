@@ -10,6 +10,7 @@ import {
 import { readBoxCatchUp } from "./digest";
 import { resolveBoxDecision } from "./decision-settings";
 import { foldRecordStates, hasAutomaticRecord, effectiveRecord, readRecordSlots } from "./records";
+import { readRaceCastStats } from "./race-cast";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 /** @approved The World Clock window and dock read one folded Selected path
@@ -55,6 +56,10 @@ export function readRace(database: Database, conversationId: number): RaceRead |
 		const setup = summary.boxSetups.race;
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
 		const state = foldRecordStates(db, ids, summary.boxSetups).race ?? initialRaceState(setup);
-		return { conversationId, revision: summary.revision, status: raceStatus(setup, state), state };
+		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
+		return {
+			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
+			castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
+		};
 	});
 }

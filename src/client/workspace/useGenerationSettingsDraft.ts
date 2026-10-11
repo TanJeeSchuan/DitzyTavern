@@ -85,7 +85,7 @@ export async function saveGenerationSettingsDraft(
 	const base = await loadConversationGenerationSettings(options.conversation.id, options.signal);
 	options.signal?.throwIfAborted();
 	const next = applyDraftsToGenerationSettings(base, options.drafts);
-	return runConversationCommand(options.surface, {
+	await runConversationCommand(options.surface, {
 		type: "update-generation-settings",
 		settings: next,
 	}, {

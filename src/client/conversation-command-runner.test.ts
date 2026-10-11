@@ -76,7 +76,7 @@ const run = (
 	send: ConversationCommandSend,
 	options: ConversationCommandRunOptions = {},
 	surfaceOverrides: Partial<ConversationCommandSurface> = {},
-): Promise<void> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
+): ReturnType<typeof runConversationCommand> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
 
 describe("runConversationCommand", () => {
 	test("an unavailable revision refuses to send and shows the revision notice", async () => {
