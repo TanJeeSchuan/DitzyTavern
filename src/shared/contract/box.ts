@@ -8,7 +8,7 @@ import type { PromptOutgoingRole } from "./prompt-preset";
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
 // namespace are both `box:<id>`.
-export const boxIds = ["author-note", "memory", "world-clock", "race", "phone"] as const;
+export const boxIds = ["author-note", "memory", "world-clock", "race", "phone", "thought"] as const;
 export type BoxId = typeof boxIds[number];
 type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
 // SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
@@ -37,6 +37,7 @@ export const boxDescriptors = {
 	"world-clock": { label: "World Clock", role: "system", startsEnabled: false },
 	race: { label: "Race", role: "system", startsEnabled: false },
 	phone: { label: "Phone", role: "system", startsEnabled: false },
+	thought: { label: "Thoughts", role: "system", startsEnabled: false },
 } as const satisfies Record<BoxId, { readonly label: string; readonly role: PromptOutgoingRole; readonly startsEnabled: boolean }>;
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = boxIds.filter((id) => boxDescriptors[id].startsEnabled);

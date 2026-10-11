@@ -1,4 +1,4 @@
-import { Flag, Clock, Smartphone, type LucideIcon } from "lucide-react";
+import { Flag, MessageCircleDashed, Clock, Smartphone, type LucideIcon } from "lucide-react";
 import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "./RaceWindow";
@@ -9,6 +9,8 @@ import type { ConversationAction } from "../../shared/contract/conversation-sche
 import { WorldClockDockTab, WorldClockWindow } from "./WorldClockWindow";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "./PhoneWindow";
 import { phoneNames, stripPhoneTexts } from "../../shared/phone";
+import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "./ThoughtWindow";
+import { stripThoughts } from "../../shared/thought";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
@@ -71,6 +73,7 @@ export const boxWindows = {
 	"world-clock": { icon: Clock, size: { width: 25, height: 30 }, DockTab: WorldClockDockTab, Panel: WorldClockWindow },
 	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
+	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },
 } satisfies Partial<Record<BoxId, BoxWindowDefinition>>;
 
 export type WindowBoxId = keyof typeof boxWindows;

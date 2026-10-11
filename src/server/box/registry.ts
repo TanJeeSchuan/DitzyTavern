@@ -10,6 +10,7 @@ import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { worldClockBox } from "./world-clock";
 import { phoneBox } from "./phone";
+import { thoughtBox } from "./thought";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
 
 // @approved
@@ -22,6 +23,7 @@ export const serverBox = (id: BoxId): HostBox => ({
 	"world-clock": worldClockBox,
 	race: raceBox,
 	phone: phoneBox,
+	thought: thoughtBox,
 } satisfies Record<BoxId, HostBox>)[id];
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
