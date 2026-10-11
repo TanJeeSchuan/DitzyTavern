@@ -1,48 +1,54 @@
 import { Value } from "@sinclair/typebox/value";
-import { and, eq } from "drizzle-orm";
-import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxIds, boxReference, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
-import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import { conversationDataTable } from "../database/schema";
+import type { GenerationJsonValue } from "../../shared/generation-json";
+import { type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { hasEnabledMemorySlot, type PromptPresetSlot } from "../../shared/contract/prompt-preset";
+import { memoryBox } from "./memory";
+import type { MemoryRecallSnapshot } from "../memory/recall";
 import { authorNoteBox } from "./author-note";
-import type { BlockItem, Box } from "./contract";
-
-export const boxes = {
-	"author-note": authorNoteBox,
-} satisfies { [Id in BoxId]: Box<BoxSetups[Id]> };
+import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices } from "./contract";
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
-export type BoxItems = Partial<Record<PromptBoxReference, readonly BlockItem[]>>;
+export type BoxItems = Partial<Record<PromptBoxReference, readonly (BlockItem & { readonly index: number })[]>>;
 
-const SETUP_KEY = "setup";
+export type BoxResults = Partial<Record<PromptBoxReference, AdvanceResult<GenerationJsonValue>>>;
 
-export const boxSetupEntry = <Id extends BoxId>(id: Id, setup: BoxSetups[Id]) =>
-	({ namespace: boxReference(id), key: SETUP_KEY, value: JSON.stringify(setup) });
+interface CapturedBox {
+	readonly reference: PromptBoxReference;
+	readonly fingerprint: string;
+	run(services: BoxContext<keyof BoxServices>): Promise<AdvanceResult<GenerationJsonValue>>;
+}
+export type BoxInputs = readonly CapturedBox[];
 
-const decodeSetup = <Id extends BoxId>(id: Id, stored: string | undefined): BoxSetups[Id] => {
-	const { schema, initial } = boxes[id].setup;
-	if (stored === undefined) return initial;
-	const setup: unknown = JSON.parse(stored);
-	if (!Value.Check(schema, setup)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
+const captureBox = <Setup, Dependencies, Trace extends GenerationJsonValue, Services extends keyof BoxServices>(
+	reference: PromptBoxReference,
+	box: Box<Setup, Dependencies, Trace, Services>,
+	input: AdvanceInput<Setup, Dependencies>,
+): CapturedBox => ({
+	reference,
+	fingerprint: JSON.stringify({ setup: input.setup, dependencies: box.advance?.fingerprint?.(input) }),
+	run: async (services) => {
+		// @approved
+		// SAFETY: The entries are exactly the services this Box declared in inject.
+		const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, Services>;
+		const result = await box.advance?.run(input, { ...injected, signal: services.signal }) ?? { items: [] };
+		if (result.trace !== undefined && box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
+		return result;
+	},
+});
+
+export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, memory: MemoryRecallSnapshot): BoxInputs => {
+	const capturedMemory = captureBox("box:memory", memoryBox, { setup: undefined, dependencies: memory });
 	// @approved
-	//  SAFETY: Value.Check just verified the value against this Box's setup schema.
-	return setup as BoxSetups[Id];
+	// Disabled Memory still exposes captured activation evidence in inspection, without running advance.
+	if (!hasEnabledMemorySlot(slots)) capturedMemory.run = async () => ({ items: [], trace: memory.activation });
+	return [
+		...slots.some((slot) => slot.enabled && slot.reference === "box:author-note")
+			? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined })] : [],
+		capturedMemory,
+	];
 };
 
-export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): BoxSetups => {
-	const stored = new Map(db
-		.select({ namespace: conversationDataTable.namespace, value: conversationDataTable.value })
-		.from(conversationDataTable)
-		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, SETUP_KEY)))
-		.all()
-		.map((row) => [row.namespace, row.value]));
-	return { "author-note": decodeSetup("author-note", stored.get(boxReference("author-note"))) };
-};
+export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
 
-// @approved
-//  Capture and advance for every Box whose preset block is enabled. Boxes
-// without an enabled block never run.
-export const advanceBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups): BoxItems =>
-	Object.fromEntries(boxIds
-		.filter((id) => slots.some((slot) => slot.enabled && slot.reference === boxReference(id)))
-		.map((id) => [boxReference(id), boxes[id].advance.run({ setup: setups[id] }).items]));
+export const advanceBoxes = async (inputs: BoxInputs, services: BoxContext<keyof BoxServices>): Promise<BoxResults> =>
+	Object.fromEntries(await Promise.all(inputs.map(async (box) => [box.reference, await box.run(services)])));

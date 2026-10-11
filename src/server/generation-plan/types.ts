@@ -12,7 +12,7 @@ import type {
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
-import type { BoxItems } from "../box/registry";
+import type { BoxResults } from "../box/registry";
 
 export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
@@ -66,7 +66,7 @@ export interface CompileGenerationPlanInput {
 	// Captured Conversation state: the resolved Participant Definitions and
 	// the ordered writing context for this one attempt. Each entry carries
 	// its own role, so nothing aligns a second list against this one.
-	readonly boxes: BoxItems;
+	readonly boxes: BoxResults;
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];
@@ -79,7 +79,6 @@ export interface CompileGenerationPlanInput {
 	readonly loreAllowance?: number;
 	/** Captured activation evidence. It is never recomputed during budgeting. */
 	readonly loreActivation?: LoreActivationRecord | null;
-	readonly memoryActivation?: MemoryActivationRecord | null;
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;

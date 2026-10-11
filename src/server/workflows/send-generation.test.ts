@@ -213,7 +213,7 @@ describe("Send through provisional Tail Generation", () => {
 		settings.apply({ ...current, expectedRevision: revision, enabled: true });
 		const routes = createConversationRoutes(database);
 		const preset = await readPreset(routes, conversationId);
-		const memorySlot = preset.slots.find((slot) => slot.reference === "memory");
+		const memorySlot = preset.slots.find((slot) => slot.reference === "box:memory");
 		if (memorySlot === undefined) throw new Error("The Default recipe has no Memory block.");
 		if (!memorySlot.enabled) await readOperation(toggleBlock(database, preset.id, memorySlot.id, true));
 

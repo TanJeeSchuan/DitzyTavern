@@ -91,11 +91,11 @@ describe("Prompt Preset stored contract boundary", () => {
 	});
 
 	test("enforces one Memory block at the persistence boundary, including disabled blocks", () => {
-		const memory = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "memory");
+		const memory = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "box:memory");
 		if (memory === undefined) throw new Error("The Default recipe is missing its Memory block.");
 		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${memory.id}`);
 		expect(() => database.exec(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'memory', 1, 'system')",
+			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'box:memory', 1, 'system')",
 		)).toThrow("UNIQUE constraint failed");
 	});
 });
@@ -122,7 +122,7 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
 			"box:author-note",
 			"model-post-history-instruction",
@@ -264,7 +264,7 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
 			"history",
 			"box:author-note",
@@ -291,7 +291,7 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
 			["box:author-note", true],
@@ -336,7 +336,7 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
 			["box:author-note", true],
@@ -423,7 +423,7 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["box:author-note", true],
 			["model-post-history-instruction", true],
@@ -471,10 +471,10 @@ describe("Prompt Preset transport", () => {
 	test("rejects adding a second Memory block after disabling the existing one", async () => {
 		const conversation = createChat(database);
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
-		const memory = slotOf(preset, "memory");
+		const memory = slotOf(preset, "box:memory");
 		if (memory === undefined) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memory.id, false));
-		const response = await addBlock(database, preset.id, "memory");
+		const response = await addBlock(database, preset.id, "box:memory");
 		expect(response.status).toBe(422);
 		expect(await response.json()).toMatchObject({ outcome: "invalid" });
 	});

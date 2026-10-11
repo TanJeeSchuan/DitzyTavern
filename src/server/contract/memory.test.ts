@@ -64,7 +64,7 @@ describe("Memory source public contract", () => {
 		const conversation = createChat(database);
 		const routes = createConversationRoutes(database);
 		const preset = await readPreset(routes, conversation.id);
-		const memory = preset.slots.find((slot) => slot.reference === "memory");
+		const memory = preset.slots.find((slot) => slot.reference === "box:memory");
 		if (!memory) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memory.id, false));
 		const snapshot = readTestConversationSnapshot(database, conversation.id);

@@ -193,9 +193,9 @@ const acceptedEditedPlan = (
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
 	const sourceMemory = record.capture.plan.memoryActivation;
-	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
-	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
-		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
+	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "box:memory");
+	if (sourceMemory !== null && editedMemoryBlock?.kind === "box:memory" &&
+		estimateDynamicBlockTokens("box:memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
 		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
 	}
 	const memoryActivation = sourceMemory === null
@@ -220,7 +220,7 @@ const editedMemoryActivation = (
 	source: MemoryActivationRecord,
 	plan: PromptPlan,
 ): MemoryActivationRecord => {
-	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
+	const finalMemoryText = plan.blocks.find((block) => block.kind === "box:memory")?.content ?? "";
 	return memoryActivationWithFinalText(source, finalMemoryText);
 };
 

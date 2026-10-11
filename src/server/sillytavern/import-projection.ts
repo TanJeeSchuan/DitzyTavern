@@ -12,7 +12,7 @@ import type {
 	ParticipantDefinition,
 } from "../conversation";
 import { emptyPromptChannels } from "../../shared/definition";
-import { boxSetupEntry } from "../box/registry";
+import { boxSetupEntry } from "../box/setup";
 import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,

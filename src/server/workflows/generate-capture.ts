@@ -23,8 +23,10 @@ import { readConversationSummaryFromConnection } from "../conversation";
 import { readConversationGenerationSettingsFromConnection } from "../conversation";
 import { readSelectedHistoryFromConnection } from "../conversation";
 import { readVariantData, type VariantDataRecords } from "../conversation";
-import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
-import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { captureMemoryRecallSnapshot } from "../memory/recall";
+import { embedMemoryQuery } from "../memory/indexing";
+import { createModelClient } from "../model-client";
+import { requestDecisions } from "../decision-model";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
@@ -65,7 +67,7 @@ import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
-import { advanceBoxes, type BoxItems } from "../box/registry";
+import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -129,13 +131,12 @@ const selectedHistoryFrom = (
 const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
-		boxes: BoxItems;
+		boxes: BoxResults;
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
 		connection: ModelClientConnectionSnapshot | null;
 		lore: ScopedLoreEvaluation;
-		memory: MemoryActivationRecord;
 	},
 	options: {
 		intent?: GenerationIntent | undefined;
@@ -152,7 +153,6 @@ const compilePlanFrom = (
 		lore: configuration.lore.candidates,
 		loreAllowance: configuration.lore.allowance,
 		loreActivation: configuration.lore.activation,
-		memoryActivation: configuration.memory,
 		attempt: configuration.attempt,
 		intent: options.intent,
 		settings: configuration.settings,
@@ -185,18 +185,16 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 });
 
 interface AttemptConfiguration {
-	boxes: BoxItems;
+	boxes: BoxResults;
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
 	attempt: AttemptEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
 	lore: ScopedLoreEvaluation;
-	memory: MemoryActivationRecord;
 }
 
 interface GenerationPreparationBase {
-	readonly boxes: BoxItems;
 	readonly conversationId: number;
 	readonly semanticTriggerRevision: number;
 	readonly formatting: GenerationFormattingContext;
@@ -223,11 +221,11 @@ interface PreparationFields extends GenerationPreparationBase {
 }
 
 export interface PreparationSnapshot extends PreparationFields {
-	readonly memory: MemoryRecallSnapshot;
+	readonly boxes: BoxInputs;
 }
 
 export interface Preparation extends PreparationFields {
-	readonly memory: MemoryActivationRecord;
+	readonly boxes: BoxResults;
 	readonly fingerprint: string;
 }
 
@@ -390,7 +388,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
-		boxes: advanceBoxes(recipe.slots, summary.boxSetups),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, captureMemory()),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,
@@ -405,7 +403,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, memory: captureMemory() };
+	return { ...preparation, target, facts, intent, pendingHumanText };
 }
 
 /** @approved
@@ -424,7 +422,7 @@ export async function prepareGenerationInputsAsync(
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
-	const { memory: memorySnapshot, ...preparation } = snapshot;
+	const { boxes: boxInputs, ...preparation } = snapshot;
 	const needsSemantic = hasEnabledLoreSlot(preparation.recipe.slots) &&
 		preparation.lore.activation.mode === "keyword-fallback";
 	const lorePromise = needsSemantic
@@ -437,16 +435,18 @@ export async function prepareGenerationInputsAsync(
 			signal,
 		}, preparation.lore.sources)
 		: Promise.resolve(preparation.lore);
-	const memoryPromise = evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch, signal }).catch((error) => {
-		signal.throwIfAborted();
-		throw new InvalidConversationCommandError(`Memory recall failed: ${error instanceof Error ? error.message : "Retry preparation or disable Memory."}`);
+	const boxesPromise = advanceBoxes(boxInputs, {
+		signal,
+		llm: (options) => createModelClient({ ...options, fetch: input.preparationFetch }),
+		decide: (request) => requestDecisions({ ...request, fetch: input.preparationFetch, signal }),
+		embed: (text, configuration) => embedMemoryQuery(input.database, text, configuration, input.preparationFetch, signal),
 	});
-	const [lore, memory] = await Promise.all([lorePromise, memoryPromise]);
+	const [lore, boxes] = await Promise.all([lorePromise, boxesPromise]);
 	signal.throwIfAborted();
 	const ready: Preparation = {
 		...preparation,
 		lore,
-		memory,
+		boxes,
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
 	return ready;
@@ -473,7 +473,6 @@ const captureConfigurationFromPreparation = (
 		attempt,
 		connection: preparation.connection,
 		lore: preparation.lore,
-		memory: preparation.memory,
 	};
 };
 

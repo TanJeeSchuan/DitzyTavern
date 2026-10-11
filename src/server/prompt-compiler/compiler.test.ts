@@ -22,7 +22,7 @@ const defaultRecipe: CompilePromptInput["recipe"] = [
 	{ reference: "model-scenario", enabled: true, role: "system" },
 	{ reference: "model-example-dialogue", enabled: true, role: "user" },
 	{ reference: "lore", enabled: true, role: "system" },
-	{ reference: "memory", enabled: true, role: "system" },
+	{ reference: "box:memory", enabled: true, role: "system" },
 	{ reference: "history", enabled: true },
 	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
@@ -86,7 +86,7 @@ describe("Prompt compiler", () => {
 	test("omits an empty Memory slot without changing selected-history compilation", () => {
 		const plan = compilePrompt(source({
 			recipe: [
-				{ reference: "memory", enabled: true, role: "system" },
+				{ reference: "box:memory", enabled: true, role: "system" },
 				{ reference: "history", enabled: true },
 			],
 			context: [{ kind: "message", speakerName: "Writer", content: "Selected history remains.", role: "human" }],

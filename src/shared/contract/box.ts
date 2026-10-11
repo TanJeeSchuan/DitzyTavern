@@ -3,7 +3,7 @@ import { Type, type Static } from "@sinclair/typebox";
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
 // namespace are both `box:<id>`.
-export const boxIds = ["author-note"] as const;
+export const boxIds = ["author-note", "memory"] as const;
 export type BoxId = typeof boxIds[number];
 export const boxId = Type.Union(boxIds.map((id) => Type.Literal(id)));
 

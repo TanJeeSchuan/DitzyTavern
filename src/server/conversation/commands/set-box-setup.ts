@@ -1,9 +1,9 @@
 import { conversationDataTable } from "../../database/schema";
-import { boxSetupEntry } from "../../box/registry";
+import { boxSetupEntry } from "../../box/setup";
 import type { ConversationDatabase } from "../internal";
-import type { BoxId, BoxSetups } from "../../../shared/contract/box";
+import type { BoxSetups } from "../../../shared/contract/box";
 
-export function setBoxSetup(db: ConversationDatabase, input: { conversationId: number; box: BoxId; setup: BoxSetups[BoxId] }) {
+export function setBoxSetup(db: ConversationDatabase, input: { conversationId: number; box: keyof BoxSetups; setup: BoxSetups[keyof BoxSetups] }) {
 	const entry = boxSetupEntry(input.box, input.setup);
 	db.insert(conversationDataTable)
 		.values({ conversation_id: input.conversationId, ...entry })

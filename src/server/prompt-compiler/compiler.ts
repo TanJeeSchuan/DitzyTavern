@@ -36,8 +36,6 @@ import type {
 	PromptWarning,
 	PromptLoreEntry,
 } from "./types";
-import { renderMemoryClaim } from "../../shared/memory-text";
-import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { resolvePromptImages } from "./images";
 import { isBoxReference } from "../../shared/contract/box";
 
@@ -173,7 +171,6 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
 		if (input.recipe.filter((slot) => slot.reference === reference).length > 1) throw new Error(`A Prompt Preset may contain at most one ${label} block.`);
 	}
-	const memory = input.memory ?? [];
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
@@ -217,31 +214,22 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
-		if (slot.reference === "memory") {
-			const content = memoryText(memory);
-			if (content.length > 0) {
-				blocks.push({ kind: "memory", role: planRoleFor[slot.role], content });
-			}
-			continue;
-		}
 		if (isBoxReference(slot.reference)) {
-			// @approved
-			//  A Box's pinned items pass through the Prompt Macro pass as one
-			// block, expanded like preset text.
-			const start = blocks.length;
-			expandInto({
-				blocks,
+			const expanded: PromptBlock[] = [];
+			for (const item of input.boxes[slot.reference] ?? []) expandInto({
+				blocks: expanded,
 				warnings,
 				block: { kind: slot.reference },
 				role: planRoleFor[slot.role],
-				text: (input.boxes[slot.reference] ?? []).map((item) => item.text).join("\n\n"),
+				text: item.text,
 				context: { self: input.human.name, other: input.model.name },
 				blockLabel: singleUseReferenceLabels[slot.reference],
 				macroEnvironment,
 				macroAttemptState,
-				cacheKey: `slot:${slotIndex}`,
+				cacheKey: `slot:${slotIndex}:item:${item.index}`,
 			});
-			if (blocks[start]?.content.trim() === "") blocks.splice(start, 1);
+			const content = expanded.map((block) => block.content).join("\n\n");
+			if (content.trim() !== "") blocks.push({ kind: slot.reference, role: planRoleFor[slot.role], content });
 			continue;
 		}
 		if (slot.reference === "instruction") {
@@ -284,8 +272,3 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 
 	return resolvePromptImages({ blocks, warnings }, input.images);
 }
-
-const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>
-	entries.filter((entry) => entry.admission === "admitted")
-		.map(renderMemoryClaim)
-		.join("\n\n");

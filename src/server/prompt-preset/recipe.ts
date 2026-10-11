@@ -30,7 +30,7 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference | "memory" | PromptBoxReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference | PromptBoxReference; role: PromptOutgoingRole; name: null; content: null }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;
@@ -93,11 +93,15 @@ export const selectDefaultPromptPreset = (
 //  ADR-0048 gives them the explicit add-block action instead.
 export function installDefaultPresetBoxes(database: Database): void {
 	database.transaction(() => {
+		const db = drizzle(database);
+		const existing = new Set(db.select({ reference: promptPresetBlockTable.reference }).from(promptPresetBlockTable)
+			.where(eq(promptPresetBlockTable.preset_id, readDefaultPromptPresetId(db))).all().map((row) => row.reference));
+		const missing = boxIds.filter((id) => !existing.has(boxReference(id)));
 		database.run(
 			"UPDATE prompt_preset_block SET position = position + ? WHERE preset_id = (SELECT id FROM prompt_preset WHERE is_default = 1) AND position > (SELECT h.position FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history')",
-			[boxIds.length],
+			[missing.length],
 		);
-		for (const [index, id] of boxIds.entries()) {
+		for (const [index, id] of missing.entries()) {
 			database.run(
 				"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + ?, ?, 'system' FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
 				[index + 1, boxReference(id)],

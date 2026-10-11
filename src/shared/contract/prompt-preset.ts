@@ -32,14 +32,11 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-export const promptMemoryReference = Type.Literal("memory");
-export type PromptMemoryReference = Static<typeof promptMemoryReference>;
-
 export const singleUseReferenceLabels = {
 	lore: "Lore",
-	memory: "Memory",
+	"box:memory": "Memory",
 	"box:author-note": "Author Note",
-} as const satisfies Record<PromptLoreReference | PromptMemoryReference | PromptBoxReference, string>;
+} as const satisfies Record<PromptLoreReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
@@ -69,15 +66,14 @@ export const defaultOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-	memory: "system",
+	"box:memory": "system",
 	"box:author-note": "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | PromptBoxReference, PromptOutgoingRole>;
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
-	promptMemoryReference,
 	promptBoxReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
@@ -113,7 +109,7 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: Type.Union([promptLoreReference, promptMemoryReference, promptBoxReference]),
+		reference: Type.Union([promptLoreReference, promptBoxReference]),
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
 	}),
@@ -132,7 +128,7 @@ export const promptPresetSlot = Type.Union([
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
 export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
-	slots.some((slot) => slot.reference === "memory" && slot.enabled);
+	slots.some((slot) => slot.reference === "box:memory" && slot.enabled);
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);
 
@@ -212,7 +208,6 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 export const resolvedPromptPresetSlot = Type.Union([
 	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
-	Type.Object({ id: Type.Integer(), reference: promptMemoryReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
 		id: Type.Integer(),
 		reference: referencedDefinitionBlock,

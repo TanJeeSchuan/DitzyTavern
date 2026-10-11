@@ -6,5 +6,5 @@ import type { Box } from "./contract";
 // judging and Memory extraction never read it.
 export const authorNoteBox = {
 	setup: { schema: boxSetups.properties["author-note"], initial: "" },
-	advance: { run: ({ setup }) => ({ items: setup.trim() === "" ? [] : [{ text: setup }] }) },
+	advance: { run: async ({ setup }) => ({ items: setup.trim() === "" ? [] : [{ text: setup, priority: 0, pinned: true }] }) },
 } satisfies Box<string>;

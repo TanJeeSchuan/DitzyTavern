@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, count, eq, inArray, or } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
-import { readBoxSetups } from "../box/registry";
+import { readBoxSetups } from "../box/setup";
 import {
 	activeGenerationTable,
 	conversationTable,

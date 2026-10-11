@@ -35,7 +35,7 @@ const insertMessage = (database: Database, conversationId: number, position: num
 const enableMemory = async (database: Database, conversationId: number) => {
 	const routes = createConversationRoutes(database);
 	const preset = await readPreset(routes, conversationId);
-	const block = preset.slots.find((slot) => slot.reference === "memory");
+	const block = preset.slots.find((slot) => slot.reference === "box:memory");
 	if (!block) throw new Error("The Default recipe has no Memory block.");
 	if (!block.enabled) await readOperation(toggleBlock(database, preset.id, block.id, true));
 };

@@ -62,7 +62,6 @@ const promptDefinitionBlockKind = Type.Union([
 	// a Participant.
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
-	Type.Literal("memory"),
 	promptBoxReference,
 ]);
 

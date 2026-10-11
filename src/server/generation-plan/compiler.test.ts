@@ -1,3 +1,4 @@
+import { memoryItems } from "../box/memory-prompt";
 import { describe, expect, test } from "bun:test";
 import {
 	assertGenerationPlan,
@@ -254,14 +255,14 @@ describe("Generation Plan Compiler", () => {
 			memoryCandidate("small", "fits"),
 		];
 		const plan = compile({
-			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
 			context: [],
-			memoryActivation: memoryActivation(candidates, 6),
+			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 6)) },
 			estimator: (transcript) => transcript.includes("oversized claim") ? 20 : transcript.includes("fits") ? 4 : 0,
 		});
 
 		expect(plan.promptPlan.blocks).toEqual([{
-			kind: "memory",
+			kind: "box:memory",
 			role: "system",
 			content: "fits (attribution: Narrated event)",
 		}]);
@@ -278,9 +279,9 @@ describe("Generation Plan Compiler", () => {
 			{ ...memoryCandidate("higher", "higher relevance"), relevanceScore: 2.9 },
 		];
 		const plan = compile({
-			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
 			context: [],
-			memoryActivation: memoryActivation(candidates, 4),
+			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 4)) },
 			estimator: (transcript) => (transcript.includes("lower relevance") ? 4 : 0) + (transcript.includes("higher relevance") ? 4 : 0),
 		});
 
@@ -288,6 +289,40 @@ describe("Generation Plan Compiler", () => {
 			["lower", "allowance"],
 			["higher", "admitted"],
 		]);
+	});
+
+	test("expands Box items before allowance admission and keeps pinned items outside it", () => {
+		const plan = compile({
+			recipe: [{ reference: "box:author-note", enabled: true, role: "system" }],
+			context: [],
+			boxes: { "box:author-note": { allowance: 6, items: [
+				{ text: "pinned", priority: 0, pinned: true },
+				{ text: "{{self}}", priority: 2 },
+				{ text: "extra", priority: 1 },
+			] } },
+			estimator: (transcript) => (transcript.includes("Writer") ? 6 : 0) + (transcript.includes("extra") ? 5 : 0) + (transcript.includes("pinned") ? 6 : 0),
+		});
+		expect(plan.promptPlan.blocks).toEqual([{ kind: "box:author-note", role: "system", content: "pinned\n\nWriter" }]);
+	});
+
+	test("expands identical Box item occurrences independently and only once while budgeting", () => {
+		const state = createMacroAttemptState(new Map([["count", 0]]));
+		const plan = compile({
+			recipe: [
+				{ reference: "box:author-note", enabled: true, role: "system" },
+				{ reference: "instruction", enabled: true, role: "system", name: "Counter", content: "{{getvar::count}}" },
+			],
+			context: [],
+			boxes: { "box:author-note": { items: [
+				{ text: "{{setvar::count::10}}", priority: 0, pinned: true },
+				{ text: "{{incvar::count}}", priority: 0 },
+				{ text: "{{incvar::count}}", priority: 0 },
+			] } },
+			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+		});
+		expect(plan.promptPlan.blocks[0]?.content).toBe("11\n\n12");
+		expect(plan.promptPlan.blocks[1]?.content).toBe("12");
+		expect(state.writes).toHaveLength(3);
 	});
 
 	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
@@ -298,31 +333,31 @@ describe("Generation Plan Compiler", () => {
 		const loreFirst = compile({
 			recipe: [
 				{ reference: "lore", enabled: true, role: "system" },
-				{ reference: "memory", enabled: true, role: "system" },
+				{ reference: "box:memory", enabled: true, role: "system" },
 			],
 			context: [],
 			lore: [{ content: "lore fact" }],
 			loreAllowance: 100,
-			memoryActivation: { ...activation, allowance: 100 },
+			boxes: { "box:memory": memoryItems({ ...activation, allowance: 100 }) },
 			settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 			estimator: estimate,
 		});
 		const memoryFirst = compile({
 				recipe: [
-					{ reference: "memory", enabled: true, role: "system" },
+					{ reference: "box:memory", enabled: true, role: "system" },
 					{ reference: "lore", enabled: true, role: "system" },
 				],
 				context: [],
 				lore: [{ content: "lore fact" }],
 				loreAllowance: 100,
-				memoryActivation: { ...activation, allowance: 100 },
+				boxes: { "box:memory": memoryItems({ ...activation, allowance: 100 }) },
 				settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 				estimator: estimate,
 			});
 
 		expect(loreFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["lore"]);
 		expect(loreFirst.memoryActivation?.candidates[0]?.admission).toBe("context-limit");
-		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["memory"]);
+		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["box:memory"]);
 		expect(memoryFirst.loreActivation).toBeNull();
 	});
 
