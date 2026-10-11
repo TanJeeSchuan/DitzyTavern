@@ -447,6 +447,10 @@
 	font-weight: 700;
 }
 
+.race-marker[data-leader] .race-marker-rank {
+	fill: var(--accent-foreground);
+}
+
 .race-field {
 	display: grid;
 	gap: 0.1rem;
@@ -487,5 +491,6 @@
 }
 
 .race-field li[data-leader] .race-field-gap {
-	color: var(--accent);
+	color: var(--foreground);
+	font-weight: 620;
 }

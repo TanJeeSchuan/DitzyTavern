@@ -67,7 +67,8 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 	};
 	const discard = () => { setDraft(current); setSaved(current); setRevision(conversation.revision); setNotice(null); };
 	useSaveGuard({ dirty, saving: pending, save: () => save(), discard });
-	const race = read.data ?? null;
+	const data = read.data ?? null;
+	const race = data !== null && data.state.raceId === draft.raceId ? data : null;
 	return <div className="race-window">
 		<p role="status">{read.isError ? "The Race could not be read." : race?.status ?? "Choose a course and fill the field."}</p>
 		{running && race !== null && <RaceOval key={race.state.raceId} course={draft.course} state={race.state} />}

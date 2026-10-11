@@ -5,10 +5,11 @@ import { Portrait } from "../story/Portrait";
 /** @approved
  *  A spectator's oval: the drawn course is one stylized 1600 m lap, the
  *  finish post sits at the end of the home straight, and the start line is
- *  placed as many metres back as the course distance needs. Markers are the
- *  gates fanned across the track width; gaps between Runners are exaggerated
- *  so a field inside 100 m stays readable. Initials stand in for avatars
- *  until tickets 09 and 10 bring Portraits and roster images.
+ *  placed as many metres back as the course distance needs. Markers sit at
+ *  their Runner's actual distance, fanned into lanes so a bunched field
+ *  stays legible; a field tied at one distance is staggered into a gate
+ *  line. Initials stand in for avatars until tickets 09 and 10 bring
+ *  Portraits and roster images.
  */
 const VIEW_WIDTH = 460;
 const VIEW_HEIGHT = 278;
@@ -19,8 +20,7 @@ const STRAIGHT_HALF = 118;
 const TRACK_HALF_WIDTH = 26;
 const FINISH_INSET = 38;
 const LAP_METRES = 1600;
-const GAP_SCALE = 3;
-const FINISH_SPACING = 30;
+const TIED_GATE_STAGGER = 4;
 const ANIMATION_MS = 650;
 const TURN_LENGTH = Math.PI * TURN_RADIUS;
 const PERIMETER = 2 * TURN_LENGTH + 4 * STRAIGHT_HALF;
@@ -109,10 +109,9 @@ export function RaceOval({ course, state }: { course: RaceCourse; state: RaceSta
 	const runners = state.standings;
 	const leader = runners[0];
 	const startBehind = wrap(course.distance, LAP_METRES);
-	const base = startBehind - (leader?.distance ?? 0);
 	const targets = runners.map((runner, index) => ({
 		name: runner.name,
-		offset: state.finished ? base + index * FINISH_SPACING : base + (leader!.distance - runner.distance) * GAP_SCALE,
+		offset: startBehind - runner.distance + (runner.distance === leader?.distance ? index * TIED_GATE_STAGGER : 0),
 		lane: laneFor(index, runners.length),
 	}));
 	const placements = usePlacements(targets);
@@ -149,10 +148,10 @@ export function RaceOval({ course, state }: { course: RaceCourse; state: RaceSta
 				<text className="race-oval-label" x={finish.x} y={postTop + 32}>Finish</text>
 			</g>
 			{[...placed].reverse().map(({ name, rank, x, y }) => <g key={name} className="race-marker" data-leader={rank === 1 ? true : undefined} transform={`translate(${x.toFixed(2)} ${y.toFixed(2)})`}>
-				<rect className="race-marker-avatar" x={-9} y={-9} width={18} height={18} rx={5.5} />
-				<text className="race-marker-initial" y={3.2} textAnchor="middle">{initialFor(name)}</text>
-				<rect className="race-marker-place" x={-6.5} y={-20.5} width={13} height={11} rx={3.5} />
-				<text className="race-marker-rank" y={-11.5} textAnchor="middle">{rank}</text>
+				<rect className="race-marker-avatar" x={-8} y={-8} width={16} height={16} rx={5} />
+				<text className="race-marker-initial" y={3} textAnchor="middle">{initialFor(name)}</text>
+				<rect className="race-marker-place" x={-6} y={-19} width={12} height={10} rx={3} />
+				<text className="race-marker-rank" y={-10.5} textAnchor="middle">{rank}</text>
 			</g>)}
 		</svg>
 		<ol className="race-field" aria-label="Race order">

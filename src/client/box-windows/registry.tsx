@@ -26,7 +26,7 @@ export const windowBoxIds = ["world-clock", "race"] as const;
 export type WindowBoxId = typeof windowBoxIds[number];
 
 export const boxWindows = {
-	race: { title: "Race", icon: Flag, size: { width: 25, height: 32 }, DockTab: RaceDockTab, Panel: RacePanel },
+	race: { title: "Race", icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	"world-clock": {
 		title: "World Clock",
 		icon: Clock,
