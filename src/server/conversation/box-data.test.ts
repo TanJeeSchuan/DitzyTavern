@@ -5,7 +5,7 @@ import { characterDataTable, participantDataTable } from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import { executeConversationCommand, InvalidConversationCommandError } from "../conversation";
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 
 const prompt = () => ({
 	systemInstruction: "",
@@ -18,7 +18,7 @@ const prompt = () => ({
 const definition = (name: string) => ({ name, prompt: prompt(), openings: [] });
 
 interface BoxDataWrite {
-	box: "race" | "author-note";
+	box: "race" | "author-note" | "phone";
 	owner:
 		| { type: "library" }
 		| { type: "character"; characterId: number }
@@ -43,6 +43,7 @@ describe("put-box-data and the Character seed copy", () => {
 		conversationId = conversation.id;
 		revision = conversation.revision;
 		participantIds = conversation.cast.map(({ id }) => id);
+		insertBox(database, conversationId, "race");
 	});
 
 	afterEach(() => {
@@ -100,6 +101,10 @@ describe("put-box-data and the Character seed copy", () => {
 		expect(() =>
 			write({ box: "race", owner: { type: "character", characterId: 999 }, key: "stats", value: "{}" }),
 		).toThrow(InvalidConversationCommandError);
+	});
+
+	test("refuses data for a Box that is not enabled in the Chat", () => {
+		expect(() => write({ box: "phone", owner: { type: "library" }, key: "theme", value: "dark" })).toThrow(InvalidConversationCommandError);
 	});
 
 	test("copies Character data into a seeded Participant and later Character edits never reach it", () => {

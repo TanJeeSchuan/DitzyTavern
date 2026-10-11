@@ -1,3 +1,4 @@
+import { boxIds, boxReference } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -31,6 +32,10 @@ import {
 	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
+
+// @approved
+// A fresh Default preset holds Memory before history (migration 0000) and every other Box after it.
+const installedBoxes = boxIds.map(boxReference).filter((reference) => reference !== "box:memory");
 
 const phoneItem = "Writer has a phone and can text Maren. Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.";
 
@@ -126,10 +131,7 @@ describe("Prompt Preset transport", () => {
 			"lore",
 			"box:memory",
 			"history",
-			"box:author-note",
-			"box:world-clock",
-			"box:race",
-			"box:phone",
+			...installedBoxes,
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -276,10 +278,7 @@ describe("Prompt Preset transport", () => {
 			"box:memory",
 			"history",
 			"history",
-			"box:author-note",
-			"box:world-clock",
-			"box:race",
-			"box:phone",
+			...installedBoxes,
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -306,10 +305,7 @@ describe("Prompt Preset transport", () => {
 			["box:memory", true],
 			["history", true],
 			["history", true],
-			["box:author-note", true],
-			["box:world-clock", true],
-			["box:race", true],
-			["box:phone", true],
+			...installedBoxes.map((reference) => [reference, true]),
 			["model-scenario", true],
 		]);
 
@@ -356,10 +352,7 @@ describe("Prompt Preset transport", () => {
 			["box:memory", true],
 			["history", true],
 			["history", true],
-			["box:author-note", true],
-			["box:world-clock", true],
-			["box:race", true],
-			["box:phone", true],
+			...installedBoxes.map((reference) => [reference, true]),
 		]);
 	});
 
@@ -447,10 +440,7 @@ describe("Prompt Preset transport", () => {
 			["lore", true],
 			["box:memory", true],
 			["history", true],
-			["box:author-note", true],
-			["box:world-clock", true],
-			["box:race", true],
-			["box:phone", true],
+			...installedBoxes.map((reference) => [reference, true]),
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

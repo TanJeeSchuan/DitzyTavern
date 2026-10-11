@@ -8,6 +8,7 @@ import {
 	participantDataTable,
 } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
+import { isBoxEnabled } from "../../box/setup";
 import { requireParticipant, type ConversationDatabase } from "../internal";
 
 export type PutBoxDataInput = { conversationId: number } & Extract<
@@ -17,11 +18,12 @@ export type PutBoxDataInput = { conversationId: number } & Extract<
 
 // @approved
 //  The host command behind every Box window's own data scope. The Box id is
-//  the namespace, so the window cannot write another Box's data. The owner
-//  must be a live Character, a Participant of this Conversation, or the
-//  Library; a missing owner is a typed invalid command, never a silent
-//  orphan row.
+//  the namespace, and only an enabled Box has a window, so a write for any
+//  other Box is rejected. The owner must be a live Character, a Participant
+//  of this Conversation, or the Library; a missing owner is a typed invalid
+//  command, never a silent orphan row.
 export function putBoxData(db: ConversationDatabase, input: PutBoxDataInput) {
+	if (!isBoxEnabled(db, input.conversationId, input.box)) throw new InvalidConversationCommandError(`The ${input.box} Box is not enabled in this Chat, so it takes no data.`);
 	const namespace = boxReference(input.box);
 	switch (input.owner.type) {
 		case "library":

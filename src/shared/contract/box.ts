@@ -1,7 +1,9 @@
 import { raceSetup } from "./race";
-import { Type, type Static, type TLiteral } from "@sinclair/typebox";
+import { Kind, Type, type Static, type TLiteral } from "@sinclair/typebox";
+import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
+import type { PromptOutgoingRole } from "./prompt-preset";
 
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
@@ -26,8 +28,18 @@ export const boxState = Type.Union([Type.Literal("enabled"), Type.Literal("disab
 export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(boxId, boxState);
 export type BoxStates = Static<typeof boxStates>;
+// @approved
+//  What the host shows and defaults for each Box: its preset block label, the
+// role its block starts with, and whether a new Chat starts with it enabled.
+export const boxDescriptors = {
+	"author-note": { label: "Author Note", role: "system", startsEnabled: true },
+	memory: { label: "Memory", role: "system", startsEnabled: true },
+	"world-clock": { label: "World Clock", role: "system", startsEnabled: false },
+	race: { label: "Race", role: "system", startsEnabled: false },
+	phone: { label: "Phone", role: "system", startsEnabled: false },
+} as const satisfies Record<BoxId, { readonly label: string; readonly role: PromptOutgoingRole; readonly startsEnabled: boolean }>;
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
-export const defaultBoxIds = ["author-note", "memory"] as const satisfies readonly BoxId[];
+export const defaultBoxIds = boxIds.filter((id) => boxDescriptors[id].startsEnabled);
 
 export const worldClockStartPattern = "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d$";
 
@@ -170,6 +182,9 @@ export const digestBoxId = Type.Literal("world-clock");
 export type DigestBoxId = Static<typeof digestBoxId>;
 export const digestBoxParams = Type.Object({ box: digestBoxId });
 export const boxWindowParams = Type.Object({ id: numericWire, box: digestBoxId });
+export const boxReadParams = Type.Object({ id: numericWire, box: boxId });
+/** @approved A Box window read; the client decodes it with that Box's own read schema. */
+export const boxRead = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
 
 export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;

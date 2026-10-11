@@ -5,6 +5,6 @@ import { foundOrNull, requestOutcome } from "./lib/request-outcome";
 
 export async function loadPhone(conversationId: number, signal?: AbortSignal): Promise<PhoneRead | null> {
 	return foundOrNull(await requestOutcome(
-		api.api.conversations({ id: conversationId }).boxes.phone.get({ fetch: { signal } }), phoneRead, notFoundOutcome,
+		api.api.conversations({ id: conversationId }).boxes({ box: "phone" }).get({ fetch: { signal } }), phoneRead, notFoundOutcome,
 	));
 }

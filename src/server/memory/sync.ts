@@ -2,7 +2,7 @@ import { readVariantsForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { conversationMemorySettingsTable, memoryCollectionTable } from "../database/schema";
+import { memoryCollectionTable } from "../database/schema";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 import { invalidateMemoryWorkForConversation } from "./cancellation";
 import { invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail } from "./collections";
@@ -23,11 +23,10 @@ export function refreshMemoryForConversation(database: Database, conversationId:
 // tables: abandoned Variants are named in the report, and touched Variants
 // join Memory's collection table for the staleness check.
 export function syncMemorySources(database: Database, change: ConversationMemoryChange): void {
-	if (change.stoppedBox?.id === "memory") {
+	if (change.stoppedBox === "memory") {
 		invalidateMemoryWorkForConversation(database, change.conversationId, "Memory is not enabled in this Chat.");
 		abortMemoryWork(database, drizzle(database).select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable)
 			.where(eq(memoryCollectionTable.conversation_id, change.conversationId)).all().map(({ id }) => id));
-		if (change.stoppedBox.removed) drizzle(database).delete(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, change.conversationId)).run();
 	}
 	if (change.removedVariantIds.length > 0) {
 		// @approved

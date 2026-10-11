@@ -12,7 +12,7 @@ import {
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
-import { boxIds, boxReference, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptors, boxIds, boxReference, type PromptBoxReference } from "../../shared/contract/box";
 import { PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
@@ -103,8 +103,8 @@ export function installDefaultPresetBoxes(database: Database): void {
 		);
 		for (const [index, id] of missing.entries()) {
 			database.run(
-				"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + ?, ?, 'system' FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
-				[index + 1, boxReference(id)],
+				"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + ?, ?, ? FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
+				[index + 1, boxReference(id), boxDescriptors[id].role],
 			);
 		}
 	}).immediate();

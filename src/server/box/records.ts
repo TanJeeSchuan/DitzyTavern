@@ -13,10 +13,9 @@ import type { BoxInstances } from "./setup";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 // @approved
-//  The Boxes that digest prose, by id. Their record slots live in Variant
-// data under `box:<id>`, key `record:<instance>`: each slot belongs to the
-// Box instance that wrote it, and only the current instance's slots fold.
-export const digestBoxes = { "world-clock": worldClockBox } as const;
+//  Record slots live in Variant data under `box:<id>`, key
+// `record:<instance>`: each slot belongs to the Box instance that wrote it,
+// and only the current instance's slots fold.
 export type RecordStates = { readonly "world-clock": WorldClockState; readonly race: RaceState | null };
 
 export const recordKey = (instance: string) => `record:${instance}`;
@@ -46,7 +45,7 @@ export const hasAutomaticRecord = (slot: WorldClockRecordSlot | undefined, conte
 export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, instances: BoxInstances): RecordStates => {
 	const slots = readRecordSlots(db, "world-clock", instances["world-clock"], selectedVariantIds);
 	const raceSlots = readRecordSlots(db, "race", instances.race, selectedVariantIds);
-	const { fold, initial } = digestBoxes["world-clock"].records;
+	const { fold, initial } = worldClockBox.records;
 	return {
 		race: foldRaceRecords(selectedVariantIds.flatMap((id) => raceSlots.get(id)?.automatic ?? []), setups.race.raceId),
 		"world-clock": selectedVariantIds.reduce<WorldClockState>((state, variantId) => {

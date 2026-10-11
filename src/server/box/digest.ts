@@ -8,9 +8,10 @@ import { decisionRequest, requestDecisions } from "../decision-model";
 import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, digestBoxes, writeAutomaticRecord } from "./records";
+import { hasAutomaticRecord, readRecordSlots, readVariantSeeds, writeAutomaticRecord } from "./records";
 import { isBoxEnabled, readBoxInstances } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
+import { worldClockBox } from "./world-clock";
 
 // @approved
 //  The host digest queue (ADR-0050). Selected passages are digested in the
@@ -84,7 +85,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	const controller = new AbortController();
 	const running = { conversationId: job.conversationId, controller, source: job.source, catchUp: job.catchUp };
 	queue.running.set(key, running);
-	const box = digestBoxes[job.box];
+	const box = worldClockBox;
 	try {
 		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
 		const decision = resolveBoxDecision(database, job.box);
@@ -157,7 +158,7 @@ export function startBoxDigests(database: Database, options: { fetch?: ModelFetc
 export function queueBoxDigests(database: Database, change: ConversationMemoryChange): void {
 	const queue = queues.get(database);
 	if (queue === undefined) return;
-	if (change.stoppedBox?.id === "world-clock") {
+	if (change.stoppedBox === "world-clock") {
 		// @approved
 		//  A clock that stops running abandons its Chat's work: raising each
 		//  epoch aborts requests in flight and discards any late result, and

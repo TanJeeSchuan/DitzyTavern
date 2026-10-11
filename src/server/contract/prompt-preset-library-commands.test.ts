@@ -1,3 +1,4 @@
+import { boxIds, boxReference } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -146,10 +147,7 @@ describe("Prompt Preset library transport", () => {
 			"lore",
 			"box:memory",
 			"history",
-			"box:author-note",
-			"box:world-clock",
-			"box:race",
-			"box:phone",
+			...boxIds.map(boxReference).filter((reference) => reference !== "box:memory"),
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);

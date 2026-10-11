@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { promptBoxReference, type PromptBoxReference } from "./box";
+import { boxDescriptors, boxIds, boxReference, promptBoxReference, type BoxId, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -32,14 +32,15 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
+const fromBoxDescriptors = <Value>(value: (id: BoxId) => Value) =>
+	// @approved
+	// SAFETY: the entries cover every Box id exactly once, each under its reference.
+	Object.fromEntries(boxIds.map((id) => [boxReference(id), value(id)])) as Record<PromptBoxReference, Value>;
+
 export const singleUseReferenceLabels = {
 	lore: "Lore",
-	"box:memory": "Memory",
-	"box:author-note": "Author Note",
-	"box:world-clock": "World Clock",
-	"box:race": "Race",
-	"box:phone": "Phone",
-} as const satisfies Record<PromptLoreReference | PromptBoxReference, string>;
+	...fromBoxDescriptors((id) => boxDescriptors[id].label),
+} satisfies Record<PromptLoreReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
@@ -69,11 +70,7 @@ export const defaultOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-	"box:memory": "system",
-	"box:author-note": "system",
-	"box:world-clock": "system",
-	"box:race": "system",
-	"box:phone": "system",
+	...fromBoxDescriptors((id) => boxDescriptors[id].role),
 } as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([

@@ -18,6 +18,6 @@ export interface ConversationMemoryChange {
 	readonly touchedVariantIds: readonly number[];
 	/** Variant rows deleted by this write; Memory abandons their in-flight work. */
 	readonly removedVariantIds: readonly number[];
-	/** A Box this write stopped running in the Chat: its background work is abandoned, and a removed Box's Chat-scoped settings go with it. */
-	readonly stoppedBox?: { readonly id: BoxId; readonly removed: boolean };
+	/** A Box this write stopped running in the Chat: its background work is abandoned. */
+	readonly stoppedBox?: BoxId;
 }

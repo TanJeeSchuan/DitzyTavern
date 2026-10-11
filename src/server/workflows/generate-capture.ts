@@ -25,7 +25,7 @@ import { readConversationSummaryFromConnection } from "../conversation";
 import { readConversationGenerationSettingsFromConnection } from "../conversation";
 import { readSelectedHistoryFromConnection } from "../conversation";
 import { readVariantData, type VariantDataRecords } from "../conversation";
-import { captureMemoryRecallSnapshot } from "../memory/recall";
+import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot } from "../memory/recall";
 import { embedMemoryQuery } from "../memory/indexing";
 import { createModelClient } from "../model-client";
 import { requestDecisions } from "../decision-model";
@@ -70,11 +70,10 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
-import { phoneNames } from "../../shared/phone";
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, moveBoxIds, readMessageMoves, sameMoves } from "../box/moves";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { BoxStates } from "../../shared/contract/box";
+import type { BoxId, BoxStates } from "../../shared/contract/box";
 import { readBoxInstances, type BoxInstances } from "../box/setup";
 
 // @approved
@@ -377,8 +376,9 @@ export function prepareGenerationInputsSnapshot(
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
+	const staged: Partial<Record<BoxId, BoxMoves[keyof BoxMoves]>> | undefined = target.kind === "send" ? target.moves : undefined;
 	const closed = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined
-		? moveBoxIds.find((id) => target.moves?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
+		? moveBoxIds().find((id) => staged?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;
@@ -427,12 +427,13 @@ export function prepareGenerationInputsSnapshot(
 	//  submits, or the one a Sibling answers. A Continuation has none.
 	const moves = boxIntent === "continue" ? {} : target.kind === "send" ? target.moves ?? {}
 		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
-	const withdrawn = summary.boxSetups.race.slots.flatMap(({ name, participantId }) =>
-		participantId !== undefined && !summary.cast.some(({ id }) => id === participantId) ? [name] : []);
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, captureMemory, recordStates, { seed, intent: boxIntent, moves, withdrawn, phone: phoneNames(summary.cast, human) }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, recordStates, moves, { seed, intent: boxIntent, human, cast: summary.cast, memory: () => {
+			const snapshot = captureMemory();
+			return { snapshot, recall: (ctx) => evaluateMemoryRecallSnapshot({ snapshot, ...ctx }) };
+		} }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

@@ -1,4 +1,10 @@
-import { elapsedBinNames, elapsedBins, weathers, worldClockRecord, worldClockSetup, type ElapsedBin, type Weather, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
+import { elapsedBinNames, elapsedBins, weathers, worldClockRecord, worldClockSetup, type ElapsedBin, type Weather, type WorldClockPassage, type WorldClockRead, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
+import type { Database } from "bun:sqlite";
+import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
+import { readBoxCatchUp } from "./digest";
+import { resolveBoxDecision } from "./decision-settings";
+import { effectiveRecord, hasAutomaticRecord, readRecordSlots } from "./records";
+import { readBoxInstances } from "./setup";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { Box } from "./contract";
 import { seededFraction } from "./seed";
@@ -143,4 +149,39 @@ export const worldClockBox = {
 	},
 	advance: { run: async ({ setup, state }) => ({ items: [{ text: clockLine(setup, state), priority: 0, pinned: true }] }) },
 	status: clockStatus,
+	read: readWorldClock,
 } satisfies Box<WorldClockSetup, undefined, never, never, WorldClockRecord, WorldClockState>;
+
+/** @approved The World Clock window and dock read one folded Selected path
+ *  state without loading discarded Variants or arbitrary Variant data. */
+export function readWorldClock(database: Database, conversationId: number): WorldClockRead | undefined {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
+		if (history === undefined) return undefined;
+		// @approved
+		//  An Active Generation's provisional Variant has no settled prose to
+		//  digest yet, so it is not a passage.
+		const selected = history.messages.flatMap((message) => message.variant === null || message.variant.content.trim() === ""
+			? []
+			: [{ messageId: message.id, author: message.author?.capturedName ?? null, variant: message.variant }]);
+		const slots = readRecordSlots(db, "world-clock", readBoxInstances(db, conversationId)["world-clock"], selected.map(({ variant }) => variant.id));
+		const { initial, fold } = worldClockBox.records;
+		let state: WorldClockState = initial;
+		const passages = selected.map(({ messageId, author, variant }): WorldClockPassage => {
+			const slot = slots.get(variant.id);
+			const record = effectiveRecord(slot) ?? null;
+			if (record !== null) state = fold(state, record);
+			return { messageId, variantId: variant.id, author, content: variant.content, record, overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content) };
+		});
+		return {
+			conversationId,
+			revision: summary.revision,
+			status: worldClockBox.status(summary.boxSetups["world-clock"], state),
+			digestReady: resolveBoxDecision(database, "world-clock").kind === "ready",
+			catchUp: readBoxCatchUp(database, conversationId),
+			passages,
+		};
+	});
+}

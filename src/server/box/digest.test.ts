@@ -140,7 +140,7 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 
 	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
 	await waitFor(() => stub.pending() === 1);
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: { id: "world-clock", removed: false } });
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "world-clock" });
 	stub.release();
 	await stopDigests();
 	stopDigests = undefined;

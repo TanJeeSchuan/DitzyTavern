@@ -308,6 +308,10 @@
 		transform: none;
 	}
 
+	.box-window[data-covered] {
+		display: none;
+	}
+
 	.box-window-bar {
 		cursor: default;
 	}

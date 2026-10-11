@@ -18,6 +18,7 @@ import { useSaveGuard } from "../SaveGuard";
 import { Portrait } from "../story/Portrait";
 import { RaceOval } from "./RaceOval";
 import { RaceReplay } from "./RaceReplay";
+import type { BoxDataAction } from "./registry";
 
 // @approved
 //  The revision is part of the key so completions refetch, but the previous
@@ -62,8 +63,8 @@ function SetAvatar({ name, onPick }: { name: string; onPick: (file: File) => voi
 	</>;
 }
 
-export function RaceWindow({ conversation, disabled, onConversationChange }: {
-	conversation: ConversationSummary; disabled: boolean; onConversationChange: (conversation: ConversationSummary) => void;
+export function RaceWindow({ conversation, disabled, boxData, onConversationChange }: {
+	conversation: ConversationSummary; disabled: boolean; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void;
 }) {
 	const read = useRace(conversation);
 	const current = conversation.boxSetups.race;
@@ -145,15 +146,11 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 		//  edits.
 		try {
 			const surface = { conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice };
-			const written = await runConversationCommand(surface, {
-				type: "put-box-data", box: "race", owner: { type: "participant", participantId: sheet.participantId }, key: "stats", value: JSON.stringify(sheet.stats),
-			}, { notices: BOX_DATA_NOTICES });
+			const written = await runConversationCommand(surface, boxData({ type: "participant", participantId: sheet.participantId }, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
 			if (written === undefined) return false;
 			let latest = written;
 			if (sheet.saveToCharacter && sheet.sourceCharacterId !== null) {
-				const characterWritten = await runConversationCommand({ ...surface, revision: () => written.revision }, {
-					type: "put-box-data", box: "race", owner: { type: "character", characterId: sheet.sourceCharacterId }, key: "stats", value: JSON.stringify(sheet.stats),
-				}, { notices: BOX_DATA_NOTICES });
+				const characterWritten = await runConversationCommand({ ...surface, revision: () => written.revision }, boxData({ type: "character", characterId: sheet.sourceCharacterId }, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
 				if (characterWritten === undefined) return false;
 				latest = characterWritten;
 			}
@@ -175,9 +172,7 @@ export function RaceWindow({ conversation, disabled, onConversationChange }: {
 		setNotice(null);
 		try {
 			const { hash } = await uploadImage(file);
-			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, {
-				type: "put-box-data", box: "race", owner: { type: "library" }, key: `${RACE_AVATAR_PREFIX}${name}`, value: hash,
-			}, {
+			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, boxData({ type: "library" }, `${RACE_AVATAR_PREFIX}${name}`, hash), {
 				notices: { conflict: "The Chat changed. Set the avatar again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 				onApplied: (next) => setRevision(next.revision),
 			});

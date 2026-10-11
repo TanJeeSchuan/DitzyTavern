@@ -1,3 +1,4 @@
+import { boxIds, boxReference } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -256,10 +257,7 @@ describe("Prompt Preset authored instruction macros", () => {
 			["lore", true],
 			["box:memory", true],
 			["history", true],
-			["box:author-note", true],
-			["box:world-clock", true],
-			["box:race", true],
-			["box:phone", true],
+			...boxIds.map(boxReference).filter((reference) => reference !== "box:memory").map((reference) => [reference, true]),
 			["instruction", true],
 		]);
 		expect(slotOf(saved, "model-identity")?.role).toBe("user");

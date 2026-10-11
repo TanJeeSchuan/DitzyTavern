@@ -1,12 +1,9 @@
-import { raceBox } from "./race";
-import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxIds, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import { conversationDataTable } from "../database/schema";
-import { authorNoteBox } from "./author-note";
-import { worldClockBox } from "./world-clock";
+import { serverBox } from "./registry";
 
 const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
@@ -61,15 +58,6 @@ export const isBoxEnabled = (db: BunSQLiteDatabase, conversationId: number, id: 
 export const boxSetupEntry = <Id extends keyof BoxSetups>(id: Id, setup: BoxSetups[Id]) =>
 	({ namespace: boxReference(id), key: SETUP_KEY, value: JSON.stringify(setup) });
 
-const decodeSetup = <Setup>(id: keyof BoxSetups, { schema, initial }: { readonly schema: TSchema; readonly initial: Setup }, stored: string | undefined): Setup => {
-	if (stored === undefined) return initial;
-	const setup: unknown = JSON.parse(stored);
-	if (!Value.Check(schema, setup)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
-	// @approved
-	//  SAFETY: Value.Check just verified the value against this Box's setup schema.
-	return setup as Setup;
-};
-
 export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): BoxSetups => {
 	const stored = new Map(db
 		.select({ namespace: conversationDataTable.namespace, value: conversationDataTable.value })
@@ -77,9 +65,15 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, SETUP_KEY)))
 		.all()
 		.map((row) => [row.namespace, row.value]));
-	return {
-		race: decodeSetup("race", raceBox.setup, stored.get(boxReference("race"))),
-		"author-note": decodeSetup("author-note", authorNoteBox.setup, stored.get(boxReference("author-note"))),
-		"world-clock": decodeSetup("world-clock", worldClockBox.setup, stored.get(boxReference("world-clock"))),
-	};
+	// @approved
+	// SAFETY: each entry is decoded with its Box's own setup schema, and the Boxes that declare setup are exactly the keys of boxSetups.
+	return Object.fromEntries(boxIds.flatMap((id) => {
+		const setup = serverBox(id).setup;
+		const value = stored.get(boxReference(id));
+		if (setup === undefined) return [];
+		if (value === undefined) return [[id, setup.initial]];
+		const decoded: unknown = JSON.parse(value);
+		if (!Value.Check(setup.schema, decoded)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
+		return [[id, decoded]];
+	})) as BoxSetups;
 };

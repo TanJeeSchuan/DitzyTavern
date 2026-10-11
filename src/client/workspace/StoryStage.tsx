@@ -13,7 +13,6 @@ import {
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
-import { phoneNames } from "../../shared/phone";
 import {
 	EmptyChat,
 	GenerationControls,
@@ -93,7 +92,7 @@ export function StoryStage({
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
 	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId);
-	const lens = conversation === null || humanParticipant === undefined || conversation.boxes.phone !== "enabled" ? undefined : { names: phoneNames(conversation.cast, humanParticipant), open: composerWindows.open };
+	const lens = conversation === null ? undefined : { conversation, open: composerWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;

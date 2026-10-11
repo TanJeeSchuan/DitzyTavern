@@ -1,5 +1,5 @@
 import { initialRaceSetup } from "../../shared/race-data";
-import type { BoxSetups, BoxStates } from "../../shared/contract/box";
+import { boxDescriptors, boxIds, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 
 export const boxSetups: BoxSetups = {
 	"author-note": "",
@@ -7,4 +7,4 @@ export const boxSetups: BoxSetups = {
 	"world-clock": { start: "2025-06-01T08:00", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" },
 };
 
-export const boxes: BoxStates = { "author-note": "enabled", memory: "enabled", "world-clock": "absent", race: "absent", phone: "absent" };
+export const boxes = /* @approved SAFETY: the entries cover every Box id exactly once. */ Object.fromEntries(boxIds.map((id) => [id, boxDescriptors[id].startsEnabled ? "enabled" : "absent"])) as BoxStates;

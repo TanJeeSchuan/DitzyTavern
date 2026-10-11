@@ -1,15 +1,31 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRaceAutoValid, raceMove, raceRecord, raceSetup, type RaceInput, type RaceMove, type RaceRecord, type RaceSetup, type RaceState } from "../../shared/contract/race";
+import { isRaceAutoValid, raceMove, raceRecord, raceSetup, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "../../shared/contract/race";
+import type { Database } from "bun:sqlite";
+import { and, eq, like } from "drizzle-orm";
+import { boxReference } from "../../shared/contract/box";
+import { RACE_AVATAR_PREFIX } from "../../shared/race-data";
+import { libraryDataTable } from "../database/schema";
+import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
+import { foldRecordStates } from "./records";
+import { readRaceCastStats } from "./race-cast";
+import { readBoxInstances } from "./setup";
 import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "../../shared/race-moves";
 import { initialRaceSetup } from "../../shared/race-data";
 import type { Box } from "./contract";
-import { advanceRace, currentRaceState, foldRace, raceStatus } from "./race-engine";
+import { advanceRace, currentRaceState, foldRace, initialRaceState, raceStatus } from "./race-engine";
 
 export const raceBox = {
 	setup: { schema: raceSetup, initial: initialRaceSetup },
 	records: { schema: raceRecord, initial: null, fold: foldRace },
 	status: raceStatus,
-	moves: { schema: raceMove, render: (move) => `(Race Move: ${raceMoveCatalog[move.kind].intent(move.runner)})` },
+	moves: { schema: raceMove, render: (move) => `(Race Move: ${raceMoveCatalog[move.kind].intent(move.runner)})`, label: raceMoveLabel },
+	// @approved
+	//  `withdrawn` lists slotted Cast Runners whose Participant has left the
+	//  Cast; only the host reads the Cast.
+	dependencies: ({ seed, intent, cast }, setup) => ({
+		seed, intent, withdrawn: setup.slots.flatMap(({ name, participantId }) => participantId !== undefined && !cast.some(({ id }) => id === participantId) ? [name] : []),
+	}),
+	read: readRace,
 	advance: {
 		fingerprint: ({ dependencies }) => JSON.stringify(dependencies),
 		async run({ setup, state, dependencies, moves }) {
@@ -81,6 +97,27 @@ export const raceBox = {
 		},
 	},
 } satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, never, RaceRecord, RaceState | null, RaceMove>;
+
+function readRace(database: Database, conversationId: number): RaceRead | undefined {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
+		if (history === undefined) return undefined;
+		const setup = summary.boxSetups.race;
+		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
+		const { intents, replay, ...state } = foldRecordStates(db, ids, summary.boxSetups, readBoxInstances(db, conversationId)).race ?? initialRaceState(setup);
+		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
+		return {
+			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
+			replay: state.finished ? { stretches: replay, intents } : null,
+			castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
+			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value }).from(libraryDataTable)
+				.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
+				.map(({ key, value }) => [key.slice(RACE_AVATAR_PREFIX.length), value])),
+		};
+	});
+}
 
 export const raceSetupError = (setup: RaceSetup, previous: RaceSetup): string | undefined => {
 	if (previous.phase !== "setup" && setup.raceId === previous.raceId && !isDeepStrictEqual({ ...setup, auto: previous.auto }, previous)) {

@@ -1,26 +1,17 @@
-import { conversationIdParams } from "../../shared/contract/conversation-schema";
-import { raceRead } from "../../shared/contract/race";
-import { phoneRead } from "../../shared/contract/phone";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { boxWindowParams, worldClockRead } from "../../shared/contract/box";
+import { boxRead, boxReadParams, boxWindowParams, worldClockRead } from "../../shared/contract/box";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, startBoxCatchUp } from "../box/digest";
-import { readPhone, readRace, readWorldClock } from "../box/window";
+import { serverBox } from "../box/registry";
+import { readWorldClock } from "../box/world-clock";
 import { notFoundResponse } from "./responses";
 
 const catchUpResponse = { 200: worldClockRead, 404: notFoundOutcome };
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
-	.get("/api/conversations/:id/boxes/race", ({ params }) => readRace(database, params.id) ?? notFoundResponse(),
-		{ params: conversationIdParams, response: { 200: raceRead, 404: notFoundOutcome } })
-	.get("/api/conversations/:id/boxes/phone", ({ params }) => readPhone(database, params.id) ?? notFoundResponse(),
-		{ params: conversationIdParams, response: { 200: phoneRead, 404: notFoundOutcome } })
-	.get(
-		"/api/conversations/:id/boxes/:box",
-		({ params }) => readWorldClock(database, params.id) ?? notFoundResponse(),
-		{ params: boxWindowParams, response: { 200: worldClockRead, 404: notFoundOutcome } },
-	)
+	.get("/api/conversations/:id/boxes/:box", ({ params }) => serverBox(params.box).read?.(database, params.id) ?? notFoundResponse(),
+		{ params: boxReadParams, response: { 200: boxRead, 404: notFoundOutcome } })
 	// @approved
 	//  Catch-up and cancellation are in-memory queue work, not Conversation
 	//  state, so they are their own routes: the polled window read carries the

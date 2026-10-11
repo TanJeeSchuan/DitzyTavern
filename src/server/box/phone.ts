@@ -1,5 +1,8 @@
-import { phoneMove, type PhoneMove } from "../../shared/contract/phone";
-import { renderPhoneText, type PhoneNames } from "../../shared/phone";
+import { phoneMove, type PhoneMove, type PhoneRead } from "../../shared/contract/phone";
+import type { Database } from "bun:sqlite";
+import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
+import { humanMessageText, readMessageMoves } from "./moves";
+import { phoneMoveLabel, phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "../../shared/phone";
 import type { Box } from "./contract";
 
 // @approved
@@ -7,7 +10,9 @@ import type { Box } from "./contract";
 //  story's lens lifts into the Phone. Without another Cast member there is
 //  nobody to text, so the Phone says nothing.
 export const phoneBox = {
-	moves: { schema: phoneMove, render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }) },
+	moves: { schema: phoneMove, render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }), label: phoneMoveLabel },
+	dependencies: ({ cast, human }) => phoneNames(cast, human),
+	read: readPhone,
 	advance: {
 		run: async ({ dependencies: { human, contacts } }) => {
 			const [contact] = contacts;
@@ -18,3 +23,24 @@ export const phoneBox = {
 		},
 	},
 } satisfies Box<undefined, PhoneNames, never, never, never, undefined, PhoneMove>;
+
+/** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */
+function readPhone(database: Database, conversationId: number): PhoneRead | undefined {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
+		if (history === undefined) return undefined;
+		const human = summary.cast.find(({ id }) => id === summary.control.humanParticipantId);
+		if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
+		const names = phoneNames(summary.cast, human);
+		const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
+		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts(humanMessageText(moves.get(id) ?? {}, variant.content, author?.capturedName ?? null, summary.boxes), names)
+			.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
+			.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
+		return {
+			conversationId, revision: summary.revision, human: human.name,
+			threads: names.contacts.map((contact) => ({ contact, texts: texts.filter(({ from, to }) => from === contact || to === contact) })),
+		};
+	});
+}
