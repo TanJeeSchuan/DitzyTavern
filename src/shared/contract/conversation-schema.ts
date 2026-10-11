@@ -6,7 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { boxSetups, promptBoxReference, worldClockRecord } from "./box";
+import { boxId, boxSetups, promptBoxReference, worldClockRecord } from "./box";
 import { boxMoves, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -650,6 +650,24 @@ const resetBoxRecordAction = Type.Object({
 	variantId: Type.Integer(),
 });
 
+// @approved
+//  A Box window writes one value into its own namespace. The Box id owns the
+//  namespace (`box:<id>`), so a window can never address another Box's data,
+//  and the owner names the Library, Character or Participant row the value
+//  belongs to. The value is the Box's own stored string; the Box decodes it
+//  on read.
+const putBoxDataAction = Type.Object({
+	type: Type.Literal("put-box-data"),
+	box: boxId,
+	owner: Type.Union([
+		Type.Object({ type: Type.Literal("library") }),
+		Type.Object({ type: Type.Literal("character"), characterId: Type.Integer() }),
+		Type.Object({ type: Type.Literal("participant"), participantId: Type.Integer() }),
+	]),
+	key: Type.String({ minLength: 1, maxLength: 100 }),
+	value: Type.String(),
+});
+
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
 	name: Type.String(),
@@ -704,6 +722,7 @@ const conversationCommandAction = Type.Union([
 	setBoxSetupAction,
 	setBoxRecordAction,
 	resetBoxRecordAction,
+	putBoxDataAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

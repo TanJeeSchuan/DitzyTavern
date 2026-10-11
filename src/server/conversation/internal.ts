@@ -4,12 +4,14 @@ import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
+	characterDataTable,
 	characterLorebookAttachmentTable,
 	characterTable,
 	conversationControlTable,
 	conversationTable,
 	messageTable,
 	messageVariantTable,
+	participantDataTable,
 	participantOpeningTable,
 	participantPromptTable,
 	participantLorebookAttachmentTable,
@@ -533,6 +535,18 @@ export const insertParticipant = (
 			lorebook_id: row.lorebook_id,
 			scope: row.scope,
 			enabled: row.enabled,
+		}))).run();
+		// @approved
+		//  The seed copy: every Character Box-data row becomes the new
+		//  Participant's own row at this moment. The two are independent
+		//  afterwards, so a later Character edit never reaches this Participant.
+		const data = db.select().from(characterDataTable)
+			.where(eq(characterDataTable.character_id, sourceCharacterId)).all();
+		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
+			participant_id: inserted.id,
+			namespace: row.namespace,
+			key: row.key,
+			value: row.value,
 		}))).run();
 	}
 
