@@ -232,9 +232,78 @@
 	line-height: 1.35;
 }
 
-.world-clock-passage-read {
+.world-clock-timeline-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.world-clock-progress {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
 	color: var(--text-muted);
 	font-size: 0.78rem;
+}
+
+.world-clock-passage-read {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	color: var(--text-muted);
+	font-size: 0.78rem;
+}
+
+.world-clock-passage-summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.world-clock-override-mark {
+	padding: 0.05rem 0.4rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	font-size: 0.66rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+.world-clock-passage-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.1rem;
+	opacity: 0;
+	transition: opacity 150ms ease;
+}
+
+.world-clock-timeline li:hover .world-clock-passage-actions,
+.world-clock-timeline li:focus-within .world-clock-passage-actions,
+.world-clock-passage-editor .world-clock-passage-actions {
+	opacity: 1;
+}
+
+.world-clock-passage-editor {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 0.55rem;
+	align-items: end;
+}
+
+.world-clock-passage-editor .world-clock-passage-actions {
+	grid-column: 1 / -1;
+	justify-content: flex-end;
+}
+
+@media (hover: none) {
+	.world-clock-passage-actions {
+		opacity: 1;
+	}
 }
 
 @media (max-width: 78rem) {

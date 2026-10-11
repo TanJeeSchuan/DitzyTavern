@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, enableWorldClock, story } from "./fixtures";
+import { test, expect, enableWorldClock, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
@@ -8,9 +8,9 @@ const choice = (selected: string, labels: string[]) => ({
 	type: "choice" as const, choice: selected,
 	probabilities: Object.fromEntries(labels.map((label) => [label, label === selected ? 0.9 : 0.1 / (labels.length - 1)])),
 });
-const digest = (passage: string | undefined, bin: string, established: string) => [
-	{ passage, match: ["How much in-world time passes"], answer: choice(bin, elapsed) },
-	{ passage, match: ["What weather does"], answer: choice(established, weather) },
+const digest = (passage: string | undefined, bin: string, established: string, hold = false) => [
+	{ passage, match: ["How much in-world time passes"], answer: choice(bin, elapsed), hold },
+	{ passage, match: ["What weather does"], answer: choice(established, weather), hold },
 ];
 
 const digested = (llm: E2eServer, passage: string) => expect.poll(async () => (await llm.log()).calls
@@ -133,4 +133,90 @@ test("window layout and setup stay with their Chat", async ({ page }) => {
 	await expect(dockTab(page)).toHaveCount(0);
 	const window = await openWorldClock(page);
 	await expect(window.getByRole("switch", { name: "Turn on the World Clock" })).toBeVisible();
+});
+
+test("a Writer override survives a late digest, reset restores the automatic value, and catch-up digests an existing path", async ({ page, request, llm }) => {
+	await enableWorldClock(request);
+	await llm.chat(
+		{ chunks: ["The storm breaks over the tower."] },
+		{ chunks: ["Snow drifts against the shutters."] },
+	);
+	await page.goto("/");
+	await send(page, "Wait out the night.");
+	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await send(page, "Look outside.");
+	await expect(story(page).getByText("Snow drifts")).toBeVisible();
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+
+	const window = await openWorldClock(page);
+	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
+	await window.getByRole("button", { name: "Save World Clock" }).click();
+	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
+	const passage = (text: string) => window.getByRole("listitem").filter({ hasText: text });
+	await expect(passage("The storm breaks")).toContainText("Not read yet");
+
+	await passage("The storm breaks").hover();
+	await passage("The storm breaks").getByRole("button", { name: "Edit" }).click();
+	await passage("The storm breaks").getByRole("combobox", { name: "Elapsed time" }).click();
+	await page.getByRole("option", { name: "About 5 minutes" }).click();
+	await passage("The storm breaks").getByRole("combobox", { name: "Weather" }).click();
+	await page.getByRole("option", { name: "☀️ Clear" }).click();
+	await passage("The storm breaks").getByRole("button", { name: "Save override" }).click();
+	await expect(passage("The storm breaks")).toContainText("+5m · ☀️ Clear");
+	await expect(passage("The storm breaks")).toContainText("Overridden");
+
+	await llm.decisions(
+		...digest("Wait out the night.", "none", "not mentioned"),
+		...digest("The storm breaks", "overnight", "storm"),
+		...digest("Look outside.", "none", "not mentioned"),
+		...digest("Snow drifts", "~2h", "snow"),
+		// @approved
+		//  The seeded Chat's own passages are part of the catch-up path too; a
+		//  passage-less rule last reads them as spending no time.
+		...digest(undefined, "none", "not mentioned"),
+	);
+	await window.getByRole("button", { name: "Digest missing passages" }).click();
+	// @approved
+	//  The catch-up run is done only when the read reports no run and its
+	//  stored automatic matches every passage's current text, so the late
+	//  digest has landed before the override is checked again.
+	await expect.poll(async () => {
+		const read = await (await request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
+		return read.catchUp === null && read.passages.every((entry: { digested: boolean }) => entry.digested);
+	}, { timeout: 15_000 }).toBe(true);
+	await expect(passage("Wait out the night.")).toContainText("No time passes");
+	await expect(passage("The storm breaks")).toContainText("+5m · ☀️ Clear");
+	await expect(passage("The storm breaks")).toContainText("Overridden");
+	await expect(passage("Snow drifts")).toContainText("🌨️ Snow");
+	await digested(llm, "The storm breaks");
+
+	await passage("The storm breaks").hover();
+	await passage("The storm breaks").getByRole("button", { name: "Reset" }).click();
+	await expect(passage("The storm breaks")).not.toContainText("Overridden");
+	await expect(passage("The storm breaks")).toContainText(/\+\d+h( \d+m)? · ⛈️ Storm/);
+});
+
+test("catch-up shows its progress and can be cancelled", async ({ page, request, llm }) => {
+	await enableWorldClock(request);
+	await llm.chat({ chunks: ["The storm breaks over the tower."] });
+	await page.goto("/");
+	await send(page, "Wait out the night.");
+	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	const window = await openWorldClock(page);
+	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
+	await window.getByRole("button", { name: "Save World Clock" }).click();
+	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
+
+	await llm.decisions(...digest(undefined, "none", "not mentioned", true));
+	await window.getByRole("button", { name: "Digest missing passages" }).click();
+	await expect(window.getByText(/^Digesting 0 of \d+…/)).toBeVisible();
+	await window.getByRole("button", { name: "Cancel" }).click();
+	await expect(window.getByRole("button", { name: "Digest missing passages" })).toBeVisible();
+	await expect(window.getByRole("listitem").filter({ hasText: "The storm breaks" })).toContainText("Not read yet");
+	await llm.release();
+	// @approved
+	//  A cancelled run never leaves a record: the passage is still missing, so
+	//  a second catch-up runs and fills the automatic result.
+	await window.getByRole("button", { name: "Digest missing passages" }).click();
+	await expect(window.getByRole("listitem").filter({ hasText: "The storm breaks" })).toContainText("No time passes");
 });

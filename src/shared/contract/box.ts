@@ -56,6 +56,32 @@ export const worldClockRecord = Type.Object({
 export type WorldClockRecord = Static<typeof worldClockRecord>;
 
 // @approved
+//  Elapsed-time bins the Decision Model chooses from, with the inclusive
+//  minute range an automatic digest draws its exact duration from and the
+//  label the window's Editor offers. A Writer override names the bin and
+//  stores its midpoint, a value inside the range the digest draws from.
+export const elapsedBins = {
+	none: { minutes: [0, 0], label: "No time passes" },
+	"~5m": { minutes: [3, 8], label: "About 5 minutes" },
+	"~15m": { minutes: [10, 20], label: "About 15 minutes" },
+	"~30m": { minutes: [25, 40], label: "About 30 minutes" },
+	"~1h": { minutes: [45, 80], label: "About 1 hour" },
+	"~2h": { minutes: [90, 150], label: "About 2 hours" },
+	"~4h": { minutes: [180, 300], label: "About 4 hours" },
+	"~8h": { minutes: [360, 540], label: "About 8 hours" },
+	overnight: { minutes: [540, 720], label: "Overnight" },
+	"~1 day": { minutes: [1200, 1680], label: "About 1 day" },
+	"several days": { minutes: [2880, 7200], label: "Several days" },
+} as const satisfies Record<string, { readonly minutes: readonly [number, number]; readonly label: string }>;
+export type ElapsedBin = keyof typeof elapsedBins;
+export const elapsedBinNames = /* @approved SAFETY: Object.keys of the literal table returns exactly its keys. */ Object.keys(elapsedBins) as ElapsedBin[];
+/** @approved Every stored duration is drawn inside a bin or set to one's midpoint, so an override always names a minute count the digest vocabulary represents. */
+export const elapsedBinMinutes = (bin: ElapsedBin): number => {
+	const [low, high] = elapsedBins[bin].minutes;
+	return low + Math.floor((high - low) / 2);
+};
+
+// @approved
 //  One Box record slot per Variant. `source` hashes the digested text, so an
 // edit is digested again and a reselection is not.
 export const worldClockRecordSlot = Type.Object({
@@ -68,7 +94,9 @@ export type WorldClockRecordSlot = Static<typeof worldClockRecordSlot>;
 // @approved
 //  One selected passage in the World Clock window, with its resolved record
 //  (`writer ?? automatic`) and whether a writer set it. A null record means
-//  the passage has not been digested.
+//  the passage has not been digested. `digested` reports whether the
+//  automatic result is the one for exactly this text, so the window knows
+//  what a catch-up run would add.
 export const worldClockPassage = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
@@ -76,16 +104,30 @@ export const worldClockPassage = Type.Object({
 	content: Type.String(),
 	record: Type.Union([Type.Null(), worldClockRecord]),
 	overridden: Type.Boolean(),
+	digested: Type.Boolean(),
 });
 export type WorldClockPassage = Static<typeof worldClockPassage>;
 
 // @approved
+//  A catch-up run's window progress: how many passages it set out to digest
+//  and how many are still queued or in flight.
+export const boxCatchUp = Type.Object({
+	total: Type.Integer({ minimum: 0 }),
+	remaining: Type.Integer({ minimum: 0 }),
+});
+export type BoxCatchUp = Static<typeof boxCatchUp>;
+
+// @approved
 //  The World Clock window read: the folded clock's one-line status and the
 //  selected path's passages. The dock and the window share this read.
+//  `digestReady` reports whether a global Decision Model is selected, so the
+//  window can explain why catch-up and pending reads cannot run.
 export const worldClockRead = Type.Object({
 	conversationId: Type.Integer(),
 	revision: Type.Integer(),
 	status: Type.Union([Type.Null(), Type.String()]),
+	digestReady: Type.Boolean(),
+	catchUp: Type.Union([Type.Null(), boxCatchUp]),
 	passages: Type.Array(worldClockPassage),
 });
 export type WorldClockRead = Static<typeof worldClockRead>;

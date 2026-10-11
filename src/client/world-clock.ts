@@ -10,3 +10,15 @@ export async function loadWorldClock(conversationId: number, signal?: AbortSigna
 		notFoundOutcome,
 	));
 }
+
+const catchUp = (conversationId: number) => api.api.conversations({ id: conversationId }).boxes({ box: "world-clock" })["catch-up"];
+
+/** @approved Starting resolves with the read that already carries the new run's progress. */
+export async function startWorldClockCatchUp(conversationId: number): Promise<WorldClockRead | null> {
+	return foundOrNull(await requestOutcome(catchUp(conversationId).post(), worldClockRead, notFoundOutcome));
+}
+
+/** @approved Cancelling resolves with the read that no longer carries a run. */
+export async function cancelWorldClockCatchUp(conversationId: number): Promise<WorldClockRead | null> {
+	return foundOrNull(await requestOutcome(catchUp(conversationId).delete(), worldClockRead, notFoundOutcome));
+}

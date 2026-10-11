@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, worldClockRecordSlot, type DigestBoxId, type WorldClockRecord, type WorldClockRecordSlot } from "../../shared/contract/box";
 import { messageVariantDataTable } from "../database/schema";
+import { sha256 } from "../memory/hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
@@ -31,6 +32,9 @@ export const readRecordSlots = (db: BunSQLiteDatabase, id: DigestBoxId, variantI
 /** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
 export const effectiveRecord = (slot: WorldClockRecordSlot | undefined): WorldClockRecord | undefined => slot?.writer ?? slot?.automatic;
 
+/** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
+export const hasAutomaticRecord = (slot: WorldClockRecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
+
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
 export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[]): RecordStates => {
 	const slots = readRecordSlots(db, "world-clock", selectedVariantIds);
@@ -43,13 +47,32 @@ export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: read
 	};
 };
 
-export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number, record: WorldClockRecord, source: string): void => {
-	const current = readRecordSlots(db, id, [variantId]).get(variantId);
-	const value = JSON.stringify({ ...current, automatic: record, source });
+const writeSlot = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number, slot: WorldClockRecordSlot): void => {
+	const value = JSON.stringify(slot);
 	db.insert(messageVariantDataTable)
 		.values({ message_variant_id: variantId, namespace: boxReference(id), key: RECORD_KEY, value })
 		.onConflictDoUpdate({ target: [messageVariantDataTable.message_variant_id, messageVariantDataTable.namespace, messageVariantDataTable.key], set: { value } })
 		.run();
+};
+
+export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number, record: WorldClockRecord, source: string): void =>
+	writeSlot(db, id, variantId, { ...readRecordSlots(db, id, [variantId]).get(variantId), automatic: record, source });
+
+/** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
+export const writeWriterRecord = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number, record: WorldClockRecord): void =>
+	writeSlot(db, id, variantId, { ...readRecordSlots(db, id, [variantId]).get(variantId), writer: record });
+
+/** @approved Reset removes the Writer override; with no automatic result left the slot row goes away entirely. */
+export const resetWriterRecord = (db: BunSQLiteDatabase, id: DigestBoxId, variantId: number): void => {
+	const current = readRecordSlots(db, id, [variantId]).get(variantId);
+	if (current === undefined || current.writer === undefined) return;
+	if (current.automatic === undefined) {
+		db.delete(messageVariantDataTable)
+			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, RECORD_KEY)))
+			.run();
+		return;
+	}
+	writeSlot(db, id, variantId, { automatic: current.automatic, source: current.source });
 };
 
 export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>

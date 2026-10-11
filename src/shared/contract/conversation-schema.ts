@@ -6,7 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { boxSetups, promptBoxReference } from "./box";
+import { boxSetups, promptBoxReference, worldClockRecord } from "./box";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -618,6 +618,26 @@ const setBoxSetupAction = Type.Union([
 	Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal("world-clock"), setup: boxSetups.properties["world-clock"] }),
 ]);
 
+// @approved
+//  Sets one Variant's Writer override for a Box record. The record is
+//  validated against that Box's schema here, so storage only ever holds
+//  decodable values. Reset removes the override and leaves the automatic
+//  record, if any, as the effective value.
+const setBoxRecordAction = Type.Object({
+	type: Type.Literal("set-box-record"),
+	box: Type.Literal("world-clock"),
+	messageId: Type.Integer(),
+	variantId: Type.Integer(),
+	record: worldClockRecord,
+});
+
+const resetBoxRecordAction = Type.Object({
+	type: Type.Literal("reset-box-record"),
+	box: Type.Literal("world-clock"),
+	messageId: Type.Integer(),
+	variantId: Type.Integer(),
+});
+
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
 	name: Type.String(),
@@ -669,6 +689,8 @@ const conversationCommandAction = Type.Union([
 	selectPromptPresetAction,
 	renameConversationAction,
 	setBoxSetupAction,
+	setBoxRecordAction,
+	resetBoxRecordAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

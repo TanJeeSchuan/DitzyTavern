@@ -2,9 +2,12 @@ import { openObservedDatabase, createConversationWithHistory } from "../test-fix
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { worldClockRead, type WorldClockSetup } from "../../shared/contract/box";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
+import { readRecordSlots, writeAutomaticRecord } from "../box/records";
 import { worldClockBox } from "../box/world-clock";
+import { sha256 } from "../memory/hash";
 import { createContract } from ".";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -63,11 +66,13 @@ test("the window read folds the selected passages and reports the dock status", 
 	const chat = createClockChat();
 	const app = createContract(database);
 	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-01-01') RETURNING id").get(chat.id)!;
-	const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-01-01', 1) RETURNING id").get(message.id, "The lamp turns.")!;
+	const variant = database.query<{ id: number }, [number, string]>(
+		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-01-01', 1) RETURNING id",
+	).get(message.id, "The lamp turns.")!;
 	expect((await saveSetup(app, chat.id, chat.revision, { ...initial, enabled: true })).status).toBe(200);
 	const read = await readClock(app, chat.id);
 	expect(read.status).toBe("8:00 AM");
-	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false }]);
+	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false, digested: false }]);
 });
 
 test("the window read reports a missing Chat", async () => {
@@ -75,4 +80,65 @@ test("the window read reports a missing Chat", async () => {
 	const response = await app.handle(new Request("http://localhost/api/conversations/424242/boxes/world-clock"));
 	expect(response.status).toBe(404);
 	expect(await response.json()).toEqual({ outcome: "not-found" });
+});
+
+const addPassage = (conversationId: number, content: string) => {
+	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-01-01') RETURNING id").get(conversationId);
+	if (message === null) throw new Error("The test Message was not inserted.");
+	const variant = database.query<{ id: number }, [number, string]>(
+		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-01-01', 1) RETURNING id",
+	).get(message.id, content);
+	if (variant === null) throw new Error("The test Variant was not inserted.");
+	return { messageId: message.id, variantId: variant.id };
+};
+
+test("a stale automatic result does not report the passage as digested", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const { variantId } = addPassage(chat.id, "The lamp turns.");
+	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+	expect((await readClock(app, chat.id)).passages[0]?.digested).toBe(true);
+	database.run("UPDATE message_variant SET content = ? WHERE id = ?", ["The lamp goes dark.", variantId]);
+	const stale = (await readClock(app, chat.id)).passages[0];
+	expect(stale?.digested).toBe(false);
+	expect(stale?.record).toEqual({ minutes: 60, weather: "rain" });
+});
+
+test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
+	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+
+	const override = { minutes: 600, weather: "clear" as const };
+	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override });
+	expect(applied.status).toBe(200);
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
+	// @approved
+	//  The override changes the folded clock and never the passage's prose.
+	expect((await readClock(app, chat.id)).status).toMatch(/^6:00 PM/);
+	expect(database.query<{ content: string }, [number]>("SELECT content FROM message_variant WHERE id = ?").get(variantId)?.content).toBe("The lamp turns.");
+
+	// @approved
+	//  A digest still in flight lands after the override and may only fill
+	//  `automatic`; the effective value stays the Writer's.
+	writeAutomaticRecord(drizzle(database), "world-clock", variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
+
+	const revision: number = (await applied.json()).conversation.revision;
+	const reset = await command(app, chat.id, revision, { type: "reset-box-record", box: "world-clock", messageId, variantId });
+	expect(reset.status).toBe(200);
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, overridden: false });
+});
+
+test("an override outside the Box record schema is refused", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
+	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
+		method: "POST", headers: { "content-type": "application/json" },
+		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" } } }),
+	}));
+	expect(response.status).toBe(422);
+	expect(readRecordSlots(drizzle(database), "world-clock", [variantId]).size).toBe(0);
 });

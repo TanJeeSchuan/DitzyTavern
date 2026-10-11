@@ -1,28 +1,25 @@
-import { weathers, worldClockRecord, worldClockSetup, type Weather, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
+import { elapsedBinNames, elapsedBins, weathers, worldClockRecord, worldClockSetup, type ElapsedBin, type Weather, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { Box } from "./contract";
 import { seededFraction } from "./seed";
 
 // @approved
-//  Elapsed-time bins the Decision Model chooses from, with the inclusive
-// minute range a passage's seed draws the exact duration from.
-const elapsedBins = {
-	none: { minutes: [0, 0], criteria: "No time passes beyond the conversation itself" },
-	"~5m": { minutes: [3, 8], criteria: "A brief exchange or a few actions" },
-	"~15m": { minutes: [10, 20], criteria: "A short scene or a walk across a building" },
-	"~30m": { minutes: [25, 40], criteria: "A meal, a short trip, or a long talk" },
-	"~1h": { minutes: [45, 80], criteria: "About an hour of activity" },
-	"~2h": { minutes: [90, 150], criteria: "A couple of hours" },
-	"~4h": { minutes: [180, 300], criteria: "An afternoon, or a long journey" },
-	"~8h": { minutes: [360, 540], criteria: "A working day, or most of a day" },
-	overnight: { minutes: [540, 720], criteria: "The characters sleep or the night passes" },
-	"~1 day": { minutes: [1200, 1680], criteria: "About a day passes" },
-	"several days": { minutes: [2880, 7200], criteria: "Days pass, as in a time skip" },
-} as const satisfies Record<string, { minutes: readonly [number, number]; criteria: string }>;
-export type ElapsedBin = keyof typeof elapsedBins;
-// @approved
-// SAFETY: Object.keys of the literal table returns exactly its keys.
-const elapsedBinNames = Object.keys(elapsedBins) as ElapsedBin[];
+//  What each elapsed bin means to the Decision Model. The minute ranges an
+//  automatic digest draws from live in the shared contract, because the
+//  window's Writer Editor offers the same bins as an override.
+const elapsedCriteria = {
+	none: "No time passes beyond the conversation itself",
+	"~5m": "A brief exchange or a few actions",
+	"~15m": "A short scene or a walk across a building",
+	"~30m": "A meal, a short trip, or a long talk",
+	"~1h": "About an hour of activity",
+	"~2h": "A couple of hours",
+	"~4h": "An afternoon, or a long journey",
+	"~8h": "A working day, or most of a day",
+	overnight: "The characters sleep or the night passes",
+	"~1 day": "About a day passes",
+	"several days": "Days pass, as in a time skip",
+} as const satisfies Record<ElapsedBin, string>;
 
 const weatherKinds = {
 	clear: { label: "Clear", icon: "☀️", offset: 0, criteria: "Clear or sunny sky" },
@@ -130,7 +127,7 @@ export const worldClockBox = {
 					elapsed: {
 						type: "choice",
 						instructions: { question: "How much in-world time passes during `passage`?" },
-						criteria: Object.fromEntries(Object.entries(elapsedBins).map(([bin, { criteria }]) => [bin, criteria])),
+						criteria: Object.fromEntries(elapsedBinNames.map((bin) => [bin, elapsedCriteria[bin]])),
 					},
 					weather: {
 						type: "choice",

@@ -5,7 +5,9 @@ import {
 	readSelectedHistoryFromConnection,
 	runConversationReadTransaction,
 } from "../conversation";
-import { effectiveRecord, readRecordSlots } from "./records";
+import { readBoxCatchUp } from "./digest";
+import { resolveBoxDecision } from "./decision-settings";
+import { hasAutomaticRecord, effectiveRecord, readRecordSlots } from "./records";
 import { worldClockBox, type WorldClockState } from "./world-clock";
 
 /** @approved The World Clock window and dock read one folded Selected path
@@ -29,12 +31,14 @@ export function readWorldClock(database: Database, conversationId: number): Worl
 			const slot = slots.get(variant.id);
 			const record = effectiveRecord(slot) ?? null;
 			if (record !== null) state = fold(state, record);
-			return { messageId, variantId: variant.id, author, content: variant.content, record, overridden: slot?.writer !== undefined };
+			return { messageId, variantId: variant.id, author, content: variant.content, record, overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content) };
 		});
 		return {
 			conversationId,
 			revision: summary.revision,
 			status: worldClockBox.status(summary.boxSetups["world-clock"], state),
+			digestReady: resolveBoxDecision(database, "world-clock").kind === "ready",
+			catchUp: readBoxCatchUp(database, conversationId),
 			passages,
 		};
 	});
