@@ -25,6 +25,8 @@ Adding a Box no longer means wiring it into the host at a fixed set of places. A
 - [ ] Add an optional server `read` hook for a Box's window data, served by one generic `GET /api/conversations/:id/boxes/:box` route. Move the World Clock, Race and Phone window reads onto it and delete their dedicated routes.
 - [ ] Add an optional `remove(ctx)` hook for Chat-scoped data a Box keeps outside `conversation_data` and `participant_data`, called by `setBoxState` on removal. Move Memory's removal cleanup onto it.
 - [ ] Generalize the lens: a lens contract with its own gate and its own markup tag, lenses chained in registry order over tagged prose pieces, and the streaming hide-unclosed-tag logic per lens. The Phone becomes one lens among others. The saved patch `.scratch/thoughts-box.patch` contains a working generalization to start from.
+- [ ] Replace the hand-rolled focus trap, Tab cycling and media-query hook in `BoxWindowLayer.tsx` with Radix primitives (`FocusScope` for the narrow-layout trap) and existing hooks, keeping several non-modal windows usable on wide layouts.
+- [ ] Scope `put-box-data` to the Box that sends it: a window can write only its own Box's namespace, and the host rejects any other.
 - [ ] Derive the hand-written `BoxStates` fixtures and the Default preset block lists in tests from `boxIds` and `boxDescriptors`.
 - [ ] Do not generalize digests, records or Writer overrides here; ticket 17 does that.
 - [ ] Existing e2e passes unchanged, apart from route paths.
