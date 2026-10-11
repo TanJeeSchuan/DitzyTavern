@@ -10,6 +10,7 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
+import { worldClockBox } from "../box/world-clock";
 import { syncMemorySources } from "../memory";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
@@ -110,4 +111,11 @@ export function readTestConversationSnapshot(database: Database, conversationId:
 export function createConversationWithHistory(database: Database, input: ConversationCreationInput): TestConversationSnapshot {
  const conversation = createConversation(database, input);
  return requireSnapshot(database, conversation.id);
+}
+
+/** @approved Prompt assembly suites assert the World Clock line; the Clock is
+ *  off by default on ordinary Chats, so tests enable it explicitly. */
+export function enableWorldClock(database: Database, conversationId: number): void {
+ database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:world-clock', 'setup', ?)")
+  .run(conversationId, JSON.stringify({ ...worldClockBox.setup.initial, enabled: true }));
 }

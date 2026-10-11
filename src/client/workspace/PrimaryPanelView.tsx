@@ -1,5 +1,4 @@
 import { AuthorNotePanel } from "../AuthorNotePanel";
-import { WorldClockPanel } from "../WorldClockPanel";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -27,7 +26,6 @@ import type { PrimaryPanel } from "./types";
 // branch at the render site.
 const sharedHeaderTitles = {
 	"author-note": "Author Note",
-	"world-clock": "World Clock",
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
@@ -106,14 +104,6 @@ export function PrimaryPanelView({
 					)}
 					{panel === "author-note" && conversation !== null && (
 						<AuthorNotePanel
-							key={conversation.id}
-							conversation={conversation}
-							onConversationChange={onConversationChange}
-							disabled={mutationsDisabled}
-						/>
-					)}
-					{panel === "world-clock" && conversation !== null && (
-						<WorldClockPanel
 							key={conversation.id}
 							conversation={conversation}
 							onConversationChange={onConversationChange}

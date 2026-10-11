@@ -47,7 +47,9 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 	return [
 		...enabled("box:author-note") ? [captureBox("box:author-note", authorNoteBox, { setup: setups["author-note"], dependencies: undefined, state: undefined })] : [],
 		capturedMemory,
-		...enabled("box:world-clock") ? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"] })] : [],
+		...enabled("box:world-clock") && setups["world-clock"].enabled
+			? [captureBox("box:world-clock", worldClockBox, { setup: setups["world-clock"], dependencies: undefined, state: states["world-clock"] })]
+			: [],
 	];
 };
 

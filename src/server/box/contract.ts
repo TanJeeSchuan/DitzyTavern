@@ -25,6 +25,8 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 		run(input: AdvanceInput<Setup, Dependencies, State>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace>>;
 		fingerprint?(input: AdvanceInput<Setup, Dependencies, State>): string;
 	};
+	/** @approved The Box's one-line dock status, or null when it has nothing to say. */
+	status?(setup: Setup, state: State): string | null;
 }
 
 export type AdvanceInput<Setup, Dependencies = undefined, State = undefined> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State };

@@ -9,6 +9,7 @@ import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
 import { readRecordSlots, readVariantSeeds, recordBoxes, writeAutomaticRecord } from "./records";
+import { readBoxSetups } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
 // @approved
@@ -56,6 +57,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	queue.running.set(key, running);
 	const box = recordBoxes[job.box];
 	try {
+		if (!readBoxSetups(drizzle(database), job.conversationId)[job.box].enabled) return;
 		const decision = resolveBoxDecision(database, job.box);
 		if (decision.kind !== "ready") return;
 		const path = readSelectedPathForMemory(database, job.conversationId, job.messageId) ?? [];
@@ -78,7 +80,8 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 		// the selection cleared, while the request ran; neither raises the epoch.
 		const current = readVariantsForMemory(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
 		const settled = queue.epochs.get(key) === job.epoch && current !== undefined && sha256(current.content) === job.source;
-		if (settled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.variantId, record, job.source);
+		const enabled = readBoxSetups(drizzle(database), job.conversationId)[job.box].enabled;
+		if (settled && enabled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.variantId, record, job.source);
 	} catch (error) {
 		if (!controller.signal.aborted) console.error(`[box-digest] The ${job.box} digest of Variant ${job.variantId} failed.`, error);
 	} finally {
@@ -117,7 +120,9 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 	const queue = queues.get(database);
 	if (queue === undefined) return;
 	for (const variantId of change.removedVariantIds) supersede(queue, keyOf(variantId, "world-clock"));
-	if (change.touchedVariantIds.length === 0 || resolveBoxDecision(database, "world-clock").kind !== "ready") return;
+	if (change.touchedVariantIds.length === 0) return;
+	if (!readBoxSetups(drizzle(database), change.conversationId)["world-clock"].enabled) return;
+	if (resolveBoxDecision(database, "world-clock").kind !== "ready") return;
 	const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true })
 		.filter((variant) => variant.selected && !variant.active && variant.content.trim() !== "");
 	const slots = readRecordSlots(drizzle(database), "world-clock", variants.map((variant) => variant.variantId));

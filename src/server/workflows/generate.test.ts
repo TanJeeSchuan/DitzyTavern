@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, enableWorldClock } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -102,6 +102,8 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("preview compiles the plan with ordered blocks and participant context", async () => {
+		// @approved This assertion pins the World Clock block in the Default recipe.
+		enableWorldClock(database, conversationId);
 		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { WorldClockRecord, WorldClockSetup } from "../../shared/contract/box";
-import { clockAt, clockLine, drawMinutes, temperature, worldClockBox } from "./world-clock";
+import { isWorldClockStart, type WorldClockRecord, type WorldClockSetup } from "../../shared/contract/box";
+import { clockAt, clockLine, clockStatus, drawMinutes, temperature, worldClockBox } from "./world-clock";
 
-const setup: WorldClockSetup = { start: "2025-12-20T08:41", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" };
+const setup: WorldClockSetup = { enabled: true, start: "2025-12-20T08:41", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" };
 const fold = (records: WorldClockRecord[]) => records.reduce(worldClockBox.records.fold, worldClockBox.records.initial);
 
 describe("World Clock calendar", () => {
@@ -67,4 +67,18 @@ test("drawn minutes stay inside their bin and follow the seed", () => {
 	expect(new Set(minutes)).toEqual(new Set(Array.from({ length: 16 }, (_, index) => 25 + index)));
 	expect(drawMinutes("~30m", "seed-7")).toBe(minutes[7]!);
 	expect(drawMinutes("none", "seed-7")).toBe(0);
+});
+
+test("the start rejects calendar dates the pattern alone rolls over", () => {
+	expect(isWorldClockStart("2025-02-31T08:00")).toBe(false);
+	expect(isWorldClockStart("2025-04-31T08:00")).toBe(false);
+	expect(isWorldClockStart("2025-02-29T08:00")).toBe(false);
+	expect(isWorldClockStart("2024-02-29T08:00")).toBe(true);
+	expect(isWorldClockStart("2025-06-01T08:00")).toBe(true);
+	expect(isWorldClockStart("not a date")).toBe(false);
+});
+
+test("the status keeps the time and drops the date", () => {
+	expect(clockStatus(setup, fold([{ minutes: 0, weather: null }]))).toBe("8:41 AM");
+	expect(clockStatus(setup, fold([{ minutes: 0, weather: "clear" }]))).toBe("8:41 AM · ☀️ 3°C");
 });

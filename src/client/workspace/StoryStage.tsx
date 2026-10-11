@@ -1,6 +1,8 @@
 import { useState, type Dispatch } from "react";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
+import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
+import { useBoxWindows } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
 	isModelAuthoredMessage,
@@ -57,7 +59,7 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenPanel: (panel: "author-note" | "world-clock") => void;
+	onOpenPanel: (panel: "author-note") => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;
@@ -83,6 +85,7 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
+	const composerWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
@@ -217,28 +220,38 @@ export function StoryStage({
 					Jump to latest
 				</button>
 			</div>}
-			<Composer
-				draft={generation.draft}
-				isGenerating={generation.isGenerating}
-				canWrite={generation.assemblyAvailable}
-				isReceded={composerIsReceded}
-				onDraftChange={generation.setDraft}
-				onFocusChange={setIsComposerFocused}
-				onSubmit={generation.submitMessage}
-				onCancel={generation.cancelGeneration}
-				stopPending={generation.stopPending}
-				writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
-				controlSelectors={session.conversation !== null ? (
-					<ComposerControlSelectors
-						onOpenPanel={onOpenPanel}
-						conversation={session.conversation}
-						disabled={story.preview !== null || assemblyActive}
-						disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
-						onConversationChange={session.setConversation}
-						onControlChange={onControlChange}
-					/>
-				) : null}
-			/>
+			<div className="composer-area">
+				<BoxWindowLayer
+					key={conversation?.id ?? "no-chat"}
+					conversation={conversation}
+					controller={composerWindows}
+					disabled={previewMode || assemblyActive}
+					onConversationChange={session.setConversation}
+				/>
+				<Composer
+					draft={generation.draft}
+					isGenerating={generation.isGenerating}
+					canWrite={generation.assemblyAvailable}
+					isReceded={composerIsReceded}
+					onDraftChange={generation.setDraft}
+					onFocusChange={setIsComposerFocused}
+					onSubmit={generation.submitMessage}
+					onCancel={generation.cancelGeneration}
+					stopPending={generation.stopPending}
+					writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
+					controlSelectors={session.conversation !== null ? (
+						<ComposerControlSelectors
+							onOpenPanel={onOpenPanel}
+							onOpenWindow={composerWindows.open}
+							conversation={session.conversation}
+							disabled={story.preview !== null || assemblyActive}
+							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
+							onConversationChange={session.setConversation}
+							onControlChange={onControlChange}
+						/>
+					) : null}
+				/>
+			</div>
 		</main>
 	);
 }

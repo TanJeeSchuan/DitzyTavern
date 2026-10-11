@@ -28,14 +28,16 @@ export const readRecordSlots = (db: BunSQLiteDatabase, id: DigestBoxId, variantI
 		.all()
 		.map((row) => [row.variantId, decodeSlot(id, row.value)]));
 
+/** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
+export const effectiveRecord = (slot: WorldClockRecordSlot | undefined): WorldClockRecord | undefined => slot?.writer ?? slot?.automatic;
+
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
 export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[]): RecordStates => {
 	const slots = readRecordSlots(db, "world-clock", selectedVariantIds);
 	const { fold, initial } = recordBoxes["world-clock"].records;
 	return {
 		"world-clock": selectedVariantIds.reduce<WorldClockState>((state, variantId) => {
-			const slot = slots.get(variantId);
-			const record = slot?.writer ?? slot?.automatic;
+			const record = effectiveRecord(slots.get(variantId));
 			return record === undefined ? state : fold(state, record);
 		}, initial),
 	};

@@ -219,8 +219,6 @@ export function ActiveWritingWorkspace({
 				}}
 				mutationsDisabled={story.preview !== null}
 			/>
-			</SaveNavigationContext.Provider>
-			</SaveGuardContext.Provider>
 
 			<StoryStage
 				story={story}
@@ -254,6 +252,8 @@ export function ActiveWritingWorkspace({
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
+			</SaveNavigationContext.Provider>
+			</SaveGuardContext.Provider>
 
 			{assembly !== null && (
 				<PromptPlanPreviewPanel

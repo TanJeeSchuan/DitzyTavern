@@ -1,4 +1,5 @@
 import { createConversation } from "../conversation";
+import { enableWorldClock } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -61,8 +62,8 @@ export interface CapturedRequest {
 export const createChat = (
 	database: Database,
 	names: { name?: string; human?: string; model?: string } = {},
-) =>
-	createConversation(database, {
+) => {
+	const conversation = createConversation(database, {
 		name: names.name ?? "Preset Chat",
 		participants: [
 			{
@@ -82,6 +83,12 @@ export const createChat = (
 		],
 		control: { human: 0, model: 1 },
 	});
+	// @approved
+	// The prompt-preset suites assert the World Clock line, so the
+	// fixture Chat starts with its Clock on.
+	enableWorldClock(database, conversation.id);
+	return conversation;
+};
 
 export const withProfile = (database: Database) => {
 	const settings = createConnectionSettingsModule(database, { masterKey: key });

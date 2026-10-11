@@ -77,18 +77,32 @@ const months = ["January", "February", "March", "April", "May", "June", "July", 
 // server's time zone and daylight saving.
 export const clockAt = (setup: WorldClockSetup, minutes: number): Date => new Date(Date.parse(`${setup.start}:00Z`) + minutes * 60_000);
 
-export const clockLine = (setup: WorldClockSetup, state: WorldClockState): string => {
+// @approved
+//  One reading of the clock; the prompt line and the dock status present the
+//  same time, date and weather without recomputing any of them twice.
+const clockReading = (setup: WorldClockSetup, state: WorldClockState) => {
 	const at = clockAt(setup, state.minutes);
 	const hour = at.getUTCHours();
 	const time = `${hour % 12 || 12}:${String(at.getUTCMinutes()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 	const era = setup.era.trim() === "" ? "" : ` ${setup.era.trim()}`;
 	const date = `🗓️ ${weekdays[at.getUTCDay()]}, ${months[at.getUTCMonth()]} ${at.getUTCDate()}, ${at.getUTCFullYear()}${era}`;
 	const weather = state.weather !== null && state.minutes - state.weather.at < WEATHER_MEMORY_MINUTES ? state.weather.kind : null;
-	if (weather === null) return `${time} | ${date}`;
+	if (weather === null) return { time, date, weather: null };
 	const celsius = temperature(setup, at, weather);
 	const degrees = setup.unit === "C" ? `${celsius}°C` : `${Math.round(celsius * 9 / 5 + 32)}°F`;
 	const icon = weather === "clear" && (hour < 6 || hour >= 19) ? "🌙" : weatherKinds[weather].icon;
-	return `${time} | ${date} | ${icon} ${weatherKinds[weather].label}, ${degrees}`;
+	return { time, date, weather: { icon, label: weatherKinds[weather].label, degrees } };
+};
+
+export const clockLine = (setup: WorldClockSetup, state: WorldClockState): string => {
+	const { time, date, weather } = clockReading(setup, state);
+	return `${time} | ${date}${weather === null ? "" : ` | ${weather.icon} ${weather.label}, ${weather.degrees}`}`;
+};
+
+/** @approved The dock's one-line status: time and weather, without the date. */
+export const clockStatus = (setup: WorldClockSetup, state: WorldClockState): string => {
+	const { time, weather } = clockReading(setup, state);
+	return `${time}${weather === null ? "" : ` · ${weather.icon} ${weather.degrees}`}`;
 };
 
 const choiceOf = <Option extends string>(answer: DecisionAnswer | undefined, options: readonly Option[]): Option => {
@@ -100,7 +114,7 @@ const choiceOf = <Option extends string>(answer: DecisionAnswer | undefined, opt
 export const worldClockBox = {
 	setup: {
 		schema: worldClockSetup,
-		initial: { start: "2025-06-01T08:00", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" },
+		initial: { enabled: false, start: "2025-06-01T08:00", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" },
 	},
 	records: {
 		schema: worldClockRecord,
@@ -131,4 +145,5 @@ export const worldClockBox = {
 		},
 	},
 	advance: { run: async ({ setup, state }) => ({ items: [{ text: clockLine(setup, state), priority: 0, pinned: true }] }) },
+	status: clockStatus,
 } satisfies Box<WorldClockSetup, undefined, never, never, WorldClockRecord, WorldClockState>;

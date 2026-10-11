@@ -30,6 +30,21 @@ const sendWithClock = async (page: Page, text: string) => {
 	return clockLine(page);
 };
 
+const openWorldClock = async (page: Page) => {
+	await page.getByRole("button", { name: "World Clock", exact: true }).click();
+	return page.getByRole("dialog", { name: "World Clock" });
+};
+
+const enableClock = async (page: Page) => {
+	const window = await openWorldClock(page);
+	await window.getByRole("switch", { name: "Turn on the World Clock" }).click();
+	await window.getByRole("button", { name: "Save World Clock" }).click();
+	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
+	await window.getByRole("button", { name: "Minimize World Clock" }).click();
+};
+
+const dockTab = (page: Page) => page.getByRole("button", { name: /^World Clock: / });
+
 test("the World Clock digests passages in the background and follows the selected Variant", async ({ page, request, llm }) => {
 	await enableWorldClock(request);
 	await llm.decisions(
@@ -44,6 +59,7 @@ test("the World Clock digests passages in the background and follows the selecte
 		{ chunks: ["She keeps watch."] },
 	);
 	await page.goto("/");
+	await enableClock(page);
 	const send = page.getByRole("button", { name: "Send exact plan" });
 
 	await expect(await sendWithClock(page, "Wait out the night.")).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
@@ -72,4 +88,49 @@ test("the World Clock digests passages in the background and follows the selecte
 	await send.click();
 	await expect(story(page).getByText("She keeps watch.")).toBeVisible();
 	await digested(llm, "She keeps watch.");
+});
+
+test("the dock status updates when a digest lands without reopening the window", async ({ page, request, llm }) => {
+	await enableWorldClock(request);
+	await llm.decisions(
+		...digest("Wait out the night.", "overnight", "clear"),
+		...digest("Dawn comes", "~1h", "clear"),
+	);
+	await llm.chat({ chunks: ["Dawn comes over the water."] });
+	await page.goto("/");
+	await enableClock(page);
+	await expect(dockTab(page)).toHaveText("World Clock: 8:00 AM");
+
+	await sendWithClock(page, "Wait out the night.");
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("Dawn comes")).toBeVisible();
+	await digested(llm, "Wait out the night.");
+	await digested(llm, "Dawn comes");
+
+	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM( · .+)?$/, { timeout: 15_000 });
+});
+
+test("a clock that is off contributes no clock line and queues no digest", async ({ page, request, llm }) => {
+	await enableWorldClock(request);
+	await llm.chat({ chunks: ["The lamp turns above you."] });
+	await page.goto("/");
+	const composer = page.getByRole("textbox", { name: "Message draft" });
+	await expect(composer).toHaveAttribute("contenteditable", "true");
+	await composer.fill("Look outside.");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
+	await expect(preview.getByText(/^World Clock ·/)).toHaveCount(0);
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("The lamp turns above you.")).toBeVisible();
+	expect((await llm.log()).calls.some((call) => call.kind === "decision")).toBe(false);
+});
+
+test("window layout and setup stay with their Chat", async ({ page }) => {
+	await page.goto("/");
+	await enableClock(page);
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Chats", exact: true }).click();
+	await page.getByRole("button", { name: /^The Lantern House/ }).click();
+	await expect(dockTab(page)).toHaveCount(0);
+	const window = await openWorldClock(page);
+	await expect(window.getByRole("switch", { name: "Turn on the World Clock" })).toBeVisible();
 });
