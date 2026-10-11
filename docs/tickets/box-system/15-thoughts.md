@@ -26,4 +26,4 @@ The model writes a character's inner monologue as `<thought>…</thought>` insid
 
 ## Acceptance
 
-- The Box touches at most 6 files, tests included, and no host file.
+- The Box touches at most 6 files, tests included. Its only host edits are one entry in `boxIds`/`boxDescriptors`, one in the server registry and one in the client registry.
