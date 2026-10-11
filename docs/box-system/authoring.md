@@ -38,7 +38,7 @@ Each step ends with a check that runs without a live app. Run heavy commands thr
 
 4. **Write the window**, if the Box has one. Create `src/client/box-windows/<Name>Window.tsx` and add the `boxWindows` entry (see [Window](#window)). A digesting Box always needs the entry, because the entry is what gives it a window and a dock tab. It needs no window file when it has no setup and the generic record summary reads well: the entry is then just `{ icon, size }`. Done when `bun run typecheck` passes.
 
-5. **Test it.** Write one e2e spec, `e2e/<id>.spec.ts`, per user flow, and assert through Prompt Plan inspection. Every test runs on a fresh database, so the Default preset already has the Box's block (see [Preset block](#preset-block)). Insert the Box with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box needs `selectBoxDecisionModel(request, "<id>")` and scripted decisions through `llm.decisions(…)`; `e2e/world-clock.spec.ts` shows both. Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a given seed, or a fold. Done when `bun run check` and `bun run test:e2e` pass.
+5. **Test it.** Write one e2e spec, `e2e/<id>.spec.ts`, per user flow, and assert through Prompt Plan inspection. Every test runs on a fresh database, so the Default preset already has the Box's block (see [Preset block](#preset-block)). Insert the Box with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box needs `selectBoxDecisionModel(request, "<id>")` and scripted decisions through `llm.decisions(…)`; `e2e/world-clock.spec.ts` shows both. The human's Messages are digested too, and the first matching rule wins, so end the scripted decisions with a catch-all rule after the passage-specific ones. Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a given seed, or a fold. Done when `bun run check` and `bun run test:e2e` pass.
 
 That is the whole list. The rest of this guide explains what each piece means.
 
@@ -193,9 +193,20 @@ The host queues a digest for a selected Variant when it resolves, when it become
 
 `run(window, ctx)` gets `{ passage, preceding, seed }`. `passage` and each preceding entry are `{ speaker, content }`. `seed` is this Box's stream of the Variant's seed. `preceding` holds up to `window` Messages before the passage. The history read behind it returns at most five Messages including the passage, so `window` is capped at four. A `window` of 0 slices nothing off and returns every Message that read found, up to four. `ctx.decide(state, questions)` asks the Box's own Decision Model selection; the host packs the request and throws if `state` exceeds the selection's token limit. `ctx.signal` aborts when the job is superseded or cancelled.
 
+A question is keyed by name and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys, each mapped to what that option means, and its answer is `{ type: "choice", choice }`:
+
+```ts
+const answers = await ctx.decide({ passage, preceding }, {
+  mood: { type: "choice", instructions: { question: "What mood does `passage` leave the scene in?" }, criteria: { calm: "…", tense: "…" } },
+});
+const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
+```
+
+Treat an answer outside your options as an error and throw. Digests also run on the human's own Messages, not just the model's.
+
 The host checks the result against the record schema and writes it as the slot's `automatic` value with a hash of the digested text. It discards the result if the text changed, a newer job replaced it, the Box stopped being enabled, the catch-up run was cancelled, or the selection went away. A thrown error is logged and leaves no record.
 
-`status(setup, state)` is the dock tab's line. The host calls it only in the passage timeline read, with the state folded over every selected record, the same state Generation capture folds, so only digesting Boxes may declare it. Without it the dock tab shows the Box's label.
+`status(setup, state)` is the dock tab's line. Its accessible name is `<label>: <status>`, which is how an e2e test finds it. The host calls it only in the passage timeline read, with the state folded over every selected record, the same state Generation capture folds, so only digesting Boxes may declare it. Without it the dock tab shows the Box's label.
 
 Pilot consumer. The World Clock asks two `choice` questions, elapsed time and weather, and draws exact minutes inside the chosen bin from `seed`. Its status is `8:41 AM · ☀️ 3°C`.
 
@@ -293,7 +304,7 @@ The override editor is built from the descriptor's `record` schema:
 | `Type.Integer()` or `Type.Number()` | a number input, bounded by `minimum` and `maximum` |
 | `Type.String()` | a text input |
 
-Any other field type, and any `Type.Optional` field, throws when the window opens. A field that may be unset must be a union of literals with `Type.Null()`; a nullable number or string is not supported. Each schema's `title` labels its field or option: `Type.Union([…], { title: "Weather" })`, `Type.Literal("rain", { title: "🌧️ Rain" })`, `Type.Null({ title: "Not mentioned" })`. Without a title the key or value is shown. A new passage's draft starts a nullable choice at `null` and leaves every other field empty. Save stays disabled until the draft passes the record schema.
+Any other field type, and any `Type.Optional` field, throws when the window opens. A field that may be unset must be a union of literals with `Type.Null()`; a nullable number or string is not supported. Write each option out as its own `Type.Literal`. A union built with a spread, such as `Type.Union(names.map(Type.Literal))`, typechecks on the server but fails the client's typecheck. Each schema's `title` labels its field or option: `Type.Union([…], { title: "Weather" })`, `Type.Literal("rain", { title: "🌧️ Rain" })`, `Type.Null({ title: "Not mentioned" })`. Without a title the key or value is shown. A new passage's draft starts a nullable choice at `null` and leaves every other field empty. Save stays disabled until the draft passes the record schema.
 
 The timeline summarizes a record by joining its fields with ` · `: a choice shows its option's title, a number or string shows its value, and a `null` field is left out. When that reads badly, set `describe(record)` on the `boxWindows` entry. The World Clock's turns `{ minutes: 5, weather: "clear" }` into `+5m · ☀️ Clear`.
 
