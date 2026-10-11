@@ -5,6 +5,7 @@ import { MAX_PHONE_MOVES, phoneMove } from "./phone";
 import { initialRaceSetup } from "../race-data";
 import { MAX_RACE_MOVES, raceMoveLabel } from "../race-moves";
 import { phoneMoveLabel } from "../phone";
+import { moodRecord } from "../mood";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
@@ -13,7 +14,7 @@ import type { PromptOutgoingRole } from "./prompt-preset";
 // @approved
 //  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
 // namespace are both `box:<id>`.
-export const boxIds = ["author-note", "memory", "world-clock", "race", "phone", "thought"] as const;
+export const boxIds = ["author-note", "memory", "world-clock", "race", "phone", "thought", "mood"] as const;
 export type BoxId = typeof boxIds[number];
 /** @approved Mapped over a tuple, so Elysia's route types resolve each member. */
 type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
@@ -79,6 +80,16 @@ export const boxDescriptors = {
 	},
 	phone: { label: "Phone", role: "system", startsEnabled: false, moves: { ...movesOf(phoneMove, MAX_PHONE_MOVES, phoneMoveLabel), seatBound: true } },
 	thought: { label: "Thoughts", role: "system", startsEnabled: false },
+	mood: {
+		label: "Mood", role: "system", startsEnabled: false,
+		record: moodRecord,
+		decision: {
+			summary: "Reads the mood each passage leaves the scene in.",
+			description: "Choose a Decision Model to follow each Chat's mood from what its passages say. Without one, the mood stays where it is.",
+			off: "The mood stays where it is",
+			context: "Each passage is read with the Message before it.",
+		},
+	},
 } as const satisfies Record<BoxId, BoxDescriptor>;
 export type BoxDescriptors = typeof boxDescriptors;
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */

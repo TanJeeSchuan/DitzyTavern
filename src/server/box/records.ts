@@ -34,10 +34,10 @@ export const readRecordSlots = <Id extends RecordBoxId>(db: BunSQLiteDatabase, i
 type Slot<Rec> = { readonly automatic?: Rec; readonly writer?: Rec; readonly source?: string };
 
 /** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
-export const effectiveRecord = <Rec>(slot: Slot<Rec> | undefined): Rec | undefined => slot?.writer ?? slot?.automatic;
+export const effectiveRecord = <S extends Slot<unknown>>(slot: S | undefined): S["writer"] | S["automatic"] | undefined => slot?.writer ?? slot?.automatic;
 
 /** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
-export const hasAutomaticRecord = <Rec>(slot: Slot<Rec> | undefined, content: string): boolean => slot?.source === sha256(content);
+export const hasAutomaticRecord = (slot: Slot<unknown> | undefined, content: string): boolean => slot?.source === sha256(content);
 
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
 export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, unknown, never, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, Slot<Rec>>, selectedVariantIds: readonly number[]): State =>

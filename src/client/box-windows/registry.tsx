@@ -1,4 +1,4 @@
-import { Flag, MessageCircleDashed, Clock, Smartphone, type LucideIcon } from "lucide-react";
+import { Drama, Flag, MessageCircleDashed, Clock, Smartphone, type LucideIcon } from "lucide-react";
 import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "./RaceWindow";
@@ -89,6 +89,7 @@ export const boxWindows = {
 	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
 	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },
+	mood: { icon: Drama, size: { width: 22, height: 26 } },
 } satisfies { readonly [Id in BoxId]?: WindowDefinition<Id> };
 
 export type WindowBoxId = keyof typeof boxWindows;

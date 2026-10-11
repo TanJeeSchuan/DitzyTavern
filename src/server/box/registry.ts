@@ -14,6 +14,7 @@ import type { BoxMoves } from "../../shared/contract/box-generation";
 import { worldClockBox } from "./world-clock";
 import { phoneBox } from "./phone";
 import { thoughtBox } from "./thought";
+import { moodBox } from "./mood";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
 
 // @approved
@@ -25,7 +26,7 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, C
 // Box's window read is the host's passage timeline, so it declares no `read`;
 // only that read calls `status`, so no other Box declares one.
 export const serverBox = <Id extends BoxId>(id: Id): ServerBoxes[Id] => {
-	const boxes: ServerBoxes = { "author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox };
+	const boxes: ServerBoxes = { "author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox, mood: moodBox };
 	return boxes[id];
 };
 
