@@ -499,7 +499,8 @@ describe("streaming Provisional Variant content", () => {
 				messages: [message({
 					id: 10,
 					variants: [
-						{ id: 100, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+						{ id: 100, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+							liveGeneration: { generationId: 55, eventId: 0, content: "", reasoning: "" } },
 					],
 				})],
 			}),
@@ -509,6 +510,24 @@ describe("streaming Provisional Variant content", () => {
 
 	const variantContent = (state: ReturnType<typeof createStoryState>, variantId: number) =>
 		state.messages[0]?.swipes.find((variant) => variant.id === variantId);
+
+	for (const observedLive of [false, true]) test(`terminal history rejects later replay after live history was ${observedLive ? "observed" : "not observed"}`, () => {
+		let state = observedLive ? stateWithProvisional() : reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		const content = "The tide turns against the pier.\n\nThen the";
+		state = reduceStory(state, {
+			type: "window-received", activeGenerationIds: [],
+			page: page({ revision: 5, messages: [message({ id: 10, variants: [{
+				id: 100, position: 1, content, reasoning: "Saved thought.", timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+			}] })] }),
+		});
+		for (const [index, text] of ["The tide turns against the pier.\n\n", "Then the"].entries()) {
+			state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, generationId: 55, eventId: index + 1, text });
+			expect(variantContent(state, 100)?.content).toBe(content);
+		}
+		state = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 10, variantId: 100, generationId: 55, eventId: 3, content: "Stale checkpoint", reasoning: "Stale thought" });
+		expect(variantContent(state, 100)?.content).toBe(content);
+		expect(variantContent(state, 100)?.reasoning).toBe("Saved thought.");
+	});
 
 	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
 		let state = stateWithProvisional();
@@ -727,6 +746,11 @@ describe("detached story windows", () => {
 	});
 	const open = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), { type: "window-received", page: history(1, [7, 8]) });
 	const detach = () => reduceStory(open(), { type: "window-received", page: history(3, [3, 4]) });
+	const detachLive = () => {
+		const page = history(3, [3, 4]);
+		page.messages[1]!.variants[0]!.liveGeneration = { generationId: 2, eventId: 0, content: "Message 4", reasoning: "" };
+		return reduceStory(open(), { type: "window-received", page, activeGenerationIds: [2] });
+	};
 
 	test("a source jump replaces the latest window with one page", () => {
 		const state = detach();
@@ -752,7 +776,7 @@ describe("detached story windows", () => {
 	});
 
 	test("live observations outside the window never insert Messages and visible observations still apply", () => {
-		const state = detach();
+		const state = detachLive();
 		const outside = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });
 		expect(outside.messages).toEqual(state.messages);
 		const inside = reduceStory(outside, { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 1, text: " continues" });
@@ -761,7 +785,7 @@ describe("detached story windows", () => {
 	});
 
 	test("authoritative refreshes update only loaded Messages and preserve a newer live checkpoint", () => {
-		const state = reduceStory(detach(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
+		const state = reduceStory(detachLive(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
 		const refreshed = reduceStory(state, { type: "window-received", page: history(2, [3, 4], 7), activeGenerationIds: [2] });
 		expect(refreshed.messages.map(({ id }) => id)).toEqual([3, 4]);
 		expect(refreshed.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 streaming");
