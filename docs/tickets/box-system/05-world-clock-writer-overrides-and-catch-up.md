@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 04-box-windows-and-dock
 
-Source: `docs/box-system/spec.md`, User Stories 8, 21; Implementation Decisions "History semantics", "World Clock Box" (window); ADR-0050.
+Source: `docs/box-system/README.md` "The rules" (Writer overrides), "Passage timeline", "Built-in Boxes" (World Clock); ADR-0050.
 
 ## Goal
 

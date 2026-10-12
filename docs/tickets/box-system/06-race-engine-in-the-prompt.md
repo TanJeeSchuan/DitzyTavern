@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 04-box-windows-and-dock
 
-Source: `docs/box-system/spec.md`, User Stories 5–6, 23–24, 26, 28, 31; Implementation Decisions "Race Box" (setup, bundled data, slots, engine, Generation intent, record, advance item, Results Stretch); ADR-0050.
+Source: `docs/box-system/README.md` "Worked example: the Race" (setup, field, records, advance); ADR-0050.
 
 ## Goal
 

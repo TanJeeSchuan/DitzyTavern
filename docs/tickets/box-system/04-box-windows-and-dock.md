@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 03-world-clock-in-the-prompt
 
-Source: `docs/box-system/spec.md`, User Stories 9–11; Implementation Decisions "Windows", "World Clock Box" (window, status); DESIGN.md.
+Source: `docs/box-system/README.md` "Windows and dock", "Built-in Boxes" (World Clock); DESIGN.md.
 
 ## Goal
 

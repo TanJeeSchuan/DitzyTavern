@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: None
 
-Source: `docs/box-system/spec.md`, User Stories 1–4; Implementation Decisions "Contract", "Prompt Preset", "Generation lifecycle" step 3, "Author Note Box"; ADR-0048, ADR-0050.
+Source: `docs/box-system/README.md` "The contract", "Preset block", "Generation lifecycle" step 3, "Built-in Boxes" (Author Note); ADR-0048, ADR-0050.
 
 ## Goal
 

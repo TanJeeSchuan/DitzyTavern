@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/spec.md`, User Stories 29–30; Implementation Decisions "Race Box" (advance item, library data, window); GLOSSARY "Hidden intent".
+Source: `docs/box-system/README.md` "Worked example: the Race" (advance, data scopes, window); GLOSSARY "Hidden intent".
 
 ## Goal
 

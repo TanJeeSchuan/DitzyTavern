@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 12-box-authoring-guide, 13-box-lifecycle-per-chat
 
-Source: `docs/box-system/spec.md`, User Story 14 and "Lifecycle per Chat" (inserting a removed Box again starts it from its initial setup); found while writing `docs/box-system/authoring.md`.
+Source: `docs/box-system/README.md` "Lifecycle per Chat" (a reinserted Box starts from its initial setup); found while writing the authoring guide.
 
 ## Goal
 

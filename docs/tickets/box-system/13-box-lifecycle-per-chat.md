@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 11-phone
 
-Source: `docs/box-system/spec.md`, User Stories 12–14; Implementation Decisions "Lifecycle per Chat"; ADR-0050.
+Source: `docs/box-system/README.md` "Lifecycle per Chat"; ADR-0050.
 
 ## Goal
 

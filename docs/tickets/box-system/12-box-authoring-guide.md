@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 07-race-oval-and-spectator-view, 08-play-a-race-with-moves, 09-cast-members-race-with-their-own-stats, 10-race-drama-and-replay, 13-box-lifecycle-per-chat
 
-Source: `docs/box-system/spec.md`, User Story 35, "Pilot order"; ADR-0050.
+Source: `docs/box-system/README.md` "Add a Box"; ADR-0050.
 
 ## Goal
 

@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 01-author-note-becomes-the-first-box
 
-Source: `docs/box-system/spec.md`, Implementation Decisions "Contract", "Generation lifecycle" steps 2–4, "Memory Box (seam port)"; ADR-0042, ADR-0050; full port deferred to GitHub #68.
+Source: `docs/box-system/README.md` "The contract", "Generation lifecycle" steps 2–4, "Built-in Boxes" (Memory); ADR-0042, ADR-0050; full port deferred to GitHub #68.
 
 ## Goal
 

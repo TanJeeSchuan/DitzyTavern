@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/spec.md`, User Stories 24–25; Implementation Decisions "Storage scopes", "Race Box" (Character data, Participant data, slots, withdrawal); GLOSSARY "Definition", "Participant".
+Source: `docs/box-system/README.md` "Storage", "Worked example: the Race" (field, data scopes, withdrawal); GLOSSARY "Definition", "Participant".
 
 ## Goal
 

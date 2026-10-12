@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/spec.md`, User Story 30; Implementation Decisions "Race Box" (window); DESIGN.md.
+Source: `docs/box-system/README.md` "Worked example: the Race" (window); DESIGN.md.
 
 ## Goal
 

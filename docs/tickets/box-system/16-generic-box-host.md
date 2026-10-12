@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 14-reinserted-boxes-start-fresh
 
-Source: guide test report (a Thoughts Box took 22 files against a checklist of about 12); `docs/box-system/authoring.md` "Add a Box"; ADR-0050.
+Source: guide test report (a Thoughts Box took 22 files against a checklist of about 12); `docs/box-system/README.md` "Add a Box"; ADR-0050.
 
 ## Goal
 

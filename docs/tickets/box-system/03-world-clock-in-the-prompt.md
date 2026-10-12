@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 02-memory-recall-through-the-box-seam
 
-Source: `docs/box-system/spec.md`, User Stories 17–20, 22; Implementation Decisions "Storage scopes", "History semantics", "Generation lifecycle" step 5, "World Clock Box"; ADR-0038, ADR-0047, ADR-0050.
+Source: `docs/box-system/README.md` "Storage", "The rules" (records), "Generation lifecycle" step 5, "Built-in Boxes" (World Clock); ADR-0038, ADR-0047, ADR-0050.
 
 ## Goal
 
