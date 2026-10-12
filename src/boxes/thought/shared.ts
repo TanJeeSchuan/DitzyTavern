@@ -2,6 +2,9 @@ import { Type, type Static } from "@sinclair/typebox";
 
 export type ThoughtSegment = { readonly kind: "prose"; readonly text: string } | { readonly kind: "thought"; readonly text: string };
 
+/** @approved The Thoughts block's default instructions, its whole prompt contribution. */
+export const thoughtInstructions = "When a character thinks something they do not say aloud, write it inside the prose as <thought>the thought</thought>. Never restate a thought in the narration.";
+
 // @approved
 //  The body may not contain another `<thought` or `</thought`, so in nested
 //  markup only the innermost pair matches and the outer tags stay raw text.

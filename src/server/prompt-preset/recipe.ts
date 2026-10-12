@@ -7,6 +7,7 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
+	isBoxSlot,
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
 	type ReferencedDefinitionBlock,
@@ -30,7 +31,8 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference | PromptBoxReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptBoxReference; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;
@@ -136,6 +138,7 @@ const toRecipeSlots = (
 				content: slot.content,
 			};
 		}
+		if (isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
 		return {
 			id: slot.id,
 			reference: slot.reference,

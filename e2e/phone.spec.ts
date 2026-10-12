@@ -82,3 +82,29 @@ test("a seat change drops staged texts for good", async ({ page }) => {
 	await writeAs("Night Desk");
 	await expect(staged).toHaveCount(0);
 });
+
+test("the Phone block's instructions are edited in the preset and sent before the contacts", async ({ page, llm }) => {
+	await llm.chat({ chunks: ["Theodora checks her phone."] });
+	await page.goto("/");
+	await insertBox(page, "Phone");
+	await page.getByRole("button", { name: "Prompt Presets" }).click();
+	await page.getByRole("button", { name: "Edit Phone" }).click();
+	const editor = page.getByRole("dialog", { name: "Phone" });
+	const instructions = editor.getByRole("textbox", { name: "Instructions" });
+	await expect(instructions).toHaveValue(/^Write each text on its own line as <sms from="\{\{other\}\}"/);
+	await instructions.fill(`Texts look like ${sms("{{other}}", "{{self}}", "hi")}.`);
+	await editor.getByRole("button", { name: "Done" }).click();
+	await page.getByRole("button", { name: "Save", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+
+	await page.getByRole("textbox", { name: "Message draft" }).fill("The night is quiet.");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
+	await preview.getByText(/^Phone ·/).click();
+	await expect(preview.getByRole("textbox", { name: /^box:phone block/ }).locator(".cm-line")).toHaveText([
+		`Texts look like ${sms("Theodora Kline", "Night Desk", "hi")}.`,
+		"Night Desk has a phone and can text Theodora Kline.",
+	]);
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("Theodora checks her phone.")).toBeVisible();
+});

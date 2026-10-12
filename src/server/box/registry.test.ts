@@ -7,7 +7,7 @@ import { worldClockBox } from "../../boxes/world-clock/server";
 test("a Phone contact added after inspection makes the plan stale", () => {
 	const human = { id: 1, name: "Ann" };
 	const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-		[{ reference: "box:phone", enabled: true, role: "system" }],
+		[{ reference: "box:phone", enabled: true, role: "system", content: "" }],
 		// SAFETY: Phone reads no setup.
 		{} as BoxSetups,
 		{ "author-note": "absent", memory: "absent", mood: "absent", phone: "enabled", race: "absent", thought: "absent", "world-clock": "absent" },

@@ -9,6 +9,10 @@ export type PhoneSegment = { readonly kind: "prose"; readonly text: string } | {
 export const phoneNames = (cast: readonly { readonly id: number; readonly name: string }[], human: { readonly id: number; readonly name: string }): PhoneNames =>
 	({ human: human.name, contacts: [...new Set(cast.flatMap(({ id, name }) => id === human.id || name === human.name ? [] : [name]))] });
 
+/** @approved The Phone block's default instructions; the Box adds only who the human can text. */
+export const phoneInstructions =
+	'Write each text on its own line as <sms from="{{other}}" to="{{self}}">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.';
+
 // @approved
 //  The body may not contain another `<sms` or `</sms`, so in nested markup
 //  only the innermost pair matches and the outer tags stay raw text.

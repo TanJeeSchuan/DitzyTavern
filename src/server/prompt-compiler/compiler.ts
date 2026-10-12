@@ -24,6 +24,7 @@ import {
 import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
+	isBoxSlot,
 	singleUseReferenceLabels,
 	type PromptOutgoingRole,
 	type ReferencedDefinitionBlock,
@@ -37,7 +38,7 @@ import type {
 	PromptLoreEntry,
 } from "./types";
 import { resolvePromptImages } from "./images";
-import { isBoxReference } from "../../shared/contract/box";
+import { boxDescriptorOf } from "../../shared/contract/box";
 
 // @approved
 //  Everything a Definition-sourced plan block carries apart from its resolved
@@ -217,22 +218,32 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
-		if (isBoxReference(slot.reference)) {
+		if (isBoxSlot(slot)) {
+			const kind = slot.reference;
+			// @approved
+			//  A Box block is its instructions, expanded like authored preset
+			// text, then the Box's items. A Box that ran with no items renders
+			// nothing, so its instructions never stand alone, unless it
+			// declares `alwaysRender`; a Box that did not run renders nothing.
+			const items = input.boxes[kind];
+			const alwaysRender = boxDescriptorOf(kind).alwaysRender === true;
+			if (items === undefined || (items.length === 0 && !alwaysRender)) continue;
+			const role = planRoleFor[slot.role];
+			const blockLabel = singleUseReferenceLabels[kind];
+			const context = { self: input.human.name, other: input.model.name };
+			const blockWarnings: PromptWarning[] = [];
+			const expand = (into: PromptBlock[], text: string, cacheKey: string) =>
+				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey });
+			const instructions: PromptBlock[] = [];
+			expand(instructions, slot.content, `slot:${slotIndex}`);
 			const expanded: PromptBlock[] = [];
-			for (const item of input.boxes[slot.reference] ?? []) if (item.literal === true) expanded.push({ kind: slot.reference, role: planRoleFor[slot.role], content: item.text }); else expandInto({
-				blocks: expanded,
-				warnings,
-				block: { kind: slot.reference },
-				role: planRoleFor[slot.role],
-				text: item.text,
-				context: { self: input.human.name, other: input.model.name },
-				blockLabel: singleUseReferenceLabels[slot.reference],
-				macroEnvironment,
-				macroAttemptState,
-				cacheKey: boxItemExpansionKey(slotIndex, item.index),
-			});
+			for (const item of items) if (item.literal === true) expanded.push({ kind, role, content: item.text }); else expand(expanded, item.text, boxItemExpansionKey(slotIndex, item.index));
 			const content = expanded.map((block) => block.content).join("\n\n");
-			if (content.trim() !== "") blocks.push({ kind: slot.reference, role: planRoleFor[slot.role], content });
+			if (content.trim() === "" && !alwaysRender) continue;
+			const rendered = [...instructions.map((block) => block.content), content].filter((part) => part.trim() !== "").join("\n");
+			if (rendered === "") continue;
+			blocks.push({ kind, role, content: rendered });
+			warnings.push(...blockWarnings);
 			continue;
 		}
 		if (slot.reference === "instruction") {

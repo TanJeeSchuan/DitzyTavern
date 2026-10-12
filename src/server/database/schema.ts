@@ -95,9 +95,10 @@ export const promptPresetBlockTable = sqliteTable(
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 		role: text({ enum: ["system", "user", "assistant"] }),
 		// @approved
-		//  The authored instruction block's own metadata and text. Null on
-		// every referenced occurrence: the preset stores references, never
-		// rendered Participant or history content.
+		//  The authored instruction block's own metadata and text, and a Box
+		// block's instructions. Null on every other referenced occurrence:
+		// the preset stores references, never rendered Participant or
+		// history content.
 		name: text(),
 		content: text(),
 	},
@@ -147,7 +148,7 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
-				AND ${table.content} IS NULL
+				AND ${table.content} IS NOT NULL
 			)`,
 		),
 	],

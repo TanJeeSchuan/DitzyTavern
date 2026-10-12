@@ -15,7 +15,7 @@ const moodLine = async (page: Page, text: string) => {
 	await composer.fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await preview(page).getByText(/^Mood ·/).click();
-	return preview(page).getByRole("textbox").filter({ hasText: "Scene mood:" });
+	return preview(page).getByRole("textbox").filter({ hasText: "Scene mood:" }).locator(".cm-line");
 };
 
 const dockTab = (page: Page) => page.getByRole("button", { name: /^Mood: / });
@@ -48,7 +48,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(reply.getByText("Snow drifts")).toBeVisible();
 	await expect(dockTab(page)).toHaveText("Mood: 😌 calm", { timeout: 15_000 });
-	await expect(await moodLine(page, "Look outside.")).toHaveText("Scene mood: calm");
+	await expect(await moodLine(page, "Look outside.")).toHaveText(["Scene mood:", "calm"]);
 	await preview(page).getByRole("button", { name: "Cancel" }).click();
 
 	await dockTab(page).click();
@@ -63,13 +63,13 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await window.getByRole("button", { name: "Minimize Mood" }).click();
 	await expect(dockTab(page)).toHaveText("Mood: 👻 eerie");
 
-	await expect(await moodLine(page, "Look outside.")).toHaveText("Scene mood: eerie");
+	await expect(await moodLine(page, "Look outside.")).toHaveText(["Scene mood:", "eerie"]);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("She lights the lamp.")).toBeVisible();
 	await dockTab(page).click();
 	await expect(window.getByRole("listitem").filter({ hasText: "She lights the lamp." })).toContainText("❔ Not clear", { timeout: 15_000 });
 	await window.getByRole("button", { name: "Minimize Mood" }).click();
 	await expect(dockTab(page)).toHaveText("Mood: 👻 eerie");
-	await expect(await moodLine(page, "And now?")).toHaveText("Scene mood: eerie");
+	await expect(await moodLine(page, "And now?")).toHaveText(["Scene mood:", "eerie"]);
 	await preview(page).getByRole("button", { name: "Cancel" }).click();
 });

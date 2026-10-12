@@ -4,18 +4,10 @@ import { stripThoughts, type ThoughtRead } from "./shared";
 
 // @approved
 //  Inner monologue lives in the prose as `<thought>` markup, which the prompt
-//  keeps and the story's lens lifts into the Thoughts window.
+//  keeps and the story's lens lifts into the Thoughts window. The block's
+//  instructions are the whole prompt, so the Box has no advance.
 export const thoughtBox = {
 	read: readThoughts,
-	advance: {
-		run: async () => ({
-			items: [{
-				text: "When a character thinks something they do not say aloud, write it inside the prose as <thought>the thought</thought>. Never restate a thought in the narration.",
-				priority: 0,
-				pinned: true,
-			}],
-		}),
-	},
 } satisfies Box<undefined>;
 
 function readThoughts(database: Database, conversationId: number): ThoughtRead | undefined {

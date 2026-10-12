@@ -255,7 +255,7 @@ describe("Generation Plan Compiler", () => {
 			memoryCandidate("small", "fits"),
 		];
 		const plan = compile({
-			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
 			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 6)) },
 			estimator: (transcript) => transcript.includes("oversized claim") ? 20 : transcript.includes("fits") ? 4 : 0,
@@ -279,7 +279,7 @@ describe("Generation Plan Compiler", () => {
 			{ ...memoryCandidate("higher", "higher relevance"), relevanceScore: 2.9 },
 		];
 		const plan = compile({
-			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
 			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 4)) },
 			estimator: (transcript) => (transcript.includes("lower relevance") ? 4 : 0) + (transcript.includes("higher relevance") ? 4 : 0),
@@ -293,7 +293,7 @@ describe("Generation Plan Compiler", () => {
 
 	test("expands Box items before allowance admission and keeps pinned items outside it", () => {
 		const plan = compile({
-			recipe: [{ reference: "box:author-note", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:author-note", enabled: true, role: "system", content: "" }],
 			context: [],
 			boxes: { "box:author-note": { allowance: 6, items: [
 				{ text: "pinned", priority: 0, pinned: true },
@@ -309,7 +309,7 @@ describe("Generation Plan Compiler", () => {
 		const state = createMacroAttemptState(new Map([["count", 0]]));
 		const plan = compile({
 			recipe: [
-				{ reference: "box:author-note", enabled: true, role: "system" },
+				{ reference: "box:author-note", enabled: true, role: "system", content: "" },
 				{ reference: "instruction", enabled: true, role: "system", name: "Counter", content: "{{getvar::count}}" },
 			],
 			context: [],
@@ -328,7 +328,7 @@ describe("Generation Plan Compiler", () => {
 	test("renders recalled Memory claims literally, even while budgeting", () => {
 		const state = createMacroAttemptState();
 		const plan = compile({
-			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
 			boxes: { "box:memory": memoryItems(memoryActivation([memoryCandidate("macro", "{{setvar::mood::grim}}{{self}} waits")])) },
 			attempt: { environment: { self: "Writer", other: "Maren" }, state },
@@ -345,7 +345,7 @@ describe("Generation Plan Compiler", () => {
 		const loreFirst = compile({
 			recipe: [
 				{ reference: "lore", enabled: true, role: "system" },
-				{ reference: "box:memory", enabled: true, role: "system" },
+				{ reference: "box:memory", enabled: true, role: "system", content: "" },
 			],
 			context: [],
 			lore: [{ content: "lore fact" }],
@@ -356,7 +356,7 @@ describe("Generation Plan Compiler", () => {
 		});
 		const memoryFirst = compile({
 				recipe: [
-					{ reference: "box:memory", enabled: true, role: "system" },
+					{ reference: "box:memory", enabled: true, role: "system", content: "" },
 					{ reference: "lore", enabled: true, role: "system" },
 				],
 				context: [],

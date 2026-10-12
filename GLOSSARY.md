@@ -106,7 +106,7 @@ A shared, reusable ordered recipe for assembling character information, instruct
 _Avoid_: Generation Settings, Connection Preset, Prompt Plan
 
 **Referenced Prompt Block**:
-A Prompt Preset slot whose content comes from the Conversation or a Participant Definition rather than text authored in the preset. Its source text is read-only in the preset editor.
+A Prompt Preset slot whose content comes from the Conversation or a Participant Definition rather than text authored in the preset. Its source text is read-only in the preset editor. A Box's block is the exception: it also holds instructions authored in the preset, sent before the Box's content.
 _Avoid_: foreign prompt block
 
 **Prompt Macro**:
@@ -296,7 +296,7 @@ _Avoid_: semantic exclusion
 ## Boxes
 
 **Box**:
-A self-contained story feature that keeps its own state, contributes to Generations through its slot in a Prompt Preset, and may offer its own controls. The Author Note, Memory and a Race are Boxes.
+A self-contained story feature that keeps its own state, contributes to Generations through its block in a Prompt Preset, and may offer its own controls. The block holds the Box's instructions, which the preset owns and authors edit, followed by what the Box returns for the Generation. The Author Note, Memory and a Race are Boxes.
 _Avoid_: plugin, extension, module
 
 **Move**:

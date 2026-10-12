@@ -40,7 +40,7 @@ test("inserting the Race adds its block to a preset that has none", async ({ pag
 
 test("a disabled Race block stays off until the writer enables it from the notice", async ({ page, request, llm }) => {
 	await llm.chat({ chunks: ["Off they go."] });
-	await attachPreset(page, request, [{ reference: "box:race", enabled: false, role: "system" }]);
+	await attachPreset(page, request, [{ reference: "box:race", enabled: false, role: "system", content: "" }]);
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Boxes", exact: true }).click();
 	await expect(page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Race" })).toContainText("Race block is off in Lean.");

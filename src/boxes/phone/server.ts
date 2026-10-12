@@ -7,20 +7,16 @@ import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from ".
 
 // @approved
 //  Texts live in the prose as `<sms>` markup, which the prompt keeps and the
-//  story's lens lifts into the Phone. Without another Cast member there is
-//  nobody to text, so the Phone says nothing.
+//  story's lens lifts into the Phone. The block's instructions teach the
+//  markup; the Box adds who the human can text. Without another Cast member
+//  there is nobody to text, so the block says nothing.
 export const phoneBox = {
 	moves: { render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }) },
 	dependencies: ({ cast, human }) => phoneNames(cast, human),
 	read: readPhone,
 	advance: {
-		run: async ({ dependencies: { human, contacts } }) => {
-			const [contact] = contacts;
-			if (contact === undefined) return { items: [] };
-			const example = renderPhoneText({ from: contact, to: human, text: "message" });
-			const text = `${human} has a phone and can text ${contacts.join(", ")}. Write each text on its own line as ${example}, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.`;
-			return { items: [{ text, priority: 0, pinned: true }] };
-		},
+		run: async ({ dependencies: { human, contacts } }) =>
+			({ items: contacts.length === 0 ? [] : [{ text: `${human} has a phone and can text ${contacts.join(", ")}.`, priority: 0, pinned: true }] }),
 	},
 } satisfies Box<undefined, PhoneNames, never, never, never, undefined, PhoneMove>;
 

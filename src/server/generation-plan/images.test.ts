@@ -168,7 +168,7 @@ describe("Prompt Plan Images", () => {
 
 	test("Box admission charges an item's sent Images against the context limit", () => {
 		const plan = compile([entry("go", "human")], { contextLimit: 1_000 }, {
-			recipe: [{ reference: "box:author-note", enabled: true, role: "system" }, { reference: "history", enabled: true }],
+			recipe: [{ reference: "box:author-note", enabled: true, role: "system", content: "" }, { reference: "history", enabled: true }],
 			boxes: { "box:author-note": { items: [{ text: `wearing ${ref("dress", A)}`, priority: 0 }, { text: "rain", priority: 0 }] } },
 		});
 		expect(plan.budget.fits).toBe(true);

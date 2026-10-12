@@ -22,6 +22,6 @@ export const moodBox = {
 			},
 		},
 	},
-	advance: { run: async ({ state }) => ({ items: state === null ? [] : [{ text: `Scene mood: ${state}`, priority: 100, pinned: true }] }) },
+	advance: { run: async ({ state }) => ({ items: state === null ? [] : [{ text: state, priority: 100, pinned: true }] }) },
 	status: (_setup, state) => state === null ? null : `${moods[state].emote} ${state}`,
 } satisfies Box<undefined, undefined, never, never, MoodRecord, Mood | null>;

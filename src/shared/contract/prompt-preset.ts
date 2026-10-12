@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { boxDescriptors, boxIds, boxReference, promptBoxReference, type BoxId, type PromptBoxReference } from "./box";
+import { boxDescriptors, boxIds, boxReference, isBoxReference, promptBoxReference, type BoxId, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -102,7 +102,8 @@ export type PromptPresetBlockReference = Static<typeof promptPresetBlockReferenc
 //  One ordered recipe slot as the compiler consumes it. A referenced
 // Definition slot carries its required outgoing role; history carries no
 // slot-owned role because its entries keep the roles of their own Messages;
-// and an authored instruction carries its editable name, text, and role.
+// a Box block carries its editable instructions, rendered before the Box's
+// items; and an authored instruction carries its editable name, text, and role.
 // Enablement lives on the slot so a disabled slot keeps its place in the
 // order instead of disappearing from it.
 export const promptPresetSlot = Type.Union([
@@ -112,9 +113,15 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: Type.Union([promptLoreReference, promptBoxReference]),
+		reference: promptLoreReference,
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
+	}),
+	Type.Object({
+		reference: promptBoxReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		content: Type.String(),
 	}),
 	Type.Object({
 		reference: Type.Literal("history"),
@@ -129,6 +136,9 @@ export const promptPresetSlot = Type.Union([
 	}),
 ]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
+
+/** @approved A Box's block, among any slot shape that carries a reference. */
+export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => isBoxReference(slot.reference);
 
 export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "box:memory" && slot.enabled);
@@ -209,7 +219,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
-	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
+	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
 		id: Type.Integer(),
@@ -320,7 +330,8 @@ export const promptPresetDeleteCommand = Type.Object({
 
 // @approved
 //  One occurrence-addressed patch saves block fields and enablement
-// without rewriting ordering or another occurrence.
+// without rewriting ordering or another occurrence. A content patch names an
+// authored instruction and never a Box block, which has no name.
 export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
@@ -331,7 +342,7 @@ export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
 		type: Type.Literal("content"),
-		name: Type.String(),
+		name: Type.Optional(Type.String()),
 		content: Type.String(),
 		role: promptOutgoingRole,
 		enabled: Type.Optional(Type.Boolean()),

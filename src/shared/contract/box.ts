@@ -4,7 +4,8 @@ import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "../..
 import { MAX_PHONE_MOVES, phoneMove } from "../../boxes/phone/contract";
 import { initialRaceSetup } from "../../boxes/race/shared-data";
 import { MAX_RACE_MOVES, raceMoveLabel } from "../../boxes/race/shared";
-import { phoneMoveLabel } from "../../boxes/phone/shared";
+import { phoneInstructions, phoneMoveLabel } from "../../boxes/phone/shared";
+import { thoughtInstructions } from "../../boxes/thought/shared";
 import { moodRecord } from "../../boxes/mood/shared";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
@@ -39,6 +40,8 @@ type BoxDescriptor = {
 	readonly label: string;
 	readonly role: PromptOutgoingRole;
 	readonly startsEnabled: boolean;
+	readonly instructions: string;
+	readonly alwaysRender?: true;
 	readonly setup?: { readonly schema: TSchema; readonly initial: unknown };
 	readonly record?: TObject;
 	readonly moves?: { readonly schema: TSchema; readonly max: number; label(move: never): string; readonly seatBound?: true };
@@ -50,7 +53,9 @@ const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (mo
 // @approved
 //  What the host shows, defaults and stores for each Box: its preset block
 // label, the role its block starts with, and whether a new Chat starts with
-// it enabled. `setup` is its Conversation-scoped setup, which the
+// it enabled. `instructions` is the text a new block starts with, after which
+// it belongs to the preset; the block renders it before the Box's items, and
+// renders nothing without items unless the Box declares `alwaysRender`. `setup` is its Conversation-scoped setup, which the
 // set-box-setup command accepts. `record` is the schema of the record each
 // Variant holds for it, which Writer overrides accept. `moves` are the Moves
 // the human attaches to a Message, each shown as its chip `label`; seat-bound
@@ -59,10 +64,10 @@ const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (mo
 // gives the Box a global Decision Model selection, which its digests ask, and
 // the settings copy that selection shows.
 export const boxDescriptors = {
-	"author-note": { label: "Author Note", role: "system", startsEnabled: true, setup: setupOf(Type.String(), "") },
-	memory: { label: "Memory", role: "system", startsEnabled: true },
+	"author-note": { label: "Author Note", role: "system", startsEnabled: true, instructions: "", setup: setupOf(Type.String(), "") },
+	memory: { label: "Memory", role: "system", startsEnabled: true, instructions: "" },
 	"world-clock": {
-		label: "World Clock", role: "system", startsEnabled: false,
+		label: "World Clock", role: "system", startsEnabled: false, instructions: "",
 		setup: setupOf(worldClockSetup, initialWorldClockSetup),
 		record: worldClockRecord,
 		decision: {
@@ -73,15 +78,15 @@ export const boxDescriptors = {
 		},
 	},
 	race: {
-		label: "Race", role: "system", startsEnabled: false,
+		label: "Race", role: "system", startsEnabled: false, instructions: "",
 		setup: setupOf(raceSetup, initialRaceSetup),
 		record: raceRecord,
 		moves: movesOf(raceMove, MAX_RACE_MOVES, raceMoveLabel),
 	},
-	phone: { label: "Phone", role: "system", startsEnabled: false, moves: { ...movesOf(phoneMove, MAX_PHONE_MOVES, phoneMoveLabel), seatBound: true } },
-	thought: { label: "Thoughts", role: "system", startsEnabled: false },
+	phone: { label: "Phone", role: "system", startsEnabled: false, instructions: phoneInstructions, moves: { ...movesOf(phoneMove, MAX_PHONE_MOVES, phoneMoveLabel), seatBound: true } },
+	thought: { label: "Thoughts", role: "system", startsEnabled: false, instructions: thoughtInstructions, alwaysRender: true },
 	mood: {
-		label: "Mood", role: "system", startsEnabled: false,
+		label: "Mood", role: "system", startsEnabled: false, instructions: "Scene mood:",
 		record: moodRecord,
 		decision: {
 			summary: "Reads the mood each passage leaves the scene in.",
@@ -92,6 +97,8 @@ export const boxDescriptors = {
 	},
 } as const satisfies Record<BoxId, BoxDescriptor>;
 export type BoxDescriptors = typeof boxDescriptors;
+/** @approved The descriptor behind a Box's preset block reference. */
+export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptors[boxIds.find((id) => boxReference(id) === reference)!];
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = boxIds.filter((id) => boxDescriptors[id].startsEnabled);
 

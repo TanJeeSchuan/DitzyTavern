@@ -12,6 +12,8 @@ A Box is three registrations and its folder `src/boxes/<id>/`. The shapes below 
   label: "…",                                        // display name everywhere the host shows the Box
   role: "system",                                    // the preset block's role until an author changes it
   startsEnabled: false,                              // whether a new Chat starts with the Box enabled
+  instructions: "…",                                 // the text a new preset block starts with; "" for none
+  alwaysRender: true,                                // optional: render the block even when `advance` returns no items
   setup: setupOf(schema, initial),                   // optional: per-Chat configuration
   record: Type.Object({ … }),                        // optional: one Variant's record, folded into state
   moves: movesOf(schema, max, label),                // optional: actions on a Human-authored Message; add `seatBound: true` to drop them on a seat change
@@ -30,7 +32,7 @@ export const exampleBox = {
     digest: { window: 1, async run(window, ctx) { … } }, // a record from settled prose; required by `decision`
   },
   advance: {
-    async run(input, ctx) { … },                     // the Box's turn in a Generation: { items, allowance?, trace?, record? }
+    async run(input, ctx) { … },                     // the Box's live content for a Generation: { items, allowance?, trace?, record? }
     trace: schema,                                   // checks the returned trace
     fingerprint(input) { … },                        // replaces dependencies in the preview fingerprint
     withoutBlock(input) { … },                       // captures the Box while its preset block is disabled
@@ -68,15 +70,19 @@ The host finds every hook through the registrations, so adding a Box edits no ho
 
 ## Hooks
 
-### `label`, `role`, `startsEnabled`
+### `label`, `role`, `startsEnabled`, `instructions`, `alwaysRender`
 
 | Key | The host uses it for |
 |---|---|
 | `label` | the preset block label, the add-block menu, the Box manager, the window title, the dock tab and the Decision Model setting's name |
 | `role` | the outgoing role of the Box's preset block (`system`, `user` or `assistant`) until an author changes it |
 | `startsEnabled` | `defaultBoxIds`: the Boxes a new Chat starts with |
+| `instructions` | the text a new [preset block](#preset-block) starts with, and what its Reset action restores |
+| `alwaysRender` | renders the block when `advance` returns no items, for a Box whose instructions are its whole contribution |
 
 The id itself is the entry in `boxIds`, not a field.
+
+Put fixed teaching and framing in `instructions` and only live data in `advance`'s items, so an author can rewrite the wording and the Box never repeats it. Instructions are authored preset text: the [Prompt Macro](../../GLOSSARY.md) pass expands them with `{{self}}` as the human-controlled Participant and `{{other}}` as the model-controlled one.
 
 ### `setup` and `setupError`
 
@@ -132,7 +138,7 @@ The Box's turn in a Generation: Send, Continuation, Sibling and Prompt Plan prev
 
 It returns `{ items, allowance?, trace?, record? }`:
 
-- `items` are `{ text, priority, pinned?, literal? }`. [Admission](#generation-lifecycle) places them in the Box's block. A `literal` item skips the Prompt Macro pass; Memory marks recalled claims literal so a stored claim never runs a macro. An empty list leaves the block out.
+- `items` are `{ text, priority, pinned?, literal? }`. [Admission](#generation-lifecycle) places them in the Box's block after its instructions. A `literal` item skips the Prompt Macro pass; Memory marks recalled claims literal so a stored claim never runs a macro. An empty list leaves the whole block out, instructions included, unless the descriptor declares `alwaysRender`. A Box without `advance` returns an empty list.
 - `allowance` caps the unpinned items' tokens.
 - `record` is checked against the descriptor's `record` and written to the new Variant as the slot's `automatic` value when the Variant resolves. Returning a record without a `record` descriptor throws.
 - `trace` is checked against `advance.trace` when declared. Only Memory's trace has a consumer: it becomes the Generation's Memory activation record.
@@ -250,13 +256,13 @@ Turning a Box on, at creation or later, adds its [preset block](#preset-block) w
 
 1. **Capture.** For each enabled Box whose preset block is enabled (or that declares `withoutBlock`), the host reads its setup, its folded state, the Moves, and its `dependencies`. A swipe reuses the seed of the Variant selected at its Message; every other Generation, re-roll included, gets a new one.
 2. **Advance.** Records and traces are held on the Active Generation with the captured instance and copied to the Variant when it resolves.
-3. **Admission and budget.** Items pass through the Prompt Macro pass, except literal ones. Pinned items are admitted first, ignore the allowance, and count toward the context limit. Then each unpinned item, by descending `priority`, is admitted whole if it fits both `allowance` (or the remaining context when none is given) and the context limit. The block renders admitted items in that order. A plan that still overflows the context, pinned items included, raises `PromptBudgetExceededError`. Per-item admission reasons reach inspection only for Memory.
+3. **Admission and budget.** The block's instructions and its items pass through the Prompt Macro pass, except literal items. Pinned items are admitted first, ignore the allowance, and count toward the context limit. Then each unpinned item, by descending `priority`, is admitted whole if it fits both `allowance` (or the remaining context when none is given) and the context limit. `allowance` counts items only; the instructions count toward the context limit. The block renders its instructions, a newline, then the admitted items in that order, separated by blank lines. A plan that still overflows the context, pinned items included, raises `PromptBudgetExceededError`. Per-item admission reasons reach inspection only for Memory.
 4. **Preview fingerprint.** The host fingerprints the whole preparation snapshot, seed included, with each Box's setup, state, Moves and `dependencies` (or its `fingerprint`). Sending from a preview reuses that capture and sends the inspected plan without advancing any Box again; if the fingerprint changed meanwhile, the Send fails with "The Prompt Plan is stale. Refresh it before sending."
 5. **Digest.** Resolution queues the Variant's [digests](#digest-queue-and-catch-up). Generations never wait for digests, and a finished Variant keeps the inputs it was generated with: a digest that lands later changes only what the next Generation folds.
 
 ### Preset block
 
-Each Box has at most one block per preset, reference `box:<id>`, labelled and given its starting role by the descriptor; a partial unique index on `(preset_id, reference)` holds that. The add-block menu lists every Box. The block constraints accept any `box:` reference, so a new Box needs no migration. A Box On in a Chat whose preset lacks its block gets one, placed right after the last history block with the descriptor's role, exactly as the add-block action places it: `installBoxBlocks` in `src/server/prompt-preset/blocks.ts` runs in the same transaction as creating a Chat and as turning a Box on. Presets are shared and a block produces output in every Chat where its Box is On, so another Chat on the same preset with that Box On starts sending it too. A block that exists stays as the author left it: a disabled block stays disabled, and the Box manager row and the Box's window say "<Label> block is off in <preset>" with an Enable action. A Chat that switches to a preset without the block, or whose block an author deletes, gets the same notice with Add block. The preset decides where a Box goes; the Chat decides whether it runs.
+Each Box has at most one block per preset, reference `box:<id>`, labelled and given its starting role by the descriptor; a partial unique index on `(preset_id, reference)` holds that. The block's `content` is its instructions. Every new block, from the add-block action or from turning a Box on, copies the descriptor's `instructions`; from then on the text belongs to the preset, and changing the descriptor never rewrites an existing block. The preset editor shows the instructions as an editable text area, a read-only line marking where the Box's content goes, and **Reset to <Label> default**, which restores the descriptor's text into the draft. A block renders nothing when its Box is not captured, or when `advance` returns no items and the descriptor has no `alwaysRender`, so instructions never reach the prompt without the content they introduce. The add-block menu lists every Box. The block constraints accept any `box:` reference, so a new Box needs no migration. A Box On in a Chat whose preset lacks its block gets one, placed right after the last history block with the descriptor's role, exactly as the add-block action places it: `installBoxBlocks` in `src/server/prompt-preset/blocks.ts` runs in the same transaction as creating a Chat and as turning a Box on. Presets are shared and a block produces output in every Chat where its Box is On, so another Chat on the same preset with that Box On starts sending it too. A block that exists stays as the author left it: a disabled block stays disabled, and the Box manager row and the Box's window say "<Label> block is off in <preset>" with an Enable action. A Chat that switches to a preset without the block, or whose block an author deletes, gets the same notice with Add block. The preset decides where a Box goes; the Chat decides whether it runs.
 
 ### Digest queue and catch-up
 
@@ -304,21 +310,21 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 | Memory | yes | `inject: ["decide", "embed"]`, `dependencies`, `advance` with `trace`, `fingerprint`, `withoutBlock`; `remove` |
 | World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe` |
 | Race | no | `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; window |
-| Phone | no | `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
-| Thoughts | no | `advance`, `read`; window and lens |
-| Mood | no | `record`, `decision`, `records.digest`, `advance`, `status`; `digestWindow` alone |
+| Phone | no | `instructions`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
+| Thoughts | no | `instructions`, `alwaysRender`, `read`; window and lens |
+| Mood | no | `instructions`, `record`, `decision`, `records.digest`, `advance`, `status`; `digestWindow` alone |
 
-**Author Note.** Setup is the note text, Image References included. `advance` returns it as one pinned item, or nothing when blank. Lore scanning, Semantic Trigger judging and Memory extraction never read it. It edits in the workspace's primary panel, not a Box window.
+**Author Note.** Setup is the note text, Image References included. `advance` returns it as one pinned item, or nothing when blank. It has no instructions. Lore scanning, Semantic Trigger judging and Memory extraction never read it. It edits in the workspace's primary panel, not a Box window.
 
-**Memory.** A seam port: `advance` is recall (capture, embedding query, Decision Model relevance), returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint. Memory keeps `memory_collection`, its settings tables and its extraction queue in-tree; `remove` deletes the per-Chat settings row. It keeps its own side panel. The full port onto records and digests is [#68](https://github.com/TanJeeSchuan/DitzyTavern/issues/68).
+**Memory.** It has no instructions. A seam port: `advance` is recall (capture, embedding query, Decision Model relevance), returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint. Memory keeps `memory_collection`, its settings tables and its extraction queue in-tree; `remove` deletes the per-Chat settings row. It keeps its own side panel. The full port onto records and digests is [#68](https://github.com/TanJeeSchuan/DitzyTavern/issues/68).
 
-**World Clock.** Setup is a naive Gregorian start (`YYYY-MM-DDTHH:mm`; `setupError` rejects dates such as February 31), an era suffix (default `AD`), a climate (temperate, tropical, arid, cold), a hemisphere and a unit (default °C). A digest reads the passage with one preceding Message and asks two `choice` questions: the elapsed time (`none`, `~5m`, `~15m`, `~30m`, `~1h`, `~2h`, `~4h`, `~8h`, `overnight`, `~1 day`, `several days`), with the exact minutes drawn inside the bin from `seed`; and the weather established (`not mentioned`, `clear`, `cloudy`, `rain`, `storm`, `snow`, `fog`). The record is `{ minutes, weather }`. The fold adds minutes and keeps the latest weather with the minute it was mentioned; the clock stops showing it 24 in-world hours after that. Temperature follows climate, hemisphere, season, hour and weather. `advance` pins one line, `8:41 AM | 🗓️ Saturday, December 20, 2025 AD | ☀️ Clear, 3°C`, omitting unknown weather; without a Decision Model selection the clock stays where it is. Status is `8:41 AM · ☀️ 3°C`.
+**World Clock.** Setup is a naive Gregorian start (`YYYY-MM-DDTHH:mm`; `setupError` rejects dates such as February 31), an era suffix (default `AD`), a climate (temperate, tropical, arid, cold), a hemisphere and a unit (default °C). A digest reads the passage with one preceding Message and asks two `choice` questions: the elapsed time (`none`, `~5m`, `~15m`, `~30m`, `~1h`, `~2h`, `~4h`, `~8h`, `overnight`, `~1 day`, `several days`), with the exact minutes drawn inside the bin from `seed`; and the weather established (`not mentioned`, `clear`, `cloudy`, `rain`, `storm`, `snow`, `fog`). The record is `{ minutes, weather }`. The fold adds minutes and keeps the latest weather with the minute it was mentioned; the clock stops showing it 24 in-world hours after that. Temperature follows climate, hemisphere, season, hour and weather. It has no instructions: `advance` pins one line, `8:41 AM | 🗓️ Saturday, December 20, 2025 AD | ☀️ Clear, 3°C`, omitting unknown weather; without a Decision Model selection the clock stays where it is. Status is `8:41 AM · ☀️ 3°C`.
 
-**Phone.** Texts live in the prose as `<sms from="…" to="…">…</sms>`. `advance` pins one item teaching the markup, naming the human's contacts (the other Cast members), or nothing when there is nobody to text. Outgoing texts are seat-bound Moves rendered as `<sms>` from the Message's author, so a texting-only turn is a Moves-only Message. The lens lifts a text only when one end is the human-controlled Participant and the other a Cast member, matching names case-insensitively. The read groups texts, the human's sent Moves included, into one thread per contact. Unread counts are client-side view state, never in the prompt; the dock tab shows `2 unread`.
+**Phone.** Texts live in the prose as `<sms from="…" to="…">…</sms>`. The instructions teach the markup, with `{{other}}` texting `{{self}}` as the example. `advance` pins one line naming the human's contacts (the other Cast members), `Night Desk has a phone and can text Theodora Kline.`, or nothing when there is nobody to text, which also drops the instructions. Outgoing texts are seat-bound Moves rendered as `<sms>` from the Message's author, so a texting-only turn is a Moves-only Message. The lens lifts a text only when one end is the human-controlled Participant and the other a Cast member, matching names case-insensitively. The read groups texts, the human's sent Moves included, into one thread per contact. Unread counts are client-side view state, never in the prompt; the dock tab shows `2 unread`.
 
-**Thoughts.** `advance` pins one instruction to write unspoken thoughts as `<thought>…</thought>`. The lens lifts every thought, and the read lists them along the Selected path. In nested markup only the innermost pair matches. The dock tab counts thoughts.
+**Thoughts.** The instructions ask for unspoken thoughts as `<thought>…</thought>`. It has no `advance` and declares `alwaysRender`, so its block is the instructions alone. The lens lifts every thought, and the read lists them along the Selected path. In nested markup only the innermost pair matches. The dock tab counts thoughts.
 
-**Mood.** A digest asks one `choice` question over the passage and one preceding Message: `not clear`, `calm`, `warm`, `playful`, `tense`, `sad` or `eerie`. "Not clear" keeps the previous mood. `advance` pins `Scene mood: tense`, and status shows the emote and word, `😬 tense`. It has no window file: the generic timeline and dock tab are its whole window.
+**Mood.** A digest asks one `choice` question over the passage and one preceding Message: `not clear`, `calm`, `warm`, `playful`, `tense`, `sad` or `eerie`. "Not clear" keeps the previous mood. The instructions are `Scene mood:` and `advance` pins the mood, `tense`, so the block reads `Scene mood:` then `tense` on the next line. Status shows the emote and word, `😬 tense`. It has no window file: the generic timeline and dock tab are its whole window.
 
 ### Worked example: the Race
 
@@ -326,7 +332,7 @@ The Race uses most of the contract. Its files in `src/boxes/race/`: `server.ts` 
 
 ```ts
 race: {
-  label: "Race", role: "system", startsEnabled: false,
+  label: "Race", role: "system", startsEnabled: false, instructions: "",
   setup: setupOf(raceSetup, initialRaceSetup),
   record: raceRecord,
   moves: movesOf(raceMove, MAX_RACE_MOVES, raceMoveLabel),
@@ -363,6 +369,8 @@ dependencies: ({ seed, intent, cast }, setup) => ({
 4. Simulates the Stretch in 20 fixed steps. Stretches shorten to at most 100 m in the final 400 m.
 5. Picks two or three salient events, scored double for Cast Runners, plus foreshadowing and reveals for Hidden intents.
 6. Writes the item: course, Stretch range, standings, events, Move results, intents and "Narrate only this Stretch. Do not go past N m."
+
+The Race has no instructions: every line of its item changes per race or per Stretch, and the closing line differs between a Stretch, a Hold and the finish.
 
 Once the field crosses the line, one Results Stretch gives finishing order, margins and outstanding reveals, with "Narrate the finish." After it the Race returns nothing until a new race.
 

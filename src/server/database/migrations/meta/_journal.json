@@ -162,6 +162,13 @@
       "when": 1791766715598,
       "tag": "0022_crazy_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1791821121126,
+      "tag": "0023_many_goliath",
+      "breakpoints": true
     }
   ]
 }

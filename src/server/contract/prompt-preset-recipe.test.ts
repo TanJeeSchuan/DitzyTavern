@@ -33,7 +33,7 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-const phoneItem = "Writer has a phone and can text Maren. Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.";
+const phoneItem = "Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.\nWriter has a phone and can text Maren.";
 
 // @approved
 //  The owning module guards a move target the transport schema cannot
@@ -98,7 +98,7 @@ describe("Prompt Preset stored contract boundary", () => {
 		if (memory === undefined) throw new Error("The Default recipe is missing its Memory block.");
 		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${memory.id}`);
 		expect(() => database.exec(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'box:memory', 1, 'system')",
+			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role, content) VALUES (1, 99, 'box:memory', 1, 'system', '')",
 		)).toThrow("UNIQUE constraint failed");
 	});
 });

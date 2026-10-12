@@ -48,7 +48,7 @@ describe("Native Prompt Preset interchange", () => {
 				},
 				{ reference: "model-identity", enabled: true, role: "user" },
 				{ reference: "model-identity", enabled: true, role: "assistant" },
-				{ reference: "box:memory", enabled: false, role: "assistant" },
+				{ reference: "box:memory", enabled: false, role: "assistant", content: "" },
 				{ reference: "history", enabled: false },
 			],
 		};
@@ -85,8 +85,8 @@ describe("Native Prompt Preset interchange", () => {
 		const result = await importPreset(routes.library, {
 			name: "Duplicate Memory",
 			slots: [
-				{ reference: "box:memory", enabled: false, role: "system" },
-				{ reference: "box:memory", enabled: true, role: "assistant" },
+				{ reference: "box:memory", enabled: false, role: "system", content: "" },
+				{ reference: "box:memory", enabled: true, role: "assistant", content: "" },
 			],
 		});
 		expect(result.status).toBe(422);

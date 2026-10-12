@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxDescriptorOf, boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
 import {
 	defaultOutgoingRoles,
 	isSingleUseReference,
@@ -71,9 +71,9 @@ const validateBlockPatches = (
 				"The history slot has no outgoing role of its own; its entries keep their Message roles.",
 			);
 		}
-		if (patch.type === "content" && occurrence.reference !== "instruction") {
+		if (patch.type === "content" && !(occurrence.reference === "instruction" ? patch.name !== undefined : isBoxReference(occurrence.reference) && patch.name === undefined)) {
 			throw new InvalidPromptPresetOperationError(
-				"Only an authored instruction block has text to save; referenced blocks stay read-only here.",
+				"An authored instruction saves a name and text, a Box block saves only its instructions, and other referenced blocks stay read-only here.",
 			);
 		}
 	}
@@ -109,8 +109,9 @@ type RecipeDatabase = ReturnType<typeof drizzle>;
 
 // @approved
 //  The one construction site for a stored occurrence row. The preset id, the
-//  placement the op names, the storage split (history stores no role; only an
-//  authored instruction stores a name and text), and the outgoing role a new
+//  placement the op names, the storage split (history stores no role; an
+//  authored instruction stores a name and text; a Box block stores its
+//  instructions, starting from the descriptor's), and the outgoing role a new
 //  slot starts with are decided here, so each op supplies only its own slot
 //  data. The stored id comes back so an op that repositions the new row can
 //  splice it into the order it returns.
@@ -139,7 +140,9 @@ const insertOccurrence = (
 			enabled: occurrence.enabled,
 			role,
 			name: reference === "instruction" ? occurrence.name : null,
-			content: reference === "instruction" ? occurrence.content : null,
+			content: reference === "instruction" ? occurrence.content
+				: isBoxReference(reference) ? occurrence.content ?? boxDescriptorOf(reference).instructions
+				: null,
 		})
 		.returning({ id: promptPresetBlockTable.id })
 		.get()!.id;

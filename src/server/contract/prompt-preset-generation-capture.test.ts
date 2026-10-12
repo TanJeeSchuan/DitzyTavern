@@ -26,7 +26,7 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
-const phoneItem = "Writer has a phone and can text Maren. Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.";
+const phoneItem = "Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.\nWriter has a phone and can text Maren.";
 
 // @approved
 //  Generation capture coverage: an Active Generation keeps the Prompt Plan
