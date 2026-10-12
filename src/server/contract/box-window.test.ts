@@ -120,6 +120,7 @@ test("a passage whose prose was cleared leaves the timeline but keeps its record
 	const read = await readClock(app, chat.id);
 	expect(read.passages).toEqual([]);
 	expect(read.status).toBe("9:00 AM");
+	expect(await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/world-clock/status`))).json()).toEqual({ status: "9:00 AM" });
 });
 
 test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {

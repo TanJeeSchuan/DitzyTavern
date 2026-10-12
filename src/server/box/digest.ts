@@ -1,10 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { drizzle } from "drizzle-orm/bun-sqlite";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors, digestBoxIds, type BoxDescriptors, type BoxId, type BoxSetups, type DigestBoxId } from "../../shared/contract/box";
 import type { BoxCatchUp, DigestRead } from "../../shared/contract/box-digest";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
-import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPathForMemory, readVariantsForMemory, runConversationReadTransaction } from "../conversation";
+import {
+	readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPathForMemory,
+	readSelectedVariantIdsFromConnection, readVariantsForMemory, runConversationReadTransaction,
+} from "../conversation";
 import { decisionRequest, requestDecisions } from "../decision-model";
 import { sha256 } from "../memory/hash";
 import type { ModelFetch } from "../model-client/types";
@@ -272,8 +275,27 @@ export function cancelBoxCatchUp(database: Database, conversationId: number, box
 	}
 }
 
-/** @approved A digesting Box's window and dock read one folded Selected path
- *  state without loading discarded Variants or arbitrary Variant data. */
+// @approved
+//  Status folds every selected record, as Generation capture does.
+const foldDigest = (db: BunSQLiteDatabase, conversationId: number, box: DigestBoxId, setups: BoxSetups, variantIds: readonly number[]) => {
+	const slots = readRecordSlots(db, box, readBoxInstances(db, conversationId)[box], variantIds);
+	const { records, status } = serverBox(box);
+	const setupOf: { readonly [Id in BoxId]?: BoxSetups[keyof BoxSetups] } = setups;
+	const setup = setupOf[box];
+	return { slots, status: status?.(setup, foldRecords(records, setup, slots, variantIds)) ?? null };
+};
+
+/** @approved A minimized digesting Box's dock read: the folded status from the selected Variant ids, loading no prose. */
+export function readDigestStatus(database: Database, conversationId: number, box: DigestBoxId) {
+	return runConversationReadTransaction(database, (db) => {
+		const summary = readConversationSummaryFromConnection(db, conversationId);
+		if (summary === undefined) return undefined;
+		return { status: foldDigest(db, conversationId, box, summary.boxSetups, readSelectedVariantIdsFromConnection(db, conversationId)).status };
+	});
+}
+
+/** @approved A digesting Box's window reads one folded Selected path state
+ *  without loading discarded Variants or arbitrary Variant data. */
 export function readDigest(database: Database, conversationId: number, box: DigestBoxId): DigestRead<BoxDescriptors[DigestBoxId]["record"]> | undefined {
 	return runConversationReadTransaction(database, (db) => {
 		const summary = readConversationSummaryFromConnection(db, conversationId);
@@ -281,15 +303,10 @@ export function readDigest(database: Database, conversationId: number, box: Dige
 		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
 		if (history === undefined) return undefined;
 		const variantIds = history.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
-		const slots = readRecordSlots(db, box, readBoxInstances(db, conversationId)[box], variantIds);
-		const { records, status } = serverBox(box);
-		const setupOf: { readonly [Id in BoxId]?: BoxSetups[keyof BoxSetups] } = summary.boxSetups;
-		const setup = setupOf[box];
+		const { slots, status } = foldDigest(db, conversationId, box, summary.boxSetups, variantIds);
 		// @approved
-		//  Status folds every selected record, as Generation capture does. An
-		//  empty Variant, such as an Active Generation's provisional one, has no
-		//  settled prose to digest, so it is not listed as a passage.
-		const state = foldRecords(records, setup, slots, variantIds);
+		//  An empty Variant, such as an Active Generation's provisional one, has
+		//  no settled prose to digest, so it is not listed as a passage.
 		const passages = history.messages.flatMap(({ id, author, variant }) => {
 			if (variant === null || variant.content.trim() === "") return [];
 			const slot = slots.get(variant.id);
@@ -298,7 +315,7 @@ export function readDigest(database: Database, conversationId: number, box: Dige
 		return {
 			conversationId,
 			revision: summary.revision,
-			status: status?.(setup, state) ?? null,
+			status,
 			digestReady: resolveBoxDecision(database, box).kind === "ready",
 			catchUp: readBoxCatchUp(database, conversationId, box),
 			passages,
