@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { BoxSetups } from "../../shared/contract/box";
-import { captureBoxes, fingerprintBoxes } from "./registry";
+import { captureBoxes, fingerprintBoxes, type BoxRegistration } from "./registry";
+import { moodBox } from "./mood";
+import { worldClockBox } from "./world-clock";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
 	const human = { id: 1, name: "Ann" };
@@ -15,3 +17,12 @@ test("a Phone contact added after inspection makes the plan stale", () => {
 	));
 	expect(capture([human, { id: 2, name: "Bo" }])).not.toBe(capture([human, { id: 2, name: "Bo" }, { id: 3, name: "Cy" }]));
 });
+
+// @approved
+//  A registration is checked against its own id's descriptor: the Mood Box's
+//  record and setup are not the World Clock's.
+export const registrations: readonly BoxRegistration<"world-clock">[] = [
+	worldClockBox,
+	// @ts-expect-error The Mood Box cannot register as the World Clock.
+	moodBox,
+];

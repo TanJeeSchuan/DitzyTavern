@@ -4,37 +4,49 @@ import { Value } from "@sinclair/typebox/value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import {
 	boxDescriptors, boxIds, boxReference,
-	type BoxId, type BoxSetups, type BoxStates, type DigestBoxId, type MoveBoxId, type PromptBoxReference, type RecordBoxId,
+	type BoxId, type BoxSetups, type BoxStates, type DigestBoxId, type MoveBoxId, type PromptBoxReference, type RecordBoxId, type SetupBoxId,
 } from "../../shared/contract/box";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { memoryBox } from "./memory";
 import { authorNoteBox } from "./author-note";
 import type { RecordStates } from "./records";
-import type { BoxMoves } from "../../shared/contract/box-generation";
+import type { BoxMoves, BoxRecord } from "../../shared/contract/box-generation";
 import { worldClockBox } from "./world-clock";
 import { phoneBox } from "./phone";
 import { thoughtBox } from "./thought";
 import { moodBox } from "./mood";
-import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
+import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
 
 // @approved
 //  The server module of every Box. A lookup rather than a table, because Box
 // modules read through the Conversation module, which reads Box setups
-// through here: a table would be built before the Boxes it holds. The
-// descriptor decides which hooks a Box must declare: records for a `record`
-// schema, a digest for a `decision`, and a render for `moves`. A digesting
-// Box's window read is the host's passage timeline, so it declares no `read`;
-// only that read calls `status`, so no other Box declares one.
+// through here: a table would be built before the Boxes it holds. Each entry
+// is checked against its own id's descriptor, and erased to a HostBox only
+// when the host dispatches over ids.
 export const serverBox = <Id extends BoxId>(id: Id): ServerBoxes[Id] => {
-	const boxes: ServerBoxes = { "author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox, mood: moodBox };
-	return boxes[id];
+	const boxes = {
+		"author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox, mood: moodBox,
+	} satisfies { readonly [Id in BoxId]: BoxRegistration<Id> };
+	const erased: ServerBoxes = boxes;
+	return erased[id];
 };
 
-type Records = NonNullable<HostBox["records"]>;
-type ServerBoxes = { readonly [Id in BoxId]: HostBox
-	& (Id extends RecordBoxId ? { readonly records: Records } : { readonly records?: never })
-	& (Id extends DigestBoxId ? { readonly records: { readonly digest: NonNullable<Records["digest"]> }; readonly read?: never } : { readonly status?: never })
-	& (Id extends MoveBoxId ? { readonly moves: NonNullable<HostBox["moves"]> } : { readonly moves?: never }) };
+// @approved
+//  The descriptor decides which hooks a Box must declare: records for a
+// `record` schema, a digest for a `decision`, and a render for `moves`. A
+// digesting Box's window read is the host's passage timeline, so it declares
+// no `read`; only that read calls `status`, so no other Box declares one.
+type Hooks<Id extends BoxId, B extends { readonly records?: { readonly digest?: unknown }; readonly moves?: unknown }> = B
+	& (Id extends RecordBoxId ? { readonly records: NonNullable<B["records"]> } : { readonly records?: never })
+	& (Id extends DigestBoxId ? { readonly records: { readonly digest: NonNullable<NonNullable<B["records"]>["digest"]> }; readonly read?: never } : { readonly status?: never })
+	& (Id extends MoveBoxId ? { readonly moves: NonNullable<B["moves"]> } : { readonly moves?: never });
+
+type SetupOf<Id extends BoxId> = Id extends SetupBoxId ? BoxSetups[Id] : undefined;
+type RecordOf<Id extends BoxId> = Id extends RecordBoxId ? BoxRecord<Id> : never;
+type MoveOf<Id extends BoxId> = Id extends MoveBoxId ? NonNullable<BoxMoves[Id]>[number] : never;
+/** @approved A Box registered as `Id`: its setup, record and Move types are the ones that id's descriptor declares. */
+export type BoxRegistration<Id extends BoxId> = Hooks<Id, Box<SetupOf<Id>, unknown, GenerationJsonValue, keyof BoxServices, RecordOf<Id>, unknown, MoveOf<Id>>>;
+type ServerBoxes = { readonly [Id in BoxId]: Hooks<Id, HostBox> };
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
 export type BoxItems = Partial<Record<PromptBoxReference, readonly (BlockItem & { readonly index: number })[]>>;
