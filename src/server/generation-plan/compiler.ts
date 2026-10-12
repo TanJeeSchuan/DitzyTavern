@@ -190,6 +190,7 @@ export const compileGenerationPlan = (
 		loreAllowance,
 		protectedContext,
 		compile: compileWith,
+		expansions: attempt.state.expansionCache,
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,

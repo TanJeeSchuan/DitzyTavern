@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { boxReference } from "../../../shared/contract/box";
-import type { ConversationAction } from "../../../shared/contract/conversation-schema";
+import { boxReference, type BoxId } from "../../../shared/contract/box";
+import type { BoxDataWrite } from "../../../shared/contract/conversation-schema";
 import {
 	characterDataTable,
 	characterTable,
@@ -11,11 +11,6 @@ import { InvalidConversationCommandError } from "../errors";
 import { isBoxEnabled } from "../../box/setup";
 import { requireParticipant, type ConversationDatabase } from "../internal";
 
-export type PutBoxDataInput = { conversationId: number } & Extract<
-	ConversationAction,
-	{ type: "put-box-data" }
->;
-
 const guardShared = (row: { revision: number } | undefined, expected: number) => {
 	if ((row?.revision ?? 0) !== expected) throw new InvalidConversationCommandError("Another Chat changed this value since it was read. Review it and try again.");
 };
@@ -25,8 +20,9 @@ const guardShared = (row: { revision: number } | undefined, expected: number) =>
 //  the namespace, and only an enabled Box has a window, so a write for any
 //  other Box is rejected. The owner must be a live Character, a Participant
 //  of this Conversation, or the Library; a missing owner is a typed invalid
-//  command, never a silent orphan row.
-export function putBoxData(db: ConversationDatabase, input: PutBoxDataInput) {
+//  command, never a silent orphan row. A setup save runs the same handler for
+//  each write it carries.
+export function putBoxData(db: ConversationDatabase, input: { conversationId: number; box: BoxId } & BoxDataWrite) {
 	if (!isBoxEnabled(db, input.conversationId, input.box)) throw new InvalidConversationCommandError(`The ${input.box} Box is not enabled in this Chat, so it takes no data.`);
 	const namespace = boxReference(input.box);
 	switch (input.owner.type) {

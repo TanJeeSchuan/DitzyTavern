@@ -127,7 +127,8 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 
 - The namespace is `box:<id>`. A Box cannot read another Box's namespace.
 - Variant data per Box holds the record slot under key `record:<instance>`, stamped with the Box instance that wrote it: `{ automatic?, writer?, source? }`, where `source` hashes the digested text. The Race's slots hold only `automatic` in practice: it has no override editor, though the generic record commands accept its overrides. Each Variant also stores one Generation seed shared by all Boxes, under namespace `box`, key `seed`; a Box derives its own stream by hashing the seed with its id. A Variant without a seed, such as an imported one, uses `variant:<id>` as its seed.
-- Window writes to Library, Character and Participant data go through the `put-box-data` command, which takes the Box id rather than a namespace. A window builds it with its own Box id, and the host rejects it for a Box not enabled in the Chat. Values are strings the Box decodes on read.
+- Window writes to Library, Character and Participant data go through the `put-box-data` command, which takes the Box id rather than a namespace. A window builds it with its own Box id, and the host rejects it for a Box not enabled in the Chat. Values are strings the Box decodes on read. The host keeps no Library value of its own under `box:<id>`.
+- `set-box-setup` requires the Box to be present in the Chat, enabled or disabled. It may carry `writes` in the `put-box-data` shape; they pass the same checks and land in the setup's transaction, so a refused write commits neither the setup nor the other writes.
 - Boxes cannot add tables. Configuration edits apply atomically under ADR-0023.
 
 ### History semantics
@@ -194,7 +195,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 ### World Clock Box
 
 - **Setup** (`conversation_data`): start date and time (impossible dates such as February 31 are rejected), era suffix (default `AD`), climate preset (temperate, tropical, arid, cold), hemisphere, and unit (default °C).
-- **Decision Model selection** (`library_data`, key `decision`): profile, model and state token limit, global. Without one, no digest runs, and a Chat with the clock enabled contributes its last known time.
+- **Decision Model selection** (`library_data`, host namespace `box-decision`, key `world-clock`): profile, model and state token limit, global. Without one, no digest runs, and a Chat with the clock enabled contributes its last known time.
 - **Digest**: one System One request per selected Variant, reading the passage and one preceding Message, with two `choice` questions:
   - elapsed time: `none, ~5m, ~15m, ~30m, ~1h, ~2h, ~4h, ~8h, overnight, ~1 day, several days`; the exact minutes are drawn within the bin from the Variant's seed;
   - weather established: `not mentioned, clear, cloudy, rain, storm, snow, fog`.

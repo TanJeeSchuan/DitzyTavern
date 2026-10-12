@@ -81,7 +81,7 @@ export interface SaveGenerationSettingsDraftOptions {
 // draft is preserved for comparison or retry.
 export async function saveGenerationSettingsDraft(
 	options: SaveGenerationSettingsDraftOptions,
-): Promise<ConversationSummary | undefined> {
+): Promise<boolean> {
 	// The base is read in the save's own queue turn, so a model selection queued ahead of it is never restored.
 	let next: ConversationGenerationSettings | undefined;
 	return runConversationCommand(options.surface, async (expectedRevision) => {

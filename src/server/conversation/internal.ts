@@ -24,7 +24,8 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { isBoxReference } from "../../shared/contract/box";
+import { isBoxReference, type BoxId } from "../../shared/contract/box";
+import { readBoxInstances } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
 import {
 	ConversationNotFoundError,
@@ -441,6 +442,13 @@ export const requireMessage = (
 	}
 
 	return message;
+};
+
+/** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
+export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
+	const instance = readBoxInstances(db, conversationId)[box];
+	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
+	return instance;
 };
 
 export const requireVariant = (

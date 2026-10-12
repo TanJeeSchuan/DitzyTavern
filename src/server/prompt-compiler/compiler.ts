@@ -167,6 +167,9 @@ const expandInto = (request: {
 	warnings.push(...expanded.warnings);
 };
 
+/** @approved Where a Box item's one expansion is kept in the attempt, so admission reads it instead of recompiling. */
+export const boxItemExpansionKey = (slotIndex: number, itemIndex: number) => `slot:${slotIndex}:item:${itemIndex}`;
+
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
 		if (input.recipe.filter((slot) => slot.reference === reference).length > 1) throw new Error(`A Prompt Preset may contain at most one ${label} block.`);
@@ -226,7 +229,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 				blockLabel: singleUseReferenceLabels[slot.reference],
 				macroEnvironment,
 				macroAttemptState,
-				cacheKey: `slot:${slotIndex}:item:${item.index}`,
+				cacheKey: boxItemExpansionKey(slotIndex, item.index),
 			});
 			const content = expanded.map((block) => block.content).join("\n\n");
 			if (content.trim() !== "") blocks.push({ kind: slot.reference, role: planRoleFor[slot.role], content });

@@ -74,23 +74,15 @@ export function queueConversationCommand(conversationId: number, command: (revis
 
 /** @approved
  * Runs one Conversation command against `surface` through the Conversation's command queue: an action goes
- * through the Conversation command route, a function is the surface's own send seam. Resolves the applied
- * Conversation, so a surface that chains commands can start the next from its revision; undefined when nothing
- * applied, and for a surface operation, which reports through `onOperation`.
+ * through the Conversation command route, a function is the surface's own send seam. Resolves whether it applied.
  */
 export async function runConversationCommand<TOperation = never>(
 	surface: ConversationCommandSurface,
 	command: ConversationAction | ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation> = {},
-): Promise<ConversationSummary | undefined> {
-	let applied: ConversationSummary | undefined;
-	const run = async (previous: number | null): Promise<Settled> => {
-		const settled = await executeConversationCommand(surface, command, options, previous);
-		if (settled) applied = settled;
-		return settled && settled.revision;
-	};
-	await (surface.conversationId === null ? run(null) : queueConversationCommand(surface.conversationId, run));
-	return applied;
+): Promise<boolean> {
+	const run = (previous: number | null) => executeConversationCommand(surface, command, options, previous);
+	return await (surface.conversationId === null ? run(null) : queueConversationCommand(surface.conversationId, run)) !== false;
 }
 
 async function executeConversationCommand<TOperation>(
@@ -98,7 +90,7 @@ async function executeConversationCommand<TOperation>(
 	command: ConversationAction | ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation>,
 	previous: number | null,
-): Promise<ConversationSummary | null | false> {
+): Promise<Settled> {
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};
@@ -131,7 +123,7 @@ async function executeConversationCommand<TOperation>(
 				surface.onConversationChange(outcome.value.conversation);
 				options.onApplied?.(outcome.value.conversation);
 			});
-			return outcome.value.conversation;
+			return outcome.value.conversation.revision;
 		case "conflict":
 			effect(() => {
 				surface.onConversationChange(outcome.currentConversation);

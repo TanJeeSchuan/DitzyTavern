@@ -19,6 +19,7 @@ import { Portrait } from "../story/Portrait";
 import { RaceOval } from "./RaceOval";
 import { RaceReplay } from "./RaceReplay";
 import type { BoxDataAction } from "./registry";
+import type { BoxDataWrite } from "../../shared/contract/conversation-schema";
 
 // @approved
 //  The revision is part of the key so completions refetch, but the previous
@@ -33,15 +34,6 @@ const useRace = (conversation: ConversationSummary) => useQuery({
 const statKeys = ["speed", "stamina", "power", "guts", "wit"] as const;
 type StatKey = typeof statKeys[number];
 const statLabels = { speed: "Speed", stamina: "Stamina", power: "Power", guts: "Guts", wit: "Wit" } satisfies Record<StatKey, string>;
-
-// @approved
-//  The wording this window shows when a stat or avatar write cannot land; the
-//  runner owns when each notice is shown.
-const BOX_DATA_NOTICES = {
-	conflict: "The Chat changed. Review the stats and add again.",
-	notFound: CONVERSATION_UNREACHABLE_NOTICE,
-	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
-};
 
 export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = useRace(conversation);
@@ -90,14 +82,14 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const update = (patch: Partial<RaceSetup>) => setDraft((value) => ({ ...value, ...patch }));
 	const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAutoValid(setup);
 	const valid = isValid(draft);
-	const save = async (setup = draft, expectedRevision = revision): Promise<boolean> => {
+	const save = async (setup = draft, writes?: BoxDataWrite[]): Promise<boolean> => {
 		if (locked || !isValid(setup)) return false;
 		setPending(true);
 		setNotice(null);
 		let applied = false;
 		try {
-			await runConversationCommand({ conversationId: conversation.id, revision: () => expectedRevision, onConversationChange, setNotice }, {
-				type: "set-box-setup", box: "race", setup,
+			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, {
+				type: "set-box-setup", box: "race", setup, writes,
 			}, {
 				notices: { conflict: "The Chat changed. Review your setup and save again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 				onApplied: (next) => { setDraft(next.boxSetups.race); setSaved(next.boxSetups.race); setRevision(next.revision); applied = true; },
@@ -138,34 +130,20 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const addToField = async (): Promise<boolean> => {
 		if (sheet === null || locked || !sheetValid) return false;
 		const runner: RaceRunner = { name: sheet.name, participantId: sheet.participantId, ...sheet.stats };
-		setPending(true);
-		setNotice(null);
+		const value = JSON.stringify(sheet.stats);
 		// @approved
-		//  The Participant's own stats are written first, then the Character's when
-		//  asked for, then the gate: each write starts from the revision the
-		//  previous one returned. A failed write keeps the sheet open with its
-		//  edits.
-		try {
-			const surface = { conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice };
-			const written = await runConversationCommand(surface, boxData({ type: "participant", participantId: sheet.participantId }, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
-			if (written === undefined) return false;
-			let latest = written;
-			if (sheet.saveToCharacter && sheet.sourceCharacterId !== null) {
-				const owner = { type: "character" as const, characterId: sheet.sourceCharacterId, revision: data?.characterStatsRevisions[sheet.sourceCharacterId] ?? 0 };
-				const characterWritten = await runConversationCommand({ ...surface, revision: () => written.revision }, boxData(owner, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
-				if (characterWritten === undefined) return false;
-				latest = characterWritten;
-			}
-			const applied = await save({ ...draft, slots: addRaceRunner(draft.slots, runner) }, latest.revision);
-			if (applied) setSheet(null);
-			return applied;
-		} finally { setPending(false); }
+		//  The gate lands with the Participant's own stats, and the Character's
+		//  when asked for, in one setup save: a refused write keeps the sheet
+		//  open with its edits and commits none of them.
+		const writes: BoxDataWrite[] = [{ owner: { type: "participant", participantId: sheet.participantId }, key: "stats", value }];
+		if (sheet.saveToCharacter && sheet.sourceCharacterId !== null) writes.push({ owner: { type: "character", characterId: sheet.sourceCharacterId, revision: data?.characterStatsRevisions[sheet.sourceCharacterId] ?? 0 }, key: "stats", value });
+		const applied = await save({ ...draft, slots: addRaceRunner(draft.slots, runner) }, writes);
+		if (applied) setSheet(null);
+		return applied;
 	};
 	// @approved
 	//  An open stat sheet is this window's unsaved work: the shared guard saves
-	//  it by adding the Runner, and discards it with the setup draft. Keeping
-	//  it dirty after a partial write also makes the guard retry the missing
-	//  gate instead of navigating away.
+	//  it by adding the Runner, and discards it with the setup draft.
 	const sheetDirty = sheet !== null;
 	useSaveGuard({ dirty: dirty || sheetDirty, saving: pending, save: () => sheetDirty ? addToField() : save(), discard: () => { setSheet(null); discard(); } });
 	const setAvatar = async (name: string, file: File) => {
@@ -182,7 +160,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 			// @approved
 			//  A refused write leaves the Chat revision unchanged, so the avatar
 			//  revision it was refused for is read again here.
-			if (written === undefined) void read.refetch();
+			if (!written) void read.refetch();
 		} catch (cause) {
 			setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
 		} finally { setPending(false); }

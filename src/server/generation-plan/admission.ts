@@ -2,7 +2,7 @@ import { isBoxReference, type PromptBoxReference } from "../../shared/contract/b
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BlockItem, BoxAdmission } from "../box/contract";
 import type { BoxItems, BoxResults } from "../box/registry";
-import { toEstimationTranscript, tokenxEstimator, type PromptContextEntry, type PromptLoreEntry, type PromptPlan } from "../prompt-compiler";
+import { boxItemExpansionKey, measurePromptPlan, toEstimationTranscript, tokenxEstimator, type MacroAttemptState, type PromptContextEntry, type PromptLoreEntry, type PromptPlan } from "../prompt-compiler";
 
 export const estimateDynamicBlockTokens = (
 	kind: "lore" | PromptBoxReference,
@@ -21,6 +21,7 @@ export const admitDynamicBlocks = (input: {
 	boxes: BoxResults;
 	loreAllowance: number;
 	compile: (context: readonly PromptContextEntry[], lore: readonly PromptLoreEntry[], boxes: BoxItems) => PromptPlan;
+	expansions: MacroAttemptState["expansionCache"];
 	protectedContext: readonly PromptContextEntry[];
 	contextLimit: number;
 	responseBudget: number;
@@ -35,11 +36,14 @@ export const admitDynamicBlocks = (input: {
 	const boxes: BoxItems = Object.fromEntries(Object.entries(items).map(([reference, entries]) => [reference, entries.filter((item) => item.pinned)]));
 	const decisions: Partial<Record<PromptBoxReference, Map<string, BoxAdmission>>> = {};
 	const trial = (trialLore: readonly PromptLoreEntry[], trialBoxes: BoxItems) => input.compile(input.protectedContext, trialLore, trialBoxes);
-	const fits = (plan: PromptPlan) => Math.ceil(input.estimator(toEstimationTranscript(plan))) + input.responseBudget + input.safetyAllowance <= input.contextLimit;
+	const fits = (plan: PromptPlan) => measurePromptPlan({ plan, contextLimit: input.contextLimit, responseBudget: input.responseBudget, safetyAllowance: input.safetyAllowance, estimator: input.estimator }).fits;
 	// @approved
-	// Expand once in recipe order before admission; budget trials must not reorder or repeat macro writes.
+	// The one preparation pass: every item expands once, in recipe order, and
+	// admission reads each expansion back, so budget trials never reorder or
+	// repeat macro writes. Each trial then measures the whole candidate,
+	// Images included, because placement depends on what else is admitted.
 	trial(input.lore, items);
-	for (const slot of input.recipe) {
+	for (const [slotIndex, slot] of input.recipe.entries()) {
 		if (!slot.enabled || slot.reference === "history" || (slot.reference !== "lore" && !isBoxReference(slot.reference))) continue;
 		const role = slot.role === "system" ? "system" : slot.role === "user" ? "human" : "model";
 		const kind = slot.reference;
@@ -60,16 +64,23 @@ export const admitDynamicBlocks = (input: {
 		if (result === undefined) continue;
 		const allowance = result.allowance ?? Infinity;
 		if (result.allowance !== undefined && (!Number.isInteger(allowance) || allowance < 0)) throw new Error("Box allowance must be a non-negative whole number.");
-		const selected: NonNullable<BoxItems[PromptBoxReference]>[number][] = [];
+		type Item = NonNullable<BoxItems[PromptBoxReference]>[number];
+		const expanded = (item: Item) => item.literal === true ? item.text : input.expansions.get(boxItemExpansionKey(slotIndex, item.index))?.text ?? "";
+		// @approved
+		// The block text the compiler would render: an empty expansion drops out, a literal item never does.
+		const block = (entries: readonly Item[]) => {
+			const content = entries.filter((item) => item.literal === true || expanded(item) !== "").map(expanded).join("\n\n");
+			return content.trim() === "" ? "" : content;
+		};
+		const selected: Item[] = [];
 		const pinned = boxes[reference] ?? [];
 		const blockDecisions = new Map<string, BoxAdmission>();
 		decisions[reference] = blockDecisions;
-		const expanded = (items: NonNullable<BoxItems[PromptBoxReference]>) => trial(lore, { ...boxes, [reference]: items }).blocks.find((block) => block.kind === reference)?.content ?? "";
 		for (const item of (items[reference] ?? []).filter((item) => !item.pinned)) {
 			const next = [...selected, item];
 			const nextBoxes = { ...boxes, [reference]: [...pinned, ...next] };
-			const reason = cost(expanded([item])) > allowance ? "oversized"
-				: cost(expanded(next)) > allowance ? "allowance"
+			const reason = cost(block([item])) > allowance ? "oversized"
+				: cost(block(next)) > allowance ? "allowance"
 					: fits(trial(lore, nextBoxes)) ? "admitted" : "context-limit";
 			blockDecisions.set(item.text, reason);
 			if (reason === "admitted") { selected.push(item); boxes[reference] = nextBoxes[reference]; }

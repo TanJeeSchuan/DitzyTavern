@@ -4,6 +4,7 @@
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
 export {
+	boxItemExpansionKey,
 	compileOpening,
 	compilePrompt,
 	referencedDefinitionBlocks,

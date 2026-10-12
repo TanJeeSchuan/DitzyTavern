@@ -1,19 +1,11 @@
 import type { RecordBoxId } from "../../../shared/contract/box";
 import type { BoxRecord } from "../../../shared/contract/box-generation";
 import { resetWriterRecord, writeWriterRecord } from "../../box/records";
-import { readBoxInstances } from "../../box/setup";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
-import { requireVariant } from "../internal";
+import { requireBoxInstance, requireVariant } from "../internal";
 import { eq } from "drizzle-orm";
 import { activeGenerationTable } from "../../database/schema";
-
-/** @approved A Writer override belongs to the Box instance present now; an absent Box takes none. */
-const requireInstance = (db: ConversationDatabase, conversationId: number, box: RecordBoxId): string => {
-	const instance = readBoxInstances(db, conversationId)[box];
-	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
-	return instance;
-};
 
 // @approved
 //  A Writer override is a complete record for one Variant. The command route
@@ -27,11 +19,11 @@ export function setBoxRecord(db: ConversationDatabase, input: { conversationId: 
 	//  override would collide with the record its Generation writes then.
 	const active = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, input.variantId)).get();
 	if (active !== undefined) throw new InvalidConversationCommandError("This Variant is still generating. Override its record once it settles.");
-	writeWriterRecord(db, input.box, requireInstance(db, input.conversationId, input.box), input.variantId, input.record);
+	writeWriterRecord(db, input.box, requireBoxInstance(db, input.conversationId, input.box), input.variantId, input.record);
 }
 
 /** @approved Reset drops the override and leaves the automatic record, if any, in place. */
 export function resetBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: RecordBoxId; messageId: number; variantId: number }): void {
 	requireVariant(db, input.conversationId, input.messageId, input.variantId);
-	resetWriterRecord(db, input.box, requireInstance(db, input.conversationId, input.box), input.variantId);
+	resetWriterRecord(db, input.box, requireBoxInstance(db, input.conversationId, input.box), input.variantId);
 }

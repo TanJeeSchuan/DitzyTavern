@@ -76,7 +76,7 @@ const run = (
 	send: ConversationCommandSend,
 	options: ConversationCommandRunOptions = {},
 	surfaceOverrides: Partial<ConversationCommandSurface> = {},
-): ReturnType<typeof runConversationCommand> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
+): Promise<boolean> => runConversationCommand(surface(events, surfaceOverrides), send, { notices, ...options });
 
 describe("runConversationCommand", () => {
 	test("an unavailable revision refuses to send and shows the revision notice", async () => {
@@ -236,7 +236,7 @@ describe("runConversationCommand", () => {
 		});
 		const later = run(events, applied(events));
 		first.resolve({ outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } });
-		expect((await Promise.all([earlier, later])).map((applied) => applied?.revision)).toEqual([8, 7]);
+		expect(await Promise.all([earlier, later])).toEqual([true, true]);
 		expect(events).toEqual(["send:7", "adopt:8", "send:8", "adopt:7"]);
 	});
 
@@ -249,8 +249,8 @@ describe("runConversationCommand", () => {
 		});
 		const dropped = run(events, applied(events));
 		first.resolve({ outcome: "network" });
-		expect(await Promise.all([earlier, dropped])).toEqual([undefined, undefined]);
+		expect(await Promise.all([earlier, dropped])).toEqual([false, false]);
 		expect(events).toEqual(["send:7", "notice:unreachable notice"]);
-		expect((await run(events, applied(events)))?.revision).toBe(7);
+		expect(await run(events, applied(events))).toBe(true);
 	});
 });

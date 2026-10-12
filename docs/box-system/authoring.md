@@ -143,7 +143,9 @@ Host wiring: none.
 
 The Box's per-Chat configuration. Declare it with `setupOf(schema, initial)` in the descriptor. The host stores it in `conversation_data` under `box:<id>`, key `setup`. A Chat with no stored setup reads `initial`. A stored value that fails the schema is an error that tells the writer to clear the namespace. There is no migration path, by design.
 
-The Chat summary carries every setup as `conversation.boxSetups[<id>]`. A Panel saves a new one with the `set-box-setup` command, `{ type: "set-box-setup", box: "<id>", setup }`, run through `runConversationCommand`. The command accepts any Box with a `setup` descriptor and checks the value against its schema.
+The Chat summary carries every setup as `conversation.boxSetups[<id>]`. A Panel saves a new one with the `set-box-setup` command, `{ type: "set-box-setup", box: "<id>", setup, writes? }`, run through `runConversationCommand`. The command accepts any Box with a `setup` descriptor that is present in the Chat, enabled or disabled, and checks the value against its schema. An absent Box takes no setup, so nothing saved before an insert survives into it.
+
+`writes` are the Box's own data writes, each `{ owner, key, value }` as in [`put-box-data`](#storage), that must land with the setup or not at all. They run through the `put-box-data` checks, owner revisions included, in the setup's transaction, so one refused write commits neither the setup nor any other write. The Race's "Add to field" saves the new gate with the Participant's stats, and the Character's when asked for, this way.
 
 `setupError(setup, previous)` rejects a setup the schema accepts but the Box does not. Return a message and the command fails with it, and the window shows it. The World Clock rejects impossible dates such as February 31. The Race rejects course or field changes once a race is running.
 
@@ -186,7 +188,7 @@ Host wiring: none.
 Background reading of prose the story has settled. Declare `decision` in the descriptor alongside `record`, and `records.digest` on the server Box. That one declaration gives the Box:
 
 - the host digest queue and catch-up,
-- a global Decision Model selection, stored in `library_data` under `box:<id>`, key `decision`, and shown in Connection Settings with the descriptor's `decision` copy,
+- a global Decision Model selection, stored in `library_data` under the host's `box-decision` namespace, keyed by the Box id, and shown in Connection Settings with the descriptor's `decision` copy,
 - its window read, the [passage timeline](#passage-timeline) with Writer overrides, and a dock tab showing `status`.
 
 The host queues a digest for a selected Variant when it resolves, when it becomes selected without a record for its current text, or when its text is edited. It skips Variants that are empty or still generating. Two workers drain the queue, live jobs before catch-up jobs. A newer job for the same Variant aborts the older one. Jobs live in memory, so a restart loses them; the passage is queued again when it is next selected, resolved or edited, or by catch-up. Generations never wait for digests. Without a Decision Model selection no digest runs.
@@ -321,7 +323,7 @@ A Panel that changes something the status depends on, such as setup, refreshes t
 | Message | `messages_data` | Host, as `moves` |
 | Variant | `message_variant_data` | Host, as `record:<instance>` from `advance`, digests and Writer overrides |
 
-The namespace is always `box:<id>`. A Panel writes Library, Character and Participant data with its `boxData` prop, which fixes the Box id, so no window can name another Box's namespace. The host rejects `put-box-data` for a Box that is not enabled in the Chat, and for an owner that does not exist. Values are strings. The Box decodes its own and treats a value that fails its schema as an error, never as a row to skip. Character data and Participant data are independent after the copy, so a later Character edit never reaches an existing Participant.
+The namespace is always `box:<id>`. The host keeps no Library value of its own there: the Decision Model selection lives in the host's `box-decision` namespace. A Panel writes Library, Character and Participant data with its `boxData` prop, which fixes the Box id, so no window can name another Box's namespace. The host rejects `put-box-data` for a Box that is not enabled in the Chat, and for an owner that does not exist. Values are strings. The Box decodes its own and treats a value that fails its schema as an error, never as a row to skip. Character data and Participant data are independent after the copy, so a later Character edit never reaches an existing Participant.
 
 Each Variant also holds one Generation seed, shared by every Box, under namespace `box`, key `seed`. `boxSeed(seed, id)` gives each Box its own stream. A Variant with no seed, such as an imported one, uses `variant:<id>`.
 
@@ -432,7 +434,7 @@ The window offers each Move with its projected cost and odds, from `checkRaceMov
 - Character: `stats`, saved back from a stat sheet.
 - Participant: `stats`, copied from the Character when it seeds the Participant and edited by the writer afterwards. `readRaceCastStats` decodes them and fails loudly on a bad row.
 
-All three go through `boxData`.
+Avatars go through `boxData`. A stat sheet's `stats` ride as `writes` on the `set-box-setup` that adds the gate, so the gate and its stats land together.
 
 ### Window
 

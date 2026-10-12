@@ -166,6 +166,15 @@ describe("Prompt Plan Images", () => {
 		expect(every.budget.tokenEstimate).toBe(COST_A);
 	});
 
+	test("Box admission charges an item's sent Images against the context limit", () => {
+		const plan = compile([entry("go", "human")], { contextLimit: 1_000 }, {
+			recipe: [{ reference: "box:author-note", enabled: true, role: "system" }, { reference: "history", enabled: true }],
+			boxes: { "box:author-note": { items: [{ text: `wearing ${ref("dress", A)}`, priority: 0 }, { text: "rain", priority: 0 }] } },
+		});
+		expect(plan.budget.fits).toBe(true);
+		expect(plan.promptPlan.blocks[0]).toEqual({ kind: "box:author-note", role: "system", content: "rain" });
+	});
+
 	test("the Estimation transcript reads References only as Image Anchors", () => {
 		const transcripts: string[] = [];
 		compile([entry(`see ${ref("the map", A)} and ${ref("ghost", GONE)}`, "model"), entry("go", "human")], {}, {

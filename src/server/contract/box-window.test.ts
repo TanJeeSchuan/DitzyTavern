@@ -51,6 +51,7 @@ const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 test("an impossible calendar date is rejected instead of rolling into the next month", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
+	insertBox(database, chat.id, "world-clock");
 	const response = await saveSetup(app, chat.id, chat.revision, { ...initial, start: "2025-02-31T08:00" });
 	expect(response.status).toBe(422);
 	expect(await response.json()).toEqual({ outcome: "invalid", reason: "Enter a real calendar date and time, such as 2025-06-01T08:00." });
@@ -181,4 +182,29 @@ test("an override outside the Box record schema is refused", async () => {
 	}));
 	expect(response.status).toBe(422);
 	expect(readRecordSlots(drizzle(database), "world-clock", clock, [variantId]).size).toBe(0);
+});
+
+test("setup is refused while the Box is absent and kept while it is disabled", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const absent = await saveSetup(app, chat.id, chat.revision, { ...initial, era: "BE" });
+	expect(absent.status).toBe(422);
+	expect(await absent.json()).toEqual({ outcome: "invalid", reason: "The world-clock Box is not in this Chat." });
+	const setup = async () => (await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}`))).json()).boxSetups["world-clock"];
+	insertBox(database, chat.id, "world-clock");
+	expect(await setup()).toEqual(initial);
+	expect((await command(app, chat.id, chat.revision, { type: "set-box-state", box: "world-clock", state: "disabled" })).status).toBe(200);
+	expect((await saveSetup(app, chat.id, chat.revision + 1, { ...initial, era: "BE" })).status).toBe(200);
+	expect(await setup()).toEqual({ ...initial, era: "BE" });
+});
+
+test("Box data cannot reach the host's Decision Model settings for that Box", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	insertBox(database, chat.id, "world-clock");
+	const written = await command(app, chat.id, chat.revision, { type: "put-box-data", box: "world-clock", owner: { type: "library", revision: 0 }, key: "decision", value: "{}" });
+	expect(written.status).toBe(200);
+	const settings = await app.handle(new Request("http://localhost/api/boxes/world-clock/decision-settings"));
+	expect(settings.status).toBe(200);
+	expect(await settings.json()).toMatchObject({ decisionModel: "", revision: 0 });
 });
