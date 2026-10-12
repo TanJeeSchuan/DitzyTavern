@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect, story, insertBox } from "./fixtures";
+import type { ConversationAction } from "../src/shared/contract/conversation-schema";
 
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
@@ -77,4 +78,49 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	await expect(copied).toHaveCount(0);
 	const firstRead = await (await request.get(`/api/conversations/${chatId}/boxes/race`)).json();
 	expect(firstRead.castStats.find((entry: { participantId: number }) => entry.participantId === runner.id).stats.speed).toBe(777);
+});
+
+test.describe("a Character stats save from a stale read", () => {
+	// The refused save answers 422, which logs one browser console error.
+	test.use({ allowedBrowserErrors: /status of 422/ });
+
+	// @approved Another Chat saving the Character's stats refuses this sheet's
+	// save once, and the retry goes through without losing its edits.
+	test("Add is refused once, then the retry saves to the Character", async ({ page, request }) => {
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		const conversation = await (await request.get(`/api/conversations/${activeChatId}`)).json();
+		const runner = conversation.cast.find((participant: { id: number; sourceCharacterId: number | null }) =>
+			participant.sourceCharacterId !== null && participant.id !== conversation.control.humanParticipantId);
+
+		await page.goto("/");
+		await insertBox(page, "Race");
+		await page.getByRole("button", { name: "Race", exact: true }).click();
+		const window = page.getByRole("dialog", { name: "Race", exact: true });
+		await window.getByRole("button", { name: runner.name, exact: true }).click();
+		const sheet = window.getByRole("region", { name: `Stats for ${runner.name}` });
+		await sheet.getByRole("spinbutton", { name: "Speed" }).fill("777");
+		await sheet.getByRole("switch", { name: `Save to ${runner.name}` }).click();
+
+		const characters = await (await request.get("/api/characters")).json();
+		const character = characters.characters.find((entry: { id: number }) => entry.id === runner.sourceCharacterId);
+		const created = await (await request.post("/api/conversations/native", { data: {
+			name: "Second stable",
+			humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+			modelSeat: { type: "character", characterId: character.id, expectedRevision: character.revision },
+		} })).json();
+		const elsewhere = created.conversation;
+		const command = async (expectedRevision: number, action: ConversationAction) =>
+			(await (await request.post(`/api/conversations/${elsewhere.id}/commands`, { data: { expectedRevision, action } })).json()).conversation.revision;
+		const enabled = await command(elsewhere.revision, { type: "set-box-state", box: "race", state: "enabled" });
+		await command(enabled, { type: "put-box-data", box: "race", owner: { type: "character", characterId: character.id, revision: 0 }, key: "stats", value: "{\"speed\":111}" });
+
+		await sheet.getByRole("button", { name: "Add to field" }).click();
+		await expect(window.getByRole("alert")).toBeVisible();
+		await expect(sheet.getByRole("spinbutton", { name: "Speed" })).toHaveValue("777");
+		await sheet.getByRole("button", { name: "Add to field" }).click();
+		await expect(sheet).toHaveCount(0);
+		await expect(window.getByRole("list", { name: "Race field" })).toContainText(runner.name);
+		const read = await (await request.get(`/api/conversations/${elsewhere.id}/boxes/race`)).json();
+		expect(read.characterStatsRevisions[character.id]).toBe(2);
+	});
 });

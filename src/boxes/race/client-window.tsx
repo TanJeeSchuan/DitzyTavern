@@ -102,7 +102,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const updateStat = (key: StatKey, value: number) => setSheet((current) => current === null ? null : { ...current, stats: { ...current.stats, [key]: value } });
 	const rollSheet = () => setSheet((current) => current === null ? null : { ...current, stats: rollRaceStats(current.stats.style, raceRandom(crypto.randomUUID())) });
 	const addToField = async (): Promise<boolean> => {
-		if (sheet === null || locked || !sheetValid) return false;
+		if (sheet === null || locked || read.isFetching || !sheetValid) return false;
 		const runner: RaceRunner = { name: sheet.name, participantId: sheet.participantId, ...sheet.stats };
 		const value = JSON.stringify(sheet.stats);
 		// @approved
@@ -112,7 +112,10 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 		const writes: BoxDataWrite[] = [{ owner: { type: "participant", participantId: sheet.participantId }, key: "stats", value }];
 		if (sheet.saveToCharacter && sheet.sourceCharacterId !== null) writes.push({ owner: { type: "character", characterId: sheet.sourceCharacterId, revision: data?.characterStatsRevisions[sheet.sourceCharacterId] ?? 0 }, key: "stats", value });
 		const applied = await save({ ...draft, slots: addRaceRunner(draft.slots, runner) }, writes);
-		if (applied) setSheet(null);
+		// @approved
+		//  A refused Character write leaves the Chat revision unchanged, so the
+		//  stats revision it was refused for is read again before a retry.
+		if (applied) setSheet(null); else await read.refetch();
 		return applied;
 	};
 	const setAvatar = async (name: string, file: File) => {
@@ -198,7 +201,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 						onCheckedChange={(saveToCharacter) => setSheet((current) => current === null ? null : { ...current, saveToCharacter })} />
 					Save to {sheetParticipant?.sourceCharacterName ?? "Character"}
 				</label>}
-				<Button disabled={locked || !sheetValid} onClick={() => void addToField()}>Add to field</Button>
+				<Button disabled={locked || read.isFetching || !sheetValid} onClick={() => void addToField()}>Add to field</Button>
 				<Button variant="ghost" disabled={locked} onClick={() => setSheet(null)}>Cancel</Button>
 			</div>
 		</section>}
