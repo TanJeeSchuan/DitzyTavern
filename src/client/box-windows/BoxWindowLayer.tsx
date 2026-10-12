@@ -80,12 +80,17 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, covered, on
 		if (next !== null) onMove(next.x, next.y);
 	};
 
+	const x = position?.x ?? layout.x;
+	const y = position?.y ?? layout.y;
+	// @approved
+	//  A saved position can come from a larger viewport, so the browser keeps
+	//  it inside this one, on open and on every resize, with the drag's bounds.
 	const style: CSSProperties = {
 		zIndex,
 		width: `${size.width}rem`,
 		height: `${size.height}rem`,
-		left: position?.x ?? layout.x,
-		top: position?.y ?? layout.y,
+		left: x === undefined ? undefined : `clamp(0px, ${x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`,
+		top: y === undefined ? undefined : `clamp(0px, ${y}px, calc(100dvh - 48px))`,
 	};
 	return <section
 		ref={frame}
@@ -152,7 +157,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 		  the Chat, so focus is trapped in the layer and Tab cycles inside it;
 		  the windows it covers are hidden. Wide layouts keep several non-modal
 		  windows usable at once, where trapping focus would be wrong. */}
-		<FocusScope.Root asChild trapped={narrow} loop={narrow}
+		<FocusScope.Root asChild trapped={narrow && opened.length > 0} loop={narrow && opened.length > 0}
 			onMountAutoFocus={(event) => event.preventDefault()} onUnmountAutoFocus={(event) => event.preventDefault()}><div className="box-window-layer">
 		{opened.map((id) => {
 			const definition = boxWindow(id);

@@ -325,6 +325,18 @@ describe("Generation Plan Compiler", () => {
 		expect(state.writes).toHaveLength(3);
 	});
 
+	test("renders recalled Memory claims literally, even while budgeting", () => {
+		const state = createMacroAttemptState();
+		const plan = compile({
+			recipe: [{ reference: "box:memory", enabled: true, role: "system" }],
+			context: [],
+			boxes: { "box:memory": memoryItems(memoryActivation([memoryCandidate("macro", "{{setvar::mood::grim}}{{self}} waits")])) },
+			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+		});
+		expect(plan.promptPlan.blocks[0]?.content).toBe("{{setvar::mood::grim}}{{self}} waits (attribution: Narrated event)");
+		expect(state.writes).toEqual([]);
+	});
+
 	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
 		const memory = memoryCandidate("memory", "memory fact");
 		const activation = memoryActivation([memory]);

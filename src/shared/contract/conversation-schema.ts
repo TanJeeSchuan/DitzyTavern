@@ -662,13 +662,16 @@ const resetBoxRecordAction = Type.Object({
 //  namespace (`box:<id>`), so a window can never address another Box's data,
 //  and the owner names the Library, Character or Participant row the value
 //  belongs to. The value is the Box's own stored string; the Box decodes it
-//  on read.
+//  on read. Library and Character values are shared across Chats, so the
+//  Chat revision cannot guard them: a write carries the value's own revision
+//  as last read, 0 when it was absent.
+const sharedRevision = Type.Integer({ minimum: 0 });
 const putBoxDataAction = Type.Object({
 	type: Type.Literal("put-box-data"),
 	box: boxId,
 	owner: Type.Union([
-		Type.Object({ type: Type.Literal("library") }),
-		Type.Object({ type: Type.Literal("character"), characterId: Type.Integer() }),
+		Type.Object({ type: Type.Literal("library"), revision: sharedRevision }),
+		Type.Object({ type: Type.Literal("character"), characterId: Type.Integer(), revision: sharedRevision }),
 		Type.Object({ type: Type.Literal("participant"), participantId: Type.Integer() }),
 	]),
 	key: Type.String({ minLength: 1, maxLength: 100 }),

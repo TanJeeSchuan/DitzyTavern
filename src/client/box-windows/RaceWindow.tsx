@@ -88,9 +88,10 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const locked = disabled || pending;
 	const running = draft.phase !== "setup";
 	const update = (patch: Partial<RaceSetup>) => setDraft((value) => ({ ...value, ...patch }));
-	const valid = Value.Check(raceSetup, draft) && isRaceAutoValid(draft);
+	const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAutoValid(setup);
+	const valid = isValid(draft);
 	const save = async (setup = draft, expectedRevision = revision): Promise<boolean> => {
-		if (locked || !valid) return false;
+		if (locked || !isValid(setup)) return false;
 		setPending(true);
 		setNotice(null);
 		let applied = false;
@@ -108,7 +109,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const discard = () => { setDraft(current); setSaved(current); setRevision(conversation.revision); setNotice(null); };
 	const data = read.data ?? null;
 	const race = data !== null && data.state.raceId === draft.raceId ? data : null;
-	const avatars = new Map(Object.entries(data?.avatars ?? {}).map(([name, hash]) => [name, { hash, focalX: 0.5, focalY: 0.5 }]));
+	const avatars = new Map(Object.entries(data?.avatars ?? {}).map(([name, { hash }]) => [name, { hash, focalX: 0.5, focalY: 0.5 }]));
 	// @approved
 	//  A Cast Runner's own Portrait wins over any roster avatar under the same
 	//  name, focal point included.
@@ -150,7 +151,8 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 			if (written === undefined) return false;
 			let latest = written;
 			if (sheet.saveToCharacter && sheet.sourceCharacterId !== null) {
-				const characterWritten = await runConversationCommand({ ...surface, revision: () => written.revision }, boxData({ type: "character", characterId: sheet.sourceCharacterId }, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
+				const owner = { type: "character" as const, characterId: sheet.sourceCharacterId, revision: data?.characterStatsRevisions[sheet.sourceCharacterId] ?? 0 };
+				const characterWritten = await runConversationCommand({ ...surface, revision: () => written.revision }, boxData(owner, "stats", JSON.stringify(sheet.stats)), { notices: BOX_DATA_NOTICES });
 				if (characterWritten === undefined) return false;
 				latest = characterWritten;
 			}
@@ -172,10 +174,15 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 		setNotice(null);
 		try {
 			const { hash } = await uploadImage(file);
-			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, boxData({ type: "library" }, `${RACE_AVATAR_PREFIX}${name}`, hash), {
+			const action = boxData({ type: "library", revision: data?.avatars[name]?.revision ?? 0 }, `${RACE_AVATAR_PREFIX}${name}`, hash);
+			const written = await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, action, {
 				notices: { conflict: "The Chat changed. Set the avatar again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 				onApplied: (next) => setRevision(next.revision),
 			});
+			// @approved
+			//  A refused write leaves the Chat revision unchanged, so the avatar
+			//  revision it was refused for is read again here.
+			if (written === undefined) void read.refetch();
 		} catch (cause) {
 			setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
 		} finally { setPending(false); }

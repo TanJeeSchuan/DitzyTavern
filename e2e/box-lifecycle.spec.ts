@@ -123,3 +123,18 @@ test("a new Chat starts with only the Author Note and Memory enabled", async ({ 
 		await expect(boxes.getByRole("listitem").filter({ hasText: title })).toContainText("Not in this Chat");
 	}
 });
+
+test("on a narrow screen, closing the last Box window releases keyboard focus", async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto("/");
+	await insertBox(page, "Race");
+	await page.getByRole("button", { name: "Race", exact: true }).click();
+	await page.getByRole("button", { name: "Minimize Race" }).click();
+	await page.getByRole("button", { name: /^Race: / }).click();
+	await page.getByRole("dialog", { name: "Race", exact: true }).press("Escape");
+	await expect(page.getByRole("dialog", { name: "Race", exact: true })).toBeHidden();
+	await page.keyboard.press("Tab");
+	await page.keyboard.press("Tab");
+	await expect(page.locator(".box-window-layer")).not.toBeFocused();
+	expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+});

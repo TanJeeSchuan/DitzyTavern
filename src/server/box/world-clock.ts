@@ -59,7 +59,9 @@ const climateCurves = {
 // coldest hour at 3 AM. Snow never sits above freezing.
 export const temperature = (setup: Pick<WorldClockSetup, "climate" | "hemisphere">, at: Date, weather: Weather): number => {
 	const curve = climateCurves[setup.climate];
-	const dayOfYear = (at.getTime() - Date.UTC(at.getUTCFullYear(), 0, 1)) / 86_400_000;
+	// @approved
+	//  Date.UTC reads years 0 to 99 as 1900 to 1999; setUTCFullYear does not.
+	const dayOfYear = (at.getTime() - new Date(0).setUTCFullYear(at.getUTCFullYear())) / 86_400_000;
 	const season = -Math.cos(2 * Math.PI * (dayOfYear - 15 + (setup.hemisphere === "south" ? 182 : 0)) / 365);
 	const day = -Math.cos(2 * Math.PI * (at.getUTCHours() + at.getUTCMinutes() / 60 - 3) / 24);
 	const celsius = curve.mean + curve.seasonal * season + curve.diurnal * day + weatherKinds[weather].offset;

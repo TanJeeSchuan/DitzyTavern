@@ -74,7 +74,8 @@ export type AdvanceResult<Trace = never, Rec = never> = {
 	readonly record?: Rec | undefined;
 };
 
-export type BlockItem = { readonly text: string; readonly priority: number; readonly pinned?: boolean };
+/** @approved A `literal` item's text reaches the prompt as written, skipping the Prompt Macro pass. */
+export type BlockItem = { readonly text: string; readonly priority: number; readonly pinned?: boolean; readonly literal?: boolean };
 export type BoxAdmission = "admitted" | "allowance" | "oversized" | "context-limit";
 
 export type DigestPassage = { readonly speaker: string | null; readonly content: string };

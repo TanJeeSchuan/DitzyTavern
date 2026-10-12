@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "../../shared/contract/race";
 import type { Database } from "bun:sqlite";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { boxReference } from "../../shared/contract/box";
 import { RACE_AVATAR_PREFIX } from "../../shared/race-data";
-import { libraryDataTable } from "../database/schema";
+import { characterDataTable, libraryDataTable } from "../database/schema";
 import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
 import { foldRecords, readRecordSlots } from "./records";
 import { readRaceCastStats } from "./race-cast";
@@ -25,7 +25,6 @@ export const raceBox = {
 	}),
 	read: readRace,
 	advance: {
-		fingerprint: ({ dependencies }) => JSON.stringify(dependencies),
 		async run({ setup, state, dependencies, moves }) {
 			const before = currentRaceState(setup, state);
 			// @approved
@@ -34,13 +33,17 @@ export const raceBox = {
 			//  and the item reports the withdrawal before narrating the Stretch.
 			const withdrawn = new Set(dependencies.withdrawn ?? []);
 			const withdrawalLines = before.standings.flatMap(({ name }) => withdrawn.has(name) ? [`${name} is withdrawn.`] : []);
-			const captured = withdrawalLines.length === 0 ? { setup, state } : {
+			const remaining = {
+				...before,
+				standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
+				intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
+			};
+			// @approved
+			//  A withdrawal saved on an earlier Hold leaves the folded state clean
+			//  but the setup still slots the Runner, so the slots are always filtered.
+			const captured = {
 				setup: { ...setup, slots: setup.slots.filter(({ name }) => !withdrawn.has(name)) },
-				state: {
-					...before,
-					standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
-					intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
-				},
+				state: withdrawalLines.length === 0 ? state : remaining,
 			};
 			const withWithdrawals = (text: string) => {
 				if (withdrawalLines.length === 0) return text;
@@ -51,14 +54,7 @@ export const raceBox = {
 			// @approved
 			//  A withdrawal is captured once and persisted even when no Stretch
 			//  advances, so it is announced exactly once instead of on every Hold.
-			const withdrawalRecord = (text: string): RaceRecord => ({
-				raceId: setup.raceId, stretch: before.stretch, outcome: text,
-				after: {
-					...before,
-					standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
-					intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
-				},
-			});
+			const withdrawalRecord = (text: string): RaceRecord => ({ raceId: setup.raceId, stretch: before.stretch, outcome: text, after: remaining });
 			const holds = dependencies.intent === "respond" && captured.setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold"
 				&& checkRaceMove(captured.setup, currentRaceState(captured.setup, captured.state), [], first).legal;
 			if (holds) {
@@ -74,12 +70,11 @@ export const raceBox = {
 			//  default.
 			if (record === undefined && withdrawalLines.length > 0 && setup.phase === "running" && !before.finished) {
 				if (captured.setup.slots.length < 2) {
-					const standings = before.standings.filter(({ name }) => !withdrawn.has(name));
+					const { standings } = remaining;
 					const result = standings.length === 0 ? ["The race is called off."] : [`${standings[0]!.name} wins by default.`];
 					const outcome = [setup.course.name, ...withdrawalLines, ...result, "Narrate the finish."].join("\n");
 					const stretch = before.stretch + 1;
-					const intents = before.intents.filter(({ runner }) => !withdrawn.has(runner))
-						.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
+					const intents = remaining.intents.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
 					return {
 						items: [{ text: outcome, priority: 100, pinned: true }],
 						// @approved
@@ -110,9 +105,13 @@ function readRace(database: Database, conversationId: number): RaceRead | undefi
 			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
 			replay: state.finished ? { stretches: replay, intents } : null,
 			castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
-			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value }).from(libraryDataTable)
+			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value, revision: libraryDataTable.revision }).from(libraryDataTable)
 				.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
-				.map(({ key, value }) => [key.slice(RACE_AVATAR_PREFIX.length), value])),
+				.map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
+			characterStatsRevisions: Object.fromEntries(db.select({ id: characterDataTable.character_id, revision: characterDataTable.revision }).from(characterDataTable)
+				.where(and(eq(characterDataTable.namespace, boxReference("race")), eq(characterDataTable.key, "stats"),
+					inArray(characterDataTable.character_id, summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? [])))).all()
+				.map(({ id, revision }) => [id, revision])),
 		};
 	});
 }

@@ -100,7 +100,7 @@ interface Box<Setup, Dependencies = undefined, Trace = never, Services extends k
 
 type AdvanceInput<S, D, St, M> = { setup: S; dependencies: D; state: St; moves: readonly M[] };
 type AdvanceResult<T, R> = { items: readonly BlockItem[]; allowance?: number; trace?: T; record?: R };
-type BlockItem = { text: string; priority: number; pinned?: boolean };
+type BlockItem = { text: string; priority: number; pinned?: boolean; literal?: boolean };
 type DigestWindow = { passage: DigestPassage; preceding: readonly DigestPassage[]; seed: string };
 type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, questions: DecisionQuestions): ReturnType<typeof requestDecisions> };
 ```
@@ -143,7 +143,7 @@ type DigestContext = { signal: AbortSignal; decide(state: DecisionJson, question
 1. **Capture.** For each enabled Box with an enabled preset block, the host reads setup, folded state, the Moves on the triggering Human-authored Message (none for a Continuation), and the Box's dependencies, such as its seed stream and the Generation intent. The intent is `continue` for a Continuation and for a Sibling whose preceding Message the model wrote, else `respond`. Memory is captured whenever it is enabled in the Chat, even with its block disabled, so its activation evidence is still recorded; it then contributes no items.
 2. **Advance.** All Boxes run in parallel. Record and trace are held on the Active Generation and copied to the Variant on resolution.
 3. **Admit.** Items enter the Box's block and pass through the Prompt Macro pass. Unpinned items are admitted whole by descending priority within `allowance`, or within remaining prompt space when no allowance is given. Pinned items sit outside the allowance, count toward the total, and an over-budget plan raises the existing `PromptBudgetExceededError`.
-4. **Preview.** The captured plan is sent as inspected. The host fingerprints the whole preparation snapshot, seed included, with each Box's setup, state and Moves; a Box `fingerprint` adds dependencies the host cannot see. A mismatch reports the plan as stale. Admission reasons per item reach inspection only for Memory.
+4. **Preview.** The captured plan is sent as inspected. The host fingerprints the whole preparation snapshot, seed included, with each Box's setup, state, Moves and dependencies; a Box `fingerprint` replaces dependencies that do not serialize meaningfully. A mismatch reports the plan as stale. Admission reasons per item reach inspection only for Memory.
 5. **Digest.** When a selected, non-empty Variant resolves, becomes selected without a record for its current text, or has its text edited, the host queues its Boxes' digests. The queue runs at most two workers, puts live jobs before catch-up runs, and cancels superseded work by epoch. Jobs live in memory; work lost on restart is queued again on the next selection, resolution or edit, or by catch-up. Results fill the `automatic` slot, and are discarded if the text changed, the job was superseded, the Box stopped being enabled, or its Decision Model selection went away. Generations never wait for pending digests.
 
 ### Lifecycle per Chat

@@ -15,7 +15,7 @@ export const memoryItems = (trace: MemoryActivationRecord): AdvanceResult<Memory
 		if (seen.has(text)) { duplicates.add(candidate.identity); return false; }
 		seen.add(text);
 		return true;
-	}).map((candidate) => ({ text: renderMemoryClaim(candidate), priority: candidate.relevanceScore ?? -1 }));
+	}).map((candidate) => ({ text: renderMemoryClaim(candidate), priority: candidate.relevanceScore ?? -1, literal: true }));
 	return {
 		items,
 		allowance: trace.allowance,

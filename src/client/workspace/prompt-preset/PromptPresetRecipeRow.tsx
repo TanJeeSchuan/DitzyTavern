@@ -74,7 +74,9 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
 	return slot.reference === "box:memory"
 		? { description: "Uses Conversation Memories recalled when a Generation is assembled.", source: "Conversation Memories" }
-		: { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" };
+		: slot.reference === "box:author-note"
+			? { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" }
+			: { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
 const InstructionFieldEditor = ({

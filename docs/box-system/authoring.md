@@ -86,7 +86,7 @@ interface Box<Setup, Dependencies = undefined, Trace = never, Services extends k
 
 type AdvanceInput<Setup, Dependencies, State, Move> = { setup: Setup; dependencies: Dependencies; state: State; moves: readonly Move[] };
 type AdvanceResult<Trace, Rec> = { items: readonly BlockItem[]; allowance?: number; trace?: Trace; record?: Rec };
-type BlockItem = { text: string; priority: number; pinned?: boolean };
+type BlockItem = { text: string; priority: number; pinned?: boolean; literal?: boolean };
 ```
 
 Every hook is optional. Pick the type parameters to match: `Setup` is the setup schema's type (`undefined` without one), `Rec` the record schema's, `Move` the Move schema's. The Thoughts Box is `satisfies Box<undefined>`.
@@ -101,11 +101,11 @@ The Box's turn in a Generation. During preparation the host captures every Box t
 
 What the host does with the result:
 
-- `items` go into the Box's preset block and through the Prompt Macro pass. The host admits pinned items first. It then admits unpinned items whole, by descending `priority`, while they fit `allowance`, or the remaining context when there is no allowance. Pinned items ignore the allowance but count toward the context limit, and a plan that overflows it raises `PromptBudgetExceededError`. An empty `items` list leaves the block out.
+- `items` go into the Box's preset block and through the Prompt Macro pass, except a `literal` item, whose text goes in as written. Memory marks its recalled claims literal, so a stored claim never runs a macro. The host admits pinned items first. It then admits unpinned items whole, by descending `priority`, while they fit `allowance`, or the remaining context when there is no allowance. Pinned items ignore the allowance but count toward the context limit, and a plan that overflows it raises `PromptBudgetExceededError`. An empty `items` list leaves the block out.
 - `record` is checked against the descriptor's `record` schema, held on the Active Generation with the Box instance captured for it, and written to the new Variant as the slot's `automatic` value when it resolves. Returning a record without a `record` descriptor throws.
 - `trace` is checked against `advance.trace` when the Box declares that schema. Only Memory's trace has a consumer: it becomes the Generation's Memory activation record. A new Box's trace goes nowhere.
 
-`fingerprint` adds inputs the host cannot see to the preview fingerprint. The host fingerprints the whole preparation snapshot, seed included, plus each Box's setup, state and Moves. It does not fingerprint `dependencies` itself: if a change in them should make a preview stale, return them, or the part that matters, from `fingerprint`. If the fingerprint changes between preview and send, the send fails with "The Prompt Plan is stale". The Race returns `JSON.stringify(dependencies)`; Memory returns its freshness fingerprint.
+`fingerprint` replaces `dependencies` in the preview fingerprint. The host fingerprints the whole preparation snapshot, seed included, plus each Box's setup, state, Moves and `dependencies`. Declare `fingerprint` only when the dependencies do not serialize to what should make a preview stale. If the fingerprint changes between preview and send, the send fails with "The Prompt Plan is stale". Only Memory declares it, returning its freshness fingerprint.
 
 `withoutBlock` captures the Box even when its preset block is disabled, and returns its result instead of calling `run`. Only Memory declares it, to record activation evidence with no items.
 

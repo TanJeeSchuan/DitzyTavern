@@ -52,6 +52,17 @@ test("a Hold turn that loses a Runner persists the withdrawal, and the next Hold
 	expect(second.items[0]!.text).not.toContain("is withdrawn.");
 });
 
+test("a Runner withdrawn on a Hold forms no Hidden intent on the next Stretch", async () => {
+	const field = { ...setup, auto: "off" as const, slots: setup.slots.map((runner, index) =>
+		({ ...runner, style: index === 0 ? "End Closer" as const : "Front Runner" as const, wit: index === 0 ? 1500 : runner.wit })) };
+	const runner = field.slots[0]!.name;
+	const dependencies = { seed: "hold", intent: "respond" as const, withdrawn: [runner] };
+	const hold = await raceBox.advance!.run({ setup: field, state: null, dependencies, moves: [{ kind: "hold", runner: field.slots[1]!.name }] });
+	const next = await raceBox.advance!.run({ setup: field, state: hold.record!.after, dependencies: { ...dependencies, seed: "next" }, moves: [] });
+	expect(next.record!.after.intents.some((planned) => planned.runner === runner)).toBe(false);
+	expect(next.items[0]!.text).not.toContain("is withdrawn.");
+});
+
 test("a paused continuation still announces and persists a withdrawal", async () => {
 	const runner = setup.slots[0]!.name;
 	const result = await raceBox.advance!.run({

@@ -88,3 +88,16 @@ test("an Auto race retains swiped outcomes, re-rolls a Stretch, and ends after R
 	await expect(window.getByRole("button", { name: "Fill field" })).toBeEnabled();
 	await expect(window.getByRole("list", { name: "Race field" }).getByRole("listitem")).toHaveCount(0);
 });
+
+test("New race replaces a running race whose Auto draft is invalid", async ({ page }) => {
+	await page.goto("/");
+	await insertBox(page, "Race");
+	await page.getByRole("button", { name: "Race", exact: true }).click();
+	const window = page.getByRole("dialog", { name: "Race", exact: true });
+	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("400");
+	await window.getByRole("button", { name: "Fill field" }).click();
+	await window.getByRole("button", { name: "Start race" }).click();
+	await window.getByRole("radio", { name: "Until…" }).click();
+	await window.getByRole("button", { name: "New race" }).click();
+	await expect(window.getByRole("button", { name: "Start race" })).toBeVisible();
+});

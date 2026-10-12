@@ -486,6 +486,7 @@ export const characterDataTable = sqliteTable(
 		namespace: text().notNull(),
 		key: text().notNull(),
 		value: text().notNull(),
+		revision: int().notNull().default(0),
 	},
 	(table) => [
 		uniqueIndex("character_data_owner_key_unique").on(

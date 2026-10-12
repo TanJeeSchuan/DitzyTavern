@@ -19,8 +19,13 @@ export const boxCatchUp = Type.Object({
 export type BoxCatchUp = Static<typeof boxCatchUp>;
 
 // @approved
+//  A digesting Box's dock read: only its folded one-line status, so a
+//  minimized Box polls no prose.
+export const digestStatusRead = Type.Object({ status: Type.Union([Type.Null(), Type.String()]) });
+
+// @approved
 //  A digesting Box's window read: its folded one-line status and the selected
-//  path's passages. The dock and the window share it. Each passage carries
+//  path's passages. Each passage carries
 //  its resolved record (`writer ?? automatic`, null when not digested),
 //  whether a writer set it, and whether the automatic result is the one for
 //  exactly this text, so the window knows what a catch-up run would add.

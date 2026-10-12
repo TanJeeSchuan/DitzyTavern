@@ -12,13 +12,13 @@ import { boxDescriptors, type DigestBoxId } from "../../shared/contract/box";
 import type { BoxRecord } from "../../shared/contract/box-generation";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
-import { cancelBoxCatchUp, loadBoxDigest, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
+import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
 
 export const boxDigestKey = (conversationId: number, box: DigestBoxId) => ["box-digest", conversationId, box] as const;
 
-/** @approved The window and the dock share one polled read: a digest that
- *  lands while either is mounted refreshes the status and the timeline, and a
- *  running catch-up polls faster so its progress moves. */
+/** @approved The window's polled read: a digest that lands while it is open
+ *  refreshes the status and the timeline, and a running catch-up polls faster
+ *  so its progress moves. */
 function useBoxDigest(conversationId: number, box: DigestBoxId) {
 	return useQuery({
 		queryKey: boxDigestKey(conversationId, box),
@@ -30,12 +30,17 @@ function useBoxDigest(conversationId: number, box: DigestBoxId) {
 
 /** @approved A digesting Box's dock tab: its folded status line. */
 export function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
-	const read = useBoxDigest(conversation.id, box);
+	const read = useQuery({
+		queryKey: ["box-digest-status", conversation.id, box],
+		queryFn: ({ signal }) => loadBoxDigestStatus(conversation.id, box, signal),
+		refetchInterval: 2_500,
+		refetchIntervalInBackground: false,
+	});
 	const { label } = boxDescriptors[box];
 	return <button type="button" className="box-dock-tab" title={`Restore ${label}`} onClick={onRestore}>
 		<Icon aria-hidden="true" />
 		<span className="sr-only">{label}: </span>
-		<span>{read.data?.status ?? (read.isError ? "Unavailable" : read.isSuccess ? label : "Reading…")}</span>
+		<span>{read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? label : "Reading…")}</span>
 	</button>;
 }
 

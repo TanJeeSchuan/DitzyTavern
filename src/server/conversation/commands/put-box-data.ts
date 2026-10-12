@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { boxReference } from "../../../shared/contract/box";
 import type { ConversationAction } from "../../../shared/contract/conversation-schema";
 import {
@@ -16,6 +16,10 @@ export type PutBoxDataInput = { conversationId: number } & Extract<
 	{ type: "put-box-data" }
 >;
 
+const guardShared = (row: { revision: number } | undefined, expected: number) => {
+	if ((row?.revision ?? 0) !== expected) throw new InvalidConversationCommandError("Another Chat changed this value since it was read. Review it and try again.");
+};
+
 // @approved
 //  The host command behind every Box window's own data scope. The Box id is
 //  the namespace, and only an enabled Box has a window, so a write for any
@@ -26,15 +30,16 @@ export function putBoxData(db: ConversationDatabase, input: PutBoxDataInput) {
 	if (!isBoxEnabled(db, input.conversationId, input.box)) throw new InvalidConversationCommandError(`The ${input.box} Box is not enabled in this Chat, so it takes no data.`);
 	const namespace = boxReference(input.box);
 	switch (input.owner.type) {
-		case "library":
+		case "library": {
+			const where = and(eq(libraryDataTable.namespace, namespace), eq(libraryDataTable.key, input.key));
+			guardShared(db.select({ revision: libraryDataTable.revision }).from(libraryDataTable).where(where).get(), input.owner.revision);
+			const revision = input.owner.revision + 1;
 			db.insert(libraryDataTable)
-				.values({ namespace, key: input.key, value: input.value })
-				.onConflictDoUpdate({
-					target: [libraryDataTable.namespace, libraryDataTable.key],
-					set: { value: input.value, revision: sql`${libraryDataTable.revision} + 1` },
-				})
+				.values({ namespace, key: input.key, value: input.value, revision })
+				.onConflictDoUpdate({ target: [libraryDataTable.namespace, libraryDataTable.key], set: { value: input.value, revision } })
 				.run();
 			return;
+		}
 		case "character": {
 			const character = db
 				.select({ id: characterTable.id })
@@ -51,12 +56,19 @@ export function putBoxData(db: ConversationDatabase, input: PutBoxDataInput) {
 					`Character ${input.owner.characterId} is not available.`,
 				);
 			}
+			guardShared(db.select({ revision: characterDataTable.revision }).from(characterDataTable).where(and(
+				eq(characterDataTable.character_id, input.owner.characterId),
+				eq(characterDataTable.namespace, namespace),
+				eq(characterDataTable.key, input.key),
+			)).get(), input.owner.revision);
+			const revision = input.owner.revision + 1;
 			db.insert(characterDataTable)
 				.values({
 					character_id: input.owner.characterId,
 					namespace,
 					key: input.key,
 					value: input.value,
+					revision,
 				})
 				.onConflictDoUpdate({
 					target: [
@@ -64,7 +76,7 @@ export function putBoxData(db: ConversationDatabase, input: PutBoxDataInput) {
 						characterDataTable.namespace,
 						characterDataTable.key,
 					],
-					set: { value: input.value },
+					set: { value: input.value, revision },
 				})
 				.run();
 			return;

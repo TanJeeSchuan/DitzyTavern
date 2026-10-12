@@ -1,5 +1,5 @@
 import { boxDescriptors, type BoxDescriptors, type DigestBoxId } from "../shared/contract/box";
-import { digestRead, type DigestRead } from "../shared/contract/box-digest";
+import { digestRead, digestStatusRead, type DigestRead } from "../shared/contract/box-digest";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import { api } from "./lib/eden";
 import { foundOrNull, requestOutcome } from "./lib/request-outcome";
@@ -15,6 +15,10 @@ const readOf = (box: DigestBoxId) => digestRead(boxDescriptors[box].record);
 
 export async function loadBoxDigest(conversationId: number, box: DigestBoxId, signal?: AbortSignal): Promise<BoxDigest | null> {
 	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).get({ fetch: { signal } }), readOf(box), notFoundOutcome));
+}
+
+export async function loadBoxDigestStatus(conversationId: number, box: DigestBoxId, signal?: AbortSignal): Promise<string | null | undefined> {
+	return (await foundOrNull(await requestOutcome(boxRoute(conversationId, box).status.get({ fetch: { signal } }), digestStatusRead, notFoundOutcome)))?.status;
 }
 
 /** @approved Starting resolves with the read that already carries the new run's progress. */

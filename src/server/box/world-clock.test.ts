@@ -44,6 +44,11 @@ describe("World Clock temperature", () => {
 		expect(temperature(south, noon("2025-01-15"), "clear")).toBe(temperature(north, noon("2025-07-16"), "clear"));
 	});
 
+	test("keeps the season in years before 100", () => {
+		const north = { climate: "temperate", hemisphere: "north" } as const;
+		expect(temperature(north, noon("0044-01-15"), "clear")).toBe(temperature(north, noon("2025-01-15"), "clear"));
+	});
+
 	test("is warmer in the afternoon than before dawn", () => {
 		const arid = { climate: "arid", hemisphere: "north" } as const;
 		expect(temperature(arid, new Date("2025-04-01T15:00:00Z"), "clear") - temperature(arid, new Date("2025-04-01T03:00:00Z"), "clear")).toBe(16);

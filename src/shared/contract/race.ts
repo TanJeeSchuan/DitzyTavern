@@ -87,7 +87,9 @@ export const raceRead = Type.Object({
 	state: raceSpectatorState,
 	// @approved The replay and Hidden intents stay on the server until the finish, so the window cannot spoil them.
 	replay: Type.Union([Type.Null(), Type.Object({ stretches: Type.Array(raceReplayStretch), intents: Type.Array(raceIntent) })]),
-	avatars: Type.Record(Type.String(), imageHash),
+	avatars: Type.Record(Type.String(), Type.Object({ hash: imageHash, revision: Type.Integer() })),
 	castStats: Type.Array(raceCastStats),
+	// @approved Each Cast source Character's stored stats revision, by Character id; a Character without stats is absent.
+	characterStatsRevisions: Type.Record(Type.String(), Type.Integer()),
 });
 export type RaceRead = Static<typeof raceRead>;

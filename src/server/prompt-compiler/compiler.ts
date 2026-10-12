@@ -216,7 +216,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		}
 		if (isBoxReference(slot.reference)) {
 			const expanded: PromptBlock[] = [];
-			for (const item of input.boxes[slot.reference] ?? []) expandInto({
+			for (const item of input.boxes[slot.reference] ?? []) if (item.literal === true) expanded.push({ kind: slot.reference, role: planRoleFor[slot.role], content: item.text }); else expandInto({
 				blocks: expanded,
 				warnings,
 				block: { kind: slot.reference },
