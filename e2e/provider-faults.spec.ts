@@ -1,6 +1,10 @@
 import type { APIRequestContext, Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 
+declare global {
+	interface Window { interruptedReplyDuplicates?: string[] }
+}
+
 const setInactivityTimeout = async (request: APIRequestContext, timeoutMs: number) => {
 	const settings = await (await request.get("/api/connection-settings")).json();
 	const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, ...draft } = settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
@@ -53,6 +57,5 @@ test("terminal history arriving before stream replay keeps the interrupted reply
 	await send(page, "Wait.");
 	await (await replay).finished();
 	await expectInterrupted(page, "provider");
-	// SAFETY: the init script above creates this array before the application loads.
-	expect(await page.evaluate(() => (window as Window & { interruptedReplyDuplicates: string[] }).interruptedReplyDuplicates)).toEqual([]);
+	expect(await page.evaluate(() => window.interruptedReplyDuplicates)).toEqual([]);
 });
