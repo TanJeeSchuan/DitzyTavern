@@ -3,15 +3,15 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initialWorldClockSetup, worldClockRecord, type WorldClockSetup } from "../../shared/contract/world-clock";
+import { initialWorldClockSetup, worldClockRecord, type WorldClockSetup } from "../../boxes/world-clock/contract";
 import { digestRead } from "../../shared/contract/box-digest";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { readRecordSlots, writeAutomaticRecord } from "../box/records";
 import { sha256 } from "../memory/hash";
 import { createContract } from ".";
 import { acceptConversationTailGeneration } from "../conversation";
-import { advanceRace } from "../box/race-engine";
-import { fillRaceField, initialRaceSetup } from "../../shared/race-data";
+import { advanceRace } from "../../boxes/race/server-engine";
+import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const initial = initialWorldClockSetup;

@@ -32,7 +32,10 @@ import type {
 	GenerationConnectionFacts,
 	GenerationPlan,
 } from "./types";
-import { memoryBudgetEvidence } from "../box/memory-prompt";
+import { Value } from "@sinclair/typebox/value";
+import { memoryActivationRecord, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { renderMemoryClaim } from "../../shared/memory-text";
+import type { BoxAdmission } from "../box/contract";
 import { admitDynamicBlocks, estimateDynamicBlockTokens, type LoreBudgetDecision } from "./admission";
 import type { BoxItems } from "../box/registry";
 export { estimateDynamicBlockTokens };
@@ -247,6 +250,17 @@ const withLoreBudgetEvidence = (
 		},
 	};
 	return { ...record, evidence: [...evidence, admissionEvidence] };
+};
+
+const memoryBudgetEvidence = (trace: GenerationJsonValue | undefined, decisions: ReadonlyMap<string, BoxAdmission>, text: string): MemoryActivationRecord | null => {
+	if (trace === undefined) return null;
+	const record = Value.Parse(memoryActivationRecord, trace);
+	return {
+		...record,
+		candidates: record.candidates.map((candidate) => candidate.admission === "admitted" ? { ...candidate, admission: decisions.get(renderMemoryClaim(candidate)) ?? candidate.admission } : candidate),
+		automaticMemoryText: record.automaticMemoryText || text,
+		finalMemoryText: text,
+	};
 };
 
 const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {

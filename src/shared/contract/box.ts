@@ -1,11 +1,11 @@
-import { raceMove, raceRecord, raceSetup } from "./race";
+import { raceMove, raceRecord, raceSetup } from "../../boxes/race/contract";
 import { Kind, Type, type Static, type TLiteral, type TObject, type TSchema } from "@sinclair/typebox";
-import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "./world-clock";
-import { MAX_PHONE_MOVES, phoneMove } from "./phone";
-import { initialRaceSetup } from "../race-data";
-import { MAX_RACE_MOVES, raceMoveLabel } from "../race-moves";
-import { phoneMoveLabel } from "../phone";
-import { moodRecord } from "../mood";
+import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "../../boxes/world-clock/contract";
+import { MAX_PHONE_MOVES, phoneMove } from "../../boxes/phone/contract";
+import { initialRaceSetup } from "../../boxes/race/shared-data";
+import { MAX_RACE_MOVES, raceMoveLabel } from "../../boxes/race/shared";
+import { phoneMoveLabel } from "../../boxes/phone/shared";
+import { moodRecord } from "../../boxes/mood/shared";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";

@@ -1,14 +1,15 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
-import { isTestFile, repositoryPath } from "../path.ts";
+import { importTarget, isTestFile, layerOf, repositoryPath } from "../path.ts";
 
-const isLayerDependency = (source: string): boolean =>
+const isLayerDependency = (path: string, source: string): boolean =>
 	source === "elysia" ||
 	source.startsWith("bun:") ||
 	/(?:^|\/)server(?:\/|$)/.test(source) ||
 	/(?:^|\/)client(?:\/|$)/.test(source) ||
 	source.startsWith("@/server/") ||
-	source.startsWith("@/client/");
+	source.startsWith("@/client/") ||
+	["server", "client"].includes(layerOf(importTarget(path, source)) ?? "");
 
 const sourceText = (node: ESTree.ImportDeclaration): string | null =>
 	typeof node.source.value === "string" ? node.source.value : null;
@@ -18,7 +19,7 @@ export const noLayerDependenciesInSharedRule = defineRule({
 	meta: {
 		type: "problem",
 		docs: {
-			description: "Keep src/shared independent of client, server, Elysia, and Bun APIs.",
+			description: "Keep src/shared and Box shared files independent of client, server, Elysia, and Bun APIs.",
 		},
 		messages: {
 			layerDependency:
@@ -29,9 +30,9 @@ export const noLayerDependenciesInSharedRule = defineRule({
 		return {
 			ImportDeclaration(node) {
 				const path = repositoryPath(context.filename);
-				if (!path.startsWith("src/shared/") || isTestFile(path)) return;
+				if (layerOf(path) !== "shared" || isTestFile(path)) return;
 				const source = sourceText(node);
-				if (source === null || !isLayerDependency(source)) return;
+				if (source === null || !isLayerDependency(path, source)) return;
 				context.report({ node: node.source, messageId: "layerDependency" });
 			},
 		};

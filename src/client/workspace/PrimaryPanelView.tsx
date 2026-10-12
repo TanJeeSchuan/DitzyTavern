@@ -1,4 +1,4 @@
-import { AuthorNotePanel } from "../AuthorNotePanel";
+import { AuthorNotePanel } from "../box-windows/registry";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";

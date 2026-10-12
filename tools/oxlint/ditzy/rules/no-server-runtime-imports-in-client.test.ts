@@ -40,8 +40,22 @@ tester.run(
 				filename: "src/server/index.ts",
 				code: "import { contract } from './contract';",
 			},
+			{
+				filename: "src/boxes/race/client.tsx",
+				code: "import type { RaceState } from './server-engine'; import { Button } from '../../box-sdk/client';",
+			},
 		],
 		invalid: [
+			{
+				filename: "src/boxes/race/client-window.tsx",
+				code: "import { advanceRace } from './server-engine';",
+				errors: [{ messageId: "serverRuntimeDependency" }],
+			},
+			{
+				filename: "src/box-sdk/client.ts",
+				code: "import { seededFraction } from './server';",
+				errors: [{ messageId: "serverRuntimeDependency" }],
+			},
 			{
 				filename: "src/client/conversation.ts",
 				code: "import { createConversationModule } from '../server/conversation';",

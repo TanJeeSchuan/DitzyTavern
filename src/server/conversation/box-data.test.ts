@@ -7,7 +7,7 @@ import { createCharacterLibraryModule } from "../character-library";
 import { executeConversationCommand, InvalidConversationCommandError } from "../conversation";
 import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { readBoxSetups } from "../box/setup";
-import { initialRaceSetup } from "../../shared/race-data";
+import { initialRaceSetup } from "../../boxes/race/shared-data";
 
 const prompt = () => ({
 	systemInstruction: "",

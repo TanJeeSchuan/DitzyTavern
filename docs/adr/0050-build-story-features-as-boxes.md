@@ -8,6 +8,8 @@ Box data lives only in namespaced `(owner, namespace, key, value)` tables at six
 
 A Box enters the Prompt Plan only through a preset block whose reference is `box:<id>`, at most one per Box per preset, as [ADR-0036](0036-introduce-prompt-presets-as-assembly-recipes.md) keeps the preset as the assembly recipe. This replaces the `author-note` and `memory` references and their single-block indexes, and moves the Author Note out of its Conversation field from [ADR-0048](0048-add-a-chat-wide-author-note-through-a-preset-slot.md). Each Chat inserts, disables and removes Boxes at will, and no Box is exempt; removing a Box deletes its Chat-scoped data but never the Variant records or Moves already in the story. Boxes compose only through the Prompt Plan: no Box reads another Box's output from the same turn, so every Box advances in parallel.
 
+Each Box lives in its own folder, `src/boxes/<id>/`, with files named by layer, and uses the host only through the Box SDK in `src/box-sdk/`, one entry per layer. The core reaches a Box only through the descriptor, server and client registrations. A lint rule enforces both directions, so a Box cannot lean on host internals that a Box from outside the repository could not reach either.
+
 ## Considered Options
 
 - Provider tool calling as the way features act: rejected because Chat Completions requests block `tools`, it requires multi-step Generations, and roleplay-tuned models use tools poorly.

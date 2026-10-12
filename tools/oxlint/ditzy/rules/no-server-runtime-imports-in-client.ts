@@ -1,9 +1,9 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
-import { isTestFile, repositoryPath } from "../path.ts";
+import { importTarget, isTestFile, layerOf, repositoryPath } from "../path.ts";
 
-const isServerModule = (source: string): boolean =>
-	/(?:^|\/)server(?:\/|$)/.test(source) || source.startsWith("@/server/");
+const isServerModule = (path: string, source: string): boolean =>
+	/(?:^|\/)server(?:\/|$)/.test(source) || source.startsWith("@/server/") || layerOf(importTarget(path, source)) === "server";
 
 const sourceText = (node: ESTree.ImportDeclaration): string | null =>
 	typeof node.source.value === "string" ? node.source.value : null;
@@ -24,9 +24,9 @@ export const noServerRuntimeImportsInClientRule = defineRule({
 		return {
 			ImportDeclaration(node) {
 				const path = repositoryPath(context.filename);
-				if (!path.startsWith("src/client/") || isTestFile(path)) return;
+				if (layerOf(path) !== "client" || isTestFile(path)) return;
 				const source = sourceText(node);
-				if (source === null || !isServerModule(source)) return;
+				if (source === null || !isServerModule(path, source)) return;
 				if (node.importKind === "type") return;
 				if (
 					node.specifiers.length > 0 &&

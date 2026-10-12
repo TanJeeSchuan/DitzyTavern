@@ -1,4 +1,4 @@
-import { memoryItems } from "../box/memory-prompt";
+import { memoryItems } from "../../boxes/memory/server-prompt";
 import { describe, expect, test } from "bun:test";
 import {
 	assertGenerationPlan,

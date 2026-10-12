@@ -1,5 +1,5 @@
 import { boxSeed } from "./seed";
-import { raceBox } from "./race";
+import { raceBox } from "../../boxes/race/server";
 import { Value } from "@sinclair/typebox/value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import {
@@ -7,14 +7,14 @@ import {
 	type BoxId, type BoxSetups, type BoxStates, type DigestBoxId, type MoveBoxId, type PromptBoxReference, type RecordBoxId, type SetupBoxId,
 } from "../../shared/contract/box";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import { memoryBox } from "./memory";
-import { authorNoteBox } from "./author-note";
+import { memoryBox } from "../../boxes/memory/server";
+import { authorNoteBox } from "../../boxes/author-note/server";
 import type { RecordStates } from "./records";
 import type { BoxMoves, BoxRecord } from "../../shared/contract/box-generation";
-import { worldClockBox } from "./world-clock";
-import { phoneBox } from "./phone";
-import { thoughtBox } from "./thought";
-import { moodBox } from "./mood";
+import { worldClockBox } from "../../boxes/world-clock/server";
+import { phoneBox } from "../../boxes/phone/server";
+import { thoughtBox } from "../../boxes/thought/server";
+import { moodBox } from "../../boxes/mood/server";
 import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
 
 // @approved

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import type { BoxSetups } from "../../shared/contract/box";
 import { captureBoxes, fingerprintBoxes, type BoxRegistration } from "./registry";
-import { moodBox } from "./mood";
-import { worldClockBox } from "./world-clock";
+import { moodBox } from "../../boxes/mood/server";
+import { worldClockBox } from "../../boxes/world-clock/server";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
 	const human = { id: 1, name: "Ann" };

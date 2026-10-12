@@ -1,17 +1,20 @@
 import { Drama, Flag, MessageCircleDashed, Clock, Smartphone, type LucideIcon } from "lucide-react";
 import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
-import { RaceDockTab } from "./RaceWindow";
-import { RacePanel } from "./RaceMoves";
+import { RaceDockTab } from "../../boxes/race/client-window";
+import { RacePanel } from "../../boxes/race/client";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { boxDescriptors, boxIds, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
-import { describeWorldClock, WorldClockPanel } from "./WorldClockWindow";
-import { PhoneDockTab, PhoneLensView, PhonePanel } from "./PhoneWindow";
-import { phoneNames, stripPhoneTexts } from "../../shared/phone";
-import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "./ThoughtWindow";
-import { stripThoughts } from "../../shared/thought";
+import { describeWorldClock, WorldClockPanel } from "../../boxes/world-clock/client";
+import { PhoneDockTab, PhoneLensView, PhonePanel } from "../../boxes/phone/client";
+import { phoneNames, stripPhoneTexts } from "../../boxes/phone/shared";
+import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "../../boxes/thought/client";
+import { stripThoughts } from "../../boxes/thought/shared";
 import { digestWindow } from "./PassageTimeline";
+
+/** @approved The Author Note edits in the workspace's primary panel rather than a window. */
+export { AuthorNotePanel } from "../../boxes/author-note/client";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
