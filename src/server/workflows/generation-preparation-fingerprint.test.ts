@@ -4,7 +4,6 @@ import { effectiveGenerationSettingsFor } from "../generation-plan";
 import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
-import { boxes } from "../../client/test-fixtures/box-setups";
 
 const emptyPrompt = {
 	systemInstruction: "",
@@ -38,7 +37,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 		target: { kind: "send", content: "" },
 		facts: { kind: "send", reuseHumanMessageId: undefined },
 		scanMessages: [],
-		boxStates: boxes,
 		boxInstances: {},
 		conversationId: 1,
 		boxes: [],

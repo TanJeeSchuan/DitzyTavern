@@ -74,7 +74,7 @@ import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { sameMoves } from "../../shared/contract/box-generation";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import { moveBoxIds, type BoxStates } from "../../shared/contract/box";
+import { moveBoxIds } from "../../shared/contract/box";
 import { readBoxInstances, type BoxInstances } from "../box/setup";
 
 // @approved
@@ -102,34 +102,6 @@ interface ParticipatingHistory {
 }
 
 type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
-
-// @approved
-//  Selected-history entries for prompt compilation, derived from each
-// Message's selected Variant and its immutable Author Stamp name.
-// The caller supplies the already-bounded participating Messages, so this
-// helper cannot accidentally include a sibling target or its later history.
-const selectedHistoryFrom = (
-	messages: readonly ParticipatingHistoryMessage[],
-	humanParticipantId: number,
-	modelParticipantId: number,
-	moves: ReadonlyMap<number, BoxMoves>,
-	boxes: BoxStates,
-): readonly PromptContextEntry[] => {
-	const entries: PromptContextEntry[] = [];
-
-	for (const message of messages) {
-		if (message.variant === null) continue;
-
-		entries.push({
-			kind: "message",
-			speakerName: message.author?.capturedName ?? null,
-			content: humanMessageText(moves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, boxes),
-			role: authorRoleOf(message, { humanParticipantId, modelParticipantId }),
-		});
-	}
-
-	return entries;
-};
 
 /** @approved
  * The one Generation Plan compilation. Every attempt and read-only
@@ -231,7 +203,6 @@ interface PreparationFields extends GenerationPreparationBase {
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
-	readonly boxStates: BoxStates;
 	/** @approved Each present Box's instance, which stamps the records this Generation writes. */
 	readonly boxInstances: BoxInstances;
 }
@@ -369,10 +340,21 @@ export function prepareGenerationInputsSnapshot(
 	if (human === undefined || model === undefined || human.id === model.id) {
 		throw new ConversationNotPlayableError(input.conversationId);
 	}
+	// @approved
+	//  The selected Messages as the model reads them, each Message's Moves
+	// rendered before its prose: prompt history, Lore scanning and Memory
+	// recall all read this one projection.
+	const rendered = participation.messages.flatMap((message) => message.variant === null ? [] : [{
+		message,
+		variantId: message.variant.id,
+		speakerName: message.author?.capturedName ?? null,
+		role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
+		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes),
+	}]);
 	const derivation: GenerationDerivation = {
 		human,
 		model,
-		context: selectedHistoryFrom(participation.messages, human.id, model.id, messageMoves, summary.boxes),
+		context: rendered.map(({ speakerName, content, role }) => ({ kind: "message", speakerName, content, role })),
 	};
 	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
 	// @approved
@@ -383,8 +365,7 @@ export function prepareGenerationInputsSnapshot(
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;
-	const scanMessages = participation.messages.flatMap((message) => message.variant === null ? []
-		: [{ id: message.id, content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes) }]);
+	const scanMessages = rendered.map(({ message, content }) => ({ id: message.id, content }));
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
@@ -408,14 +389,7 @@ export function prepareGenerationInputsSnapshot(
 		database: input.database,
 		conversationId: input.conversationId,
 		enabled: memoryEnabled,
-		messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{
-			messageId: message.id,
-			variantId: message.variant.id,
-			position: message.position,
-			speakerName: message.author?.capturedName ?? null,
-			role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-			content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes),
-		}]),
+		messages: rendered.map(({ message, variantId, speakerName, role, content }) => ({ messageId: message.id, variantId, position: message.position, speakerName, role, content })),
 		pendingHumanText,
 		humanName: human.name,
 	});
@@ -449,7 +423,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxStates: summary.boxes, boxInstances };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxInstances };
 }
 
 /** @approved
@@ -469,17 +443,14 @@ export async function prepareGenerationInputsAsync(
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
 	const { boxes: boxInputs, ...preparation } = snapshot;
+	// @approved
+	//  The semantic pass reads the sources the synchronous pass captured: the
+	// rendered selected history and pending human text, never a second render.
+	const sources = preparation.lore.sources;
 	const needsSemantic = hasEnabledLoreSlot(preparation.recipe.slots) &&
 		preparation.lore.activation.mode === "keyword-fallback";
-	const lorePromise = needsSemantic
-		? evaluateScopedLoreAsync({
-			database: input.database,
-			conversationId: preparation.conversationId,
-			messages: preparation.scanMessages,
-			pendingHumanText: input.target.kind === "send" ? humanMessageText(input.target.moves ?? {}, input.target.content, preparation.derivation.human.name, preparation.boxStates) : undefined,
-			fetch: input.preparationFetch,
-			signal,
-		}, preparation.lore.sources)
+	const lorePromise = needsSemantic && sources !== undefined
+		? evaluateScopedLoreAsync(sources, { fetch: input.preparationFetch, signal })
 		: Promise.resolve(preparation.lore);
 	const boxesPromise = advanceBoxes(boxInputs, {
 		signal,

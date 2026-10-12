@@ -216,18 +216,17 @@ export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation
 };
 
 /** @approved
- * Async semantic seam used by Generation preparation and the match tester. Semantic matching is
- * performed once for the captured window; any incomplete provider pass is represented as one
- * unavailable result so every entry follows the same keyword fallback policy.
+ * Async semantic seam used by Generation preparation, over the sources its synchronous pass
+ * captured. Semantic matching is performed once for the captured window; any incomplete provider
+ * pass is represented as one unavailable result so every entry follows the same keyword fallback policy.
  */
-export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch; signal?: AbortSignal }, capturedSources?: ScopedLoreSources): Promise<ScopedLoreEvaluation> => {
-	const sources = capturedSources ?? collectSources(input);
+export const evaluateScopedLoreAsync = async (sources: ScopedLoreSources, options: { fetch?: ModelFetch | undefined; signal?: AbortSignal }): Promise<ScopedLoreEvaluation> => {
 	const semantic = await evaluateSemanticLore({
 		entries: sources.books.flatMap(({ book }) => book.entries),
 		messages: sources.scanMessages,
 		settings: sources.semanticSettings,
-		fetch: input.fetch,
-		signal: input.signal,
+		fetch: options.fetch,
+		signal: options.signal,
 	});
 	return assembleEvaluation(sources, semantic);
 };
