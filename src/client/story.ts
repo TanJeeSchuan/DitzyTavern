@@ -197,8 +197,8 @@ const toStoryVariant = (
 		position: variant.position,
 		content,
 		reasoning: live?.reasoning ?? variant.reasoning ?? prior?.reasoning ?? "",
-		generationId: live?.generationId ?? prior?.generationId,
-		lastEventId: live?.eventId ?? prior?.lastEventId,
+		generationId: live?.generationId,
+		lastEventId: live?.eventId,
 		empty: content === "",
 	};
 };
@@ -291,7 +291,6 @@ const acceptsGenerationObservation = (
 	eventId: number | undefined,
 ): boolean =>
 	(generationId === undefined ||
-		variant.generationId === undefined ||
 		variant.generationId === generationId) &&
 	(eventId === undefined || eventId > (variant.lastEventId ?? 0));
 
