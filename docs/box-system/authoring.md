@@ -309,7 +309,7 @@ Any other field type, and any `Type.Optional` field, throws when `digestWindow` 
 
 The timeline summarizes a record by joining its fields with ` · `: a choice shows its option's title, a number or string shows its value, and a `null` field is left out. When that reads badly, pass `describe(record)` to `digestWindow`; it takes the Box's own record type. The World Clock's turns `{ minutes: 5, weather: "clear" }` into `+5m · ☀️ Clear`.
 
-A Panel that changes something the status depends on, such as setup, refreshes the timeline and dock with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`.
+A Panel that changes something the status depends on, such as setup, refreshes the timeline with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or pass that as `onSaved` to `useBoxSetupDraft`. The dock tab polls its status on its own.
 
 ## Storage
 
