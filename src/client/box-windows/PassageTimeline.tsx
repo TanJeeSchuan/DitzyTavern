@@ -13,6 +13,7 @@ import type { BoxRecord } from "../../shared/contract/box-generation";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
+import type { BoxWindowDefinition } from "./registry";
 
 export const boxDigestKey = (conversationId: number, box: DigestBoxId) => ["box-digest", conversationId, box] as const;
 
@@ -29,7 +30,7 @@ function useBoxDigest(conversationId: number, box: DigestBoxId) {
 }
 
 /** @approved A digesting Box's dock tab: its folded status line. */
-export function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
+function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
 	const read = useQuery({
 		queryKey: ["box-digest-status", conversation.id, box],
 		queryFn: ({ signal }) => loadBoxDigestStatus(conversation.id, box, signal),
@@ -71,6 +72,33 @@ const recordField = (key: string, schema: TSchema): RecordField => {
 };
 const recordFields = (box: DigestBoxId): readonly RecordField[] =>
 	Object.entries(boxDescriptors[box].record.properties).map(([key, schema]) => recordField(key, schema));
+
+// @approved
+//  A digesting Box's window: its own Panel, if it has one, then the host's
+// passage timeline; its dock tab shows `status`. `describe` summarizes a
+// record on the timeline in place of the generic summary. The override
+// editor is built from the record schema here, so a schema the timeline
+// cannot edit fails when the Box registers its window, not when it opens.
+export function digestWindow<Id extends DigestBoxId>(box: Id, { icon, size, Panel, describe }: {
+	icon: LucideIcon;
+	size: BoxWindowDefinition["size"];
+	Panel?: BoxWindowDefinition["Panel"];
+	describe?(record: BoxRecord<Id>): string;
+}): BoxWindowDefinition {
+	const fields = recordFields(box);
+	// @approved
+	// SAFETY: the timeline holds this Box's records, which its `describe` takes.
+	const summarize = (describe ?? ((record) => summaryOf(fields, record))) as (record: RecordValue) => string;
+	return {
+		icon,
+		size,
+		DockTab: ({ conversation, onRestore }) => <DigestDockTab box={box} icon={icon} conversation={conversation} onRestore={onRestore} />,
+		Panel: (props) => <>
+			{Panel !== undefined && <Panel {...props} />}
+			<PassageTimeline box={box} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
+		</>,
+	};
+}
 
 type RecordValue = BoxRecord<DigestBoxId>;
 const fieldValues = (record: RecordValue | null): ReadonlyMap<string, FieldValue> => new Map(record === null ? [] : Object.entries(record));
@@ -142,18 +170,17 @@ const commandNotices = { conflict: "The Chat changed elsewhere. Review the passa
 
 /** @approved Every digesting Box's window ends with this timeline of the
  *  Selected path's passages: each one's record, a Writer override editor
- *  built from the record schema, reset, and a catch-up run with its progress.
- *  `describe` replaces the generic record summary. */
-export function PassageTimeline({ box, conversation, disabled, describe, onConversationChange }: {
+ *  built from the record schema, reset, and a catch-up run with its progress. */
+function PassageTimeline({ box, fields, summarize, conversation, disabled, onConversationChange }: {
 	box: DigestBoxId;
+	fields: readonly RecordField[];
+	summarize: (record: RecordValue) => string;
 	conversation: ConversationSummary;
 	disabled: boolean;
-	describe: ((record: never) => string) | undefined;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }): ReactNode {
 	const client = useQueryClient();
 	const read = useBoxDigest(conversation.id, box);
-	const [fields] = useState(() => recordFields(box));
 	const [editing, setEditing] = useState<number | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -162,9 +189,6 @@ export function PassageTimeline({ box, conversation, disabled, describe, onConve
 	const passages = read.data?.passages ?? [];
 	const catchUp = read.data?.catchUp ?? null;
 	const digestReady = read.data?.digestReady ?? false;
-	// @approved
-	// SAFETY: a Box's `describe` takes its own record, which is what its timeline holds.
-	const summary = (record: RecordValue) => describe === undefined ? summaryOf(fields, record) : (describe as (record: RecordValue) => string)(record);
 
 	const apply = async (command: ConversationAction): Promise<boolean> => {
 		let applied = false;
@@ -223,7 +247,7 @@ export function PassageTimeline({ box, conversation, disabled, describe, onConve
 						? <RecordEditor box={box} passage={passage} fields={fields} busy={locked} onCancel={() => setEditing(null)} onSave={(record) => void save(passage, record)} />
 						: <div className="box-timeline-read">
 							<span className="box-timeline-summary">
-								{passage.record === null ? <em>Not read yet</em> : summary(passage.record)}
+								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}
 								{passage.overridden && <span className="box-timeline-override-mark">Overridden</span>}
 							</span>
 							<span className="box-timeline-actions">

@@ -3,14 +3,15 @@ import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "./RaceWindow";
 import { RacePanel } from "./RaceMoves";
-import type { BoxMoves, BoxRecord } from "../../shared/contract/box-generation";
-import { boxDescriptors, boxIds, type BoxId, type DigestBoxId } from "../../shared/contract/box";
+import type { BoxMoves } from "../../shared/contract/box-generation";
+import { boxDescriptors, boxIds, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import { describeWorldClock, WorldClockPanel } from "./WorldClockWindow";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "./PhoneWindow";
 import { phoneNames, stripPhoneTexts } from "../../shared/phone";
 import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "./ThoughtWindow";
 import { stripThoughts } from "../../shared/thought";
+import { digestWindow } from "./PassageTimeline";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
@@ -24,24 +25,13 @@ export const boxTitle = (id: BoxId): string => boxDescriptors[id].label;
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
 type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
 
-// @approved
-//  A digesting Box's window is the host's passage timeline, after its Panel
-// if it has one, and its dock tab shows its status; `describe` summarizes a
-// record on the timeline in place of the generic summary. Any other Box
-// brings its own Panel and DockTab.
-type WindowDefinition<Id extends BoxId> = { readonly icon: LucideIcon; readonly size: { readonly width: number; readonly height: number }; readonly lens?: BoxLens }
-	& (Id extends DigestBoxId
-		? { readonly Panel?: Panel; readonly DockTab?: never; describe?(record: BoxRecord<Id>): string }
-		: { readonly Panel: Panel; readonly DockTab: DockTab; readonly describe?: never });
-
-/** @approved Any Box's window, as the window layer reads it. */
+/** @approved Any Box's window; a digesting Box builds its own with `digestWindow`. */
 export interface BoxWindowDefinition {
 	readonly icon: LucideIcon;
 	readonly size: { readonly width: number; readonly height: number };
 	readonly lens?: BoxLens;
-	readonly Panel?: Panel;
-	readonly DockTab?: DockTab;
-	describe?(record: never): string;
+	readonly Panel: Panel;
+	readonly DockTab: DockTab;
 }
 
 // @approved
@@ -85,12 +75,12 @@ const castNames = ({ cast, control }: ConversationSummary) => {
 //  they are React and the server contract is not. The composer's launcher,
 //  the dock and the story's lenses render the Boxes listed here.
 export const boxWindows = {
-	"world-clock": { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock },
+	"world-clock": digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }),
 	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
 	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },
-	mood: { icon: Drama, size: { width: 22, height: 26 } },
-} satisfies { readonly [Id in BoxId]?: WindowDefinition<Id> };
+	mood: digestWindow("mood", { icon: Drama, size: { width: 22, height: 26 } }),
+} satisfies { readonly [Id in BoxId]?: BoxWindowDefinition };
 
 export type WindowBoxId = keyof typeof boxWindows;
 export const windowBoxIds = boxIds.filter((id): id is WindowBoxId => Object.hasOwn(boxWindows, id));

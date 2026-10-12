@@ -24,7 +24,7 @@ Each step ends with a check that runs without a live app. Run heavy commands thr
    | has per-Chat configuration | `setup` | `setupError` if the schema cannot express a rule | a `Panel` that sends `set-box-setup` |
    | lets the writer attach actions to a Message | `moves` | `moves.render` | a `Panel` that stages Moves |
    | settles facts per Variant at Generation time | `record` | `records`, and `advance` returns `record` | — |
-   | reads finished prose in the background | `record` and `decision` | `records` with `digest`; `status` optional | `icon` and `size`; `Panel` and `describe` optional |
+   | reads finished prose in the background | `record` and `decision` | `records` with `digest`; `status` optional | `digestWindow("<id>", { icon, size })`; `Panel` and `describe` optional |
    | shows a window | — | `read`, if the Panel needs data the Chat summary lacks | `icon`, `size`, `Panel`, `DockTab` |
    | lifts markup out of the story view | — | — | `lens` (needs the window entry) |
    | needs Cast names, the seed or the intent | — | `dependencies` | — |
@@ -36,7 +36,7 @@ Each step ends with a check that runs without a live app. Run heavy commands thr
 
 3. **Register the Box and write its server module.** Add the id to `boxIds` and its entry to `boxDescriptors` in `src/shared/contract/box.ts` (see [Descriptor](#descriptor)). Create `src/server/box/<id>.ts` exporting `<id>Box`, an object that `satisfies Box<…>` from `src/server/box/contract.ts`, and add it to the `serverBox` lookup in `src/server/box/registry.ts`. Do all three before the check. The `serverBox` lookup is typed over every id in `boxIds`, so the build fails until the server entry exists, and it fails if the descriptor declares a key whose hook the server module lacks: `record` needs `records`, `decision` needs `records.digest`, `moves` needs `moves.render`. Each entry is also checked against its own id's descriptor, so a Box whose setup, record or Move types differ from that descriptor's schemas fails to register. Done when `bun run typecheck` passes.
 
-4. **Write the window**, if the Box has one. Create `src/client/box-windows/<Name>Window.tsx` and add the `boxWindows` entry (see [Window](#window)). A digesting Box always needs the entry, because the entry is what gives it a window and a dock tab. It needs no window file when it has no setup and the generic record summary reads well: the entry is then just `{ icon, size }`. Done when `bun run typecheck` passes.
+4. **Write the window**, if the Box has one. Create `src/client/box-windows/<Name>Window.tsx` and add the `boxWindows` entry (see [Window](#window)). A digesting Box always needs the entry, because the entry is what gives it a window and a dock tab. It needs no window file when it has no setup and the generic record summary reads well: the entry is then just `digestWindow("<id>", { icon, size })`. Done when `bun run typecheck` passes.
 
 5. **Test it.** Write one e2e spec, `e2e/<id>.spec.ts`, per user flow, and assert through Prompt Plan inspection. Every test runs on a fresh database, so the Default preset already has the Box's block (see [Preset block](#preset-block)). Insert the Box with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box needs `selectBoxDecisionModel(request, "<id>")` and scripted decisions through `llm.decisions(…)`; `e2e/world-clock.spec.ts` shows both. The human's Messages are digested too, and the first matching rule wins, so end the scripted decisions with a catch-all rule after the passage-specific ones. Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a given seed, or a fold. Done when `bun run check` and `bun run test:e2e` pass.
 
@@ -249,9 +249,8 @@ The client half of a Box lives in `boxWindows` in `src/client/box-windows/regist
 | `Panel` | the window body |
 | `DockTab` | the minimized window's tab |
 | `lens` | optional, see [Lens](#lens) |
-| `describe` | digesting Boxes only, see [Passage timeline](#passage-timeline) |
 
-A digesting Box omits `DockTab`, because the host gives it one that shows `status`, and `Panel` is optional. Any other Box must declare both. The type checker enforces this.
+A digesting Box builds its entry with `digestWindow("<id>", { icon, size, Panel?, describe? })` from `PassageTimeline.tsx`. It returns an ordinary entry whose `Panel` is the Box's own `Panel`, if any, followed by the [passage timeline](#passage-timeline), and whose `DockTab` shows `status`. Any other Box declares both itself.
 
 The composer shows a launcher button for each enabled Box with an entry. Windows drag but do not resize, several can be open at once, and minimizing turns a window into its dock tab. Open state, minimization and position are stored per Chat in local storage. On narrow layouts a window becomes a full-screen layer with focus trapped inside.
 
@@ -306,9 +305,9 @@ The override editor is built from the descriptor's `record` schema:
 | `Type.Integer()` or `Type.Number()` | a number input, bounded by `minimum` and `maximum` |
 | `Type.String()` | a text input |
 
-Any other field type, and any `Type.Optional` field, throws when the window opens. A field that may be unset must be a union of literals with `Type.Null()`; a nullable number or string is not supported. Write each option out as its own `Type.Literal`. A union built with a spread, such as `Type.Union(names.map(Type.Literal))`, typechecks on the server but fails the client's typecheck. Each schema's `title` labels its field or option: `Type.Union([…], { title: "Weather" })`, `Type.Literal("rain", { title: "🌧️ Rain" })`, `Type.Null({ title: "Not mentioned" })`. Without a title the key or value is shown. A new passage's draft starts a nullable choice at `null` and leaves every other field empty. Save stays disabled until the draft passes the record schema.
+Any other field type, and any `Type.Optional` field, throws when `digestWindow` registers the window, so the client fails at load rather than when the window opens. A field that may be unset must be a union of literals with `Type.Null()`; a nullable number or string is not supported. Write each option out as its own `Type.Literal`. A union built with a spread, such as `Type.Union(names.map(Type.Literal))`, typechecks on the server but fails the client's typecheck. Each schema's `title` labels its field or option: `Type.Union([…], { title: "Weather" })`, `Type.Literal("rain", { title: "🌧️ Rain" })`, `Type.Null({ title: "Not mentioned" })`. Without a title the key or value is shown. A new passage's draft starts a nullable choice at `null` and leaves every other field empty. Save stays disabled until the draft passes the record schema.
 
-The timeline summarizes a record by joining its fields with ` · `: a choice shows its option's title, a number or string shows its value, and a `null` field is left out. When that reads badly, set `describe(record)` on the `boxWindows` entry. The World Clock's turns `{ minutes: 5, weather: "clear" }` into `+5m · ☀️ Clear`.
+The timeline summarizes a record by joining its fields with ` · `: a choice shows its option's title, a number or string shows its value, and a `null` field is left out. When that reads badly, pass `describe(record)` to `digestWindow`; it takes the Box's own record type. The World Clock's turns `{ minutes: 5, weather: "clear" }` into `+5m · ☀️ Clear`.
 
 A Panel that changes something the status depends on, such as setup, refreshes the timeline and dock with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`.
 

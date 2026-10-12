@@ -1,11 +1,10 @@
 import { Minus, X } from "lucide-react";
 import { FocusScope } from "radix-ui/internal";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { isDigestBoxId, type BoxWindowLayout } from "../../shared/contract/box";
+import type { BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { boxTitle, boxWindow, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
-import { DigestDockTab, PassageTimeline } from "./PassageTimeline";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -146,10 +145,8 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
 			{minimized.map((id) => {
-				const { DockTab, icon } = boxWindow(id);
-				const onRestore = () => requestNavigation(() => controller.open(id));
-				if (DockTab !== undefined) return <DockTab key={id} conversation={conversation} onRestore={onRestore} />;
-				return isDigestBoxId(id) ? <DigestDockTab key={id} box={id} icon={icon} conversation={conversation} onRestore={onRestore} /> : null;
+				const { DockTab } = boxWindow(id);
+				return <DockTab key={id} conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} />;
 			})}
 		</div>}
 		{/* @approved
@@ -178,9 +175,8 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
-				{Panel !== undefined && <Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
-					boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />}
-				{isDigestBoxId(id) && <PassageTimeline box={id} conversation={conversation} disabled={disabled} describe={definition.describe} onConversationChange={onConversationChange} />}
+				<Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
+					boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
 			</FloatingWindow>;
 		})}
 		</div></FocusScope.Root>
