@@ -1,5 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
+import { importVisitors } from "../imports.ts";
 import { importTarget, isTestFile, layerOf, repositoryPath } from "../path.ts";
 
 const registrations = new Set(["src/shared/contract/box.ts", "src/server/box/registry.ts", "src/client/box-windows/registry.tsx"]);
@@ -16,24 +17,18 @@ export const noBoxBoundaryImportsRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		const check = (node: ESTree.Node, source: unknown) => {
+		return importVisitors((node: ESTree.Node, source: string) => {
 			const path = repositoryPath(context.filename);
-			if (typeof source !== "string" || isTestFile(path)) return;
+			if (isTestFile(path)) return;
 			const target = importTarget(path, source);
 			const box = /^src\/boxes\/([^/]+)\//.exec(path)?.[1];
 			if (box === undefined) {
-				if (path.startsWith("src/") && /^src\/boxes(?:\/|$)/.test(target) && !registrations.has(path)) context.report({ node, messageId: "coreImport" });
+				if (path.startsWith("src/") && target !== undefined && /^src\/boxes(?:\/|$)/.test(target) && !registrations.has(path)) context.report({ node, messageId: "coreImport" });
 				return;
 			}
-			if (target === source || target.startsWith(`src/boxes/${box}/`)) return;
+			if (target === undefined || target.startsWith(`src/boxes/${box}/`)) return;
 			const allowed = sdk[layerOf(path) ?? "shared"];
 			if (!allowed.includes(target)) context.report({ node, messageId: "boxImport", data: { allowed: allowed.join(", ") } });
-		};
-		return {
-			ImportDeclaration: (node) => check(node.source, node.source.value),
-			ExportNamedDeclaration: (node) => { if (node.source !== null) check(node.source, node.source.value); },
-			ExportAllDeclaration: (node) => check(node.source, node.source.value),
-			ImportExpression: (node) => { if (node.source.type === "Literal") check(node.source, node.source.value); },
-		};
+		});
 	},
 });

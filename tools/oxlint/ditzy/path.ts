@@ -15,11 +15,14 @@ export const repositoryPath = (filename: string): string => {
 export const isTestFile = (filename: string): boolean =>
 	/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(repositoryPath(filename));
 
-/** The repository path an import names, without its extension; a package specifier is returned as written. */
-export const importTarget = (filename: string, source: string): string => {
-	if (source.startsWith("@/")) return `src/${source.slice(2)}`.replace(/\.[cm]?[jt]sx?$/, "");
-	if (!source.startsWith(".")) return source;
-	return posix.normalize(posix.join(posix.dirname(repositoryPath(filename)), source)).replace(/\.[cm]?[jt]sx?$/, "");
+/** The repository path an import names, without its extension, or undefined for a package. */
+export const importTarget = (filename: string, source: string): string | undefined => {
+	const path = normalized(source);
+	const local = path.startsWith("@/") ? `src/${path.slice(2)}`
+		: path.startsWith(".") ? posix.join(posix.dirname(repositoryPath(filename)), path)
+		: path.startsWith("/") || /^[A-Za-z]:\//.test(path) ? repositoryPath(path)
+		: undefined;
+	return local === undefined ? undefined : posix.normalize(local).replace(/\.[cm]?[jt]sx?$/, "");
 };
 
 /** A Box or Box SDK file's layer comes from its file name; any other file's from its top-level folder under src. */

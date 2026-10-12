@@ -37,6 +37,11 @@ tester.run("no-layer-dependencies-in-shared", noLayerDependenciesInSharedRule, {
 			errors: [{ messageId: "layerDependency" }],
 		},
 		{
+			filename: "src/boxes/race/shared.ts",
+			code: "export * from './server-engine'; const engine = import('./server-engine');",
+			errors: [{ messageId: "layerDependency" }, { messageId: "layerDependency" }],
+		},
+		{
 			filename: "src/boxes/phone/shared.ts",
 			code: "import { PhonePanel } from './client';",
 			errors: [{ messageId: "layerDependency" }],

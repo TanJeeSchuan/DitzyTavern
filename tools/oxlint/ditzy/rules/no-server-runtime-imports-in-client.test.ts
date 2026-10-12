@@ -44,12 +44,21 @@ tester.run(
 				filename: "src/boxes/race/client.tsx",
 				code: "import type { RaceState } from './server-engine'; import { Button } from '../../box-sdk/client';",
 			},
+			{
+				filename: "src/boxes/race/client.tsx",
+				code: "export type { RaceState } from './server-engine'; export { type RaceRecord } from './server-engine';",
+			},
 		],
 		invalid: [
 			{
 				filename: "src/boxes/race/client-window.tsx",
 				code: "import { advanceRace } from './server-engine';",
 				errors: [{ messageId: "serverRuntimeDependency" }],
+			},
+			{
+				filename: "src/boxes/race/client-window.tsx",
+				code: "export * from './server-engine'; export { advanceRace } from './server-engine'; const engine = import(`./server-engine`);",
+				errors: [{ messageId: "serverRuntimeDependency" }, { messageId: "serverRuntimeDependency" }, { messageId: "serverRuntimeDependency" }],
 			},
 			{
 				filename: "src/box-sdk/client.ts",

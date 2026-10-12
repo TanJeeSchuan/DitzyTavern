@@ -1,12 +1,10 @@
-import { defineRule, type ESTree } from "@oxlint/plugins";
+import { defineRule } from "@oxlint/plugins";
 
+import { importVisitors } from "../imports.ts";
 import { importTarget, isTestFile, layerOf, repositoryPath } from "../path.ts";
 
 const isServerModule = (path: string, source: string): boolean =>
-	/(?:^|\/)server(?:\/|$)/.test(source) || source.startsWith("@/server/") || layerOf(importTarget(path, source)) === "server";
-
-const sourceText = (node: ESTree.ImportDeclaration): string | null =>
-	typeof node.source.value === "string" ? node.source.value : null;
+	/(?:^|\/)server(?:\/|$)/.test(source) || source.startsWith("@/server/") || layerOf(importTarget(path, source) ?? "") === "server";
 
 /** Keep the client decoupled from server runtime code: server modules may only be imported for types. */
 export const noServerRuntimeImportsInClientRule = defineRule({
@@ -21,23 +19,10 @@ export const noServerRuntimeImportsInClientRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		return {
-			ImportDeclaration(node) {
-				const path = repositoryPath(context.filename);
-				if (layerOf(path) !== "client" || isTestFile(path)) return;
-				const source = sourceText(node);
-				if (source === null || !isServerModule(path, source)) return;
-				if (node.importKind === "type") return;
-				if (
-					node.specifiers.length > 0 &&
-					node.specifiers.every(
-						(specifier) =>
-							specifier.type === "ImportSpecifier" && specifier.importKind === "type",
-					)
-				)
-					return;
-				context.report({ node: node.source, messageId: "serverRuntimeDependency" });
-			},
-		};
+		return importVisitors((node, source, typeOnly) => {
+			const path = repositoryPath(context.filename);
+			if (layerOf(path) !== "client" || isTestFile(path) || typeOnly || !isServerModule(path, source)) return;
+			context.report({ node, messageId: "serverRuntimeDependency" });
+		});
 	},
 });

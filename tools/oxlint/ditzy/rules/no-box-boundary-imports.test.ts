@@ -36,5 +36,10 @@ tester.run("no-box-boundary-imports", noBoxBoundaryImportsRule, {
 		{ filename: "src/server/generation-plan/compiler.ts", code: 'import { memoryItems } from "../../boxes/memory/server-prompt";', errors: [{ messageId: "coreImport" }] },
 		{ filename: "src/client/workspace/PrimaryPanelView.tsx", code: 'import { AuthorNotePanel } from "@/boxes/author-note/client";', errors: [{ messageId: "coreImport" }] },
 		{ filename: "src/box-sdk/server.ts", code: 'export { raceBox } from "../boxes/race/server";', errors: [{ messageId: "coreImport" }] },
+		{ filename: "src/boxes/race/server.ts", code: 'import { stripPhoneTexts } from "@/boxes/race/../phone/shared";', errors: [{ messageId: "boxImport" }] },
+		{ filename: "src/server/app.ts", code: 'import { raceSetup } from "@/shared/../boxes/race/contract";', errors: [{ messageId: "coreImport" }] },
+		{ filename: "src/boxes/race/server.ts", code: 'import { phoneBox } from "/home/tan/Projects/DitzyTavern/src/boxes/phone/server";', errors: [{ messageId: "boxImport" }] },
+		{ filename: "src/server/app.ts", code: 'import { phoneBox } from "/home/tan/Projects/DitzyTavern/src/boxes/phone/server.ts";', errors: [{ messageId: "coreImport" }] },
+		{ filename: "src/boxes/race/client.tsx", code: "const window = import(`../phone/client`);", errors: [{ messageId: "boxImport" }] },
 	],
 });
