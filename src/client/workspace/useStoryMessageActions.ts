@@ -155,7 +155,12 @@ export function useStoryMessageActions({
 
 	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
 		if (story.preview !== null || story.conversationId === null) return;
-		await runConversationCommand({ ...surface, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, { notices: STORY_COMMAND_NOTICES });
+		dispatchStory({ type: "moves-requested", messageId, moves });
+		const applied = await runConversationCommand({ ...surface, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
+		});
+		if (!applied && !signal.aborted) dispatchStory({ type: "moves-dropped", messageId });
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {

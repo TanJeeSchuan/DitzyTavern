@@ -7,7 +7,8 @@ import { Portrait } from "./Portrait";
 
 type Author = { name: string; portrait?: PortraitImage | undefined };
 
-// A Requested Send (or Continue) before the server accepts it: the writer's Message, when it adds one, and the
+// @approved
+//  A Requested Send (or Continue) before the server accepts it: the writer's Message, when it adds one, and the
 // reply in progress. The accepted Messages replace it in the same render that places them. The writer's Message
 // shows its Moves and goes through the story's lenses as the accepted one will.
 export function RequestedSendView({ human, sent, model, lens }: {

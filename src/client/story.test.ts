@@ -10,6 +10,7 @@ import {
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 	reusesTrailingHumanMessage,
+	shownMessage,
 	visibleVariantContent,
 	type StoryPreviewState,
 	type StoryMessage,
@@ -810,6 +811,21 @@ describe("Requested Send", () => {
 	test("disappears when the server does not accept it", () => {
 		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "continuation" } });
 		expect(reduceStory(requested, { type: "generation-request-failed" }).requestedGeneration).toBeNull();
+	});
+
+	test("Requested Moves show until their command settles, and an earlier settle keeps a later request", () => {
+		const text = (body: string) => ({ to: "Mara", text: body });
+		const state = reduceStory(opened(), { type: "window-received", page: page({ messages: [message({ moves: { phone: [text("A"), text("B"), text("C")] } })] }) });
+		const first = reduceStory(state, { type: "moves-requested", messageId: 10, moves: { phone: [text("B"), text("C")] } });
+		const second = reduceStory(first, { type: "moves-requested", messageId: 10, moves: { phone: [text("C")] } });
+		expect(shownMessage(second, second.messages[0]!).moves).toEqual({ phone: [text("C")] });
+		const firstApplied = reduceStory(second, { type: "moves-set", messageId: 10, moves: { phone: [text("B"), text("C")] } });
+		expect(shownMessage(firstApplied, firstApplied.messages[0]!).moves).toEqual({ phone: [text("C")] });
+		const secondApplied = reduceStory(firstApplied, { type: "moves-set", messageId: 10, moves: { phone: [text("C")] } });
+		expect(secondApplied.requestedMoves.size).toBe(0);
+		expect(secondApplied.messages[0]!.moves).toEqual({ phone: [text("C")] });
+		const dropped = reduceStory(first, { type: "moves-dropped", messageId: 10 });
+		expect(shownMessage(dropped, dropped.messages[0]!).moves).toEqual({ phone: [text("A"), text("B"), text("C")] });
 	});
 
 	test("reuses the trailing human Message only when it repeats that Message's text and Moves", () => {

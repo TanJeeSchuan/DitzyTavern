@@ -86,6 +86,36 @@ test.describe(() => {
 	});
 });
 
+test("a second Move removal builds on the first while the first is still unanswered", async ({ page, llm }) => {
+	await llm.chat({ chunks: ["Theodora reads them."] });
+	await page.goto("/");
+	await insertBox(page, "Phone");
+	await page.getByRole("button", { name: "Phone", exact: true }).click();
+	const phone = page.getByRole("dialog", { name: "Phone" });
+	for (const body of ["A", "B", "C"]) {
+		await phone.getByRole("textbox", { name: "Text Theodora Kline" }).fill(body);
+		await phone.getByRole("button", { name: "Stage text" }).click();
+	}
+	await phone.getByRole("button", { name: "Minimize Phone" }).click();
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	await expect(story(page).getByText("Theodora reads them.")).toBeVisible();
+	const moves = story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" });
+	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: A", "📱 Theodora Kline: B", "📱 Theodora Kline: C"]);
+	let applied = 0;
+	page.on("response", (response) => { if (response.url().endsWith("/commands") && response.ok()) applied += 1; });
+	const applying = holdPost(page, "**/api/conversations/*/commands");
+	await moves.getByRole("button", { name: "Remove 📱 Theodora Kline: A" }).click();
+	const route = await applying;
+	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: B", "📱 Theodora Kline: C"]);
+	await moves.getByRole("button", { name: "Remove 📱 Theodora Kline: B" }).click();
+	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: C"]);
+	await route.continue();
+	await expect.poll(() => applied).toBe(2);
+	await page.reload();
+	await expect(story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" }).getByRole("listitem"))
+		.toHaveText(["📱 Theodora Kline: C"]);
+});
+
 test("a Swipe on the final Message shows its Variant before the server applies it", async ({ page, request }) => {
 	await appendModelMessage(request, ["First take.", "Second take."]);
 	await page.goto("/");

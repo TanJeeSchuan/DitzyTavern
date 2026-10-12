@@ -34,13 +34,13 @@ import {
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
+	shownMessage,
 	shownVariant,
 	type StoryAction,
 	type StoryMessage,
 	type StoryState,
 } from "../story";
-import { hasMoves, pickMoves, type BoxMoves } from "../../shared/contract/box-generation";
-import { boxDescriptors } from "../../shared/contract/box";
+import { hasMoves, pickMoves, seatBound, type BoxMoves } from "../../shared/contract/box-generation";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -96,7 +96,7 @@ export function useGenerationController({
 	// @approved
 	//  A Box that stops being enabled, and a seat-bound Box after a seat
 	//  change, drop their staged Moves for good.
-	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !("seatBound" in boxDescriptors[id].moves)));
+	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !seatBound(id)));
 	if (conversation !== null && staged.conversationId === conversation.id && (!sameSeat || Object.keys(kept).length !== Object.keys(staged.moves).length)) {
 		setStaged({ ...staged, humanParticipantId: conversation.control.humanParticipantId, moves: kept });
 	}
@@ -298,7 +298,8 @@ export function useGenerationController({
 
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const persisted = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
 		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
 		if (
 			latest?.id !== messageId ||

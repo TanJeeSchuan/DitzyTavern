@@ -8,6 +8,7 @@ import {
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	reusesTrailingHumanMessage,
+	shownMessage,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -144,7 +145,7 @@ export function StoryStage({
 					{story.messages.map((message) => (
 						<StoryMessageView
 							key={message.id}
-							message={message}
+							message={shownMessage(story, message)}
 							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}

@@ -20,9 +20,9 @@ const preview = (conversationId = 7, content = "Expanded"): GenerationPreview =>
 	},
 	budget: { tokenEstimate: 1, responseBudget: 1, safetyAllowance: 1, contextLimit: 10, totalRequiredTokens: 3, budgetFits: true },
 });
-const conversation = (id = 7) => {
-	// SAFETY: the assembly hook only reads id, revision, and playable; the fixture supplies that boundary.
-	return { id, revision: 2, playable: true } as ConversationSummary;
+const conversation = (id = 7, humanParticipantId = 1) => {
+	// SAFETY: the assembly hook only reads id, revision, playable, and the human seat; the fixture supplies that boundary.
+	return { id, revision: 2, playable: true, control: { humanParticipantId, modelParticipantId: 2 } } as ConversationSummary;
 };
 const accepted = { outcome: "accepted", conversationId: 7, generationId: 10, messageId: 20, variantId: 30 } as const;
 
@@ -113,6 +113,18 @@ describe("assembly session", () => {
 		await flushHook();
 		expect(h.hook.current.assembly?.preview?.promptPlan).toEqual(plan("Expanded"));
 		expect(h.requests).toHaveLength(2);
+	});
+
+	test("a Send whose seat changed before its turn is not sent with the old seat's seat-bound Moves", async () => {
+		const h = await assemblyHarness(async () => Response.json(preview()));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } }));
+		await flushHook();
+		await flushHook();
+		h.options.conversation = conversation(7, 3);
+		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
+		await flushHook();
+		expect(h.hook.current.assembly?.error).toBe("The writer changed before this Send went out, so it was not sent.");
+		expect(h.requests.filter(({ url }) => !url.endsWith("/preview"))).toHaveLength(0);
 	});
 
 	test("an edited plan survives acceptance failure and is sent again on retry", async () => {

@@ -31,6 +31,8 @@ export type BoxMoves = Static<typeof boxMoves>;
 export type BoxMove = NonNullable<BoxMoves[MoveBoxId]>[number];
 
 export const hasMoves = (moves: BoxMoves | undefined): boolean => Object.values(moves ?? {}).some((list) => list.length > 0);
+/** @approved Seat-bound Moves belong to the human seat that staged them, as well as to their Chat. */
+export const seatBound = (id: MoveBoxId): boolean => "seatBound" in boxDescriptors[id].moves;
 export const sameMoves = (left: BoxMoves | undefined, right: BoxMoves | undefined): boolean =>
 	moveBoxIds.every((id) => JSON.stringify(left?.[id] ?? []) === JSON.stringify(right?.[id] ?? []));
 

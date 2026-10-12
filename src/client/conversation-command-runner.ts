@@ -72,7 +72,7 @@ export function queueConversationCommand(conversationId: number, command: (revis
 	return settled;
 }
 
-/**
+/** @approved
  * Runs one Conversation command against `surface` through the Conversation's command queue: an action goes
  * through the Conversation command route, a function is the surface's own send seam. Resolves the applied
  * Conversation, so a surface that chains commands can start the next from its revision; undefined when nothing
