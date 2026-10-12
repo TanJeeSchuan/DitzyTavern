@@ -46,17 +46,18 @@ export function readVariantsForMemory(
 		.all().map(({ generationId, ...row }) => ({ ...row, active: generationId !== null }));
 }
 
-export function readSelectedPathForMemory(database: Database, conversationId: number, sourceMessageId?: number) {
+/** @approved The whole Selected path, or one source Message with up to `preceding` selected Messages before it. */
+export function readSelectedPathForMemory(database: Database, conversationId: number, around?: { readonly messageId: number; readonly preceding: number }) {
 	const db = connectConversationDatabase(database);
 	let ids: number[] | undefined;
-	if (sourceMessageId !== undefined) {
+	if (around !== undefined) {
 		const source = db.select({ position: messageTable.position }).from(messageTable)
-			.where(and(eq(messageTable.id, sourceMessageId), eq(messageTable.conversation_id, conversationId))).get();
+			.where(and(eq(messageTable.id, around.messageId), eq(messageTable.conversation_id, conversationId))).get();
 		if (source === undefined) return [];
 		ids = db.select({ id: messageTable.id }).from(messageTable)
 			.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
 			.where(and(eq(messageTable.conversation_id, conversationId), lte(messageTable.position, source.position)))
-			.orderBy(desc(messageTable.position)).limit(5).all().map((row) => row.id);
+			.orderBy(desc(messageTable.position)).limit(around.preceding + 1).all().map((row) => row.id);
 	}
 	const read = readSelectedHistory(database, conversationId, { ids, conversationData: false });
 	if (read === undefined) return undefined;

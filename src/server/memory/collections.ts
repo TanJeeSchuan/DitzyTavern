@@ -56,13 +56,16 @@ const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemor
 	return { source: anchored(source), context: context.map(anchored), sourceHash: sha256(source.content) };
 };
 
+/** @approved Extraction reads each source with the selected Messages before it, up to this many. */
+const MEMORY_CONTEXT_MESSAGES = 4;
+
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {
-	const path = readSelectedPathForMemory(database, conversationId, messageId) ?? [];
+	const path = readSelectedPathForMemory(database, conversationId, { messageId, preceding: MEMORY_CONTEXT_MESSAGES }) ?? [];
 	const current = path.find((message) => message.messageId === messageId);
 	const source = current?.variant;
 	if (!source) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");
 	if (source.active) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
-	const previous = path.filter((message) => message.position < source.position && message.variant !== null).slice(-4)
+	const previous = path.filter((message) => message.position < source.position && message.variant !== null)
 		.map((message) => ({ messageId: message.messageId, variantId: message.variant!.variantId, speaker: message.author, content: message.variant!.content }));
 	return captured({ messageId, variantId: source.variantId, speaker: source.speaker, content: source.content }, previous);
 };

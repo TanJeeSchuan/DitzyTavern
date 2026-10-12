@@ -8,6 +8,7 @@ import { createConversationWithHistory, insertBox, openObservedDatabase } from "
 import { applyBoxDecisionSettings } from "./decision-settings";
 import { cancelBoxCatchUp, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
+import { readSelectedPathForMemory } from "../conversation";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
@@ -200,4 +201,13 @@ test("a live digest runs before the catch-up jobs still queued behind it", async
 	stub.release();
 	await waitFor(() => stub.pending() === 2);
 	expect(stub.contents()[2]).toContain("The lantern gutters.");
+});
+
+test("a digest window reads exactly the preceding Messages it declares", () => {
+	const chat = createChat();
+	const last = ["One.", "Two.", "Three.", "Four.", "Five.", "Six."].map((content, index) => addPassage(chat.id, index + 1, content)).at(-1) ?? 0;
+	const source = database.query<{ id: number }, [number]>("SELECT message_id AS id FROM message_variant WHERE id = ?").get(last)?.id ?? 0;
+	const read = (preceding: number) => readSelectedPathForMemory(database, chat.id, { messageId: source, preceding })?.map((message) => message.variant?.content);
+	expect(read(0)).toEqual(["Six."]);
+	expect(read(5)).toEqual(["One.", "Two.", "Three.", "Four.", "Five.", "Six."]);
 });
