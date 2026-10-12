@@ -11,14 +11,13 @@ import { Value } from "@sinclair/typebox/value";
 import { raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "../../shared/contract/race";
 import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "../../shared/race-data";
 import type { CastParticipant, ConversationSummary } from "../conversation";
-import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { imageAccept, uploadImage } from "../lib/image";
 import { loadRace } from "../race";
-import { useSaveGuard } from "../SaveGuard";
 import { Portrait } from "../story/Portrait";
 import { RaceOval } from "./RaceOval";
 import { RaceReplay } from "./RaceReplay";
 import type { BoxDataAction } from "./registry";
+import { useBoxSetupDraft } from "./useBoxSetupDraft";
 import type { BoxDataWrite } from "../../shared/contract/box-actions";
 
 // @approved
@@ -34,6 +33,7 @@ const useRace = (conversation: ConversationSummary) => useQuery({
 const statKeys = ["speed", "stamina", "power", "guts", "wit"] as const;
 type StatKey = typeof statKeys[number];
 const statLabels = { speed: "Speed", stamina: "Stamina", power: "Power", guts: "Guts", wit: "Wit" } satisfies Record<StatKey, string>;
+const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAutoValid(setup);
 
 export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = useRace(conversation);
@@ -59,12 +59,6 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	conversation: ConversationSummary; disabled: boolean; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void;
 }) {
 	const read = useRace(conversation);
-	const current = conversation.boxSetups.race;
-	const [draft, setDraft] = useState(current);
-	const [saved, setSaved] = useState(current);
-	const [revision, setRevision] = useState(conversation.revision);
-	const [pending, setPending] = useState(false);
-	const [notice, setNotice] = useState<string | null>(null);
 	// @approved
 	//  The open Cast stat sheet: the Participant being slotted, the stats it
 	//  starts from, and whether saving also writes the Character.
@@ -75,30 +69,18 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 		stats: RaceStats;
 		saveToCharacter: boolean;
 	} | null>(null);
-	if (conversation.revision > revision && JSON.stringify(current) === JSON.stringify(saved)) setRevision(conversation.revision);
-	const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-	const locked = disabled || pending;
+	// @approved
+	//  An open stat sheet is this window's unsaved work: the shared guard saves
+	//  it by adding the Runner, and discards it with the setup draft.
+	const { draft, setDraft, dirty, locked, notice, setNotice, run, command, save } = useBoxSetupDraft("race", {
+		conversation, disabled, onConversationChange,
+		conflict: "The Chat changed. Review your setup and save again.",
+		valid: isValid,
+		extra: sheet === null ? undefined : { save: () => addToField(), discard: () => setSheet(null) },
+	});
 	const running = draft.phase !== "setup";
 	const update = (patch: Partial<RaceSetup>) => setDraft((value) => ({ ...value, ...patch }));
-	const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAutoValid(setup);
 	const valid = isValid(draft);
-	const save = async (setup = draft, writes?: BoxDataWrite[]): Promise<boolean> => {
-		if (locked || !isValid(setup)) return false;
-		setPending(true);
-		setNotice(null);
-		let applied = false;
-		try {
-			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, {
-				type: "set-box-setup", box: "race", setup, writes,
-			}, {
-				notices: { conflict: "The Chat changed. Review your setup and save again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
-				onApplied: (next) => { setDraft(next.boxSetups.race); setSaved(next.boxSetups.race); setRevision(next.revision); applied = true; },
-				onConflict: (next) => { setSaved(next.boxSetups.race); setRevision(next.revision); },
-			});
-		} finally { setPending(false); }
-		return applied;
-	};
-	const discard = () => { setDraft(current); setSaved(current); setRevision(conversation.revision); setNotice(null); };
 	const data = read.data ?? null;
 	const race = data !== null && data.state.raceId === draft.raceId ? data : null;
 	const avatars = new Map(Object.entries(data?.avatars ?? {}).map(([name, { hash }]) => [name, { hash, focalX: 0.5, focalY: 0.5 }]));
@@ -141,29 +123,20 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 		if (applied) setSheet(null);
 		return applied;
 	};
-	// @approved
-	//  An open stat sheet is this window's unsaved work: the shared guard saves
-	//  it by adding the Runner, and discards it with the setup draft.
-	const sheetDirty = sheet !== null;
-	useSaveGuard({ dirty: dirty || sheetDirty, saving: pending, save: () => sheetDirty ? addToField() : save(), discard: () => { setSheet(null); discard(); } });
 	const setAvatar = async (name: string, file: File) => {
 		if (locked) return;
-		setPending(true);
-		setNotice(null);
-		try {
-			const { hash } = await uploadImage(file);
-			const action = boxData({ type: "library", revision: data?.avatars[name]?.revision ?? 0 }, `${RACE_AVATAR_PREFIX}${name}`, hash);
-			const written = await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, action, {
-				notices: { conflict: "The Chat changed. Set the avatar again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
-				onApplied: (next) => setRevision(next.revision),
-			});
-			// @approved
-			//  A refused write leaves the Chat revision unchanged, so the avatar
-			//  revision it was refused for is read again here.
-			if (!written) void read.refetch();
-		} catch (cause) {
-			setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
-		} finally { setPending(false); }
+		await run(async () => {
+			try {
+				const { hash } = await uploadImage(file);
+				const action = boxData({ type: "library", revision: data?.avatars[name]?.revision ?? 0 }, `${RACE_AVATAR_PREFIX}${name}`, hash);
+				// @approved
+				//  A refused write leaves the Chat revision unchanged, so the avatar
+				//  revision it was refused for is read again here.
+				if (!await command(action, "The Chat changed. Set the avatar again.")) void read.refetch();
+			} catch (cause) {
+				setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
+			}
+		});
 	};
 	return <div className="race-window">
 		<p role="status">{read.isError ? "The Race could not be read." : race?.status ?? "Choose a course and fill the field."}</p>

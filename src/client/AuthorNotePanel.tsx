@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { loadConversationPromptPreset, type ConversationSummary } from "./conversation";
-import { runConversationCommand, CONVERSATION_UNREACHABLE_NOTICE } from "./conversation-command-runner";
 import { ProseEditor } from "./editor/ProseEditor";
-import { useSaveGuard } from "./SaveGuard";
+import { useBoxSetupDraft } from "./box-windows/useBoxSetupDraft";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "./prompt-preset-library";
 
 export function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
@@ -27,40 +25,10 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		},
 		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	});
-	const [draft, setDraft] = useState(conversation.boxSetups["author-note"]);
-	const [expectedRevision, setExpectedRevision] = useState(conversation.revision);
-	const [saved, setSaved] = useState(conversation.boxSetups["author-note"]);
-	const [pending, setPending] = useState(false);
-	const [notice, setNotice] = useState<string | null>(null);
-	if (conversation.revision > expectedRevision && conversation.boxSetups["author-note"] === saved) setExpectedRevision(conversation.revision);
-	const surface = {
-		conversationId: conversation.id,
-		revision: () => expectedRevision,
-		onConversationChange,
-		setNotice,
-	};
-
-	const dirty = draft !== saved;
-	const save = async (): Promise<boolean> => {
-		if (pending || disabled) return false;
-		setPending(true);
-		setNotice(null);
-		let applied = false;
-		try {
-			await runConversationCommand(surface, { type: "set-box-setup", box: "author-note", setup: draft }, {
-				notices: {
-					conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
-					notFound: CONVERSATION_UNREACHABLE_NOTICE,
-					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
-				},
-				onApplied: (current) => { setExpectedRevision(current.revision); setSaved(current.boxSetups["author-note"]); applied = true; },
-				onConflict: (current) => { setExpectedRevision(current.revision); setSaved(current.boxSetups["author-note"]); },
-			});
-		} finally { setPending(false); }
-		return applied;
-	};
-	const discard = () => { setDraft(conversation.boxSetups["author-note"]); setSaved(conversation.boxSetups["author-note"]); setExpectedRevision(conversation.revision); setNotice(null); };
-	useSaveGuard({ dirty, saving: pending, save, discard });
+	const { draft, setDraft, saved, dirty, pending, notice, save, discard } = useBoxSetupDraft("author-note", {
+		conversation, disabled, onConversationChange,
+		conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
+	});
 	return <div className="panel-fill overflow-y-auto p-5">
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
 		{conversation.boxSetups["author-note"].trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
