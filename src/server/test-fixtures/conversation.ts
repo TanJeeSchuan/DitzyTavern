@@ -12,6 +12,7 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import type { BoxId } from "../../shared/contract/box";
 import { boxInstanceEntry, boxStateEntry } from "../box/setup";
+import { installBoxBlocks } from "../prompt-preset";
 import { syncMemorySources } from "../memory";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
@@ -118,5 +119,6 @@ export function createConversationWithHistory(database: Database, input: Convers
 export function insertBox(database: Database, conversationId: number, box: BoxId): string {
 	const instance = boxInstanceEntry(box);
 	for (const entry of [boxStateEntry(box, true), instance]) database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(conversationId, entry.namespace, entry.key, entry.value);
+	installBoxBlocks(drizzle(database), conversationId, [box]);
 	return instance.value;
 }

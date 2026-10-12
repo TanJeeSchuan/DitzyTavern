@@ -75,8 +75,8 @@ describe("Prompt Preset capture", () => {
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 
@@ -108,8 +108,8 @@ describe("Prompt Preset capture", () => {
 			{ role: "user", content: "Set the scene." },
 			{ role: "assistant", content: "Done." },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 		]);
 	});
 });
@@ -189,8 +189,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"scenario",
 			"example-dialogue",
 			"history",
-			"box:world-clock",
 			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 		gate.release();
@@ -202,8 +202,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"A quiet room.",
 			"Writer: Hello\nMaren: Hello back",
 			"Set the scene.",
-			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			phoneItem,
+			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			"Continue.",
 		]);
 
@@ -229,8 +229,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			{ role: "user", content: "Set the scene." },
 			{ role: "assistant", content: "Done." },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -280,8 +280,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"identity",
 			"scenario",
 			"history",
-			"box:world-clock",
 			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 
@@ -310,8 +310,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"identity",
 			"scenario",
 			"history",
-			"box:world-clock",
 			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 		gate.release();
@@ -322,8 +322,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"I am Maren.",
 			"A quiet room.",
 			"Set the scene.",
-			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			phoneItem,
+			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			"Continue.",
 		]);
 
@@ -349,8 +349,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			"Set the scene.",
 			"Done.",
 			"Set the scene.",
-			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			phoneItem,
+			"8:00 AM | 🗓️ Sunday, June 1, 2025 AD",
 			"Continue.",
 		]);
 	});

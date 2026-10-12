@@ -59,13 +59,12 @@ const preview = async (app: ReturnType<typeof createConversationRoutes>, id: num
 	return Value.Decode(generationPreview, await response.json());
 };
 
-test("Default recipe places the expanded Author Note immediately after history", async () => {
+test("a new Chat's preset sends the expanded Author Note", async () => {
 	const chat = createChat(database);
 	const app = createConversationRoutes(database);
 	expect((await saveNote(app, chat.id, chat.revision, "{{self}} guides {{other}}. {{// private }}")).status).toBe(200);
 	const { promptPlan } = await preview(app, chat.id);
-	const history = promptPlan.blocks.findIndex((block) => block.kind === "history");
-	expect(promptPlan.blocks[history + 1]).toEqual({ kind: "box:author-note", role: "system", content: "Writer guides Maren. " });
+	expect(promptPlan.blocks.find((block) => block.kind === "box:author-note")).toEqual({ kind: "box:author-note", role: "system", content: "Writer guides Maren. " });
 });
 
 

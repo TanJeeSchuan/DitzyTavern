@@ -1,4 +1,3 @@
-import { boxIds, boxReference } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -15,6 +14,7 @@ import {
 	addBlock,
 	captureModelFetch,
 	completeGeneration,
+	chatBoxBlocks,
 	createChat,
 	duplicateBlock,
 	key,
@@ -32,10 +32,6 @@ import {
 	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
-
-// @approved
-// A fresh Default preset holds Memory before history (migration 0000) and every other Box after it.
-const installedBoxes = boxIds.map(boxReference).filter((reference) => reference !== "box:memory");
 
 const phoneItem = "Writer has a phone and can text Maren. Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.";
 
@@ -131,7 +127,7 @@ describe("Prompt Preset transport", () => {
 			"lore",
 			"box:memory",
 			"history",
-			...installedBoxes,
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -215,8 +211,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -226,8 +222,8 @@ describe("Prompt Preset transport", () => {
 			"scenario",
 			"example-dialogue",
 			"history",
-			"box:world-clock",
 			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 
@@ -278,7 +274,7 @@ describe("Prompt Preset transport", () => {
 			"box:memory",
 			"history",
 			"history",
-			...installedBoxes,
+			...chatBoxBlocks,
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -305,7 +301,7 @@ describe("Prompt Preset transport", () => {
 			["box:memory", true],
 			["history", true],
 			["history", true],
-			...installedBoxes.map((reference) => [reference, true]),
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-scenario", true],
 		]);
 
@@ -328,8 +324,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -352,7 +348,7 @@ describe("Prompt Preset transport", () => {
 			["box:memory", true],
 			["history", true],
 			["history", true],
-			...installedBoxes.map((reference) => [reference, true]),
+			...chatBoxBlocks.map((reference) => [reference, true]),
 		]);
 	});
 
@@ -408,8 +404,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
-			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -440,7 +436,7 @@ describe("Prompt Preset transport", () => {
 			["lore", true],
 			["box:memory", true],
 			["history", true],
-			...installedBoxes.map((reference) => [reference, true]),
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");

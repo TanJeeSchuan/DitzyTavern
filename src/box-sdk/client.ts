@@ -4,8 +4,8 @@ export type { BoxDataAction, MoveStaging } from "../client/box-windows/registry"
 export { useBoxSetupDraft } from "../client/box-windows/useBoxSetupDraft";
 export { boxDigestKey } from "../client/box-windows/PassageTimeline";
 export type { BoxDataWrite } from "../shared/contract/box-actions";
-export { loadConversationPromptPreset, type CastParticipant, type ConversationSummary } from "../client/conversation";
-export { addPromptPresetReference, setPromptPresetBlockEnabled } from "../client/prompt-preset-library";
+export type { CastParticipant, ConversationSummary } from "../client/conversation";
+export { BoxBlockNotice } from "../client/box-windows/BoxBlockNotice";
 export { api } from "../client/lib/eden";
 export { foundOrNull, requestOutcome } from "../client/lib/request-outcome";
 export { notFoundOutcome } from "../shared/contract/outcomes";

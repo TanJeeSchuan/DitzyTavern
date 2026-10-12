@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { isBoxReference } from "../../shared/contract/box";
+import { boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
 import {
 	defaultOutgoingRoles,
 	isSingleUseReference,
@@ -15,7 +15,7 @@ import {
 	type PromptPresetBlockReference,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
-import { readPromptPresetRecipe } from "./recipe";
+import { readConversationPromptPresetRecipeFromConnection, readPromptPresetRecipe, type PromptPresetDatabase } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
 
 // @approved
@@ -196,21 +196,37 @@ export const savePromptPresetBlockPatches = (
 		patches.forEach((patch) => applyBlockPatch(db, patch));
 	});
 
+const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] | undefined => {
+	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
+	const ordered = recipe.slots.map((slot) => slot.id);
+	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, { reference, enabled: true });
+	if (!isBoxReference(reference)) return;
+	const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
+	ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
+	return ordered;
+};
+
 /** @approved Adds one reference with its default role; a Box block follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
 	reference: PromptBlockReference,
 ): PromptPresetRecipe =>
-	withRecipe(database, presetId, (db, recipe) => {
-		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
-		const ordered = recipe.slots.map((slot) => slot.id);
-		const inserted = insertOccurrence(db, presetId, ordered.length + 1, { reference, enabled: true });
-		if (!isBoxReference(reference)) return;
-		const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
-		ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
-		return ordered;
-	});
+	withRecipe(database, presetId, (db, recipe) => placeBlock(db, recipe, reference));
+
+// @approved
+//  A Box On in a Chat whose preset has no block for it would run every turn
+//  and produce nothing, so turning it on adds the block the add-block action
+//  would. A block that exists stays as the author left it, disabled included.
+//  Other Chats on the same preset are unaffected: a block runs only where its
+//  Box is On.
+export const installBoxBlocks = (db: PromptPresetDatabase, conversationId: number, boxes: readonly BoxId[]): void => {
+	for (const box of boxes) {
+		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId)!;
+		if (recipe.slots.some((slot) => slot.reference === boxReference(box))) continue;
+		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, placeBlock(db, recipe, boxReference(box))!);
+	}
+};
 
 /** @approved Appends one blank authored instruction occurrence. The name, text, and
  * outgoing role are authored through the block editor's Save boundary; the

@@ -1,10 +1,10 @@
-import { boxIds, boxReference } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 import {
+	chatBoxBlocks,
 	createChat,
 	createRoutes,
 	libraryRoutes,
@@ -147,7 +147,7 @@ describe("Prompt Preset library transport", () => {
 			"lore",
 			"box:memory",
 			"history",
-			...boxIds.map(boxReference).filter((reference) => reference !== "box:memory"),
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);

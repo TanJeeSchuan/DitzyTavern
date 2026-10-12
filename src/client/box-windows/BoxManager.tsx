@@ -1,4 +1,5 @@
 import { Boxes } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,6 +9,7 @@ import { boxIds, type BoxId, type BoxState } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useNavigationRequest } from "../SaveGuard";
+import { BoxBlockNotice, refreshPresetReads } from "./BoxBlockNotice";
 import { boxTitle } from "./registry";
 
 const stateLabels = { enabled: "On", disabled: "Off · setup kept", absent: "Not in this Chat" } satisfies Record<BoxState, string>;
@@ -24,6 +26,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 	const [removing, setRemoving] = useState<BoxId | null>(null);
 	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | null>(null);
 	const requestNavigation = useNavigationRequest();
+	const client = useQueryClient();
 	// @approved
 	//  A change is sent once, from the first render after the save guard ran,
 	//  so it carries the revision any Save and leave produced. A conflict from
@@ -36,6 +39,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 		setNotice(null);
 		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice: (next: string) => { setNotice(next); setOpen(true); } };
 		void runConversationCommand(surface, { type: "set-box-state", ...requested }, {
+			onApplied: () => { if (requested.state === "enabled") refreshPresetReads(client); },
 			notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 		}).finally(() => setPending(false));
 	}, [requested]);
@@ -54,6 +58,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 							<div>
 								<strong>{boxTitle(box)}</strong>
 								<span>{stateLabels[state]}</span>
+								<BoxBlockNotice conversation={conversation} box={box} disabled={pending} className="mt-1" />
 							</div>
 							{state !== "absent" && <Button type="button" variant="ghost" size="xs" aria-label={`Remove ${boxTitle(box)}`} disabled={pending} onClick={() => setRemoving(box)}>Remove</Button>}
 							<Switch checked={state === "enabled"} disabled={pending} aria-label={`${boxTitle(box)} in this Chat`} onCheckedChange={(on) => on ? setState(box, "enabled") : requestNavigation(() => setState(box, "disabled"))} />

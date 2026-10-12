@@ -118,8 +118,8 @@ describe("Generation runtime behavior", () => {
 			"example-dialogue",
 			"history",
 			"history",
-			"box:world-clock",
 			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 		// Identities expand owner-relative: self is the Definition owner, and

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, 
 import type { BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
+import { BoxBlockNotice } from "./BoxBlockNotice";
 import { boxTitle, boxWindow, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
@@ -175,6 +176,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
+				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
 					boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
 			</FloatingWindow>;

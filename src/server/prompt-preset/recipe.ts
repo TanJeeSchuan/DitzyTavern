@@ -12,7 +12,7 @@ import {
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
-import { boxDescriptors, boxIds, boxReference, type PromptBoxReference } from "../../shared/contract/box";
+import type { PromptBoxReference } from "../../shared/contract/box";
 import { PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
@@ -83,32 +83,6 @@ export const selectDefaultPromptPreset = (
 		})
 		.run();
 };
-
-// @approved
-//  The Default recipe migration 0000 seeds predates Boxes, and no later
-//  migration may insert their blocks: the intermediate table rebuilds still
-//  reject the references. A database the migration chain just created therefore
-//  installs every Box block here, directly after history, exactly as a new
-//  Default recipe ships. Presets stored by an older database stay untouched;
-//  ADR-0048 gives them the explicit add-block action instead.
-export function installDefaultPresetBoxes(database: Database): void {
-	database.transaction(() => {
-		const db = drizzle(database);
-		const existing = new Set(db.select({ reference: promptPresetBlockTable.reference }).from(promptPresetBlockTable)
-			.where(eq(promptPresetBlockTable.preset_id, readDefaultPromptPresetId(db))).all().map((row) => row.reference));
-		const missing = boxIds.filter((id) => !existing.has(boxReference(id)));
-		database.run(
-			"UPDATE prompt_preset_block SET position = position + ? WHERE preset_id = (SELECT id FROM prompt_preset WHERE is_default = 1) AND position > (SELECT h.position FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history')",
-			[missing.length],
-		);
-		for (const [index, id] of missing.entries()) {
-			database.run(
-				"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + ?, ?, ? FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
-				[index + 1, boxReference(id), boxDescriptors[id].role],
-			);
-		}
-	}).immediate();
-}
 
 // @approved
 //  Applies one Conversation's authoritative selection of a shared

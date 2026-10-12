@@ -27,6 +27,7 @@ export {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,
 	duplicatePromptPresetBlock,
+	installBoxBlocks,
 	InvalidPromptPresetOperationError,
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,

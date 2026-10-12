@@ -1,6 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-	addPromptPresetReference, Alert, AlertDescription, Button, loadConversationPromptPreset, ProseEditor, setPromptPresetBlockEnabled, useBoxSetupDraft,
+	Alert, AlertDescription, BoxBlockNotice, Button, ProseEditor, useBoxSetupDraft,
 	type ConversationSummary,
 } from "../../box-sdk/client";
 
@@ -9,41 +8,13 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	onConversationChange: (conversation: ConversationSummary) => void;
 	disabled: boolean;
 }) {
-	const client = useQueryClient();
-	const preset = useQuery({ queryKey: ["conversation-preset", conversation.id], queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal) });
-	const selectedPreset = preset.data;
-	const slot = selectedPreset?.slots.find((slot) => slot.reference === "box:author-note");
-	const activate = useMutation({
-		mutationFn: async () => {
-			if (!selectedPreset || preset.isFetching || preset.isError) return;
-			const outcome = slot === undefined
-				? await addPromptPresetReference(selectedPreset.id, "box:author-note")
-				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
-			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Author Note block could not be updated.");
-		},
-		onSuccess: () => client.invalidateQueries({ queryKey: ["conversation-preset"] }),
-	});
 	const { draft, setDraft, saved, dirty, pending, notice, save, discard } = useBoxSetupDraft("author-note", {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
 	});
 	return <div className="panel-fill overflow-y-auto p-5">
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
-		{conversation.boxSetups["author-note"].trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
-			<AlertDescription>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</AlertDescription>
-			<Button
-				type="button"
-				size="sm"
-				variant="outline"
-				className="mt-2 w-fit"
-				disabled={pending || disabled || activate.isPending || preset.isFetching || preset.isError}
-				onClick={() => activate.mutate()}
-			>
-				{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}
-			</Button>
-		</Alert>}
-		{preset.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>The selected Prompt Preset could not be loaded.</AlertDescription></Alert>}
-		{activate.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>{activate.error.message}</AlertDescription></Alert>}
+		<BoxBlockNotice conversation={conversation} box="author-note" disabled={pending || disabled} className="mb-4" />
 		<ProseEditor
 			value={draft}
 			onChange={setDraft}

@@ -43,6 +43,12 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 	})) as BoxStates;
 };
 
+/** @approved The Boxes On in this Chat. */
+export const enabledBoxIds = (db: BunSQLiteDatabase, conversationId: number): BoxId[] => {
+	const states = readBoxStates(db, conversationId);
+	return boxIds.filter((id) => states[id] === "enabled");
+};
+
 /** @approved The Chats where the Box is enabled, as a subquery for background work that spans Chats. */
 export const enabledBoxConversations = (db: BunSQLiteDatabase, id: BoxId) =>
 	db.select({ id: conversationDataTable.conversation_id }).from(conversationDataTable)
