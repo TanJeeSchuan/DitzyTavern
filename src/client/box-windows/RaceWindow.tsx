@@ -19,7 +19,7 @@ import { Portrait } from "../story/Portrait";
 import { RaceOval } from "./RaceOval";
 import { RaceReplay } from "./RaceReplay";
 import type { BoxDataAction } from "./registry";
-import type { BoxDataWrite } from "../../shared/contract/conversation-schema";
+import type { BoxDataWrite } from "../../shared/contract/box-actions";
 
 // @approved
 //  The revision is part of the key so completions refetch, but the previous

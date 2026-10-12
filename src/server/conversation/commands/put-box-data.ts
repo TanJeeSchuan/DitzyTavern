@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { boxReference, type BoxId } from "../../../shared/contract/box";
-import type { BoxDataWrite } from "../../../shared/contract/conversation-schema";
+import type { BoxDataWrite } from "../../../shared/contract/box-actions";
 import {
 	characterDataTable,
 	characterTable,

@@ -5,7 +5,7 @@ import { requireBoxInstance, type ConversationDatabase } from "../internal";
 import { InvalidConversationCommandError } from "../errors";
 import { putBoxData } from "./put-box-data";
 import type { BoxSetups, SetupBoxId } from "../../../shared/contract/box";
-import type { BoxDataWrite } from "../../../shared/contract/conversation-schema";
+import type { BoxDataWrite } from "../../../shared/contract/box-actions";
 
 type BoxSetupCommand = { [Id in SetupBoxId]: { readonly box: Id; readonly setup: BoxSetups[Id] } }[SetupBoxId];
 
