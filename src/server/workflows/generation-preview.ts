@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { sameMoves } from "../box/moves";
+import { sameMoves } from "../../shared/contract/box-generation";
 import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,

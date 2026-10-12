@@ -34,6 +34,7 @@ import {
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
+	shownVariant,
 	type StoryAction,
 	type StoryMessage,
 	type StoryState,
@@ -66,6 +67,9 @@ type GenerationControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
+type StagedMoves = { conversationId: number | undefined; humanParticipantId: number | null | undefined; moves: BoxMoves };
+const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: undefined, moves: {} };
+
 /** @approved
  * Thin wiring between the view, the Generation session machine, and the
  * assembly controller. The session machine (generation-sessions) and its runner own
@@ -87,9 +91,7 @@ export function useGenerationController({
 	//  Staged Moves belong to the Chat they were staged in. Seat-bound Moves,
 	//  such as Phone texts, also belong to the human seat that wrote them:
 	//  after a seat change they could name the new seat as their own recipient.
-	const [staged, setStaged] = useState<{ conversationId: number | undefined; humanParticipantId: number | null | undefined; moves: BoxMoves }>({
-		conversationId: undefined, humanParticipantId: undefined, moves: {},
-	});
+	const [staged, setStaged] = useState<StagedMoves>(UNSTAGED);
 	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
 	// @approved
 	//  A Box that stops being enabled, and a seat-bound Box after a seat
@@ -207,7 +209,16 @@ export function useGenerationController({
 				runner.dispatch({ type: "generation-accepted", target });
 			},
 		},
-		clearDraft: () => { setDraft(""); setStaged({ conversationId: undefined, humanParticipantId: undefined, moves: {} }); },
+		dispatchStory,
+		takeComposer: () => {
+			const taken = { draft, staged };
+			setDraft("");
+			setStaged(UNSTAGED);
+			return () => {
+				setDraft((current) => current === "" ? taken.draft : current);
+				setStaged((current) => hasMoves(current.moves) ? current : taken.staged);
+			};
+		},
 	});
 	const {
 		assembly,
@@ -288,7 +299,7 @@ export function useGenerationController({
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
-		const content = latest?.swipes[latest.activeSwipe]?.content;
+		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
 		if (
 			latest?.id !== messageId ||
 			latest.authorParticipantId !== conversation.control.humanParticipantId ||

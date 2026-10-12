@@ -45,7 +45,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const commands = useStoryMessageActions({
 			signal: session.signal,
 			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
-			queueSwipeScroll() {}, clearPreviewError() {}, canEnterPreview: true, onEnterPreview() {},
+			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview() {},
 		});
 		return { ...session, ...commands, story };
 	}, client, strict);

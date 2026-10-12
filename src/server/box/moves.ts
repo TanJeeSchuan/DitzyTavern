@@ -51,6 +51,3 @@ export const writeMessageMoves = (db: BunSQLiteDatabase, messageId: number, move
 		if (list !== undefined && list.length > 0) db.insert(messageDataTable).values({ message_id: messageId, namespace: boxReference(id), key: MOVES_KEY, value: JSON.stringify(list) }).run();
 	}
 };
-
-export const sameMoves = (left: BoxMoves | undefined, right: BoxMoves | undefined): boolean =>
-	moveBoxIds.every((id) => JSON.stringify(left?.[id] ?? []) === JSON.stringify(right?.[id] ?? []));

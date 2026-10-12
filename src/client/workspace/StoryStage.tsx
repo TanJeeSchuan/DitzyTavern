@@ -7,11 +7,13 @@ import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
+	reusesTrailingHumanMessage,
 	type StoryAction,
 	type StoryState,
 } from "../story";
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
+import { RequestedSendView } from "../story/RequestedSendView";
 import { StoryMessageView } from "../story/StoryMessageView";
 import {
 	EmptyChat,
@@ -80,7 +82,6 @@ export function StoryStage({
 		dispatchStory,
 		setConversation: session.setConversation,
 		queueSwipeScroll: viewport.queueSwipeScroll,
-		clearPreviewError: preview.clearPreviewError,
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
 	});
@@ -91,11 +92,12 @@ export function StoryStage({
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
-	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId);
 	const lens = conversation === null ? undefined : { conversation, open: composerWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
+	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId) ?? null;
+	const requested = story.page?.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
 		<main className="story-stage" aria-label="Active Chat">
@@ -115,10 +117,9 @@ export function StoryStage({
 					<span>Message {story.preview.targetPosition} · Later Messages dimmed</span>
 				</div>
 				<div className="preview-dock-actions">
-					<button className="primary-button" type="button" disabled={preview.previewPending} onClick={() => void preview.confirmPreview()}>Confirm</button>
-					<button className="secondary-button" type="button" disabled={preview.previewPending} onClick={preview.cancelPreview}>Cancel</button>
+					<button className="primary-button" type="button" onClick={() => void preview.confirmPreview()}>Confirm</button>
+					<button className="secondary-button" type="button" onClick={preview.cancelPreview}>Cancel</button>
 				</div>
-				{preview.previewError !== null && <p className="preview-error" role="alert">{preview.previewError}</p>}
 			</div>
 		)}
 			<div className="story-scroll" ref={viewport.storyScrollRef} onScroll={(event) => {
@@ -149,9 +150,10 @@ export function StoryStage({
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
-								target.variantId === displayedVariantId(message, story.preview)
+								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
 							)}
-							displayedVariantId={story.preview?.messageId === message.id ? displayedVariantId(message, story.preview) : undefined}
+							generationRequested={requested?.kind === "sibling" && requested.messageId === message.id}
+							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
 							mutationsDisabled={story.preview !== null}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
@@ -201,6 +203,14 @@ export function StoryStage({
 								: undefined}
 						/>
 					))}
+					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
+						<RequestedSendView
+							human={humanParticipant}
+							sent={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content, requested.moves) ? requested : null}
+							model={modelParticipant}
+							lens={lens}
+						/>
+					)}
 					{story.page?.hasNewer === true && (
 						<div className="history-load-more">
 							<button className="secondary-button" type="button" disabled={story.status === "loading-more"} onClick={() => void session.loadMoreHistory("newer")}>
@@ -247,7 +257,7 @@ export function StoryStage({
 					onFocusChange={setIsComposerFocused}
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
-					stopPending={generation.stopPending}
+					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
 					writerName={humanParticipant?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors

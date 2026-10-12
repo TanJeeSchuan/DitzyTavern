@@ -53,24 +53,60 @@ export type ConversationCommandSend<TOperation = never> = (
 	expectedRevision: number,
 ) => Promise<CommandOutcome | { outcome: "operation"; operation: TOperation }>;
 
-/** @approved
- * Runs one Conversation command against `surface`: an action goes through the
- * Conversation command route, a function is the surface's own send seam. It
- * returns the applied Conversation on success, so a surface that chains
- * commands can start the next from the revision this one returned.
+// What a settled command leaves for the next one queued behind it: the revision it produced when known,
+// null when it succeeded without reporting one, false when it failed or was dropped.
+type Settled = number | null | false;
+const queues = new Map<number, Promise<Settled>>();
+
+/**
+ * Runs `command` after every command this client already queued for the Conversation. It receives the revision
+ * the last of them produced, and is dropped (settling false) when that one failed, so nothing is sent on top of
+ * a change the writer saw but the server refused.
+ */
+export function queueConversationCommand(conversationId: number, command: (revision: number | null) => Promise<Settled>): Promise<Settled> {
+	const settled = (queues.get(conversationId) ?? Promise.resolve(null))
+		.then((previous) => previous === false ? false : command(previous))
+		.catch(() => false as const);
+	queues.set(conversationId, settled);
+	void settled.then(() => { if (queues.get(conversationId) === settled) queues.delete(conversationId); });
+	return settled;
+}
+
+/**
+ * Runs one Conversation command against `surface` through the Conversation's command queue: an action goes
+ * through the Conversation command route, a function is the surface's own send seam. Resolves the applied
+ * Conversation, so a surface that chains commands can start the next from its revision; undefined when nothing
+ * applied, and for a surface operation, which reports through `onOperation`.
  */
 export async function runConversationCommand<TOperation = never>(
 	surface: ConversationCommandSurface,
 	command: ConversationAction | ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation> = {},
 ): Promise<ConversationSummary | undefined> {
+	let applied: ConversationSummary | undefined;
+	const run = async (previous: number | null): Promise<Settled> => {
+		const settled = await executeConversationCommand(surface, command, options, previous);
+		if (settled) applied = settled;
+		return settled && settled.revision;
+	};
+	await (surface.conversationId === null ? run(null) : queueConversationCommand(surface.conversationId, run));
+	return applied;
+}
+
+async function executeConversationCommand<TOperation>(
+	surface: ConversationCommandSurface,
+	command: ConversationAction | ConversationCommandSend<TOperation>,
+	options: ConversationCommandRunOptions<TOperation>,
+	previous: number | null,
+): Promise<ConversationSummary | null | false> {
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};
-	const expectedRevision = surface.revision();
+	const known = surface.revision();
+	const expectedRevision = known === null ? previous : previous === null ? known : Math.max(known, previous);
 	if (expectedRevision === null) {
 		effect(() => surface.setNotice(CONVERSATION_REVISION_UNAVAILABLE_NOTICE));
-		return;
+		return false;
 	}
 	let outcome: CommandOutcome | { outcome: "operation"; operation: TOperation };
 	try {
@@ -89,7 +125,7 @@ export async function runConversationCommand<TOperation = never>(
 	switch (outcome.outcome) {
 		case "operation":
 			effect(() => options.onOperation?.(outcome.operation));
-			return;
+			return null;
 		case "available":
 			effect(() => {
 				surface.onConversationChange(outcome.value.conversation);
@@ -102,22 +138,22 @@ export async function runConversationCommand<TOperation = never>(
 				surface.setNotice(notices.conflict);
 				options.onConflict?.(outcome.currentConversation);
 			});
-			return;
+			return false;
 		case "invalid":
 		case "unusable":
 			effect(() => surface.setNotice(outcome.reason));
-			return;
+			return false;
 		case "not-found":
 			effect(() => surface.setNotice(notices.notFound));
-			return;
+			return false;
 		case "not-playable":
 			effect(() => (options.onNotPlayable ?? surface.setNotice)(outcome.reason));
-			return;
+			return false;
 		case "not-removable":
 			effect(() => (options.onNotRemovable ?? surface.setNotice)(outcome.reason));
-			return;
+			return false;
 		case "network":
 			effect(() => surface.setNotice(notices.unreachable));
-			return;
+			return false;
 	}
 }

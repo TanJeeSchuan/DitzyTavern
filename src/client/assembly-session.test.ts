@@ -47,7 +47,8 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 			settle: (_id: number) => { effects.push("settle"); },
 			accepted: (_id: number, target: GenerationAttemptTarget) => { effects.push("accepted"); targets.push(target); },
 		},
-		clearDraft: () => { effects.push("clear"); },
+		dispatchStory: () => {},
+		takeComposer: () => { effects.push("clear"); return () => { effects.push("restore"); }; },
 	};
 	const hook = await renderHook(() => useAssemblyController(options), cache, strict);
 	const open = async (content = "Draft") => {

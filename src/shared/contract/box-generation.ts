@@ -31,6 +31,8 @@ export type BoxMoves = Static<typeof boxMoves>;
 export type BoxMove = NonNullable<BoxMoves[MoveBoxId]>[number];
 
 export const hasMoves = (moves: BoxMoves | undefined): boolean => Object.values(moves ?? {}).some((list) => list.length > 0);
+export const sameMoves = (left: BoxMoves | undefined, right: BoxMoves | undefined): boolean =>
+	moveBoxIds.every((id) => JSON.stringify(left?.[id] ?? []) === JSON.stringify(right?.[id] ?? []));
 
 /** @approved The Moves of the Boxes `keep` accepts. */
 export function pickMoves(moves: BoxMoves, keep: (id: MoveBoxId) => boolean): BoxMoves {

@@ -226,4 +226,31 @@ describe("runConversationCommand", () => {
 		});
 		expect(events).toEqual(["send:7"]);
 	});
+
+	test("a command queued behind another is sent with the revision the earlier one produced", async () => {
+		const events: string[] = [];
+		const first = Promise.withResolvers<CommandOutcome>();
+		const earlier = run(events, async (expectedRevision) => {
+			events.push(`send:${expectedRevision}`);
+			return first.promise;
+		});
+		const later = run(events, applied(events));
+		first.resolve({ outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } });
+		expect((await Promise.all([earlier, later])).map((applied) => applied?.revision)).toEqual([8, 7]);
+		expect(events).toEqual(["send:7", "adopt:8", "send:8", "adopt:7"]);
+	});
+
+	test("a failed command drops the commands queued behind it, and the queue then runs again", async () => {
+		const events: string[] = [];
+		const first = Promise.withResolvers<CommandOutcome>();
+		const earlier = run(events, async (expectedRevision) => {
+			events.push(`send:${expectedRevision}`);
+			return first.promise;
+		});
+		const dropped = run(events, applied(events));
+		first.resolve({ outcome: "network" });
+		expect(await Promise.all([earlier, dropped])).toEqual([undefined, undefined]);
+		expect(events).toEqual(["send:7", "notice:unreachable notice"]);
+		expect((await run(events, applied(events)))?.revision).toBe(7);
+	});
 });
