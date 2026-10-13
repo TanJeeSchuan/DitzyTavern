@@ -758,3 +758,14 @@
 	color: var(--text-muted);
 	font-size: 0.8rem;
 }
+
+/* A Box surface that threw, in its host frame. */
+.box-failure {
+	color: var(--destructive);
+	font-size: 0.8rem;
+	line-height: 1.4;
+}
+
+.details-panel > .box-failure {
+	padding: 1rem;
+}

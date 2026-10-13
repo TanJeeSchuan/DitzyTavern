@@ -10,7 +10,7 @@ import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, refreshPresetReads } from "./BoxBlockNotice";
-import { boxTitle } from "./registry";
+import { boxClientFailures, boxTitle } from "./registry";
 
 const stateLabels = { enabled: "On", disabled: "Off · setup kept", absent: "Not in this Chat" } satisfies Record<BoxState, string>;
 
@@ -64,6 +64,12 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 							<Switch checked={state === "enabled"} disabled={pending} aria-label={`${boxTitle(box)} in this Chat`} onCheckedChange={(on) => on ? setState(box, "enabled") : requestNavigation(() => setState(box, "disabled"))} />
 						</li>;
 					})}
+					{boxClientFailures().map(({ id, reason }) => <li key={id}>
+						<div>
+							<strong>{id}</strong>
+							<span>Did not load: {reason}</span>
+						</div>
+					</li>)}
 				</ul>
 				{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
 			</PopoverContent>

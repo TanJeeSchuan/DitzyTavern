@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { boxDescriptor, boxRecordSchema, type BoxId, type BoxRecord } from "../../shared/contract/box";
+import { boxDescriptor, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
@@ -79,9 +79,8 @@ const recordField = (key: string, schema: TSchema): RecordField => {
 	if (KindGuard.IsString(schema)) return { key, label, kind: "text" };
 	throw new Error(`A passage timeline cannot edit the record field "${key}".`);
 };
-const recordFields = (box: BoxId): readonly RecordField[] => {
-	const { record } = boxDescriptor(box);
-	if (record === undefined) throw new Error(`The ${box} Box keeps no records for a passage timeline.`);
+const recordFields = ({ id, record }: BoxDescriptor): readonly RecordField[] => {
+	if (record === undefined) throw new Error(`The ${id} Box keeps no records for a passage timeline.`);
 	return Object.entries(record.properties).map(([key, schema]) => recordField(key, schema));
 };
 
@@ -90,14 +89,15 @@ const recordFields = (box: BoxId): readonly RecordField[] => {
 // passage timeline; its dock tab shows `status`. `describe` summarizes a
 // record on the timeline in place of the generic summary. The override
 // editor is built from the record schema here, so a schema the timeline
-// cannot edit fails when the Box registers its window, not when it opens.
-export function digestWindow<Rec>(box: BoxId, { icon, size, Panel, describe }: {
+// cannot edit fails the Box's client module as it loads, not when it opens.
+export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel, describe }: {
 	icon: LucideIcon;
 	size: BoxWindowDefinition["size"];
 	Panel?: BoxWindowDefinition["Panel"];
 	describe?(record: Rec): string;
-}): BoxWindowDefinition {
-	const fields = recordFields(box);
+}): BoxWindowDefinition & { readonly icon: LucideIcon } {
+	const { id: box } = descriptor;
+	const fields = recordFields(descriptor);
 	// @approved
 	// SAFETY: the timeline holds this Box's records, which its `describe` takes.
 	const summarize = (describe ?? ((record) => summaryOf(fields, record))) as (record: RecordValue) => string;

@@ -4,10 +4,11 @@ import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
 import { Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createBoxLens, Button, SegmentedControl, Textarea, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
+import { createBoxLens, Button, SegmentedControl, Textarea, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf } from "@/box-sdk/shared";
 import { MAX_PHONE_MOVES, phoneMove, type PhoneRead } from "./contract";
 import { loadPhone } from "./client-read";
+import descriptor from "./shared-descriptor";
 
 const usePhone = (conversation: ConversationSummary) => useQuery({
 	queryKey: ["phone", conversation.id, conversation.revision],
@@ -31,7 +32,7 @@ const readSeen = (conversationId: number): Set<string> => {
 const unread = (thread: PhoneRead["threads"][number], seen: Set<string>) =>
 	thread.texts.filter(({ from, key }) => from === thread.contact && !seen.has(key)).length;
 
-export function PhoneDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function PhoneDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = usePhone(conversation);
 	const seen = readSeen(conversation.id);
 	const count = read.data?.threads.reduce((total, thread) => total + unread(thread, seen), 0) ?? 0;
@@ -42,13 +43,13 @@ export function PhoneDockTab({ conversation, onRestore }: { conversation: Conver
 }
 
 /** @approved A text the lens lifted out of the prose: the story keeps a mark where it was, which opens the Phone. */
-export function PhoneLensView({ text, onOpen }: { text: Sms; onOpen: () => void }) {
+function PhoneLensView({ text, onOpen }: { text: Sms; onOpen: () => void }) {
 	return <button type="button" className="phone-lens" onClick={onOpen}>
 		<Smartphone aria-hidden="true" />{text.from} texted {text.to}
 	</button>;
 }
 
-export function PhonePanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
+function PhonePanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
 	const read = usePhone(conversation);
 	const [seen, setSeen] = useState(() => readSeen(conversation.id));
 	const [picked, setPicked] = useState<string | null>(null);
@@ -100,7 +101,9 @@ export function PhonePanel({ conversation, disabled, staging }: { conversation: 
 	</div>;
 }
 
-export const phoneLens = createBoxLens("sms", ({ cast, control }) => {
+const phoneLens = createBoxLens("sms", ({ cast, control }) => {
 	const human = cast.find(({ id }) => id === control.humanParticipantId);
 	return human === undefined ? undefined : phoneNames(cast, human);
 }, stripPhoneTexts, PhoneLensView);
+
+export default { descriptor, icon: Smartphone, Window: { size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: phoneLens } } satisfies BoxClientDefinition;

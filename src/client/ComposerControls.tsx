@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { boxReference, type BoxId, type PromptBoxReference } from "../shared/contract/box";
-import { boxPanels, boxTitle, boxWindows } from "./box-windows/registry";
+import { boxClients, boxTitle } from "./box-windows/registry";
 import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
 import {
@@ -55,10 +55,9 @@ export function ComposerControlSelectors({
 	// @approved
 	//  One launcher per enabled Box with a client entry: a panel Box opens in
 	//  the primary panel, any other in its window.
-	const launchers = [
-		...[...boxPanels].map(([box, { icon }]) => ({ box, icon, open: () => onOpenPanel(boxReference(box)) })),
-		...[...boxWindows].map(([box, { icon }]) => ({ box, icon, open: () => onOpenWindow(box) })),
-	].filter(({ box }) => conversation.boxes[box] === "enabled");
+	const launchers = [...boxClients()].flatMap(([box, { icon, PrimaryPanel, Window }]) => conversation.boxes[box] !== "enabled" ? []
+		: PrimaryPanel !== undefined ? [{ box, icon, open: () => onOpenPanel(boxReference(box)) }]
+		: Window !== undefined ? [{ box, icon, open: () => onOpenWindow(box) }] : []);
 
 	const options = conversation.cast.map((participant) => ({
 		value: participant.id,

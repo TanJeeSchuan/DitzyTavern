@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import type { ConversationSummary } from "../conversation";
 import type { BoxId } from "../../shared/contract/box";
-import { boxWindows } from "../box-windows/registry";
+import { BoxBoundary, BoxFailure } from "../box-windows/BoxBoundary";
+import { boxClients, errorMessage } from "../box-windows/registry";
 import type { LensPiece } from "../box-windows/lens";
 import { Prose } from "./prose";
 
@@ -10,11 +11,26 @@ export type StoryLens = { readonly conversation: ConversationSummary; open(box: 
 
 // @approved
 //  Lenses apply in registry order, each to the prose the earlier ones left.
-//  A lifted piece is never lensed again.
+//  A lifted piece is never lensed again. A lens that throws leaves its prose
+//  unlifted behind its failure, and each lifted mark renders in its Box's
+//  boundary.
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
-	const lenses = lens === undefined ? [] : [...boxWindows].flatMap(([id, { lens: boxLens }]) => {
-		const lift = lens.conversation.boxes[id] === "enabled" ? boxLens?.gate(lens.conversation) : undefined;
-		return boxLens === undefined || lift === undefined ? [] : [{ tag: boxLens.tag, lift: (prose: string) => lift(prose, () => lens.open(id)) }];
+	const lenses = lens === undefined ? [] : [...boxClients()].flatMap(([id, { Window }]) => {
+		const boxLens = Window?.lens;
+		if (boxLens === undefined || lens.conversation.boxes[id] !== "enabled") return [];
+		const failed = (message: string, prose: string): LensPiece[] => [{ kind: "lifted", element: <BoxFailure box={id} message={message} /> }, { kind: "prose", text: prose }];
+		try {
+			const lift = boxLens.gate(lens.conversation);
+			return lift === undefined ? [] : [{ tag: boxLens.tag, lift: (prose: string): readonly LensPiece[] => {
+				try {
+					return lift(prose, () => lens.open(id)).map((piece) => piece.kind === "prose" ? piece : { kind: "lifted", element: <BoxBoundary box={id}>{piece.element}</BoxBoundary> });
+				} catch (error) {
+					return failed(errorMessage(error), prose);
+				}
+			} }];
+		} catch (error) {
+			return [{ tag: boxLens.tag, lift: (prose: string) => failed(errorMessage(error), prose) }];
+		}
 	});
 	if (lenses.length === 0) return <Prose text={text} streaming={streaming} />;
 	const shown = streaming ? lenses.reduce((visible, { tag }) => {

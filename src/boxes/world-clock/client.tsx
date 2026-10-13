@@ -1,7 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus, type ConversationSummary } from "@/box-sdk/client";
+import { Clock } from "lucide-react";
+import { Alert, AlertDescription, boxDigestKey, Button, digestWindow, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus } from "@/box-sdk/client";
+import type { BoxClientDefinition, ConversationSummary } from "@/box-sdk/client";
 import { isWorldClockStart, weatherLabels, worldClockSetup, type WorldClockRecord, type WorldClockSetup } from "./contract";
+import descriptor from "./shared-descriptor";
 
 const elapsedLabel = (minutes: number): string => {
 	if (minutes === 0) return "No time passes";
@@ -12,14 +15,14 @@ const elapsedLabel = (minutes: number): string => {
 };
 
 /** @approved A passage's record on the timeline, such as `+5m · ☀️ Clear`. */
-export const describeWorldClock = ({ minutes, weather }: WorldClockRecord): string =>
+const describeWorldClock = ({ minutes, weather }: WorldClockRecord): string =>
 	`${elapsedLabel(minutes)}${weather === null ? "" : ` · ${weatherLabels[weather]}`}`;
 
 /** @approved The top bar item: the in-story time, as the dock tab shows it. */
-export const WorldClockTopBarItem = ({ conversation }: { conversation: ConversationSummary }): ReactNode => useBoxStatus(conversation.id, "world-clock");
+const WorldClockTopBarItem = ({ conversation }: { conversation: ConversationSummary }): ReactNode => useBoxStatus(conversation.id, "world-clock");
 
 /** @approved The World Clock's setup form; the host's passage timeline follows it in the window. */
-export function WorldClockPanel({ conversation, disabled, onConversationChange }: {
+function WorldClockPanel({ conversation, disabled, onConversationChange }: {
 	conversation: ConversationSummary;
 	disabled: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
@@ -60,3 +63,6 @@ export function WorldClockPanel({ conversation, disabled, onConversationChange }
 		</div>
 	</div>;
 }
+
+const clockWindow = digestWindow(descriptor, { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock });
+export default { descriptor, icon: clockWindow.icon, Window: clockWindow, TopBarItem: WorldClockTopBarItem } satisfies BoxClientDefinition;

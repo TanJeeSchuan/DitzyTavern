@@ -2,7 +2,7 @@
 //  What a Box's client files may use from the host, beside the shared entry.
 export type { BoxDataAction, MoveStaging } from "../client/box-windows/registry";
 export { useBoxSetupDraft } from "../client/box-windows/useBoxSetupDraft";
-export { boxDigestKey, useBoxStatus } from "../client/box-windows/PassageTimeline";
+export { boxDigestKey, digestWindow, useBoxStatus } from "../client/box-windows/PassageTimeline";
 export type { BoxDataWrite } from "../shared/contract/box-actions";
 export type { CastParticipant, ConversationSummary } from "../client/conversation";
 export { BoxBlockNotice } from "../client/box-windows/BoxBlockNotice";

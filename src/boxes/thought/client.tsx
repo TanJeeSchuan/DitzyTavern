@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircleDashed } from "lucide-react";
-import { createBoxLens, api, foundOrNull, notFoundOutcome, requestOutcome, type ConversationSummary } from "@/box-sdk/client";
+import { createBoxLens, api, foundOrNull, notFoundOutcome, requestOutcome, type BoxClientDefinition, type ConversationSummary } from "@/box-sdk/client";
 import { stripThoughts, thoughtRead } from "./shared";
+import descriptor from "./shared-descriptor";
 
 const useThoughts = (conversation: ConversationSummary) => useQuery({
 	queryKey: ["thought", conversation.id, conversation.revision],
@@ -11,7 +12,7 @@ const useThoughts = (conversation: ConversationSummary) => useQuery({
 	placeholderData: (previous) => previous,
 });
 
-export function ThoughtDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function ThoughtDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = useThoughts(conversation);
 	const count = read.data?.thoughts.length ?? 0;
 	return <button type="button" className="box-dock-tab" title="Restore Thoughts" onClick={onRestore}>
@@ -21,13 +22,13 @@ export function ThoughtDockTab({ conversation, onRestore }: { conversation: Conv
 }
 
 /** @approved A thought the lens lifted out of the prose: the story keeps a mark where it was, which opens the Thoughts window. */
-export function ThoughtLensView({ onOpen }: { onOpen: () => void }) {
+function ThoughtLensView({ onOpen }: { onOpen: () => void }) {
 	return <button type="button" className="mt-1 mb-3 inline-flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground [&_svg]:size-3.5" onClick={onOpen}>
 		<MessageCircleDashed aria-hidden="true" />A thought
 	</button>;
 }
 
-export function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
+function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);
 	if (read.isError) return <p className="text-[0.8rem] text-muted-foreground">The Thoughts could not be loaded.</p>;
 	if (read.data === undefined || read.data === null) return null;
@@ -39,4 +40,6 @@ export function ThoughtPanel({ conversation }: { conversation: ConversationSumma
 	</ol>;
 }
 
-export const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);
+const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);
+
+export default { descriptor, icon: MessageCircleDashed, Window: { size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;

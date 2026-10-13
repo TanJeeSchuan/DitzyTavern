@@ -1,4 +1,5 @@
 import { Kind, Type, TypeGuard, TypeRegistry, type Static, type TObject, type TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { boxValue, type BoxValue } from "./box-value";
 import { promptOutgoingRole } from "./prompt-preset";
 
@@ -51,6 +52,16 @@ export const boxDescriptorSchema = Type.Object({
 	decision: Type.Optional(Type.Object({ summary: Type.String(), description: Type.String(), off: Type.String(), context: Type.String() })),
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
+
+/** @approved Throws why the host refuses a Box module's descriptor. The server checks each folder's, the client each client module's. */
+export function assertBoxDescriptor(descriptor: unknown): asserts descriptor is BoxDescriptor {
+	if (!Value.Check(boxDescriptorSchema, descriptor)) {
+		const error = Value.Errors(boxDescriptorSchema, descriptor).First();
+		throw new Error(`Its descriptor is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
+	}
+	if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
+	if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
+}
 
 /** @approved A descriptor's `setup`, its initial value typed by its schema. */
 export const describeSetup = <Schema extends TSchema>(schema: Schema, initial: Static<Schema> & BoxValue) => ({ schema, initial });

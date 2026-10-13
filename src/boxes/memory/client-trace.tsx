@@ -42,7 +42,7 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 		variantIds: [...new Set(record?.candidates.map(({ variantId }) => variantId) ?? [])],
 	}), [record]);
 	const sources = useQuery({
-		queryKey: ["memory-sources", conversationId, cited],
+		queryKey: ["memory", "sources", conversationId, cited],
 		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
 		enabled: record !== null,
 	});

@@ -73,7 +73,7 @@ export function NavigationRail({
 				>
 					<SlidersHorizontal aria-hidden="true" />
 				</RailButton>
-				{[...boxClients].map(([id, { icon: Icon, Settings }]) => Settings && (
+				{[...boxClients()].map(([id, { icon: Icon, Settings }]) => Settings && (
 					<RailButton key={id} disabled={inspecting} label={boxTitle(id)} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>
 						<Icon aria-hidden="true" />
 					</RailButton>

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { boxDescriptors } from "../../shared/contract/box";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
+import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
 import { captureModelFetch, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
@@ -82,6 +83,27 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 		expect((await duplicateBlock(database, preset.id, block.id)).status).toBe(422);
 		const generationId = await startGeneration(app, conversation.id, (await readConversation(app, conversation.id)).revision);
 		expect((await readInspection(app, conversation.id, generationId)).promptPlan.blocks.map(({ content }) => content)).not.toContain("The lantern is lit.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a plugin's client module and stylesheet are served from its folder, and nothing else in it is", async () => {
+	const plugins = installPlugins({ lantern: {} });
+	writeFileSync(join(plugins, "lantern", "client.js"), "export default {};");
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const app = createBoxRoutes(database);
+		const served = async (path: string) => {
+			const response = await app.handle(new Request(`http://localhost${path}`));
+			return [response.status, response.status === 200 ? await response.text() : ""];
+		};
+		expect(await served("/boxes/lantern/client.js")).toEqual([200, "export default {};"]);
+		expect(await served("/boxes/lantern/client.css")).toEqual([404, ""]);
+		expect(await served("/boxes/lantern/server.ts")).toEqual([404, ""]);
+		expect(await served("/boxes/unloaded/client.js")).toEqual([404, ""]);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);

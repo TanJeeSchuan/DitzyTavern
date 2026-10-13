@@ -1,10 +1,10 @@
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
-import { boxDescriptorSchema, boxSdkVersion } from "../../shared/contract/box-descriptor";
+import { assertBoxDescriptor } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { RecordStates } from "./records";
@@ -39,7 +39,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undef
 // absent folder holds no Boxes, as before any plugin is installed. A Box
 // that fails to load is refused with its reason; the rest still load.
 export const discoverBoxes = async (folders: readonly string[]) => {
-	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox }>();
+	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox; readonly folder: string }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];
 	for (const parent of folders) {
 		const entries = await readdir(parent, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? [] : Promise.reject(error));
@@ -47,18 +47,13 @@ export const discoverBoxes = async (folders: readonly string[]) => {
 			const folder = join(parent, name);
 			try {
 				const { default: descriptor }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
-				if (!Value.Check(boxDescriptorSchema, descriptor)) {
-					const error = Value.Errors(boxDescriptorSchema, descriptor).First();
-					throw new Error(`Its descriptor is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
-				}
-				if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
-				if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
+				assertBoxDescriptor(descriptor);
 				if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
 				if (boxes.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
 				// @approved
 				// SAFETY: checkedHooks checks the hooks the host relies on against the descriptor; each Box types its own with `satisfies Box<…>`.
 				const { default: box }: { default: HostBox | undefined } = await import(join(folder, "server.ts"));
-				boxes.set(descriptor.id, { descriptor, box: checkedHooks(descriptor.id, descriptor, box) });
+				boxes.set(descriptor.id, { descriptor, box: checkedHooks(descriptor.id, descriptor, box), folder });
 			} catch (error) {
 				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
 			}
@@ -72,13 +67,18 @@ export const builtInBoxes = join(import.meta.dir, "../../boxes");
 export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
 
 let registered: ReadonlyMap<BoxId, HostBox> = new Map();
+let clientFolders: ReadonlyMap<BoxId, string> = new Map();
 /** @approved Builds the registry from `folders` at startup, before anything reads it, logging each refused Box. */
 export const loadBoxes = async (folders: readonly string[] = boxFolders): Promise<void> => {
 	const { boxes, refused } = await discoverBoxes(folders);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
 	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
 	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));
+	clientFolders = new Map(boxes.map(({ descriptor: { id }, folder }) => [id, dirname(folder) === builtInBoxes ? join("dist", "boxes", id) : folder]));
 };
+
+/** @approved Where a loaded Box's built client module is served from: the client build writes a built-in's into `dist/boxes/<id>`, and a plugin ships its own. */
+export const boxClientFolder = (id: BoxId): string | undefined => clientFolders.get(id);
 
 // @approved
 //  The server module of every loaded Box, by id, in registry order. Each Box

@@ -1,5 +1,6 @@
 import type { PromptBoxReference } from "../../shared/contract/box";
-import { boxClients, boxPanels, boxTitle } from "../box-windows/registry";
+import { BoxBoundary } from "../box-windows/BoxBoundary";
+import { boxClients, boxTitle } from "../box-windows/registry";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -73,9 +74,9 @@ export function PrimaryPanelView({
 	mutationsDisabled?: boolean;
 }) {
 	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
-	const BoxSettings = settingsBox === undefined ? undefined : boxClients.get(settingsBox)?.Settings;
+	const BoxSettings = settingsBox === undefined ? undefined : boxClients().get(settingsBox)?.Settings;
 	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
-	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxPanels.get(box)?.Panel;
+	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxClients().get(box)?.PrimaryPanel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
 		: isBoxSettings(panel) ? boxTitle(settingsBox!) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
@@ -106,13 +107,14 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{BoxPanel !== undefined && conversation !== null && (
-						<BoxPanel
-							key={conversation.id}
-							conversation={conversation}
-							onConversationChange={onConversationChange}
-							disabled={mutationsDisabled}
-						/>
+					{BoxPanel !== undefined && box !== undefined && conversation !== null && (
+						<BoxBoundary key={`${conversation.id}:${box}`} box={box}>
+							<BoxPanel
+								conversation={conversation}
+								onConversationChange={onConversationChange}
+								disabled={mutationsDisabled}
+							/>
+						</BoxBoundary>
 					)}
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
@@ -136,9 +138,9 @@ export function PrimaryPanelView({
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>
 					)}
-					{BoxSettings !== undefined && (
+					{BoxSettings !== undefined && settingsBox !== undefined && (
 						<div className="panel-fill">
-							<BoxSettings key={settingsBox} />
+							<BoxBoundary key={settingsBox} box={settingsBox}><BoxSettings /></BoxBoundary>
 						</div>
 					)}
 					{panel === "connections" && (

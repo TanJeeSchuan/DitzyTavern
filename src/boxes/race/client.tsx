@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentProps } from "react";
-import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
+import { Flag } from "lucide-react";
+import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf, boxSetupOf } from "@/box-sdk/shared";
 import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
 import { loadRace } from "./client-read";
-import { RaceWindow } from "./client-window";
+import { RaceDockTab, RaceWindow } from "./client-window";
+import descriptor from "./shared-descriptor";
 
 const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns exactly its keys. */ Object.keys(raceMoveCatalog) as RaceMoveKind[];
 
@@ -45,9 +47,11 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 	</section>;
 }
 
-export function RacePanel(props: ComponentProps<typeof RaceWindow> & { staging: MoveStaging }) {
+function RacePanel(props: ComponentProps<typeof RaceWindow> & { staging: MoveStaging }) {
 	return <>
 		<RaceWindow {...props} />
 		<RaceMoves {...props} />
 	</>;
 }
+
+export default { descriptor, icon: Flag, Window: { size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel } } satisfies BoxClientDefinition;

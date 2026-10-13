@@ -1,10 +1,12 @@
 import {
 	Alert, AlertDescription, BoxBlockNotice, Button, ProseEditor, useBoxSetupDraft,
-	type ConversationSummary,
+	type BoxClientDefinition, type ConversationSummary,
 } from "@/box-sdk/client";
+import { NotebookPen } from "lucide-react";
 import { authorNoteSetup } from "./contract";
+import descriptor from "./shared-descriptor";
 
-export function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
+function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
 	conversation: ConversationSummary;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	disabled: boolean;
@@ -35,3 +37,5 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		{notice !== null && <Button className="mt-2" variant="ghost" disabled={pending} onClick={discard}>Load saved note</Button>}
 	</div>;
 }
+
+export default { descriptor, icon: NotebookPen, PrimaryPanel: AuthorNotePanel } satisfies BoxClientDefinition;

@@ -7,7 +7,9 @@ import {
 	useSaveNavigation,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { boxClients } from "../box-windows/registry";
+import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
@@ -153,7 +155,7 @@ export function ActiveWritingWorkspace({
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
-	const inspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] === "absent" ? undefined : boxClients.get(inspectorBox)?.Inspector;
+	const inspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] === "absent" ? undefined : boxClients().get(inspectorBox)?.Inspector;
 	useEffect(() => {
 		if (inspectorBox !== undefined && conversation?.boxes[inspectorBox] === "absent") dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);
@@ -273,18 +275,20 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{!assemblyActive && inspector !== undefined && session.conversation !== null && (
+			{!assemblyActive && inspector !== undefined && inspectorBox !== undefined && session.conversation !== null && (
 				<aside className="details-panel" data-open="true" aria-label={inspector.label}>
-					<inspector.Component
-						key={`${session.conversation.id}:${inspectorBox}`}
-						conversation={session.conversation}
-						onConversationChange={session.setConversation}
-						focusRequest={panelState.boxFocus}
-						onClose={() => dispatchPanel({ type: "details-closed" })}
-						onNavigateSource={session.navigateToSourceMessage}
-						onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
-						onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
-					/>
+					<BoxBoundary key={`${session.conversation.id}:${inspectorBox}`} box={inspectorBox}
+						header={<PanelHeader title={inspector.label} onClose={() => dispatchPanel({ type: "details-closed" })} />}>
+						<inspector.Component
+							conversation={session.conversation}
+							onConversationChange={session.setConversation}
+							focusRequest={panelState.boxFocus}
+							onClose={() => dispatchPanel({ type: "details-closed" })}
+							onNavigateSource={session.navigateToSourceMessage}
+							onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
+							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
+						/>
+					</BoxBoundary>
 				</aside>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (

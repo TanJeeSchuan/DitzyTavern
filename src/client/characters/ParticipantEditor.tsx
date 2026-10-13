@@ -8,6 +8,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
+import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { boxClients } from "../box-windows/registry";
 
 // @approved
@@ -87,7 +88,9 @@ export function ParticipantEditor({
 			onSave={() => void apply()}
 			onBack={onBack}
 		>
-			{[...boxClients].map(([id, { ParticipantSection }]) => ParticipantSection && <ParticipantSection key={id} conversation={conversation} participant={participant} />)}
+			{[...boxClients()].map(([id, { ParticipantSection }]) => ParticipantSection && <BoxBoundary key={id} box={id}>
+				<ParticipantSection conversation={conversation} participant={participant} />
+			</BoxBoundary>)}
 			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
 		</DefinitionEditor>
 	);

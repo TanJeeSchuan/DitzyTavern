@@ -12,7 +12,7 @@ export type ClaimDraft = { claim: string; attribution: string; people: string[] 
 /** @approved The Chat's Memories, labelled for display. `poll` keeps an open panel current while digests land, faster during catch-up. */
 export function useConversationMemories(conversationId: number, conversationRevision: number, { poll = false } = {}) {
 	const client = useQueryClient();
-	const queryKey = useMemo(() => ["memories", conversationId] as const, [conversationId]);
+	const queryKey = useMemo(() => ["memory", "memories", conversationId] as const, [conversationId]);
 	const query = useQuery({
 		queryKey,
 		queryFn: async ({ signal }): Promise<MemoryData> => {

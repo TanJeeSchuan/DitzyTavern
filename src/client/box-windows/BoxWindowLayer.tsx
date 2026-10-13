@@ -5,7 +5,8 @@ import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice } from "./BoxBlockNotice";
-import { boxTitle, boxWindows, type MoveStaging } from "./registry";
+import { BoxBoundary } from "./BoxBoundary";
+import { boxClients, boxTitle, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -135,7 +136,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const [order, setOrder] = useState<BoxId[]>([]);
 	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
 	if (conversation === null) return null;
-	const running = [...boxWindows].filter(([id]) => conversation.boxes[id] === "enabled");
+	const running = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && conversation.boxes[id] === "enabled" ? [[id, { icon, ...Window }] as const] : []);
 	const minimized = running.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = running.filter(([id]) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
 	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
@@ -145,7 +146,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const top = opened.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map(([id, { DockTab }]) => <DockTab key={id} conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} />)}
+			{minimized.map(([id, { DockTab }]) => <BoxBoundary key={id} box={id}><DockTab conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} /></BoxBoundary>)}
 		</div>}
 		{/* @approved
 		  A narrow viewport shows the top window as one full-screen layer over
@@ -173,8 +174,10 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
-				<Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
-					boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
+				<BoxBoundary box={id}>
+					<Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
+						boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
+				</BoxBoundary>
 			</FloatingWindow>;
 		})}
 		</div></FocusScope.Root>

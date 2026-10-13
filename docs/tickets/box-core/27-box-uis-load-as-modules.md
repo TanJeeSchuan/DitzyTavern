@@ -1,6 +1,6 @@
 # Box UIs load as modules
 
-Status: TODO
+Status: DONE
 
 Blocked By: 26b-memory-ui-moves-into-its-box
 
@@ -25,14 +25,31 @@ The client gets every Box's UI the same way: it reads `GET /api/boxes` and impor
 
 ## Work
 
-- [ ] Add the import map and stable host chunks for React and the Box client SDK.
-- [ ] Build each built-in Box client as its own externals-sharing entry.
-- [ ] Load Box client modules from `GET /api/boxes` and build the client registry from them.
-- [ ] Wrap every Box surface in an error boundary and show failed imports in the Box manager.
-- [ ] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Add the import map and stable host chunks for React and the Box client SDK.
+- [x] Build each built-in Box client as its own externals-sharing entry.
+- [x] Load Box client modules from `GET /api/boxes` and build the client registry from them.
+- [x] Wrap every Box surface in an error boundary and show failed imports in the Box manager.
+- [x] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
 - `src/client` imports nothing from `src/boxes/`.
 - A Box whose client throws shows an error in place of its surface, and the rest of the Chat keeps working.
+
+## Notes
+
+- The import map in `index.html` is the one list of host modules: `vite.config.ts` reads it to emit each host chunk (`/host/<name>.js`) and to leave the same specifiers external in every Box build. Besides React, React Query and the two SDK entries, it maps `@sinclair/typebox` and `@sinclair/typebox/value`, so Boxes share the host's TypeBox and its format and kind registries (`numericWire`'s `numeric` format, the descriptor's `BoxSchema` kinds).
+- React is CommonJS, so a chunk built straight from it exports only `default`. A package's host chunk re-exports it by name, with the names read from the installed package at build time.
+- `vite build` builds every `src/boxes/<id>/client.tsx` alone, in library mode, into `dist/boxes/<id>/client.js`. Every Box now has a `client.tsx` that default-exports its descriptor and surfaces; Mood got one. `digestWindow` takes the descriptor, since a module builds its window before any descriptor is installed.
+- Box CSS: rather than the host linking `client.css`, the build prepends a top-level `await` that links it and waits for it to load, so `import()` resolves only once the styles are in. The host and the `/api/boxes` contract need no stylesheet field, and the dev server keeps Vite's own CSS handling.
+- `main.tsx` renders after `loadBoxClients()` without a top-level `await`: a Box module imports host chunks that can import the entry chunk, so awaiting in the entry would deadlock that cycle.
+- `GET /boxes/<id>/client.js|client.css` serves from `dist/boxes/<id>` for a built-in and the plugin's own folder for a plugin; no other file in a plugin folder is served. Host chunks and Box modules keep their names between builds, so they are served `no-cache`, while hashed assets keep a day's cache.
+- `boxWindows` and `boxPanels` are gone; host surfaces read `boxClients()`. Lens `gate` and `strip` run in the host's render, so `LensedProse` catches a throw from either, shows the failure and leaves the prose unlifted. Move chip lists, lifted marks and every component surface render inside `BoxBoundary`.
+- The Vite dev server maps `/boxes/<id>/client.js` to `src/boxes/<id>/client.tsx`, or a plugin's `data/boxes/<id>/client.js`.
+
+## Verification
+
+- `bun run check` passed: lint, 133 lint-rule tests, contract ownership, both typechecks, 1,492 unit tests across 172 files and 3 harness tests. The full `bun run test:e2e` then passed 79 of 79, including the new `e2e/box-modules.spec.ts` (a module that fails to import; an inspector that throws).
+- After that run, lint warnings in touched files were restructured, `@vite-ignore` joined the comment rule's ignored directives, and a route test was added (`src/server/box/registry.test.ts`, plugin client files only). Then lint, 134 lint-rule tests, the typecheck, `bun run build`, the registry tests (4) and the Box modules, inspector and Memory specs (9) passed.
+- Checked by hand in the built app and the Vite dev server: Memory's inspector renders with `/boxes/memory/client.css` linked and its React Query data loaded; failures show in the top bar item, the inspector frame and the Box manager.

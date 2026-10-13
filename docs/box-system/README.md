@@ -4,7 +4,7 @@ A **Box** is a story feature in its own folder, with its own state and a fixed s
 
 ## The contract
 
-A Box is its folder, `src/boxes/<id>/` for a built-in or `data/boxes/<id>/` for a plugin, which the server [loads at startup](#loading), plus its client entry. The shapes below are a summary; the types live in `src/shared/contract/box-descriptor.ts`, `src/server/box/contract.ts` and `src/client/box-windows/registry.tsx`.
+A Box is its folder, `src/boxes/<id>/` for a built-in or `data/boxes/<id>/` for a plugin, which the server [loads at startup](#loading) and the client [loads as a module](#client-modules). The shapes below are a summary; the types live in `src/shared/contract/box-descriptor.ts`, `src/server/box/contract.ts` and `src/client/box-windows/registry.ts`.
 
 ```ts
 // 1. Descriptor: the default export of src/boxes/<id>/shared-descriptor.ts
@@ -46,12 +46,12 @@ const exampleBox = {
 } satisfies Box<Setup, Dependencies, Trace, Services, Rec, State, Move>;
 export default exampleBox;
 
-// 3. Client surfaces: the `boxClients` entry in src/client/box-windows/registry.tsx
-"<id>": { icon, Window: { size, Panel, DockTab, lens }, TopBarItem },
-"<id>": { icon, Window: digestWindow("<id>", { icon, size, Panel, describe }), TopBarItem },
-"<id>": { icon, PrimaryPanel },                     // primary panel, as the Author Note uses
-"<id>": { icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView, TopBarItem },
-// Every surface is optional. A Box may export its definition from client.tsx, as Memory does.
+// 3. Client module: the default export of src/boxes/<id>/client.tsx, built as client.js
+export default { descriptor, icon, Window: { size, Panel, DockTab, lens }, TopBarItem } satisfies BoxClientDefinition;
+export default { descriptor, icon, Window: digestWindow(descriptor, { icon, size, Panel, describe }), TopBarItem };
+export default { descriptor, icon, PrimaryPanel };     // primary panel, as the Author Note uses
+export default { descriptor, icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView, TopBarItem };
+// `descriptor` is the folder's shared-descriptor.ts default export; every surface is optional.
 ```
 
 Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Services = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
@@ -62,18 +62,18 @@ Every server hook is optional, as are the descriptor keys marked optional. The l
 - **Each Box is absent, enabled or disabled in each Chat.** Only an enabled Box runs. Each insert starts a new instance, and the fold reads only the current instance's records, so a reinserted Box starts fresh. See [Lifecycle per Chat](#lifecycle-per-chat).
 - **Box data lives in six storage scopes under the `box:<id>` namespace.** Boxes cannot add tables. A Box's own data never reaches another Box's namespace. The host's own per-Box values, such as the Decision Model selection, live outside it under `box-decision`. See [Storage](#storage).
 - **The host knows a Box only by its id.** The id is a string checked against the loaded Boxes at runtime: a Box route answers an unknown id with 404, and a Box command fails it. The host holds every setup, record and Move as a `BoxValue` and checks it against the Box's own schema wherever it crosses the HTTP or database boundary. Each Box types its own values: its server hooks through `satisfies Box<…>`, and its reads through `boxSetupOf` and `boxMovesOf`.
-- **A Box reaches the host only through the SDK.** A file in `src/boxes/<id>/` imports its own folder by relative path, packages, and its layer's entries in `src/box-sdk/` as `@/box-sdk/<entry>`, so the folder loads from `data/boxes/` too. No host file lists Boxes; elsewhere in `src/`, only the client registry, until the client loads Box modules from `GET /api/boxes` (ticket 27), and tests import a Box. The `ditzy/no-box-boundary-imports` lint enforces both directions. See [Folder and SDK](#folder-and-sdk).
+- **A Box reaches the host only through the SDK.** A file in `src/boxes/<id>/` imports its own folder by relative path, packages, and its layer's entries in `src/box-sdk/` as `@/box-sdk/<entry>`, so the folder loads from `data/boxes/` too. No host file lists Boxes, and elsewhere in `src/` only tests import a Box. The `ditzy/no-box-boundary-imports` lint enforces both directions. See [Folder and SDK](#folder-and-sdk).
 - **Boxes compose only through the Prompt Plan.** Every Box advances in parallel and never sees another Box's result from the same Generation.
 - **Writer overrides overlay automatic records.** The effective record is `writer ?? automatic`. An override never rewrites prose, a later automatic result never displaces it, and reset removes it.
 
 ## Add a Box
 
-The host finds every Box by its folder, so adding a Box edits no host file except an SDK entry that lacks an export, and, until ticket 27, the client registry. If a Box needs more, the host is missing a generalization: raise it instead of adding a special case. Run heavy commands through `flock /tmp/ditzy-heavy.lock`.
+The host finds every Box by its folder, so adding a Box edits no host file except an SDK entry that lacks an export. If a Box needs more, the host is missing a generalization: raise it instead of adding a special case. Run heavy commands through `flock /tmp/ditzy-heavy.lock`.
 
 1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the loader demands. Done when you can name each one.
 2. **Create the folder.** Make `src/boxes/<id>/` with files named by layer ([Folder and SDK](#folder-and-sdk)). Schemas go in `contract.ts`, or `shared.ts` for a small Box such as Thoughts or Mood. Logic both the server and the client use goes in `shared.ts`. Done when `bun run lint` and `bun run check:contracts` pass.
 3. **Describe it.** Write `shared-descriptor.ts`, default-exporting the descriptor with the folder's name as its `id` and `sdk: 1`, and `server.ts`, default-exporting the Box that `satisfies Box<…>` with the types of your own schemas. The loader checks the Box's hooks against its descriptor's keys and refuses the Box with the reason in the server log, so every server test that reads it fails until they match. Done when `bun run typecheck` and the Box's server tests pass.
-4. **Add the window**, if the Box has one. Write `client.tsx` and add its `boxClients` entry, and the descriptor to the registry's `installBoxDescriptors` list. A digesting Box needs the entry for its window and dock tab; Memory, which keeps its own side panel, has none. A digesting Box needs no window file when it has no setup and the generic record summary reads well: its `Window` is `digestWindow("<id>", { icon, size })`, as for Mood. Done when `bun run typecheck` passes.
+4. **Write the client module.** Every Box has a `client.tsx` that default-exports its descriptor, its icon and its client surfaces, such as its window. A digesting Box needs a window for its passage timeline and dock tab; Memory, which keeps its own inspector, has none. A digesting Box with no setup, whose generic record summary reads well, needs nothing else: its `Window` is `digestWindow(descriptor, { icon, size })`, as Mood's `client.tsx` shows. Done when `bun run typecheck` and `bun run build` pass.
 5. **Test it.** Write `e2e/<id>.spec.ts` with one test per user flow, asserting through Prompt Plan inspection. Inserting the Box adds its block to the Chat's preset. Insert it with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box also needs `selectBoxDecisionModel(request, "<id>")` and scripted `llm.decisions(…)`. Digests also read the human's Messages, and the first matching rule wins, so end with a catch-all rule after the passage-specific ones (`e2e/world-clock.spec.ts`). Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a seed, or a fold. Write no UI component tests and no tests of the contract's shape. Done when `bun run check` and `bun run test:e2e` pass.
 
 ## Hooks
@@ -194,7 +194,7 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 ### Client surfaces
 
-`boxClients` registers each Box once. `boxWindows` and `boxPanels` select its window and primary-panel entries for the composer and window host. Settings and participant sections render for every loaded Box. Inspectors and their top bar and title-menu openers remain available while the Box is enabled or disabled, and disappear when it is absent. Message actions and window-opening top bar items require an enabled Box. Trace views render whenever a captured trace exists, regardless of the Box’s current Chat state.
+`boxClients()` holds each loaded Box's client module once, by id, in registry order. Every surface renders inside a `BoxBoundary` in its host frame: a surface that throws shows `<label> failed: <message>` in its place, and the rest of the Chat keeps working. Settings and participant sections render for every loaded Box. Inspectors and their top bar and title-menu openers remain available while the Box is enabled or disabled, and disappear when it is absent. Message actions and window-opening top bar items require an enabled Box. Trace views render whenever a captured trace exists, regardless of the Box’s current Chat state.
 
 #### Window and primary panel
 
@@ -216,7 +216,7 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 Every `Inspector` gets a host icon button named by `Inspector.label`; clicking opens the inspector with no message focus. This button is independent of `TopBarItem`, which opens a window. Below 78rem the Chat tools group is hidden. Inspectors also appear in the Chat title menu; windows remain reachable through the launcher and dock.
 
-A digesting Box builds its `Window` with `digestWindow`, which supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `DockTab` showing `status`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
+A digesting Box builds its `Window` with `digestWindow(descriptor, …)`, which supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `DockTab` showing `status`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
 
 #### Inspector
 
@@ -229,7 +229,7 @@ A digesting Box builds its `Window` with `digestWindow`, which supplies the `Pan
 - `onClose` and `onNavigateSource(messageId)` for returning to the Chat or jumping to a source.
 - `onOpenSettings()` for this Box's registered settings, and `onOpenConnections()` for the host's model connections.
 
-The host wraps `Component` in an `<aside className="details-panel" data-open="true">` labelled with `Inspector.label`. The inspector supplies its header; `PanelHeader` provides the existing desktop close and mobile back controls. Disabling the Box preserves access to saved data through its inspector and top bar/title-menu openers, but hides its message action. Removing the Box closes the inspector and clears its selection so reinserting does not reopen it.
+The host wraps `Component` in an `<aside className="details-panel" data-open="true">` labelled with `Inspector.label`. The inspector supplies its header, and the host supplies one with its failure when it throws; `PanelHeader` provides the existing desktop close and mobile back controls. Disabling the Box preserves access to saved data through its inspector and top bar/title-menu openers, but hides its message action. Removing the Box closes the inspector and clears its selection so reinserting does not reopen it.
 
 #### Settings and participant section
 
@@ -270,7 +270,13 @@ At startup the server scans the built-in folder `src/boxes/`, then the plugin fo
 - either file fails to import;
 - its server hooks do not match its descriptor's keys.
 
-The registry lists Boxes in load order: built-ins, then plugins, each folder's by name. That order is the Box manager's, the add-block menu's, the Decision Model settings', and the order Moves render in a Message. Loading happens once; adding or removing a plugin takes a restart. A preset block whose Box is not loaded, as after its plugin is removed or refused, stays in the preset as `box:<id>` and renders nothing. `GET /api/boxes` lists the loaded Boxes as `{ id, client }`, where `client` is the URL of the Box's client module (ticket 27). Tests load the built-in Boxes in the `bun test` preload `src/server/test-fixtures/boxes.ts`.
+The registry lists Boxes in load order: built-ins, then plugins, each folder's by name. That order is the Box manager's, the add-block menu's, the Decision Model settings', and the order Moves render in a Message. Loading happens once; adding or removing a plugin takes a restart. A preset block whose Box is not loaded, as after its plugin is removed or refused, stays in the preset as `box:<id>` and renders nothing. `GET /api/boxes` lists the loaded Boxes as `{ id, client }`, where `client` is the URL of the Box's [client module](#client-modules). Tests load the built-in Boxes in the `bun test` preload `src/server/test-fixtures/boxes.ts`.
+
+### Client modules
+
+A Box's `client.tsx` builds into one ES module, `client.js`, with the host modules left as imports: `react`, `react/jsx-runtime`, `react-dom`, `@tanstack/react-query`, `@sinclair/typebox`, `@sinclair/typebox/value`, `@/box-sdk/client` and `@/box-sdk/shared`. The import map in `index.html` lists them; the host build emits each as a stable `/host/<name>.js` chunk, so every Box shares the host's React, its React Query client and its TypeBox registries. `bun run build` builds each built-in Box's module into `dist/boxes/<id>/`; a plugin ships its own in its folder. A stylesheet `client.tsx` imports is emitted beside it as `client.css`, and the module links it and waits for it to load. The server serves both files at `/boxes/<id>/`, from `dist/boxes/<id>/` for a built-in and the plugin's folder for a plugin, and browsers revalidate them and the host chunks, since their names do not change between builds. The Vite dev server serves the module from the Box's source instead.
+
+At startup the client reads `GET /api/boxes` and imports every module in parallel, before it renders. It checks each default export's descriptor as the server does, and that its `id` is the listed one, then installs the descriptors and surfaces in registry order. A module that fails to import, or whose descriptor is refused, is listed in the Box manager as `Did not load: <reason>`, and none of its surfaces show. The cache is shared, so a Box's query keys start with its id, such as `["memory", "memories", conversationId]`.
 
 ### Folder and SDK
 
@@ -348,13 +354,13 @@ The override editor is built from the `record` schema:
 | `Type.Integer()` or `Type.Number()` | a number input bounded by `minimum` and `maximum` |
 | `Type.String()` | a text input |
 
-Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the entry, so the client fails at load. A field that may be unset is a union of literals with `Type.Null()`. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
+Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the window, so the Box's client module fails to load. A field that may be unset is a union of literals with `Type.Null()`. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
 
 The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline, the dock tab and the top bar item with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
 
 ### Lens pipeline
 
-The story view applies the lens of each enabled Box whose `gate` returns a value, in `boxWindows` order, each to the prose the earlier ones left. A lifted piece is never lensed again. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
+The story view applies the lens of each enabled Box whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
 
 ### Move staging
 
@@ -364,9 +370,9 @@ A Send with Moves for a Box that is not enabled is rejected. The composer drops 
 
 ### Windows and dock
 
-The composer shows a launcher button for each enabled Box with a panel or window entry, panels first. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
+The composer shows a launcher button for each enabled Box with a primary panel, which it opens, or else a window, in registry order. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
 
-The host styles the frame, the dock and the passage timeline in `src/styles/box-windows.css`. A Box adds no stylesheet: style the Panel with Tailwind utilities and the shadcn components the client SDK re-exports, as `src/boxes/thought/client.tsx` does (`text-muted-foreground`, `bg-muted`, `rounded-xl`, `font-(family-name:--font-reading)` for story text). The World Clock and Race windows still use classes in `box-windows.css` from before the host was generic; do not copy that. Follow `DESIGN.md` for visual decisions.
+The host styles the frame, the dock and the passage timeline in `src/styles/box-windows.css`. Style a Panel with Tailwind utilities and the shadcn components the client SDK re-exports, as `src/boxes/thought/client.tsx` does (`text-muted-foreground`, `bg-muted`, `rounded-xl`, `font-(family-name:--font-reading)` for story text). The World Clock and Race windows still use classes in `box-windows.css` from before the host was generic; do not copy that. Follow `DESIGN.md` for visual decisions.
 
 ## Built-in Boxes
 
