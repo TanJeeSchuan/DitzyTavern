@@ -19,12 +19,15 @@ const sendPlan = async (page: Page, reply: string) => {
 	await expect(story(page).getByText(reply, { exact: true })).toBeVisible();
 };
 
-test("a disabled Phone has no prompt item and keeps its dock tab and window, where its Moves are unavailable, and comes back as it was", async ({ page, llm }) => {
+test("a disabled Phone has no prompt item and keeps its dock tab and window, with its sent texts and its Moves unavailable, and comes back as it was", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["One."] }, { chunks: ["Two."] }, { chunks: ["Three."] });
 	await page.goto("/");
 	await insertBox(page, "Phone");
 	await page.getByRole("button", { name: "Phone", exact: true }).click();
-	await page.getByRole("dialog", { name: "Phone" }).getByRole("button", { name: "Minimize Phone" }).click();
+	const window = page.getByRole("dialog", { name: "Phone" });
+	await window.getByRole("textbox", { name: /^Text / }).fill("Meet me at the pier.");
+	await window.getByRole("button", { name: "Stage text" }).click();
+	await window.getByRole("button", { name: "Minimize Phone" }).click();
 	const dock = page.getByRole("button", { name: /^Phone: / });
 	await expect(dock).toBeVisible();
 	await expect((await generate(page, "Check the phone.")).getByText(/^Phone ·/)).toHaveCount(1);
@@ -37,8 +40,8 @@ test("a disabled Phone has no prompt item and keeps its dock tab and window, whe
 	await expect((await generate(page, "Leave it.")).getByText(/^Phone ·/)).toHaveCount(0);
 	await sendPlan(page, "Two.");
 	await dock.click();
-	const window = page.getByRole("dialog", { name: "Phone" });
 	await expect(window).toContainText("Phone is off in this Chat.");
+	await expect(window.getByText("Meet me at the pier.")).toBeVisible();
 	await expect(window.getByRole("textbox", { name: /^Text / })).toBeDisabled();
 	await window.getByRole("button", { name: "Minimize Phone" }).click();
 
