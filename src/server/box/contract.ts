@@ -10,7 +10,7 @@ import type { createModelClient } from "../model-client";
 export interface BoxServices {
 	readonly llm: (options: Omit<Parameters<typeof createModelClient>[0], "fetch">) => ReturnType<typeof createModelClient>;
 	readonly decide: (input: Omit<Parameters<typeof requestDecisions>[0], "fetch" | "signal">) => ReturnType<typeof requestDecisions>;
-	readonly embed: (text: string, configuration: MemoryEmbeddingConfiguration) => Promise<readonly (readonly number[])[]>;
+	readonly embed: (texts: readonly string[], configuration: MemoryEmbeddingConfiguration) => Promise<readonly (readonly number[])[]>;
 }
 
 export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxServices, Services> & { readonly signal: AbortSignal };
@@ -85,7 +85,8 @@ export type DigestWindow = {
 	readonly cast: readonly { readonly id: number; readonly name: string; readonly removed: boolean }[];
 	readonly data: Readonly<Record<string, string>>;
 };
-/** @approved A digest gets the services its Box injects, as `advance` does, and always `decide`, which asks the Box's own Decision Model selection; the host packs and bounds the request. */
+/** @approved A digest gets the services its Box injects, as `advance` does, and always `decide`, which asks the Box's own Decision Model selection; the host packs and bounds the request. `database` serves the reads its window does not carry, as `read` gets it. */
 export type DigestContext<Services extends keyof BoxServices = never> = BoxContext<Exclude<Services, "decide">> & {
 	decide(state: DecisionJson, questions: DecisionQuestions): ReturnType<typeof requestDecisions>;
+	readonly database: Database;
 };

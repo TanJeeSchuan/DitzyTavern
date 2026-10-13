@@ -1,47 +1,47 @@
-import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule, connectionSnapshotOf } from "../connection-settings";
-import { conversationIdOfMessage } from "../conversation";
-import { readMemoryChatSettings } from "./chat-values";
-import { createModelClient, collectModelClientGeneration, type ModelFetch } from "../model-client";
+import { collectModelClientGeneration } from "../model-client";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { PromptPlan } from "../prompt-compiler";
 import { createMemorySettingsModule } from "./settings";
-import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
+import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { memoryExtractionResponse } from "../../shared/contract/memory";
-import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse } from "../../shared/contract/memory";
+import { memoryChatSettings, memoryExtractionResponse, memoryLabels } from "../../shared/contract/memory";
+import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse, MemoryRecord } from "../../shared/contract/memory";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
-import { decisionRequest, packDecisions, prettyJson, requestDecisions, resolveDecisionSelection, type DecisionTrace, type ResolvedDecisionModel } from "../decision-model";
+import { decisionRequest, packDecisions } from "../decision-model";
+import { readBoxDecisionSettings } from "../box/decision-settings";
+import type { DigestContext, DigestWindow } from "../box/contract";
+import { projectImageAnchors } from "../../shared/image-reference";
+import { renderMemoryClaim } from "../../shared/memory-text";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
-import { readMemoryLabelState } from "./labels";
+import { embedAndCacheMemoryTexts, readMemoryEmbeddingConfiguration } from "./indexing";
 
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 
-export type MemoryTrace = DecisionTrace;
-const noTrace: MemoryTrace = () => {};
-const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
-
-const identityInstructions = (database: Database, messageId: number) => {
-	const conversationId = conversationIdOfMessage(database, messageId);
-	if (conversationId === undefined) return "";
-	const { cast, identities } = readMemoryLabelState(database, conversationId);
-	return cast.flatMap(({ id, names }) => {
-		const identity = identities[id];
-		const [name, ...former] = names;
-		if (identity?.kind === "excluded") return [`${name}${former.length ? ` (also ${former.join(", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`];
-		if (identity?.kind === "plays") return [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`];
-		return [];
-	}).join("\n");
+/** @approved The digest's own `box:memory` values, decoded from the window. */
+const chatValue = <T extends TSchema>(window: DigestWindow, key: string, schema: T, initial: Static<T>): Static<T> => {
+	const stored = window.data[key];
+	return stored === undefined ? initial : Value.Parse(schema, JSON.parse(stored));
 };
+const readLabels = (window: DigestWindow) => chatValue(window, "labels", memoryLabels, { identities: {}, merges: [] });
 
-const noteInstructions = (database: Database, messageId: number) => {
-	const conversationId = conversationIdOfMessage(database, messageId);
-	const note = conversationId === undefined ? "" : readMemoryChatSettings(database, conversationId).note;
-	return note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
-};
+// @approved
+//  Every name a Participant goes by in the window, its current name first,
+//  so first-person and exclusion rules reach names it was captured under.
+const castNames = (window: DigestWindow) => window.cast.map(({ id, name }) => ({
+	id, names: [...new Set([name, ...[...window.preceding, window.passage].flatMap((message) => message.authorId === id && message.speaker !== null ? [message.speaker] : [])])],
+}));
+
+const identityInstructions = (window: DigestWindow, identities: Static<typeof memoryLabels>["identities"]) => castNames(window).flatMap(({ id, names }) => {
+	const identity = identities[id];
+	const [name, ...former] = names;
+	if (identity?.kind === "excluded") return [`${name}${former.length ? ` (also ${former.join(", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`];
+	if (identity?.kind === "plays") return [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`];
+	return [];
+}).join("\n");
 
 const candidateProblem = (
 	candidate: MemoryExtractionResponse["candidates"][number],
@@ -91,47 +91,39 @@ const promptPlanOf = (system: string): PromptPlan => ({
 
 const extractionInstructions = (sourceMessageId: number) => `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${sourceMessageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
 
-const generatedContent = async (
-	database: Database,
-	memory: MemorySettingsPayload,
+type MemoryDigestContext = DigestContext<"llm" | "decide" | "embed">;
+
+const extractCandidates = async (
+	ctx: MemoryDigestContext,
+	window: DigestWindow,
 	source: CapturedMemoryMessage,
 	context: readonly CapturedMemoryMessage[],
-	fetcher?: ModelFetch,
-	signal?: AbortSignal,
-	trace: MemoryTrace = noTrace,
 ) => {
+	const memory = createMemorySettingsModule(ctx.database).get();
 	if (tokenxEstimator(source.content) > 12_000) throw new Error("This complete source exceeds the 12,000-token Memory extraction limit. It was not truncated.");
 	if (memory.extractionProfileId === null || memory.extractionModel.length === 0) throw new Error("Choose an extraction Connection Profile and model in Memory Settings.");
-	const connectionSettings = createConnectionSettingsModule(database);
+	const connectionSettings = createConnectionSettingsModule(ctx.database);
 	const settings = connectionSettings.get();
 	const profile = settings.profiles.find((item) => item.id === memory.extractionProfileId);
 	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
 	const instructions = extractionInstructions(source.messageId);
-	const identities = identityInstructions(database, source.messageId);
-	const note = noteInstructions(database, source.messageId);
+	const identities = identityInstructions(window, readLabels(window).identities);
+	const { note } = chatValue(window, "settings", memoryChatSettings, { allowance: 0, note: "" });
+	const guidance = note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
 	const promptOf = (retained: readonly CapturedMemoryMessage[]) =>
-		`${instructions}${identities ? `\n${identities}` : ""}${note ? `\n\n${note}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
+		`${instructions}${identities ? `\n${identities}` : ""}${guidance ? `\n\n${guidance}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
 	const retainedContext = [...context];
 	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) {
 		retainedContext.shift();
 	}
-	const prompt = promptOf(retainedContext);
 	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
-	const client = createModelClient({ profile, secrets: connectionSettings.getProfileSecrets(profile.id), fetch: fetcher });
+	const client = ctx.llm({ profile, secrets: connectionSettings.getProfileSecrets(profile.id) });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
-	trace("Extraction request", {
-		profile: profile.displayName,
-		model: memory.extractionModel,
-		limits: `context ${memory.contextLimit} · output reserve ${memory.outputReserve}`,
-		contextMessageIds: retainedContext.map((message) => message.messageId).join(", "),
-		prompt,
-	});
-	const startedAt = Date.now();
 	const deadline = AbortSignal.timeout(EXTRACTION_DEADLINE_MS);
 	const result = await collectModelClientGeneration(client, {
-		promptPlan: promptPlanOf(prompt),
+		promptPlan: promptPlanOf(promptOf(retainedContext)),
 		modelId: memory.extractionModel,
 		generationSettings: {
 			temperature: null,
@@ -143,7 +135,7 @@ const generatedContent = async (
 			requestOverrides: {},
 		},
 		connection: connectionSnapshotOf(settings, profile),
-		signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+		signal: AbortSignal.any([ctx.signal, deadline]),
 	}, {
 		onEvent: (event) => {
 			if (event.type !== "content") return;
@@ -152,13 +144,6 @@ const generatedContent = async (
 		},
 	}).catch((error: Error) => {
 		throw deadline.aborted ? new Error("Memory extraction exceeded its 10-minute limit. Retry this source.") : error;
-	});
-	trace("Extraction response", {
-		elapsed: seconds(startedAt),
-		finishReason: result.finishReason,
-		usage: JSON.stringify(result.usage),
-		reasoning: result.reasoning,
-		content: prettyJson(result.content),
 	});
 	if (result.finishReason !== "stop") {
 		throw new Error(
@@ -171,9 +156,7 @@ const generatedContent = async (
 	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch {
 		throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source.");
 	}
-	const { candidates, dropped } = validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
-	trace("Validated candidates", { count: String(candidates.length), dropped: dropped.join("\n") || "none", candidates: JSON.stringify(candidates, null, 2) });
-	return { candidates, context: retainedContext };
+	return { candidates: validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId).candidates, context: retainedContext, settings: memory };
 };
 
 const isChoiceLabel = <const Labels extends readonly string[]>(labels: Labels, value: string): value is Labels[number] =>
@@ -219,14 +202,15 @@ const candidateQuestions = (candidate: MemoryCandidate) => ({
 	},
 });
 
-export async function judgeMemoryCandidates({ source, context, candidates, selection, fetch, signal, trace }: {
+// @approved
+//  Candidates are judged in as few Decision Model requests as fit Memory's
+//  selection, at most 16 candidates each.
+export async function judgeMemoryCandidates({ source, context, candidates, selection, decide }: {
 	source: CapturedMemoryMessage;
 	context: readonly CapturedMemoryMessage[];
 	candidates: readonly MemoryCandidate[];
-	selection: ResolvedDecisionModel;
-	fetch?: ModelFetch;
-	signal?: AbortSignal;
-	trace?: MemoryTrace;
+	selection: { readonly model: string; readonly stateTokenLimit: number };
+	decide: MemoryDigestContext["decide"];
 }): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
 	const output: MemoryCandidateJudgment[] = [];
@@ -236,11 +220,11 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 		(batch) => decisionRequest(selection, state, Object.fromEntries(
 			batch.flatMap(({ candidate, id }) => Object.entries(candidateQuestions(candidate)).map(([name, question]) => [`candidate_${id}_${name}`, question])),
 		)),
-		"Required Memory evidence exceeds the bounded Decision Model request. No partial collection was saved.",
+		"Required Memory evidence exceeds the bounded Decision Model request.",
 		16,
 	);
-	for (const { request, questions, items } of batches) {
-		const answers = await requestDecisions({ request, questions, selection, fetch, signal, trace });
+	for (const { questions, items } of batches) {
+		const answers = await decide(state, questions);
 		for (const { candidate, id } of items) {
 			const support = parseChoice(answers.get(`candidate_${id}_support`), ["supported", "contradicted", "not_established"] as const);
 			const attribution = parseChoice(answers.get(`candidate_${id}_attribution`), ["correct", "misattributed", "unclear"] as const);
@@ -270,30 +254,29 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 	return output;
 }
 
-export async function extractAndJudgeMemorySource(
-	database: Database,
-	source: CapturedMemoryMessage,
-	context: readonly CapturedMemoryMessage[],
-	fetcher?: ModelFetch,
-	signal?: AbortSignal,
-	trace: MemoryTrace = noTrace,
-): Promise<MemoryCandidateJudgment[]> {
-	const settings = createMemorySettingsModule(database).get();
-	const selection = resolveDecisionSelection(database, settings);
-	if (selection === null) throw new Error("Choose a Decision Model in Memory Settings.");
+const captured = ({ messageId, speaker, content }: DigestWindow["passage"]): CapturedMemoryMessage => ({ messageId, speaker, content: projectImageAnchors(content) });
+
+// @approved
+//  Memory's digest: extract candidates from one passage, keep the ones the
+// Decision Model judges supported, correctly attributed and worth retaining,
+// and embed what it kept. A passage by an author who is not in the story
+// holds no Memories.
+export async function digestMemory(window: DigestWindow, ctx: MemoryDigestContext): Promise<MemoryRecord> {
+	const author = window.passage.authorId;
+	if (author !== null && readLabels(window).identities[author]?.kind === "excluded") return { claims: [] };
+	const source = captured(window.passage);
+	const context = window.preceding.map(captured);
+	const { decisionModel, decisionStateTokenLimit } = readBoxDecisionSettings(ctx.database, "memory");
+	const selection = { model: decisionModel, stateTokenLimit: decisionStateTokenLimit };
 	if (tokenxEstimator(JSON.stringify({ source, context })) > selection.stateTokenLimit) {
-		throw new Error("The Memory source and captured context exceed the Decision Model state token limit. No partial collection was saved.");
+		throw new Error("The Memory source and captured context exceed the Decision Model state token limit.");
 	}
-	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
-	signal?.throwIfAborted();
-	const judgments = await judgeMemoryCandidates({ source, context, candidates: extracted.candidates, selection, fetch: fetcher, signal, trace });
-	const kept = judgments.filter(({ judgment }) =>
-		judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.probabilities["usefulness:retain"]! >= settings.retainProbabilityMinimum);
-	trace("Kept memories", {
-		rule: `supported, correctly attributed, and retain with probability >= ${settings.retainProbabilityMinimum}`,
-		kept: String(kept.length),
-		dropped: String(judgments.length - kept.length),
-		memories: JSON.stringify(kept, null, 2),
-	});
-	return kept;
+	const extracted = await extractCandidates(ctx, window, source, context);
+	ctx.signal.throwIfAborted();
+	const judgments = await judgeMemoryCandidates({ source, context: extracted.context, candidates: extracted.candidates, selection, decide: ctx.decide });
+	const claims = judgments.filter(({ judgment }) =>
+		judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.probabilities["usefulness:retain"]! >= extracted.settings.retainProbabilityMinimum);
+	const embedding = readMemoryEmbeddingConfiguration(ctx.database);
+	if (embedding.spaceKey !== "" && claims.length > 0) await embedAndCacheMemoryTexts(ctx.database, claims.map(renderMemoryClaim), embedding, ctx.embed);
+	return { claims };
 }

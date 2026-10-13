@@ -24,8 +24,8 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 	boxDecisions: readonly { box: DigestBoxId; editor: SettingsPreview<BoxDecisionSettings> }[];
 	onOpenBoxDecision: (box: DigestBoxId) => void;
 }) {
-	const boxes = boxDecisions.map(({ box }) => `the ${boxDescriptors[box].label}`);
-	const roles = ["Memory", "Semantic Triggers", ...boxes];
+	const boxes = boxDecisions.map(({ box }) => boxDescriptors[box].label);
+	const roles = ["Semantic Triggers", ...boxes];
 	const pending = controller.pendingDeletionProfile;
 	const feedback = controller.error ?? controller.notice;
 	const embeddingsPreset = controller.presets.find((preset) => preset.profile.apiFormat === "embeddings");
@@ -65,7 +65,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<h3 id="decisions-title">Decision Models</h3>
 					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
 				</div>
-				<p>Judge Memory and Semantic Triggers, and read passages for {listOf(boxes, "and")}. Each role chooses its own model.</p>
+				<p>Judge Semantic Triggers and read passages for {listOf(boxes, "and")}. Each role chooses its own model.</p>
 				<ProfileRows
 				label="Decision Model connections"
 				profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")}

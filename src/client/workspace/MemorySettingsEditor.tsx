@@ -6,12 +6,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
 import { useAsyncEffect } from "../lib/use-async";
-import { DecisionModelPicker } from "../DecisionModelPicker";
 import { ProfileModelPicker } from "../ProfileModelPicker";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard } from "../SaveGuard";
 import { NumberGroup, NumberRow } from "./NumberControls";
-import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
 type Draft = Omit<MemorySettings, "revision">;
 type State = { settings: MemorySettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };
@@ -92,19 +90,17 @@ export function MemorySettingsEditor() {
 	const profileOf = (id: number | null) => connections?.profiles.find((profile) => profile.id === id);
 	const extractionProfile = profileOf(draft.extractionProfileId);
 	const embeddingProfile = profileOf(draft.embeddingProfileId);
-	const missingProfile = [settings.extractionProfileId, settings.embeddingProfileId, settings.decisionProfileId].some((id) => id !== null && profileOf(id) === undefined);
+	const missingProfile = [settings.extractionProfileId, settings.embeddingProfileId].some((id) => id !== null && profileOf(id) === undefined);
 	return (
 		<><div className="panel-body settings-panel-body">
 			<section aria-labelledby="memory-settings-title">
 				<h3 id="memory-settings-title">Conversation Memory</h3>
-				<p>Memory runs in each Chat where its Box is on. Extraction runs separately from writing generations.</p>
-				{draft.decisionProfileId === null && <p className="settings-feedback" role="status">Choose a Decision Model to enable Memory judgment and recall.</p>}
+				<p>Memory runs in each Chat where its Box is on. Extraction runs separately from writing generations. Its Decision Model is chosen in Connections.</p>
 				{connectionsQuery.isError && <p className="settings-feedback-error" role="alert">Connection Settings could not be loaded.</p>}
 				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
 				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && (
 					<p className="settings-feedback" role="status">
-						Memory extraction is not ready. Choose an extraction model whose connection has an API key, and choose a Decision
-						Model below.
+						Memory extraction is not ready. Choose an extraction model whose connection has an API key.
 					</p>
 				)}
 				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && (
@@ -118,9 +114,6 @@ export function MemorySettingsEditor() {
 							emptyLabel="Add a chat connection in Connections to choose a model."
 							label="Extraction model"
 							/>
-					</Field>
-					<Field label="Decision Model" helper="Judges proposed Memories and scores saved Memories during recall. System One connections only.">
-						<DecisionModelPicker selection={draft} onChange={update} label="Memory Decision Model" />
 					</Field>
 					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
 						<ProfileModelPicker
@@ -145,22 +138,12 @@ export function MemorySettingsEditor() {
 						person, and whether it will matter beyond the current scene. Only claims that pass these checks and the retain
 						probability minimum are kept.
 					</p>
-						<p>During recall, the Decision Model scores saved Memories for relevance to the current scene. Choose its System One connection and model here.</p>
+						<p>During recall, the Decision Model scores saved Memories for relevance to the current scene. Choose its System One connection and model in Connections.</p>
 					</PopoverContent>
 				</Popover></>} description="Estimated tokens for each extraction request.">
 					<NumberRow id="memory-context-limit" label="Context limit" min={1} step={1} value={draft.contextLimit} onChange={(contextLimit) => update({ contextLimit })} />
 					<NumberRow id="memory-output-reserve" label="Output reserve" min={1} step={1} value={draft.outputReserve} onChange={(outputReserve) => update({ outputReserve })} />
 					<NumberRow id="memory-safety-allowance" label="Safety allowance" min={0} step={1} value={draft.safetyAllowance} onChange={(safetyAllowance) => update({ safetyAllowance })} />
-				</NumberGroup>
-				<NumberGroup title="Decision Model state" description="Maximum state sent for judgment and recall. Oversized extraction sources fail visibly.">
-					<NumberRow
-						id="memory-decision-state-limit"
-						label="State token limit"
-						min={MIN_DECISION_STATE_TOKEN_LIMIT}
-						step={1}
-						value={draft.decisionStateTokenLimit}
-						onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })}
-					/>
 				</NumberGroup>
 				<NumberGroup title="Decision thresholds" description="Retain probability controls admission. Relevance score controls recall.">
 					<NumberRow

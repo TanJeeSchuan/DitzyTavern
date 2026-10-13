@@ -22,6 +22,9 @@ export const boxCatchUp = Type.Object({
 });
 export type BoxCatchUp = Static<typeof boxCatchUp>;
 
+/** @approved Digests one selected passage now, as live work. */
+export const digestPassageCommand = Type.Object({ variantId: Type.Integer() });
+
 // @approved
 //  A digesting Box's dock read: only its folded one-line status, so a
 //  minimized Box polls no prose.

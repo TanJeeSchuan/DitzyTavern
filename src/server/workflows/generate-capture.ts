@@ -344,6 +344,7 @@ export function prepareGenerationInputsSnapshot(
 	const rendered = participation.messages.flatMap((message) => message.variant === null ? [] : [{
 		message,
 		variantId: message.variant.id,
+		prose: message.variant.content,
 		speakerName: message.author?.capturedName ?? null,
 		role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
 		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes),
@@ -385,7 +386,9 @@ export function prepareGenerationInputsSnapshot(
 		database: input.database,
 		conversationId: input.conversationId,
 		enabled: hasEnabledMemorySlot(recipe.slots),
-		messages: rendered.map(({ message, variantId, speakerName, role, content }) => ({ messageId: message.id, variantId, position: message.position, speakerName, role, content })),
+		messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
+			messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speakerName, role, content, prose,
+		})),
 		pendingHumanText,
 		humanName: human.name,
 	});
@@ -403,7 +406,7 @@ export function prepareGenerationInputsSnapshot(
 		conversationId: input.conversationId,
 		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, recordStates, moves, { seed, intent: boxIntent, human, cast: summary.cast, memory: () => {
 			const snapshot = captureMemory();
-			return { snapshot, recall: (ctx) => evaluateMemoryRecallSnapshot({ snapshot, ...ctx }) };
+			return { snapshot, recall: (ctx) => evaluateMemoryRecallSnapshot({ database: input.database, snapshot, ...ctx }) };
 		} }),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {

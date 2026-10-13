@@ -13,7 +13,6 @@ import { openInitializedDatabase } from "../database/database";
 import type { BoxId, BoxState } from "../../shared/contract/box";
 import { boxInstanceEntry, boxStateEntry } from "../box/setup";
 import { installBoxBlocks } from "../prompt-preset";
-import { syncMemorySources } from "../memory";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
 import type {
@@ -28,7 +27,7 @@ import type {
 
 export function openObservedDatabase(): Database {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	observeConversationWrites(database, syncMemorySources);
+	observeConversationWrites(database, () => {});
 	return database;
 }
 

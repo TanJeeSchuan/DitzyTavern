@@ -5,7 +5,6 @@ import {
 	type GenerationPreviewStore,
 } from "../workflows/generation-preview";
 import { createStagedImportStore, type StagedImportStore } from "../sillytavern/staged";
-import type { RunningWork } from "../memory/work";
 
 // @approved
 //  One process-local state container per database. Every store that must
@@ -21,8 +20,6 @@ export interface ProcessState {
 	/** @approved Generation fan-out and replay registry; drain semantics live on the registry. */
 	readonly generationRuntimes: GenerationRuntimeRegistry;
 	readonly generationPreviews: GenerationPreviewStore;
-	/** @approved In-flight memory work by variant id: registration and abort only; no expiry semantics. */
-	readonly memoryWork: Map<number, Set<RunningWork>>;
 	readonly stagedImports: StagedImportStore;
 	/** @approved One tick expiring terminal runtime replay state, preview records, and staged sessions. */
 	sweep(now?: number): void;
@@ -45,7 +42,6 @@ const createProcessState = (database: Database): ProcessState => {
 	const generationRuntimes = new GenerationRuntimeRegistry();
 	const generationPreviews = createGenerationPreviewStore();
 	const stagedImports = createStagedImportStore();
-	const memoryWork = new Map<number, Set<RunningWork>>();
 	let timer: ReturnType<typeof setInterval> | undefined;
 	// @approved
 	//  The one teardown path. The sweep reaps a container whose
@@ -58,7 +54,6 @@ const createProcessState = (database: Database): ProcessState => {
 		timer = undefined;
 		generationPreviews.dispose();
 		stagedImports.dispose();
-		memoryWork.clear();
 		states.delete(database);
 	};
 	const sweep = (now: number = Date.now()): void => {
@@ -74,7 +69,6 @@ const createProcessState = (database: Database): ProcessState => {
 	return {
 		generationRuntimes,
 		generationPreviews,
-		memoryWork,
 		stagedImports,
 		sweep,
 		dispose,

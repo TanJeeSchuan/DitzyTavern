@@ -176,6 +176,13 @@
       "when": 1791851172361,
       "tag": "0024_amused_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1791854867832,
+      "tag": "0025_first_solo",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,7 @@
-import { readCastForMemory, readMessageAuthorsForMemory, readSelectedPathForMemory } from "../conversation";
+import { readCastForMemory, readMessageAuthorsForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { readMemoryLabels } from "./chat-values";
-import {
-	type MemoryCandidateJudgment,
-	type MemoryIdentities,
-	type MemoryLabelMerge,
-} from "../../shared/contract/memory";
-import { applyMemoryPeople } from "../../shared/memory-identity";
+import type { MemoryIdentities, MemoryLabelMerge } from "../../shared/contract/memory";
 
 export class InvalidMemoryLabelsError extends Error {
 	readonly outcome = "invalid" as const;
@@ -35,11 +30,6 @@ export const readMemoryLabelState = (database: Database, conversationId: number)
 	};
 };
 
-export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[], state: MemoryLabelState): MemoryCandidateJudgment[] =>
-	claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, state.cast, state.identities, state.merges) }));
-
-export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
-	const author = readSelectedPathForMemory(database, conversationId, { messageId, preceding: 0 })?.find((message) => message.messageId === messageId)?.authorParticipantId;
-	if (author === undefined || author === null) return false;
-	return readMemoryLabels(database, conversationId).identities[author]?.kind === "excluded";
-};
+/** @approved Whether Memory leaves this author's Messages out: an author who is not in the story is never a source. */
+export const isExcludedAuthor = (state: Pick<MemoryLabelState, "identities">, authorParticipantId: number | null): boolean =>
+	authorParticipantId !== null && state.identities[authorParticipantId]?.kind === "excluded";

@@ -276,10 +276,8 @@ export function ActiveWritingWorkspace({
 			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
 				<MemoriesPanel
 					key={session.conversation.id}
-					conversationId={session.conversation.id}
-					conversationRevision={session.conversation.revision}
-					enabled={session.conversation.boxes.memory === "enabled"}
-					cast={session.conversation.cast}
+					conversation={session.conversation}
+					onConversationChange={session.setConversation}
 					focusRequest={memoryFocus}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}

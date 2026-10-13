@@ -1,10 +1,10 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { decisionSelection } from "./decision-model";
 import { invalidOutcome } from "./outcomes";
 
 // @approved
 //  The stored Memory Settings value, kept in library_data under `box:memory`.
-export const memorySettingsValue = Type.Composite([decisionSelection, Type.Object({
+// Memory's Decision Model is the host's selection for the Box.
+export const memorySettingsValue = Type.Object({
 	extractionProfileId: Type.Union([Type.Integer(), Type.Null()]),
 	extractionModel: Type.String(),
 	contextLimit: Type.Integer(),
@@ -14,7 +14,7 @@ export const memorySettingsValue = Type.Composite([decisionSelection, Type.Objec
 	recallRelevanceMinimum: Type.Number(),
 	embeddingProfileId: Type.Union([Type.Integer(), Type.Null()]),
 	embeddingModel: Type.String(),
-})]);
+});
 export type MemorySettingsValue = Static<typeof memorySettingsValue>;
 export const memorySettings = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
 export type MemorySettingsPayload = Static<typeof memorySettings>;

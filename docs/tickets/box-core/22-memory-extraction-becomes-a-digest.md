@@ -1,6 +1,6 @@
 # Memory extraction becomes a digest
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: 20-memory-settings-become-box-data, 21-digests-read-the-chat
 
@@ -26,13 +26,13 @@ Memory supplies `digest(window) → claims` and nothing else for extraction. Its
 
 ## Work
 
-- [ ] Declare Memory's `records`, `digest` and `decision`, and move extraction into `digest.run`.
-- [ ] Point recall, the Memories panel, claim edits and reset at record slots.
-- [ ] Apply labels at read time and simplify the label commands.
-- [ ] Delete `collections.ts`, `work.ts`, `cancellation.ts`, `sync.ts`, the Memory call in `app.ts`, `memory_collection`, `memory_catchup_run` and the pipeline trace.
-- [ ] Rewrite the unit tests that query `memory_collection` directly against record slots, keeping only those that pin behavior. Delete tautological ones.
-- [ ] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass, apart from the reset change.
-- [ ] Update `docs/box-system/README.md`: Memory is the second digest consumer with records and Writer overrides.
+- [x] Declare Memory's `records`, `digest` and `decision`, and move extraction into `digest.run`.
+- [x] Point recall, the Memories panel, claim edits and reset at record slots.
+- [x] Apply labels at read time and simplify the label commands.
+- [x] Delete `collections.ts`, `work.ts`, `cancellation.ts`, `sync.ts`, the Memory call in `app.ts`, `memory_collection`, `memory_catchup_run` and the pipeline trace.
+- [x] Rewrite the unit tests that query `memory_collection` directly against record slots, keeping only those that pin behavior. Delete tautological ones.
+- [x] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass, apart from the reset change.
+- [x] Update `docs/box-system/README.md`: Memory is the second digest consumer with records and Writer overrides.
 - [ ] Run `bun run check` and the full `bun run test:e2e`.
 - [ ] Set this ticket to DONE and commit.
 

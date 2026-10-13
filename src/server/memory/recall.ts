@@ -1,19 +1,14 @@
-import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
 import { readActiveVariantIds } from "../conversation";
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { Value } from "@sinclair/typebox/value";
 import { sliceByTokens } from "tokenx";
-import { memoryCandidates } from "../../shared/contract/memory";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { renderMemoryClaim } from "../../shared/memory-text";
-import { memoryCollectionTable } from "../database/schema";
+import { applyMemoryPeople } from "../../shared/memory-identity";
 import { createMemorySettingsModule } from "./settings";
 import {
 	decisionRequest,
 	largestFittingBatch,
-	tryResolveDecisionSelection,
 	type DecisionSelectionResolution,
 	type ResolvedDecisionModel,
 } from "../decision-model";
@@ -21,39 +16,38 @@ import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import { projectImageAnchors } from "../../shared/image-reference";
 import type { BoxContext } from "../box/contract";
-import {
-	readCachedMemoryVectors,
-	readMemoryEmbeddingConfiguration,
-	readMemoryIndexReadinessBatch,
-	type MemoryEmbeddingConfiguration,
-} from "./indexing";
-import { readMemoryAllowance } from "./collections";
-import { readMemoryLabelState } from "./labels";
+import { readBoxDecisionSettings, resolveBoxDecision } from "../box/decision-settings";
+import { effectiveRecord, hasAutomaticRecord, hasDigestError, readRecordSlots } from "../box/records";
+import { readBoxInstances } from "../box/setup";
+import { embedAndCacheMemoryTexts, readMemoryEmbeddingConfiguration, type MemoryEmbeddingConfiguration } from "./indexing";
+import { readMemoryAllowance } from "./memories";
+import { isExcludedAuthor, readMemoryLabelState } from "./labels";
 import { sha256 } from "./hash";
-import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared/contract/memory";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 
+/** @approved `content` is the Message as the model reads it, Moves included; `prose` is the Variant's stored text, which its Memory record was digested from. */
 export interface MemoryRecallSceneMessage {
 	readonly messageId: number;
 	readonly variantId: number;
 	readonly position: number;
+	readonly authorId: number | null;
 	readonly speakerName: string | null;
 	readonly role: "human" | "model" | null;
 	readonly content: string;
+	readonly prose: string;
 }
 
-interface IndexedMemoryCandidate {
+interface ClaimedMemory {
 	readonly record: RecallCandidateBase;
 	readonly renderedText: string;
-	readonly vector: readonly number[];
 }
 
 export type MemoryRecallSnapshot = DecisionSelectionResolution & {
 	readonly freshnessFingerprint: string;
 	readonly activation: MemoryActivationRecord;
 	readonly embedding: MemoryEmbeddingConfiguration;
-	readonly indexed: readonly IndexedMemoryCandidate[];
-	readonly recent: readonly IndexedMemoryCandidate[];
+	readonly claimed: readonly ClaimedMemory[];
+	readonly recent: readonly ClaimedMemory[];
 };
 
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
@@ -150,61 +144,17 @@ const activationState = (input: {
 	ready: number;
 	unconfigured: boolean;
 	pendingSourceCount: number;
-	pendingIndexCount: number;
-	failedIndexCount: number;
 	failedSourceCount: number;
 }): MemoryActivationRecord["state"] => {
 	if (!input.enabled) return "disabled";
 	if (input.allowance === 0) return "allowance-zero";
-	const pending = input.pendingSourceCount > 0 || input.pendingIndexCount > 0;
-	if (input.ready > 0) return pending || input.failedIndexCount > 0 || input.failedSourceCount > 0 ? "partial" : "ready";
+	if (input.ready > 0) return input.pendingSourceCount > 0 || input.failedSourceCount > 0 ? "partial" : "ready";
 	if (input.unconfigured) return "unconfigured";
-	if (pending) return "rebuilding";
-	if (input.failedIndexCount > 0) return "index-failed";
+	if (input.pendingSourceCount > 0) return "rebuilding";
 	return input.failedSourceCount > 0 ? "source-failed" : "empty";
 };
 
-type CollectionRow = typeof memoryCollectionTable.$inferSelect;
-
 type RecallCandidateBase = Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "relevance" | "relevanceScore" | "admission">;
-
-interface ReadRecallInputs {
-	readonly collections: CollectionRow[];
-	readonly activeVariants: ReadonlySet<number>;
-	readonly byVariant: ReadonlyMap<number, CollectionRow>;
-	readonly readinessByVariant: ReadonlyMap<number, MemoryIndexReadiness>;
-	readonly scene: ReturnType<typeof sceneTextFor>;
-	readonly path: readonly { readonly messageId: number; readonly variantId: number; readonly contentHash: string }[];
-	readonly allowance: number;
-	readonly allowanceRevision: number;
-	readonly recallRelevanceMinimum: number;
-	readonly memorySettings: MemorySettingsPayload;
-	readonly embedding: MemoryEmbeddingConfiguration;
-	readonly resolution: DecisionSelectionResolution;
-}
-
-type UnprocessedRecallSource = { readonly messageId: number; readonly variantId: number; readonly status: "unprocessed" };
-
-type ScannedRecallSource = {
-	readonly messageId: number;
-	readonly variantId: number;
-	readonly position: number;
-	readonly revision: number;
-	readonly ownership: CollectionRow["ownership"];
-	readonly status: CollectionRow["status"];
-	readonly sourceChanged: boolean;
-	readonly indexStatus: MemoryIndexReadiness["status"];
-	readonly pendingIndexCount: number;
-	readonly failedIndexCount: number;
-};
-
-interface RecallSourceScan {
-	readonly fingerprintSources: readonly (UnprocessedRecallSource | ScannedRecallSource)[];
-	readonly claimed: readonly { readonly record: RecallCandidateBase; readonly renderedText: string }[];
-	readonly counts: { readonly pendingSourceCount: number; readonly pendingIndexCount: number; readonly failedIndexCount: number; readonly failedSourceCount: number };
-	readonly unconfigured: boolean;
-	readonly eligibleSourceCount: number;
-}
 
 type RecallSceneInput = {
 	database: Database;
@@ -215,121 +165,83 @@ type RecallSceneInput = {
 	humanName: string;
 };
 
-const readRecallInputs = (input: RecallSceneInput): ReadRecallInputs => {
+// @approved
+//  One pass over the selected path's Memory records. Each passage counts as
+//  failed when its digest failed on its current text, and as pending when it
+//  has neither that digest's record nor a Writer override; a stale record
+//  stays recallable until its new digest lands, as every effective record
+//  does. `writers` are the overrides, the only records whose change marks an
+//  inspected plan stale: a digest landing in the background does not.
+const scanMemorySources = (input: RecallSceneInput) => {
 	const db = drizzle(input.database);
-	const { allowance, revision: allowanceRevision } = readMemoryAllowance(input.database, input.conversationId);
-	const memorySettings = createMemorySettingsModule(input.database).get();
-	const recallRelevanceMinimum = memorySettings.recallRelevanceMinimum;
-	const resolution = tryResolveDecisionSelection(input.database, memorySettings);
-	const embedding = readMemoryEmbeddingConfiguration(input.database);
-	const limit = Math.min(SCENE_TOKEN_LIMIT, memorySettings.decisionStateTokenLimit);
-	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, limit);
-	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
-	const variantIds = [...new Set(input.messages.map((message) => message.variantId))];
-	const activeVariants = readActiveVariantIds(input.database, input.conversationId);
-	const collections = variantIds.length === 0
-		? []
-		: db.select().from(memoryCollectionTable)
-			.where(and(eq(memoryCollectionTable.conversation_id, input.conversationId), inArray(memoryCollectionTable.variant_id, variantIds)))
-			.orderBy(asc(memoryCollectionTable.message_id))
-			.all();
-	const byVariant = new Map(collections.map((collection) => [collection.variant_id, collection]));
-	const readinessByVariant = readMemoryIndexReadinessBatch(input.database, collections, input.enabled, embedding);
-	return { collections, activeVariants, byVariant, readinessByVariant, scene, path, allowance, allowanceRevision, recallRelevanceMinimum, memorySettings, embedding, resolution };
-};
-
-const scanMemorySources = (input: RecallSceneInput, inputs: ReadRecallInputs): RecallSourceScan => {
-	const fingerprintSources: (UnprocessedRecallSource | ScannedRecallSource)[] = [];
-	const claimed: { record: RecallCandidateBase; renderedText: string }[] = [];
-	const counts = { pendingSourceCount: 0, pendingIndexCount: 0, failedIndexCount: 0, failedSourceCount: 0 };
-	let unconfigured = false;
-	let eligibleSourceCount = 0;
-	for (const message of input.messages) {
-		if (inputs.activeVariants.has(message.variantId)) continue;
-		eligibleSourceCount += 1;
-		const collection = inputs.byVariant.get(message.variantId);
-		if (!collection) {
-			fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, status: "unprocessed" });
-			continue;
-		}
-		const sourceChanged = collection.source_changed || sha256(message.content) !== collection.source_hash;
-		const staleAutomaticSource = collection.ownership === "automatic" && sourceChanged;
-		const readiness = inputs.readinessByVariant.get(collection.variant_id)!;
-		if (collection.status === "pending" || collection.status === "running") counts.pendingSourceCount += 1;
-		if (readiness.status === "unconfigured") unconfigured = true;
-		counts.pendingIndexCount += readiness.pendingCount;
-		counts.failedIndexCount += readiness.status === "failed" ? 1 : 0;
-		if (collection.status === "failed" || staleAutomaticSource) counts.failedSourceCount += 1;
-		fingerprintSources.push({
-			messageId: message.messageId,
-			variantId: message.variantId,
-			position: message.position,
-			revision: collection.revision,
-			ownership: collection.ownership,
-			status: collection.status,
-			sourceChanged,
-			indexStatus: readiness.status,
-			pendingIndexCount: readiness.pendingCount,
-			failedIndexCount: readiness.status === "failed" ? 1 : 0,
-		});
-		if (!input.enabled || staleAutomaticSource || collection.status !== "complete") continue;
-		if (readiness.status === "disabled" || readiness.status === "unconfigured" || readiness.status === "not-applicable") continue;
-		let claims: MemoryCandidateJudgment[];
-		try { claims = Value.Parse(memoryCandidates, JSON.parse(collection.claims_json)); } catch { counts.failedSourceCount += 1; continue; }
-		for (const [claimIndex, claim] of claims.entries()) claimed.push({
+	const active = readActiveVariantIds(input.database, input.conversationId);
+	const labels = readMemoryLabelState(input.database, input.conversationId);
+	const messages = input.messages.filter((message) => !active.has(message.variantId) && !isExcludedAuthor(labels, message.authorId) && message.prose.trim() !== "");
+	const slots = readRecordSlots(db, "memory", readBoxInstances(db, input.conversationId).memory, messages.map((message) => message.variantId));
+	const sources: { readonly variantId: number; readonly record: string | null; readonly digested: boolean; readonly failed: boolean }[] = [];
+	const writers: { readonly variantId: number; readonly record: string }[] = [];
+	const claimed: ClaimedMemory[] = [];
+	const counts = { pendingSourceCount: 0, failedSourceCount: 0 };
+	for (const message of messages) {
+		const slot = slots.get(message.variantId);
+		const record = effectiveRecord(slot);
+		const digested = hasAutomaticRecord(slot, message.prose);
+		const failed = hasDigestError(slot, message.prose);
+		const hash = record === undefined ? null : sha256(JSON.stringify(record));
+		if (failed) counts.failedSourceCount += 1;
+		else if (slot?.writer === undefined && !digested) counts.pendingSourceCount += 1;
+		sources.push({ variantId: message.variantId, record: hash, digested, failed });
+		if (slot?.writer !== undefined) writers.push({ variantId: message.variantId, record: sha256(JSON.stringify(slot.writer)) });
+		if (!input.enabled || record === undefined || hash === null) continue;
+		for (const [claimIndex, claim] of record.claims.entries()) claimed.push({
 			record: {
-				identity: `${message.messageId}:${message.variantId}:${collection.revision}:${claimIndex}`,
+				identity: `${message.messageId}:${message.variantId}:${claimIndex}:${hash.slice(0, 16)}`,
 				messageId: message.messageId,
 				variantId: message.variantId,
-				collectionRevision: collection.revision,
-				ownership: collection.ownership,
-				sourceChanged,
+				writer: slot?.writer !== undefined,
+				sourceChanged: slot?.source !== undefined && !digested,
 				claimIndex,
 				claim: claim.claim,
 				attribution: claim.attribution,
-				people: claim.people,
+				people: applyMemoryPeople(claim.people, labels.cast, labels.identities, labels.merges),
 				evidence: claim.evidence,
 				sourcePosition: message.position,
 			},
 			renderedText: renderMemoryClaim(claim),
 		});
 	}
-	return { fingerprintSources, claimed, counts, unconfigured, eligibleSourceCount };
+	return { sources, writers, claimed, counts, labelRevision: labels.revision, eligibleSourceCount: messages.length };
 };
 
-interface RecallAssembly {
-	readonly activation: MemoryActivationRecord;
-	readonly indexed: readonly IndexedMemoryCandidate[];
-}
-
-const assembleRecallActivation = (
-	input: RecallSceneInput,
-	inputs: ReadRecallInputs,
-	scan: RecallSourceScan,
-): RecallAssembly => {
-	const vectors = readCachedMemoryVectors(input.database, inputs.embedding.spaceKey, scan.claimed.map(({ renderedText }) => renderedText));
-	const indexed = scan.claimed.flatMap((candidate) => {
-		const vector = vectors.get(candidate.renderedText);
-		return vector ? [{ ...candidate, vector }] : [];
-	});
+export const captureMemoryRecallSnapshot = (input: RecallSceneInput): MemoryRecallSnapshot => {
+	const { allowance, revision: allowanceRevision } = readMemoryAllowance(input.database, input.conversationId);
+	const { recallRelevanceMinimum } = createMemorySettingsModule(input.database).get();
+	const decision = readBoxDecisionSettings(input.database, "memory");
+	const resolution = resolveBoxDecision(input.database, "memory");
+	const embedding = readMemoryEmbeddingConfiguration(input.database);
+	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, Math.min(SCENE_TOKEN_LIMIT, decision.decisionStateTokenLimit));
+	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
+	const scan = scanMemorySources(input);
+	const unconfigured = embedding.spaceKey === "" && scan.claimed.length > 0;
+	const ready = unconfigured ? 0 : scan.claimed.length;
 	const activation: MemoryActivationRecord = {
 		version: 1,
-		state: activationState({ enabled: input.enabled, allowance: inputs.allowance, ready: indexed.length, unconfigured: scan.unconfigured, ...scan.counts }),
-		allowance: inputs.allowance,
+		state: activationState({ enabled: input.enabled, allowance, ready, unconfigured, ...scan.counts }),
+		allowance,
 		eligibleSourceCount: scan.eligibleSourceCount,
-		readyRecordCount: indexed.length,
-		embeddingModel: inputs.embedding.model,
-		embeddingDeadlineMs: inputs.embedding.deadlineMs,
-		decisionProfileName: inputs.resolution.kind === "ready" ? inputs.resolution.decision.profileName : null,
-		decisionModel: inputs.memorySettings.decisionModel,
-		decisionConfigured: inputs.resolution.kind === "ready",
-		relevanceMinimum: inputs.recallRelevanceMinimum,
+		readyRecordCount: ready,
+		embeddingModel: embedding.model,
+		embeddingDeadlineMs: embedding.deadlineMs,
+		decisionProfileName: resolution.kind === "ready" ? resolution.decision.profileName : null,
+		decisionModel: decision.decisionModel,
+		decisionConfigured: resolution.kind === "ready",
+		relevanceMinimum: recallRelevanceMinimum,
 		...scan.counts,
-		sourceSnapshotFingerprint: sha256(JSON.stringify({ path: inputs.path, sources: scan.fingerprintSources })),
-		embeddingConfigurationFingerprint: sha256(JSON.stringify(inputs.embedding)),
-		scanMessageIds: inputs.scene.messageIds,
-		scanTruncated: inputs.scene.truncated,
-		scene: inputs.scene.text,
+		sourceSnapshotFingerprint: sha256(JSON.stringify({ path, sources: scan.sources })),
+		embeddingConfigurationFingerprint: sha256(JSON.stringify(embedding)),
+		scanMessageIds: scene.messageIds,
+		scanTruncated: scene.truncated,
+		scene: scene.text,
 		semanticShortlistCount: 0,
 		recentShortlistCount: 0,
 		candidates: [],
@@ -337,54 +249,44 @@ const assembleRecallActivation = (
 		finalMemoryText: "",
 		manuallyEdited: false,
 	};
-	return { activation, indexed };
+	const claimed = unconfigured ? [] : scan.claimed;
+	const recent = [...claimed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
+	const freshnessFingerprint = sha256(JSON.stringify({
+		enabled: input.enabled,
+		recallRelevanceMinimum,
+		decision: { profileId: decision.decisionProfileId, model: decision.decisionModel, stateTokenLimit: decision.decisionStateTokenLimit },
+		allowanceRevision,
+		labelRevision: scan.labelRevision,
+		embedding,
+		writers: scan.writers,
+	}));
+	return { freshnessFingerprint, activation, embedding, claimed, recent, ...resolution };
 };
 
-const readRecallFreshness = (input: RecallSceneInput, inputs: ReadRecallInputs): string => sha256(JSON.stringify({
-	enabled: input.enabled,
-	recallRelevanceMinimum: inputs.recallRelevanceMinimum,
-	decisionSelection: { profileId: inputs.memorySettings.decisionProfileId, model: inputs.memorySettings.decisionModel, stateTokenLimit: inputs.memorySettings.decisionStateTokenLimit },
-	allowanceRevision: inputs.allowanceRevision,
-	labelRevision: readMemoryLabelState(input.database, input.conversationId).revision,
-	embedding: inputs.embedding,
-	collections: inputs.collections.map((collection) => ({ variantId: collection.variant_id, revision: collection.revision })),
-}));
-
-export const captureMemoryRecallSnapshot = (input: {
-	database: Database;
-	conversationId: number;
-	enabled: boolean;
-	messages: readonly MemoryRecallSceneMessage[];
-	pendingHumanText?: string;
-	humanName: string;
-}): MemoryRecallSnapshot => {
-	const inputs = readRecallInputs(input);
-	const scan = scanMemorySources(input, inputs);
-	const { activation, indexed } = assembleRecallActivation(input, inputs, scan);
-	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
-	const freshnessFingerprint = readRecallFreshness(input, inputs);
-	return { freshnessFingerprint, activation, embedding: inputs.embedding, indexed, recent, ...inputs.resolution };
-};
-
+// @approved
+//  Recall embeds any claim text the cache lacks, such as a Writer's edit,
+//  before ranking every claim against the scene.
 export const evaluateMemoryRecallSnapshot = async (input: {
+	database: Database;
 	snapshot: MemoryRecallSnapshot;
 } & BoxContext<"decide" | "embed">): Promise<MemoryActivationRecord> => {
-	const { activation, indexed, recent } = input.snapshot;
-	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
+	const { activation, claimed, recent, embedding } = input.snapshot;
+	if (activation.state === "disabled" || activation.allowance === 0 || claimed.length === 0) return activation;
 	switch (input.snapshot.kind) {
-		case "off": throw new Error("Choose a Decision Model in Memory Settings.");
-		case "unavailable": throw new Error(`${input.snapshot.reason} Check Memory Settings.`);
+		case "off": throw new Error("Choose a Memory Decision Model in Connection Settings.");
+		case "unavailable": throw new Error(`${input.snapshot.reason} Check the Memory Decision Model in Connection Settings.`);
 		case "ready": break;
 	}
 	const selection = input.snapshot.decision;
-	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
+	let semantic: { candidate: ClaimedMemory; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
-		const queryVector = (await input.embed(activation.scene, input.snapshot.embedding))[0];
+		const vectors = await embedAndCacheMemoryTexts(input.database, claimed.map(({ renderedText }) => renderedText), embedding, input.embed);
+		const queryVector = (await input.embed([activation.scene], embedding))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
-		if (indexed.some((record) => record.vector.length !== queryVector.length)) {
+		if ([...vectors.values()].some((vector) => vector.length !== queryVector.length)) {
 			throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
 		}
-		semantic = indexed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, candidate.vector) }))
+		semantic = claimed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, vectors.get(candidate.renderedText)!) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
 			.slice(0, 48);
 	}
@@ -398,7 +300,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 			? { ...existing, recentRank: index + 1 }
 			: { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
-	input.signal?.throwIfAborted();
+	input.signal.throwIfAborted();
 	const candidates = await judgeMemoryRecallCandidates({
 		candidates: [...shortlist.values()],
 		scene: activation.scene,

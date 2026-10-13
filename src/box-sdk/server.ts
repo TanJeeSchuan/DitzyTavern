@@ -13,4 +13,6 @@ export { characterDataTable, libraryDataTable, participantDataTable } from "../s
 // @approved
 //  Memory's domain stays in-tree (ADR-0050); only its Box adapter uses these.
 export { memoryActivationRecord, type MemoryActivationRecord } from "../shared/contract/memory-recall";
+export type { MemoryRecord } from "../shared/contract/memory";
 export { renderMemoryClaim } from "../shared/memory-text";
+export { digestMemory } from "../server/memory/extraction";

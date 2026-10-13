@@ -4,9 +4,9 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
-import { createConversationWithHistory, insertBox, openObservedDatabase } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { applyBoxDecisionSettings } from "./decision-settings";
-import { cancelBoxCatchUp, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
+import { cancelBoxCatchUp, queueBoxDigest, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
 import { readSelectedPathForMemory } from "../conversation";
 import { worldClockBox } from "../../boxes/world-clock/server";
@@ -58,14 +58,20 @@ afterEach(async () => {
 	database.close();
 });
 
-const createChat = () => createConversationWithHistory(database, {
-	name: "Clock Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, openings: [] } },
-		{ definition: { name: "Maren", prompt, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+// @approved
+//  A Clock Chat without Memory, so only the World Clock digests its passages.
+const createChat = () => {
+	const chat = createConversationWithHistory(database, {
+		name: "Clock Chat",
+		participants: [
+			{ definition: { name: "Writer", prompt, openings: [] } },
+			{ definition: { name: "Maren", prompt, openings: [] } },
+		],
+		control: { human: 0, model: 1 },
+	});
+	setBoxState(database, chat.id, "memory", "absent");
+	return chat;
+};
 
 const addPassage = (conversationId: number, position: number, content: string): number => {
 	const message = database.query<{ id: number }, [number, number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-01-01') RETURNING id").get(conversationId, position);
@@ -241,6 +247,28 @@ test("a failed digest keeps its error, live work skips that text, and catch-up r
 	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
 	expect(slot()?.automatic?.weather).toBe("storm");
 	expect(slot()?.error).toBeUndefined();
+});
+
+test("digesting one passage retries text whose digest failed and leaves digested text alone", async () => {
+	const chat = createChat();
+	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+	const clock = insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+	const slot = () => readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage);
+
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	await waitFor(() => stub.pending() === 1);
+	stub.release(true);
+	await waitFor(() => slot()?.error !== undefined);
+	queueBoxDigest(database, chat.id, "world-clock", passage);
+	await waitFor(() => stub.pending() === 1);
+	stub.release();
+	await waitFor(() => slot()?.automatic !== undefined);
+	queueBoxDigest(database, chat.id, "world-clock", passage);
+	await Bun.sleep(5);
+	expect(stub.contents()).toHaveLength(2);
 });
 
 test("a catch-up run reports how many of its passages failed", async () => {

@@ -1,22 +1,7 @@
 export { createMemorySettingsModule } from "./settings";
-export {
-	cancelMemoryCatchup,
-	correctMemorySource,
-	readConversationMemories,
-	readConversationMemoryChanges,
-	readLatestMemoryCatchup,
-	readMemoryAllowance,
-	resetAndReextractMemorySource,
-	retryMemorySourceIndex,
-	setMemoryAllowance,
-	startMemoryWorker,
-	startMemoryCatchup,
-} from "./collections";
+export { readConversationMemories, readMemoryAllowance, setMemoryAllowance, setMemoryNote } from "./memories";
 export { mergeMemoryLabels, setMemoryIdentity } from "./label-commands";
-export type { MemoryWorkerOptions } from "./collections";
-export { embedMemoryTexts } from "./indexing";
-export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
-export { syncMemorySources } from "./sync";
-export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryCollectionView, MemoryEvidence, MemoryIndexReadiness, MemoryCatchup } from "../../shared/contract/memory";
+export { digestMemory, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
+export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryEvidence, MemoryRecord } from "../../shared/contract/memory";
 export { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "./recall";
 export type { MemoryRecallSceneMessage, MemoryRecallSnapshot } from "./recall";

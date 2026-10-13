@@ -226,11 +226,10 @@ const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
 	disabled: "Memory block disabled",
 	"allowance-zero": "Memory Allowance is zero",
 	empty: "No ready Memories",
-	rebuilding: "Memory indexes are being built",
-	partial: "Some Memory indexes are unavailable",
-	ready: "Memory indexes ready",
-	"index-failed": "Memory indexing failed",
-	"source-failed": "Some Memory sources failed",
+	rebuilding: "Messages are still being remembered",
+	partial: "Some Messages are not remembered yet",
+	ready: "Every Message is remembered",
+	"source-failed": "Some Messages could not be remembered",
 	unconfigured: "Embedding settings needed",
 }[state]);
 
@@ -257,8 +256,8 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 				<div><dt>Eligible sources</dt><dd>{record.eligibleSourceCount}</dd></div>
 				<div><dt>Ready claims</dt><dd>{record.readyRecordCount}</dd></div>
 				<div><dt>Shortlist</dt><dd>{record.semanticShortlistCount} semantic · {record.recentShortlistCount} recent</dd></div>
-				<div><dt>Pending indexes</dt><dd>{record.pendingIndexCount}{record.pendingSourceCount > 0 ? ` · ${record.pendingSourceCount} sources processing` : ""}</dd></div>
-				<div><dt>Failed</dt><dd>{record.failedIndexCount} indexes · {record.failedSourceCount} sources</dd></div>
+				<div><dt>Not remembered yet</dt><dd>{record.pendingSourceCount} sources</dd></div>
+				<div><dt>Failed</dt><dd>{record.failedSourceCount} sources</dd></div>
 				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
 				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
 				<div><dt>Decision Model</dt><dd>{record.decisionProfileName ?? "No profile"} · {record.decisionModel || "No model"}{record.decisionConfigured ? " · configured" : " · not configured"}</dd></div>
@@ -270,8 +269,8 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 				? "This Memory block was edited for this Generation. Saved source Memories are unchanged."
 				: "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}
 		</p>
-			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && (
-			<p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>
+			{record.readyRecordCount === 0 && record.pendingSourceCount > 0 && (
+			<p className="panel-note">The empty block reflects Messages not remembered yet; it does not mean recall found no relevant claims.</p>
 		)}
 			{record.manuallyEdited && (
 			<details>
@@ -292,10 +291,10 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 								variantId={candidate.variantId}
 								sources={memorySources}
 								onNavigateSource={onNavigateSource}
-							/> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}
+							/> · Variant {candidate.variantId} · {candidate.writer ? "writer-maintained" : "automatic"}
 							{candidate.sourceChanged
 								? " · source changed since this Memory was saved"
-								: ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null
+								: ""} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null
 									? "no semantic rank"
 									: `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}
 							{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null

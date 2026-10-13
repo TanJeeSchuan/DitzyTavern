@@ -352,39 +352,6 @@ export const messageVariantTable = sqliteTable(
 	],
 );
 
-export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
-	id: int().primaryKey({ autoIncrement: true }),
-	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
-	cancelled: int({ mode: "boolean" }).notNull().default(false),
-	created_at: text().notNull(),
-}, (table) => [
-	index("memory_catchup_run_conversation").on(table.conversation_id),
-]);
-
-export const memoryCollectionTable = sqliteTable("memory_collection", {
-	variant_id: int().primaryKey().references(() => messageVariantTable.id, { onDelete: "cascade" }),
-	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
-	message_id: int().notNull().references(() => messageTable.id, { onDelete: "cascade" }),
-	source_hash: text().notNull(),
-	revision: int().notNull().default(0),
-	ownership: text({ enum: ["automatic", "writer"] }).notNull().default("automatic"),
-	work_epoch: int().notNull().default(0),
-	status: text({ enum: ["pending", "running", "complete", "failed"] }).notNull().default("pending"),
-	error: text(),
-	source_snapshot_json: text().notNull(),
-	claims_json: text().notNull().default("[]"),
-	trace_json: text(),
-	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
-	source_changed: int({ mode: "boolean" }).notNull().default(false),
-	index_attempt_json: text(),
-	updated_at: text().notNull(),
-}, (table) => [
-	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
-	index("memory_collection_catchup_run").on(table.catchup_run_id),
-	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
-	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
-]);
-
 export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
 	space_key: text().notNull(),
 	text_hash: text().notNull(),

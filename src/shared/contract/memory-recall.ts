@@ -1,7 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-
 export const memoryRelevanceScore = Type.Union([
 	Type.Literal("irrelevant"),
 	Type.Literal("incidental"),
@@ -23,8 +22,7 @@ export const memoryRecallCandidate = Type.Object({
 	identity: Type.String(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
-	collectionRevision: Type.Integer(),
-	ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]),
+	writer: Type.Boolean(),
 	sourceChanged: Type.Boolean(),
 	claimIndex: Type.Integer(),
 	claim: Type.String({ maxLength: 1024 }),
@@ -49,7 +47,6 @@ export const memoryActivationRecord = Type.Object({
 		Type.Literal("rebuilding"),
 		Type.Literal("partial"),
 		Type.Literal("ready"),
-		Type.Literal("index-failed"),
 		Type.Literal("source-failed"),
 		Type.Literal("unconfigured"),
 	]),
@@ -62,8 +59,6 @@ export const memoryActivationRecord = Type.Object({
 	decisionConfigured: Type.Boolean(),
 	relevanceMinimum: Type.Number(),
 	pendingSourceCount: Type.Integer(),
-	pendingIndexCount: Type.Integer(),
-	failedIndexCount: Type.Integer(),
 	failedSourceCount: Type.Integer(),
 	sourceSnapshotFingerprint: Type.String(),
 	embeddingConfigurationFingerprint: Type.String(),

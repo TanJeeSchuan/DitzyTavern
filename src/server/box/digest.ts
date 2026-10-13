@@ -134,6 +134,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
 		}, {
 			...injectServices(box, boxServices(database, queue.fetch, signal)),
+			database,
 			decide: (state, questions) => {
 				const { request, fits } = decisionRequest(decision.decision, state, questions);
 				if (!fits) throw new Error("The passage exceeds the Decision Model's state token limit.");
@@ -205,6 +206,31 @@ const abandon = (queue: DigestQueue, conversationId: number, box: BoxId): void =
 	queue.catchUps.delete(catchUpKey(conversationId, box));
 };
 
+type Passage = ReturnType<typeof readVariantsForMemory>[number];
+const digestible = (variant: Passage): boolean => variant.selected && !variant.active && variant.content.trim() !== "";
+
+// @approved
+//  Queues each passage without a record for its current text as live work;
+//  `retry` also queues one whose digest failed on that text.
+const queueLive = (database: Database, queue: DigestQueue, conversationId: number, box: DigestBoxId, instance: string, variants: readonly Passage[], retry: boolean): void => {
+	const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));
+	for (const variant of variants) {
+		const source = sha256(variant.content);
+		const key = keyOf(variant.variantId, box);
+		// @approved
+		//  A live job counts only live work as already queued: a catch-up job
+		//  for the same text is replaced, so live work keeps its place ahead
+		//  of a catch-up run.
+		const slot = slots.get(variant.variantId);
+		if (hasAutomaticRecord(slot, variant.content) || (!retry && hasDigestError(slot, variant.content)) || queuedFor(queue, key, source, false)) continue;
+		enqueue(queue, {
+			key, conversationId, messageId: variant.messageId, variantId: variant.variantId,
+			box, instance, source, catchUp: null, controller: new AbortController(),
+		});
+	}
+	queueMicrotask(() => pump(database, queue));
+};
+
 // @approved
 //  Queue digests for one Conversation write. A selected, settled passage is
 // digested by each digesting Box when it has no record for its current text
@@ -219,25 +245,17 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 		for (const variantId of change.removedVariantIds) dropKey(queue, keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
-		const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true })
-			.filter((variant) => variant.selected && !variant.active && variant.content.trim() !== "");
-		const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));
-		for (const variant of variants) {
-			const source = sha256(variant.content);
-			const key = keyOf(variant.variantId, box);
-			// @approved
-			//  A live job counts only live work as already queued: a catch-up job
-			//  for the same text is replaced, so live work keeps its place ahead
-			//  of a catch-up run.
-			const slot = slots.get(variant.variantId);
-			if (hasAutomaticRecord(slot, variant.content) || hasDigestError(slot, variant.content) || queuedFor(queue, key, source, false)) continue;
-			enqueue(queue, {
-				key, conversationId: change.conversationId, messageId: variant.messageId, variantId: variant.variantId,
-				box, instance, source, catchUp: null, controller: new AbortController(),
-			});
-		}
-		queueMicrotask(() => pump(database, queue));
+		const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
+		queueLive(database, queue, change.conversationId, box, instance, variants, false);
 	}
+}
+
+/** @approved Queues one selected passage now as live work, retrying a digest that failed on its text; one already digested for its text is left alone. */
+export function queueBoxDigest(database: Database, conversationId: number, box: DigestBoxId, variantId: number): void {
+	const queue = queues.get(database);
+	const instance = queue === undefined ? undefined : digestInstance(database, conversationId, box);
+	if (queue === undefined || instance === undefined) return;
+	queueLive(database, queue, conversationId, box, instance, readVariantsForMemory(database, conversationId, { variantIds: [variantId] }).filter(digestible), true);
 }
 
 /** @approved A Box window's live view of its catch-up run in one Conversation, or null when none runs. */

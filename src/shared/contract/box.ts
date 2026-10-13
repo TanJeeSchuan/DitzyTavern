@@ -9,6 +9,7 @@ import { thoughtInstructions } from "../../boxes/thought/shared";
 import { moodRecord } from "../../boxes/mood/shared";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
+import { memoryRecord } from "./memory";
 import { numericWire } from "./wire";
 import type { PromptOutgoingRole } from "./prompt-preset";
 
@@ -65,7 +66,16 @@ const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (mo
 // the settings copy that selection shows.
 export const boxDescriptors = {
 	"author-note": { label: "Author Note", role: "system", startsEnabled: true, instructions: "", setup: setupOf(Type.String(), "") },
-	memory: { label: "Memory", role: "system", startsEnabled: true, instructions: "" },
+	memory: {
+		label: "Memory", role: "system", startsEnabled: true, instructions: "",
+		record: memoryRecord,
+		decision: {
+			summary: "Judges the Memories extraction proposes and scores saved Memories for recall.",
+			description: "Choose a Decision Model to judge each Message's proposed Memories and to pick the ones a scene needs. Without one, Memory remembers and recalls nothing.",
+			off: "Memory remembers nothing",
+			context: "Each Message is read with up to four Messages before it.",
+		},
+	},
 	"world-clock": {
 		label: "World Clock", role: "system", startsEnabled: false, instructions: "",
 		setup: setupOf(worldClockSetup, initialWorldClockSetup),
