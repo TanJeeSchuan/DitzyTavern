@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { Button } from "@/components/ui/button";
 import { formatJudgment } from "../lib/format";
 import type { ConversationMemories } from "../memories";
-import { memoryCandidate } from "../../shared/contract/memory";
+import { memoryCandidate } from "../box-windows/registry";
 import { memorySourceState } from "./memory-source-state";
 import type { ClaimDraft } from "./useConversationMemories";
 

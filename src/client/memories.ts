@@ -7,11 +7,13 @@ import {
 	memoryAllowanceCommandErrors,
 	memoryLabelsCommandErrors,
 	memoryLabelsMerged,
+	memorySources,
 	type ConversationMemories,
 	type ConversationMemoryAllowance,
 	type MemoryIdentityCommand,
 	type MemoryLabelMergeCommand,
-} from "../shared/contract/memory";
+	type MemorySources,
+} from "./box-windows/registry";
 
 const conversation = (conversationId: number) => api.api.conversations({ id: String(conversationId) });
 
@@ -53,6 +55,11 @@ export async function saveMemoryNote(conversationId: number, expectedRevision: n
 		conversationMemoryAllowanceApplied,
 		memoryAllowanceCommandErrors,
 	);
+}
+
+export async function loadMemorySources(conversationId: number, sources: MemorySources, signal?: AbortSignal): Promise<MemorySources> {
+	const query = { messageIds: sources.messageIds.join(","), variantIds: sources.variantIds.join(",") };
+	return requestData(conversation(conversationId).memories.sources.get({ query, fetch: { signal } }), memorySources);
 }
 
 export type { ConversationMemories, ConversationMemoryAllowance };

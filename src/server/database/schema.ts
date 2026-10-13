@@ -352,13 +352,6 @@ export const messageVariantTable = sqliteTable(
 	],
 );
 
-export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
-	space_key: text().notNull(),
-	text_hash: text().notNull(),
-	vector: blob({ mode: "buffer" }).notNull(),
-}, (table) => [
-	primaryKey({ columns: [table.space_key, table.text_hash] }),
-]);
 
 // @approved
 //  Character lifecycle base record. Definition content lives in the
@@ -623,6 +616,17 @@ export const messageDataTable = sqliteTable(
 	],
 );
 
+// @approved
+//  Vectors the Box `embed` service cached, keyed by the embedding model's
+// space and the text's hash. A cache: clearing it costs only requests.
+export const embeddingCacheTable = sqliteTable("embedding_cache", {
+	space_key: text().notNull(),
+	text_hash: text().notNull(),
+	vector: blob({ mode: "buffer" }).notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.space_key, table.text_hash] }),
+]);
+
 export const messageVariantDataTable = sqliteTable(
 	"message_variant_data",
 	{
@@ -729,7 +733,9 @@ export const activeGenerationTable = sqliteTable(
 		//  Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
 		lore_activation_json: text().notNull().default("null"),
-		memory_activation_json: text().notNull().default("null"),
+		// @approved
+		//  Each captured Box's trace and budget evidence, keyed by `box:<id>`.
+		box_traces_json: text().notNull().default("{}"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
@@ -781,7 +787,7 @@ export const generationReplayTable = sqliteTable(
 		prompt_inspection_json: text().notNull(),
 		prompt_context_json: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
-		memory_activation_json: text().notNull().default("null"),
+		box_traces_json: text().notNull().default("{}"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),

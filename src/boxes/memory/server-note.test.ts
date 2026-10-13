@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openInitializedDatabase } from "../database/database";
-import { createChat } from "./prompt-preset-test-fixtures";
-import { openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { createMemoryRoutes } from "./memory";
-import { conversationMemoryAllowance, conversationMemoryAllowanceApplied, conversationMemoryAllowanceConflict } from "../../shared/contract/memory";
+import { openInitializedDatabase } from "../../server/database/database";
+import { createChat } from "../../server/contract/prompt-preset-test-fixtures";
+import { openObservedDatabase, setBoxState } from "../../server/test-fixtures/conversation";
+import { memoryRoutes } from "./server-routes";
+import { conversationMemoryAllowance, conversationMemoryAllowanceApplied, conversationMemoryAllowanceConflict } from "./contract";
 
 const guidance = "\"Trainer\" in narration means Tanjs. Track injuries and promises closely.";
 
 const saveNote = (database: Database, conversationId: number, expectedRevision: number, note: string) =>
-	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-note`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
+	memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-note`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
 
 const saveAllowance = (database: Database, conversationId: number, expectedRevision: number, allowance: number) =>
-	createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-allowance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
+	memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-allowance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
 
 describe("Conversation Memory note", () => {
 	let database: Database;
@@ -32,7 +32,7 @@ describe("Conversation Memory note", () => {
 
 	test("saves a trimmed note against the shared settings revision and rejects stale and oversized commands", async () => {
 		const chat = createChat(database);
-		const routes = createMemoryRoutes(database);
+		const routes = memoryRoutes(database);
 		const read = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/memory-allowance`));
 		expect(Value.Parse(conversationMemoryAllowance, await read.json())).toEqual({ revision: 0, allowance: 2048, note: "" });
 

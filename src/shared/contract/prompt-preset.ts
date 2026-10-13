@@ -140,8 +140,6 @@ export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 /** @approved A Box's block, among any slot shape that carries a reference. */
 export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => isBoxReference(slot.reference);
 
-export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
-	slots.some((slot) => slot.reference === "box:memory" && slot.enabled);
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);
 

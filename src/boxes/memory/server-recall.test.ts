@@ -1,38 +1,48 @@
-import { readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot } from "../../server/test-fixtures/conversation";
+import { openObservedDatabase, setBoxState } from "../../server/test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
-import { initializeConnectionSecretKey } from "../connection-secrets";
-import { createConversationRoutes } from "./conversation";
+import type { MemoryActivationRecord, MemoryCandidateJudgment } from "./contract";
+import { initializeConnectionSecretKey } from "../../server/connection-secrets";
+import { createConversationRoutes } from "../../server/contract/conversation";
 import {
 	captureModelFetch,
-	configureMemoryEmbeddings,
+	configureEmbeddings,
 	createChat,
 	key,
 	readOperation,
 	readPreset,
 	toggleBlock,
 	withProfile,
-} from "./prompt-preset-test-fixtures";
-import { renderMemoryClaim } from "../../shared/memory-text";
+} from "../../server/contract/prompt-preset-test-fixtures";
+import { renderMemoryClaim } from "./shared";
 import { formatImageReference } from "../../shared/image-reference";
-import type { ModelFetch } from "../model-client";
+import type { ModelFetch } from "../../server/model-client";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import type { BoxTraces } from "../../shared/contract/box-generation";
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
-import { configureDecisionModels } from "./decision-model-test-fixtures";
-import { createMemorySettingsModule } from "../memory/settings";
-import { readMemoryAllowance, setMemoryAllowance } from "../memory/memories";
-import { mergeMemoryLabels } from "../memory/label-commands";
-import { embedAndCacheMemoryTexts, readMemoryEmbeddingConfiguration } from "../memory/indexing";
-import { captureMemoryRecallSnapshot } from "../memory/recall";
-import { sha256 } from "../memory/hash";
-import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
-import { resetWriterRecord, writeAutomaticRecord, writeDigestError, writeWriterRecord } from "../box/records";
-import { readBoxInstances } from "../box/setup";
+import { configureDecisionModels } from "../../server/contract/decision-model-test-fixtures";
+import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
+import { mergeMemoryLabels, setMemoryAllowance } from "./server-memories";
+import { readMemoryChatSettings } from "./server-chat";
+import { embedTexts } from "../../server/box/embedding";
+import { captureMemoryRecallSnapshot } from "./server-recall";
+import { sha256 } from "../../server/hash";
+import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
+import { resetWriterRecord, writeAutomaticRecord, writeDigestError, writeWriterRecord } from "../../server/box/records";
+import { readBoxInstances } from "../../server/box/setup";
+
+const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
+	const memory = createMemorySettingsModule(database);
+	const { revision, ...settings } = memory.get();
+	return memory.apply({ ...settings, expectedRevision: revision, embeddingProfileId: configureEmbeddings(database, endpoint), embeddingModel: model });
+};
+
+/** @approved Memory's trace in a preview or inspection read, beside the host's budget evidence for its block. */
+const memoryTrace = (read: { boxTraces: BoxTraces }) => read.boxTraces["box:memory"];
+const memoryOf = (read: { boxTraces: BoxTraces }) => memoryTrace(read)?.trace;
 
 const insertSelectedSource = (database: Database, conversationId: number, content = "Maren returned Writer's key.") => {
 	const message = database.query<{ id: number }, [number]>(
@@ -62,8 +72,8 @@ const contentOf = (database: Database, variantId: number) => database.query<{ co
 //  current text, with the claims it kept already embedded.
 const remember = async (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) => {
 	writeAutomaticRecord(drizzle(database), "memory", instanceOf(database, conversationId), variantId, { claims }, sha256(contentOf(database, variantId)));
-	const embedding = readMemoryEmbeddingConfiguration(database);
-	if (embedding.spaceKey !== "") await embedAndCacheMemoryTexts(database, claims.map(renderMemoryClaim), embedding, async (texts) => texts.map(() => [1, 0]));
+	const embedding = readMemoryEmbedding(database);
+	if (embedding.spaceKey !== "") await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
 };
 
 const correct = (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) =>
@@ -115,7 +125,7 @@ describe("Memory recall in Generation preparation", () => {
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
-		expect(preview.memoryActivation).toMatchObject({ state: "rebuilding", candidates: [], pendingSourceCount: 1 });
+		expect(memoryOf(preview)).toMatchObject({ state: "rebuilding", candidates: [], pendingSourceCount: 1 });
 		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
 		const editedText = "Keep the inspected context for this attempt.";
 		const editedPlan: PromptPlan = { ...preview.promptPlan, blocks: preview.promptPlan.blocks.map((block) => block.kind === "system-instruction" ? { ...block, content: editedText } : block) };
@@ -127,7 +137,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(requests[0]).toContainEqual({ role: "system", content: editedText });
 		expect(requests[0]).not.toContainEqual({ role: "system", content: "Maren returned Writer's key. (attribution: Narrated event)" });
 		const inspection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`));
-		expect(await inspection.json()).toMatchObject({ memoryActivation: preview.memoryActivation });
+		expect(await inspection.json()).toMatchObject({ boxTraces: preview.boxTraces });
 	});
 
 	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "correction", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
@@ -150,7 +160,7 @@ describe("Memory recall in Generation preparation", () => {
 			const { revision, ...selection } = readBoxDecisionSettings(database, "memory");
 			applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, ...(change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
-			setMemoryAllowance(database, conversation.id, readMemoryAllowance(database, conversation.id).revision, 1024);
+			setMemoryAllowance(database, conversation.id, readMemoryChatSettings(database, conversation.id).revision, 1024);
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
 		else if (change === "correction") correct(database, conversation.id, source.variantId, claims);
 		else resetWriterRecord(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId);
@@ -172,7 +182,7 @@ describe("Memory recall in Generation preparation", () => {
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
-		expect(preview.memoryActivation?.candidates).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
+		expect(memoryOf(preview)).toMatchObject({ candidates: [{ relevance: "useful", admission: "admitted" }] });
 		const memory = createMemorySettingsModule(database);
 		const { revision, ...settings } = memory.get();
 		memory.apply({ ...settings, expectedRevision: revision, retainProbabilityMinimum: 0.95 });
@@ -245,19 +255,16 @@ describe("Memory recall in Generation preparation", () => {
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(counts, writing) });
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
 		expect(inspected.status).toBe(200);
-		// SAFETY: this route response schema validates the preview ID, plan blocks, and activation record.
-		const preview = await inspected.json() as { previewId: string; promptPlan: PromptPlan; memoryActivation: MemoryActivationRecord; memorySources: { messageIds: number[]; variantIds: number[] } };
+		const preview = Value.Parse(generationPreview, await inspected.json());
 		const memoryText = renderMemoryClaim(extraction);
 		expect(preview.promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: memoryText });
-		expect(preview.memoryActivation).toMatchObject({
+		expect(memoryTrace(preview)).toMatchObject({ automaticText: memoryText, finalText: memoryText, items: [{ text: memoryText, admission: "admitted" }] });
+		expect(memoryOf(preview)).toMatchObject({
 			state: "ready",
 			semanticShortlistCount: 1,
 			recentShortlistCount: 1,
-			automaticMemoryText: memoryText,
 			candidates: [{ messageId: source.messageId, variantId: source.variantId, writer: true, sourceChanged: true, relevance: "useful", admission: "admitted" }],
 		});
-		expect(preview.memoryActivation.candidates.map((candidate) => candidate.variantId)).toEqual([source.variantId]);
-		expect(preview.memorySources.variantIds).toContain(source.variantId);
 		expect(counts.embedding).toHaveLength(1);
 		expect(counts.decisions).toBe(1);
 
@@ -271,7 +278,7 @@ describe("Memory recall in Generation preparation", () => {
 		await firstGenerationStarted.promise;
 		correct(database, conversation.id, source.variantId, [{ ...extraction, claim: "Maren hid Writer's spare key." }]);
 		const activeInspection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`));
-		expect(await activeInspection.json()).toMatchObject({ memoryActivation: { manuallyEdited: true, automaticMemoryText: memoryText, finalMemoryText: editedMemoryText } });
+		expect(await activeInspection.json()).toMatchObject({ boxTraces: { "box:memory": { automaticText: memoryText, finalText: editedMemoryText } } });
 		firstGeneration.resolve();
 		await generationEvents;
 		expect(counts.embedding).toHaveLength(1);
@@ -280,15 +287,16 @@ describe("Memory recall in Generation preparation", () => {
 		const latest = readTestConversationSnapshot(database, conversation.id)!.messages.at(-1)!;
 		const variant = latest.variants.at(-1)!;
 		const details = async () => (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${variant.id}/details`))).json();
-		expect(await details()).toMatchObject({ memoryActivation: { manuallyEdited: true, automaticMemoryText: memoryText, finalMemoryText: editedMemoryText, candidates: [{ claim: extraction.claim, evidence: [{ messageId: source.messageId, excerpt: "Maren returned Writer's key." }] }] } });
+		expect(await details()).toMatchObject({ boxTraces: { "box:memory": { automaticText: memoryText, finalText: editedMemoryText, trace: { candidates: [{ claim: extraction.claim, evidence: [{ messageId: source.messageId, excerpt: "Maren returned Writer's key." }] }] } } } });
 		correct(database, conversation.id, source.variantId, [extraction]);
 
 		await remember(database, conversation.id, variant.id, [memoryClaim(latest.id, "Maren and Writer kept their promise.", "The key stays between them.")]);
 		const previewOperation = async (body: { kind: "continuation" } | { kind: "sibling"; messageId: number }) => {
 			const response = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, body));
 			expect(response.status).toBe(200);
-			// SAFETY: the route response schema checks both preview identity and the complete Memory Activation record.
-			return await response.json() as { previewId: string; memoryActivation: MemoryActivationRecord };
+			const preview = Value.Parse(generationPreview, await response.json());
+			// SAFETY: Memory's advance checked its trace against the activation record schema.
+			return { previewId: preview.previewId, memoryActivation: memoryOf(preview) as MemoryActivationRecord };
 		};
 		const continuation = await previewOperation({ kind: "continuation" });
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toEqual(expect.arrayContaining([source.messageId, latest.id]));
@@ -318,24 +326,24 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await staleAcceptance.json()).toMatchObject({ outcome: "invalid" });
 	});
 
-	test("empty, pending, failed, and disabled recall skip embedding and Decision Model calls", async () => {
+	test("empty, pending and failed recall skip embedding and Decision Model calls, and a disabled block captures no Memory", async () => {
 		const conversation = createChat(database);
 		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
 		let providerCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: async () => { providerCalls += 1; throw new Error("Unexpected Memory provider call."); } });
-		const preview = async () => (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "A new scene." }))).json();
-		expect(await preview()).toMatchObject({ memoryActivation: { state: "empty", candidates: [] } });
+		const preview = async () => memoryOf(Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "A new scene." }))).json()));
+		expect(await preview()).toMatchObject({ state: "empty", candidates: [] });
 		const source = insertSelectedSource(database, conversation.id);
-		expect(await preview()).toMatchObject({ memoryActivation: { state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] } });
+		expect(await preview()).toMatchObject({ state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] });
 		writeDigestError(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId, sha256(contentOf(database, source.variantId)), "Memory extraction unavailable.");
-		expect(await preview()).toMatchObject({ memoryActivation: { state: "source-failed", readyRecordCount: 0, pendingSourceCount: 0, failedSourceCount: 1, candidates: [] } });
+		expect(await preview()).toMatchObject({ state: "source-failed", readyRecordCount: 0, pendingSourceCount: 0, failedSourceCount: 1, candidates: [] });
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
 		const memoryBlock = preset.slots.find((slot) => slot.reference === "box:memory");
 		if (!memoryBlock) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memoryBlock.id, false));
-		expect(await preview()).toMatchObject({ memoryActivation: { state: "disabled", candidates: [] } });
+		expect(await preview()).toBeUndefined();
 		expect(providerCalls).toBe(0);
 	});
 
@@ -346,7 +354,7 @@ describe("Memory recall in Generation preparation", () => {
 		withProfile(database);
 		setBoxState(database, conversation.id, "memory", "disabled");
 		const preview = await createConversationRoutes(database, { masterKey: key }).handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "A new scene." }));
-		expect(await preview.json()).toMatchObject({ memoryActivation: null });
+		expect(memoryTrace(Value.Parse(generationPreview, await preview.json()))).toBeUndefined();
 	});
 
 	test("recall reads Images only as Image Anchors, never their hash", () => {
@@ -355,12 +363,14 @@ describe("Memory recall in Generation preparation", () => {
 		const snapshot = captureMemoryRecallSnapshot({
 			database,
 			conversationId: conversation.id,
-			enabled: true,
-			humanName: "Writer",
-			pendingHumanText: `Next ${token}`,
+			seed: "seed",
+			intent: "respond",
+			human: { id: 0, name: "Writer" },
+			cast: [],
+			pending: `Next ${token}`,
 			messages: [
-				{ messageId: 1, variantId: 1, position: 1, authorId: null, speakerName: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.` },
-				{ messageId: 2, variantId: 2, position: 2, authorId: null, speakerName: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.` },
+				{ messageId: 1, variantId: 1, position: 1, authorId: null, speaker: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.` },
+				{ messageId: 2, variantId: 2, position: 2, authorId: null, speaker: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.` },
 			],
 		});
 		expect(snapshot.activation.scene).toBe("Writer: Writer unrolled [Image: the map].\n\nMaren: Maren studied [Image: the map] closely.\n\nWriter: Next [Image: the map]");

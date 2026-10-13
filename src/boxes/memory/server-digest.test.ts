@@ -1,18 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase } from "../test-fixtures/conversation";
-import { initializeConnectionSecretKey } from "../connection-secrets";
-import { createConnectionSettingsModule } from "../connection-settings";
-import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
-import { configureMemoryEmbeddings, createChat, key, profile } from "../contract/prompt-preset-test-fixtures";
-import { digestMemoryNow } from "../test-fixtures/memory-digest";
-import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
-import type { ModelFetch } from "../model-client";
+import { openObservedDatabase } from "../../server/test-fixtures/conversation";
+import { initializeConnectionSecretKey } from "../../server/connection-secrets";
+import { createConnectionSettingsModule } from "../../server/connection-settings";
+import { configureDecisionModels } from "../../server/contract/decision-model-test-fixtures";
+import { configureEmbeddings, createChat, key, profile } from "../../server/contract/prompt-preset-test-fixtures";
+import { digestNow } from "../../server/test-fixtures/digest";
+import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
+import { readCachedVectors } from "../../server/box/embedding";
+import type { ModelFetch } from "../../server/model-client";
 import { formatImageReference } from "../../shared/image-reference";
-import { readCachedMemoryVectors, readMemoryEmbeddingConfiguration } from "./indexing";
-import { setMemoryIdentity } from "./label-commands";
-import { setMemoryNote } from "./memories";
-import { createMemorySettingsModule } from "./settings";
+import { setMemoryIdentity, setMemoryNote } from "./server-memories";
+import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
 
 type Calls = { extraction: string[]; decisions: string[]; embeddings: { url: string; model: string; input: string[]; authorization: string | null }[] };
 
@@ -77,7 +76,7 @@ describe("Memory's digest", () => {
 		const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-07T00:00:00Z', 1) RETURNING id").get(message.id, content)!;
 		return { messageId: message.id, variantId: variant.id };
 	};
-	const digest = (variantId: number, fetch: ModelFetch) => digestMemoryNow(database, chat.id, variantId, fetch);
+	const digest = (variantId: number, fetch: ModelFetch) => digestNow(database, chat.id, "memory", variantId, fetch);
 
 	test.each([{ minimum: 0.3, kept: 1 }, { minimum: 0.9, kept: 0 }])("keeps claims whose retain probability meets the $minimum minimum", async ({ minimum, kept }) => {
 		const settings = createMemorySettingsModule(database);
@@ -158,14 +157,15 @@ describe("Memory's digest", () => {
 	});
 
 	test("embeds the claims it keeps once, at the chosen embedding connection", async () => {
-		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "memory-v1");
+		const settings = createMemorySettingsModule(database);
+		settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, embeddingProfileId: configureEmbeddings(database, "http://embedding.test/v1/embeddings"), embeddingModel: "memory-v1" });
 		const first = passage(1, "Maren returned Writer's key.");
 		const second = passage(2, "Writer kept the key safe.");
 		await digest(first.variantId, provider(calls, { claim: "Maren carries Writer's key." }));
 		await digest(second.variantId, provider(calls, { claim: "Maren carries Writer's key." }));
 		const text = "Maren carries Writer's key. (attribution: Narrated event)";
 		expect(calls.embeddings).toEqual([{ url: "http://embedding.test/v1/embeddings", model: "memory-v1", input: [text], authorization: "Bearer embedding-secret" }]);
-		expect(readCachedMemoryVectors(database, readMemoryEmbeddingConfiguration(database).spaceKey, [text]).get(text)).toEqual([1, 0]);
+		expect(readCachedVectors(database, readMemoryEmbedding(database).spaceKey, [text]).get(text)).toEqual([1, 0]);
 	});
 
 	test("extraction reads Images only as Image Anchors, never their hash", async () => {

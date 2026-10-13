@@ -5,10 +5,9 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { applyBoxDecisionSettings } from "./decision-settings";
 import { cancelBoxCatchUp, queueBoxDigest, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
-import { readSelectedPathForMemory } from "../conversation";
+import { readSelectedPassages } from "../conversation";
 import { worldClockBox } from "../../boxes/world-clock/server";
 import type { DigestWindow } from "./contract";
 
@@ -83,10 +82,7 @@ const addPassage = (conversationId: number, position: number, content: string): 
 	return variant.id;
 };
 
-const enableDecision = () => {
-	const selection = configureDecisionModels(database, masterKey);
-	applyBoxDecisionSettings(database, "world-clock", { type: "apply", expectedRevision: 0, ...selection });
-};
+const enableDecision = () => configureDecisionModels(database, masterKey);
 
 const waitFor = async (condition: () => boolean): Promise<void> => {
 	for (let attempt = 0; attempt < 400; attempt += 1) {
@@ -216,7 +212,7 @@ test("a digest window reads exactly the preceding Messages it declares", () => {
 	const chat = createChat();
 	const last = ["One.", "Two.", "Three.", "Four.", "Five.", "Six."].map((content, index) => addPassage(chat.id, index + 1, content)).at(-1) ?? 0;
 	const source = database.query<{ id: number }, [number]>("SELECT message_id AS id FROM message_variant WHERE id = ?").get(last)?.id ?? 0;
-	const read = (preceding: number) => readSelectedPathForMemory(database, chat.id, { messageId: source, preceding })?.map((message) => message.variant?.content);
+	const read = (preceding: number) => readSelectedPassages(database, chat.id, { messageId: source, preceding })?.map((message) => message.variant?.content);
 	expect(read(0)).toEqual(["Six."]);
 	expect(read(5)).toEqual(["One.", "Two.", "Three.", "Four.", "Five.", "Six."]);
 });

@@ -3,7 +3,6 @@ import { insertBox } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { readPromptPresetRecipe } from "../prompt-preset";
@@ -102,7 +101,8 @@ export const withProfile = (database: Database) => {
 	return settings.createProfile({ expectedRevision: settings.get().revision, profile, credential: "preset-secret" });
 };
 
-export const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
+/** @approved An Embeddings Connection Profile for `endpoint`, by id. */
+export const configureEmbeddings = (database: Database, endpoint: string) => {
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	const displayName = `Embeddings ${new URL(endpoint).host}`;
 	const created = connections.createProfile({
@@ -111,9 +111,7 @@ export const configureMemoryEmbeddings = (database: Database, endpoint: string, 
 		credential: "embedding-secret",
 	}).profiles.find((entry) => entry.displayName === displayName);
 	if (!created) throw new Error("Embeddings Connection Profile fixture failed.");
-	const memory = createMemorySettingsModule(database);
-	const { revision, ...settings } = memory.get();
-	return memory.apply({ ...settings, expectedRevision: revision, embeddingProfileId: created.id, embeddingModel: model });
+	return created.id;
 };
 
 // @approved

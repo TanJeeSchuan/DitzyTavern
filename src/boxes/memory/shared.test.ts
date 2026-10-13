@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyMemoryPeople } from "./memory-identity";
+import { applyMemoryPeople } from "./shared";
 
 const cast = [{ id: 1, names: ["Director", "Writer"] }, { id: 2, names: ["Maren"] }];
 

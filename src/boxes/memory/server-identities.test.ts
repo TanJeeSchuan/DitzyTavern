@@ -2,16 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openInitializedDatabase } from "../database/database";
-import { messageTable, messageVariantTable } from "../database/schema";
-import { createChat } from "./prompt-preset-test-fixtures";
-import { createMemoryRoutes } from "./memory";
-import { readConversationMemories } from "../memory/memories";
-import { mergeMemoryLabels } from "../memory/label-commands";
-import { sha256 } from "../memory/hash";
-import { writeAutomaticRecord } from "../box/records";
-import { readBoxInstances } from "../box/setup";
-import { conversationMemories, memoryLabelsConflict, memoryLabelsMerged, type MemoryCandidateJudgment, type MemoryIdentity } from "../../shared/contract/memory";
+import { openInitializedDatabase } from "../../server/database/database";
+import { messageTable, messageVariantTable } from "../../server/database/schema";
+import { createChat } from "../../server/contract/prompt-preset-test-fixtures";
+import { memoryRoutes } from "./server-routes";
+import { mergeMemoryLabels, readConversationMemories } from "./server-memories";
+import { sha256 } from "../../server/hash";
+import { writeAutomaticRecord } from "../../server/box/records";
+import { readBoxInstances } from "../../server/box/setup";
+import { conversationMemories, memoryLabelsConflict, memoryLabelsMerged, type MemoryCandidateJudgment, type MemoryIdentity } from "./contract";
 
 const claim = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Maren promised a key.", attribution: "Narrated event", people, evidence: [{ messageId, excerpt: "I promised a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} } });
 const source = (database: Database, conversationId: number, position: number, author: { id: number; name: string }, people?: string[], selected = true) => {
@@ -21,7 +20,7 @@ const source = (database: Database, conversationId: number, position: number, au
 	if (people) writeAutomaticRecord(db, "memory", readBoxInstances(db, conversationId).memory!, variant.id, { claims: [claim(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
-const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));
+const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));
 
 describe("Cast Memory identities", () => {
 	let database: Database;
@@ -38,7 +37,7 @@ describe("Cast Memory identities", () => {
 		source(database, chat.id, 3, { ...writer, name: "Director" });
 		const unknown = source(database, chat.id, 5, writer);
 		database.run("UPDATE messages SET author_name = NULL WHERE id = ?", [unknown.messageId]);
-		const response = await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/memories`));
+		const response = await memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/memories`));
 		expect(response.status).toBe(200);
 		expect(Value.Parse(conversationMemories, await response.json()).cast).toEqual([{ id: writer.id, names: ["Director", "Guide", "Writer"] }, { id: chat.cast[1]!.id, names: ["Maren"] }]);
 	});

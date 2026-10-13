@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, recordBoxIds, type BoxId, type BoxSetups, type RecordBoxId } from "../../shared/contract/box";
 import { messageVariantDataTable } from "../database/schema";
-import { sha256 } from "../memory/hash";
+import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import type { BoxInstances } from "./setup";
 import type { Box, HostBox } from "./contract";

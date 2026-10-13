@@ -4,20 +4,20 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
-import { createMemorySettingsModule } from "../memory/settings";
+import { createMemorySettingsModule } from "../../boxes/memory/server-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
-import { captureMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "../memory/recall";
+import { captureMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "../../boxes/memory/server-recall";
 import { tokenxEstimator } from "../prompt-compiler";
-import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import type { MemoryRecallCandidateRecord } from "../../boxes/memory/contract";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { requestDecisions, resolveDecisionSelection } from "../decision-model";
+import { boxServices } from "../box/services";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createChat } from "./prompt-preset-test-fixtures";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
-import { digestMemoryNow } from "../test-fixtures/memory-digest";
+import { digestNow } from "../test-fixtures/digest";
 import type { ModelFetch } from "../model-client";
 import { testConnection } from "../model-client/test-connection";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
@@ -140,7 +140,7 @@ const digestPassage = async (passage: string, fetch: (messageId: number) => Mode
 	const conversation = createChat(database);
 	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-10-06') RETURNING id").get(conversation.id)!;
 	const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-06', 1) RETURNING id").get(message.id, passage)!;
-	return digestMemoryNow(database, conversation.id, variant.id, fetch(message.id));
+	return digestNow(database, conversation.id, "memory", variant.id, fetch(message.id));
 };
 
 const choices = (retain = 0.8, confidence?: number) => ({
@@ -183,15 +183,16 @@ test.each(["missing answer", "unasked answer", "unknown option", "missing option
 test("recall accepts score answers without confidence or legend and reports the selected profile", async () => {
 	const settings = configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions(2000));
 	const conversation = createChat(database);
-	const snapshot = captureMemoryRecallSnapshot({ database, conversationId: conversation.id, enabled: true, messages: [], pendingHumanText: "A brass key changes hands. ".repeat(2000), humanName: "Writer" });
+	const snapshot = captureMemoryRecallSnapshot({ database, conversationId: conversation.id, seed: "seed", intent: "respond", human: { id: 0, name: "Writer" }, cast: [], messages: [], pending: "A brass key changes hands. ".repeat(2000) });
 	expect(snapshot.activation).toMatchObject({ decisionProfileName: "OpenRouter Decisions", decisionModel: "typesafe/jev-1.13", decisionConfigured: true, scanTruncated: true });
 	expect(tokenxEstimator(JSON.stringify({ scene: snapshot.activation.scene }))).toBeLessThanOrEqual(2000);
 	const candidate: MemoryRecallCandidateRecord = { identity: "1:1:0:ab", messageId: 1, variantId: 1, claimIndex: 0, writer: false, sourceChanged: false, ...extracted, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1, relevance: null, relevanceScore: null, admission: "request-limit" };
-	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: resolveDecisionSelection(database, settings)!, decide: (request) => requestDecisions({ ...request, fetch: async (_url, init) => {
+	const { decide } = boxServices(database, async (_url, init) => {
 		const body = JSON.parse(String(init?.body));
 		expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(2000);
 		return Response.json({ answers: { "candidate_1:1:0:ab_relevance": { type: "score", score: 2, probabilities: { 0: 0.01, 1: 0.02, 2: 0.9, 3: 0.02 }, provider: "Clef" } }, usage: { cost: 0.01 } });
-	} }) });
+	}, new AbortController().signal)("memory");
+	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: { model: settings.decisionModel, stateTokenLimit: settings.decisionStateTokenLimit }, decide });
 	expect(result).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
 });
 

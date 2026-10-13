@@ -180,15 +180,15 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 	return [toVariantDataEntry(variantDataCodecs.loreActivation, active.lore_activation_json)];
 };
 
-const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+const terminalBoxTracesData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
 	let value;
 	try {
-		value = variantDataCodecs.memoryActivation.decode(active.memory_activation_json);
+		value = variantDataCodecs.boxTraces.decode(active.box_traces_json);
 	} catch (error) {
-		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Memory Activation evidence.");
+		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Box traces.");
 	}
-	if (value === null) return [];
-	return [toVariantDataEntry(variantDataCodecs.memoryActivation, active.memory_activation_json)];
+	if (Object.keys(value).length === 0) return [];
+	return [toVariantDataEntry(variantDataCodecs.boxTraces, active.box_traces_json)];
 };
 
 /** @approved
@@ -207,16 +207,16 @@ export const persistTerminalVariantData = (
 		suppliedData: readonly ConversationDataEntry[];
 		macroData?: readonly ConversationDataEntry[];
 		loreActivationData?: readonly ConversationDataEntry[];
-		memoryActivationData?: readonly ConversationDataEntry[];
+		boxTracesData?: readonly ConversationDataEntry[];
 	},
 ): void => {
 	const suppliedData = input.suppliedData.filter((entry) =>
-		entry.namespace !== variantDataCodecs.loreActivation.namespace && entry.namespace !== variantDataCodecs.memoryActivation.namespace,
+		entry.namespace !== variantDataCodecs.loreActivation.namespace && entry.namespace !== variantDataCodecs.boxTraces.namespace,
 	);
 	const data = [
 		...(input.macroData ?? []),
 		...(input.loreActivationData ?? []),
-		...(input.memoryActivationData ?? []),
+		...(input.boxTracesData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
 			!suppliedData.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key)
@@ -268,7 +268,7 @@ function commitDurableTerminalGenerationInTransaction(
 			.map(([id, { instance, record }]) => ({ namespace: `box:${id}`, key: recordKey(instance), value: JSON.stringify({ automatic: record }) }))],
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
-		memoryActivationData: terminalMemoryActivationData(active),
+		boxTracesData: terminalBoxTracesData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)

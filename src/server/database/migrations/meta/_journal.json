@@ -183,6 +183,13 @@
       "when": 1791854867832,
       "tag": "0025_first_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1791860140590,
+      "tag": "0026_freezing_darkstar",
+      "breakpoints": true
     }
   ]
 }

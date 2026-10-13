@@ -9,7 +9,7 @@ import { thoughtInstructions } from "../../boxes/thought/shared";
 import { moodRecord } from "../../boxes/mood/shared";
 import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
-import { memoryRecord } from "./memory";
+import { memoryRecord } from "../../boxes/memory/contract";
 import { numericWire } from "./wire";
 import type { PromptOutgoingRole } from "./prompt-preset";
 

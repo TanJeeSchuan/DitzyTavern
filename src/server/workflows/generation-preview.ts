@@ -27,7 +27,8 @@ import type {
 	GenerationTargetKind,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
-import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import type { BoxTraces } from "../../shared/contract/box-generation";
+import { boxDescriptorOf, isBoxReference } from "../../shared/contract/box";
 import { processStateFor } from "../application/process-state";
 
 export interface GenerationPreviewRecordFields {
@@ -193,16 +194,7 @@ const acceptedEditedPlan = (
 	const loreActivation = sourceLore === null
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
-	const sourceMemory = record.capture.plan.memoryActivation;
-	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "box:memory");
-	if (sourceMemory !== null && editedMemoryBlock?.kind === "box:memory" &&
-		estimateDynamicBlockTokens("box:memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
-		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
-	}
-	const memoryActivation = sourceMemory === null
-		? null
-		: editedMemoryActivation(sourceMemory, editedPlan);
-	return { ...record.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
+	return { ...record.capture.plan, promptPlan: editedPlan, budget, loreActivation, boxTraces: editedBoxTraces(record.capture.plan.boxTraces, editedPlan) };
 };
 
 const editedLoreActivation = (
@@ -217,13 +209,16 @@ const editedLoreActivation = (
 	};
 };
 
-const editedMemoryActivation = (
-	source: MemoryActivationRecord,
-	plan: PromptPlan,
-): MemoryActivationRecord => {
-	const finalMemoryText = plan.blocks.find((block) => block.kind === "box:memory")?.content ?? "";
-	return memoryActivationWithFinalText(source, finalMemoryText);
-};
+// @approved
+//  Each Box's block as sent, which may not exceed the Box's allowance.
+const editedBoxTraces = (source: BoxTraces, plan: PromptPlan): BoxTraces => Object.fromEntries(Object.entries(source).map(([reference, trace]) => {
+	const block = plan.blocks.find((block) => block.kind === reference);
+	if (block !== undefined && block.kind !== "history" && isBoxReference(block.kind) && trace.allowance !== undefined
+		&& estimateDynamicBlockTokens(block.kind, block.role, block.content) > trace.allowance) {
+		throw new InvalidConversationCommandError(`The edited ${boxDescriptorOf(block.kind).label} block exceeds its allowance.`);
+	}
+	return [reference, { ...trace, finalText: block?.content ?? "" }];
+}));
 
 interface PreviewAcceptanceContext {
 	readonly database: Database;

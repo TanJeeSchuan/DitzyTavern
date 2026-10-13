@@ -7,7 +7,7 @@ import { initialWorldClockSetup, worldClockRecord, type WorldClockSetup } from "
 import { digestRead } from "../../shared/contract/box-digest";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { readRecordSlots, writeAutomaticRecord } from "../box/records";
-import { sha256 } from "../memory/hash";
+import { sha256 } from "../hash";
 import { createContract } from ".";
 import { acceptConversationTailGeneration } from "../conversation";
 import { advanceRace } from "../../boxes/race/server-engine";

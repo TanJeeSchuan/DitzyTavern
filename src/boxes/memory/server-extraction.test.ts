@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
-import { judgeMemoryRecallCandidates } from "./recall";
-import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
-import type { ModelFetch } from "../model-client";
+import { judgeMemoryCandidates, validateMemoryCandidates } from "./server-extraction";
+import { judgeMemoryRecallCandidates } from "./server-recall";
 import { Value } from "@sinclair/typebox/value";
-import { memoryExtractionResponse } from "../../shared/contract/memory";
-import type { MemoryCandidate } from "../../shared/contract/memory";
+import { memoryExtractionResponse, type MemoryCandidate, type MemoryRecallCandidateRecord } from "./contract";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
-import { requestDecisions, type DecisionQuestions, type ResolvedDecisionModel } from "../decision-model";
+import type { DecisionQuestions } from "../../server/decision-model";
 
-const resolved: ResolvedDecisionModel = { profileName: "Decisions", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 };
-const selection = { model: resolved.model, stateTokenLimit: resolved.stateTokenLimit };
+const selection = { model: "jev-1.13.0", stateTokenLimit: 16000 };
 
 const source = { messageId: 10, speaker: "Maren", content: "Maren promised Writer the brass key." };
 const context = [{ messageId: 9, speaker: "Writer", content: "Writer asked Maren about the lodge key." }];
@@ -68,10 +64,10 @@ describe("Decision Model Memory judgments", () => {
 
 	test("labels recalled relevance from the same score that decides admission", async () => {
 		const record: MemoryRecallCandidateRecord = { identity: "1:1:0:ab", messageId: 1, variantId: 1, writer: false, sourceChanged: false, claimIndex: 0, claim: candidate.claim, attribution: candidate.attribution, people: [], evidence: candidate.evidence, sourcePosition: 1, semanticSimilarity: 0.5, semanticRank: 1, recentRank: null, relevance: null, relevanceScore: null, admission: "request-limit" };
-		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
+		const decide = async () => answers({
 			"candidate_1:1:0:ab_relevance": { type: "score", score: 1.56, legend: { 0: "Irrelevant", 1: "Incidental", 2: "Useful", 3: "Central" }, probabilities: { 0: 0.42, 1: 0, 2: 0.18, 3: 0.4 }, confidence: 0.1 },
-		} });
-		const [judged] = await judgeMemoryRecallCandidates({ candidates: [record], scene: "Maren asks about the key.", relevanceMinimum: 1.5, selection: resolved, decide: (request) => requestDecisions({ ...request, fetch: fakeFetch }) });
+		});
+		const [judged] = await judgeMemoryRecallCandidates({ candidates: [record], scene: "Maren asks about the key.", relevanceMinimum: 1.5, selection, decide });
 		expect(judged).toMatchObject({ relevance: "useful", relevanceScore: 1.56, admission: "admitted" });
 	});
 });

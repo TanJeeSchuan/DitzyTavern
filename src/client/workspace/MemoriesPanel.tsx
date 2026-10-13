@@ -4,7 +4,7 @@ import { Fragment, useDeferredValue, useEffect, useState, type ReactNode } from 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { MemoryIdentity } from "../../shared/contract/memory";
+import type { MemoryIdentity } from "../box-windows/registry";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { ConversationSummary } from "../conversation";
 import type { ConversationMemories } from "../memories";

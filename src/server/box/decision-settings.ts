@@ -25,3 +25,9 @@ export const applyBoxDecisionSettings = (database: Database, id: DigestBoxId, { 
 	}).immediate();
 
 export const resolveBoxDecision = (database: Database, id: DigestBoxId) => tryResolveDecisionSelection(database, readBoxDecisionSettings(database, id));
+
+/** @approved A Box's Decision Model selection as the Box may see it: the stored selection, and the profile it resolves to or why it does not; never its endpoint or credential. */
+export const readBoxDecision = (database: Database, id: DigestBoxId) => {
+	const resolution = resolveBoxDecision(database, id);
+	return { ...readBoxDecisionSettings(database, id), status: resolution.kind === "ready" ? { kind: "ready" as const, profileName: resolution.decision.profileName } : resolution };
+};

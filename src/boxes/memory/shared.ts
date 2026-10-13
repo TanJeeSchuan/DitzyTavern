@@ -1,4 +1,7 @@
-import type { MemoryIdentities, MemoryIdentity, MemoryLabelMerge } from "./contract/memory";
+import type { MemoryIdentities, MemoryIdentity, MemoryLabelMerge } from "./contract";
+
+export const renderMemoryClaim = (claim: { claim: string; attribution: string }): string =>
+	`${claim.claim} (attribution: ${claim.attribution})`;
 
 export const memoryIdentityLabel = (identity: MemoryIdentity | undefined) => identity?.kind === "excluded" ? "Not in the story" : identity?.kind === "plays" ? `Plays ${identity.person}` : "Themselves";
 

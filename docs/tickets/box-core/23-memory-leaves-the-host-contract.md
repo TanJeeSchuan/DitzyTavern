@@ -1,6 +1,6 @@
 # Memory leaves the host contract
 
-Status: TODO
+Status: DONE
 
 Blocked By: 22-memory-extraction-becomes-a-digest
 
@@ -21,12 +21,12 @@ The Box contract and the Box SDK name no Box. Memory's server code lives in `src
 
 ## Work
 
-- [ ] Remove `withoutBlock` from the contract, the registry and `docs/box-system/README.md`.
-- [ ] Persist traces per Box, compute budget evidence generically, and rename the column.
-- [ ] Move Memory's server domain into `src/boxes/memory/` and remove Memory exports from the SDK and the contract.
-- [ ] Remove `"memory"` and `"box:memory"` literals from host server files (`compiler.ts`, `generation-preview.ts`, `prompt-preset.ts` and the ones listed by `rg '"(box:)?memory"' src/server src/shared`).
-- [ ] Run `bun run check` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Remove `withoutBlock` from the contract, the registry and `docs/box-system/README.md`.
+- [x] Persist traces per Box, compute budget evidence generically, and rename the column.
+- [x] Move Memory's server domain into `src/boxes/memory/` and remove Memory exports from the SDK and the contract.
+- [x] Remove `"memory"` and `"box:memory"` literals from host server files (`compiler.ts`, `generation-preview.ts`, `prompt-preset.ts` and the ones listed by `rg '"(box:)?memory"' src/server src/shared`).
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

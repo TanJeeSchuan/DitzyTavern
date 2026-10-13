@@ -1,4 +1,4 @@
-import type { MemorySourceView } from "../../shared/contract/memory";
+import type { MemorySourceView } from "../box-windows/registry";
 
 export type MemorySourceState = { kind: "remembered" | "empty" | "unprocessed" | "failed" | "skipped"; text: string; needsAttention: boolean };
 

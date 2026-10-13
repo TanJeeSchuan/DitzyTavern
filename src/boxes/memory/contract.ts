@@ -1,7 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { boxCatchUp } from "./box-digest";
-import { invalidOutcome } from "./outcomes";
-import { numericWire } from "./wire";
+import { boxCatchUp, invalidOutcome, numericWire } from "../../box-sdk/shared";
 
 // @approved
 //  A Writer override reaches storage through `set-box-record`, so the record
@@ -84,3 +82,115 @@ export type CapturedMemoryMessage = { readonly messageId: number; readonly speak
 // error body against exactly the union its route models.
 export const memoryLabelsCommandErrors = Type.Union([memoryLabelsConflict, invalidOutcome]);
 export const memoryAllowanceCommandErrors = Type.Union([conversationMemoryAllowanceConflict, invalidOutcome]);
+
+// @approved
+//  The stored Memory Settings value, kept in library_data under `box:memory`.
+// Memory's Decision Model is the host's selection for the Box.
+export const memorySettingsValue = Type.Object({
+	extractionProfileId: Type.Union([Type.Integer(), Type.Null()]),
+	extractionModel: Type.String(),
+	contextLimit: Type.Integer(),
+	outputReserve: Type.Integer(),
+	safetyAllowance: Type.Integer(),
+	retainProbabilityMinimum: Type.Number(),
+	recallRelevanceMinimum: Type.Number(),
+	embeddingProfileId: Type.Union([Type.Integer(), Type.Null()]),
+	embeddingModel: Type.String(),
+});
+export type MemorySettingsValue = Static<typeof memorySettingsValue>;
+export const memorySettings = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
+export type MemorySettingsPayload = Static<typeof memorySettings>;
+
+export const memorySettingsResponse = memorySettings;
+export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: memorySettings });
+export const memorySettingsConflict = Type.Object({
+	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettings,
+});
+
+// @approved
+//  The Memory Settings command route's modeled error union: the composed
+// 409/422 envelopes the command route declares, so the client decodes an
+// error body against exactly that union.
+export const memorySettingsCommandErrors = Type.Union([memorySettingsConflict, invalidOutcome]);
+export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), memorySettingsValue]);
+export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;
+
+export const memoryRelevanceScore = Type.Union([
+	Type.Literal("irrelevant"),
+	Type.Literal("incidental"),
+	Type.Literal("useful"),
+	Type.Literal("central"),
+]);
+
+// @approved
+//  How far recall took a claim: `admitted` ones were offered to the prompt,
+// where the host's admission of their text decides the rest.
+export const memoryAdmissionReason = Type.Union([
+	Type.Literal("admitted"),
+	Type.Literal("not-retained"),
+	Type.Literal("duplicate-rendering"),
+	Type.Literal("request-limit"),
+]);
+
+export const memoryRecallCandidate = Type.Object({
+	identity: Type.String(),
+	messageId: Type.Integer(),
+	variantId: Type.Integer(),
+	writer: Type.Boolean(),
+	sourceChanged: Type.Boolean(),
+	claimIndex: Type.Integer(),
+	claim: Type.String({ maxLength: 1024 }),
+	attribution: Type.String({ maxLength: 1024 }),
+	people: Type.Array(Type.String()),
+	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
+	sourcePosition: Type.Integer(),
+	semanticSimilarity: Type.Union([Type.Number(), Type.Null()]),
+	semanticRank: Type.Union([Type.Integer(), Type.Null()]),
+	recentRank: Type.Union([Type.Integer(), Type.Null()]),
+	relevance: Type.Union([memoryRelevanceScore, Type.Null()]),
+	relevanceScore: Type.Union([Type.Number(), Type.Null()]),
+	admission: memoryAdmissionReason,
+});
+
+/** @approved Memory's trace: what recall read and how it ranked each claim. The host keeps the text it admitted beside it. */
+export const memoryActivationRecord = Type.Object({
+	state: Type.Union([
+		Type.Literal("allowance-zero"),
+		Type.Literal("empty"),
+		Type.Literal("rebuilding"),
+		Type.Literal("partial"),
+		Type.Literal("ready"),
+		Type.Literal("source-failed"),
+		Type.Literal("unconfigured"),
+	]),
+	allowance: Type.Integer(),
+	eligibleSourceCount: Type.Integer(),
+	readyRecordCount: Type.Integer(),
+	embeddingModel: Type.String(),
+	embeddingDeadlineMs: Type.Integer(),
+	decisionProfileName: Type.Union([Type.String(), Type.Null()]), decisionModel: Type.String(),
+	decisionConfigured: Type.Boolean(),
+	relevanceMinimum: Type.Number(),
+	pendingSourceCount: Type.Integer(),
+	failedSourceCount: Type.Integer(),
+	sourceSnapshotFingerprint: Type.String(),
+	embeddingConfigurationFingerprint: Type.String(),
+	scanMessageIds: Type.Array(Type.Integer()),
+	scanTruncated: Type.Boolean(),
+	scene: Type.String(),
+	semanticShortlistCount: Type.Integer(),
+	recentShortlistCount: Type.Integer(),
+	candidates: Type.Array(memoryRecallCandidate, { maxItems: 64 }),
+});
+
+export type MemoryActivationRecord = Static<typeof memoryActivationRecord>;
+export type MemoryRelevanceScore = Static<typeof memoryRelevanceScore>;
+export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
+
+// @approved
+//  Which Messages and Variants a trace cites are still in the Chat, so its
+// view links only to those. Each list is comma-separated ids.
+const idList = Type.String({ pattern: "^(\\d+(,\\d+)*)?$" });
+export const memorySourcesQuery = Type.Object({ messageIds: idList, variantIds: idList });
+export const memorySources = Type.Object({ messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()) });
+export type MemorySources = Static<typeof memorySources>;

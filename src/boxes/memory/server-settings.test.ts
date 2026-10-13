@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
-import { createMemorySettingsRoutes } from "./memory-settings";
+import { openInitializedDatabase } from "../../server/database/database";
+import { memoryRoutes } from "./server-routes";
 
 const request = (path: string, init?: RequestInit) => new Request(`http://localhost${path}`, {
 	headers: { "content-type": "application/json", ...init?.headers },
@@ -14,10 +14,10 @@ const apply = (fields: Record<string, boolean | number | string | null>) => requ
 
 describe("Memory Settings public contract", () => {
 	let database: Database;
-	let app: ReturnType<typeof createMemorySettingsRoutes>;
+	let app: ReturnType<typeof memoryRoutes>;
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
-		app = createMemorySettingsRoutes(database);
+		app = memoryRoutes(database);
 	});
 	afterEach(() => database.close());
 

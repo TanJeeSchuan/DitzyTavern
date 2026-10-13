@@ -25,7 +25,6 @@ import { readConversationSummaryFromConnection } from "../conversation";
 import { readConversationGenerationSettingsFromConnection } from "../conversation";
 import { readSelectedHistoryFromConnection } from "../conversation";
 import { readVariantData, type VariantDataRecords } from "../conversation";
-import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot } from "../memory/recall";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
@@ -50,7 +49,7 @@ import {
 	type ModelClientConnectionSnapshot,
 } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
-import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
+import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
 import {
 	createAttemptEnvironment,
 	type AttemptEnvironment,
@@ -339,8 +338,8 @@ export function prepareGenerationInputsSnapshot(
 	}
 	// @approved
 	//  The selected Messages as the model reads them, each Message's Moves
-	// rendered before its prose: prompt history, Lore scanning and Memory
-	// recall all read this one projection.
+	// rendered before its prose: prompt history, Lore scanning and each
+	// Box's capture all read this one projection.
 	const rendered = participation.messages.flatMap((message) => message.variant === null ? [] : [{
 		message,
 		variantId: message.variant.id,
@@ -382,16 +381,6 @@ export function prepareGenerationInputsSnapshot(
 			macroWrites: message.variant === null ? [] : variantData.get(message.variant.id)?.macroWrites ?? [],
 		})),
 	}));
-	const captureMemory = () => captureMemoryRecallSnapshot({
-		database: input.database,
-		conversationId: input.conversationId,
-		enabled: hasEnabledMemorySlot(recipe.slots),
-		messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
-			messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speakerName, role, content, prose,
-		})),
-		pendingHumanText,
-		humanName: human.name,
-	});
 	const seed = input.seed ?? (target.kind === "sibling" && !target.reroll ? siblingSeed : undefined) ?? newVariantSeed();
 	const preceding = participation.messages.at(-1);
 	const boxIntent = target.kind === "continuation" || (target.kind === "sibling" && preceding !== undefined
@@ -404,10 +393,12 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, recordStates, moves, { seed, intent: boxIntent, human, cast: summary.cast, memory: () => {
-			const snapshot = captureMemory();
-			return { snapshot, recall: (ctx) => evaluateMemoryRecallSnapshot({ database: input.database, snapshot, ...ctx }) };
-		} }),
+		boxes: captureBoxes(recipe.slots, summary.boxSetups, summary.boxes, recordStates, moves, {
+			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
+			messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
+				messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speaker: speakerName, role, content, prose,
+			})),
+		}),
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting: {
 			timeZone: input.formatting?.timeZone,

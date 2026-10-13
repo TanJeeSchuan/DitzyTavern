@@ -4,7 +4,7 @@ import { activeGenerationTable, messageTable, messageVariantTable, participantTa
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
 
-export interface MemorySourceVariant {
+export interface ChatVariant {
 	messageId: number;
 	position: number;
 	authorParticipantId: number | null;
@@ -16,11 +16,11 @@ export interface MemorySourceVariant {
 	active: boolean;
 }
 
-export function readVariantsForMemory(
+export function readChatVariants(
 	database: Database,
 	conversationId: number,
 	options: { variantIds?: readonly number[]; selectedOrVariantIds?: readonly number[]; includeActive?: boolean } = {},
-): MemorySourceVariant[] {
+): ChatVariant[] {
 	if (options.variantIds?.length === 0) return [];
 	const kept = options.selectedOrVariantIds;
 	return connectConversationDatabase(database).select({
@@ -47,7 +47,7 @@ export function readVariantsForMemory(
 }
 
 /** @approved The whole Selected path, or one source Message with up to `preceding` selected Messages before it. */
-export function readSelectedPathForMemory(database: Database, conversationId: number, around?: { readonly messageId: number; readonly preceding: number }) {
+export function readSelectedPassages(database: Database, conversationId: number, around?: { readonly messageId: number; readonly preceding: number }) {
 	const db = connectConversationDatabase(database);
 	let ids: number[] | undefined;
 	if (around !== undefined) {
@@ -75,7 +75,7 @@ export function readSelectedPathForMemory(database: Database, conversationId: nu
 	}));
 }
 
-export const readMessageAuthorsForMemory = (database: Database, conversationId: number) =>
+export const readMessageAuthors = (database: Database, conversationId: number) =>
 	connectConversationDatabase(database).select({
 		messageId: messageTable.id,
 		author: messageTable.author_name,
@@ -83,24 +83,19 @@ export const readMessageAuthorsForMemory = (database: Database, conversationId: 
 	}).from(messageTable).where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(asc(messageTable.position)).all();
 
-export const conversationIdOfMessage = (database: Database, messageId: number): number | undefined =>
-	connectConversationDatabase(database).select({ conversationId: messageTable.conversation_id }).from(messageTable)
-		.where(eq(messageTable.id, messageId)).get()?.conversationId;
-
-export interface MemoryCastMember {
+export interface ChatParticipant {
 	id: number;
 	name: string;
 	removed: boolean;
 }
 
 // @approved
-//  Every Participant row in Cast order, tombstones included: Memory labels
-//  apply to names captured before a Participant was removed, and the label
-//  commands read active membership (removed === false) from the same rows.
-//  Removal writes the tombstone's sentinel position 0, so tombstones order
-//  before the active Cast exactly as the row order Memory always consumed.
-//  The active-Cast read stays readConversationSummary / readActiveCast.
-export const readCastForMemory = (database: Database, conversationId: number): MemoryCastMember[] =>
+//  Every Participant row in Cast order, tombstones included, so names captured
+//  before a Participant was removed still resolve; `removed` marks the
+//  tombstones. Removal writes the tombstone's sentinel position 0, so
+//  tombstones order before the active Cast. The active-Cast read stays
+//  readConversationSummary / readActiveCast.
+export const readParticipants = (database: Database, conversationId: number): ChatParticipant[] =>
 	connectConversationDatabase(database).select({
 		id: participantTable.id,
 		name: participantTable.name,
@@ -114,3 +109,15 @@ export const readCastForMemory = (database: Database, conversationId: number): M
 export const readActiveVariantIds = (database: Database, conversationId: number): Set<number> =>
 	new Set(connectConversationDatabase(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable)
 		.where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));
+
+/** @approved Which of these Messages and Variants are still in the Chat. */
+export const readExistingSources = (database: Database, conversationId: number, sources: { readonly messageIds: readonly number[]; readonly variantIds: readonly number[] }) => {
+	const db = connectConversationDatabase(database);
+	return {
+		messageIds: sources.messageIds.length === 0 ? [] : db.select({ id: messageTable.id }).from(messageTable)
+			.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, [...sources.messageIds]))).all().map(({ id }) => id),
+		variantIds: sources.variantIds.length === 0 ? [] : db.select({ id: messageVariantTable.id }).from(messageVariantTable)
+			.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+			.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, [...sources.variantIds]))).all().map(({ id }) => id),
+	};
+};

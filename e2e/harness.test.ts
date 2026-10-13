@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
 import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
-import type { MemorySettingsCommand } from "../src/shared/contract/memory-settings.ts";
+import type { MemorySettingsCommand } from "../src/boxes/memory/contract.ts";
 import type { BoxDecisionSettingsCommand } from "../src/shared/contract/box.ts";
 
 const spawn = childProcess.spawn;

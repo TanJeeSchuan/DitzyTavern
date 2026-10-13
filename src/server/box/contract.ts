@@ -1,16 +1,26 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
-import type { MemoryRecallSnapshot } from "../memory/recall";
-import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { DecisionJson, DecisionQuestions, requestDecisions } from "../decision-model";
-import type { MemoryEmbeddingConfiguration } from "../memory/indexing";
-import type { createModelClient } from "../model-client";
+import type { EmbeddingConfiguration } from "./embedding";
+
+/** @approved One completion from a chat Connection Profile: `prompt` is the system message, `signal` adds a limit to the Box's own, and `onContent` sees each streamed chunk and may throw to stop it. */
+export type BoxCompletion = {
+	readonly model: string;
+	readonly prompt: string;
+	readonly contextLimit: number;
+	readonly responseBudget: number;
+	readonly signal?: AbortSignal;
+	readonly onContent?: (text: string) => void;
+};
 
 export interface BoxServices {
-	readonly llm: (options: Omit<Parameters<typeof createModelClient>[0], "fetch">) => ReturnType<typeof createModelClient>;
-	readonly decide: (input: Omit<Parameters<typeof requestDecisions>[0], "fetch" | "signal">) => ReturnType<typeof requestDecisions>;
-	readonly embed: (texts: readonly string[], configuration: MemoryEmbeddingConfiguration) => Promise<readonly (readonly number[])[]>;
+	/** @approved The chat Connection Profile `profileId`, or undefined once it is gone. */
+	readonly llm: (profileId: number) => { complete(request: BoxCompletion): Promise<{ readonly content: string; readonly finishReason: "stop" | "length" | "other" }> } | undefined;
+	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. */
+	readonly decide: (state: DecisionJson, questions: DecisionQuestions) => ReturnType<typeof requestDecisions>;
+	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. */
+	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean }) => Promise<readonly (readonly number[])[]>;
 }
 
 export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxServices, Services> & { readonly signal: AbortSignal };
@@ -33,8 +43,6 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 		readonly trace?: TSchema;
 		run(input: AdvanceInput<Setup, Dependencies, State, Move>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
 		fingerprint?(input: AdvanceInput<Setup, Dependencies, State, Move>): string;
-		/** @approved Declaring this captures the Box while its preset block is disabled, returning this result instead of running. */
-		withoutBlock?(input: AdvanceInput<Setup, Dependencies, State, Move>): AdvanceResult<Trace, Rec>;
 	};
 	/** @approved A digesting Box's one-line dock status, or null when it has nothing to say; the passage timeline read reports it. */
 	status?(setup: Setup, state: State): string | null;
@@ -47,19 +55,28 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 // produced it and never interprets it.
 export type HostBox = Box<unknown, unknown, GenerationJsonValue, keyof BoxServices, GenerationJsonValue, unknown, unknown>;
 
-/** @approved What the host read for one Generation, from which a Box takes its `dependencies`. A Box's `seed` is its own stream of the Variant's seed. */
+/** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
+export type CaptureMessage = {
+	readonly messageId: number;
+	readonly variantId: number;
+	readonly position: number;
+	readonly authorId: number | null;
+	readonly speaker: string | null;
+	readonly role: "human" | "model" | null;
+	readonly content: string;
+	readonly prose: string;
+};
+
+/** @approved What the host read for one Generation, from which a Box takes its `dependencies`. A Box's `seed` is its own stream of the Variant's seed. `messages` is the Selected path; `pending` is the text a Send submits, Moves rendered, before it becomes a Message. `database` serves further reads, as `read` gets it. */
 export type CaptureRead = {
+	readonly database: Database;
+	readonly conversationId: number;
 	readonly seed: string;
 	readonly intent: "respond" | "continue";
 	readonly human: { readonly id: number; readonly name: string };
 	readonly cast: readonly { readonly id: number; readonly name: string }[];
-	memory(): MemoryRecall;
-};
-
-/** @approved Memory's recall as the host captured it; `recall` evaluates the snapshot. Memory's collections stay in-tree code (ADR-0050). */
-export type MemoryRecall = {
-	readonly snapshot: MemoryRecallSnapshot;
-	recall(ctx: BoxContext<"decide" | "embed">): Promise<MemoryActivationRecord>;
+	readonly messages: readonly CaptureMessage[];
+	readonly pending: string | undefined;
 };
 
 /** @approved `moves` are the ones on the triggering Human-authored Message, in order; a Continuation has none. */
@@ -73,7 +90,6 @@ export type AdvanceResult<Trace = never, Rec = never> = {
 
 /** @approved A `literal` item's text reaches the prompt as written, skipping the Prompt Macro pass. */
 export type BlockItem = { readonly text: string; readonly priority: number; readonly pinned?: boolean; readonly literal?: boolean };
-export type BoxAdmission = "admitted" | "allowance" | "oversized" | "context-limit";
 
 /** @approved `authorId` is the authoring Participant's id, null when the author is unknown. */
 export type DigestPassage = { readonly messageId: number; readonly speaker: string | null; readonly authorId: number | null; readonly content: string };
@@ -85,8 +101,5 @@ export type DigestWindow = {
 	readonly cast: readonly { readonly id: number; readonly name: string; readonly removed: boolean }[];
 	readonly data: Readonly<Record<string, string>>;
 };
-/** @approved A digest gets the services its Box injects, as `advance` does, and always `decide`, which asks the Box's own Decision Model selection; the host packs and bounds the request. `database` serves the reads its window does not carry, as `read` gets it. */
-export type DigestContext<Services extends keyof BoxServices = never> = BoxContext<Exclude<Services, "decide">> & {
-	decide(state: DecisionJson, questions: DecisionQuestions): ReturnType<typeof requestDecisions>;
-	readonly database: Database;
-};
+/** @approved A digest gets the services its Box injects, as `advance` does, and always `decide`. `database` serves the reads its window does not carry, as `read` gets it. */
+export type DigestContext<Services extends keyof BoxServices = never> = BoxContext<Services | "decide"> & { readonly database: Database };

@@ -5,11 +5,10 @@ import { boxDescriptors, boxReference, digestBoxIds, type BoxDescriptors, type B
 import type { BoxCatchUp, DigestRead } from "../../shared/contract/box-digest";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 import {
-	readCastForMemory, readConversationData, readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPathForMemory,
-	readSelectedVariantIdsFromConnection, readVariantsForMemory, runConversationReadTransaction,
+	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPassages,
+	readSelectedVariantIdsFromConnection, readChatVariants, runConversationReadTransaction,
 } from "../conversation";
-import { decisionRequest, requestDecisions } from "../decision-model";
-import { sha256 } from "../memory/hash";
+import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
 import { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
@@ -110,37 +109,29 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	// been edited back to an already-digested version, or the selection
 	// cleared, while the request ran; neither replaces the job.
 	const lands = (): boolean => {
-		const current = readVariantsForMemory(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
+		const current = readChatVariants(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
 		return queue.current.get(job.key) === job && current !== undefined && sha256(current.content) === job.source
 			&& isBoxEnabled(drizzle(database), job.conversationId, job.box) && resolveBoxDecision(database, job.box).kind === "ready";
 	};
 	try {
 		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
-		const decision = resolveBoxDecision(database, job.box);
-		if (decision.kind !== "ready") return;
-		const path = readSelectedPathForMemory(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
+		if (resolveBoxDecision(database, job.box).kind !== "ready") return;
+		const path = readSelectedPassages(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
 		const index = path.findIndex((message) => message.variant?.variantId === job.variantId);
 		const variant = path[index]?.variant;
 		if (variant === undefined || variant === null || variant.active || sha256(variant.content) !== job.source) return;
 		const preceding = path.slice(0, index).flatMap(({ messageId, author, authorParticipantId, variant }) =>
 			variant === null ? [] : [{ messageId, speaker: author, authorId: authorParticipantId, content: variant.content }]);
 		const seed = boxSeed(variantSeedOf(readVariantSeeds(drizzle(database), [job.variantId]).get(job.variantId), job.variantId), job.box);
+		const services = boxServices(database, queue.fetch, signal)(job.box);
 		const data = readConversationData(database, job.conversationId, { namespace: boxReference(job.box) })?.entries ?? [];
 		const record = await digest.run({
 			passage: { messageId: variant.messageId, speaker: variant.speaker, authorId: variant.authorParticipantId, content: variant.content },
 			preceding,
 			seed,
-			cast: readCastForMemory(database, job.conversationId),
+			cast: readParticipants(database, job.conversationId),
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
-		}, {
-			...injectServices(box, boxServices(database, queue.fetch, signal)),
-			database,
-			decide: (state, questions) => {
-				const { request, fits } = decisionRequest(decision.decision, state, questions);
-				if (!fits) throw new Error("The passage exceeds the Decision Model's state token limit.");
-				return requestDecisions({ request, questions, selection: decision.decision, fetch: queue.fetch, signal });
-			},
-		});
+		}, { ...injectServices(box, services), decide: services.decide, database });
 		Value.Assert(boxDescriptors[job.box].record, record);
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
@@ -206,7 +197,7 @@ const abandon = (queue: DigestQueue, conversationId: number, box: BoxId): void =
 	queue.catchUps.delete(catchUpKey(conversationId, box));
 };
 
-type Passage = ReturnType<typeof readVariantsForMemory>[number];
+type Passage = ReturnType<typeof readChatVariants>[number];
 const digestible = (variant: Passage): boolean => variant.selected && !variant.active && variant.content.trim() !== "";
 
 // @approved
@@ -245,7 +236,7 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 		for (const variantId of change.removedVariantIds) dropKey(queue, keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
-		const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
+		const variants = readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
 		queueLive(database, queue, change.conversationId, box, instance, variants, false);
 	}
 }
@@ -255,7 +246,7 @@ export function queueBoxDigest(database: Database, conversationId: number, box: 
 	const queue = queues.get(database);
 	const instance = queue === undefined ? undefined : digestInstance(database, conversationId, box);
 	if (queue === undefined || instance === undefined) return;
-	queueLive(database, queue, conversationId, box, instance, readVariantsForMemory(database, conversationId, { variantIds: [variantId] }).filter(digestible), true);
+	queueLive(database, queue, conversationId, box, instance, readChatVariants(database, conversationId, { variantIds: [variantId] }).filter(digestible), true);
 }
 
 /** @approved A Box window's live view of its catch-up run in one Conversation, or null when none runs. */
@@ -274,7 +265,7 @@ export function startBoxCatchUp(database: Database, conversationId: number, box:
 	const key = catchUpKey(conversationId, box);
 	if (queue === undefined || queue.stopped || queue.catchUps.has(key)) return;
 	const instance = digestInstance(database, conversationId, box);
-	const path = instance === undefined ? undefined : readSelectedPathForMemory(database, conversationId);
+	const path = instance === undefined ? undefined : readSelectedPassages(database, conversationId);
 	if (path === undefined || instance === undefined) return;
 	const variants = path.flatMap((message) => message.variant === null || message.variant.active || message.variant.content.trim() === "" ? [] : [message.variant]);
 	const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));

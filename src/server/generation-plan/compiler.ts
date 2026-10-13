@@ -32,12 +32,9 @@ import type {
 	GenerationConnectionFacts,
 	GenerationPlan,
 } from "./types";
-import { Value } from "@sinclair/typebox/value";
-import { memoryActivationRecord, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
-import { renderMemoryClaim } from "../../shared/memory-text";
-import type { BoxAdmission } from "../box/contract";
+import type { BoxTrace, BoxTraces } from "../../shared/contract/box-generation";
 import { admitDynamicBlocks, estimateDynamicBlockTokens, type LoreBudgetDecision } from "./admission";
-import type { BoxItems } from "../box/registry";
+import type { BoxItems, BoxResults } from "../box/registry";
 export { estimateDynamicBlockTokens };
 
 /** @approved
@@ -217,10 +214,7 @@ export const compileGenerationPlan = (
 		loreActivation: input.loreActivation === undefined || input.loreActivation === null
 			? null
 			: withLoreBudgetEvidence(input.loreActivation, candidates, admissions.lore.decisions, loreAllowance),
-		memoryActivation: memoryBudgetEvidence(
-			input.boxes["box:memory"]?.trace, admissions.decisions["box:memory"] ?? new Map(),
-			budget.plan.blocks.find((block) => block.kind === "box:memory")?.content ?? "",
-		),
+		boxTraces: boxBudgetEvidence(input.boxes, admissions.decisions, budget.plan),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
@@ -252,16 +246,19 @@ const withLoreBudgetEvidence = (
 	return { ...record, evidence: [...evidence, admissionEvidence] };
 };
 
-const memoryBudgetEvidence = (trace: GenerationJsonValue | undefined, decisions: ReadonlyMap<string, BoxAdmission>, text: string): MemoryActivationRecord | null => {
-	if (trace === undefined) return null;
-	const record = Value.Parse(memoryActivationRecord, trace);
-	return {
-		...record,
-		candidates: record.candidates.map((candidate) => candidate.admission === "admitted" ? { ...candidate, admission: decisions.get(renderMemoryClaim(candidate)) ?? candidate.admission } : candidate),
-		automaticMemoryText: record.automaticMemoryText || text,
-		finalMemoryText: text,
-	};
-};
+// @approved
+//  Each captured Box's trace beside the host's admission of its items and its
+// block's budgeted text; the text as sent starts the same.
+const boxBudgetEvidence = (boxes: BoxResults, decisions: ReturnType<typeof admitDynamicBlocks>["decisions"], plan: PromptPlan): BoxTraces =>
+	Object.fromEntries(Object.entries(boxes).flatMap(([reference, result]) => {
+		const admissions = decisions[reference];
+		if (result === undefined || admissions === undefined) return [];
+		const text = plan.blocks.find((block) => block.kind === reference)?.content ?? "";
+		const trace: BoxTrace = { items: result.items.map((item, index) => ({ text: item.text, admission: admissions[index]! })), automaticText: text, finalText: text };
+		if (result.trace !== undefined) trace.trace = result.trace;
+		if (result.allowance !== undefined) trace.allowance = result.allowance;
+		return [[reference, trace]];
+	}));
 
 const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {
 	if (left.always !== right.always) return left.always === true ? -1 : 1;

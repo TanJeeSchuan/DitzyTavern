@@ -1,20 +1,11 @@
-import { createConnectionSettingsModule, connectionSnapshotOf } from "../connection-settings";
-import { collectModelClientGeneration } from "../model-client";
-import { tokenxEstimator } from "../prompt-compiler";
-import type { PromptPlan } from "../prompt-compiler";
-import { createMemorySettingsModule } from "./settings";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { memoryChatSettings, memoryExtractionResponse, memoryLabels } from "../../shared/contract/memory";
-import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse, MemoryRecord } from "../../shared/contract/memory";
-import type { DecisionAnswer } from "../../shared/contract/decision-model";
-import { decisionRequest, packDecisions } from "../decision-model";
-import { readBoxDecisionSettings } from "../box/decision-settings";
-import type { DigestContext, DigestWindow } from "../box/contract";
-import { projectImageAnchors } from "../../shared/image-reference";
-import { renderMemoryClaim } from "../../shared/memory-text";
-import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
-import { embedAndCacheMemoryTexts, readMemoryEmbeddingConfiguration } from "./indexing";
+import { decisionRequest, packDecisions, readBoxDecisionSettings, tokenxEstimator, type DecisionAnswer, type DigestContext, type DigestWindow } from "../../box-sdk/server";
+import { projectImageAnchors } from "../../box-sdk/shared";
+import { memoryChatSettings, memoryExtractionResponse, memoryLabels } from "./contract";
+import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse, MemoryRecord } from "./contract";
+import { renderMemoryClaim } from "./shared";
+import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
 
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
@@ -42,6 +33,12 @@ const identityInstructions = (window: DigestWindow, identities: Static<typeof me
 	if (identity?.kind === "plays") return [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`];
 	return [];
 }).join("\n");
+
+const hasValidMemoryClaimText = (claim: string, attribution: string) =>
+	claim.trim().length > 0 && attribution.trim().length > 0 && claim.length + attribution.length <= 1024;
+
+const hasValidMemoryPeople = (people: readonly string[]) =>
+	!people.some((person) => person.trim().length === 0) && new Set(people).size === people.length;
 
 const candidateProblem = (
 	candidate: MemoryExtractionResponse["candidates"][number],
@@ -83,12 +80,6 @@ export function validateMemoryCandidates(
 	return { candidates: unique, dropped };
 }
 
-const promptPlanOf = (system: string): PromptPlan => ({
-	blocks: [{ kind: "instruction", role: "system", content: system }],
-	warnings: [],
-	images: [],
-});
-
 const extractionInstructions = (sourceMessageId: number) => `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${sourceMessageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
 
 type MemoryDigestContext = DigestContext<"llm" | "decide" | "embed">;
@@ -108,10 +99,8 @@ const extractCandidates = async (
 	const memory = createMemorySettingsModule(ctx.database).get();
 	if (tokenxEstimator(source.content) > 12_000) throw new Error("This complete source exceeds the 12,000-token Memory extraction limit. It was not truncated.");
 	if (memory.extractionProfileId === null || memory.extractionModel.length === 0) throw new Error("Choose an extraction Connection Profile and model in Memory Settings.");
-	const connectionSettings = createConnectionSettingsModule(ctx.database);
-	const settings = connectionSettings.get();
-	const profile = settings.profiles.find((item) => item.id === memory.extractionProfileId);
-	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
+	const model = ctx.llm(memory.extractionProfileId);
+	if (model === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
 	const instructions = extractionInstructions(source.messageId);
 	const identities = identityInstructions(window, readLabels(window).identities);
 	const { note } = chatValue(window, "settings", memoryChatSettings, { allowance: 0, note: "" });
@@ -125,28 +114,17 @@ const extractCandidates = async (
 	}
 	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
 	if (!fitsDecision(retainedContext)) throw new Error("The Memory source exceeds the Decision Model state token limit.");
-	const client = ctx.llm({ profile, secrets: connectionSettings.getProfileSecrets(profile.id) });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
 	const deadline = AbortSignal.timeout(EXTRACTION_DEADLINE_MS);
-	const result = await collectModelClientGeneration(client, {
-		promptPlan: promptPlanOf(promptOf(retainedContext)),
-		modelId: memory.extractionModel,
-		generationSettings: {
-			temperature: null,
-			topP: null,
-			frequencyPenalty: null,
-			presencePenalty: null,
-			contextLimit: memory.contextLimit,
-			responseBudget: memory.outputReserve,
-			requestOverrides: {},
-		},
-		connection: connectionSnapshotOf(settings, profile),
-		signal: AbortSignal.any([ctx.signal, deadline]),
-	}, {
-		onEvent: (event) => {
-			if (event.type !== "content") return;
-			collectedOutputBytes += encoder.encode(event.text).byteLength;
+	const result = await model.complete({
+		model: memory.extractionModel,
+		prompt: promptOf(retainedContext),
+		contextLimit: memory.contextLimit,
+		responseBudget: memory.outputReserve,
+		signal: deadline,
+		onContent: (text) => {
+			collectedOutputBytes += encoder.encode(text).byteLength;
 			if (collectedOutputBytes > MAX_OUTPUT_BYTES) throw new Error("Memory extraction output exceeded 64 KiB.");
 		},
 	}).catch((error: Error) => {
@@ -280,7 +258,7 @@ export async function digestMemory(window: DigestWindow, ctx: MemoryDigestContex
 	const judgments = await judgeMemoryCandidates({ source, context: extracted.context, candidates: extracted.candidates, selection, decide: ctx.decide });
 	const claims = judgments.filter(({ judgment }) =>
 		judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.probabilities["usefulness:retain"]! >= extracted.settings.retainProbabilityMinimum);
-	const embedding = readMemoryEmbeddingConfiguration(ctx.database);
-	if (embedding.spaceKey !== "" && claims.length > 0) await embedAndCacheMemoryTexts(ctx.database, claims.map(renderMemoryClaim), embedding, ctx.embed);
+	const embedding = readMemoryEmbedding(ctx.database);
+	if (embedding.spaceKey !== "" && claims.length > 0) await ctx.embed(claims.map(renderMemoryClaim), embedding, { cache: true });
 	return { claims };
 }

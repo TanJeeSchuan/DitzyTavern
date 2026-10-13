@@ -84,7 +84,7 @@ export function capturedAcceptanceFields(
 		generationSettings: capture.plan.effectiveSettings,
 		connection: connectionIdentityOf(capture.connection),
 		loreActivation: capture.plan.loreActivation,
-		memoryActivation: capture.plan.memoryActivation,
+		boxTraces: capture.plan.boxTraces,
 		provenance: capture.provenance,
 		macroPresetId: capture.macroPresetId,
 		macroWrites: capture.macroWrites,
@@ -92,7 +92,7 @@ export function capturedAcceptanceFields(
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "provenance" |
+		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "provenance" |
 		"macroPresetId" | "macroWrites" | "seed" | "boxRecords"
 	>;
 }
