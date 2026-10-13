@@ -1,8 +1,11 @@
 import { Brain, ChevronDown, Info, UsersRound, Variable } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { boxTitle, boxWindow, windowBoxIds, type WindowBoxId } from "../box-windows/registry";
 import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
+
+const topBarItemLook = "max-w-56 rounded-xl text-[0.78rem] font-semibold text-muted-foreground tabular-nums";
 
 export function StoryHeader({
 	chat,
@@ -26,11 +29,11 @@ export function StoryHeader({
 	const items = conversation === null ? [] : windowBoxIds.flatMap((id) => {
 		const { icon: Icon, TopBarItem } = boxWindow(id);
 		if (conversation.boxes[id] !== "enabled" || TopBarItem === undefined) return [];
-		return [<button key={id} className="box-top-bar-item" type="button" title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
+		return [<Button key={id} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
 			<Icon aria-hidden="true" />
 			<span className="sr-only">{boxTitle(id)}: </span>
-			<span><TopBarItem conversation={conversation} /></span>
-		</button>];
+			<span className="truncate"><TopBarItem conversation={conversation} /></span>
+		</Button>];
 	});
 	return (
 		<header className="story-header">
