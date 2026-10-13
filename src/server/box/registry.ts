@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { AnyElysia } from "elysia";
+import { Elysia, type AnyElysia } from "elysia";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
@@ -36,15 +36,26 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 };
 
 // @approved
+//  A Box's routes, built for the server's database and mounted under
+// `/api/boxes/<id>`, so a factory that throws, returns anything but the
+// promised Elysia app, or fails to mount refuses its Box.
+const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia | undefined => {
+	if (box.routes === undefined) return undefined;
+	const routes: unknown = box.routes(database);
+	if (!(routes instanceof Elysia)) throw new Error(`The ${id} Box's routes must return an Elysia app.`);
+	return new Elysia({ prefix: `/api/boxes/${id}` }).use(routes);
+};
+
+// @approved
 //  A Box folder holds its descriptor in `shared-descriptor.ts` and its server
 // module in `server.ts`, each as its default export, and is named for the
 // Box's id. Folders load in order, each folder's Boxes by name, so a plugin
 // folder listed after the built-in one cannot replace a built-in Box. An
 // absent folder holds no Boxes, as before any plugin is installed. A Box
 // that fails to load is refused with its reason; the rest still load. The
-// server passes the database it serves, and each Box's routes are built for
-// it once, here, so a Box whose routes throw is refused instead of stopping
-// the server, and the contract mounts the routes built.
+// server passes the database it serves, and each Box's routes are built and
+// mounted for it once, here, so a Box whose routes fail is refused instead of
+// stopping the server, and the contract serves the routes mounted.
 export const discoverBoxes = async (folders: readonly string[], database?: Database) => {
 	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox; readonly folder: string; readonly routes: AnyElysia | undefined }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];
@@ -61,7 +72,7 @@ export const discoverBoxes = async (folders: readonly string[], database?: Datab
 				if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
 				assertBoxServer(box);
 				const checked = checkedHooks(descriptor.id, descriptor, box);
-				boxes.set(descriptor.id, { descriptor, box: checked, folder, routes: database === undefined ? undefined : checked.routes?.(database) });
+				boxes.set(descriptor.id, { descriptor, box: checked, folder, routes: database === undefined ? undefined : mountedRoutes(descriptor.id, checked, database) });
 			} catch (error) {
 				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
 			}
@@ -99,7 +110,7 @@ export const boxClientFolder = (id: BoxId): string | undefined => clientFolders.
 // types its own hooks with `satisfies Box<…>`; the host holds it as a HostBox
 // and checks each value it routes against the Box's descriptor.
 export const serverBoxes = (): ReadonlyMap<BoxId, HostBox> => registered;
-/** @approved The routes each loaded Box serves, built for the database it was loaded with, by id, in registry order. */
+/** @approved The routes each loaded Box serves, built for the database it was loaded with and mounted under its prefix, by id, in registry order. */
 export const boxRoutes = (): ReadonlyMap<BoxId, AnyElysia> => routes;
 /** @approved A registered Box's server module; an unknown id has none. */
 export const serverBox = (id: BoxId): HostBox | undefined => serverBoxes().get(id);

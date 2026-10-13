@@ -5,8 +5,8 @@ import { boxClientFolder, boxRoutes, serverBoxes } from "../box/registry";
 
 // @approved
 //  The loaded Boxes, and the routes each Box serves beside the host's,
-// mounted under its own `/api/boxes/<id>`: the routes the loader built for
-// the server's database. Each Box's client module, and the stylesheet it
+// under its own `/api/boxes/<id>`: the routes the loader built and mounted
+// for the server's database. Each Box's client module, and the stylesheet it
 // links, are served from its client folder, and revalidated, since they keep
 // their names across builds.
 export const createBoxRoutes = () => {
@@ -19,6 +19,6 @@ export const createBoxRoutes = () => {
 			set.headers["cache-control"] = "no-cache";
 			return served;
 		});
-	for (const [id, routes] of boxRoutes()) app.use(new Elysia({ prefix: `/api/boxes/${id}` }).use(routes));
+	for (const routes of boxRoutes().values()) app.use(routes);
 	return app;
 };

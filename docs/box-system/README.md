@@ -200,7 +200,7 @@ foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id
 
 ### `routes`
 
-Routes the Box serves beside the host's, as an Elysia app built from the database. The server builds it once, when it loads the Box, for the database it serves, and refuses the Box if building throws; it mounts that app under `/api/boxes/<id>`, so its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` is there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. Only Memory declares routes; a Box with a window reads through `read` instead.
+Routes the Box serves beside the host's, as an Elysia app built from the database. The server builds it once, when it loads the Box, for the database it serves, and mounts it under `/api/boxes/<id>` there. It refuses the Box if building throws, returns anything but an Elysia app, or mounting throws. Its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` is there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. Only Memory declares routes; a Box with a window reads through `read` instead.
 
 ### Client surfaces
 
@@ -280,7 +280,7 @@ At startup the server scans the built-in folder `src/boxes/`, then the plugin fo
 - either file fails to import;
 - its server module fails `boxServerSchema`: each hook it declares must be a function, or an object holding the functions the host calls on it, such as `records.fold` or `advance.run`;
 - its server hooks do not match its descriptor's keys;
-- its `routes` throw when the server builds them against its database.
+- its `routes` throw when the server builds them against its database, return anything but an Elysia app, or fail to mount under `/api/boxes/<id>`.
 
 The registry lists Boxes in load order: built-ins, then plugins, each folder's by name. That order is the Box manager's, the add-block menu's, the Decision Model settings', and the order Moves render in a Message. Loading happens once; adding or removing a plugin takes a restart. A preset block whose Box is not loaded, as after its plugin is removed or refused, stays in the preset as `box:<id>` and renders nothing. `GET /api/boxes` lists the loaded Boxes as `{ id, label, client }`, where `client` is the URL of the Box's [client module](#client-modules). Tests load the built-in Boxes in the `bun test` preload `src/server/test-fixtures/boxes.ts`.
 

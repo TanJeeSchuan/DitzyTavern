@@ -30,7 +30,9 @@ const pluginFolders: string[] = [];
 afterEach(() => { for (const folder of pluginFolders.splice(0)) rmSync(folder, { recursive: true, force: true }); });
 // @approved
 //  Each plugin's descriptor is the Lantern's under its folder's name, with
-// `fields`, as source, written over it.
+// `fields`, as source, written over it. A plugin outside the checkout reaches
+// the host's Elysia by its resolved path, as an installed one does by name.
+const elysia = `import { Elysia } from ${JSON.stringify(Bun.resolveSync("elysia", import.meta.dir))};`;
 const installPlugins = (plugins: Record<string, { readonly fields?: string; readonly server?: string }>) => {
 	const root = mkdtempSync(join(tmpdir(), "ditzy-boxes-"));
 	pluginFolders.push(root);
@@ -54,9 +56,11 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		broken: { server: 'throw new Error("The wick is wet.");' },
 		unhooked: { fields: 'decision: { summary: "", description: "", off: "", context: "" }' },
 		unrouted: { server: 'export default { routes: () => { throw new Error("The hook is bent."); } };' },
+		unmounted: { server: `${elysia} export default { routes: () => Object.defineProperty(new Elysia(), "router", { get() { throw new Error("The hook will not hang."); } }) };` },
 		"hollow-moves": { server: "export default { moves: {} };" },
 		"hollow-records": { server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
+		"hollow-routes": { server: "export default { routes: () => ({}) };" },
 	});
 	const database = openObservedDatabase();
 	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins], database).finally(() => database.close());
@@ -67,11 +71,13 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
+		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
 		["renamed", "Its folder must be named for its id, lantern."],
 		["unhooked", "The unhooked Box must declare a digest exactly when it declares a decision."],
 		["unlabelled", "Its descriptor is invalid at /label: Expected string."],
+		["unmounted", "The hook will not hang."],
 		["unrouted", "The hook is bent."],
 		["unschemed", "Its descriptor is invalid at /setup/schema: Expected kind 'BoxSchema'."],
 	]);
@@ -125,7 +131,7 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 
 test("a plugin's routes are served as the loader built them, its client module and stylesheet from its dist folder, and nothing else in it", async () => {
 	const plugins = installPlugins({ lantern: {
-		server: 'let built = false; export default { routes: () => { if (built) throw new Error("Built twice."); built = true; return (app) => app.get("/lit", () => "The lantern is lit."); } };',
+		server: `${elysia} let built = false; export default { routes: () => { if (built) throw new Error("Built twice."); built = true; return new Elysia().get("/lit", () => "The lantern is lit."); } };`,
 	} });
 	mkdirSync(join(plugins, "lantern", "dist"));
 	writeFileSync(join(plugins, "lantern", "dist", "client.js"), "export default {};");
