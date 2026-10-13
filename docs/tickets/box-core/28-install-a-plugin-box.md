@@ -1,6 +1,6 @@
 # Install a plugin Box
 
-Status: TODO
+Status: DONE
 
 Blocked By: 27-box-uis-load-as-modules
 
@@ -22,12 +22,25 @@ A plugin author can build a Box outside this repository, drop it into `data/boxe
 
 ## Work
 
-- [ ] Add `box:build` to `package.json`.
-- [ ] Add the fixture plugin and an e2e spec that installs it, enables it in a Chat, uses its window and Move, and sees its record after a restart (`llm.restart`).
-- [ ] Document plugin authoring and installation.
-- [ ] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Add `box:build` to `package.json`.
+- [x] Add the fixture plugin and an e2e spec that installs it, enables it in a Chat, uses its window and Move, and sees its record after a restart (`llm.restart`).
+- [x] Document plugin authoring and installation.
+- [x] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
 - The fixture plugin works end to end with no file in `src/` naming it.
+
+## Notes
+
+- `scripts/build-box-client.ts` holds the host modules, read from the import map, and `buildBoxClient`. `vite.config.ts` imports both for the host chunks and the built-in Box builds, and `bun run box:build <folder>` runs it on a plugin, so built-ins and plugins share their externals and their stylesheet link.
+- A plugin's client builds into `<folder>/dist/`, not beside its sources. Building in place makes Vite's `outDir` its root, which Vite warns can overwrite sources, and it would overwrite a source stylesheet named `client.css`, as Memory's is. The server serves a plugin's `client.js` and `client.css` from `data/boxes/<id>/dist/`, and the Vite dev server maps to it.
+- The fixture plugin is `e2e/fixtures/boxes/tip-jar/`: a window that stages a Move, an `advance` that writes a record each Generation, and a `read` that folds them. It imports a stylesheet, so the spec also covers a plugin's `client.css`.
+- Each e2e worker's plugin folder is `.scratch/e2e-boxes-*` under the repository, passed to the server as `E2E_BOXES`, so the fixture's `@/box-sdk` imports and packages resolve. The databases stay in the OS temp directory, which is tmpfs on this host; a synchronous write to the repository's disk took about 50 ms. A reset empties the plugin folder and reloads the registry, so an installed plugin never outlives its test; a restarted server loads the folder as it stands.
+
+## Verification
+
+- `bun run check` passed: lint, 134 lint-rule tests, contract ownership, both typechecks, 1,493 unit tests across 172 files and 3 harness tests. `bun run build` passed. The full `bun run test:e2e` then passed 81 of 81, including `e2e/box-plugin.spec.ts`.
+- `box:build` then gained a required folder argument; lint, the typecheck and a rebuild of the fixture passed after it.
+- `grep -rniE "tip-jar|tip jar|tipjar|tip_jar" src/` finds nothing.

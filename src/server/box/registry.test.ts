@@ -89,9 +89,10 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 	}
 });
 
-test("a plugin's client module and stylesheet are served from its folder, and nothing else in it is", async () => {
+test("a plugin's client module and stylesheet are served from its dist folder, and nothing else in it is", async () => {
 	const plugins = installPlugins({ lantern: {} });
-	writeFileSync(join(plugins, "lantern", "client.js"), "export default {};");
+	mkdirSync(join(plugins, "lantern", "dist"));
+	writeFileSync(join(plugins, "lantern", "dist", "client.js"), "export default {};");
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins]);

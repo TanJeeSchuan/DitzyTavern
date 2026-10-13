@@ -7,6 +7,7 @@
 		"dev:server": "bun --watch src/server/index.ts",
 		"dev:client": "vite",
 		"build": "vite build",
+		"box:build": "bun scripts/build-box-client.ts",
 		"start": "bun src/server/index.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:seed": "bun src/server/database/seed.ts",

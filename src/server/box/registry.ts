@@ -74,10 +74,10 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders): Promis
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
 	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
 	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));
-	clientFolders = new Map(boxes.map(({ descriptor: { id }, folder }) => [id, dirname(folder) === builtInBoxes ? join("dist", "boxes", id) : folder]));
+	clientFolders = new Map(boxes.map(({ descriptor: { id }, folder }) => [id, dirname(folder) === builtInBoxes ? join("dist", "boxes", id) : join(folder, "dist")]));
 };
 
-/** @approved Where a loaded Box's built client module is served from: the client build writes a built-in's into `dist/boxes/<id>`, and a plugin ships its own. */
+/** @approved Where a loaded Box's built client module is served from: the client build writes a built-in's into `dist/boxes/<id>`, and `box:build` a plugin's into its own `dist`. */
 export const boxClientFolder = (id: BoxId): string | undefined => clientFolders.get(id);
 
 // @approved

@@ -80,7 +80,7 @@ The app has no login or user isolation. Restrict access through your network or 
 
 Chrome and Edge only offer to install DitzyTavern as an app over HTTPS or on `localhost`. To install it on a phone, serve it through an HTTPS proxy such as `tailscale serve`; a plain `http://` LAN address still works in a browser tab.
 
-Plugin Boxes go in the data volume's `boxes` folder, one folder per Box at `/app/data/boxes/<id>/`, laid out like a built-in Box in `src/boxes/` ([Box loading](box-system/README.md#loading)). The server loads them at startup, so restart the container after adding or removing one. The log names each Box it refuses and why; the other Boxes still load. A plugin cannot replace a built-in Box.
+Plugin Boxes go in the data volume's `boxes` folder, one folder per Box at `/app/data/boxes/<id>/`, laid out like a built-in Box in `src/boxes/`, with its client built into `dist/` ([Install a plugin Box](box-system/README.md#install-a-plugin-box)). The server loads them at startup, so restart the container after adding or removing one. The log names each Box it refuses and why; the other Boxes still load. A plugin cannot replace a built-in Box.
 
 Provider URLs are resolved from inside the container. `127.0.0.1` in a connection profile means this container, so use the reachable address of your model service.
 

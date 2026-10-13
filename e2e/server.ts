@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { openInitializedDatabase } from "../src/server/database/database";
@@ -14,9 +14,10 @@ import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } 
 const masterKey = new Uint8Array(32).fill(1);
 const directoryRoot = process.env.E2E_ROOT;
 if (directoryRoot === undefined) throw new Error("E2E_ROOT must name the worker's temporary directory.");
+const pluginFolder = process.env.E2E_BOXES;
+if (pluginFolder === undefined) throw new Error("E2E_BOXES must name the worker's plugin folder.");
 initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(masterKey).toString("base64") } });
 registerWireFormats();
-await loadBoxes([builtInBoxes, join(directoryRoot, "boxes")]);
 
 let chatReplies: ChatReply[] = [];
 let decisionRules: DecisionRule[] = [];
@@ -175,6 +176,8 @@ const reset = async () => {
 	updateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
 	registryCalls = [];
 	held = Promise.withResolvers();
+	rmSync(pluginFolder, { recursive: true, force: true });
+	await loadBoxes([builtInBoxes, pluginFolder]);
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
 	await open(directory, provision(join(directory, "e2e.sqlite")));
 };
@@ -188,6 +191,7 @@ const resumed = process.env.E2E_RESUME;
 if (resumed) {
 	if (existsSync(join(resumed, "updates.json"))) updateScenario = JSON.parse(readFileSync(join(resumed, "updates.json"), "utf8"));
 	if (existsSync(join(resumed, "calls.json"))) calls = JSON.parse(readFileSync(join(resumed, "calls.json"), "utf8"));
+	await loadBoxes([builtInBoxes, pluginFolder]);
 	await open(resumed, openInitializedDatabase({ path: join(resumed, "e2e.sqlite") }));
 } else await reset();
 
@@ -226,6 +230,11 @@ const server = Bun.serve({
 				break;
 			}
 			case "/__e2e/release": held.resolve(); break;
+			case "/__e2e/install-box": {
+				const id: string = await request.json();
+				cpSync(join(import.meta.dir, "fixtures", "boxes", id), join(pluginFolder, id), { recursive: true });
+				break;
+			}
 			case "/__e2e/directory": return Response.json(current!.directory);
 			case "/__e2e/log": return Response.json({ calls, registryCalls, unscripted, unsentPlans: await unsentPlans() });
 			case "/__e2e/shutdown": setTimeout(() => { void shutdown(); }, 0); break;

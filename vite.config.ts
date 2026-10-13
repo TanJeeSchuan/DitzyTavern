@@ -1,16 +1,12 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { build, defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import { buildBoxClient, hostModules } from "./scripts/build-box-client";
 
 const boxes = fileURLToPath(new URL("./src/boxes", import.meta.url));
-
-// @approved
-//  The modules a Box client shares with the host, as `index.html`'s import
-// map names them: each specifier to the stable host chunk it is built as.
-const hostModules: Record<string, string> = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(readFileSync(new URL("./index.html", import.meta.url), "utf8"))![1]!).imports;
 
 // @approved
 //  A package's host chunk re-exports it by name, since a CommonJS package
@@ -34,36 +30,6 @@ const hostChunks: Plugin = {
 	},
 };
 
-const linkStylesheet = `await new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement("link"), {
-	rel: "stylesheet", href: new URL("./client.css", import.meta.url).href, onload: resolve, onerror: () => reject(new Error("Its stylesheet did not load.")),
-})));`;
-
-// @approved
-//  A Box's client module, `client.js`, built from its folder's `client.tsx`
-// alone, as a plugin's is: the host modules stay imports the import map
-// resolves. A stylesheet the module imports is emitted beside it as
-// `client.css`, and the module links it and waits for it before it
-// resolves, so the host renders no surface of a Box without its styles.
-const buildBoxClient = async (folder: string, outDir: string): Promise<void> => {
-	await build({
-		configFile: false,
-		root: folder,
-		publicDir: false,
-		logLevel: "warn",
-		plugins: [react()],
-		define: { "process.env.NODE_ENV": JSON.stringify("production") },
-		build: {
-			outDir,
-			emptyOutDir: true,
-			lib: { entry: join(folder, "client.tsx"), formats: ["es"], fileName: () => "client.js", cssFileName: "client" },
-			rolldownOptions: { external: Object.keys(hostModules) },
-		},
-	});
-	if (!existsSync(join(outDir, "client.css"))) return;
-	const module = join(outDir, "client.js");
-	writeFileSync(module, `${linkStylesheet}\n${readFileSync(module, "utf8")}`);
-};
-
 /** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host. */
 const builtInBoxClients: Plugin = {
 	name: "built-in-box-clients",
@@ -73,14 +39,14 @@ const builtInBoxClients: Plugin = {
 	},
 };
 
-/** @approved The dev server serves a Box's client module from its source: a built-in's from `src/boxes`, a plugin's from `data/boxes`. */
+/** @approved The dev server serves a built-in Box's client module from its source, and a plugin's as `box:build` built it in `data/boxes`. */
 const devBoxClients: Plugin = {
 	name: "dev-box-clients",
 	apply: "serve",
 	configureServer(server) {
 		server.middlewares.use((request, _, next) => {
 			const id = /^\/boxes\/([^/]+)\/client\.js(?:\?|$)/.exec(request.url ?? "")?.[1];
-			if (id !== undefined) request.url = existsSync(join(boxes, id)) ? `/src/boxes/${id}/client.tsx` : `/data/boxes/${id}/client.js`;
+			if (id !== undefined) request.url = existsSync(join(boxes, id)) ? `/src/boxes/${id}/client.tsx` : `/data/boxes/${id}/dist/client.js`;
 			next();
 		});
 	},
