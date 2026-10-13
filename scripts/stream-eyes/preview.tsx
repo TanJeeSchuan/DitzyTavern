@@ -27,6 +27,7 @@ const message = (id: number, authorName: string, content: string): StoryMessage 
 	swipe: { eligible: true, reason: null },
 	inCast: true,
 	activeSwipe: 0,
+	moves: {},
 	swipes: [{ id: id * 10, position: 1, content, empty: content === "", reasoning: "" }],
 });
 

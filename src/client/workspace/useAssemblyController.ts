@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject } from "react";
 import {
 	previewConversationGeneration,
 	startConversationContinuationGeneration,
@@ -11,6 +11,7 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
+import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
@@ -31,11 +32,14 @@ type AssemblyControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
-	draft: string;
-	setDraft: Dispatch<SetStateAction<string>>;
+	// @approved
+	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send is not accepted.
+	takeComposer: () => () => void;
 };
 
-type AssemblyRequest = { conversationId: number; request: GenerationPreviewBody };
+// @approved
+//  `seat` is the human seat the request was made from, which its seat-bound Moves belong to.
+type AssemblyRequest = { conversationId: number; seat: number | null; request: GenerationPreviewBody };
 // The accepted target and the revision its start was sent on; acceptance always lands on a later one.
 type AcceptedStart = { target: GenerationAttemptTarget; sentRevision: number };
 
@@ -43,10 +47,12 @@ type GenerationStartSubmission = {
 	signal: AbortSignal;
 	startId: number;
 	conversationId: number;
+	seat: number | null;
 	request: GenerationPreviewBody;
-	clearDraft: boolean;
-	// The composer text a direct start cleared up front, put back if the start is not accepted.
-	restoreDraft?: string;
+	clearComposer: boolean;
+	// @approved
+	//  Puts back what a direct start took from the composer up front, if the start is not accepted.
+	restoreComposer?: (() => void) | undefined;
 	preview?: { previewId: string; promptPlan: PromptPlan };
 };
 
@@ -79,8 +85,7 @@ export function useAssemblyController({
 	inspectPromptPlanBeforeGenerating,
 	generationStart,
 	dispatchStory,
-	draft,
-	setDraft,
+	takeComposer,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
 	const session = useRef({ cancellation: new AbortController(), starting: false });
@@ -103,13 +108,18 @@ export function useAssemblyController({
 		const latest = await ensureLatest();
 		submission.signal.throwIfAborted();
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
+		// @approved
+		//  A seat change queued ahead of this start applied first: its seat-bound Moves would be sent as the new seat's.
+		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, seatBound))) {
+			throw new Error("The writer changed before this Send went out, so it was not sent.");
+		}
 		const revision = Math.max(latest.revision, previous ?? 0);
 		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
 		const outcome = submission.request.kind === "send"
-			? await startConversationGeneration(submission.conversationId, revision, submission.request.content, formatting, submission.preview, submission.signal)
+			? await startConversationGeneration(submission.conversationId, revision, submission.request.content, submission.request.moves, formatting, submission.preview, submission.signal)
 			: submission.request.kind === "continuation"
 				? await startConversationContinuationGeneration(submission.conversationId, revision, formatting, submission.preview, submission.signal)
-				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal);
+				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal, submission.request.reroll);
 		submission.signal.throwIfAborted();
 		if (outcome.outcome === "available") return { target: outcome.value, sentRevision: revision };
 		throw new Error(outcome.outcome === "not-found"
@@ -139,7 +149,7 @@ export function useAssemblyController({
 		if (submission.signal.aborted) return;
 		session.current.starting = false;
 		if (closeAssembly) setAssemblyRequest(null);
-		if (submission.clearDraft) setDraft("");
+		if (submission.clearComposer) takeComposer();
 		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
 		void refreshStory(submission.conversationId, submission.signal).catch(() => null).then(() => {
 			if (!submission.signal.aborted) generationStart.accepted(submission.startId, target);
@@ -150,8 +160,7 @@ export function useAssemblyController({
 		mutationFn: issueGeneration,
 		onSuccess: (target, submission) => finishStart(submission, target, false),
 		onError: (error, submission) => {
-			const { restoreDraft } = submission;
-			if (restoreDraft !== undefined) setDraft((draft) => draft === "" ? restoreDraft : draft);
+			submission.restoreComposer?.();
 			if (submission.signal.aborted) return;
 			session.current.starting = false;
 			generationStart.settle(submission.startId);
@@ -182,11 +191,11 @@ export function useAssemblyController({
 		error: previewError ?? acceptError,
 	};
 
-	const openPromptPlanPreview = (request: GenerationPreviewBody) => {
+	const openPromptPlanPreview = (seat: number | null, request: GenerationPreviewBody) => {
 		if (conversation === null || assemblyRequest !== null) return;
 		client.removeQueries({ queryKey: ["assembly-preview"] });
 		setAcceptError(null);
-		setAssemblyRequest({ conversationId: conversation.id, request });
+		setAssemblyRequest({ conversationId: conversation.id, seat, request });
 	};
 
 	const refreshPromptPlanPreview = () => {
@@ -211,33 +220,34 @@ export function useAssemblyController({
 		const currentPreview = preview.data;
 		if (session.current.starting || assemblyRequest === null || currentPreview === undefined || (phase !== "ready" && phase !== "failed")) return;
 		session.current.starting = true;
-		const { conversationId, request } = assemblyRequest;
+		const { conversationId, seat, request } = assemblyRequest;
 		const startId = generationStart.begin();
 		setAcceptError(null);
-		setLastGeneration({ conversationId, request });
+		setLastGeneration(assemblyRequest);
 		accept.mutate({
 			signal: session.current.cancellation.signal,
 			startId,
 			conversationId,
+			seat,
 			request,
-			clearDraft: request.kind === "send",
+			clearComposer: request.kind === "send",
 			preview: { previewId: currentPreview.previewId, promptPlan: currentPreview.promptPlan },
 		});
 	};
 
-	const startWithoutPreview = (request: GenerationPreviewBody) => {
+	const startWithoutPreview = (seat: number | null, request: GenerationPreviewBody) => {
 		if (session.current.starting || conversation === null || assemblyRequest !== null) return;
 		session.current.starting = true;
 		const conversationId = conversation.id;
 		const startId = generationStart.begin();
 		setDirectStartError(null);
-		setLastGeneration({ conversationId, request });
+		setLastGeneration({ conversationId, seat, request });
 		dispatchStory({ type: "generation-requested", request });
-		if (request.kind === "send") setDraft("");
-		startDirect.mutate({ signal: session.current.cancellation.signal, startId, conversationId, request, clearDraft: false, restoreDraft: request.kind === "send" ? draft : undefined });
+		const restoreComposer = request.kind === "send" ? takeComposer() : undefined;
+		startDirect.mutate({ signal: session.current.cancellation.signal, startId, conversationId, seat, request, clearComposer: false, restoreComposer });
 	};
 
-	const requestGeneration = (request: GenerationPreviewBody) => {
+	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
 		if (preparing || conversation === null) return;
 		const conversationId = conversation.id;
 		const signal = session.current.cancellation.signal;
@@ -245,8 +255,8 @@ export function useAssemblyController({
 		setDirectStartError(null);
 		void ensureLatest().then(() => {
 			if (signal.aborted || Number(activeChatIdRef.current) !== conversationId) return;
-			if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(request);
-			else startWithoutPreview(request);
+			if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(seat, request);
+			else startWithoutPreview(seat, request);
 		}).catch(() => { if (!signal.aborted) setDirectStartError("The latest Messages could not be loaded."); })
 			.finally(() => { if (!signal.aborted) setPreparing(false); });
 	};
@@ -256,7 +266,7 @@ export function useAssemblyController({
 
 	const retryLastGeneration = () => {
 		if (!canRetry || lastGeneration === null) return;
-		requestGeneration(lastGeneration.request);
+		requestGeneration(lastGeneration.request, lastGeneration.seat);
 	};
 
 	const conversationSwitched = () => {

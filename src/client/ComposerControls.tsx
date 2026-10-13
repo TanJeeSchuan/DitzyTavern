@@ -2,6 +2,8 @@ import { NotebookPen, Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { boxTitle, boxWindow, windowBoxIds, type WindowBoxId } from "./box-windows/registry";
+import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
@@ -17,7 +19,8 @@ import { ModelSelector } from "./ModelSelector";
 // only Cast Participants can be referenced.
 
 interface ComposerControlSelectorsProps {
-	onAuthorNote: () => void;
+	onOpenPanel: (panel: "author-note") => void;
+	onOpenWindow: (box: WindowBoxId) => void;
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	disabledReason?: string;
@@ -26,7 +29,8 @@ interface ComposerControlSelectorsProps {
 }
 
 export function ComposerControlSelectors({
-	onAuthorNote,
+	onOpenPanel,
+	onOpenWindow,
 	conversation,
 	disabled = false,
 	disabledReason,
@@ -110,7 +114,12 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			<Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={onAuthorNote}><NotebookPen aria-hidden="true" /></Button>
+			<BoxManager conversation={conversation} disabled={disabled} onConversationChange={onConversationChange} />
+			{conversation.boxes["author-note"] === "enabled" && <Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={() => onOpenPanel("author-note")}><NotebookPen aria-hidden="true" /></Button>}
+			{windowBoxIds.filter((box) => conversation.boxes[box] === "enabled").map((box) => {
+				const Icon = boxWindow(box).icon;
+				return <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={() => onOpenWindow(box)}><Icon aria-hidden="true" /></Button>;
+			})}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}

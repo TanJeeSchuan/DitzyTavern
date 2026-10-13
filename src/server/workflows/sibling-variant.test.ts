@@ -177,7 +177,8 @@ describe("Historical sibling Variant generation", () => {
 				content: "I am Maren Voss, speaking to Writer.",
 			},
 		]);
-		expect(JSON.stringify(plans[0])).not.toContain("Juno");
+		// The Phone names every Cast member it can text, Juno included.
+		expect(JSON.stringify(plans[0]?.blocks.filter((block) => block.kind !== "box:phone"))).not.toContain("Juno");
 
 		// The sibling lands on the target Message; Control stays on Juno.
 		const message = committed.messages.find(

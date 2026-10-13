@@ -336,7 +336,7 @@ describe("Memory recall in Generation preparation", () => {
 			memorySources: { messageIds: number[]; variantIds: number[] };
 		};
 		const memoryText = "Maren now holds Writer's key. (attribution: Narrated event)";
-		expect(preview.promptPlan.blocks).toContainEqual({ kind: "memory", role: "system", content: memoryText });
+		expect(preview.promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: memoryText });
 		expect(preview.memoryActivation).toMatchObject({
 			state: "ready",
 			semanticShortlistCount: 1,
@@ -353,7 +353,7 @@ describe("Memory recall in Generation preparation", () => {
 		const editedMemoryText = "Maren still has the key. The writer corrected this one attempt.";
 		const editedPlan: PromptPlan = {
 			...preview.promptPlan,
-			blocks: preview.promptPlan.blocks.map((block) => block.kind === "memory" ? { ...block, content: editedMemoryText } : block),
+			blocks: preview.promptPlan.blocks.map((block) => block.kind === "box:memory" ? { ...block, content: editedMemoryText } : block),
 		};
 		const accepted = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -524,7 +524,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await failed.json()).toMatchObject({ memoryActivation: { state: "source-failed", readyRecordCount: 0, failedSourceCount: 1, candidates: [] } });
 		const routes = createConversationRoutes(database);
 		const preset = await readPreset(routes, conversation.id);
-		const memoryBlock = preset.slots.find((slot) => slot.reference === "memory");
+		const memoryBlock = preset.slots.find((slot) => slot.reference === "box:memory");
 		if (!memoryBlock) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memoryBlock.id, false));
 		const disabled = await preview();

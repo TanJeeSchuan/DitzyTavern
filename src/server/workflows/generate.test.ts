@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -102,6 +102,9 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("preview compiles the plan with ordered blocks and participant context", async () => {
+		// @approved This assertion pins the World Clock block in the Default recipe.
+		insertBox(database, conversationId, "world-clock");
+		insertBox(database, conversationId, "phone");
 		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
@@ -115,6 +118,8 @@ describe("Generation runtime behavior", () => {
 			"example-dialogue",
 			"history",
 			"history",
+			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 		// Identities expand owner-relative: self is the Definition owner, and

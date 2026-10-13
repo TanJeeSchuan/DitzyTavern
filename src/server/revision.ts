@@ -22,6 +22,7 @@ import type {
 import type { MemorySettingsPayload } from "../shared/contract/memory-settings";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
+import type { BoxDecisionSettings } from "../shared/contract/box";
 
 // @approved
 //  The aggregate → payload map: each state-bearing aggregate declares exactly
@@ -29,7 +30,7 @@ import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic
 //  through the shared wire contracts the 409 schemas declare. Only the prose
 //  "generation" envelope carries no state (`undefined`).
 export type CurrentByAggregate = {
-	settings: ConnectionSettingsPayload | MemorySettingsPayload | SemanticTriggerSettingsPayload | ConversationMemoryAllowance;
+	settings: ConnectionSettingsPayload | MemorySettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings | ConversationMemoryAllowance;
 	preset: PromptPresetSummary;
 	lorebook: Lorebook;
 	"lore-attachment": LorebookOwnerAttachmentState;

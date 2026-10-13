@@ -98,7 +98,7 @@ describe("Chat import transport adapters", () => {
 		const read = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
 		expect(read.status).toBe(200);
 		expect(await read.json()).toMatchObject({
-			authorNote: '  *Keep the story quiet.* {{self}} guides {{other}}; {{self}} listens to {{other}}.\n',
+			boxSetups: { "author-note": '  *Keep the story quiet.* {{self}} guides {{other}}; {{self}} listens to {{other}}.\n' },
 			revision: 0,
 		});
 	});
@@ -118,7 +118,7 @@ describe("Chat import transport adapters", () => {
 		const { receipt } = await details.json();
 		expect(preview.warnings).toEqual(receipt.warnings);
 		expect(committed.receipt.warnings).toEqual(receipt.warnings);
-		return { authorNote: committed.conversation.authorNote, warnings: receipt.warnings };
+		return { authorNote: committed.conversation.boxSetups["author-note"], warnings: receipt.warnings };
 	};
 
 	test("maps imported participant macros regardless of case", async () => {

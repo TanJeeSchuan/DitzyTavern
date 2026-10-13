@@ -51,6 +51,7 @@ describe("Generation Stop route mapping", () => {
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
 		acceptConversationTailGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -66,6 +67,7 @@ describe("Generation Stop route mapping", () => {
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
 		acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			messageId,
 			timestamp,

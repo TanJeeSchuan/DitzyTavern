@@ -1,0 +1,1 @@
+ALTER TABLE `character_data` ADD `revision` integer DEFAULT 0 NOT NULL;

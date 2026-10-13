@@ -1,4 +1,5 @@
 import { createConversation } from "../conversation";
+import { insertBox } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -61,9 +62,8 @@ export interface CapturedRequest {
 export const createChat = (
 	database: Database,
 	names: { name?: string; human?: string; model?: string } = {},
-) =>
-	createConversation(database, {
-		authorNote: "",
+) => {
+	const conversation = createConversation(database, {
 		name: names.name ?? "Preset Chat",
 		participants: [
 			{
@@ -83,6 +83,19 @@ export const createChat = (
 		],
 		control: { human: 0, model: 1 },
 	});
+	// @approved
+	// The prompt-preset suites assert the World Clock line, so the
+	// fixture Chat starts with its Clock on.
+	insertBox(database, conversation.id, "world-clock");
+	insertBox(database, conversation.id, "phone");
+	return conversation;
+};
+
+// @approved
+// Each Box turned on lands right after history: the Author Note at creation,
+// then the fixture Chat's World Clock and Phone. Memory sits before history
+// in the Default recipe already.
+export const chatBoxBlocks = ["box:phone", "box:world-clock", "box:author-note"] as const;
 
 export const withProfile = (database: Database) => {
 	const settings = createConnectionSettingsModule(database, { masterKey: key });

@@ -14,7 +14,7 @@ import { captureMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "../mem
 import { tokenxEstimator } from "../prompt-compiler";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { resolveDecisionSelection } from "../decision-model";
+import { requestDecisions, resolveDecisionSelection } from "../decision-model";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createChat } from "./prompt-preset-test-fixtures";
 import { startMemoryWorker } from "../memory";
@@ -181,11 +181,11 @@ test("recall accepts score answers without confidence or legend and reports the 
 	expect(snapshot.activation).toMatchObject({ decisionProfileName: "OpenRouter Decisions", decisionModel: "typesafe/jev-1.13", decisionConfigured: true, scanTruncated: true });
 	expect(tokenxEstimator(JSON.stringify({ scene: snapshot.activation.scene }))).toBeLessThanOrEqual(2000);
 	const candidate: MemoryRecallCandidateRecord = { identity: "1:1:1:0", messageId: 1, variantId: 1, collectionRevision: 1, claimIndex: 0, ownership: "automatic", sourceChanged: false, ...extracted, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1, relevance: null, relevanceScore: null, admission: "request-limit" };
-	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: resolveDecisionSelection(database, settings)!, fetch: async (_url, init) => {
+	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: resolveDecisionSelection(database, settings)!, decide: (request) => requestDecisions({ ...request, fetch: async (_url, init) => {
 		const body = JSON.parse(String(init?.body));
 		expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(2000);
 		return Response.json({ answers: { "candidate_1:1:1:0_relevance": { type: "score", score: 2, probabilities: { 0: 0.01, 1: 0.02, 2: 0.9, 3: 0.02 }, provider: "Clef" } }, usage: { cost: 0.01 } });
-	} });
+	} }) });
 	expect(result).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
 });
 
@@ -260,7 +260,7 @@ test("the preparation fingerprint excludes both Memory and Lore Decision Model c
 	memory.apply({ ...memory.get(), ...memorySelection, expectedRevision: memory.get().revision });
 	const conversation = createChat(database);
 	const snapshot = prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, connection: null, target: { kind: "send", content: "A ship arrives." } });
-	expect(snapshot.memory).toMatchObject({ kind: "ready", decision: { credential: memoryCredential } });
+	expect(snapshot.boxes.some((box) => box.reference === "box:memory")).toBe(true);
 	expect(snapshot.lore.sources?.semanticSettings).toMatchObject({ kind: "ready", decision: { credential: loreCredential } });
 	const fingerprint = generationPreparationFingerprint(snapshot);
 	expect(fingerprint).not.toContain(memoryCredential);

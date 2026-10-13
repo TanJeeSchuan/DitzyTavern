@@ -22,13 +22,13 @@ const defaultRecipe: CompilePromptInput["recipe"] = [
 	{ reference: "model-scenario", enabled: true, role: "system" },
 	{ reference: "model-example-dialogue", enabled: true, role: "user" },
 	{ reference: "lore", enabled: true, role: "system" },
-	{ reference: "memory", enabled: true, role: "system" },
+	{ reference: "box:memory", enabled: true, role: "system", content: "" },
 	{ reference: "history", enabled: true },
 	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
 
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
-	authorNote: "",
+	boxes: {},
 	recipe: defaultRecipe,
 	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	human: {
@@ -86,7 +86,7 @@ describe("Prompt compiler", () => {
 	test("omits an empty Memory slot without changing selected-history compilation", () => {
 		const plan = compilePrompt(source({
 			recipe: [
-				{ reference: "memory", enabled: true, role: "system" },
+				{ reference: "box:memory", enabled: true, role: "system", content: "" },
 				{ reference: "history", enabled: true },
 			],
 			context: [{ kind: "message", speakerName: "Writer", content: "Selected history remains.", role: "human" }],
@@ -796,3 +796,19 @@ const emptyChannels = {
 	exampleDialogue: "",
 	postHistoryInstruction: "",
 };
+
+describe("Box blocks", () => {
+	const recipe: CompilePromptInput["recipe"] = [
+		{ reference: "box:mood", enabled: true, role: "system", content: "Scene mood for {{other}}:" },
+		{ reference: "box:thought", enabled: true, role: "system", content: "Write thoughts as <thought>…</thought>." },
+	];
+	const contents = (boxes: CompilePromptInput["boxes"]) => compilePrompt(source({ recipe, boxes })).blocks.map((block) => block.content);
+
+	test("renders the expanded instructions, then the Box's items", () => {
+		expect(contents({ "box:mood": [{ text: "tense", priority: 100, pinned: true, index: 0 }] })).toEqual(["Scene mood for Maren Voss:\ntense"]);
+	});
+
+	test("renders nothing for a Box with no items unless it always renders", () => {
+		expect(contents({ "box:mood": [], "box:thought": [] })).toEqual(["Write thoughts as <thought>…</thought>."]);
+	});
+});

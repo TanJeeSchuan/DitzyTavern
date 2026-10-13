@@ -14,6 +14,7 @@ import {
 	addBlock,
 	captureModelFetch,
 	completeGeneration,
+	chatBoxBlocks,
 	createChat,
 	duplicateBlock,
 	key,
@@ -31,6 +32,8 @@ import {
 	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
+
+const phoneItem = "Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.\nWriter has a phone and can text Maren.";
 
 // @approved
 //  The owning module guards a move target the transport schema cannot
@@ -91,11 +94,11 @@ describe("Prompt Preset stored contract boundary", () => {
 	});
 
 	test("enforces one Memory block at the persistence boundary, including disabled blocks", () => {
-		const memory = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "memory");
+		const memory = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "box:memory");
 		if (memory === undefined) throw new Error("The Default recipe is missing its Memory block.");
 		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${memory.id}`);
 		expect(() => database.exec(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'memory', 1, 'system')",
+			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role, content) VALUES (1, 99, 'box:memory', 1, 'system', '')",
 		)).toThrow("UNIQUE constraint failed");
 	});
 });
@@ -122,9 +125,9 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -208,6 +211,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -217,6 +222,8 @@ describe("Prompt Preset transport", () => {
 			"scenario",
 			"example-dialogue",
 			"history",
+			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 
@@ -264,10 +271,10 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -291,10 +298,10 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-scenario", true],
 		]);
 
@@ -317,6 +324,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -336,10 +345,10 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 		]);
 	});
 
@@ -395,6 +404,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -423,9 +434,9 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");
@@ -471,10 +482,10 @@ describe("Prompt Preset transport", () => {
 	test("rejects adding a second Memory block after disabling the existing one", async () => {
 		const conversation = createChat(database);
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
-		const memory = slotOf(preset, "memory");
+		const memory = slotOf(preset, "box:memory");
 		if (memory === undefined) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memory.id, false));
-		const response = await addBlock(database, preset.id, "memory");
+		const response = await addBlock(database, preset.id, "box:memory");
 		expect(response.status).toBe(422);
 		expect(await response.json()).toMatchObject({ outcome: "invalid" });
 	});

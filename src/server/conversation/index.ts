@@ -132,7 +132,7 @@ export { createConversation } from "./create";
 export { conversationExists, readConversationSummary, readConversationSummaryFromConnection } from "./snapshot";
 export { readConversationGenerationSettings, readConversationGenerationSettingsFromConnection } from "./generation-settings";
 export { readConversationPromptPreset } from "./prompt-preset";
-export { readSelectedHistory, readSelectedHistoryFromConnection } from "./selected-history";
+export { readSelectedHistory, readSelectedHistoryFromConnection, readSelectedVariantIdsFromConnection } from "./selected-history";
 export { readConversationData, readConversationDataBatch } from "./read-data";
 export { editMacroVariables, readMacroVariables } from "./macro-variables";
 export { stopConversationGeneration, stopConversationGenerations } from "./commands/active-generation";

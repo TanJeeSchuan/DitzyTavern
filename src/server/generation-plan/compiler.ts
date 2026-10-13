@@ -16,7 +16,6 @@ import {
 	budgetPromptPlan,
 	compilePrompt,
 	PromptBudgetExceededError,
-	toEstimationTranscript,
 	tokenxEstimator,
 	type GenerationIntent,
 	type PromptPlan,
@@ -24,7 +23,7 @@ import {
 	type PromptLoreEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
-import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
+import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
@@ -33,8 +32,13 @@ import type {
 	GenerationConnectionFacts,
 	GenerationPlan,
 } from "./types";
+import { Value } from "@sinclair/typebox/value";
+import { memoryActivationRecord, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { renderMemoryClaim } from "../../shared/memory-text";
-import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import type { BoxAdmission } from "../box/contract";
+import { admitDynamicBlocks, estimateDynamicBlockTokens, type LoreBudgetDecision } from "./admission";
+import type { BoxItems } from "../box/registry";
+export { estimateDynamicBlockTokens };
 
 /** @approved
  * The Continuation intent one configured strategy produces. Instruction
@@ -139,30 +143,23 @@ export const compileGenerationPlan = (
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
-	const memorySlotEnabled = hasEnabledMemorySlot(input.recipe);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
-	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity)) : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;
-	const memoryAllowance = input.memoryActivation?.allowance ?? 2_048;
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
 		throw new Error("Lore allowance must be a non-negative whole number.");
-	}
-	if (!Number.isInteger(memoryAllowance) || memoryAllowance < 0) {
-		throw new Error("Memory allowance must be a non-negative whole number.");
 	}
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
-		memory: readonly MemoryRecallCandidateRecord[],
+		boxes: BoxItems,
 	): PromptPlan => {
 		const compiled = compilePrompt({
-			authorNote: input.authorNote,
+			boxes,
 			human: input.human,
 			model: input.model,
 			context,
 			recipe: input.recipe,
 			lore,
-			memory,
 			attempt,
 			images: input.images,
 		});
@@ -192,19 +189,18 @@ export const compileGenerationPlan = (
 	const admissions = admitDynamicBlocks({
 		recipe: input.recipe,
 		lore: candidates,
-		memory: memoryCandidates,
+		boxes: input.boxes,
 		loreAllowance,
-		memoryAllowance,
 		protectedContext,
 		compile: compileWith,
+		expansions: attempt.state.expansionCache,
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
 		estimator: input.estimator ?? tokenxEstimator,
 	});
-	const selectedMemory = admissions.memory.map(({ candidate, reason }) => ({ ...candidate, admission: reason }));
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan =>
-		compileWith(context, admissions.lore.selected, selectedMemory.filter((candidate) => candidate.admission === "admitted"));
+		compileWith(context, admissions.lore.selected, admissions.boxes);
 	const budget = budgetPromptPlan({
 		plan: compile(input.context),
 		compile,
@@ -221,41 +217,15 @@ export const compileGenerationPlan = (
 		loreActivation: input.loreActivation === undefined || input.loreActivation === null
 			? null
 			: withLoreBudgetEvidence(input.loreActivation, candidates, admissions.lore.decisions, loreAllowance),
-		memoryActivation: input.memoryActivation == null
-			? null
-			: withMemoryBudgetEvidence(input.memoryActivation, selectedMemory, budget.plan),
+		memoryActivation: memoryBudgetEvidence(
+			input.boxes["box:memory"]?.trace, admissions.decisions["box:memory"] ?? new Map(),
+			budget.plan.blocks.find((block) => block.kind === "box:memory")?.content ?? "",
+		),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,
 		),
-	};
-};
-
-export const estimateDynamicBlockTokens = (
-	kind: "lore" | "memory",
-	role: "system" | "human" | "model",
-	content: string,
-	estimator: (transcript: string) => number = tokenxEstimator,
-): number => content.length === 0
-	? 0
-	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
-
-const withMemoryBudgetEvidence = (
-	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,
-	candidates: readonly MemoryRecallCandidateRecord[],
-	plan: PromptPlan,
-): NonNullable<CompileGenerationPlanInput["memoryActivation"]> => {
-	const memoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
-	const compiledByIdentity = new Map(candidates.map((candidate) => [candidate.identity, candidate]));
-	return {
-		...record,
-		candidates: record.candidates.map((candidate) => {
-			const compiled = compiledByIdentity.get(candidate.identity);
-			return compiled === undefined ? candidate : { ...candidate, ...compiled };
-		}),
-		automaticMemoryText: record.automaticMemoryText || memoryText,
-		finalMemoryText: memoryText,
 	};
 };
 
@@ -282,6 +252,17 @@ const withLoreBudgetEvidence = (
 	return { ...record, evidence: [...evidence, admissionEvidence] };
 };
 
+const memoryBudgetEvidence = (trace: GenerationJsonValue | undefined, decisions: ReadonlyMap<string, BoxAdmission>, text: string): MemoryActivationRecord | null => {
+	if (trace === undefined) return null;
+	const record = Value.Parse(memoryActivationRecord, trace);
+	return {
+		...record,
+		candidates: record.candidates.map((candidate) => candidate.admission === "admitted" ? { ...candidate, admission: decisions.get(renderMemoryClaim(candidate)) ?? candidate.admission } : candidate),
+		automaticMemoryText: record.automaticMemoryText || text,
+		finalMemoryText: text,
+	};
+};
+
 const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {
 	if (left.always !== right.always) return left.always === true ? -1 : 1;
 	const priority = (right.priority ?? 0) - (left.priority ?? 0);
@@ -290,111 +271,6 @@ const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => 
 	if (book !== 0) return book;
 	return (left.entryOrder ?? 0) - (right.entryOrder ?? 0);
 });
-
-type LoreBudgetDecision = {
-	candidate: PromptLoreEntry;
-	reason: "admitted" | "allowance" | "oversized" | "context-limit";
-};
-
-type LoreAdmission = {
-	selected: PromptLoreEntry[];
-	decisions: LoreBudgetDecision[];
-};
-
-type MemoryBudgetDecision = {
-	candidate: MemoryRecallCandidateRecord;
-	reason: MemoryRecallCandidateRecord["admission"];
-};
-
-type DynamicBlockAdmission = {
-	lore: LoreAdmission;
-	memory: MemoryBudgetDecision[];
-};
-
-type DynamicBlockBudgetFailure = "oversized" | "allowance" | "context-limit";
-
-const admitDynamicBlocks = (input: {
-	recipe: CompileGenerationPlanInput["recipe"];
-	lore: readonly PromptLoreEntry[];
-	memory: readonly MemoryRecallCandidateRecord[];
-	loreAllowance: number;
-	memoryAllowance: number;
-	compile: (
-		context: readonly PromptContextEntry[],
-		lore: readonly PromptLoreEntry[],
-		memory: readonly MemoryRecallCandidateRecord[],
-	) => PromptPlan;
-	protectedContext: readonly PromptContextEntry[];
-	contextLimit: number;
-	responseBudget: number;
-	safetyAllowance: number;
-	estimator: (transcript: string) => number;
-	}): DynamicBlockAdmission => {
-	const loreSelected: PromptLoreEntry[] = [];
-	const loreDecisions: LoreBudgetDecision[] = [];
-	const memorySelected: MemoryRecallCandidateRecord[] = [];
-	const memoryDecisions: MemoryBudgetDecision[] = [];
-	const seenMemoryText = new Set<string>();
-	const cost = (plan: PromptPlan) => Math.ceil(input.estimator(toEstimationTranscript(plan)));
-	const dynamicBlockCost = (kind: "lore" | "memory", role: "system" | "human" | "model", content: string) =>
-		estimateDynamicBlockTokens(kind, role, content, input.estimator);
-	const compileTrial = (lore: readonly PromptLoreEntry[], memory: readonly MemoryRecallCandidateRecord[]) =>
-		input.compile(input.protectedContext, lore, memory.map((candidate) => ({ ...candidate, admission: "admitted" })));
-	const budgetFailure = (
-		kind: "lore" | "memory",
-		role: "system" | "human" | "model",
-		allowance: number,
-		content: string,
-		nextContent: string,
-		trialLore: readonly PromptLoreEntry[],
-		trialMemory: readonly MemoryRecallCandidateRecord[],
-	): DynamicBlockBudgetFailure | null => {
-		if (dynamicBlockCost(kind, role, content) > allowance) return "oversized";
-		if (dynamicBlockCost(kind, role, nextContent) > allowance) return "allowance";
-		const estimate = cost(compileTrial(trialLore, trialMemory));
-		return estimate + input.responseBudget + input.safetyAllowance > input.contextLimit ? "context-limit" : null;
-	};
-	for (const slot of input.recipe) {
-		if (!slot.enabled || (slot.reference !== "lore" && slot.reference !== "memory")) continue;
-		const role = slot.role === "system" ? "system" : slot.role === "user" ? "human" : "model";
-		if (slot.reference === "lore") {
-			for (const candidate of input.lore) {
-				const nextContent = [...loreSelected.map((entry) => entry.content), candidate.content].filter((text) => text.length > 0).join("\n\n");
-				const reason = budgetFailure("lore", role, input.loreAllowance, candidate.content, nextContent, [...loreSelected, candidate], memorySelected);
-				if (reason !== null) {
-					loreDecisions.push({ candidate, reason });
-					continue;
-				}
-				loreSelected.push(candidate);
-				loreDecisions.push({ candidate, reason: "admitted" });
-			}
-		} else {
-			for (const candidate of input.memory) {
-				if (candidate.admission === "request-limit" || candidate.admission === "not-retained") {
-					memoryDecisions.push({ candidate, reason: candidate.admission });
-					continue;
-				}
-				const content = renderMemoryClaim(candidate);
-				if (seenMemoryText.has(content)) {
-					memoryDecisions.push({ candidate, reason: "duplicate-rendering" });
-					continue;
-				}
-				seenMemoryText.add(content);
-				const nextContent = [...memorySelected.map(renderMemoryClaim), content].join("\n\n");
-				const reason = budgetFailure("memory", role, input.memoryAllowance, content, nextContent, loreSelected, [...memorySelected, candidate]);
-				memoryDecisions.push({ candidate, reason: reason ?? "admitted" });
-				if (reason !== null) {
-					continue;
-				}
-				memorySelected.push(candidate);
-			}
-		}
-	}
-	return {
-		lore: { selected: loreSelected, decisions: loreDecisions },
-		memory: memoryDecisions,
-	};
-};
 
 /** @approved
  * Enforces the budget decision before an attempt executes. Inspection

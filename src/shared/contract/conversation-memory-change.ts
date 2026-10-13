@@ -1,3 +1,5 @@
+import type { BoxId } from "./box";
+
 // @approved
 //  Cross-domain contract between Conversation and Memory: the deep
 // Conversation module reports what one committed write changed, and Memory
@@ -16,4 +18,6 @@ export interface ConversationMemoryChange {
 	readonly touchedVariantIds: readonly number[];
 	/** Variant rows deleted by this write; Memory abandons their in-flight work. */
 	readonly removedVariantIds: readonly number[];
+	/** A Box this write stopped running in the Chat: its background work is abandoned. */
+	readonly stoppedBox?: BoxId;
 }

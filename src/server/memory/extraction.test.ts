@@ -12,7 +12,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createMemorySettingsModule } from "./settings";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
-import type { ResolvedDecisionModel } from "../decision-model";
+import { requestDecisions, type ResolvedDecisionModel } from "../decision-model";
 const selection: ResolvedDecisionModel = { profileName: "Decisions", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 };
 import { extractAndJudgeMemorySource } from "./extraction";
 
@@ -141,7 +141,7 @@ describe("Decision Model Memory judgments", () => {
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			"candidate_1:1:1:1:0_relevance": { type: "score", score: 1.56, legend: { 0: "Irrelevant", 1: "Incidental", 2: "Useful", 3: "Central" }, probabilities: { 0: 0.42, 1: 0, 2: 0.18, 3: 0.4 }, confidence: 0.1 },
 		} });
-		const [judged] = await judgeMemoryRecallCandidates({ candidates: [record], scene: "Maren asks about the key.", relevanceMinimum: 1.5, selection, fetch: fakeFetch });
+		const [judged] = await judgeMemoryRecallCandidates({ candidates: [record], scene: "Maren asks about the key.", relevanceMinimum: 1.5, selection, decide: (request) => requestDecisions({ ...request, fetch: fakeFetch }) });
 		expect(judged).toMatchObject({ relevance: "useful", relevanceScore: 1.56, admission: "admitted" });
 	});
 });

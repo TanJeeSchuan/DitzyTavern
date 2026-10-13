@@ -52,6 +52,7 @@ describe("explicit Conversation Generation Stop", () => {
 
 	const acceptTail = (input: ReturnType<typeof setup>, content = "Try this.") =>
 		acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -90,6 +91,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(stopped.messages).toHaveLength(3);
 		expect(variant.content).toBe("Partial answer.");
 		expect(variant.data).toEqual([
+			{ namespace: "box", key: "seed", value: expect.any(String) },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
@@ -159,6 +161,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptConversationSiblingGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -198,6 +201,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(variants).toHaveLength(2);
 		expect(variants.find((variant) => variant.selected)?.content).toBe("Alternative answer.");
 		expect(variants[1]?.data).toEqual([
+			{ namespace: "box", key: "seed", value: "test-generation-seed" },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);
@@ -234,6 +238,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		const accept = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp,

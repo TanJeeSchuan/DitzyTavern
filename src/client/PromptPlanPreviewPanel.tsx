@@ -39,7 +39,7 @@ export function PromptPlanPreviewPanel({
 		? null
 		: memoryActivationWithFinalText(
 			preview.memoryActivation,
-			preview.promptPlan.blocks.find((block) => block.kind === "memory")?.content ?? "",
+			preview.promptPlan.blocks.find((block) => block.kind === "box:memory")?.content ?? "",
 		);
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">

@@ -5,20 +5,27 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
+import { boxDescriptors, type BoxDecisionSettings, type DigestBoxId } from "../../../shared/contract/box";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
-/** @approved The Semantic Trigger settings the Connections list previews. */
-type SemanticTriggerSettingsPreview = { settings: SemanticTriggerSettings | null; loading: boolean };
+/** @approved The Decision Model settings the Connections list previews. */
+type SettingsPreview<S> = { settings: S | null; loading: boolean };
 
 const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
-export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger }: {
+const listOf = (items: readonly string[], conjunction: "and" | "or") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;
+
+export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision }: {
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
-	semanticTriggers: SemanticTriggerSettingsPreview;
+	semanticTriggers: SettingsPreview<SemanticTriggerSettings>;
 	onOpenSemanticTrigger: () => void;
+	boxDecisions: readonly { box: DigestBoxId; editor: SettingsPreview<BoxDecisionSettings> }[];
+	onOpenBoxDecision: (box: DigestBoxId) => void;
 }) {
+	const boxes = boxDecisions.map(({ box }) => `the ${boxDescriptors[box].label}`);
+	const roles = ["Memory", "Semantic Triggers", ...boxes];
 	const pending = controller.pendingDeletionProfile;
 	const feedback = controller.error ?? controller.notice;
 	const embeddingsPreset = controller.presets.find((preset) => preset.profile.apiFormat === "embeddings");
@@ -58,7 +65,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<h3 id="decisions-title">Decision Models</h3>
 					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
 				</div>
-				<p>Judge Memory and Semantic Triggers. Each role chooses its own model.</p>
+				<p>Judge Memory and Semantic Triggers, and read passages for {listOf(boxes, "and")}. Each role chooses its own model.</p>
 				<ProfileRows
 				label="Decision Model connections"
 				profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")}
@@ -66,18 +73,25 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				describe={profile => hostOf(profile.requestUrl)}
 				badge={() => null}
 				empty={
-					<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory or Semantic Triggers.</EmptyProfiles>
+					<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in {listOf(roles, "or")}.</EmptyProfiles>
 				}
 			/>
 			</section>
 			<section aria-labelledby="semanticTriggers-title">
 				<h3 id="semanticTriggers-title">Semantic Triggers</h3>
 				<p>Chooses the Decision Model and threshold for Lore matching.</p>
-				<button type="button" className="flex w-full items-center justify-between gap-3 rounded-xl border border-border text-left hover:bg-muted/50" onClick={onOpenSemanticTrigger}>
-					<SemanticTriggerSummary semanticTriggers={semanticTriggers} />
-					<ChevronRight className="mr-4 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-				</button>
+				<DecisionSummary preview={semanticTriggers} name="Semantic Trigger" onOpen={onOpenSemanticTrigger}
+					describe={(settings) => settings.decisionProfileId === null ? "Keyword-only matching" : `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`} />
 			</section>
+			{boxDecisions.map(({ box, editor }) => {
+				const { label, decision } = boxDescriptors[box];
+				return <section key={box} aria-labelledby={`${box}-title`}>
+					<h3 id={`${box}-title`}>{label}</h3>
+					<p>{decision.summary}</p>
+					<DecisionSummary preview={editor} name={label} onOpen={() => onOpenBoxDecision(box)}
+						describe={(settings) => settings.decisionProfileId === null ? decision.off : "Decision Model"} />
+				</section>;
+			})}
 
 			<Dialog open={pending !== undefined} onOpenChange={(open) => { if (!open) controller.setPendingDeletionProfileId(null); }}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
@@ -85,7 +99,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 						<DialogTitle>Delete {pending?.displayName}?</DialogTitle>
 						<DialogDescription>
 							{pending?.apiFormat === "system-one"
-								? "Memory and Semantic Triggers using it will need another Decision Model."
+								? `${listOf(roles, "and")} using it will need another Decision Model.`
 								: pending?.apiFormat === "embeddings"
 									? "Memory recall stops until you choose another embedding model."
 									: "Chats using it will need another connection before they can generate."}
@@ -150,25 +164,26 @@ function ProfileRows({ label, profiles, controller, describe, badge, empty }: {
 	);
 }
 
-function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: SemanticTriggerSettingsPreview }) {
-	const { settings } = semanticTriggers;
-	if (settings === null) {
-		return (
-			<span className={rowClass}>
-				<span className="text-[0.86rem] font-semibold">{semanticTriggers.loading ? "Loading…" : "Unavailable"}</span>
-				<span className="text-xs text-muted-foreground">{semanticTriggers.loading ? "Reading Semantic Trigger settings" : "Open to retry"}</span>
-			</span>
-		);
-	}
+function DecisionSummary<S extends { decisionModel: string }>({ preview, name, describe, onOpen }: {
+	preview: SettingsPreview<S>;
+	name: string;
+	describe: (settings: S) => string;
+	onOpen: () => void;
+}) {
+	const { settings } = preview;
 	return (
-		<span className={rowClass}>
-			<span className="truncate font-mono text-[0.8rem] font-semibold">{settings.decisionModel || "Off"}</span>
-			<span className="truncate text-xs text-muted-foreground">
-			{settings.decisionProfileId === null
-				? "Keyword-only matching"
-				: `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`}
-		</span>
-		</span>
+		<button type="button" className="flex w-full items-center justify-between gap-3 rounded-xl border border-border text-left hover:bg-muted/50" onClick={onOpen}>
+			<span className={rowClass}>
+				{settings === null ? <>
+					<span className="text-[0.86rem] font-semibold">{preview.loading ? "Loading…" : "Unavailable"}</span>
+					<span className="text-xs text-muted-foreground">{preview.loading ? `Reading ${name} settings` : "Open to retry"}</span>
+				</> : <>
+					<span className="truncate font-mono text-[0.8rem] font-semibold">{settings.decisionModel || "Off"}</span>
+					<span className="truncate text-xs text-muted-foreground">{describe(settings)}</span>
+				</>}
+			</span>
+			<ChevronRight className="mr-4 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+		</button>
 	);
 }
 

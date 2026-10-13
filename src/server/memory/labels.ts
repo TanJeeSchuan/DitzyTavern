@@ -50,7 +50,7 @@ export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[]
 	claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, state.cast, state.identities, state.merges) }));
 
 export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
-	const author = readSelectedPathForMemory(database, conversationId, messageId)?.find((message) => message.messageId === messageId)?.authorParticipantId;
+	const author = readSelectedPathForMemory(database, conversationId, { messageId, preceding: 0 })?.find((message) => message.messageId === messageId)?.authorParticipantId;
 	if (author === undefined || author === null) return false;
 	const settings = connect(database).select({ identities: conversationMemorySettingsTable.identities }).from(conversationMemorySettingsTable)
 		.where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();

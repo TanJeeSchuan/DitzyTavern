@@ -15,6 +15,8 @@
 @import "./styles/memories.css";
 @import "./styles/connection-settings.css";
 @import "./styles/story.css";
+@import "./styles/box-windows.css";
+@import "./styles/moves.css";
 @import "./styles/responsive.css";
 @import "./styles/cast.css";
 @import "./styles/import-chat.css";

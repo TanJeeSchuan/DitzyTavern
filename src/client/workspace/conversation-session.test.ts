@@ -1,3 +1,4 @@
+import { boxSetups, boxes } from "../test-fixtures/box-setups";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { useCallback, useReducer } from "react";
@@ -11,7 +12,7 @@ const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
 const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: `Chat ${id}`, authorNote: "", cast: [], control: { humanParticipantId: null, modelParticipantId: null },
+	id, revision, name: `Chat ${id}`, boxSetups, boxes, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
 	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
 	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
 		generate: { available: false, reason: "conversation-not-playable" }, swipe: { available: false, reason: "conversation-not-playable" } }, activeGenerations: [],
@@ -21,7 +22,7 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
 	messages: Array.from({ length: 2 }, (_, i) => ({
 		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
 		modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
-		variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
+		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
 	})),
 	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });

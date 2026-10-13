@@ -51,6 +51,7 @@ describe("permanent Lore Activation Records", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -116,6 +117,7 @@ describe("permanent Lore Activation Records", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -178,6 +180,7 @@ describe("permanent Lore Activation Records", () => {
 		const model = created.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -204,6 +207,7 @@ describe("permanent Lore Activation Records", () => {
 
 		const fresh = readTestConversationSnapshot(module, created.id)!;
 		const zeroOutput = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: fresh.revision,
 			timestamp: "2026-09-17T10:00:02Z",

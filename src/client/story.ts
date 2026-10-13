@@ -11,6 +11,7 @@
 // never modified.
 
 import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
+import { sameMoves, type BoxMoves } from "../shared/contract/box-generation";
 
 // @approved
 //  A reading view of one Variant: the stored content plus whether the
@@ -57,6 +58,7 @@ export interface StoryMessage {
 	// @approved
 	//  Index of the persisted selected Variant within `swipes`.
 	activeSwipe: number;
+	moves: ChatHistoryMessage["moves"];
 	swipes: StoryVariant[];
 }
 
@@ -68,7 +70,7 @@ export interface StoryPreviewState {
 }
 
 export type RequestedGeneration =
-	| { kind: "send"; content: string }
+	| { kind: "send"; content: string; moves?: BoxMoves | undefined }
 	| { kind: "continuation" }
 	| { kind: "sibling"; messageId: number };
 
@@ -97,6 +99,10 @@ export interface StoryState {
 	preview: StoryPreviewState | null;
 	// Requested selections by Message id: each Variant shown in place of the persisted selection until its command settles.
 	requestedSelections: ReadonlyMap<number, number>;
+	// @approved
+	//  Requested Moves by Message id: shown in place of the Message's persisted Moves until their command settles, so
+	// a second edit builds on the first.
+	requestedMoves: ReadonlyMap<number, BoxMoves>;
 	// A Generation start the server has not accepted yet, and once it has, its accepted target. A page placing the
 	// target's Variant, or authority showing the Generation ended, retires it.
 	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number; sentRevision: number } | null } | null;
@@ -125,6 +131,11 @@ export type StoryAction =
 	// The select-variant command applied: the persisted selection moves and a matching Requested selection retires.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
 	| { type: "selection-dropped"; messageId: number }
+	| { type: "moves-requested"; messageId: number; moves: BoxMoves }
+	// @approved
+	//  The set-message-moves command applied: the persisted Moves change and matching Requested Moves retire.
+	| { type: "moves-set"; messageId: number; moves: BoxMoves }
+	| { type: "moves-dropped"; messageId: number }
 	| { type: "generation-requested"; request: RequestedGeneration }
 	| { type: "generation-request-accepted"; generationId: number; variantId: number; sentRevision: number }
 	| { type: "generation-request-failed" }
@@ -171,6 +182,7 @@ export const createStoryState = (): StoryState => ({
 	status: "idle",
 	preview: null,
 	requestedSelections: new Map(),
+	requestedMoves: new Map(),
 	requestedGeneration: null,
 	unplacedObservations: [],
 });
@@ -226,6 +238,7 @@ const toStoryMessage = (
 		prior?.swipes.find((entry) => entry.id === variant.id),
 		activeGenerationIds,
 	)),
+	moves: message.moves,
 });
 
 // @approved
@@ -362,6 +375,16 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				: state;
 		case "selection-dropped":
 			return state.requestedSelections.has(action.messageId) ? { ...state, requestedSelections: without(state.requestedSelections, action.messageId) } : state;
+		case "moves-requested":
+			return { ...state, requestedMoves: new Map(state.requestedMoves).set(action.messageId, action.moves) };
+		case "moves-set":
+			return {
+				...state,
+				requestedMoves: sameMoves(state.requestedMoves.get(action.messageId), action.moves) ? without(state.requestedMoves, action.messageId) : state.requestedMoves,
+				messages: state.messages.map((message) => message.id === action.messageId ? { ...message, moves: action.moves } : message),
+			};
+		case "moves-dropped":
+			return state.requestedMoves.has(action.messageId) ? { ...state, requestedMoves: without(state.requestedMoves, action.messageId) } : state;
 		case "generation-requested":
 			return { ...state, requestedGeneration: { request: action.request, accepted: null } };
 		case "generation-request-accepted":
@@ -516,16 +539,25 @@ export const shownVariant = (state: StoryState, message: StoryMessage): StoryVar
 	return message.swipes.find((variant) => variant.id === id);
 };
 
-const without = (selections: ReadonlyMap<number, number>, messageId: number) => {
-	const next = new Map(selections);
+const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number) => {
+	const next = new Map(requested);
 	next.delete(messageId);
 	return next;
 };
 
-// Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text reuses it.
-export const reusesTrailingHumanMessage = (state: StoryState, humanParticipantId: number | null, content: string): boolean => {
+// @approved
+//  The Message the writer sees, with its Requested Moves in place of the persisted ones.
+export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
+	const moves = state.requestedMoves.get(message.id);
+	return moves === undefined ? message : { ...message, moves };
+};
+
+// @approved
+//  Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text and Moves reuses it.
+export const reusesTrailingHumanMessage = (state: StoryState, humanParticipantId: number | null, content: string, moves: BoxMoves | undefined): boolean => {
 	const latest = state.page?.hasNewer ? undefined : state.messages.at(-1);
-	return latest !== undefined && humanParticipantId !== null && latest.authorParticipantId === humanParticipantId && shownVariant(state, latest)?.content === content;
+	return latest !== undefined && humanParticipantId !== null && latest.authorParticipantId === humanParticipantId &&
+		shownVariant(state, latest)?.content === content && sameMoves(shownMessage(state, latest).moves, moves);
 };
 
 export const isPreviewDownstream = (

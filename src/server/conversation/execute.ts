@@ -14,8 +14,12 @@ import {
 	replaceParticipantPrompt,
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
+import { putBoxData } from "./commands/put-box-data";
 import { removeParticipant } from "./commands/remove-participant";
-import { setAuthorNote } from "./commands/set-author-note";
+import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
+import { setBoxSetup } from "./commands/set-box-setup";
+import { setBoxState } from "./commands/set-box-state";
+import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
 import {
 	attachConversationLorebook,
@@ -65,6 +69,7 @@ const handlers = {
 	"create-variant": createVariant,
 	"select-variant": selectVariant,
 	"edit-variant": editVariant,
+	"set-message-moves": setMessageMoves,
 	"delete-variant": deleteVariant,
 	"delete-message": deleteMessage,
 	"add-participant": addParticipant,
@@ -75,11 +80,15 @@ const handlers = {
 	"assign-control": assignControl,
 	"remove-participant": removeParticipant,
 	"put-data": putData,
+	"put-box-data": putBoxData,
 	"delete-data": deleteData,
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
-	"set-author-note": setAuthorNote,
+	"set-box-setup": setBoxSetup,
+	"set-box-state": setBoxState,
+	"set-box-record": setBoxRecord,
+	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,
 	"attach-chat": attachConversationLorebook,
 	"detach-chat": detachConversationLorebook,

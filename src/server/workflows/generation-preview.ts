@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { sameMoves } from "../../shared/contract/box-generation";
 import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,
@@ -151,8 +152,8 @@ export const createGenerationPreviewAsync = async (
 	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
 	store.versions.set(input.conversationId, requestVersion);
 	const target: GenerationTarget = input.kind === "send"
-		? { kind: input.kind, content: input.content }
-		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId } : { kind: input.kind };
+		? { kind: input.kind, content: input.content, moves: input.moves }
+		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
 	const capture = await captureGeneration(database, target, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
@@ -193,9 +194,9 @@ const acceptedEditedPlan = (
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
 	const sourceMemory = record.capture.plan.memoryActivation;
-	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
-	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
-		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
+	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "box:memory");
+	if (sourceMemory !== null && editedMemoryBlock?.kind === "box:memory" &&
+		estimateDynamicBlockTokens("box:memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
 		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
 	}
 	const memoryActivation = sourceMemory === null
@@ -220,7 +221,7 @@ const editedMemoryActivation = (
 	source: MemoryActivationRecord,
 	plan: PromptPlan,
 ): MemoryActivationRecord => {
-	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
+	const finalMemoryText = plan.blocks.find((block) => block.kind === "box:memory")?.content ?? "";
 	return memoryActivationWithFinalText(source, finalMemoryText);
 };
 
@@ -236,6 +237,7 @@ const assertPreviewCurrent = (
 	context: PreviewAcceptanceContext,
 	fingerprint: string,
 	target: GenerationTarget,
+	seed: string,
 ): void => {
 	const input: PrepareGenerationInputs = {
 		database: context.database,
@@ -243,7 +245,7 @@ const assertPreviewCurrent = (
 		connection: context.connection,
 		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
-		target,
+		target, seed,
 	};
 	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
@@ -256,12 +258,12 @@ const assertSubmittedTargetUnchanged = (
 ): void => {
 	switch (recorded.kind) {
 		case "send":
-			if (submitted.kind !== "send" || recorded.content !== submitted.content) {
-				throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
+			if (submitted.kind !== "send" || recorded.content !== submitted.content || !sameMoves(recorded.moves, submitted.moves)) {
+				throw new InvalidConversationCommandError("The submitted Human text or Moves changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
 		case "sibling":
-			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId) {
+			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId || Boolean(recorded.reroll) !== Boolean(submitted.reroll)) {
 				throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
@@ -282,6 +284,6 @@ export const captureGenerationPreview = (
 	const { record } = preview;
 	ensureRecord(context.database, record.id, context.conversationId);
 	assertSubmittedTargetUnchanged(record.capture.target, target);
-	assertPreviewCurrent(context, record.fingerprint, target);
+	assertPreviewCurrent(context, record.fingerprint, target, record.capture.preparation.seed);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };

@@ -6,6 +6,9 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
+import { boxSetups, boxStates, promptBoxReference } from "./box";
+import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
+import { boxMoves, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -61,8 +64,7 @@ const promptDefinitionBlockKind = Type.Union([
 	// a Participant.
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
-	Type.Literal("memory"),
-	Type.Literal("author-note"),
+	promptBoxReference,
 ]);
 
 const promptBlock = Type.Union([
@@ -217,7 +219,8 @@ const activeGenerations = Type.Array(Type.Object({
 // operations, and a 92-byte Cast command must not re-serialize the entire
 // Chat archive across the wire.
 export const conversationSummary = Type.Object({
-	authorNote: Type.String(),
+	boxSetups,
+	boxes: boxStates,
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -446,6 +449,7 @@ const chatHistoryMessage = Type.Object({
 		inCast: Type.Boolean(),
 	})]),
 	variants: Type.Array(chatHistoryVariant),
+	moves: boxMoves,
 });
 
 export type ChatHistoryMessage = Static<typeof chatHistoryMessage>;
@@ -523,6 +527,15 @@ const editVariantAction = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	content: Type.String(),
+});
+
+// @approved
+//  Replaces the Moves on one Human-authored Message. Regenerating or swiping
+//  its reply then replays the turn with them.
+const setMessageMovesAction = Type.Object({
+	type: Type.Literal("set-message-moves"),
+	messageId: Type.Integer(),
+	moves: boxMoves,
 });
 
 const deleteVariantAction = Type.Object({
@@ -610,8 +623,6 @@ const replaceParticipantOpeningsAction = Type.Object({
 	openings: Type.Array(Type.String()),
 });
 
-const setAuthorNoteAction = Type.Object({ type: Type.Literal("set-author-note"), content: Type.String() });
-
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
 	name: Type.String(),
@@ -647,6 +658,7 @@ const conversationCommandAction = Type.Union([
 	createVariantAction,
 	selectVariantAction,
 	editVariantAction,
+	setMessageMovesAction,
 	deleteVariantAction,
 	deleteMessageAction,
 	putDataAction,
@@ -662,7 +674,11 @@ const conversationCommandAction = Type.Union([
 	removeParticipantAction,
 	selectPromptPresetAction,
 	renameConversationAction,
-	setAuthorNoteAction,
+	setBoxSetupAction,
+	setBoxStateAction,
+	setBoxRecordAction,
+	resetBoxRecordAction,
+	putBoxDataAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
@@ -698,6 +714,7 @@ export const generationBody = Type.Object({
 	kind: Type.Literal("send"),
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
+	moves: Type.Optional(boxMoves),
 	// A preview token carries the server-captured macro clock, random draws,
 	// and pending writes. The optional plan is the user's direct edit of that
 	// capture; it is never treated as provider JSON.
@@ -718,6 +735,7 @@ export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
 
 export const siblingGenerationBody = Type.Object({
+	reroll: Type.Optional(Type.Boolean()),
 	kind: Type.Literal("sibling"),
 	...inspectedPlanFields,
 });
@@ -732,6 +750,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("send"),
 		content: Type.String(),
+		moves: Type.Optional(boxMoves),
 		...generationFormattingContext.properties,
 	}),
 	Type.Object({
@@ -741,6 +760,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("sibling"),
 		messageId: Type.Integer(),
+		reroll: Type.Optional(Type.Boolean()),
 		...generationFormattingContext.properties,
 	}),
 ]);
@@ -751,9 +771,9 @@ export const generationPreviewBody = Type.Union([
 // server-owned wrapper dispatches on this union instead of restating the
 // kinds, so the wire vocabulary and the server vocabulary cannot drift.
 export type GenerationTarget =
-	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "send"; readonly content: string; readonly moves?: BoxMoves | undefined }
 	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number };
+	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
 
 export type GenerationTargetKind = GenerationTarget["kind"];
 

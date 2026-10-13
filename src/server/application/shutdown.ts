@@ -5,7 +5,7 @@ import { gracefullyShutdownGenerations } from "../workflows/generation-recovery"
 export async function shutdownApplication(
 	database: Database,
 	stopHttp: () => Promise<void>,
-	stopMemoryWorker: () => Promise<void>,
+	stopBackgroundWork: () => Promise<void>,
 ): Promise<void> {
 	const deadline = setTimeout(() => {
 		console.error("[shutdown] Work did not finish within five seconds; terminating the process.");
@@ -15,7 +15,7 @@ export async function shutdownApplication(
 		const [recovery] = await Promise.all([
 			gracefullyShutdownGenerations(database),
 			stopHttp(),
-			stopMemoryWorker(),
+			stopBackgroundWork(),
 		]);
 		if (recovery.failed > 0) console.error(`[generation-recovery] Shutdown recovery left ${recovery.failed} generation(s) unresolved.`);
 		// @approved

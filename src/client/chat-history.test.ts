@@ -35,6 +35,7 @@ const messagePayload = {
 	continuable: true,
 	swipe: { eligible: true, reason: null },
 	author: { participantId: 20, capturedName: "Model", inCast: true },
+	moves: {},
 	variants: [
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 	],

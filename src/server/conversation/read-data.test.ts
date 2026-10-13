@@ -76,6 +76,10 @@ describe("readConversationData", () => {
 		expect(read).toEqual({
 			name: "Read Data Conversation",
 			entries: [
+				{ namespace: "box:author-note", key: "enabled", value: "true" },
+				{ namespace: "box:author-note", key: "instance", value: expect.any(String) },
+				{ namespace: "box:memory", key: "enabled", value: "true" },
+				{ namespace: "box:memory", key: "instance", value: expect.any(String) },
 				{ namespace: "first.namespace", key: "alpha", value: "1" },
 				{ namespace: "first.namespace", key: "beta", value: "2" },
 				{ namespace: "second.namespace", key: "gamma", value: "3" },
@@ -129,7 +133,7 @@ describe("readConversationData", () => {
 		writeData("first.namespace", "beta", "2");
 
 		const read = readConversationData(module(), conversationId, { keys: [] });
-		expect(read?.entries).toHaveLength(2);
+		expect(read?.entries).toHaveLength(6);
 	});
 
 	test("returns undefined for a missing Conversation", () => {
