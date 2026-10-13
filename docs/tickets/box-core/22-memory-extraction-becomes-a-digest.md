@@ -1,6 +1,6 @@
 # Memory extraction becomes a digest
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 20-memory-settings-become-box-data, 21-digests-read-the-chat
 
@@ -33,8 +33,8 @@ Memory supplies `digest(window) → claims` and nothing else for extraction. Its
 - [x] Rewrite the unit tests that query `memory_collection` directly against record slots, keeping only those that pin behavior. Delete tautological ones.
 - [x] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass, apart from the reset change.
 - [x] Update `docs/box-system/README.md`: Memory is the second digest consumer with records and Writer overrides.
-- [ ] Run `bun run check` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

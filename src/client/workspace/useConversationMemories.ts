@@ -47,17 +47,15 @@ export function useConversationMemories(conversationId: number, conversationRevi
 }
 
 const conflictNotice = "The Chat changed elsewhere. Review the current Memories before changing them again.";
-const changedNotice = "This Message's Memories changed while you looked at them. Review them before changing them again.";
-const sameClaim = (left: MemoryClaim) => (right: MemoryClaim) => JSON.stringify(left) === JSON.stringify(right);
 
 // @approved
 //  The panel's Memory work. A claim edit or removal writes the passage's whole
 //  claims list as its Writer record, and reset drops that record so the
-//  automatic claims return; both are Conversation commands. Each acts on the
-//  stored claim, not its labelled display, found again in the current list,
-//  since a digest landing meanwhile changes no Conversation revision.
-//  Remembering a passage and catch-up queue host digests, whose records the
-//  polled read picks up.
+//  automatic claims return; both are Conversation commands. An edit or
+//  removal changes the stored claims it read, not their labelled display, and
+//  names them as `expected`, so the host refuses it when a digest replaced
+//  them meanwhile. Remembering a passage and catch-up queue host digests,
+//  whose records the polled read picks up.
 export function useMemoryActions({ conversationId, conversation, onConversationChange, stored, refresh }: {
 	conversationId: number;
 	conversation: ConversationSummary;
@@ -68,7 +66,7 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
 	const [catchupBusy, setCatchupBusy] = useState(false);
-	const [editing, setEditing] = useState<{ variantId: number; index: number; claim: MemoryClaim } | null>(null);
+	const [editing, setEditing] = useState<{ variantId: number; index: number; claims: MemoryClaim[] } | null>(null);
 	const [resetTarget, setResetTarget] = useState<Source | null>(null);
 	const act = async (source: Source, task: () => Promise<boolean>) => {
 		setBusy((current) => new Set(current).add(source.variantId)); setNotice(null);
@@ -79,11 +77,10 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 	const surface = { conversationId, revision: () => conversation.revision, onConversationChange, setNotice };
 	const options = { notices: { conflict: conflictNotice }, onApplied: () => void refresh() };
 	const storedClaims = (source: Source) => stored?.sources.find(({ variantId }) => variantId === source.variantId)?.claims ?? [];
-	const writeClaim = (source: Source, target: MemoryClaim, change: (claim: MemoryClaim) => MemoryClaim[]) => act(source, async () => {
-		const claims = storedClaims(source);
-		const position = claims.findIndex(sameClaim(target));
-		if (position === -1) { setNotice(changedNotice); return false; }
-		return runConversationCommand(surface, { type: "set-box-record", box: "memory", messageId: source.messageId, variantId: source.variantId, record: { claims: claims.flatMap((claim, index) => index === position ? change(claim) : [claim]) } }, options);
+	const writeClaims = (source: Source, read: MemoryClaim[], claims: MemoryClaim[]) => act(source, async () => {
+		const applied = await runConversationCommand(surface, { type: "set-box-record", box: "memory", messageId: source.messageId, variantId: source.variantId, record: { claims }, expected: { claims: read } }, options);
+		if (!applied) void refresh();
+		return applied;
 	});
 	const queued = async (read: Promise<BoxDigest | null>) => {
 		if (await read === null) setNotice(CONVERSATION_UNREACHABLE_NOTICE);
@@ -98,15 +95,17 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 		notice, busy, catchupBusy, editing, resetTarget,
 		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, "memory", source.variantId))),
 		edit: (source: Source, index: number | null) => {
-			const claim = index === null ? undefined : storedClaims(source)[index];
-			setEditing(index === null || claim === undefined ? null : { variantId: source.variantId, index, claim });
+			const claims = storedClaims(source);
+			setEditing(index === null || claims[index] === undefined ? null : { variantId: source.variantId, index, claims });
 		},
 		save: (source: Source, draft: ClaimDraft) => {
-			if (editing?.variantId === source.variantId) void writeClaim(source, editing.claim, (claim) => [{ ...claim, ...draft, writerMaintained: true }]).then((applied) => { if (applied) setEditing(null); });
+			if (editing?.variantId !== source.variantId) return;
+			const { index, claims } = editing;
+			void writeClaims(source, claims, claims.map((claim, position) => position === index ? { ...claim, ...draft, writerMaintained: true } : claim)).then((applied) => { if (applied) setEditing(null); });
 		},
 		remove: (source: Source, index: number) => {
-			const claim = storedClaims(source)[index];
-			if (claim !== undefined) void writeClaim(source, claim, () => []);
+			const claims = storedClaims(source);
+			void writeClaims(source, claims, claims.filter((_, position) => position !== index));
 		},
 		requestReset: (source: Source) => setResetTarget(source),
 		confirmReset: () => {

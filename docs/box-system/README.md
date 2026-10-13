@@ -105,7 +105,7 @@ Validate staged Moves with the same function the Box resolves them with, kept in
 
 `record` is the `Type.Object` schema of one Variant's record. An object, so an absent record is never confused with a record's value. The server Box must declare `records: { initial, fold }`. State is never stored: the host folds it whenever it needs it.
 
-Records come from two places: `advance` returns one at Generation time (the Race), or `records.digest` reads settled prose later (World Clock, Mood). Any Box with a `record` accepts Writer overrides through `set-box-record` and `reset-box-record`. Only digesting Boxes get an editor for them, in the [passage timeline](#passage-timeline). An override is refused while its Variant is still generating.
+Records come from two places: `advance` returns one at Generation time (the Race), or `records.digest` reads settled prose later (World Clock, Mood). Any Box with a `record` accepts Writer overrides through `set-box-record` and `reset-box-record`. Only digesting Boxes get an editor for them, in the [passage timeline](#passage-timeline). An override is refused while its Variant is still generating. Digests change records without a Conversation revision, so `set-box-record` may name the effective record the writer read as `expected`, `null` for none; the host refuses the override when the slot no longer holds it. Memory's claim corrections send it.
 
 Pick the record's granularity by what an upstream change should do to it:
 

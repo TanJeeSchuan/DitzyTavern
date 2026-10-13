@@ -78,7 +78,13 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	onNavigate: (messageId: number) => void;
 }) {
 	const claim = source.claims![index]!;
-	const [confirming, setConfirming] = useState(false);
+	// @approved
+	//  A removal confirmation belongs to the claim it was opened for; a claim a
+	//  digest replaced meanwhile closes it.
+	const claimKey = JSON.stringify(claim);
+	const [confirmed, setConfirmed] = useState<string | null>(null);
+	const confirming = confirmed === claimKey;
+	const setConfirming = (open: boolean) => setConfirmed(open ? claimKey : null);
 	const editButton = useRef<HTMLButtonElement>(null);
 	const wasEditing = useRef(editing !== null);
 	useEffect(() => { if (wasEditing.current && editing === null) editButton.current?.focus(); wasEditing.current = editing !== null; }, [editing]);

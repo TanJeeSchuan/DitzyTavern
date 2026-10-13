@@ -71,7 +71,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			index={index}
 			group={people.join(" & ")}
 			busy={busy.has(source.variantId)}
-			editing={editing?.variantId === source.variantId && editing.index === index ? editing.claim : null}
+			editing={editing?.variantId === source.variantId && editing.index === index ? editing.claims[index] ?? null : null}
 			actions={{ ...actions, label }}
 			onSelectSource={(target) => target.selected ? select(target.messageId) : onNavigateSource(target.messageId)}
 			onNavigate={onNavigateSource}
