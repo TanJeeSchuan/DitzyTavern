@@ -7,8 +7,11 @@ import { boxDescriptors } from "../../shared/contract/box";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
 import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
+import { initializeConnectionSecretKey } from "../connection-secrets";
+import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes } from "./registry";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
@@ -23,6 +26,29 @@ test("a Phone contact added after inspection makes the plan stale", () => {
 		{ database: {} as Database, conversationId: 1, seed: "seed", intent: "respond", human, cast, messages: [], pending: undefined },
 	));
 	expect(capture([human, { id: 2, name: "Bo" }])).not.toBe(capture([human, { id: 2, name: "Bo" }, { id: 3, name: "Cy" }]));
+});
+
+test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
+	const database = openObservedDatabase();
+	try {
+		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+		const selection = configureDecisionModels(database, key, "model-a");
+		const human = { id: 1, name: "Ann" };
+		const capture = () => fingerprintBoxes(captureBoxes(
+			[{ reference: "box:mood", enabled: true, role: "system", content: "" }],
+			{},
+			{ "author-note": "absent", memory: "absent", mood: "enabled", phone: "absent", race: "absent", thought: "absent", "world-clock": "absent" },
+			{},
+			{},
+			{ database, conversationId: 1, seed: "seed", intent: "respond", human, cast: [human], messages: [], pending: undefined },
+		));
+		const before = capture();
+		applyBoxDecisionSettings(database, "mood", { type: "apply", expectedRevision: readBoxDecisionSettings(database, "mood").revision, ...selection, decisionModel: "model-b" });
+		expect(capture()).not.toBe(before);
+		expect(before).not.toContain("decision-secret");
+	} finally {
+		database.close();
+	}
 });
 
 const lantern = { sdk: boxSdkVersion, label: "Lantern", role: "system", startsEnabled: false, instructions: "" };

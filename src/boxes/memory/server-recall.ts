@@ -217,7 +217,6 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead): MemoryRecallSnap
 	const recent = [...claimed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
 	const freshnessFingerprint = sha256(JSON.stringify({
 		recallRelevanceMinimum,
-		decision: { profileId: decision.decisionProfileId, model: decision.decisionModel, stateTokenLimit: decision.decisionStateTokenLimit },
 		allowanceRevision,
 		labelRevision: scan.labelRevision,
 		embedding,

@@ -12,7 +12,7 @@ import type { BoxValue } from "../../shared/contract/box-value";
 import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
-import { resolveDecisionOf, type BoxDecision } from "./services";
+import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
 //  Once each hook has the shape the host calls, the descriptor decides which
@@ -132,10 +132,11 @@ type BoxContextOf = (id: BoxId, decision: BoxDecision) => BoxContext;
 // @approved
 //  The Decision Model selection is resolved with the rest of the capture and
 // kept in `run`'s closure, so its credential never reaches the capture's
-// serialized fields.
+// serialized fields; the fingerprint holds its identity, so a changed
+// selection marks a preview stale.
 const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
 	reference: boxReference(id),
-	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies }),
+	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies, decision: decisionIdentity(decision) }),
 	run: async (services) => {
 		const result = await box.advance?.run(input, services(id, decision)) ?? { items: [] };
 		if (result.record !== undefined) {
