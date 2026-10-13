@@ -206,6 +206,10 @@ test("an unknown Box id is not found by the Box routes and fails each Box comman
 		expect((await app.handle(new Request(`http://localhost${path}`))).status).toBe(404);
 	}
 	expect((await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/nope/catch-up`, { method: "POST" }))).status).toBe(404);
+	expect((await app.handle(new Request("http://localhost/api/boxes/nope/decision-settings/commands", {
+		method: "POST", headers: { "content-type": "application/json" },
+		body: JSON.stringify({ type: "apply", expectedRevision: 0, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000 }),
+	}))).status).toBe(404);
 	for (const action of [
 		{ type: "set-box-state", box: "nope", state: "enabled" },
 		{ type: "set-box-setup", box: "nope", setup: "" },

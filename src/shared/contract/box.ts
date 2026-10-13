@@ -12,6 +12,7 @@ import { moodRecord } from "../../boxes/mood/shared";
 import { decisionSelection } from "./decision-model";
 import { memoryRecord } from "../../boxes/memory/contract";
 import { numericWire } from "./wire";
+import { notFoundOutcome } from "./outcomes";
 import type { PromptOutgoingRole } from "./prompt-preset";
 
 // @approved
@@ -168,6 +169,7 @@ export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
 export const boxDecisionSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings });
 export const boxDecisionSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDecisionSettings });
 export const boxDecisionSettingsInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
-export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, boxDecisionSettingsInvalid]);
+/** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
+export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDecisionSettingsCommand = Static<typeof boxDecisionSettingsCommandBody>;

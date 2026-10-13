@@ -1,6 +1,6 @@
 # Box ids are checked at runtime
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 23-memory-leaves-the-host-contract, 24-top-bar-box-items
 
@@ -26,8 +26,8 @@ The host treats a Box id as a string checked against the registry. Each Box's pa
 - [x] Remove the host's Box-name literals.
 - [x] Update `docs/box-system/README.md` and ADR-0050 where they describe the tuple.
 - [x] Unit-test that an unknown id and a payload that fails its Box's schema are both rejected.
-- [ ] Run `bun run check` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
