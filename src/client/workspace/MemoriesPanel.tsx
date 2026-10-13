@@ -71,7 +71,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			index={index}
 			group={people.join(" & ")}
 			busy={busy.has(source.variantId)}
-			editing={editing?.variantId === source.variantId && editing.index === index}
+			editing={editing?.variantId === source.variantId && editing.index === index ? editing.claim : null}
 			actions={{ ...actions, label }}
 			onSelectSource={(target) => target.selected ? select(target.messageId) : onNavigateSource(target.messageId)}
 			onNavigate={onNavigateSource}
@@ -202,7 +202,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 				onClose={() => setMerging(null)}
 				onMerged={(updated, destination) => {
 					void labelsMerged(updated);
-					actions.labelsChanged(`Labels merged into ${destination}.`);
+					actions.announce(`Labels merged into ${destination}.`);
 					setMerging(null);
 				}}
 			/>
@@ -216,7 +216,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 				onClose={() => setIdentityTarget(null)}
 				onSaved={(updated) => {
 					void identitySaved(updated);
-					actions.labelsChanged(null);
+					actions.announce(null);
 					setIdentityTarget(null);
 				}}
 			/>

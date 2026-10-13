@@ -16,11 +16,8 @@ import type { GenerationJsonValue } from "../../shared/generation-json";
 import { requestDecisions, resolveDecisionSelection } from "../decision-model";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createChat } from "./prompt-preset-test-fixtures";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
-import { queueBoxDigest, startBoxDigests } from "../box/digest";
-import { readRecordSlots } from "../box/records";
-import { readBoxInstances } from "../box/setup";
+import { digestMemoryNow } from "../test-fixtures/memory-digest";
 import type { ModelFetch } from "../model-client";
 import { testConnection } from "../model-client/test-connection";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
@@ -138,18 +135,12 @@ const prepareExtraction = () => {
 };
 
 // @approved
-//  Digests one passage through the host queue and returns its Memory record slot.
+//  Digests one passage in a new Chat and returns its Memory record slot.
 const digestPassage = async (passage: string, fetch: (messageId: number) => ModelFetch) => {
 	const conversation = createChat(database);
 	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-10-06') RETURNING id").get(conversation.id)!;
 	const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-06', 1) RETURNING id").get(message.id, passage)!;
-	const slot = () => readRecordSlots(drizzle(database), "memory", readBoxInstances(drizzle(database), conversation.id).memory, [variant.id]).get(variant.id);
-	const stop = startBoxDigests(database, { fetch: fetch(message.id) });
-	try {
-		queueBoxDigest(database, conversation.id, "memory", variant.id);
-		for (let attempt = 0; attempt < 2_000 && slot()?.source === undefined && slot()?.error === undefined; attempt += 1) await Bun.sleep(1);
-	} finally { await stop(); }
-	return slot();
+	return digestMemoryNow(database, conversation.id, variant.id, fetch(message.id));
 };
 
 const choices = (retain = 0.8, confidence?: number) => ({
@@ -246,7 +237,7 @@ test("an oversized extraction source fails visibly before any request, with no p
 	prepareExtraction();
 	const { revision, ...selection } = readBoxDecisionSettings(database, "memory");
 	applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, decisionStateTokenLimit: 2000 });
-	const slot = await digestPassage("Maren kept the key. ".repeat(3000), () => async () => { throw new Error("Unexpected network request"); });
+	const slot = await digestPassage("Maren kept the key. ".repeat(500), () => async () => { throw new Error("Unexpected network request"); });
 	expect(slot?.automatic).toBeUndefined();
 	expect(slot?.error?.message).toContain("state token limit");
 });

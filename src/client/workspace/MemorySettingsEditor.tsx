@@ -115,7 +115,7 @@ export function MemorySettingsEditor() {
 							label="Extraction model"
 							/>
 					</Field>
-					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
+					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it embeds them again the next time they are recalled.">
 						<ProfileModelPicker
 							apiFormat="embeddings"
 							selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }}

@@ -1,14 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { configureMemoryEmbeddings, createChat, key, profile } from "../contract/prompt-preset-test-fixtures";
-import { queueBoxDigest, startBoxDigests } from "../box/digest";
-import { readRecordSlots } from "../box/records";
-import { readBoxInstances } from "../box/setup";
+import { digestMemoryNow } from "../test-fixtures/memory-digest";
+import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
 import type { ModelFetch } from "../model-client";
 import { formatImageReference } from "../../shared/image-reference";
 import { readCachedMemoryVectors, readMemoryEmbeddingConfiguration } from "./indexing";
@@ -79,15 +77,7 @@ describe("Memory's digest", () => {
 		const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-07T00:00:00Z', 1) RETURNING id").get(message.id, content)!;
 		return { messageId: message.id, variantId: variant.id };
 	};
-	const slot = (variantId: number) => readRecordSlots(drizzle(database), "memory", readBoxInstances(drizzle(database), chat.id).memory, [variantId]).get(variantId);
-	const digest = async (variantId: number, fetch: ModelFetch) => {
-		const stop = startBoxDigests(database, { fetch });
-		try {
-			queueBoxDigest(database, chat.id, "memory", variantId);
-			for (let attempt = 0; attempt < 2_000 && slot(variantId)?.source === undefined && slot(variantId)?.error === undefined; attempt += 1) await Bun.sleep(1);
-		} finally { await stop(); }
-		return slot(variantId);
-	};
+	const digest = (variantId: number, fetch: ModelFetch) => digestMemoryNow(database, chat.id, variantId, fetch);
 
 	test.each([{ minimum: 0.3, kept: 1 }, { minimum: 0.9, kept: 0 }])("keeps claims whose retain probability meets the $minimum minimum", async ({ minimum, kept }) => {
 		const settings = createMemorySettingsModule(database);
@@ -114,6 +104,17 @@ describe("Memory's digest", () => {
 		const story = passage(3, "Owning source.");
 		expect((await digest(story.variantId, provider(calls)))?.error).toBeUndefined();
 		expect(capturedOf(calls.extraction[0]!).precedingSelectedMessages.map(({ content }) => content)).toEqual(["Recent context."]);
+	});
+
+	test("drops the oldest preceding Messages until the passage fits the Decision Model's state limit", async () => {
+		const { revision, ...selection } = readBoxDecisionSettings(database, "memory");
+		applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, decisionStateTokenLimit: 256 });
+		passage(1, "Older context. ".repeat(150));
+		passage(2, "Recent context.");
+		const story = passage(3, "Owning source.");
+		expect((await digest(story.variantId, provider(calls)))?.error).toBeUndefined();
+		expect(capturedOf(calls.extraction[0]!).precedingSelectedMessages.map(({ content }) => content)).toEqual(["Recent context."]);
+		expect(JSON.parse(calls.decisions[0]!).state.context.map(({ content }: { content: string }) => content)).toEqual(["Recent context."]);
 	});
 
 	test("a passage by an author who is not in the story holds no Memories and costs no request, yet stays context", async () => {

@@ -93,11 +93,17 @@ const extractionInstructions = (sourceMessageId: number) => `Extract durable, at
 
 type MemoryDigestContext = DigestContext<"llm" | "decide" | "embed">;
 
+// @approved
+//  The oldest preceding Messages are dropped until the prompt fits the
+//  extraction context and the passage with what remains fits `fitsDecision`,
+//  the Decision Model's state limit; a passage that fits neither alone fails
+//  before any request.
 const extractCandidates = async (
 	ctx: MemoryDigestContext,
 	window: DigestWindow,
 	source: CapturedMemoryMessage,
 	context: readonly CapturedMemoryMessage[],
+	fitsDecision: (retained: readonly CapturedMemoryMessage[]) => boolean,
 ) => {
 	const memory = createMemorySettingsModule(ctx.database).get();
 	if (tokenxEstimator(source.content) > 12_000) throw new Error("This complete source exceeds the 12,000-token Memory extraction limit. It was not truncated.");
@@ -114,10 +120,11 @@ const extractCandidates = async (
 		`${instructions}${identities ? `\n${identities}` : ""}${guidance ? `\n\n${guidance}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
 	const retainedContext = [...context];
-	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) {
+	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext) || !fitsDecision(retainedContext))) {
 		retainedContext.shift();
 	}
 	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
+	if (!fitsDecision(retainedContext)) throw new Error("The Memory source exceeds the Decision Model state token limit.");
 	const client = ctx.llm({ profile, secrets: connectionSettings.getProfileSecrets(profile.id) });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
@@ -268,10 +275,7 @@ export async function digestMemory(window: DigestWindow, ctx: MemoryDigestContex
 	const context = window.preceding.map(captured);
 	const { decisionModel, decisionStateTokenLimit } = readBoxDecisionSettings(ctx.database, "memory");
 	const selection = { model: decisionModel, stateTokenLimit: decisionStateTokenLimit };
-	if (tokenxEstimator(JSON.stringify({ source, context })) > selection.stateTokenLimit) {
-		throw new Error("The Memory source and captured context exceed the Decision Model state token limit.");
-	}
-	const extracted = await extractCandidates(ctx, window, source, context);
+	const extracted = await extractCandidates(ctx, window, source, context, (retained) => tokenxEstimator(JSON.stringify({ source, context: retained })) <= selection.stateTokenLimit);
 	ctx.signal.throwIfAborted();
 	const judgments = await judgeMemoryCandidates({ source, context: extracted.context, candidates: extracted.candidates, selection, decide: ctx.decide });
 	const claims = judgments.filter(({ judgment }) =>

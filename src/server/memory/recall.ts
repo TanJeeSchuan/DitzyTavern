@@ -284,7 +284,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		const queryVector = (await input.embed([activation.scene], embedding))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
 		if ([...vectors.values()].some((vector) => vector.length !== queryVector.length)) {
-			throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
+			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");
 		}
 		semantic = claimed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, vectors.get(candidate.renderedText)!) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))

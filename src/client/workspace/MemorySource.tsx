@@ -22,7 +22,7 @@ type SourceCardActions = {
 type ClaimRowActions = {
 	label: (messageId: number) => string;
 	edit: (source: Source, index: number | null) => void;
-	save: (source: Source, index: number, draft: ClaimDraft) => void;
+	save: (source: Source, draft: ClaimDraft) => void;
 	remove: (source: Source, index: number) => void;
 };
 
@@ -71,7 +71,8 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	index: number;
 	group: string;
 	busy: boolean;
-	editing: boolean;
+	/** @approved The stored claim open for editing in this row, people as extraction or the writer named them rather than as labelled. */
+	editing: Claim | null;
 	actions: ClaimRowActions;
 	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
@@ -79,16 +80,16 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	const claim = source.claims![index]!;
 	const [confirming, setConfirming] = useState(false);
 	const editButton = useRef<HTMLButtonElement>(null);
-	const wasEditing = useRef(editing);
-	useEffect(() => { if (wasEditing.current && !editing) editButton.current?.focus(); wasEditing.current = editing; }, [editing]);
+	const wasEditing = useRef(editing !== null);
+	useEffect(() => { if (wasEditing.current && editing === null) editButton.current?.focus(); wasEditing.current = editing !== null; }, [editing]);
 	if (editing)
 		return (
 			<article className="memory-claim" data-editing="true">
 				<MemoryClaimEditor
-					claim={claim}
+					claim={editing}
 					busy={busy}
 					onCancel={() => actions.edit(source, null)}
-					onSave={(draft) => actions.save(source, index, draft)}
+					onSave={(draft) => actions.save(source, draft)}
 				/>
 			</article>
 		);
