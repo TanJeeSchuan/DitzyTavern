@@ -4,7 +4,7 @@ import { connectionSnapshotOf, createConnectionSettingsModule } from "../connect
 import { decisionRequest, requestDecisions } from "../decision-model";
 import { collectModelClientGeneration, createModelClient } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
-import type { BoxContext, BoxServices } from "./contract";
+import type { BoxContext } from "./contract";
 import { resolveBoxDecision } from "./decision-settings";
 import { embedTexts } from "./embedding";
 
@@ -13,7 +13,7 @@ export type BoxDecision = ReturnType<typeof resolveBoxDecision> | { readonly kin
 export const resolveDecisionOf = (database: Database, id: BoxId): BoxDecision => isDigestBox(id) ? resolveBoxDecision(database, id) : { kind: "off" };
 
 /** @approved Every host service for Box `id`, sending its requests through `fetch` and aborting with `signal`. `decide` asks `decision`, resolved once, so a selection changed while the Box runs never splits one Generation or digest across two models. */
-export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId, decision = resolveDecisionOf(database, id)): BoxContext<keyof BoxServices> => ({
+export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId, decision = resolveDecisionOf(database, id)): BoxContext => ({
 	signal,
 	llm: (profileId) => {
 		const connections = createConnectionSettingsModule(database);

@@ -12,7 +12,7 @@ import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
 import { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
-import { injectServices, serverBox } from "./registry";
+import { serverBox } from "./registry";
 import { boxServices } from "./services";
 import { isBoxEnabled, readBoxInstances } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
@@ -109,7 +109,7 @@ const digesting = (id: BoxId) => {
 
 const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
 	const { signal } = job.controller;
-	const { box, digest } = digesting(job.box);
+	const { digest } = digesting(job.box);
 	// @approved
 	//  A result, or a failure, lands only for the current job while the Box
 	// still runs and the Variant still holds the digested text: it may have
@@ -138,7 +138,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			seed,
 			cast: readParticipants(database, job.conversationId),
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
-		}, { ...injectServices(box, services), decide: services.decide, database });
+		}, { ...services, database });
 		Value.Assert(boxRecordSchema(job.box), record);
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {

@@ -25,7 +25,6 @@ export default {
 
 // 2. Server Box: the default export of src/boxes/<id>/server.ts
 const exampleBox = {
-  inject: ["llm", "decide", "embed"],                // provider services `advance.run` and `digest.run` receive on `ctx`
   setupError(setup, previous) { … },                 // a message rejecting a setup the schema accepts
   moves: { render(move, author) { … } },             // a Move as history reads it; required by `moves`
   dependencies(read, setup) { … },                   // inputs beyond setup, state and Moves, from the host's CaptureRead
@@ -43,7 +42,7 @@ const exampleBox = {
   read(database, conversationId) { … },              // the window's JSON; non-digesting Boxes only
   importSillyTavernNote(note) { … },                 // the setup a SillyTavern chat's Author's Note imports as
   routes(database) { … },                            // an Elysia app of the Box's own routes, served under /api/boxes/<id>
-} satisfies Box<Setup, Dependencies, Trace, Services, Rec, State, Move>;
+} satisfies Box<Setup, Dependencies, Trace, Rec, State, Move>;
 export default exampleBox;
 
 // 3. Client module: the default export of src/boxes/<id>/client.tsx, built as client.js
@@ -54,7 +53,7 @@ export default { descriptor, icon, Inspector: { label, Component }, Settings, Pa
 // `descriptor` is the folder's shared-descriptor.ts default export; every surface is optional.
 ```
 
-Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Services = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
+Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
 
 ## The rules
 
@@ -136,9 +135,9 @@ Pick the record's granularity by what an upstream change should do to it:
 
 `decision` makes the Box a digesting Box: the server Box must declare `records.digest`, and may declare `status` but not `read`. That one key gives the Box the [digest queue and catch-up](#digest-queue-and-catch-up), the [passage timeline](#passage-timeline) as its window read, and a global Decision Model selection in Connection Settings, worded by the four `decision` strings. The host stores the selection (profile, model and state token limit) in `library_data` under its own `box-decision` namespace, keyed by the Box id. Without a selection no digest runs.
 
-`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed, cast, data }`. `passage` and each `preceding` entry are `{ messageId, speaker, authorId, content }`; `authorId` is the authoring Participant's id, or `null`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `cast` is every Participant in the Chat as `{ id, name, removed }`, removed ones included so every author resolves. `data` is the Box's own `box:<id>` `conversation_data` values by key, as stored strings. A Box that should not digest a passage, such as one by an author it ignores, returns an empty record. `ctx` holds the services the Box [injects](#inject), `ctx.database` for reads the window does not carry, as `read` gets it, and `ctx.signal`, which aborts when the job is superseded or cancelled.
+`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed, cast, data }`. `passage` and each `preceding` entry are `{ messageId, speaker, authorId, content }`; `authorId` is the authoring Participant's id, or `null`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `cast` is every Participant in the Chat as `{ id, name, removed }`, removed ones included so every author resolves. `data` is the Box's own `box:<id>` `conversation_data` values by key, as stored strings. A Box that should not digest a passage, such as one by an author it ignores, returns an empty record. `ctx` is the [context](#context) `advance` gets, with `ctx.database` for reads the window does not carry, as `read` gets it; its `signal` aborts when the job is superseded or cancelled.
 
-`ctx.decide(state, questions)` is always present and asks the Box's own Decision Model selection. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
+`ctx.decide(state, questions)` asks the Box's own Decision Model selection. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
 
 ```ts
 const answers = await ctx.decide({ passage, preceding }, {
@@ -178,9 +177,9 @@ Inputs `advance` needs beyond setup, state and Moves. The host calls `dependenci
 | `messages` | the Selected path as the model reads it: `{ messageId, variantId, position, authorId, speaker, role, content, prose }`, where `content` renders the Message's Moves before its prose and `prose` is the stored text |
 | `pending` | the text a Send submits, Moves rendered, before it becomes a Message; `undefined` otherwise |
 
-### `inject`
+### Context
 
-The provider services `advance.run` and `digest.run` receive on `ctx`. The host builds `ctx` from exactly the declared keys, plus `signal`, which aborts when the server shuts down or, in a digest, when the job is superseded or cancelled. A digest always gets `decide`.
+`advance.run` and `digest.run` receive the same `ctx` in every Box: each service below, and `signal`, which aborts when the server shuts down or, in a digest, when the job is superseded or cancelled. A service throws when called without the configuration it needs, such as `decide` without a selection.
 
 | Service | Does |
 |---|---|
@@ -391,7 +390,7 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 | Box | Starts enabled | Declares |
 |---|---|---|
 | Author Note | yes | `setup`, `advance` |
-| Memory | yes | `record`, `decision`, `inject: ["llm", "decide", "embed"]`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`, `routes`; no window, its own side panel |
+| Memory | yes | `record`, `decision`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`, `routes`; no window, its own side panel |
 | World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe`, and a top bar item |
 | Race | no | `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; window |
 | Phone | no | `instructions`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
@@ -424,10 +423,10 @@ export default {
 ```
 
 ```ts
-satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, never, RaceRecord, RaceState | null, RaceMove>
+satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>
 ```
 
-It has no trace and no injected services. It has no `decision`, so it does not digest, serves its own `read`, and gets no override editor; its slots hold only `automatic` in practice.
+It has no trace. It has no `decision`, so it does not digest, serves its own `read`, and gets no override editor; its slots hold only `automatic` in practice.
 
 **Setup.** `raceId`, the course (one of eight bundled courses, or a custom distance, surface and direction), metres per Stretch, up to 18 slots, Auto mode (`off`, `on`, `{ until }`) and `phase` (`setup` or `running`). Whether the race finished is folded state. "Start race" saves the draft with a new `raceId` and `phase: "running"`; "New race" saves `initialRaceSetup` with another new `raceId`. `setupError` rejects course or field changes once a race is running, an Auto stop beyond the course, two gates with one name, and a running race without an id or two Runners.
 

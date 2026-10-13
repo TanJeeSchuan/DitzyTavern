@@ -8,7 +8,6 @@ import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryR
 // @approved
 //  Recall reads each passage's record slot itself, so the fold keeps no state.
 const memoryBox = {
-	inject: ["llm", "decide", "embed"],
 	dependencies: captureMemoryRecallSnapshot,
 	records: { initial: undefined, fold: (state) => state, digest: { window: 4, run: digestMemory } },
 	advance: {
@@ -23,5 +22,5 @@ const memoryBox = {
 		},
 	},
 	routes: memoryRoutes,
-} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, "llm" | "decide" | "embed", MemoryRecord>;
+} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, MemoryRecord>;
 export default memoryBox;

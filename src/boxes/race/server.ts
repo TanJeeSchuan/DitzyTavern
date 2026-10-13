@@ -88,7 +88,7 @@ const raceBox = {
 			return { items: record === undefined ? [] : [{ text: withWithdrawals(record.outcome), priority: 100, pinned: true }], record };
 		},
 	},
-} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, never, RaceRecord, RaceState | null, RaceMove>;
+} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>;
 export default raceBox;
 
 function readRace(database: Database, conversationId: number): RaceRead | undefined {

@@ -97,7 +97,6 @@ export const boxClientSchema = Type.Object({
 // module that fails, then pairs its hooks with the descriptor.
 const hook = Type.Function([], Type.Unknown());
 export const boxServerSchema = Type.Object({
-	inject: Type.Optional(Type.Array(Type.String())),
 	setupError: Type.Optional(hook),
 	moves: Type.Optional(Type.Object({ render: hook })),
 	dependencies: Type.Optional(hook),

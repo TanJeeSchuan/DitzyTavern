@@ -11,7 +11,7 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
+import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
 import { resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
@@ -123,19 +123,11 @@ export type BoxResults = Readonly<Record<PromptBoxReference, AdvanceResult<Gener
 interface CapturedBox {
 	readonly reference: PromptBoxReference;
 	readonly fingerprint: string;
-	run(services: BoxServicesOf): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
+	run(services: BoxContextOf): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
 }
 export type BoxInputs = readonly CapturedBox[];
-/** @approved The host services for each Box, as `boxServices` builds them. */
-type BoxServicesOf = (id: BoxId, decision: BoxDecision) => BoxContext<keyof BoxServices>;
-
-/** @approved The services a Box declared in `inject`, and the signal. */
-export const injectServices = (box: HostBox, services: BoxContext<keyof BoxServices>): BoxContext<keyof BoxServices> => {
-	// @approved
-	// SAFETY: The entries are exactly the services this Box declared in inject.
-	const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, keyof BoxServices>;
-	return { ...injected, signal: services.signal };
-};
+/** @approved The context for each Box, as `boxServices` builds it. */
+type BoxContextOf = (id: BoxId, decision: BoxDecision) => BoxContext;
 
 // @approved
 //  The Decision Model selection is resolved with the rest of the capture and
@@ -145,7 +137,7 @@ const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue, unkno
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies }),
 	run: async (services) => {
-		const result = await box.advance?.run(input, injectServices(box, services(id, decision))) ?? { items: [] };
+		const result = await box.advance?.run(input, services(id, decision)) ?? { items: [] };
 		if (result.record !== undefined) {
 			const { record } = boxDescriptor(id);
 			if (record === undefined) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
@@ -169,5 +161,5 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
 
-export const advanceBoxes = async (inputs: BoxInputs, services: BoxServicesOf): Promise<BoxResults> =>
+export const advanceBoxes = async (inputs: BoxInputs, services: BoxContextOf): Promise<BoxResults> =>
 	Object.fromEntries(await Promise.all(inputs.map(async (box) => [box.reference, await box.run(services)])));

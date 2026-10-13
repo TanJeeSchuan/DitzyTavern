@@ -101,7 +101,7 @@ export async function judgeMemoryRecallCandidates({ candidates, scene, relevance
 	scene: string;
 	relevanceMinimum: number;
 	selection: MemoryRecallSnapshot["selection"];
-	decide: BoxContext<"decide">["decide"];
+	decide: BoxContext["decide"];
 }): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
 	const batch = largestFittingBatch(candidates, (values) => {
@@ -232,7 +232,7 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead): MemoryRecallSnap
 // @approved
 //  Recall embeds any claim text the cache lacks, such as a Writer's edit,
 //  before ranking every claim against the scene.
-export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext<"decide" | "embed">): Promise<MemoryActivationRecord> => {
+export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext): Promise<MemoryActivationRecord> => {
 	const { activation, claimed, recent, embedding } = snapshot;
 	if (activation.allowance === 0 || claimed.length === 0) return activation;
 	switch (snapshot.decision.kind) {

@@ -18,7 +18,7 @@ const phoneBox = {
 		run: async ({ dependencies: { human, contacts } }) =>
 			({ items: contacts.length === 0 ? [] : [{ text: `${human} has a phone and can text ${contacts.join(", ")}.`, priority: 0, pinned: true }] }),
 	},
-} satisfies Box<undefined, PhoneNames, never, never, never, undefined, PhoneMove>;
+} satisfies Box<undefined, PhoneNames, never, never, undefined, PhoneMove>;
 export default phoneBox;
 
 /** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */

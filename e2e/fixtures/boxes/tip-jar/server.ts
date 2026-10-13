@@ -12,7 +12,7 @@ const tipJarBox = {
 			return { items: [{ text: `The tip jar holds ${state + coins} coins.`, priority: 0, pinned: true }], record: { coins } };
 		},
 	},
-} satisfies Box<undefined, undefined, never, never, TipRecord, number, TipMove>;
+} satisfies Box<undefined, undefined, never, TipRecord, number, TipMove>;
 export default tipJarBox;
 
 function readTipJar(database: Database, conversationId: number): TipRecord | undefined {

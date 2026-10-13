@@ -48,7 +48,7 @@ export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["w
 export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, unknown, never, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
+export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
 	selectedVariantIds.reduce((state, variantId) => {
 		const record = effectiveRecord(slots.get(variantId));
 		return record === undefined ? state : records.fold(state, record, setup);

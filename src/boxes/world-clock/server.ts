@@ -139,5 +139,5 @@ const worldClockBox = {
 	},
 	advance: { run: async ({ setup, state }) => ({ items: [{ text: clockLine(setup, state), priority: 0, pinned: true }] }) },
 	status: clockStatus,
-} satisfies Box<WorldClockSetup, undefined, never, never, WorldClockRecord, WorldClockState>;
+} satisfies Box<WorldClockSetup, undefined, never, WorldClockRecord, WorldClockState>;
 export default worldClockBox;

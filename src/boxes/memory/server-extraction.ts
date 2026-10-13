@@ -82,15 +82,13 @@ export function validateMemoryCandidates(
 
 const extractionInstructions = (sourceMessageId: number) => `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${sourceMessageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
 
-type MemoryDigestContext = DigestContext<"llm" | "decide" | "embed">;
-
 // @approved
 //  The oldest preceding Messages are dropped until the prompt fits the
 //  extraction context and the passage with what remains fits `fitsDecision`,
 //  the Decision Model's state limit; a passage that fits neither alone fails
 //  before any request.
 const extractCandidates = async (
-	ctx: MemoryDigestContext,
+	ctx: DigestContext,
 	window: DigestWindow,
 	source: CapturedMemoryMessage,
 	context: readonly CapturedMemoryMessage[],
@@ -195,7 +193,7 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 	context: readonly CapturedMemoryMessage[];
 	candidates: readonly MemoryCandidate[];
 	selection: { readonly model: string; readonly stateTokenLimit: number };
-	decide: MemoryDigestContext["decide"];
+	decide: DigestContext["decide"];
 }): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
 	const output: MemoryCandidateJudgment[] = [];
@@ -246,7 +244,7 @@ const captured = ({ messageId, speaker, content }: DigestWindow["passage"]): Cap
 // Decision Model judges supported, correctly attributed and worth retaining,
 // and embed what it kept. A passage by an author who is not in the story
 // holds no Memories.
-export async function digestMemory(window: DigestWindow, ctx: MemoryDigestContext): Promise<MemoryRecord> {
+export async function digestMemory(window: DigestWindow, ctx: DigestContext): Promise<MemoryRecord> {
 	const author = window.passage.authorId;
 	if (author !== null && readLabels(window).identities[author]?.kind === "excluded") return { claims: [] };
 	const source = captured(window.passage);

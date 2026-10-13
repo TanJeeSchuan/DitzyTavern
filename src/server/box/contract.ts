@@ -16,19 +16,18 @@ export type BoxCompletion = {
 	readonly onContent?: (text: string) => void;
 };
 
-export interface BoxServices {
+/** @approved What `advance.run` and `digest.run` receive, the same for every Box: each host service, and `signal`, which aborts when the server shuts down or, in a digest, when the job is superseded or cancelled. */
+export interface BoxContext {
 	/** @approved The chat Connection Profile `profileId`, or undefined once it is gone. */
 	readonly llm: (profileId: number) => { complete(request: BoxCompletion): Promise<{ readonly content: string; readonly finishReason: "stop" | "length" | "other" }> } | undefined;
 	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. */
 	readonly decide: (state: DecisionJson, questions: DecisionQuestions) => ReturnType<typeof requestDecisions>;
 	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. */
 	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean }) => Promise<readonly (readonly number[])[]>;
+	readonly signal: AbortSignal;
 }
 
-export type BoxContext<Services extends keyof BoxServices = never> = Pick<BoxServices, Services> & { readonly signal: AbortSignal };
-
-export interface Box<Setup, Dependencies = undefined, Trace = never, Services extends keyof BoxServices = never, Rec = never, State = undefined, Move = never> {
-	readonly inject?: readonly Services[];
+export interface Box<Setup, Dependencies = undefined, Trace = never, Rec = never, State = undefined, Move = never> {
 	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
 	setupError?(setup: Setup, previous: Setup): string | undefined;
 	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
@@ -39,11 +38,11 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	readonly records?: {
 		readonly initial: State;
 		fold(state: State, record: Rec, setup: Setup): State;
-		readonly digest?: { readonly window: number; run(window: DigestWindow, ctx: DigestContext<Services>): Promise<Rec> };
+		readonly digest?: { readonly window: number; run(window: DigestWindow, ctx: DigestContext): Promise<Rec> };
 	};
 	readonly advance?: {
 		readonly trace?: TSchema;
-		run(input: AdvanceInput<Setup, Dependencies, State, Move>, ctx: BoxContext<Services>): Promise<AdvanceResult<Trace, Rec>>;
+		run(input: AdvanceInput<Setup, Dependencies, State, Move>, ctx: BoxContext): Promise<AdvanceResult<Trace, Rec>>;
 		fingerprint?(input: AdvanceInput<Setup, Dependencies, State, Move>): string;
 	};
 	/** @approved A digesting Box's one-line dock status, or null when it has nothing to say; the passage timeline read reports it. */
@@ -59,7 +58,7 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it.
-export type HostBox = Box<BoxValue, unknown, GenerationJsonValue, keyof BoxServices, GenerationJsonValue, unknown, unknown>;
+export type HostBox = Box<BoxValue, unknown, GenerationJsonValue, GenerationJsonValue, unknown, unknown>;
 
 /** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
 export type CaptureMessage = {
@@ -107,5 +106,5 @@ export type DigestWindow = {
 	readonly cast: readonly { readonly id: number; readonly name: string; readonly removed: boolean }[];
 	readonly data: Readonly<Record<string, string>>;
 };
-/** @approved A digest gets the services its Box injects, as `advance` does, and always `decide`. `database` serves the reads its window does not carry, as `read` gets it. */
-export type DigestContext<Services extends keyof BoxServices = never> = BoxContext<Services | "decide"> & { readonly database: Database };
+/** @approved A digest gets the context `advance` gets, and `database` for the reads its window does not carry, as `read` gets it. */
+export type DigestContext = BoxContext & { readonly database: Database };
