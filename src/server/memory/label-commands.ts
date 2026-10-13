@@ -3,7 +3,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { conversationExists, readCastForMemory, readMessageAuthorsForMemory } from "../conversation";
-import { conversationMemorySettingsTable, memoryCollectionTable } from "../database/schema";
+import { memoryCollectionTable } from "../database/schema";
+import { putMemoryLabels } from "./chat-values";
 import {
 	memoryCandidates,
 	type MemoryIdentityCommand,
@@ -32,21 +33,19 @@ const rewriteCollections = (database: Database, conversationId: number, state: M
 	}
 };
 
+const guard = (database: Database, conversationId: number, expectedRevision: number) => (current: { revision: number }) =>
+	guardRevision("memories", expectedRevision, current, () => readConversationMemories(database, conversationId));
+
 export function setMemoryIdentity(database: Database, conversationId: number, command: MemoryIdentityCommand): void {
 	const removed = database.transaction(() => {
 		const db = drizzle(database);
 		const state = readMemoryLabelState(database, conversationId);
-		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
 		const participant = readCastForMemory(database, conversationId).find(({ id, removed }) => id === command.participantId && !removed);
 		if (!participant) throw new InvalidMemoryLabelsError("This Participant is no longer in the Cast.");
 		const identity = command.identity.kind === "plays" ? { ...command.identity, person: command.identity.person.trim() } : command.identity;
 		if (identity.kind === "plays" && !identity.person) throw new InvalidMemoryLabelsError("Choose a nonblank person name.");
 		if (identity.kind === "themselves") delete state.identities[command.participantId]; else state.identities[command.participantId] = identity;
-		const values = { identities: JSON.stringify(state.identities), label_revision: state.revision + 1 };
-		db.insert(conversationMemorySettingsTable)
-			.values({ conversation_id: conversationId, ...values })
-			.onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: values })
-			.run();
+		putMemoryLabels(database, conversationId, { identities: state.identities, merges: state.merges }, guard(database, conversationId, command.expectedRevision));
 		const excluded = Object.entries(state.identities).flatMap(([id, value]) => value.kind === "excluded" ? [Number(id)] : []);
 		const messages = readMessageAuthorsForMemory(database, conversationId).filter((message) => message.authorParticipantId !== null && excluded.includes(message.authorParticipantId)).map((message) => message.messageId);
 		const removed = messages.length === 0 ? [] : db
@@ -65,7 +64,6 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 		const db = drizzle(database);
 		if (!conversationExists(database, conversationId)) throw new InvalidMemoryLabelsError("This Chat no longer exists.");
 		const state = readMemoryLabelState(database, conversationId);
-		guardRevision("memories", command.expectedRevision, state, () => readConversationMemories(database, conversationId));
 		const destination = command.destination.trim();
 		const labels = new Set(command.labels);
 		if (!destination || destination.length > 1024 || labels.size === 0 || [...labels].some((label) => !label.trim()) || [...labels].every((label) => label === destination)) throw new InvalidMemoryLabelsError("Choose labels and a different destination name.");
@@ -75,13 +73,7 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 		for (const label of labels) merges.set(label, destination);
 		merges.delete(destination);
 		const next: MemoryLabelMerge[] = [...merges].map(([from, to]) => ({ from, to }));
+		putMemoryLabels(database, conversationId, { identities: state.identities, merges: next }, guard(database, conversationId, command.expectedRevision));
 		rewriteCollections(database, conversationId, { ...state, merges: next });
-		db.insert(conversationMemorySettingsTable)
-			.values({ conversation_id: conversationId, label_merges: JSON.stringify(next), label_revision: state.revision + 1 })
-			.onConflictDoUpdate({
-				target: conversationMemorySettingsTable.conversation_id,
-				set: { label_merges: JSON.stringify(next), label_revision: state.revision + 1 },
-			})
-			.run();
 	}).immediate();
 }

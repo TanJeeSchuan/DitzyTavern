@@ -10,7 +10,7 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import type { BoxId } from "../../shared/contract/box";
+import type { BoxId, BoxState } from "../../shared/contract/box";
 import { boxInstanceEntry, boxStateEntry } from "../box/setup";
 import { installBoxBlocks } from "../prompt-preset";
 import { syncMemorySources } from "../memory";
@@ -121,4 +121,9 @@ export function insertBox(database: Database, conversationId: number, box: BoxId
 	for (const entry of [boxStateEntry(box, true), instance]) database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(conversationId, entry.namespace, entry.key, entry.value);
 	installBoxBlocks(drizzle(database), conversationId, [box]);
 	return instance.value;
+}
+
+/** @approved Sets a Box's state through the ordinary Conversation command, so an observed database delivers its Memory change. */
+export function setBoxState(database: Database, conversationId: number, box: BoxId, state: BoxState): void {
+	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action: { type: "set-box-state", box, state } });
 }

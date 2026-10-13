@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { openObservedDatabase } from "../test-fixtures/conversation";
+import { openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { embedMemoryTexts, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
 import { sha256 } from "../memory/hash";
@@ -446,7 +446,7 @@ describe("Memory indexing public lifecycle", () => {
 		expect(remaining.some((source) => source.messageId === second.messageId)).toBe(false);
 	});
 
-	test("disabling Memory invalidates a running index and enabling it resumes from saved claims", async () => {
+	test("disabling the Memory Box invalidates a running index and enabling it resumes from saved claims", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
 		configureMemoryEmbeddings(database, "http://embedding-a.test/v1/embeddings", "memory-a");
@@ -473,12 +473,11 @@ describe("Memory indexing public lifecycle", () => {
 		});
 		try {
 			await pending.reached;
-			const settings = createMemorySettingsModule(database);
-			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: false });
+			setBoxState(database, conversation.id, "memory", "disabled");
 			pending.release();
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "disabled")).toBe(true);
 			expect((await readSources(memories, conversation.id))[0]?.claims).toHaveLength(1);
-			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true });
+			setBoxState(database, conversation.id, "memory", "enabled");
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true);
 		} finally { pending.release(); await worker(); }
 		expect(extractions).toBe(1);

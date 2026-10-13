@@ -1,11 +1,9 @@
-import { conversationMemorySettingsTable, InvalidConversationCommandError, memoryActivationRecord, type Box, type MemoryActivationRecord, type MemoryRecall } from "../../box-sdk/server";
+import { InvalidConversationCommandError, memoryActivationRecord, type Box, type MemoryActivationRecord, type MemoryRecall } from "../../box-sdk/server";
 import { memoryItems } from "./server-prompt";
-import { eq } from "drizzle-orm";
 
 export const memoryBox = {
 	inject: ["decide", "embed"],
 	dependencies: (read) => read.memory(),
-	remove: (db, conversationId) => db.delete(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).run(),
 	advance: {
 		trace: memoryActivationRecord,
 		fingerprint: ({ dependencies }) => dependencies.snapshot.freshnessFingerprint,

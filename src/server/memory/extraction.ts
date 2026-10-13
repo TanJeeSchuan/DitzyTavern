@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule, connectionSnapshotOf } from "../connection-settings";
-import { conversationIdOfMessage, memoryNoteOf } from "../conversation";
+import { conversationIdOfMessage } from "../conversation";
+import { readMemoryChatSettings } from "./chat-values";
 import { createModelClient, collectModelClientGeneration, type ModelFetch } from "../model-client";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { PromptPlan } from "../prompt-compiler";
@@ -37,7 +38,8 @@ const identityInstructions = (database: Database, messageId: number) => {
 };
 
 const noteInstructions = (database: Database, messageId: number) => {
-	const note = memoryNoteOf(database, messageId);
+	const conversationId = conversationIdOfMessage(database, messageId);
+	const note = conversationId === undefined ? "" : readMemoryChatSettings(database, conversationId).note;
 	return note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
 };
 

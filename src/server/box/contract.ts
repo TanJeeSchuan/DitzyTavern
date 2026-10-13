@@ -1,6 +1,5 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
-import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -41,8 +40,6 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	status?(setup: Setup, state: State): string | null;
 	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
 	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
-	/** @approved Deletes Chat-scoped data the Box keeps outside `conversation_data` and `participant_data` when the Box is removed from the Chat. */
-	remove?(db: BunSQLiteDatabase, conversationId: number): void;
 }
 
 // @approved

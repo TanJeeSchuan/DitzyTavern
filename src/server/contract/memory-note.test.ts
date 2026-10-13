@@ -5,6 +5,7 @@ import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
 import { messageTable, messageVariantTable } from "../database/schema";
 import { createChat, key, profile } from "./prompt-preset-test-fixtures";
+import { openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { createMemoryRoutes } from "./memory";
 import { queueMemorySource, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory/collections";
 import { setMemoryIdentity } from "../memory/label-commands";
@@ -35,7 +36,7 @@ const enableMemory = (database: Database) => {
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	const profileId = connections.createProfile({ expectedRevision: 0, profile, credential: "fake-secret" }).profiles[0]!.id;
 	const settings = createMemorySettingsModule(database);
-	settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "fake-extraction" });
+	settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, extractionProfileId: profileId, extractionModel: "fake-extraction" });
 	configureDecisionModels(database, key);
 };
 
@@ -53,15 +54,25 @@ describe("Conversation Memory note", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
+	test("rejects a note for a Chat without Memory and keeps no value for it", async () => {
+		const observed = openObservedDatabase();
+		const chat = createChat(observed);
+		setBoxState(observed, chat.id, "memory", "absent");
+		const rejected = await saveNote(observed, chat.id, 0, guidance);
+		expect(rejected.status).toBe(422);
+		expect(observed.query("SELECT key FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:memory'").all(chat.id)).toEqual([]);
+		observed.close();
+	});
+
 	test("saves a trimmed note against the shared settings revision and rejects stale and oversized commands", async () => {
 		const chat = createChat(database);
 		const routes = createMemoryRoutes(database);
 		const read = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/memory-allowance`));
-		expect(Value.Parse(conversationMemoryAllowance, await read.json())).toEqual({ revision: 0, allowance: 2048, note: "", enabled: true });
+		expect(Value.Parse(conversationMemoryAllowance, await read.json())).toEqual({ revision: 0, allowance: 2048, note: "" });
 
 		const saved = await saveNote(database, chat.id, 0, `  ${guidance}  `);
 		expect(saved.status).toBe(200);
-		expect(Value.Parse(conversationMemoryAllowanceApplied, await saved.json())).toMatchObject({ outcome: "applied", settings: { revision: 1, note: guidance, allowance: 2048, enabled: true } });
+		expect(Value.Parse(conversationMemoryAllowanceApplied, await saved.json())).toMatchObject({ outcome: "applied", settings: { revision: 1, note: guidance, allowance: 2048 } });
 
 		const stale = await saveNote(database, chat.id, 0, "The second writer's note.");
 		expect(stale.status).toBe(409);

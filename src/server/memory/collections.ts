@@ -2,8 +2,8 @@ import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readMemoryTailMessageId, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
-import { conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
+import { conversationExists, readActiveVariantIds, readConversationRevision, readMessageAuthorsForMemory, readSelectedPathForMemory, readVariantsForMemory, type MemorySourceVariant } from "../conversation";
+import { memoryCatchupRunTable, memoryCollectionTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import {
 	claimMemoryIndexJob,
@@ -14,7 +14,7 @@ import {
 	runMemoryIndexJob,
 	type MemoryEmbed,
 } from "./indexing";
-import { isMemoryEnabled } from "./settings";
+import { putMemoryChatSettings, readMemoryChatSettings } from "./chat-values";
 import { enabledBoxConversations, isBoxEnabled } from "../box/setup";
 import {
 	memoryCandidates,
@@ -145,9 +145,8 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 //  Queue one explicit replacement using only its selected Variant and four prior selected Messages.
 export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number): MemoryCollectionView {
 	return database.transaction(() => {
-		const enabled = isMemoryEnabled(database);
-		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory before remembering a source.");
-		if (!isBoxEnabled(connect(database), conversationId, "memory")) throw new InvalidMemorySourceError("Insert Memory in this Chat before remembering a source.");
+		const enabled = isBoxEnabled(connect(database), conversationId, "memory");
+		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory in this Chat before remembering a source.");
 		if (isExcludedMemorySource(database, conversationId, messageId)) throw new InvalidMemorySourceError("This author's Messages are not Memory sources.");
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
@@ -170,7 +169,7 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 // @approved
 //  Queue selected source work from an authoritative write transaction.
 export function queueMemorySource(database: Database, conversationId: number, messageId: number, catchupRunId: number | null = null, knownCapture?: CapturedMemorySource): boolean {
-	if (!isMemoryEnabled(database) || !isBoxEnabled(connect(database), conversationId, "memory") || isExcludedMemorySource(database, conversationId, messageId)) return false;
+	if (!isBoxEnabled(connect(database), conversationId, "memory") || isExcludedMemorySource(database, conversationId, messageId)) return false;
 	let source: CapturedMemorySource;
 	try { source = knownCapture ?? capture(database, conversationId, messageId); } catch { return false; }
 	const current = readCollection(database, source.source.variantId);
@@ -190,11 +189,6 @@ export function queueMemorySource(database: Database, conversationId: number, me
 	return true;
 }
 
-export function queueMemoryTail(database: Database, conversationId: number): boolean {
-	const messageId = readMemoryTailMessageId(database, conversationId);
-	return messageId === undefined ? false : queueMemorySource(database, conversationId, messageId);
-}
-
 // @approved
 //  Queue selected source work from an authoritative write transaction.
 // The selected history arrives through a reader the caller owns (the Memory
@@ -202,8 +196,7 @@ export function queueMemoryTail(database: Database, conversationId: number): boo
 // transaction so the path snapshot is consistent with the queued work.
 export function startMemoryCatchup(database: Database, conversationId: number, readSources: () => readonly CapturedMemoryMessage[] | undefined): MemoryCatchup {
 	return database.transaction(() => {
-		if (!isMemoryEnabled(database)) throw new InvalidMemorySourceError("Turn on Memory before remembering history.");
-		if (!isBoxEnabled(connect(database), conversationId, "memory")) throw new InvalidMemorySourceError("Insert Memory in this Chat before remembering history.");
+		if (!isBoxEnabled(connect(database), conversationId, "memory")) throw new InvalidMemorySourceError("Turn on Memory in this Chat before remembering history.");
 		const sources = readSources();
 		if (!sources) throw new InvalidMemorySourceError("This Chat no longer exists.");
 		const run = connect(database)
@@ -288,7 +281,7 @@ interface MemoryCollectionSource {
 }
 
 const memoryViews = (database: Database, conversationId: number, rows: MemoryCollectionSource[], state: MemoryLabelState, configuration = readMemoryEmbeddingConfiguration(database)): MemoryCollectionView[] => {
-	const enabled = isMemoryEnabled(database);
+	const enabled = isBoxEnabled(connect(database), conversationId, "memory");
 	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled, configuration);
 	return rows.flatMap(({ variant, collection }) => {
 		if (variant.authorParticipantId !== null && state.identities[variant.authorParticipantId]?.kind === "excluded") return [];
@@ -341,7 +334,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
 		const row = readCollection(database, variantId);
 		if (!row) throw new InvalidMemorySourceError("This source has no saved Memory collection to correct.");
-		const enabled = isMemoryEnabled(database);
+		const enabled = isBoxEnabled(connect(database), conversationId, "memory");
 		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		const claims = parseClaims(row.claims_json);
 		if (!claims) throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid.");
@@ -379,10 +372,10 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		const row = readCollection(database, variantId);
 		if (!variant || !row) throw new InvalidMemorySourceError("This source has no saved Memory collection to index.");
-		const enabled = isMemoryEnabled(database);
+		const enabled = isBoxEnabled(connect(database), conversationId, "memory");
 		guardRevision("collection", expectedRevision, row, () => toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		if (row.status !== "complete") throw new InvalidMemorySourceError("Indexing requires a completed saved Memory collection.");
-		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory before indexing saved Memories.");
+		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory in this Chat before indexing saved Memories.");
 		const updated = connect(database)
 			.update(memoryCollectionTable)
 			.set({ index_attempt_json: null, updated_at: new Date().toISOString() })
@@ -409,51 +402,28 @@ export function invalidateMemoryWorkForVariant(database: Database, variantId: nu
 	abortMemoryWork(database, [variantId]);
 }
 
-const ensureChatState = (database: Database, conversationId: number) => {
-	const db = connect(database);
-	db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId }).onConflictDoNothing().run();
-	const state = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
-	if (!state) throw new InvalidMemorySourceError("This Chat no longer exists.");
-	return state;
-};
+export const readMemoryAllowance = (database: Database, conversationId: number) => readMemoryChatSettings(database, conversationId);
 
-const memorySettingsView = (database: Database, conversationId: number, state: typeof conversationMemorySettingsTable.$inferSelect) => ({
-	revision: state.revision, allowance: state.allowance, note: state.memory_note, enabled: isMemoryEnabled(database),
-});
-
-export function readMemoryAllowance(database: Database, conversationId: number) {
-	return memorySettingsView(database, conversationId, ensureChatState(database, conversationId));
-}
-
-const updateChatState = (
-	database: Database,
-	conversationId: number,
-	expectedRevision: number,
-	patch: Partial<Pick<typeof conversationMemorySettingsTable.$inferSelect, "allowance" | "memory_note">>,
-) =>
+const updateChatSettings = (database: Database, conversationId: number, expectedRevision: number, patch: { allowance: number } | { note: string }) =>
 	database.transaction(() => {
-		const current = ensureChatState(database, conversationId);
-		guardRevision("settings", expectedRevision, current, () => memorySettingsView(database, conversationId, current));
-		const next = { ...current, ...patch, revision: current.revision + 1 };
-		connect(database)
-			.update(conversationMemorySettingsTable)
-			.set({ ...patch, revision: next.revision })
-			.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
-			.run();
-		return memorySettingsView(database, conversationId, next);
+		if (!conversationExists(database, conversationId)) throw new InvalidMemorySourceError("This Chat no longer exists.");
+		const current = readMemoryChatSettings(database, conversationId);
+		const { revision: _revision, ...value } = current;
+		putMemoryChatSettings(database, conversationId, { ...value, ...patch }, (row) => guardRevision("settings", expectedRevision, row, () => current));
+		return readMemoryChatSettings(database, conversationId);
 	}).immediate();
 
 export function setMemoryAllowance(database: Database, conversationId: number, expectedRevision: number, allowance: number) {
 	if (!Number.isSafeInteger(allowance) || allowance < 0) {
 		throw new InvalidMemorySourceError("Memory Allowance must be a non-negative whole number of estimated tokens.");
 	}
-	return updateChatState(database, conversationId, expectedRevision, { allowance });
+	return updateChatSettings(database, conversationId, expectedRevision, { allowance });
 }
 
 export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {
 	const memoryNote = note.trim();
 	if (memoryNote.length > 2_000) throw new InvalidMemorySourceError("The Memory note is limited to 2,000 characters.");
-	return updateChatState(database, conversationId, expectedRevision, { memory_note: memoryNote });
+	return updateChatSettings(database, conversationId, expectedRevision, { note: memoryNote });
 }
 
 export interface MemoryWorkerOptions {

@@ -278,6 +278,7 @@ export function ActiveWritingWorkspace({
 					key={session.conversation.id}
 					conversationId={session.conversation.id}
 					conversationRevision={session.conversation.revision}
+					enabled={session.conversation.boxes.memory === "enabled"}
 					cast={session.conversation.cast}
 					focusRequest={memoryFocus}
 					onClose={() => dispatchPanel({ type: "details-closed" })}

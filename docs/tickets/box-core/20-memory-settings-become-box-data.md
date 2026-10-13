@@ -1,6 +1,6 @@
 # Memory settings become Box data
 
-Status: TODO
+Status: DONE
 
 Blocked By: none
 
@@ -21,13 +21,13 @@ Memory keeps its settings where every other Box keeps its own: global settings i
 
 ## Work
 
-- [ ] Move the global settings to `library_data` and remove the `enabled` flag and its fan-out.
-- [ ] Move the per-Chat settings to `conversation_data` and remove `memoryBox.remove` and the SDK table export.
-- [ ] Update the routes, `src/client/memory-settings.ts`, `MemorySettingsEditor.tsx`, the allowance, note, identity and merge dialogs, and the e2e helpers (`e2e/server.ts`, `e2e/fixtures.ts`) that write `memory_settings` directly.
-- [ ] Drop `memory_settings` and `conversation_memory_settings` with a migration.
-- [ ] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass.
-- [ ] Run `bun run check` and the affected e2e specs.
-- [ ] Set this ticket to DONE and commit.
+- [x] Move the global settings to `library_data` and remove the `enabled` flag and its fan-out.
+- [x] Move the per-Chat settings to `conversation_data` and remove `memoryBox.remove` and the SDK table export.
+- [x] Update the routes, `src/client/memory-settings.ts`, `MemorySettingsEditor.tsx`, the allowance, note, identity and merge dialogs, and the e2e helpers (`e2e/server.ts`, `e2e/fixtures.ts`) that write `memory_settings` directly.
+- [x] Drop `memory_settings` and `conversation_memory_settings` with a migration.
+- [x] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass.
+- [x] Run `bun run check` and the affected e2e specs.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

@@ -12,7 +12,6 @@ import { activeGenerationTable } from "../database/schema";
 import { createFakeModelClient } from "../model-client";
 import { runGenerationLifecycle } from ".";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
-import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "../contract/conversation";
 import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
 
@@ -208,9 +207,6 @@ describe("Send through provisional Tail Generation", () => {
 	});
 
 	test("queues newly inserted and reused accepted Human sources when Memory is enabled", async () => {
-		const settings = createMemorySettingsModule(database);
-		const { revision, ...current } = settings.get();
-		settings.apply({ ...current, expectedRevision: revision, enabled: true });
 		const routes = createConversationRoutes(database);
 		const preset = await readPreset(routes, conversationId);
 		const memorySlot = preset.slots.find((slot) => slot.reference === "box:memory");

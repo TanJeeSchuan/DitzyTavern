@@ -6,7 +6,7 @@ import { openInitializedDatabase } from "../database/database";
 import { memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import { createChat, key, profile } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
-import { correctMemorySource, queueMemorySource, queueMemoryTail, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory/collections";
+import { correctMemorySource, queueMemorySource, readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/label-commands";
 import { StaleRevisionError } from "../revision";
 import { extractAndJudgeMemorySource } from "../memory/extraction";
@@ -53,7 +53,7 @@ describe("Cast Memory identities", () => {
 		expect(Value.Parse(conversationMemories, await response.json()).cast).toEqual([{ id: writer.id, names: ["Director", "Guide", "Writer"] }, { id: chat.cast[1]!.id, names: ["Maren"] }]);
 	});
 
-	test("skips guidance in catch-up, tail, direct and reset queues while retaining reference context", async () => {
+	test("skips guidance in catch-up, direct and reset queues while retaining reference context", async () => {
 		const chat = createChat(database);
 		const writer = chat.cast[0]!;
 		const maren = chat.cast[1]!;
@@ -63,7 +63,7 @@ describe("Cast Memory identities", () => {
 		expect((await catchup(database, chat.id)).pending).toBe(1);
 		expect(queueMemorySource(database, chat.id, guidance.messageId)).toBe(false);
 		const tail = source(database, chat.id, 3, writer);
-		expect(queueMemoryTail(database, chat.id)).toBe(false);
+		expect(queueMemorySource(database, chat.id, tail.messageId)).toBe(false);
 		expect(() => resetAndReextractMemorySource(database, chat.id, tail.messageId, tail.variantId, 0)).toThrow("not Memory sources");
 		const view = readConversationMemories(database, chat.id);
 		expect(view.path).toMatchObject([{ messageId: guidance.messageId, authorParticipantId: writer.id }, { messageId: story.messageId, authorParticipantId: maren.id }, { messageId: tail.messageId, authorParticipantId: writer.id }]);
@@ -73,7 +73,7 @@ describe("Cast Memory identities", () => {
 		try { await waitFor(() => readConversationMemories(database, chat.id).sources[0]?.status === "complete"); expect(captured).toMatchObject([[{ messageId: guidance.messageId, speaker: "Writer", content: "I promised a key." }]]); }
 		finally { await stop(); }
 		const nextStory = source(database, chat.id, 4, maren);
-		expect(queueMemoryTail(database, chat.id)).toBe(true);
+		expect(queueMemorySource(database, chat.id, nextStory.messageId)).toBe(true);
 		const nextStop = startMemoryWorker(database, { process: async (_, context) => { captured.push([...context]); return []; } });
 		try { await waitFor(() => readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === nextStory.messageId)?.status === "complete"); expect(captured[1]?.map((entry) => entry.messageId)).toEqual([guidance.messageId, story.messageId, tail.messageId]); }
 		finally { await nextStop(); }
@@ -232,7 +232,7 @@ describe("Cast Memory identities", () => {
 		const connections = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connections.createProfile({ expectedRevision: 0, profile, credential: "fake-secret" }).profiles[0]!.id;
 		const settings = createMemorySettingsModule(database);
-		settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "fake-extraction" });
+		settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, extractionProfileId: profileId, extractionModel: "fake-extraction" });
 		configureDecisionModels(database, key);
 		await save(database, chat.id, writer.id, kind === "plays" ? { kind, person: "Tanjs" } : { kind });
 		expect(readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === saved.messageId)?.claims[0]?.people).toEqual(["Tanjs", "Maren"]);

@@ -4,9 +4,9 @@ import type { BoxDataWrite } from "../../../shared/contract/box-actions";
 import {
 	characterDataTable,
 	characterTable,
-	libraryDataTable,
 	participantDataTable,
 } from "../../database/schema";
+import { putLibraryValue } from "../../box/stored-value";
 import { InvalidConversationCommandError } from "../errors";
 import { isBoxEnabled } from "../../box/setup";
 import { requireParticipant, type ConversationDatabase } from "../internal";
@@ -27,13 +27,8 @@ export function putBoxData(db: ConversationDatabase, input: { conversationId: nu
 	const namespace = boxReference(input.box);
 	switch (input.owner.type) {
 		case "library": {
-			const where = and(eq(libraryDataTable.namespace, namespace), eq(libraryDataTable.key, input.key));
-			guardShared(db.select({ revision: libraryDataTable.revision }).from(libraryDataTable).where(where).get(), input.owner.revision);
-			const revision = input.owner.revision + 1;
-			db.insert(libraryDataTable)
-				.values({ namespace, key: input.key, value: input.value, revision })
-				.onConflictDoUpdate({ target: [libraryDataTable.namespace, libraryDataTable.key], set: { value: input.value, revision } })
-				.run();
+			const expected = input.owner.revision;
+			putLibraryValue(db, namespace, input.key, input.value, (current) => guardShared(current, expected));
 			return;
 		}
 		case "character": {

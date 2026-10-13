@@ -169,6 +169,13 @@
       "when": 1791821121126,
       "tag": "0023_many_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791851172361,
+      "tag": "0024_amused_dexter_bennett",
+      "breakpoints": true
     }
   ]
 }

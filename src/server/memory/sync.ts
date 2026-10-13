@@ -5,14 +5,9 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { memoryCollectionTable } from "../database/schema";
 import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 import { invalidateMemoryWorkForConversation } from "./cancellation";
-import { invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail } from "./collections";
+import { invalidateMemoryWorkForVariant, queueMemorySource } from "./collections";
 import { sha256 } from "./hash";
 import { abortMemoryWork } from "./work";
-
-export function refreshMemoryForConversation(database: Database, conversationId: number, reason: string): void {
-	invalidateMemoryWorkForConversation(database, conversationId, reason);
-	queueMemoryTail(database, conversationId);
-}
 
 // @approved
 //  Apply one Conversation-reported change to Memory's own tables. The

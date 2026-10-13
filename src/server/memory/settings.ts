@@ -1,30 +1,39 @@
 import type { Database } from "bun:sqlite";
+import { Value } from "@sinclair/typebox/value";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { connectionProfileTable, conversationPromptPresetTable, memorySettingsTable } from "../database/schema";
-import { createRevisionedSettings, InvalidSettingsError } from "../revisioned-settings";
-import { refreshMemoryForConversation } from "./sync";
-import type { MemorySettingsCommand, MemorySettingsPayload } from "../../shared/contract/memory-settings";
+import { connectionProfileTable } from "../database/schema";
+import { InvalidSettingsError } from "../revisioned-settings";
+import { guardRevision } from "../revision";
+import { putLibraryValue, readLibraryValue } from "../box/stored-value";
+import { boxReference } from "../../shared/contract/box";
+import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
+import { memorySettingsValue, type MemorySettingsCommand, type MemorySettingsPayload, type MemorySettingsValue } from "../../shared/contract/memory-settings";
 import { validateDecisionSelection } from "../decision-model";
+
+// @approved
+//  Memory's global settings: one library_data value in its own Box namespace.
+// Memory runs in a Chat when the Memory Box is enabled there; these settings
+// only choose its models and thresholds.
+const KEY = "settings";
+const defaults: MemorySettingsValue = {
+	extractionProfileId: null,
+	extractionModel: "",
+	contextLimit: 16384,
+	outputReserve: 2048,
+	safetyAllowance: 500,
+	retainProbabilityMinimum: 0.6,
+	decisionProfileId: null,
+	decisionModel: "",
+	decisionStateTokenLimit: DEFAULT_DECISION_STATE_TOKEN_LIMIT,
+	recallRelevanceMinimum: 1.5,
+	embeddingProfileId: null,
+	embeddingModel: "",
+};
 
 export const createMemorySettingsModule = (database: Database) => {
 	const db = drizzle(database);
-	const settings = createRevisionedSettings(database, memorySettingsTable, (value): MemorySettingsPayload => ({
-		revision: value.revision,
-		enabled: value.enabled,
-		extractionProfileId: value.extraction_profile_id,
-		extractionModel: value.extraction_model,
-		contextLimit: value.context_limit,
-		outputReserve: value.output_reserve,
-		safetyAllowance: value.safety_allowance,
-		retainProbabilityMinimum: value.retain_probability_minimum,
-		decisionProfileId: value.decision_profile_id,
-		decisionModel: value.decision_model,
-		decisionStateTokenLimit: value.decision_state_token_limit,
-		recallRelevanceMinimum: value.recall_relevance_minimum,
-		embeddingProfileId: value.embedding_profile_id,
-		embeddingModel: value.embedding_model,
-	}));
+	const get = (): MemorySettingsPayload => readLibraryValue(db, boxReference("memory"), KEY, memorySettingsValue, defaults);
 	const checkChoice = (role: "extraction" | "embedding", profileId: number | null, model: string) => {
 		if (profileId === null) {
 			if (model.length > 0) throw new InvalidSettingsError(`Choose a Connection Profile before setting an ${role} model.`);
@@ -55,31 +64,9 @@ export const createMemorySettingsModule = (database: Database) => {
 		}
 		if (!(command.retainProbabilityMinimum >= 0 && command.retainProbabilityMinimum <= 1)) throw new InvalidSettingsError("The retain probability minimum must be between 0 and 1.");
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidSettingsError("The recall relevance minimum must be between 0 and 3.");
-		const toggled = settings.get().enabled !== command.enabled;
-		const applied = settings.commit(command.expectedRevision, {
-			enabled: command.enabled,
-			extraction_profile_id: command.extractionProfileId,
-			extraction_model: model,
-			context_limit: command.contextLimit,
-			output_reserve: command.outputReserve,
-			safety_allowance: command.safetyAllowance,
-			retain_probability_minimum: command.retainProbabilityMinimum,
-			decision_profile_id: command.decisionProfileId,
-			decision_model: command.decisionModel.trim(),
-			decision_state_token_limit: command.decisionStateTokenLimit,
-			recall_relevance_minimum: command.recallRelevanceMinimum,
-			embedding_profile_id: command.embeddingProfileId,
-			embedding_model: embeddingModel,
-		});
-		if (toggled) {
-			const conversations = db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all();
-			for (const { id } of conversations) {
-				refreshMemoryForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
-			}
-		}
-		return applied;
+		const value = Value.Clean(memorySettingsValue, { ...command, extractionModel: model, decisionModel: command.decisionModel.trim(), embeddingModel });
+		putLibraryValue(db, boxReference("memory"), KEY, JSON.stringify(value), (current) => guardRevision("settings", command.expectedRevision, current, get));
+		return get();
 	}).immediate();
-	return { get: settings.get, apply };
+	return { get, apply };
 };
-
-export const isMemoryEnabled = (database: Database): boolean => createMemorySettingsModule(database).get().enabled;

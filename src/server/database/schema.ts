@@ -246,26 +246,6 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
-export const memorySettingsTable = sqliteTable("memory_settings", {
-	id: int().primaryKey(),
-	revision: int().notNull().default(0),
-	enabled: int({ mode: "boolean" }).notNull().default(true),
-	// @approved
-	//  Preserve deleted Profile identity so settings reads can report the broken choice.
-	extraction_profile_id: int(),
-	extraction_model: text().notNull().default(""),
-	context_limit: int().notNull().default(16384),
-	output_reserve: int().notNull().default(2048),
-	safety_allowance: int().notNull().default(500),
-	retain_probability_minimum: real().notNull().default(0.6),
-	decision_profile_id: int(),
-	decision_model: text().notNull().default(""),
-	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
-	recall_relevance_minimum: real().notNull().default(1.5),
-	embedding_profile_id: int(),
-	embedding_model: text().notNull().default(""),
-});
-
 export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
@@ -371,16 +351,6 @@ export const messageVariantTable = sqliteTable(
 			.where(sql`${table.selected} = 1`),
 	],
 );
-
-export const conversationMemorySettingsTable = sqliteTable("conversation_memory_settings", {
-	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
-	allowance: int().notNull().default(2048),
-	memory_note: text().notNull().default(""),
-	revision: int().notNull().default(0),
-	label_revision: int().notNull().default(0),
-	label_merges: text().notNull().default("[]"),
-	identities: text().notNull().default("{}"),
-});
 
 export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
 	id: int().primaryKey({ autoIncrement: true }),
@@ -652,6 +622,10 @@ export const conversationDataTable = sqliteTable(
 		namespace: text().notNull(),
 		key: text().notNull(),
 		value: text().notNull(),
+		// @approved
+		//  Guards a Box's own Chat-scoped value under ADR-0023; values written
+		// without a guard leave it at 0.
+		revision: int().notNull().default(0),
 	},
 	(table) => [
 		uniqueIndex("conversation_data_owner_key_unique").on(

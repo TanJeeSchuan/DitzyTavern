@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openObservedDatabase, readTestConversationSnapshot } from "../test-fixtures/conversation";
+import { openObservedDatabase, readTestConversationSnapshot, setBoxState } from "../test-fixtures/conversation";
 import { startMemoryWorker } from "../memory";
 import { readConversationMemories } from "../memory/collections";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
@@ -177,7 +177,7 @@ describe("Memory source public contract", () => {
 		} finally { release(); await stop(); }
 	});
 
-	test("disabling then re-enabling Memory cannot publish work queued before the change", async () => {
+	test("disabling then re-enabling the Memory Box cannot publish work queued before the change", async () => {
 		const conversation = createChat(database);
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "Source around a setting change.", true);
@@ -191,12 +191,12 @@ describe("Memory source public contract", () => {
 		const stop = startMemoryWorker(database, { process: async () => { if (++processCount === 1) { await waiting; return [{ claim: "Late pre-disable result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Source around a setting change." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } } }]; } return []; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
-			const settings = createMemorySettingsModule(database);
-			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: false });
-			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true });
+			setBoxState(database, conversation.id, "memory", "disabled");
+			setBoxState(database, conversation.id, "memory", "enabled");
 			release();
-			expect(await waitFor(() => processCount === 2 && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete")).toBe(true);
-			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "complete", claims: [] }]);
+			await stop();
+			expect(processCount).toBe(1);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "failed", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
 
@@ -207,7 +207,7 @@ describe("Memory source public contract", () => {
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
-		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		settings.apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		const firstMessageId = insertMessage(database, conversation.id, 1);
 		const firstVariantId = insertVariant(database, firstMessageId, "First source.", true);
@@ -263,7 +263,7 @@ describe("Memory source public contract", () => {
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
 		const decision = configureDecisionModels(database, key);
-		settings.apply({ expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: gate, ...decision, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		settings.apply({ expectedRevision: settings.get().revision, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: gate, ...decision, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "Maren returned Writer's brass key.", true);
 		const queue = createMemoryRoutes(database);
@@ -304,7 +304,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "A valid but incomplete response.", true);
@@ -335,7 +335,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		configureDecisionModels(database, key);
 		insertVariant(database, insertMessage(database, conversation.id, 1), "Oldest context. ".repeat(250), true);
 		insertVariant(database, insertMessage(database, conversation.id, 2), "Recent context.", true);

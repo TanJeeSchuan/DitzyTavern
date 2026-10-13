@@ -2,9 +2,9 @@ import { Type, type Static } from "@sinclair/typebox";
 import { decisionSelection } from "./decision-model";
 import { invalidOutcome } from "./outcomes";
 
-export const memorySettings = Type.Composite([decisionSelection, Type.Object({
-	revision: Type.Integer(),
-	enabled: Type.Boolean(),
+// @approved
+//  The stored Memory Settings value, kept in library_data under `box:memory`.
+export const memorySettingsValue = Type.Composite([decisionSelection, Type.Object({
 	extractionProfileId: Type.Union([Type.Integer(), Type.Null()]),
 	extractionModel: Type.String(),
 	contextLimit: Type.Integer(),
@@ -15,6 +15,8 @@ export const memorySettings = Type.Composite([decisionSelection, Type.Object({
 	embeddingProfileId: Type.Union([Type.Integer(), Type.Null()]),
 	embeddingModel: Type.String(),
 })]);
+export type MemorySettingsValue = Static<typeof memorySettingsValue>;
+export const memorySettings = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
 export type MemorySettingsPayload = Static<typeof memorySettings>;
 
 export const memorySettingsResponse = memorySettings;
@@ -28,5 +30,5 @@ export const memorySettingsConflict = Type.Object({
 // 409/422 envelopes the command route declares, so the client decodes an
 // error body against exactly that union.
 export const memorySettingsCommandErrors = Type.Union([memorySettingsConflict, invalidOutcome]);
-export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), Type.Omit(memorySettings, ["revision"])]);
+export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), memorySettingsValue]);
 export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;

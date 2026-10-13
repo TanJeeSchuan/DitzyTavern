@@ -21,9 +21,10 @@ import { useConversationMemories } from "./useConversationMemories";
 type Source = ConversationMemories["sources"][number];
 type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
-export function MemoriesPanel({ conversationId, conversationRevision, cast, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
+export function MemoriesPanel({ conversationId, conversationRevision, enabled, cast, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
 	conversationId: number;
 	conversationRevision: number;
+	enabled: boolean;
 	cast: CastMember[];
 	focusRequest: { messageId: number } | null;
 	onClose: () => void;
@@ -109,12 +110,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 			)}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{settings?.enabled === false && (
-					<div className="memory-callout">
-						<p>Memory is off. Turn it on in Memory Settings to start remembering. Saved Memories stay here.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button>
-					</div>
-				)}
+				{!enabled && <div className="memory-callout"><p>Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.</p></div>}
 				{awaitingEmbedding > 0 && (
 					<div className="memory-callout">
 						<p>
@@ -129,7 +125,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 						path={memories.path}
 						sources={new Map(selected.map((source) => [source.messageId, source]))}
 						catchup={catchup}
-						enabled={settings?.enabled ?? false}
+						enabled={enabled}
 						busy={catchupBusy}
 						selected={focus}
 						label={actions.label}
@@ -143,7 +139,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 					source={selected.find((source) => source.messageId === focus)}
 					label={actions.label(focus)}
 					busy={busy.has(selected.find((source) => source.messageId === focus)?.variantId ?? -1)}
-					enabled={settings?.enabled ?? false}
+					enabled={enabled}
 					excluded={memories.identities[memories.path.find((entry) => entry.messageId === focus)?.authorParticipantId ?? -1]?.kind === "excluded"}
 					actions={actions}
 					onNavigate={() => onNavigateSource(focus)}

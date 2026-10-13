@@ -134,7 +134,6 @@ const claimableCollectionConditions = (configuration: MemoryEmbeddingConfigurati
 );
 
 export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefined => {
-	if (!createMemorySettingsModule(database).get().enabled) return undefined;
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	if (configuration.spaceKey === "") return undefined;
 	const db = connect(database);

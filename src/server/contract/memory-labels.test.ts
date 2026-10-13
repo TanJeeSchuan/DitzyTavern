@@ -70,15 +70,6 @@ describe("Memory label merging", () => {
 		expect(readConversationMemories(database, chat.id).labelRevision).toBe(1);
 	});
 
-	test("reads an invalid persisted merge mapping as empty instead of failing the panel", () => {
-		const chat = createChat(database);
-		readMemoryAllowance(database, chat.id);
-		for (const invalid of ["{}", "null", "[{\"from\":1}]", "[{"]) {
-			database.run("UPDATE conversation_memory_settings SET label_merges = ? WHERE conversation_id = ?", [invalid, chat.id]);
-			expect(readConversationMemories(database, chat.id).labelRevision).toBe(0);
-		}
-	});
-
 	test("rejects stale or invalid merges without changing any collections", async () => {
 		const chat = createChat(database);
 		addSource(database, chat.id, 1, ["assistant", "Assistant"]);

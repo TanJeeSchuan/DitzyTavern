@@ -78,7 +78,7 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
 		const { revision, ...settings } = await call("memory-settings");
 		await call("memory-settings/commands", {
-			...settings, expectedRevision: revision, enabled: true,
+			...settings, expectedRevision: revision,
 			decisionProfileId: decision.id, decisionModel: "e2e-decision",
 			extractionProfileId: chat.id, extractionModel: "e2e-model", embeddingProfileId: id, embeddingModel: "e2e-embedding",
 		});

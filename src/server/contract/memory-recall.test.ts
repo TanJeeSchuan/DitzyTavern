@@ -1,5 +1,5 @@
 import { readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { openObservedDatabase } from "../test-fixtures/conversation";
+import { openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -533,7 +533,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(providerCalls).toBe(0);
 	});
 
-	test("turning Memory off stops recall, rejects new extraction, and invalidates running extraction", async () => {
+	test("turning the Memory Box off stops recall, rejects new extraction, and invalidates running extraction", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		withProfile(database);
@@ -547,7 +547,7 @@ describe("Memory recall in Generation preparation", () => {
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "running")).toBe(true);
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			setBoxState(database, conversation.id, "memory", "disabled");
 			release();
 			await worker();
 		} finally { release(); await worker(); }
@@ -558,6 +558,6 @@ describe("Memory recall in Generation preparation", () => {
 		const preview = await createConversationRoutes(database, { masterKey: key }).handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "A new scene." }),
 		}));
-		expect(await preview.json()).toMatchObject({ memoryActivation: { state: "disabled", candidates: [] } });
+		expect(await preview.json()).toMatchObject({ memoryActivation: null });
 	});
 });

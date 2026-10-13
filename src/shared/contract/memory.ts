@@ -60,12 +60,17 @@ export const memoryCatchupCommand = Type.Object({});
 export const memoryCatchupParams = Type.Object({ id: numericWire, runId: numericWire });
 export type MemoryCatchup = Static<typeof memoryCatchup>;
 
-export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(), allowance: Type.Integer(), note: Type.String(), enabled: Type.Boolean() });
+export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(), allowance: Type.Integer(), note: Type.String() });
 export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.Integer(), allowance: Type.Integer() });
 export const conversationMemoryNoteCommand = Type.Object({ expectedRevision: Type.Integer(), note: Type.String() });
 export const conversationMemoryAllowanceApplied = Type.Object({ outcome: Type.Literal("applied"), settings: conversationMemoryAllowance });
 export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });
 export type ConversationMemoryAllowance = Static<typeof conversationMemoryAllowance>;
+// @approved
+//  Memory's stored per-Chat values in conversation_data under `box:memory`;
+// each key's row carries the revision.
+export const memoryChatSettings = Type.Omit(conversationMemoryAllowance, ["revision"]);
+export const memoryLabels = Type.Object({ identities: memoryIdentities, merges: memoryLabelMerges });
 
 export const memoryExtractionResponse = Type.Object({
 	candidates: Type.Array(Type.Object({

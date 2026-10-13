@@ -32,7 +32,6 @@ import { requestDecisions } from "../decision-model";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
-import { createMemorySettingsModule } from "../memory/settings";
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
 import { runConversationReadTransaction } from "../conversation";
 import {
@@ -384,11 +383,10 @@ export function prepareGenerationInputsSnapshot(
 			macroWrites: message.variant === null ? [] : variantData.get(message.variant.id)?.macroWrites ?? [],
 		})),
 	}));
-	const memoryEnabled = createMemorySettingsModule(input.database).get().enabled && hasEnabledMemorySlot(recipe.slots);
 	const captureMemory = () => captureMemoryRecallSnapshot({
 		database: input.database,
 		conversationId: input.conversationId,
-		enabled: memoryEnabled,
+		enabled: hasEnabledMemorySlot(recipe.slots),
 		messages: rendered.map(({ message, variantId, speakerName, role, content }) => ({ messageId: message.id, variantId, position: message.position, speakerName, role, content })),
 		pendingHumanText,
 		humanName: human.name,

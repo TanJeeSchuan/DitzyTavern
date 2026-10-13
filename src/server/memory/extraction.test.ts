@@ -70,7 +70,7 @@ describe("Decision Model Memory judgments", () => {
 				pinnedModels: [],
 			}, credential: "extraction-secret" }).profiles[0]?.id;
 			if (profileId === undefined) throw new Error("Memory extraction fixture Connection Profile setup failed.");
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			configureDecisionModels(database, key, "jev-before");
 			const fakeFetch: ModelFetch = async (input, init) => {
 				if (String(input).endsWith("/systemone")) {

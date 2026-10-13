@@ -1,12 +1,7 @@
 import { readCastForMemory, readMessageAuthorsForMemory, readSelectedPathForMemory } from "../conversation";
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { Value } from "@sinclair/typebox/value";
-import { conversationMemorySettingsTable } from "../database/schema";
+import { readMemoryLabels } from "./chat-values";
 import {
-	memoryIdentities,
-	memoryLabelMerges,
 	type MemoryCandidateJudgment,
 	type MemoryIdentities,
 	type MemoryLabelMerge,
@@ -18,12 +13,6 @@ export class InvalidMemoryLabelsError extends Error {
 	readonly details = { reason: this.message };
 }
 
-const connect = (database: Database) => drizzle(database);
-
-const parseMerges = (json: string): MemoryLabelMerge[] => {
-	try { return Value.Parse(memoryLabelMerges, JSON.parse(json)); } catch { return []; }
-};
-
 export interface MemoryLabelState {
 	revision: number;
 	merges: MemoryLabelMerge[];
@@ -32,16 +21,16 @@ export interface MemoryLabelState {
 }
 
 export const readMemoryLabelState = (database: Database, conversationId: number): MemoryLabelState => {
-	const row = connect(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
+	const { identities, merges, revision } = readMemoryLabels(database, conversationId);
 	const cast = new Map<number, { id: number; names: string[] }>();
 	const path = readMessageAuthorsForMemory(database, conversationId);
 	for (const { id, name } of readCastForMemory(database, conversationId)) {
 		cast.set(id, { id, names: [...new Set([name, ...path.flatMap((message) => message.authorParticipantId === id && message.author !== null ? [message.author] : [])])] });
 	}
 	return {
-		revision: row?.label_revision ?? 0,
-		merges: parseMerges(row?.label_merges ?? "[]"),
-		identities: Value.Parse(memoryIdentities, JSON.parse(row?.identities ?? "{}")),
+		revision,
+		merges,
+		identities,
 		cast: [...cast.values()],
 	};
 };
@@ -52,7 +41,5 @@ export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[]
 export const isExcludedMemorySource = (database: Database, conversationId: number, messageId: number) => {
 	const author = readSelectedPathForMemory(database, conversationId, { messageId, preceding: 0 })?.find((message) => message.messageId === messageId)?.authorParticipantId;
 	if (author === undefined || author === null) return false;
-	const settings = connect(database).select({ identities: conversationMemorySettingsTable.identities }).from(conversationMemorySettingsTable)
-		.where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
-	return Value.Parse(memoryIdentities, JSON.parse(settings?.identities ?? "{}"))[author]?.kind === "excluded";
+	return readMemoryLabels(database, conversationId).identities[author]?.kind === "excluded";
 };
