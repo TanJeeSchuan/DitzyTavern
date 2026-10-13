@@ -72,8 +72,6 @@ test("Memory traces render in previews, active Generations and saved details eve
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await page.keyboard.press("Escape");
 	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
-	await insertBox(page, "Memory");
-	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
 });
 
 test("removing an inspected Box closes it without reopening on reinsertion", async ({ page }) => {

@@ -49,7 +49,7 @@ export default exampleBox;
 // 3. Client surfaces: the `boxClients` entry in src/client/box-windows/registry.tsx
 "<id>": { icon, Window: { size, Panel, DockTab, lens }, TopBarItem },
 "<id>": { icon, Window: digestWindow("<id>", { icon, size, Panel, describe }), TopBarItem },
-"<id>": { icon, PrimaryPanel },                            // primary panel, as the Author Note uses
+"<id>": { icon, PrimaryPanel },                     // primary panel, as the Author Note uses
 "<id>": { icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView, TopBarItem },
 // Every surface is optional. A Box may export its definition from client.tsx, as Memory does.
 ```

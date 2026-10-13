@@ -1,10 +1,10 @@
-import { Button, type ConversationSummary } from "@/box-sdk/client";
+import { Button, type CastParticipant, type ConversationSummary } from "@/box-sdk/client";
 import { useState } from "react";
 import { memoryIdentityLabel } from "./shared";
 import { MemoryIdentityDialog } from "./client-identity-dialog";
 import { useConversationMemories } from "./client-use-memories";
 
-export function ParticipantMemory({ conversation, participant }: { conversation: ConversationSummary; participant: ConversationSummary["cast"][number] }) {
+export function ParticipantMemory({ conversation, participant }: { conversation: ConversationSummary; participant: CastParticipant }) {
 	const { memories, status, refresh, identitySaved } = useConversationMemories(conversation.id, conversation.revision);
 	const [open, setOpen] = useState(false);
 	return <section className="flex items-center justify-between gap-3" aria-label="Memory">

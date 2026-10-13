@@ -217,7 +217,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Persistently shows the Chat title.
 - Includes one compact Cast control rather than listing portraits or names.
 - The Cast control opens the primary left participant panel.
-- A Chat tools group sits between the title and the Cast control: a window item for each enabled Box that declares one, inspector icons for Boxes present in the Chat, then the host's Chat information and Macro Variables icons. The host supplies the Memories icon from Memory's inspector registration. A Box item is a quiet button with the Box's icon and one short line, such as the World Clock's in-story time, and opens the Box's window.
+- A Chat tools group sits between the title and the Cast control: a window item for each enabled Box that declares one, the host's Chat information and Macro Variables icons, then inspector icons for Boxes present in the Chat. The host supplies the Memories icon from Memory's inspector registration. A Box item is a quiet button with the Box's icon and one short line, such as the World Clock's in-story time, and opens the Box's window.
 - On narrow desktop and mobile the Chat tools group is hidden. The title menu carries Chat information, Macro Variables and inspector actions for Boxes present in the Chat, including Memories. Box window items stay in the composer's Box launcher; several status lines would crowd out the title.
 - Cast membership can change at any time.
 - Generation profile does not appear globally because it belongs to individual Messages.

@@ -154,7 +154,6 @@ export function ActiveWritingWorkspace({
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
 	const inspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] === "absent" ? undefined : boxClients.get(inspectorBox)?.Inspector;
-	const BoxInspector = inspector?.Component;
 	useEffect(() => {
 		if (inspectorBox !== undefined && conversation?.boxes[inspectorBox] === "absent") dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);
@@ -274,9 +273,9 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{!assemblyActive && BoxInspector !== undefined && session.conversation !== null && (
-				<aside className="details-panel" data-open="true" aria-label={inspector?.label}>
-					<BoxInspector
+			{!assemblyActive && inspector !== undefined && session.conversation !== null && (
+				<aside className="details-panel" data-open="true" aria-label={inspector.label}>
+					<inspector.Component
 						key={`${session.conversation.id}:${inspectorBox}`}
 						conversation={session.conversation}
 						onConversationChange={session.setConversation}

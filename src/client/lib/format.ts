@@ -16,7 +16,6 @@ export const formatTimestamp = (value: string): string => {
 	}).format(date);
 };
 
-
 // @approved
 //  Human byte size. `nullLabel` covers the per-context absence wording
 // ("n/a" in Chat information, empty in import presentation).
