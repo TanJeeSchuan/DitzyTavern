@@ -268,7 +268,7 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
 		enabled: record !== null,
 	});
-	const memorySources = sources.data ?? { messageIds: [], variantIds: [] };
+	const memorySources = sources.isError || sources.data === undefined ? { messageIds: [], variantIds: [] } : sources.data;
 	if (trace === undefined) return null;
 	if (record === null) return (
 		<section className="generation-detail-section">
