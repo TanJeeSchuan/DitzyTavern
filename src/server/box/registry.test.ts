@@ -10,7 +10,9 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
+import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
 import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes } from "./registry";
 
@@ -153,6 +155,34 @@ test("an unchanged preview of a Box block whose pinned items exceed its allowanc
 		expect(accepted.status).toBe(200);
 		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
 		expect(sent).toContain("The lantern is lit and swinging.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a Generation holding a record of a Box no longer loaded still settles on recovery, keeping the record as captured", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: "export default { records: { initial: 0, fold: (state) => state } };",
+		} })]);
+		const conversation = createChat(database);
+		const instance = insertBox(database, conversation.id, "lantern");
+		const [human, model] = conversation.cast;
+		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+		const accepted = acceptConversationTailGeneration(database, {
+			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
+			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] }, promptContext: [], generationSettings: {}, connection: {},
+			boxRecords: { lantern: { instance, record: { lit: true } } },
+		});
+		checkpointConversationGeneration(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
+		await loadBoxes([builtInBoxes]);
+		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, failed: 0 });
+		const stored = database.query<{ value: string }, [number]>("SELECT value FROM message_variant_data WHERE message_variant_id = ? AND namespace = 'box:lantern'").get(accepted.provisionalVariantId);
+		expect(stored === null ? null : JSON.parse(stored.value)).toEqual({ automatic: { lit: true } });
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
