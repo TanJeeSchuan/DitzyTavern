@@ -134,6 +134,31 @@ test("a disabled Box's records are not folded, so turning off a Box whose fold t
 	}
 });
 
+test("an unchanged preview of a Box block whose pinned items exceed its allowance sends, as Generation admits it", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			server: 'export default { advance: { run: async () => ({ items: [{ text: "The lantern is lit and swinging.", priority: 0, pinned: true }], allowance: 0 }) } };',
+		} })]);
+		const conversation = createChat(database);
+		insertBox(database, conversation.id, "lantern");
+		withProfile(database);
+		let sent = "";
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { sent = JSON.stringify(request.messages); }) });
+		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+		}));
+		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const accepted = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
+		expect(accepted.status).toBe(200);
+		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
+		expect(sent).toContain("The lantern is lit and swinging.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
 test("a Chat keeps its preset and its Generations once a Box in it is no longer loaded", async () => {
 	const database = openObservedDatabase();
 	try {

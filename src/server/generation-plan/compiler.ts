@@ -33,9 +33,8 @@ import type {
 	GenerationPlan,
 } from "./types";
 import type { BoxTrace, BoxTraces } from "../../shared/contract/box-generation";
-import { admitDynamicBlocks, estimateDynamicBlockTokens, type LoreBudgetDecision } from "./admission";
+import { admitDynamicBlocks, type LoreBudgetDecision } from "./admission";
 import type { BoxItems, BoxResults } from "../box/registry";
-export { estimateDynamicBlockTokens };
 
 /** @approved
  * The Continuation intent one configured strategy produces. Instruction
