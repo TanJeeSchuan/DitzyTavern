@@ -1,4 +1,4 @@
-import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
+import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { RefreshCw, Send, Settings, X } from "lucide-react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
@@ -85,7 +85,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const fields = run.map(({ block, index }) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabels[block.kind] : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}

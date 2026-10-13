@@ -8,7 +8,8 @@ import {
 } from "../database/schema";
 import {
 	nativePromptPreset,
-	singleUseReferenceLabels,
+	repeatedSingleUseReference,
+	singleUseReferenceLabel,
 	type SillyTavernImportPreview,
 	type SillyTavernJsonValue,
 	type NativePromptPreset,
@@ -167,9 +168,8 @@ export const importNativePromptPreset = (
 	const name = requireCommandName(native.name);
 	const unknownBox = native.slots.find((slot) => isUnknownBoxReference(slot.reference));
 	if (unknownBox !== undefined) throw new InvalidPromptPresetCommandError(`There is no Box for ${unknownBox.reference}.`);
-	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
-		if (native.slots.filter((slot) => slot.reference === reference).length > 1) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${label} block.`);
-	}
+	const repeated = repeatedSingleUseReference(native.slots.map((slot) => slot.reference));
+	if (repeated !== undefined) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const db = connect(database);
 	const execute = database.transaction(() => {
 		const insertedId = insertPresetHeader(db, name, "created");

@@ -10,10 +10,10 @@ import { conversationMemoryAllowance, conversationMemoryAllowanceApplied, conver
 const guidance = "\"Trainer\" in narration means Tanjs. Track injuries and promises closely.";
 
 const saveNote = (database: Database, conversationId: number, expectedRevision: number, note: string) =>
-	memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-note`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
+	memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/note`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, note }) }));
 
 const saveAllowance = (database: Database, conversationId: number, expectedRevision: number, allowance: number) =>
-	memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memory-allowance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
+	memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/allowance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, allowance }) }));
 
 describe("Conversation Memory note", () => {
 	let database: Database;
@@ -33,7 +33,7 @@ describe("Conversation Memory note", () => {
 	test("saves a trimmed note against the shared settings revision and rejects stale and oversized commands", async () => {
 		const chat = createChat(database);
 		const routes = memoryRoutes(database);
-		const read = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/memory-allowance`));
+		const read = await routes.handle(new Request(`http://localhost/conversations/${chat.id}/allowance`));
 		expect(Value.Parse(conversationMemoryAllowance, await read.json())).toEqual({ revision: 0, allowance: 2048, note: "" });
 
 		const saved = await saveNote(database, chat.id, 0, `  ${guidance}  `);

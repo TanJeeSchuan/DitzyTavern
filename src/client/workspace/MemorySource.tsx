@@ -4,8 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { formatJudgment } from "../lib/format";
-import type { ConversationMemories } from "../memories";
-import { memoryCandidate } from "../box-windows/registry";
+import { type ConversationMemories, memoryCandidate } from "../box-windows/registry";
 import { memorySourceState } from "./memory-source-state";
 import type { ClaimDraft } from "./useConversationMemories";
 

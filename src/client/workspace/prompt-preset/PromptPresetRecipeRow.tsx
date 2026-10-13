@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
 import { isBoxSlot, isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
-import { boxDescriptorOf, type PromptBoxReference } from "../../../shared/contract/box";
+import { boxDescriptorOf, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -73,6 +73,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 	if ("sourceName" in slot) return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
+	if (!isBoxReference(slot.reference)) return { description: `The ${title} Box is not loaded, so this block sends nothing.`, source: "No Box loaded" };
 	return boxDescriptorOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
@@ -94,14 +95,14 @@ const TextFieldEditor = ({
 	disabled: boolean;
 	onChange: (fields: TextFields) => void;
 }) => {
-	const box = isBoxSlot(slot) ? boxDescriptorOf(slot.reference) : null;
+	const box = isBoxReference(slot.reference) ? boxDescriptorOf(slot.reference) : null;
 	const fields: TextFields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
 		: { name: "name" in slot ? slot.name : undefined, content: slot.content, role: slot.role };
 	const label = slotTitle(slot);
 	const warnings = unknownMacrosOf(fields.content, label);
 	return <div className="flex flex-col gap-3">
-		{box === null && <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+		{slot.reference === "instruction" && <label className="flex flex-col gap-1 text-xs text-muted-foreground">
 			<span>Name</span>
 			<input
 				type="text"
@@ -112,14 +113,14 @@ const TextFieldEditor = ({
 			/>
 		</label>}
 		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
-			<span>{box === null ? "Instruction text" : "Instructions"}</span>
+			<span>{slot.reference === "instruction" ? "Instruction text" : "Instructions"}</span>
 			<textarea
 				className={textInputClass}
 				rows={8}
 				spellCheck={false}
 				value={fields.content}
 				disabled={disabled}
-				placeholder={box === null ? "Write the reusable instruction…" : "No instructions"}
+				placeholder={slot.reference === "instruction" ? "Write the reusable instruction…" : "No instructions"}
 				onChange={(event) => onChange({ ...fields, content: event.target.value })}
 			/>
 		</label>

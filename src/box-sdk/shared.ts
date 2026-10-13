@@ -5,6 +5,7 @@
 export { imageHash } from "../shared/contract/image";
 export { boxCatchUp } from "../shared/contract/box-digest";
 export { boxMovesOf, boxSetupOf } from "../shared/contract/box-value";
+export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from "../shared/contract/box-descriptor";
 export { invalidOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
 export { projectImageAnchors } from "../shared/image-reference";

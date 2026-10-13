@@ -5,9 +5,12 @@ import { boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCom
 const route = (box: BoxId) => api.api.boxes({ box })["decision-settings"];
 
 // @approved
-//  One load and save pair per digesting Box, built once so a settings draft
-// keyed by them never reloads on render.
-export const boxDecisionClients = boxesWith("decision").map(([box, decision]) => ({
+//  One load and save pair per digesting Box, built once, after startup
+// installs the descriptors, so a settings draft keyed by them never reloads
+// on render.
+let clients: ReturnType<typeof buildClients> | undefined;
+export const boxDecisionClients = () => clients ??= buildClients();
+const buildClients = () => boxesWith("decision").map(([box, decision]) => ({
 	box,
 	label: boxDescriptor(box).label,
 	decision,

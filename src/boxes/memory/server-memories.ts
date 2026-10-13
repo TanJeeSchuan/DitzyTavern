@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxInstances,
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
-} from "../../box-sdk/server";
+} from "@/box-sdk/server";
 import { memoryRecord, type ConversationMemories, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
 import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
 import { InvalidMemoryCommandError, memoryGuard } from "./server-errors";

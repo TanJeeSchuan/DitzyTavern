@@ -8,7 +8,7 @@ import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxS
 import { cancelBoxCatchUp, queueBoxDigest, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
 import { readSelectedPassages } from "../conversation";
-import { worldClockBox } from "../../boxes/world-clock/server";
+import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
 

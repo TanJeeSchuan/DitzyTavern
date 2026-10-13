@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
-import type { ConversationMemories } from "../memories";
+import type { ConversationMemories } from "../box-windows/registry";
 import { memorySourceState } from "./memory-source-state";
 
 type Source = ConversationMemories["sources"][number];

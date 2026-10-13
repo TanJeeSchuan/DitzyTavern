@@ -1,6 +1,6 @@
 # Boxes are discovered from folders
 
-Status: TODO
+Status: DONE
 
 Blocked By: 25-box-ids-are-checked-at-runtime
 
@@ -25,14 +25,22 @@ The server builds its Box registry at startup by scanning two folders: the built
 
 ## Work
 
-- [ ] Move every built-in descriptor into its Box folder, and add `id` and `sdk`.
-- [ ] Discover, validate and import Boxes from both folders at startup, refusing bad ones as above.
-- [ ] Remove `boxDescriptors`, the static registries' imports and the lint allowlist.
-- [ ] Add `GET /api/boxes`.
-- [ ] Unit-test refusal: invalid descriptor, SDK mismatch, duplicate id and failing import.
-- [ ] Update `docs/box-system/README.md` (folder layout, descriptor, SDK version) and `docs/docker.md`.
-- [ ] Run `bun run check` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Move every built-in descriptor into its Box folder, and add `id` and `sdk`.
+- [x] Discover, validate and import Boxes from both folders at startup, refusing bad ones as above.
+- [x] Remove `boxDescriptors`, the static registries' imports and the lint allowlist.
+- [x] Add `GET /api/boxes`.
+- [x] Unit-test refusal: invalid descriptor, SDK mismatch, duplicate id and failing import.
+- [x] Update `docs/box-system/README.md` (folder layout, descriptor, SDK version) and `docs/docker.md`.
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
+
+## Notes
+
+- The client registry `src/client/box-windows/registry.tsx` keeps its static Box imports and its place in the lint's allowlist, as the one file that still lists Boxes; ticket 27 removes both. It also installs the built-in descriptors before its own entries read them.
+- Box files import the SDK as `@/box-sdk/<entry>` (tsconfig paths), and their own folder by relative path, so a folder runs unchanged from `data/boxes/`. The lint enforces it, and the runtime image copies `tsconfig.json`.
+- A Box's `routes` hook mounts under `/api/boxes/<id>`; Memory's routes moved there, and its client helpers into `src/boxes/memory/client.ts`.
+- The registry order is load order (built-ins, then plugins, each by folder name), not the old hand order.
+- A Box that stops loading (removed, or refused after an upgrade) leaves its `box:<id>` preset blocks in place: they stay Box blocks, single-use, and render nothing. Found in review; covered in `src/server/box/registry.test.ts`.
 
 ## Acceptance
 

@@ -2,8 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 import { RadioGroup } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { applyMemoryPeople, type MemoryIdentity } from "../box-windows/registry";
-import { saveMemoryIdentity, type ConversationMemories } from "../memories";
+import { applyMemoryPeople, type MemoryIdentity, saveMemoryIdentity, type ConversationMemories } from "../box-windows/registry";
 import { labelledMemories } from "./memories-view";
 
 export function MemoryIdentityDialog({ conversationId, participant, memories, initialKind, onClose, onSaved }: {

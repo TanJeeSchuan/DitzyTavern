@@ -1,7 +1,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { decisionRequest, packDecisions, readBoxDecisionSettings, tokenxEstimator, type DecisionAnswer, type DigestContext, type DigestWindow } from "../../box-sdk/server";
-import { projectImageAnchors } from "../../box-sdk/shared";
+import { decisionRequest, packDecisions, readBoxDecisionSettings, tokenxEstimator, type DecisionAnswer, type DigestContext, type DigestWindow } from "@/box-sdk/server";
+import { projectImageAnchors } from "@/box-sdk/shared";
 import { memoryChatSettings, memoryExtractionResponse, memoryLabels } from "./contract";
 import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse, MemoryRecord } from "./contract";
 import { renderMemoryClaim } from "./shared";

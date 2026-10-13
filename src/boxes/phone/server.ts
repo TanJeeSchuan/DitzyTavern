@@ -2,7 +2,7 @@ import type { PhoneMove, PhoneRead } from "./contract";
 import type { Database } from "bun:sqlite";
 import {
 	humanMessageText, readConversationSummaryFromConnection, readMessageMoves, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box,
-} from "../../box-sdk/server";
+} from "@/box-sdk/server";
 import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "./shared";
 
 // @approved
@@ -10,7 +10,7 @@ import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from ".
 //  story's lens lifts into the Phone. The block's instructions teach the
 //  markup; the Box adds who the human can text. Without another Cast member
 //  there is nobody to text, so the block says nothing.
-export const phoneBox = {
+const phoneBox = {
 	moves: { render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }) },
 	dependencies: ({ cast, human }) => phoneNames(cast, human),
 	read: readPhone,
@@ -19,6 +19,7 @@ export const phoneBox = {
 			({ items: contacts.length === 0 ? [] : [{ text: `${human} has a phone and can text ${contacts.join(", ")}.`, priority: 0, pinned: true }] }),
 	},
 } satisfies Box<undefined, PhoneNames, never, never, never, undefined, PhoneMove>;
+export default phoneBox;
 
 /** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */
 function readPhone(database: Database, conversationId: number): PhoneRead | undefined {

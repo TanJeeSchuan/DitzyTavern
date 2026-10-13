@@ -36,7 +36,7 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, ENABLED_KEY)))
 		.all()
 		.map((row) => [row.namespace, row.value]));
-	return Object.fromEntries([...boxDescriptors.keys()].map((id) => {
+	return Object.fromEntries([...boxDescriptors().keys()].map((id) => {
 		const value = stored.get(boxReference(id));
 		return [id, value === undefined ? "absent" : JSON.parse(value) === true ? "enabled" : "disabled"];
 	}));
@@ -45,7 +45,7 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 /** @approved The Boxes On in this Chat. */
 export const enabledBoxIds = (db: BunSQLiteDatabase, conversationId: number): BoxId[] => {
 	const states = readBoxStates(db, conversationId);
-	return [...boxDescriptors.keys()].filter((id) => states[id] === "enabled");
+	return [...boxDescriptors().keys()].filter((id) => states[id] === "enabled");
 };
 
 /** @approved The Chats where the Box is enabled, as a subquery for background work that spans Chats. */

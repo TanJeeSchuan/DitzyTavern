@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { mergeMemoryLabels, type ConversationMemories } from "../memories";
+import { mergeMemoryLabels, type ConversationMemories } from "../box-windows/registry";
 import { labelledMemories } from "./memories-view";
 
 export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels, onClose, onMerged }: {

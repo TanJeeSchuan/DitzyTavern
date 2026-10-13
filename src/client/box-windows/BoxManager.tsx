@@ -52,7 +52,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 			<PopoverContent side="top" align="start" className="box-manager">
 				<PopoverHeader><PopoverTitle>Boxes in this Chat</PopoverTitle></PopoverHeader>
 				<ul aria-label="Boxes">
-					{[...boxDescriptors.keys()].map((box) => {
+					{[...boxDescriptors().keys()].map((box) => {
 						const state = conversation.boxes[box];
 						return <li key={box}>
 							<div>

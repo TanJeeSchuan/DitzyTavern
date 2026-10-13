@@ -4,8 +4,8 @@ import {
 	cosineSimilarity, effectiveRecord, hasAutomaticRecord, hasDigestError, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
 	readBoxInstances, readRecordSlots, sha256, tokenxEstimator,
 	type BoxContext, type CaptureRead, type DecisionAnswer, type EmbeddingConfiguration,
-} from "../../box-sdk/server";
-import { projectImageAnchors } from "../../box-sdk/shared";
+} from "@/box-sdk/server";
+import { projectImageAnchors } from "@/box-sdk/shared";
 import { memoryRecord, type MemoryActivationRecord, type MemoryRecallCandidateRecord } from "./contract";
 import { applyMemoryPeople, renderMemoryClaim } from "./shared";
 import { isExcludedAuthor, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";

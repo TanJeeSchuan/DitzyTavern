@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ConversationMemories } from "../memories";
+import type { ConversationMemories } from "../box-windows/registry";
 import {
 	groupEntriesByPeople,
 	memoryCastMembers,

@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus, type ConversationSummary } from "../../box-sdk/client";
+import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus, type ConversationSummary } from "@/box-sdk/client";
 import { isWorldClockStart, weatherLabels, worldClockSetup, type WorldClockRecord, type WorldClockSetup } from "./contract";
 
 const elapsedLabel = (minutes: number): string => {

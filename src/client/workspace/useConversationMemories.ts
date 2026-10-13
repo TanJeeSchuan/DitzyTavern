@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } from "../box-digest";
-import { loadConversationMemories, loadMemoryAllowance, type ConversationMemories, type ConversationMemoryAllowance } from "../memories";
+import { loadConversationMemories, loadMemoryAllowance, type ConversationMemories, type ConversationMemoryAllowance } from "../box-windows/registry";
 import { labelledMemories, type MemoryClaim } from "./memories-view";
 
 type Source = ConversationMemories["sources"][number];

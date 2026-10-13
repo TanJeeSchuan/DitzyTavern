@@ -24,7 +24,7 @@ export function ConnectionSettingsPanel({
 	const semanticTriggers = useSemanticTriggerSettings();
 	// @approved
 	//  boxDecisionClients never changes, so these drafts keep their hook order.
-	const boxDecisions = boxDecisionClients.map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
+	const boxDecisions = boxDecisionClients().map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
 	const [open, setOpen] = useState<"semantic-triggers" | BoxId | null>(null);
 	const openBox = boxDecisions.find(({ box }) => box === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;

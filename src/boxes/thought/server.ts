@@ -1,14 +1,15 @@
 import type { Database } from "bun:sqlite";
-import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box } from "../../box-sdk/server";
+import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box } from "@/box-sdk/server";
 import { stripThoughts, type ThoughtRead } from "./shared";
 
 // @approved
 //  Inner monologue lives in the prose as `<thought>` markup, which the prompt
 //  keeps and the story's lens lifts into the Thoughts window. The block's
 //  instructions are the whole prompt, so the Box has no advance.
-export const thoughtBox = {
+const thoughtBox = {
 	read: readThoughts,
 } satisfies Box<undefined>;
+export default thoughtBox;
 
 function readThoughts(database: Database, conversationId: number): ThoughtRead | undefined {
 	return runConversationReadTransaction(database, (db) => {

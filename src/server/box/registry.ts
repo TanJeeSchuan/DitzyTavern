@@ -1,20 +1,14 @@
-import { boxSeed } from "./seed";
-import { raceBox } from "../../boxes/race/server";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
+import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxDescriptors, boxReference, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptor, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptorSchema, boxSdkVersion } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
-import type { Database } from "bun:sqlite";
-import { memoryBox } from "../../boxes/memory/server";
-import { memoryRoutes } from "../../boxes/memory/server-routes";
-import { authorNoteBox } from "../../boxes/author-note/server";
 import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import { worldClockBox } from "../../boxes/world-clock/server";
-import { phoneBox } from "../../boxes/phone/server";
-import { thoughtBox } from "../../boxes/thought/server";
-import { moodBox } from "../../boxes/mood/server";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
 import { resolveDecisionOf, type BoxDecision } from "./services";
 
@@ -25,7 +19,7 @@ import { resolveDecisionOf, type BoxDecision } from "./services";
 // no `read`; only that read calls `status`, so no other Box declares one.
 // Ids are known only at runtime, so the registry checks this when it is built.
 const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undefined): HostBox => {
-	if (box === undefined) throw new Error(`The ${id} Box has no server module.`);
+	if (box === undefined) throw new Error(`The ${id} Box's server.ts has no default export.`);
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
@@ -37,21 +31,60 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undef
 	return box;
 };
 
-const register = (): ReadonlyMap<BoxId, HostBox> => {
-	const modules = new Map<BoxId, HostBox>(Object.entries({
-		"author-note": authorNoteBox, memory: memoryBox, "world-clock": worldClockBox, race: raceBox, phone: phoneBox, thought: thoughtBox, mood: moodBox,
-	}));
-	return new Map([...boxDescriptors].map(([id, descriptor]) => [id, checkedHooks(id, descriptor, modules.get(id))]));
-};
-let registered: ReadonlyMap<BoxId, HostBox> | undefined;
 // @approved
-//  The server module of every registered Box, by id, in registry order. A
-// lookup rather than a table, because Box modules read through the
-// Conversation module, which reads Box setups through here: a table would be
-// built before the Boxes it holds. Each Box types its own hooks with
-// `satisfies Box<…>`; the host holds it as a HostBox and checks each value it
-// routes against the Box's descriptor.
-export const serverBoxes = (): ReadonlyMap<BoxId, HostBox> => registered ??= register();
+//  A Box folder holds its descriptor in `shared-descriptor.ts` and its server
+// module in `server.ts`, each as its default export, and is named for the
+// Box's id. Folders load in order, each folder's Boxes by name, so a plugin
+// folder listed after the built-in one cannot replace a built-in Box. An
+// absent folder holds no Boxes, as before any plugin is installed. A Box
+// that fails to load is refused with its reason; the rest still load.
+export const discoverBoxes = async (folders: readonly string[]) => {
+	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox }>();
+	const refused: { readonly folder: string; readonly reason: string }[] = [];
+	for (const parent of folders) {
+		const entries = await readdir(parent, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? [] : Promise.reject(error));
+		for (const name of entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort()) {
+			const folder = join(parent, name);
+			try {
+				const { default: descriptor }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
+				if (!Value.Check(boxDescriptorSchema, descriptor)) {
+					const error = Value.Errors(boxDescriptorSchema, descriptor).First();
+					throw new Error(`Its descriptor is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
+				}
+				if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
+				if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
+				if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
+				if (boxes.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
+				// @approved
+				// SAFETY: checkedHooks checks the hooks the host relies on against the descriptor; each Box types its own with `satisfies Box<…>`.
+				const { default: box }: { default: HostBox | undefined } = await import(join(folder, "server.ts"));
+				boxes.set(descriptor.id, { descriptor, box: checkedHooks(descriptor.id, descriptor, box) });
+			} catch (error) {
+				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
+			}
+		}
+	}
+	return { boxes: [...boxes.values()], refused };
+};
+
+export const builtInBoxes = join(import.meta.dir, "../../boxes");
+/** @approved The built-in Boxes, then the plugins installed in the data folder. */
+export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
+
+let registered: ReadonlyMap<BoxId, HostBox> = new Map();
+/** @approved Builds the registry from `folders` at startup, before anything reads it, logging each refused Box. */
+export const loadBoxes = async (folders: readonly string[] = boxFolders): Promise<void> => {
+	const { boxes, refused } = await discoverBoxes(folders);
+	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
+	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
+	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));
+};
+
+// @approved
+//  The server module of every loaded Box, by id, in registry order. Each Box
+// types its own hooks with `satisfies Box<…>`; the host holds it as a HostBox
+// and checks each value it routes against the Box's descriptor.
+export const serverBoxes = (): ReadonlyMap<BoxId, HostBox> => registered;
 /** @approved A registered Box's server module; an unknown id has none. */
 export const serverBox = (id: BoxId): HostBox | undefined => serverBoxes().get(id);
 
@@ -106,11 +139,6 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
 		return [captureBox(id, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id))];
 	});
-
-// @approved
-//  Routes a Box serves beside the contract's: Memory's, for its in-tree side
-// panel, settings editor and trace view, until that UI moves into its Box.
-export const boxRoutes = (database: Database) => memoryRoutes(database);
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
 

@@ -1,4 +1,4 @@
-import type { AdvanceResult } from "../../box-sdk/server";
+import type { AdvanceResult } from "@/box-sdk/server";
 import type { MemoryActivationRecord } from "./contract";
 import { renderMemoryClaim } from "./shared";
 

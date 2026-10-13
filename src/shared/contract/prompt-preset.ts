@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { boxDescriptors, boxReference, isBoxReference, promptBoxReference, type BoxDescriptor, type PromptBoxReference } from "./box";
+import { boxDescriptorOf, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -32,14 +32,17 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-/** @approved `fixed`, plus one entry per registered Box under its `box:<id>` reference. */
-export const withBoxReferences = <Fixed extends object, Value>(fixed: Fixed, value: (descriptor: BoxDescriptor) => Value): Fixed & Readonly<Record<PromptBoxReference, Value>> =>
-	({ ...fixed, ...Object.fromEntries([...boxDescriptors].map(([id, descriptor]) => [boxReference(id), value(descriptor)])) });
-
-export const singleUseReferenceLabels = withBoxReferences({ lore: "Lore" }, ({ label }) => label) satisfies Record<PromptLoreReference | PromptBoxReference, string>;
-
-export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
-	Object.hasOwn(singleUseReferenceLabels, reference);
+/** @approved Whether a preset may hold at most one block of `reference`: Lore, and each Box's, loaded or not. */
+export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference =>
+	reference === "lore" || reference.startsWith("box:");
+/** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
+export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference): string =>
+	reference === "lore" ? "Lore" : isBoxReference(reference) ? boxDescriptorOf(reference).label : reference;
+/** @approved The first single-use reference `references` repeats, which a preset refuses. */
+export const repeatedSingleUseReference = (references: readonly string[]) => {
+	const singleUse = references.filter(isSingleUseReference);
+	return singleUse.find((reference, index) => singleUse.indexOf(reference) !== index);
+};
 
 // @approved
 //  The outgoing presentation role a Definition slot's content is sent as.
@@ -58,7 +61,7 @@ export type PromptOutgoingRole = Static<typeof promptOutgoingRole>;
 // Default recipe reproduces the established request and a newly added
 // reference starts with the familiar presentation. History is absent: its
 // entries carry the roles of their own Messages.
-export const defaultOutgoingRoles = withBoxReferences({
+const fixedOutgoingRoles = {
 	"model-system-instruction": "system",
 	"human-identity": "user",
 	"model-identity": "assistant",
@@ -66,7 +69,9 @@ export const defaultOutgoingRoles = withBoxReferences({
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-} as const, ({ role }) => role) satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference, PromptOutgoingRole>;
+export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference): PromptOutgoingRole =>
+	isBoxReference(reference) ? boxDescriptorOf(reference).role : fixedOutgoingRoles[reference];
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
@@ -132,8 +137,8 @@ export const promptPresetSlot = Type.Union([
 ]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
-/** @approved A Box's block, among any slot shape that carries a reference. */
-export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => isBoxReference(slot.reference);
+/** @approved A Box's block, among any slot shape that carries a reference, whether or not its Box is loaded: a stored block outlives a plugin that is removed or refused, and renders nothing. */
+export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => slot.reference.startsWith("box:");
 
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);

@@ -25,7 +25,8 @@ import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
 	isBoxSlot,
-	singleUseReferenceLabels,
+	repeatedSingleUseReference,
+	singleUseReferenceLabel,
 	type PromptOutgoingRole,
 	type ReferencedDefinitionBlock,
 } from "../../shared/contract/prompt-preset";
@@ -172,9 +173,8 @@ const expandInto = (request: {
 export const boxItemExpansionKey = (slotIndex: number, itemIndex: number) => `slot:${slotIndex}:item:${itemIndex}`;
 
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
-	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
-		if (input.recipe.filter((slot) => slot.reference === reference).length > 1) throw new Error(`A Prompt Preset may contain at most one ${label} block.`);
-	}
+	const repeated = repeatedSingleUseReference(input.recipe.map((slot) => slot.reference));
+	if (repeated !== undefined) throw new Error(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
@@ -224,12 +224,14 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			//  A Box block is its instructions, expanded like authored preset
 			// text, then the Box's items. A Box that ran with no items renders
 			// nothing, so its instructions never stand alone, unless it
-			// declares `alwaysRender`; a Box that did not run renders nothing.
+			// declares `alwaysRender`; a Box that did not run, or is not
+			// loaded, renders nothing.
 			const items = input.boxes[kind];
+			if (items === undefined) continue;
 			const alwaysRender = boxDescriptorOf(kind).alwaysRender === true;
-			if (items === undefined || (items.length === 0 && !alwaysRender)) continue;
+			if (items.length === 0 && !alwaysRender) continue;
 			const role = planRoleFor[slot.role];
-			const blockLabel = singleUseReferenceLabels[kind];
+			const blockLabel = singleUseReferenceLabel(kind);
 			const context = { self: input.human.name, other: input.model.name };
 			const blockWarnings: PromptWarning[] = [];
 			const expand = (into: PromptBlock[], text: string, cacheKey: string) =>

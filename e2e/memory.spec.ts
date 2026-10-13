@@ -5,8 +5,8 @@ import type { DecisionRule } from "./protocol";
 const enableMemory = async (request: APIRequestContext) => {
 	const { profiles } = await (await request.get("/api/connection-settings")).json();
 	const profileId = (apiFormat: string) => profiles.find((profile: { apiFormat: string }) => profile.apiFormat === apiFormat).id;
-	const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();
-	await request.post("/api/memory-settings/commands", { data: {
+	const { revision, ...settings } = await (await request.get("/api/boxes/memory/settings")).json();
+	await request.post("/api/boxes/memory/settings/commands", { data: {
 		...settings, expectedRevision: revision,
 		extractionProfileId: profileId("chat-completions"), extractionModel: "e2e-model",
 		embeddingProfileId: profileId("embeddings"), embeddingModel: "e2e-embedding",

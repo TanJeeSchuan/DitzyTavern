@@ -6,6 +6,7 @@ import { seed } from "../src/server/database/seed";
 import { createConnectionSettingsModule } from "../src/server/connection-settings";
 import { initializeConnectionSecretKey } from "../src/server/connection-secrets";
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
+import { builtInBoxes, loadBoxes } from "../src/server/box/registry";
 import type { ModelFetch } from "../src/server/model-client";
 import { toMessages } from "../src/server/model-client/chat-messages";
 import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
@@ -15,6 +16,7 @@ const directoryRoot = process.env.E2E_ROOT;
 if (directoryRoot === undefined) throw new Error("E2E_ROOT must name the worker's temporary directory.");
 initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(masterKey).toString("base64") } });
 registerWireFormats();
+await loadBoxes([builtInBoxes, join(directoryRoot, "boxes")]);
 
 let chatReplies: ChatReply[] = [];
 let decisionRules: DecisionRule[] = [];

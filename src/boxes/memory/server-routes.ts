@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { presentDomainError, readExistingSources } from "../../box-sdk/server";
-import { invalidOutcome } from "../../box-sdk/shared";
+import { presentDomainError, readExistingSources } from "@/box-sdk/server";
+import { invalidOutcome } from "@/box-sdk/shared";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
 	conversationMemoryNoteCommand, memoryConversationIdParams, memoryIdentityCommand, memoryLabelMergeCommand, memoryLabelsConflict, memoryLabelsMerged,
@@ -18,22 +18,23 @@ const ids = (list: string) => list === "" ? [] : list.split(",").map(Number);
 
 // @approved
 //  Memory's own reads and settings, for its side panel, its settings editor
-//  and its trace view. Its records change through the host's `set-box-record`
-//  and `reset-box-record` commands, and its digests through the host's
-//  catch-up and passage digest routes.
+//  and its trace view, which the host serves under `/api/boxes/memory`. Its
+//  records change through the host's `set-box-record` and `reset-box-record`
+//  commands, and its digests through the host's catch-up and passage digest
+//  routes.
 export const memoryRoutes = (database: Database) => new Elysia()
-	.get("/api/memory-settings", () => createMemorySettingsModule(database).get(), { response: memorySettingsResponse })
-	.post("/api/memory-settings/commands", ({ body }) => {
+	.get("/settings", () => createMemorySettingsModule(database).get(), { response: memorySettingsResponse })
+	.post("/settings/commands", ({ body }) => {
 		try {
 			return { outcome: "applied" as const, settings: createMemorySettingsModule(database).apply(body) };
 		} catch (error) {
 			return presentDomainError(error, settingsResponse);
 		}
 	}, { body: memorySettingsCommandBody, response: settingsResponse })
-	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, params.id), { params: memoryConversationIdParams, response: conversationMemories })
-	.get("/api/conversations/:id/memories/sources", ({ params, query }) => readExistingSources(database, params.id, { messageIds: ids(query.messageIds), variantIds: ids(query.variantIds) }),
+	.get("/conversations/:id/memories", ({ params }) => readConversationMemories(database, params.id), { params: memoryConversationIdParams, response: conversationMemories })
+	.get("/conversations/:id/memories/sources", ({ params, query }) => readExistingSources(database, params.id, { messageIds: ids(query.messageIds), variantIds: ids(query.variantIds) }),
 		{ params: memoryConversationIdParams, query: memorySourcesQuery, response: memorySources })
-	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
+	.post("/conversations/:id/memories/identity", ({ params, body }) => {
 		try {
 			setMemoryIdentity(database, params.id, body);
 			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
@@ -41,7 +42,7 @@ export const memoryRoutes = (database: Database) => new Elysia()
 			return presentDomainError(error, labelsResponse);
 		}
 	}, { params: memoryConversationIdParams, body: memoryIdentityCommand, response: labelsResponse })
-	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => {
+	.post("/conversations/:id/memories/merge-labels", ({ params, body }) => {
 		try {
 			mergeMemoryLabels(database, params.id, body);
 			return { outcome: "applied" as const, memories: readConversationMemories(database, params.id) };
@@ -49,18 +50,19 @@ export const memoryRoutes = (database: Database) => new Elysia()
 			return presentDomainError(error, labelsResponse);
 		}
 	}, { params: memoryConversationIdParams, body: memoryLabelMergeCommand, response: labelsResponse })
-	.get("/api/conversations/:id/memory-allowance", ({ params }) => readMemoryChatSettings(database, params.id), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
-	.post("/api/conversations/:id/memory-allowance", ({ params, body }) => {
+	.get("/conversations/:id/allowance", ({ params }) => readMemoryChatSettings(database, params.id), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
+	.post("/conversations/:id/allowance", ({ params, body }) => {
 		try {
 			return { outcome: "applied" as const, settings: setMemoryAllowance(database, params.id, body.expectedRevision, body.allowance) };
 		} catch (error) {
 			return presentDomainError(error, allowanceResponse);
 		}
 	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: allowanceResponse })
-	.post("/api/conversations/:id/memory-note", ({ params, body }) => {
+	.post("/conversations/:id/note", ({ params, body }) => {
 		try {
 			return { outcome: "applied" as const, settings: setMemoryNote(database, params.id, body.expectedRevision, body.note) };
 		} catch (error) {
 			return presentDomainError(error, allowanceResponse);
 		}
 	}, { params: memoryConversationIdParams, body: conversationMemoryNoteCommand, response: allowanceResponse });
+export type MemoryRoutes = ReturnType<typeof memoryRoutes>;

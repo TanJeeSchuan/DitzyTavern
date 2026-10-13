@@ -6,8 +6,8 @@ export { boxDigestKey, useBoxStatus } from "../client/box-windows/PassageTimelin
 export type { BoxDataWrite } from "../shared/contract/box-actions";
 export type { CastParticipant, ConversationSummary } from "../client/conversation";
 export { BoxBlockNotice } from "../client/box-windows/BoxBlockNotice";
-export { api } from "../client/lib/eden";
-export { foundOrNull, requestOutcome } from "../client/lib/request-outcome";
+export { api, boxApi } from "../client/lib/eden";
+export { foundOrNull, requestData, requestOutcome } from "../client/lib/request-outcome";
 export { notFoundOutcome } from "../shared/contract/outcomes";
 export { imageAccept, imageSrc, uploadImage } from "../client/lib/image";
 export type { Portrait as PortraitImage } from "../shared/contract/image";

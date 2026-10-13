@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useConnectionSettingsQuery } from "../connection-settings-query";
-import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
+import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../box-windows/registry";
 import { useAsyncEffect } from "../lib/use-async";
 import { ProfileModelPicker } from "../ProfileModelPicker";
 import { SaveFooter } from "../SaveFooter";

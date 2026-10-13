@@ -4,7 +4,7 @@ import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "../../boxes/race/client-window";
 import { RacePanel } from "../../boxes/race/client";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import { boxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxDescriptor, installBoxDescriptors, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import { describeWorldClock, WorldClockPanel, WorldClockTopBarItem } from "../../boxes/world-clock/client";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "../../boxes/phone/client";
@@ -15,11 +15,27 @@ import { digestWindow } from "./PassageTimeline";
 
 import { AuthorNotePanel } from "../../boxes/author-note/client";
 
+import authorNote from "../../boxes/author-note/shared-descriptor";
+import memory from "../../boxes/memory/shared-descriptor";
+import mood from "../../boxes/mood/shared-descriptor";
+import phone from "../../boxes/phone/shared-descriptor";
+import race from "../../boxes/race/shared-descriptor";
+import thought from "../../boxes/thought/shared-descriptor";
+import worldClock from "../../boxes/world-clock/shared-descriptor";
+
 // @approved
-//  Memory's contract and shared logic, for its in-tree side panel, settings
-//  editor and trace view, until that UI moves into its Box (GitHub #24).
+//  Memory's contract, shared logic and client helpers, for its in-tree side
+//  panel, settings editor and trace view, until that UI moves into its Box
+//  (GitHub #24).
 export * from "../../boxes/memory/contract";
 export * from "../../boxes/memory/shared";
+export * from "../../boxes/memory/client";
+
+// @approved
+//  The built-in Boxes' descriptors, in the server's registry order, installed
+//  before any entry below reads them, until the client loads each Box's
+//  client module from `GET /api/boxes` (ticket 27).
+installBoxDescriptors([authorNote, memory, mood, phone, race, thought, worldClock]);
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };

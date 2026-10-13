@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentProps } from "react";
-import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type ConversationSummary, type MoveStaging } from "../../box-sdk/client";
-import { boxMovesOf, boxSetupOf } from "../../box-sdk/shared";
+import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
+import { boxMovesOf, boxSetupOf } from "@/box-sdk/shared";
 import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
 import { loadRace } from "./client-read";

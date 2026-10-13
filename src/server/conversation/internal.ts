@@ -447,7 +447,7 @@ export const requireMessage = (
 /** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
 /** @approved A registered Box's descriptor; an unknown id fails the command. */
 export const requireBox = (box: BoxId): BoxDescriptor => {
-	const descriptor = boxDescriptors.get(box);
+	const descriptor = boxDescriptors().get(box);
 	if (descriptor === undefined) throw new InvalidConversationCommandError(`There is no ${box} Box.`);
 	return descriptor;
 };

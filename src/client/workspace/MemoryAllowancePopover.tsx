@@ -2,7 +2,7 @@ import { Gauge } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { saveMemoryAllowance, type ConversationMemoryAllowance } from "../memories";
+import { saveMemoryAllowance, type ConversationMemoryAllowance } from "../box-windows/registry";
 
 export function MemoryAllowancePopover({
 	conversationId,

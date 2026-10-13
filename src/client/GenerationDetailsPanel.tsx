@@ -1,4 +1,4 @@
-import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
+import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,9 @@ import type { GenerationJsonValue } from "../shared/generation-json";
 import type { PromptImage } from "../shared/contract/conversation-schema";
 import { projectImageAnchors } from "../shared/image-reference";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
-import { memoryActivationRecord, renderMemoryClaim, type MemoryActivationRecord, type MemorySources } from "./box-windows/registry";
+import { memoryActivationRecord, renderMemoryClaim, type MemoryActivationRecord, type MemorySources, loadMemorySources } from "./box-windows/registry";
 import { boxReference } from "../shared/contract/box";
 import type { BoxTrace } from "../shared/contract/box-generation";
-import { loadMemorySources } from "./memories";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -173,7 +172,7 @@ function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 						const item = generationJsonObject(block);
 						const kind = generationJsonString(item?.kind);
 						const content = generationJsonString(item?.content);
-						return <li key={index}><span>{kind !== null && isSingleUseReference(kind) ? singleUseReferenceLabels[kind] : kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
+						return <li key={index}><span>{kind !== null && isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
 					})}
 				</ol>
 			)}

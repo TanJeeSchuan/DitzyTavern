@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { imageHash } from "../../box-sdk/shared";
+import { imageHash } from "@/box-sdk/shared";
 
 export const runningStyles = ["Front Runner", "Pace Chaser", "Late Surger", "End Closer"] as const;
 export type RunningStyle = typeof runningStyles[number];

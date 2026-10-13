@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircleDashed } from "lucide-react";
-import { api, foundOrNull, notFoundOutcome, requestOutcome, type ConversationSummary } from "../../box-sdk/client";
+import { api, foundOrNull, notFoundOutcome, requestOutcome, type ConversationSummary } from "@/box-sdk/client";
 import { thoughtRead } from "./shared";
 
 const useThoughts = (conversation: ConversationSummary) => useQuery({

@@ -36,14 +36,14 @@ export type BoxMoves = Static<typeof boxMoves>;
 
 /** @approved Why `moves` are refused, a Box that takes no Moves or a list its Box's Move schema or limit rejects; undefined when every list passes. */
 export const boxMovesError = (moves: BoxMoves): string | undefined => Object.entries(moves).flatMap(([id, list]) => {
-	const declared = boxDescriptors.get(id)?.moves;
+	const declared = boxDescriptors().get(id)?.moves;
 	if (declared === undefined) return [`No ${id} Box takes Moves.`];
 	return list.length > 0 && list.length <= declared.max && list.every((move) => Value.Check(declared.schema, move)) ? [] : [`The ${boxDescriptor(id).label} Moves do not match their schema.`];
 })[0];
 
 export const hasMoves = (moves: BoxMoves | undefined): boolean => Object.values(moves ?? {}).some((list) => list.length > 0);
 /** @approved Seat-bound Moves belong to the human seat that staged them, as well as to their Chat. */
-export const seatBound = (id: BoxId): boolean => boxDescriptors.get(id)?.moves?.seatBound === true;
+export const seatBound = (id: BoxId): boolean => boxDescriptors().get(id)?.moves?.seatBound === true;
 export const sameMoves = (left: BoxMoves | undefined, right: BoxMoves | undefined): boolean =>
 	Object.keys({ ...left, ...right }).every((id) => JSON.stringify(left?.[id] ?? []) === JSON.stringify(right?.[id] ?? []));
 

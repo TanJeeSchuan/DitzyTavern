@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import {
 	Button, Field, imageAccept, Input, Portrait, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, uploadImage, useBoxSetupDraft,
 	type BoxDataAction, type BoxDataWrite, type CastParticipant, type ConversationSummary,
-} from "../../box-sdk/client";
+} from "@/box-sdk/client";
 import { Value } from "@sinclair/typebox/value";
 import { raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
 import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "./shared-data";

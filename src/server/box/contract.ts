@@ -1,5 +1,6 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
+import type { AnyElysia } from "elysia";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { DecisionJson, DecisionQuestions, requestDecisions } from "../decision-model";
@@ -51,6 +52,8 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	importSillyTavernNote?(note: string): Setup;
 	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
 	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
+	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
+	routes?(database: Database): AnyElysia;
 }
 
 // @approved

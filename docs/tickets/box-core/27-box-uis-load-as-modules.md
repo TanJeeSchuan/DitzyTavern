@@ -17,7 +17,8 @@ The client gets every Box's UI the same way: it reads `GET /api/boxes` and impor
 - Vite builds each built-in Box's client as its own entry with the same externals, so built-ins and plugins resolve identically.
 - The server serves plugin client bundles from `data/boxes/<id>/client.js`. Built-ins are served from `dist/`.
 - The client imports all loaded Boxes' modules at startup, in parallel, before it renders Box surfaces. A module that fails to import is reported in the Box manager and its surfaces are absent. Every Box surface renders inside an error boundary that names the Box.
-- The client registry is a map built from those modules. `registry.tsx`'s static imports go.
+- The client registry is a map built from those modules. `registry.tsx`'s static imports go, and with them its entry in `ditzy(no-box-boundary-imports)`'s allowlist (the last one, after ticket 26) and its `installBoxDescriptors` list of built-in descriptors.
+- `GET /api/boxes` already answers each Box's `client` as `/boxes/<id>/client.js` (ticket 26); serve both built-ins and plugins at that URL, or change it in one place, `src/server/contract/boxes.ts`.
 
 ## Work
 

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxReference, connectionProfileTable, putLibraryValue, readEmbeddingConfiguration, readLibraryValue } from "../../box-sdk/server";
+import { boxReference, connectionProfileTable, putLibraryValue, readEmbeddingConfiguration, readLibraryValue } from "@/box-sdk/server";
 import { memorySettingsValue, type MemorySettingsCommand, type MemorySettingsPayload, type MemorySettingsValue } from "./contract";
 import { InvalidMemoryCommandError, memoryGuard } from "./server-errors";
 

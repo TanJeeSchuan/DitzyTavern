@@ -1,5 +1,5 @@
 import { isWorldClockStart, weathers, type Weather, type WorldClockRecord, type WorldClockSetup } from "./contract";
-import { seededFraction, type Box, type DecisionAnswer } from "../../box-sdk/server";
+import { seededFraction, type Box, type DecisionAnswer } from "@/box-sdk/server";
 
 // @approved
 //  Elapsed-time bins the Decision Model chooses from: what each means to it,
@@ -108,7 +108,7 @@ const choiceOf = <Option extends string>(answer: DecisionAnswer | undefined, opt
 	return choice;
 };
 
-export const worldClockBox = {
+const worldClockBox = {
 	setupError: (setup) => isWorldClockStart(setup.start) ? undefined : "Enter a real calendar date and time, such as 2025-06-01T08:00.",
 	records: {
 		initial: { minutes: 0, weather: null },
@@ -140,3 +140,4 @@ export const worldClockBox = {
 	advance: { run: async ({ setup, state }) => ({ items: [{ text: clockLine(setup, state), priority: 0, pinned: true }] }) },
 	status: clockStatus,
 } satisfies Box<WorldClockSetup, undefined, never, never, WorldClockRecord, WorldClockState>;
+export default worldClockBox;

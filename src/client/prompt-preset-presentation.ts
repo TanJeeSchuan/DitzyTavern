@@ -6,13 +6,13 @@
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
 
-import { singleUseReferenceLabels, withBoxReferences, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+import { isSingleUseReference, singleUseReferenceLabel, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
 
 // @approved
 //  One vocabulary for both the recipe editor and the SillyTavern import
 // review, so a slot label or outgoing-role label can never drift between
 // them.
-export const slotLabels = withBoxReferences({
+const fixedSlotLabels = {
 	"model-system-instruction": "System Instruction",
 	"human-identity": "Identity (you)",
 	"model-identity": "Identity (character)",
@@ -20,9 +20,10 @@ export const slotLabels = withBoxReferences({
 	"model-example-dialogue": "Example Dialogue",
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
-	lore: singleUseReferenceLabels.lore,
 	instruction: "Instruction",
-}, ({ label }) => label) satisfies Record<PromptPresetBlockReference, string>;
+} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | `box:${string}`>, string>;
+export const slotLabel = (reference: PromptPresetBlockReference): string =>
+	isSingleUseReference(reference) ? singleUseReferenceLabel(reference) : fixedSlotLabels[reference];
 
 export const outgoingRoleLabels = {
 	system: "System message",
@@ -53,7 +54,7 @@ type TitledSlot =
 export const slotTitle = (slot: TitledSlot): string =>
 	slot.reference === "instruction" && slot.name.trim() !== ""
 		? slot.name
-		: slotLabels[slot.reference];
+		: slotLabel(slot.reference);
 
 // @approved
 // Short human label for the affected-Conversation count presented on every

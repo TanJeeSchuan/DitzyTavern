@@ -5,14 +5,14 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import {
 	boxReference, characterDataTable, foldRecords, libraryDataTable, readBoxInstances, readConversationSummaryFromConnection, readRecordSlots, readSelectedHistoryFromConnection,
 	runConversationReadTransaction, type Box,
-} from "../../box-sdk/server";
-import { boxSetupOf } from "../../box-sdk/shared";
+} from "@/box-sdk/server";
+import { boxSetupOf } from "@/box-sdk/shared";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
 import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "./shared";
 import { advanceRace, currentRaceState, foldRace, initialRaceState, raceStatus } from "./server-engine";
 
-export const raceBox = {
+const raceBox = {
 	setupError: raceSetupError,
 	records: { initial: null, fold: foldRace },
 	moves: { render: (move) => `(Race Move: ${raceMoveCatalog[move.kind].intent(move.runner)})` },
@@ -89,6 +89,7 @@ export const raceBox = {
 		},
 	},
 } satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, never, RaceRecord, RaceState | null, RaceMove>;
+export default raceBox;
 
 function readRace(database: Database, conversationId: number): RaceRead | undefined {
 	return runConversationReadTransaction(database, (db) => {

@@ -1,7 +1,7 @@
 import {
 	Alert, AlertDescription, BoxBlockNotice, Button, ProseEditor, useBoxSetupDraft,
 	type ConversationSummary,
-} from "../../box-sdk/client";
+} from "@/box-sdk/client";
 import { authorNoteSetup } from "./contract";
 
 export function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
