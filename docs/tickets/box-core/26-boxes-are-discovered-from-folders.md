@@ -18,7 +18,7 @@ The server builds its Box registry at startup by scanning two folders: the built
 - Descriptors are validated with a TypeBox schema at load. An invalid descriptor, an SDK mismatch, a duplicate id or a failing import refuses that Box and logs why. The other Boxes still load. A plugin can't override a built-in.
 - Loading happens at startup only. Whether to add hot reload is deferred (open question on #72).
 - `GET /api/boxes` lists the loaded Boxes with their ids and each one's client module URL (ticket 27).
-- `ditzy(no-box-boundary-imports)` drops its allowlist of registration files.
+- `ditzy(no-box-boundary-imports)` drops its allowlist of registration files. Memory's in-tree UI still reaches Memory through those files: the server registry mounts Memory's routes (`boxRoutes`), and the client registry re-exports Memory's contract and helpers. A Box's routes mount through the generic Box route. Memory's client helpers move into `src/boxes/memory/` and are reached through its client module (ticket 27). Moving the UI itself remains GitHub #24.
 - The Dockerfile copies `src/boxes` and `src/box-sdk` (already true) and `docs/docker.md` documents `data/boxes/`.
 
 ## Work
