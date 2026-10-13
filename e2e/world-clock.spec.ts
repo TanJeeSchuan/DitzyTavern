@@ -152,7 +152,7 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 	const cancelPreview = () => page.getByRole("complementary", { name: "Prompt Plan preview" }).getByRole("button", { name: "Cancel" }).click();
 
 	await toggle((boxes) => clockSwitch(boxes).click());
-	await expect(topBarItem(page)).toHaveCount(0);
+	await expect(topBarItem(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/);
 	await toggle((boxes) => clockSwitch(boxes).click());
 	await expect(topBarItem(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/);
 	await expect(await sendWithClock(page, "Look outside.")).toHaveText(/^\d{1,2}:\d\d PM \| 🗓️ Sunday, June 1, 2025 AD \| .+ Clear, -?\d+°C$/);

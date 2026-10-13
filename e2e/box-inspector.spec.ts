@@ -9,8 +9,11 @@ test("Memory inspector, settings and participant identity stay available while M
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await page.keyboard.press("Escape");
 	await expect(tools.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
-	await expect(page.getByRole("complementary", { name: "Memories" })).toContainText("Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.");
-	await expect(story(page).getByRole("article").getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("complementary", { name: "Memories" })).toContainText("Memory is off in this Chat.");
+	const message = story(page).getByRole("article").last();
+	await message.hover();
+	await message.getByRole("button", { name: "Memories", exact: true }).click();
+	await expect(page.getByRole("complementary", { name: "Memories" }).getByRole("button", { name: "Remember this Message" })).toBeDisabled();
 
 	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Memory", exact: true }).click();
 	await page.getByRole("spinbutton", { name: "Context limit", exact: true }).fill("4096");

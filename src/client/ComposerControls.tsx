@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { boxReference, type BoxId, type PromptBoxReference } from "../shared/contract/box";
-import { boxClients, boxTitle } from "./box-windows/registry";
+import { boxClients, boxPresent, boxTitle } from "./box-windows/registry";
 import { BoxIcon } from "./box-windows/BoxBoundary";
 import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
@@ -54,9 +54,9 @@ export function ComposerControlSelectors({
 	}
 
 	// @approved
-	//  One launcher per enabled Box with a client entry: a panel Box opens in
-	//  the primary panel, any other in its window.
-	const launchers = [...boxClients()].flatMap(([box, { icon, PrimaryPanel, Window }]) => conversation.boxes[box] !== "enabled" ? []
+	//  One launcher per Box present in the Chat with a client entry: a panel
+	//  Box opens in the primary panel, any other in its window.
+	const launchers = [...boxClients()].flatMap(([box, { icon, PrimaryPanel, Window }]) => !boxPresent(conversation, box) ? []
 		: PrimaryPanel !== undefined ? [{ box, icon, open: () => onOpenPanel(boxReference(box)) }]
 		: Window !== undefined ? [{ box, icon, open: () => onOpenWindow(box) }] : []);
 

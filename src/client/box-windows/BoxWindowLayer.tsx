@@ -4,9 +4,9 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, 
 import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
-import { BoxBlockNotice } from "./BoxBlockNotice";
+import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxClients, boxTitle, type MoveStaging } from "./registry";
+import { boxClients, boxPresent, boxTitle, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -136,9 +136,9 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const [order, setOrder] = useState<BoxId[]>([]);
 	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
 	if (conversation === null) return null;
-	const running = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && conversation.boxes[id] === "enabled" ? [[id, { icon, ...Window }] as const] : []);
-	const minimized = running.filter(([id]) => controller.layouts[id]?.minimized === true);
-	const opened = running.filter(([id]) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
+	const present = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && boxPresent(conversation, id) ? [[id, { icon, ...Window }] as const] : []);
+	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
+	const opened = present.filter(([id]) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
 	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
 	const zIndex = (id: BoxId) => 30 + order.indexOf(id) + 1;
 	// @approved
@@ -173,9 +173,10 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
+				<BoxOffNotice conversation={conversation} box={id} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<BoxBoundary box={id}>
-					<Panel conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange}
+					<Panel conversation={conversation} disabled={disabled} staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange}
 						boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
 				</BoxBoundary>
 			</FloatingWindow>;

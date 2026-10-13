@@ -7,6 +7,7 @@ import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
 import { BoxTraceViews } from "./box-windows/BoxTraceViews";
+import type { BoxStates } from "../shared/contract/box";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -16,6 +17,7 @@ const kindLabel = (kind: GenerationPreview["kind"]): string => {
 
 export function PromptPlanPreviewPanel({
 	assembly,
+	boxes,
 	onPlanChange,
 	onRefresh,
 	onSend,
@@ -24,6 +26,7 @@ export function PromptPlanPreviewPanel({
 	onOpenSettings,
 }: {
 	assembly: AssemblySession;
+	boxes: BoxStates;
 	onPlanChange: (plan: PromptPlan) => void;
 	onRefresh: () => void;
 	onSend: () => void;
@@ -74,6 +77,7 @@ export function PromptPlanPreviewPanel({
 				{preview?.loreActivation != null && <LoreActivationDetails record={preview.loreActivation} />}
 				{preview !== null && <BoxTraceViews
 					conversationId={preview.conversationId}
+					boxes={boxes}
 					traces={preview.boxTraces}
 					plan={preview.promptPlan}
 					onNavigateSource={onNavigateSource}

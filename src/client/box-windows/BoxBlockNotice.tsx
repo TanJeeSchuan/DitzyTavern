@@ -53,3 +53,14 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		</Button>
 	</Alert>;
 }
+
+// @approved
+//  A disabled Box keeps its surfaces so the writer can read and configure it;
+//  the host's frame for each one says, the same way for every Box, that it
+//  does not run.
+export function BoxOffNotice({ conversation, box, className }: { conversation: ConversationSummary; box: BoxId; className?: string }) {
+	if (conversation.boxes[box] !== "disabled") return null;
+	return <Alert className={className}>
+		<AlertDescription>{boxTitle(box)} is off in this Chat. Turn it on in Boxes to run it and take its Moves; its setup and saved data stay editable here.</AlertDescription>
+	</Alert>;
+}

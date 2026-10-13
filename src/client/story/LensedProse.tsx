@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import type { ConversationSummary } from "../conversation";
 import type { BoxId } from "../../shared/contract/box";
 import { BoxBoundary, BoxFailure } from "../box-windows/BoxBoundary";
-import { boxClients, errorMessage } from "../box-windows/registry";
+import { boxClients, boxPresent, errorMessage } from "../box-windows/registry";
 import { assertLensPieces } from "../../shared/contract/box-descriptor";
 import type { LensPiece } from "../box-windows/lens";
 import { Prose } from "./prose";
@@ -18,7 +18,7 @@ export type StoryLens = { readonly conversation: ConversationSummary; open(box: 
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
 	const lenses = lens === undefined ? [] : [...boxClients()].flatMap(([id, { Window }]) => {
 		const boxLens = Window?.lens;
-		if (boxLens === undefined || lens.conversation.boxes[id] !== "enabled") return [];
+		if (boxLens === undefined || !boxPresent(lens.conversation, id)) return [];
 		const failed = (message: string, prose: string): LensPiece[] => [{ kind: "lifted", element: <BoxFailure box={id} message={message} /> }, { kind: "prose", text: prose }];
 		try {
 			const lift = boxLens.gate(lens.conversation);

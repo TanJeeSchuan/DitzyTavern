@@ -23,12 +23,12 @@ function TipJarDockTab({ conversation, onRestore }: { conversation: Conversation
 	</button>;
 }
 
-function TipJarPanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
+function TipJarPanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const coins = useTipJar(conversation).data?.coins;
-	const staged = boxMovesOf(staging.moves, "tip-jar", tipMove);
+	const staged = staging === null ? [] : boxMovesOf(staging.moves, "tip-jar", tipMove);
 	return <div className="tip-jar">
 		<output aria-label="Coins in the jar">{coins ?? "…"}</output>
-		<Button disabled={disabled || staged.length > 0} onClick={() => dropCoin(staging)}>Drop a coin</Button>
+		<Button disabled={disabled || staging === null || staged.length > 0} onClick={() => { if (staging !== null) dropCoin(staging); }}>Drop a coin</Button>
 	</div>;
 }
 

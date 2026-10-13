@@ -5,12 +5,18 @@ import type { CastParticipant, ConversationSummary } from "../conversation";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
-import { boxList, installBoxDescriptors, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxList, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxStates } from "../../shared/contract/box";
 import { assertBoxClient } from "../../shared/contract/box-descriptor";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
+
+// @approved
+//  Whether a Box has its Chat surfaces in this Chat: present, enabled or
+// disabled. Only an enabled Box runs, so a disabled Box's surfaces read and
+// configure it while its Moves, digests and catch-up wait.
+export const boxPresent = ({ boxes }: { readonly boxes: BoxStates }, box: BoxId): boolean => boxes[box] === "enabled" || boxes[box] === "disabled";
 
 type PutBoxData = Extract<ConversationAction, { type: "put-box-data" }>;
 /** @approved Builds a `put-box-data` command for the window's own Box, so a window cannot name another Box's namespace. */
@@ -18,7 +24,14 @@ export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: str
 
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
-type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
+/** @approved `staging` is null while the Box is not enabled, so it shows its Move controls as unavailable. */
+type Panel = ComponentType<{
+	conversation: ConversationSummary;
+	disabled: boolean;
+	staging: MoveStaging | null;
+	boxData: BoxDataAction;
+	onConversationChange: (conversation: ConversationSummary) => void;
+}>;
 /** @approved A top bar item's content; the host wraps it in a button that opens its window. */
 type TopBarItem = ComponentType<{ conversation: ConversationSummary }>;
 
@@ -44,9 +57,8 @@ export interface BoxInspectorProps {
 // @approved
 //  A Box's client module default-exports this: its descriptor and its client
 // surfaces, each optional. A `PrimaryPanel` edits in the workspace's primary
-// panel rather than a window, and the composer opens it there. Inspectors
-// remain available while the Box is disabled, and captured traces outlive
-// its Chat state.
+// panel rather than a window, and the composer opens it there. Every surface
+// shows while the Box is present in the Chat, enabled or disabled.
 export interface BoxClientDefinition {
 	readonly descriptor: BoxDescriptor;
 	readonly icon: LucideIcon;

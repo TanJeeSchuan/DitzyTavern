@@ -62,7 +62,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 								<BoxBlockNotice conversation={conversation} box={box} disabled={pending} className="mt-1" />
 							</div>
 							{state !== "absent" && <Button type="button" variant="ghost" size="xs" aria-label={`Remove ${label}`} disabled={pending} onClick={() => setRemoving(box)}>Remove</Button>}
-							<Switch checked={state === "enabled"} disabled={pending} aria-label={`${label} in this Chat`} onCheckedChange={(on) => on ? setState(box, "enabled") : requestNavigation(() => setState(box, "disabled"))} />
+							<Switch checked={state === "enabled"} disabled={pending} aria-label={`${label} in this Chat`} onCheckedChange={(on) => setState(box, on ? "enabled" : "disabled")} />
 						</li>;
 					})}
 				</ul>

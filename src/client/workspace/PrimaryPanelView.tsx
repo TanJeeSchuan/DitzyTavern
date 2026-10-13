@@ -1,6 +1,7 @@
 import type { PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
-import { boxClients, boxTitle } from "../box-windows/registry";
+import { boxClients, boxPresent, boxTitle } from "../box-windows/registry";
+import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -76,7 +77,7 @@ export function PrimaryPanelView({
 	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
 	const BoxSettings = settingsBox === undefined ? undefined : boxClients().get(settingsBox)?.Settings;
 	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
-	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxClients().get(box)?.PrimaryPanel;
+	const BoxPanel = box === undefined || conversation === null || !boxPresent(conversation, box) ? undefined : boxClients().get(box)?.PrimaryPanel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
 		: isBoxSettings(panel) ? boxTitle(settingsBox!) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
@@ -107,7 +108,8 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{BoxPanel !== undefined && box !== undefined && conversation !== null && (
+					{BoxPanel !== undefined && box !== undefined && conversation !== null && <>
+						<BoxOffNotice conversation={conversation} box={box} className="mx-5 mt-5 w-auto" />
 						<BoxBoundary key={`${conversation.id}:${box}`} box={box}>
 							<BoxPanel
 								conversation={conversation}
@@ -115,7 +117,7 @@ export function PrimaryPanelView({
 								disabled={mutationsDisabled}
 							/>
 						</BoxBoundary>
-					)}
+					</>}
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharactersPanel

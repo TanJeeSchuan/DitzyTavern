@@ -61,7 +61,7 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 	await page.getByRole("button", { name: "Boxes", exact: true }).click();
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await page.keyboard.press("Escape");
-	await expect(memories).toContainText("Saved Memories stay here.");
+	await expect(memories).toContainText("Memory is off in this Chat.");
 	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
 	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
 	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();

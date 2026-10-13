@@ -49,14 +49,15 @@ function PhoneLensView({ text, onOpen }: { text: Sms; onOpen: () => void }) {
 	</button>;
 }
 
-function PhonePanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
+function PhonePanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const read = usePhone(conversation);
 	const [seen, setSeen] = useState(() => readSeen(conversation.id));
 	const [picked, setPicked] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const threads = read.data?.threads ?? [];
 	const thread = threads.find(({ contact }) => contact === picked) ?? threads.find((candidate) => unread(candidate, seen) > 0) ?? threads[0];
-	const staged = boxMovesOf(staging.moves, "phone", phoneMove);
+	const staged = staging === null ? [] : boxMovesOf(staging.moves, "phone", phoneMove);
+	const locked = disabled || staging === null;
 	// @approved
 	//  An open thread is a read thread, including texts that arrive while it
 	//  is showing. The thread opened by default stays open once read.
@@ -77,7 +78,7 @@ function PhonePanel({ conversation, disabled, staging }: { conversation: Convers
 	const pending = staged.filter(({ to }) => to === thread.contact);
 	const stage = () => {
 		const text = draft.trim();
-		if (text === "" || staged.length >= MAX_PHONE_MOVES) return;
+		if (staging === null || text === "" || staged.length >= MAX_PHONE_MOVES) return;
 		staging.onChange({ ...staging.moves, phone: [...staged, { to: thread.contact, text }] });
 		setDraft("");
 	};
@@ -93,10 +94,10 @@ function PhonePanel({ conversation, disabled, staging }: { conversation: Convers
 			{thread.texts.length + pending.length === 0 && <li className="phone-note">No texts with {thread.contact} yet.</li>}
 		</ol>
 		<form className="phone-compose" onSubmit={(event) => { event.preventDefault(); stage(); }}>
-			<Textarea aria-label={`Text ${thread.contact}`} placeholder={`Text ${thread.contact}`} value={draft} maxLength={2000} disabled={disabled} rows={2}
+			<Textarea aria-label={`Text ${thread.contact}`} placeholder={`Text ${thread.contact}`} value={draft} maxLength={2000} disabled={locked} rows={2}
 				onChange={(event) => setDraft(event.target.value)}
 				onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); stage(); } }} />
-			<Button type="submit" size="sm" disabled={disabled || draft.trim() === "" || staged.length >= MAX_PHONE_MOVES}>Stage text</Button>
+			<Button type="submit" size="sm" disabled={locked || draft.trim() === "" || staged.length >= MAX_PHONE_MOVES}>Stage text</Button>
 		</form>
 	</div>;
 }

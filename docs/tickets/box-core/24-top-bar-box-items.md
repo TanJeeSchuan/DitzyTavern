@@ -31,3 +31,7 @@ A Box's client definition may declare a top bar item. The host shows the items o
 
 - A new Box gets a top bar item by declaring one in its client registration, with no `StoryHeader` edit.
 - A Box disabled in the Chat shows no item.
+
+## Later change
+
+- The box-core review fixes (ticket 28's "Core review fixes") reverse "A Box disabled in the Chat shows no item". Every Chat surface, a top bar item included, now shows while its Box is present in the Chat, enabled or disabled, and only what runs needs an enabled Box. A disabled Box's item still opens its window, where the host says the Box is off.

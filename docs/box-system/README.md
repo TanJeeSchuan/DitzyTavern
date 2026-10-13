@@ -58,7 +58,7 @@ Every server hook is optional, as are the descriptor keys marked optional. The l
 ## The rules
 
 - **Records are resolved values.** State is the fold of each selected Variant's effective record, in Message order, from `records.initial`. Selecting an earlier Variant, editing it or overriding it never re-evaluates, invalidates or drops a later record. A swipe reuses the Moves and seed of the Variant it replaces, and the same setup, state, Moves, seed and other dependencies give the same outcome, so a swipe with nothing else changed rewrites only the prose. A re-roll keeps the Moves and draws a fresh seed, so it can draw a new outcome. See [`records`](#record-and-records).
-- **Each Box is absent, enabled or disabled in each Chat.** Only an enabled Box runs. Each insert starts a new instance, and the fold reads only the current instance's records, so a reinserted Box starts fresh. See [Lifecycle per Chat](#lifecycle-per-chat).
+- **Each Box is absent, enabled or disabled in each Chat.** Only an enabled Box runs, and every Chat surface shows while the Box is present, enabled or disabled. Each insert starts a new instance, and the fold reads only the current instance's records, so a reinserted Box starts fresh. See [Lifecycle per Chat](#lifecycle-per-chat).
 - **Box data lives in six storage scopes under the `box:<id>` namespace.** Boxes cannot add tables. A Box's own data never reaches another Box's namespace. The host's own per-Box values, such as the Decision Model selection, live outside it under `box-decision`. See [Storage](#storage).
 - **The host knows a Box only by its id.** The id is a string checked against the loaded Boxes at runtime: a Box route answers an unknown id with 404, and a Box command fails it. The host holds every setup, record and Move as a `BoxValue` and checks it against the Box's own schema wherever it crosses the HTTP or database boundary. Each Box types its own values: its server hooks through `satisfies Box<…>`, and its reads through `boxSetupOf` and `boxMovesOf`.
 - **A Box reaches the host only through the SDK.** A file in `src/boxes/<id>/` imports its own folder by relative path, packages, and its layer's entries in `src/box-sdk/` as `@/box-sdk/<entry>`, so the folder loads from `data/boxes/` too. No host file lists Boxes, and elsewhere in `src/` only tests import a Box. The `ditzy/no-box-boundary-imports` lint enforces both directions. See [Folder and SDK](#folder-and-sdk).
@@ -203,7 +203,7 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 ### Client surfaces
 
-`boxClients()` holds each loaded Box's client module once, by id, in registry order. Every surface renders inside a `BoxBoundary` in its host frame: a surface that throws shows `<label> failed: <message>` in its place, and the rest of the Chat keeps working. The host draws a Box's icon with `BoxIcon`, which leaves an alert icon if it throws. Settings and participant sections render for every loaded Box. Inspectors and their top bar and title-menu openers remain available while the Box is enabled or disabled, and disappear when it is absent. Message actions and window-opening top bar items require an enabled Box. Trace views render whenever a captured trace exists, regardless of the Box’s current Chat state.
+`boxClients()` holds each loaded Box's client module once, by id, in registry order. Every surface renders inside a `BoxBoundary` in its host frame: a surface that throws shows `<label> failed: <message>` in its place, and the rest of the Chat keeps working. The host draws a Box's icon with `BoxIcon`, which leaves an alert icon if it throws. Settings and participant sections render for every loaded Box. Every Chat surface (window, dock tab, primary panel, top bar item, inspector, trace view and lens, with their launchers and the inspector's message action) shows while the Box is present in the Chat, enabled or disabled, and none shows while it is absent; `boxPresent` in `src/client/box-windows/registry.ts` is that one check. What runs needs an enabled Box. A disabled Box's window gets `staging: null`, so it shows its Move controls as unavailable. The host says the Box is off in this Chat in one notice, which it renders at the top of the window, under the primary panel's header and at the foot of the inspector. Setup, Box data and record overrides stay editable. The server is the gate for the rest: a Send with the Box's Moves fails, and its digests and catch-up do nothing.
 
 #### Window and primary panel
 
@@ -213,7 +213,7 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 |---|---|
 | `conversation` | the `ConversationSummary`, with `boxSetups`, `boxes`, `cast`, `control` and `revision` |
 | `disabled` | true while a Prompt Plan preview is open or a Generation is assembling; disable every control that sends a command |
-| `staging` | the composer's staged Moves: read your own with `boxMovesOf(staging.moves, "<id>", moveSchema)` from the shared SDK, write with `staging.onChange({ ...staging.moves, <id>: [...staged, move] })` |
+| `staging` | the composer's staged Moves, or `null` while the Box is not enabled, when its Move controls show as unavailable: read your own with `boxMovesOf(staging.moves, "<id>", moveSchema)` from the shared SDK, write with `staging.onChange({ ...staging.moves, <id>: [...staged, move] })` |
 | `boxData` | `boxData(owner, key, value)` builds a `put-box-data` command for this Box |
 | `onConversationChange` | pass to `runConversationCommand` so the Chat summary updates |
 
@@ -238,7 +238,7 @@ A digesting Box builds its `Window` with `digestWindow(descriptor, …)`, which 
 - `onClose` and `onNavigateSource(messageId)` for returning to the Chat or jumping to a source.
 - `onOpenSettings()` for this Box's registered settings, and `onOpenConnections()` for the host's model connections.
 
-The host wraps `Component` in an `<aside className="details-panel" data-open="true">` labelled with `Inspector.label`. The inspector supplies its header, and the host supplies one with its failure when it throws; `PanelHeader` provides the existing desktop close and mobile back controls. Disabling the Box preserves access to saved data through its inspector and top bar/title-menu openers, but hides its message action. Removing the Box closes the inspector and clears its selection so reinserting does not reopen it.
+The host wraps `Component` in an `<aside className="details-panel" data-open="true">` labelled with `Inspector.label`. The inspector supplies its header, and the host supplies one with its failure when it throws; `PanelHeader` provides the existing desktop close and mobile back controls. Disabling the Box keeps the inspector, its openers and its message action, with the host's off notice at its foot. Removing the Box closes the inspector and clears its selection so reinserting does not reopen it.
 
 #### Settings and participant section
 
@@ -248,7 +248,7 @@ The host wraps `Component` in an `<aside className="details-panel" data-open="tr
 
 #### Generation trace
 
-`TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists, regardless of current enablement. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
+`TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists and the Box is present in the Chat. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
 
 The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, conversation commands, and digest/catch-up requests. Box-specific requests stay in the Box and use `boxApi`.
 
@@ -315,7 +315,7 @@ The layer rules read Box file names too: a `client*` file imports `server*` code
 | Message | `messages_data` | the host: `moves` |
 | Variant | `message_variant_data` | the host: `record:<instance>` slots |
 
-`put-box-data` takes the Box id, not a namespace, and the Panel's `boxData` prop fixes it, so no window can name another Box's namespace. The host rejects it for a Box not enabled in the Chat and for an owner that does not exist. Library and Character writes carry the value's revision as last read (0 when absent), because the Chat revision cannot guard values shared across Chats. Values are strings the Box decodes; a value that fails its schema is an error, never a row to skip. Character and Participant data are independent after the copy.
+`put-box-data` takes the Box id, not a namespace, and the Panel's `boxData` prop fixes it, so no window can name another Box's namespace. The host rejects it for a Box absent from the Chat, as it does a setup, and for an owner that does not exist. Library and Character writes carry the value's revision as last read (0 when absent), because the Chat revision cannot guard values shared across Chats. Values are strings the Box decodes; a value that fails its schema is an error, never a row to skip. Character and Participant data are independent after the copy.
 
 A record slot is `{ automatic?, writer?, source?, error? }`, keyed by the instance that wrote it. `source` hashes the digested text, so an edit is digested again and a reselection is not. `error` is `{ source, message }`, the last failed digest and the hash of the text it failed on. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
 
@@ -327,9 +327,9 @@ The host stores `enabled: true | false` and an `instance` id in `conversation_da
 
 | State | Runs | Keeps |
 |---|---|---|
-| enabled | [captured](#generation-lifecycle) into Generations, digests, accepts Moves and `put-box-data`, shows its launcher, window, dock tab, top bar item and lens | everything |
-| disabled | nothing; re-enabling picks up where it left off | setup, data, instance |
-| absent | nothing | Library and Character data, Variant records and Message Moves |
+| enabled | [captured](#generation-lifecycle) into Generations, digests, accepts Moves | everything |
+| disabled | nothing, though its Chat surfaces stay and its setup, data and records stay editable; re-enabling picks up where it left off | setup, data, instance |
+| absent | nothing, and it has no Chat surfaces | Library and Character data, Variant records and Message Moves |
 
 Removing, after confirmation in the Box manager, deletes the Box's `conversation_data` (its instance included) and this Chat's `participant_data` in its namespace. Each insert creates a new instance; disabling keeps it. The fold reads only the current instance's slots, so a reinserted Box starts from `setup.initial` and `records.initial` while its old records stay stored. A Box writes no filter for this. One Chat holds at most one instance of each Box.
 
@@ -371,7 +371,7 @@ The generic summary joins the fields with ` · `: a choice shows its option's ti
 
 ### Lens pipeline
 
-The story view applies the lens of each enabled Box whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws, or returns pieces that fail their schema, shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
+The story view applies the lens of each Box present in the Chat whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws, or returns pieces that fail their schema, shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
 
 ### Move staging
 
@@ -381,7 +381,7 @@ A Send with Moves for a Box that is not enabled is rejected. The composer drops 
 
 ### Windows and dock
 
-The composer shows a launcher button for each enabled Box with a primary panel, which it opens, or else a window, in registry order. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
+The composer shows a launcher button for each Box present in the Chat with a primary panel, which it opens, or else a window, in registry order. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
 
 The host styles the frame, the dock and the passage timeline in `src/styles/box-windows.css`. Style a Panel with Tailwind utilities and the shadcn components the client SDK re-exports, as `src/boxes/thought/client.tsx` does (`text-muted-foreground`, `bg-muted`, `rounded-xl`, `font-(family-name:--font-reading)` for story text). The World Clock and Race windows still use classes in `box-windows.css` from before the host was generic; do not copy that. Follow `DESIGN.md` for visual decisions.
 

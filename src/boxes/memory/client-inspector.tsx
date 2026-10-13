@@ -99,7 +99,6 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			)}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{!enabled && <div className="memory-callout"><p>Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.</p></div>}
 				{enabled && !memories.digestReady && (
 					<div className="memory-callout">
 						<p>Choose a Memory Decision Model before Messages can be remembered.</p>

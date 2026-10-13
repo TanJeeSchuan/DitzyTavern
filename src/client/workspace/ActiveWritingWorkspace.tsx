@@ -8,7 +8,8 @@ import {
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
-import { boxClients } from "../box-windows/registry";
+import { boxClients, boxPresent } from "../box-windows/registry";
+import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
@@ -155,9 +156,9 @@ export function ActiveWritingWorkspace({
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
-	const inspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] === "absent" ? undefined : boxClients().get(inspectorBox)?.Inspector;
+	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClients().get(inspectorBox)?.Inspector;
 	useEffect(() => {
-		if (inspectorBox !== undefined && conversation?.boxes[inspectorBox] === "absent") dispatchPanel({ type: "details-closed" });
+		if (inspectorBox !== undefined && conversation !== null && !boxPresent(conversation, inspectorBox)) dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);
 
 	const openActiveGenerationDetails = () => {
@@ -259,6 +260,7 @@ export function ActiveWritingWorkspace({
 			{assembly !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
+					boxes={session.conversation?.boxes ?? {}}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
@@ -289,11 +291,13 @@ export function ActiveWritingWorkspace({
 							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
 						/>
 					</BoxBoundary>
+					<BoxOffNotice conversation={session.conversation} box={inspectorBox} className="m-4 w-auto" />
 				</aside>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
+					boxes={session.conversation?.boxes ?? {}}
 					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>

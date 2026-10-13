@@ -1,4 +1,5 @@
 import { BoxTraceViews } from "./box-windows/BoxTraceViews";
+import type { BoxStates } from "../shared/contract/box";
 import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { useState } from "react";
 import {
@@ -26,10 +27,12 @@ export type GenerationDetailsTarget =
 
 export function GenerationDetailsPanel({
 	target,
+	boxes,
 	onClose,
 	onNavigateSource,
 }: {
 	target: GenerationDetailsTarget;
+	boxes: BoxStates;
 	onClose: () => void;
 	onNavigateSource?: (messageId: number) => void;
 }) {
@@ -83,14 +86,14 @@ export function GenerationDetailsPanel({
 			<div className="panel-body generation-details-body">
 				{state.status === "loading" && <p className="panel-note" role="status">Loading Generation details…</p>}
 				{state.status === "error" && <p className="import-problem" role="alert">{state.message}</p>}
-				{state.status === "inspection" && <GenerationInspectionDetails details={state.details} onNavigateSource={onNavigateSource} />}
-				{state.status === "variant" && <VariantDetailsView details={state.details} onNavigateSource={onNavigateSource} />}
+				{state.status === "inspection" && <GenerationInspectionDetails details={state.details} boxes={boxes} onNavigateSource={onNavigateSource} />}
+				{state.status === "variant" && <VariantDetailsView details={state.details} boxes={boxes} onNavigateSource={onNavigateSource} />}
 			</div>
 		</aside>
 	);
 }
 
-function GenerationInspectionDetails({ details, onNavigateSource }: { details: ActiveGenerationDetails; onNavigateSource?: (messageId: number) => void }) {
+function GenerationInspectionDetails({ details, boxes, onNavigateSource }: { details: ActiveGenerationDetails; boxes: BoxStates; onNavigateSource?: (messageId: number) => void }) {
 	const intent = intentLabel(details.intent);
 	const omitted = Array.isArray(details.budget.omittedContext) ? details.budget.omittedContext : [];
 	return (
@@ -120,7 +123,7 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 				</section>
 			)}
 			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
-			<BoxTraceViews conversationId={details.conversationId} traces={details.boxTraces} onNavigateSource={onNavigateSource} />
+			<BoxTraceViews conversationId={details.conversationId} boxes={boxes} traces={details.boxTraces} onNavigateSource={onNavigateSource} />
 			<PromptImageList images={details.promptPlan.images} />
 			<PromptPlan plan={details.promptPlan} />
 		</>
@@ -175,7 +178,7 @@ function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 	);
 }
 
-function VariantDetailsView({ details, onNavigateSource }: { details: VariantDetails; onNavigateSource?: (messageId: number) => void }) {
+function VariantDetailsView({ details, boxes, onNavigateSource }: { details: VariantDetails; boxes: BoxStates; onNavigateSource?: (messageId: number) => void }) {
 	const provenance = details.provenance;
 	return (
 		<>
@@ -194,7 +197,7 @@ function VariantDetailsView({ details, onNavigateSource }: { details: VariantDet
 			</dl>
 			{provenance !== null && <ProvenanceSettings provenance={provenance} />}
 			{details.loreActivation !== null && <LoreActivationDetails record={details.loreActivation} />}
-			<BoxTraceViews conversationId={details.conversationId} traces={details.boxTraces} onNavigateSource={onNavigateSource} />
+			<BoxTraceViews conversationId={details.conversationId} boxes={boxes} traces={details.boxTraces} onNavigateSource={onNavigateSource} />
 			{provenance === null && <p className="panel-note">This Variant has no Generation provenance.</p>}
 		</>
 	);

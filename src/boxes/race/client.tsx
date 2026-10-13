@@ -16,7 +16,7 @@ const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns ex
 //  projected energy cost and odds. The human-seat Runner is the gate whose
 //  Participant is the human-controlled one; otherwise Moves are orders to
 //  the Runner the writer picks.
-function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
+function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const read = useQuery({ queryKey: ["race", conversation.id, conversation.revision], queryFn: ({ signal }) => loadRace(conversation.id, signal) });
 	const setup = boxSetupOf(conversation, "race", raceSetup);
 	const humanSeatId = conversation.control.humanParticipantId;
@@ -26,7 +26,7 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 	const runner = seated ? seat : ordered ?? setup.slots[0]?.name;
 	const state = read.data?.state;
 	if (setup.phase !== "running" || state === undefined || state.finished || runner === undefined) return null;
-	const staged = boxMovesOf(staging.moves, "race", raceMove);
+	const staged = staging === null ? [] : boxMovesOf(staging.moves, "race", raceMove);
 	const offers = kinds.map((kind) => ({ kind, check: checkRaceMove(setup, state, staged, { kind, runner }) }));
 	const open = checkRaceMove(setup, state, [], { kind: "hold", runner });
 	return <section className="race-moves" aria-label="Race Moves">
@@ -37,8 +37,8 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 			</Select>
 		</Field>}
 		<div className="race-moves-offer">
-			{offers.map(({ kind, check }) => check.legal && <Button key={kind} variant="outline" size="sm" disabled={disabled}
-				onClick={() => staging.onChange({ ...staging.moves, race: [...staged, { kind, runner }] })}>
+			{offers.map(({ kind, check }) => check.legal && <Button key={kind} variant="outline" size="sm" disabled={disabled || staging === null}
+				onClick={() => staging?.onChange({ ...staging.moves, race: [...staged, { kind, runner }] })}>
 				{raceMoveCatalog[kind].icon} {raceMoveCatalog[kind].label}
 				<small>{check.cost === 0 ? "" : `${check.cost > 0 ? "−" : "+"}${Math.round(Math.abs(check.cost) * 100)}% energy · `}{Math.round(check.odds * 100)}%</small>
 			</Button>)}
@@ -47,7 +47,7 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 	</section>;
 }
 
-function RacePanel(props: ComponentProps<typeof RaceWindow> & { staging: MoveStaging }) {
+function RacePanel(props: ComponentProps<typeof RaceWindow> & { staging: MoveStaging | null }) {
 	return <>
 		<RaceWindow {...props} />
 		<RaceMoves {...props} />
