@@ -49,6 +49,7 @@ The client gets every Box's UI the same way: it reads `GET /api/boxes` and impor
 - The Vite dev server maps `/boxes/<id>/client.js` to `src/boxes/<id>/client.tsx`, or a plugin's `data/boxes/<id>/client.js`.
 - Review round 1 (Astra): the client also checks each module against `boxClientSchema` (`src/shared/contract/box-descriptor.ts`), so a malformed registration such as a window without a size is refused at load rather than crashing its host frame, and Box icons render through `BoxIcon`, which bounds them.
 - Review round 2 (Astra): a lens's output is checked against its schema inside the lens's guard, so a malformed piece shows the lens's failure beside the unlifted prose instead of crashing the story view.
+- Review round 3 (Astra) found nothing at any level.
 
 ## Verification
 
