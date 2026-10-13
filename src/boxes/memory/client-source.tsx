@@ -1,4 +1,4 @@
-import { Button, formatJudgment } from "@/box-sdk/client";
+import { Button } from "@/box-sdk/client";
 import { Check, ChevronLeft, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { Value } from "@sinclair/typebox/value";
@@ -170,7 +170,7 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 					["Usefulness", judgment.usefulness, judgment.confidence.usefulness],
 				] as const
 				)
-				.map(([name, value, confidence]) => `${name} ${formatJudgment(value).toLowerCase()}${confidence === undefined ? "" : ` ${confidence.toFixed(2)}`}`).join(" · ")}
+				.map(([name, value, confidence]) => `${name} ${value.replace("_", " ").toLowerCase()}${confidence === undefined ? "" : ` ${confidence.toFixed(2)}`}`).join(" · ")}
 			</p>
 		</Collapsible.Content>
 	</article></Collapsible.Root>;

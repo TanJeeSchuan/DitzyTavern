@@ -78,7 +78,7 @@ export function PrimaryPanelView({
 	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxPanels.get(box)?.Panel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
-		: isBoxSettings(panel) ? boxTitle(panel.slice("box-settings:".length)) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
+		: isBoxSettings(panel) ? boxTitle(settingsBox!) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
 	return (
 		<aside
 			className="primary-panel"

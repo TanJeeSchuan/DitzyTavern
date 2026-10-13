@@ -1,6 +1,6 @@
 import { test, expect, insertBox, story } from "./fixtures";
 
-test("Memory settings and participant identity remain editable while its Chat surfaces are off", async ({ page, request }) => {
+test("Memory inspector, settings and participant identity stay available while Memory is off", async ({ page, request }) => {
 	await page.goto("/");
 	const tools = page.getByRole("group", { name: "Chat tools" });
 	await tools.getByRole("button", { name: "Memories", exact: true }).click();
@@ -8,9 +8,9 @@ test("Memory settings and participant identity remain editable while its Chat su
 	await page.getByRole("button", { name: "Boxes", exact: true }).click();
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await page.keyboard.press("Escape");
-	await expect(tools.getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
-	await expect(page.getByRole("complementary", { name: "Memories" })).toHaveCount(0);
-	await expect(story(page).getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
+	await expect(tools.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
+	await expect(page.getByRole("complementary", { name: "Memories" })).toContainText("Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.");
+	await expect(story(page).getByRole("article").getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
 
 	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Memory", exact: true }).click();
 	await page.getByRole("spinbutton", { name: "Context limit", exact: true }).fill("4096");
@@ -37,7 +37,10 @@ test("Memory settings and participant identity remain editable while its Chat su
 test("the narrow Chat title menu opens the Box inspector and returns to the story", async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto("/");
-	await page.locator(".story-title-trigger").click();
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
+	await page.keyboard.press("Escape");
+	await page.getByRole("heading", { level: 1 }).getByRole("button").click();
 	await page.getByRole("menuitem", { name: "Memories", exact: true }).click();
 	const inspector = page.getByRole("complementary", { name: "Memories" });
 	await expect(inspector).toBeVisible();
@@ -46,7 +49,7 @@ test("the narrow Chat title menu opens the Box inspector and returns to the stor
 	await expect(page.getByRole("textbox", { name: "Message draft" })).toBeVisible();
 });
 
-test("Memory traces render in previews, active Generations and saved details only while enabled", async ({ page, llm }) => {
+test("Memory traces render in previews, active Generations and saved details even after disabling the Box", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["The lantern stays lit.\n\n", "Then"], hold: true });
 	await page.goto("/");
 	await page.getByRole("textbox", { name: "Message draft" }).fill("Watch the lantern.");
@@ -68,7 +71,26 @@ test("Memory traces render in previews, active Generations and saved details onl
 	await page.getByRole("button", { name: "Boxes", exact: true }).click();
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await page.keyboard.press("Escape");
-	await expect(details.getByRole("heading", { name: "Memory recall" })).toHaveCount(0);
+	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
 	await insertBox(page, "Memory");
 	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
+});
+
+test("removing an inspected Box closes it without reopening on reinsertion", async ({ page }) => {
+	await page.goto("/");
+	const tools = page.getByRole("group", { name: "Chat tools" });
+	const opener = tools.getByRole("button", { name: "Memories", exact: true });
+	const inspector = page.getByRole("complementary", { name: "Memories" });
+	await opener.click();
+	await expect(inspector).toBeVisible();
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await page.getByRole("button", { name: "Remove Memory", exact: true }).click();
+	await page.getByRole("dialog", { name: "Remove Memory?" }).getByRole("button", { name: "Remove", exact: true }).click();
+	await expect(inspector).toHaveCount(0);
+	await expect(opener).toHaveCount(0);
+	await insertBox(page, "Memory");
+	await expect(opener).toBeVisible();
+	await expect(inspector).toHaveCount(0);
+	await opener.click();
+	await expect(inspector).toBeVisible();
 });

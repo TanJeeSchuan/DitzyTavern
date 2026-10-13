@@ -1,6 +1,6 @@
 import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { RefreshCw, Send, Settings, X } from "lucide-react";
-import type { ConversationSummary, GenerationPreview } from "./conversation";
+import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
@@ -16,7 +16,6 @@ const kindLabel = (kind: GenerationPreview["kind"]): string => {
 
 export function PromptPlanPreviewPanel({
 	assembly,
-	conversation,
 	onPlanChange,
 	onRefresh,
 	onSend,
@@ -25,7 +24,6 @@ export function PromptPlanPreviewPanel({
 	onOpenSettings,
 }: {
 	assembly: AssemblySession;
-	conversation: ConversationSummary;
 	onPlanChange: (plan: PromptPlan) => void;
 	onRefresh: () => void;
 	onSend: () => void;
@@ -75,7 +73,7 @@ export function PromptPlanPreviewPanel({
 				)}
 				{preview?.loreActivation != null && <LoreActivationDetails record={preview.loreActivation} />}
 				{preview !== null && <BoxTraceViews
-					conversation={conversation}
+					conversationId={preview.conversationId}
 					traces={preview.boxTraces}
 					plan={preview.promptPlan}
 					onNavigateSource={onNavigateSource}

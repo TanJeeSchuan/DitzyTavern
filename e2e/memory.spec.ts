@@ -55,6 +55,17 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 	const prompt = JSON.stringify((await llm.log()).calls.filter((entry) => entry.kind === "chat").at(-1)!.body.messages);
 	expect(prompt).toContain("Theodora hid the brass key under the third map.");
 	expect(prompt).not.toContain("Theodora fears the dark.");
+
+	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
+	await expect(memories).toBeVisible();
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
+	await page.keyboard.press("Escape");
+	await expect(memories).toContainText("Saved Memories stay here.");
+	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
+	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
+	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
+	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
 });
 
 test("a Message's Memories action remembers it on demand", async ({ page, request, llm }) => {

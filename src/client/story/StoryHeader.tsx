@@ -27,17 +27,16 @@ export function StoryHeader({
 	onOpenInspector: (box: BoxId, focus: { messageId: number } | null) => void;
 	onOpenWindow: (box: BoxId) => void;
 }) {
-	const items = conversation === null ? [] : [...boxClients].flatMap(([id, { icon: Icon, TopBarItem, Inspector }]) => {
-		if (conversation.boxes[id] !== "enabled" || TopBarItem === undefined) return [];
-		if (Inspector !== undefined) return [<button key={id} type="button" className="icon-button" aria-label={Inspector.label} onClick={() => onOpenInspector(id, null)}>
-			<Icon aria-hidden="true" /><TopBarItem conversation={conversation} />
-		</button>];
-		return [<Button key={id} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
+	const items = conversation === null ? [] : [...boxClients].flatMap(([id, { icon: Icon, TopBarItem, Inspector }]) => [
+		Inspector !== undefined && conversation.boxes[id] !== "absent" && <button key={`${id}:inspector`} type="button" className="icon-button" aria-label={Inspector.label} onClick={() => onOpenInspector(id, null)}>
+			<Icon aria-hidden="true" />
+		</button>,
+		TopBarItem !== undefined && conversation.boxes[id] === "enabled" && <Button key={`${id}:window`} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
 			<Icon aria-hidden="true" />
 			<span className="sr-only">{boxTitle(id)}: </span>
 			<span className="truncate"><TopBarItem conversation={conversation} /></span>
-		</Button>];
-	});
+		</Button>,
+	]);
 	return (
 		<header className="story-header">
 			<button className="brand-mark navigation-button" type="button" onClick={onOpenNavigation} aria-label="Open navigation">
@@ -55,7 +54,7 @@ export function StoryHeader({
 					<DropdownMenuContent align="start" className="w-48">
 						<DropdownMenuItem onSelect={onOpenInfo}><Info aria-hidden="true" /> Chat information</DropdownMenuItem>
 						<DropdownMenuItem onSelect={onOpenVariables}><Variable aria-hidden="true" /> Macro Variables</DropdownMenuItem>
-						{conversation !== null && [...boxClients].map(([id, { icon: Icon, Inspector }]) => Inspector && conversation.boxes[id] === "enabled" && (
+						{conversation !== null && [...boxClients].map(([id, { icon: Icon, Inspector }]) => Inspector && conversation.boxes[id] !== "absent" && (
 							<DropdownMenuItem key={id} onSelect={() => onOpenInspector(id, null)}><Icon aria-hidden="true" /> {Inspector.label}</DropdownMenuItem>
 						))}
 					</DropdownMenuContent>

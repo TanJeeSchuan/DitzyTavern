@@ -16,7 +16,6 @@ export const formatTimestamp = (value: string): string => {
 	}).format(date);
 };
 
-export const formatJudgment = (value: string) => value.replace("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 
 // @approved
 //  Human byte size. `nullLabel` covers the per-context absence wording

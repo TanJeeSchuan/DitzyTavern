@@ -1,14 +1,12 @@
-import { createBoxLens } from "@/box-sdk/client";
-import { phoneNames, stripPhoneTexts } from "./shared";
+import { phoneNames, stripPhoneTexts, type Sms } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
 import { Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button, SegmentedControl, Textarea, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
+import { createBoxLens, Button, SegmentedControl, Textarea, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf } from "@/box-sdk/shared";
 import { MAX_PHONE_MOVES, phoneMove, type PhoneRead } from "./contract";
-import type { Sms } from "./shared";
 import { loadPhone } from "./client-read";
 
 const usePhone = (conversation: ConversationSummary) => useQuery({

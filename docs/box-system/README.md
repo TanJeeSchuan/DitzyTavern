@@ -49,7 +49,7 @@ export default exampleBox;
 // 3. Client surfaces: the `boxClients` entry in src/client/box-windows/registry.tsx
 "<id>": { icon, Window: { size, Panel, DockTab, lens }, TopBarItem },
 "<id>": { icon, Window: digestWindow("<id>", { icon, size, Panel, describe }), TopBarItem },
-"<id>": { icon, Panel },                            // primary panel, as the Author Note uses
+"<id>": { icon, PrimaryPanel },                            // primary panel, as the Author Note uses
 "<id>": { icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView, TopBarItem },
 // Every surface is optional. A Box may export its definition from client.tsx, as Memory does.
 ```
@@ -194,7 +194,7 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 ### Client surfaces
 
-`boxClients` registers each Box once. `boxWindows` and `boxPanels` select its window and primary-panel entries for the composer and window host. Settings and participant sections render for every loaded Box; inspectors, message actions, top bar items and trace views render only for Boxes enabled in the current Chat.
+`boxClients` registers each Box once. `boxWindows` and `boxPanels` select its window and primary-panel entries for the composer and window host. Settings and participant sections render for every loaded Box. Inspectors and their top bar and title-menu openers remain available while the Box is enabled or disabled, and disappear when it is absent. Message actions and window-opening top bar items require an enabled Box. Trace views render whenever a captured trace exists, regardless of the Box’s current Chat state.
 
 #### Window and primary panel
 
@@ -208,11 +208,13 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 | `boxData` | `boxData(owner, key, value)` builds a `put-box-data` command for this Box |
 | `onConversationChange` | pass to `runConversationCommand` so the Chat summary updates |
 
+`PrimaryPanel` registers a workspace primary panel, as the Author Note uses. It receives `conversation`, `disabled` and `onConversationChange`.
+
 `Window.DockTab` gets `conversation` and `onRestore`. Render a `<button type="button" className="box-dock-tab">` with the icon, an `sr-only` label and one short line, as `ThoughtDockTab` does.
 
 `TopBarItem` is optional and gets `conversation`. For a window it renders one short line, such as the World Clock's in-story time. The host wraps it in a button with the Box's icon and label; clicking opens the window. A digesting Box can show its `status` with `useBoxStatus(conversation.id, "<id>")`, as `WorldClockTopBarItem` does. Its accessible name is `<label>: <line>`, the same as the dock tab's: scope e2e locators to `getByRole("group", { name: "Chat tools" })` or `getByRole("toolbar", { name: "Minimized Boxes" })` respectively.
 
-For an inspector, the host uses an icon button named by `Inspector.label`, and clicking opens the inspector with no message focus. The component may return `null` for an icon alone, as Memory's does. Below 78rem the Chat tools group is hidden. Inspectors also appear in the Chat title menu; windows remain reachable through the launcher and dock.
+Every `Inspector` gets a host icon button named by `Inspector.label`; clicking opens the inspector with no message focus. This button is independent of `TopBarItem`, which opens a window. Below 78rem the Chat tools group is hidden. Inspectors also appear in the Chat title menu; windows remain reachable through the launcher and dock.
 
 A digesting Box builds its `Window` with `digestWindow`, which supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `DockTab` showing `status`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
 
@@ -227,7 +229,7 @@ A digesting Box builds its `Window` with `digestWindow`, which supplies the `Pan
 - `onClose` and `onNavigateSource(messageId)` for returning to the Chat or jumping to a source.
 - `onOpenSettings()` for this Box's registered settings, and `onOpenConnections()` for the host's model connections.
 
-The inspector owns its details-panel shell and header; `PanelHeader` supplies the existing desktop close and mobile back controls. Disabling the Box hides its inspector and its openers.
+The host wraps `Component` in an `<aside className="details-panel" data-open="true">` labelled with `Inspector.label`. The inspector supplies its header; `PanelHeader` provides the existing desktop close and mobile back controls. Disabling the Box preserves access to saved data through its inspector and top bar/title-menu openers, but hides its message action. Removing the Box closes the inspector and clears its selection so reinserting does not reopen it.
 
 #### Settings and participant section
 
@@ -237,7 +239,7 @@ The inspector owns its details-panel shell and header; `PanelHeader` supplies th
 
 #### Generation trace
 
-`TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview when the Box is enabled and has a captured trace. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
+`TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists, regardless of current enablement. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
 
 The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, conversation commands, and digest/catch-up requests. Box-specific requests stay in the Box and use `boxApi`.
 

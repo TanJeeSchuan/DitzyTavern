@@ -38,7 +38,8 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 	const memoryCast = memoryCastMembers(conversation.cast, memories);
 	const entries = (sources: Source[]) => memoryEntries(sources, position, focus, search);
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const ready = memories?.digestReady === true;
+	const enabled = conversation.boxes.memory === "enabled";
+	const ready = enabled && memories?.digestReady === true;
 	const render = (list: MemoryEntry[]) =>
 		groupEntriesByPeople(list, memoryCast).map(({ key, people, entries: group }) => (
 			<PeopleGroup
@@ -71,7 +72,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 	const hasPeople = memories?.sources.some((source) => source.claims?.some((claim) => claim.people.length > 0)) ?? false;
 	const focused = selected.find((source) => source.messageId === focus);
 
-	return <aside className="details-panel" data-open="true" aria-label="Memories">
+	return <>
 		<PanelHeader title="Memories" onClose={onClose} actions={<>
 			{settings && <MemoryAllowancePopover conversationId={conversationId} settings={settings} onSaved={settingsSaved} />}
 			<DropdownMenu>
@@ -98,7 +99,8 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			)}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{!memories.digestReady && (
+				{!enabled && <div className="memory-callout"><p>Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.</p></div>}
+				{enabled && !memories.digestReady && (
 					<div className="memory-callout">
 						<p>Choose a Memory Decision Model before Messages can be remembered.</p>
 						<Button type="button" size="xs" variant="outline" onClick={onOpenConnections}>Connections</Button>
@@ -221,7 +223,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
-	</aside>;
+	</>;
 }
 
 function PeopleGroup({

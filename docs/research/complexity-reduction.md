@@ -30,7 +30,7 @@ Keep transactions synchronous and short. Provider calls run outside SQLite trans
 
 ## Implemented client pilots
 
-[useConversationMemories.ts](../../src/client/workspace/useConversationMemories.ts) uses Query for the memories, catch-up, and allowance reads, passes cancellation signals to transport, and polls while work remains active. [LorebookPanel.tsx](../../src/client/workspace/LorebookPanel.tsx) uses Query for library/detail, attachment, and selected-preset reads; writes cancel pending reads and update or invalidate caches.
+[client-use-memories.ts](../../src/boxes/memory/client-use-memories.ts) uses Query for the memories, catch-up, and allowance reads, passes cancellation signals to transport, and polls while work remains active. [LorebookPanel.tsx](../../src/client/workspace/LorebookPanel.tsx) uses Query for library/detail, attachment, and selected-preset reads; writes cancel pending reads and update or invalidate caches.
 
 [useGenerationSettingsDraft.ts](../../src/client/workspace/useGenerationSettingsDraft.ts) gives Query the authoritative settings and React Hook Form the local draft, dirty state, and resets. A shared reset helper establishes authoritative defaults and optionally restores the entire local draft. Refresh/conflict and save-completion paths use different preservation predicates: actual dirty state for refreshes, and a draft-version check for edits made during a save.
 

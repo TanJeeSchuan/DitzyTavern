@@ -153,7 +153,11 @@ export function ActiveWritingWorkspace({
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
-	const BoxInspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] !== "enabled" ? undefined : boxClients.get(inspectorBox)?.Inspector?.Component;
+	const inspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] === "absent" ? undefined : boxClients.get(inspectorBox)?.Inspector;
+	const BoxInspector = inspector?.Component;
+	useEffect(() => {
+		if (inspectorBox !== undefined && conversation?.boxes[inspectorBox] === "absent") dispatchPanel({ type: "details-closed" });
+	}, [conversation, inspectorBox]);
 
 	const openActiveGenerationDetails = () => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
@@ -251,10 +255,9 @@ export function ActiveWritingWorkspace({
 			</SaveNavigationContext.Provider>
 			</SaveGuardContext.Provider>
 
-			{assembly !== null && conversation !== null && (
+			{assembly !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
-					conversation={conversation}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
@@ -272,21 +275,22 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			{!assemblyActive && BoxInspector !== undefined && session.conversation !== null && (
-				<BoxInspector
-					key={`${session.conversation.id}:${inspectorBox}`}
-					conversation={session.conversation}
-					onConversationChange={session.setConversation}
-					focusRequest={panelState.boxFocus}
-					onClose={() => dispatchPanel({ type: "details-closed" })}
-					onNavigateSource={session.navigateToSourceMessage}
-					onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
-					onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
-				/>
+				<aside className="details-panel" data-open="true" aria-label={inspector?.label}>
+					<BoxInspector
+						key={`${session.conversation.id}:${inspectorBox}`}
+						conversation={session.conversation}
+						onConversationChange={session.setConversation}
+						focusRequest={panelState.boxFocus}
+						onClose={() => dispatchPanel({ type: "details-closed" })}
+						onNavigateSource={session.navigateToSourceMessage}
+						onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
+						onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
+					/>
+				</aside>
 			)}
-			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && conversation !== null && (
+			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
-					conversation={conversation}
 					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>

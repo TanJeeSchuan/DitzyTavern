@@ -8,7 +8,6 @@ import { MemoryActivationDetails } from "./client-trace";
 
 export default {
 	icon: Brain,
-	TopBarItem: () => null,
 	Inspector: { label: "Memories", Component: MemoriesPanel },
 	Settings: MemorySettingsEditor,
 	ParticipantSection: ParticipantMemory,
