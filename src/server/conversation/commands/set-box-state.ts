@@ -4,7 +4,7 @@ import { boxInstanceEntry, boxStateEntry } from "../../box/setup";
 import { installBoxBlocks } from "../../prompt-preset";
 import { conversationDataTable, participantDataTable, participantTable } from "../../database/schema";
 import type { ConversationDatabase } from "../internal";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 
 // @approved
 //  Inserts, disables or removes one Box in this Chat. Removing deletes the
@@ -12,7 +12,7 @@ import type { ConversationMemoryChange } from "../../../shared/contract/conversa
 // and Message Moves already in the story stay, because history is immutable.
 // Inserting a Box that is absent starts a new instance, and turning a Box on
 // adds its block to the Chat's preset when the preset has none.
-export function setBoxState(db: ConversationDatabase, input: { conversationId: number; box: BoxId; state: BoxState }): ConversationMemoryChange | void {
+export function setBoxState(db: ConversationDatabase, input: { conversationId: number; box: BoxId; state: BoxState }): ConversationWriteChange | void {
 	const namespace = boxReference(input.box);
 	if (input.state === "absent") {
 		db.delete(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, input.conversationId), eq(conversationDataTable.namespace, namespace))).run();

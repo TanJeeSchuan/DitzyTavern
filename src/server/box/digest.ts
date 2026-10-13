@@ -3,7 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors, boxReference, digestBoxIds, type BoxDescriptors, type BoxId, type BoxSetups, type DigestBoxId } from "../../shared/contract/box";
 import type { BoxCatchUp, DigestRead } from "../../shared/contract/box-digest";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 import {
 	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPassages,
 	readSelectedVariantIdsFromConnection, readChatVariants, runConversationReadTransaction,
@@ -228,7 +228,7 @@ const queueLive = (database: Database, queue: DigestQueue, conversationId: numbe
 // and no digest failed on it: when it resolves, is selected without a record,
 // or is edited. Runs inside the write transaction, so the workers start only
 // after it commits.
-export function queueBoxDigests(database: Database, change: ConversationMemoryChange): void {
+export function queueBoxDigests(database: Database, change: ConversationWriteChange): void {
 	const queue = queues.get(database);
 	if (queue === undefined) return;
 	if (change.stoppedBox !== undefined) abandon(queue, change.conversationId, change.stoppedBox);

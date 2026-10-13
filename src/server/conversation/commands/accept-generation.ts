@@ -60,7 +60,7 @@ import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variabl
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { Value } from "@sinclair/typebox/value";
 import { boxTraces } from "../../../shared/contract/box-generation";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 
 // @approved
 //  Acceptance seams for the server-owned Generation lifecycles. Every accept
@@ -277,7 +277,7 @@ const tailHumanChange = (
 	db: ConversationDatabase,
 	conversationId: number,
 	humanMessageId: number,
-): ConversationMemoryChange => ({
+): ConversationWriteChange => ({
 	conversationId,
 	touchedVariantIds: db
 		.select({ id: messageVariantTable.id })
