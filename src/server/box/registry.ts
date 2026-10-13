@@ -60,15 +60,20 @@ interface CapturedBox {
 }
 export type BoxInputs = readonly CapturedBox[];
 
+/** @approved The services a Box declared in `inject`, and the signal. */
+export const injectServices = (box: HostBox, services: BoxContext<keyof BoxServices>): BoxContext<keyof BoxServices> => {
+	// @approved
+	// SAFETY: The entries are exactly the services this Box declared in inject.
+	const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, keyof BoxServices>;
+	return { ...injected, signal: services.signal };
+};
+
 const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, blockEnabled: boolean): CapturedBox => ({
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies }),
 	run: async (services) => {
-		// @approved
-		// SAFETY: The entries are exactly the services this Box declared in inject.
-		const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, keyof BoxServices>;
 		const withoutBlock = box.advance?.withoutBlock;
-		const result = !blockEnabled && withoutBlock !== undefined ? withoutBlock(input) : await box.advance?.run(input, { ...injected, signal: services.signal }) ?? { items: [] };
+		const result = !blockEnabled && withoutBlock !== undefined ? withoutBlock(input) : await box.advance?.run(input, injectServices(box, services)) ?? { items: [] };
 		if (result.record !== undefined) {
 			const descriptor = boxDescriptors[id];
 			if (!("record" in descriptor)) throw new Error(`${boxReference(id)} returned a record without declaring records.`);

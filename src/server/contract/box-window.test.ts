@@ -78,7 +78,7 @@ test("the window read folds the selected passages and reports the dock status", 
 	).get(message.id, "The lamp turns.")!;
 	const read = await readClock(app, chat.id);
 	expect(read.status).toBe("8:00 AM");
-	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false, digested: false }]);
+	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false, digested: false, error: null }]);
 });
 
 test("the window read reports a missing Chat", async () => {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initializeConnectionSecretKey } from "../connection-secrets";
@@ -9,6 +9,8 @@ import { applyBoxDecisionSettings } from "./decision-settings";
 import { cancelBoxCatchUp, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
 import { readSelectedPathForMemory } from "../conversation";
+import { worldClockBox } from "../../boxes/world-clock/server";
+import type { DigestWindow } from "./contract";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
@@ -28,16 +30,17 @@ const decisionResponse = (request: StubDecisionRequest): Response => {
 // @approved
 //  A controllable Decision Model stub: every request parks until the test
 //  releases it, so worker ordering, progress and cancellation are observable.
+//  A request released with `fail` answers HTTP 500.
 const heldDecisionFetch = () => {
-	const releases: (() => void)[] = [];
+	const releases: ((fail: boolean) => void)[] = [];
 	const contents: string[] = [];
 	return {
 		fetch: ((_input, init) => new Promise<Response>((resolve) => {
 			const request: StubDecisionRequest = JSON.parse(String(init?.body));
 			contents.push(String(init?.body));
-			releases.push(() => resolve(decisionResponse(request)));
+			releases.push((fail) => resolve(fail ? new Response("", { status: 500 }) : decisionResponse(request)));
 		})) satisfies ModelFetch,
-		release: () => { releases.shift()?.(); },
+		release: (fail = false) => { releases.shift()?.(fail); },
 		pending: () => releases.length,
 		contents: () => contents,
 	};
@@ -97,7 +100,7 @@ test("catch-up digests every selected Variant without a record and reports its p
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
 
 	startBoxCatchUp(database, chat.id, "world-clock");
-	expect(readBoxCatchUp(database, chat.id, "world-clock")).toEqual({ total: 2, remaining: 2 });
+	expect(readBoxCatchUp(database, chat.id, "world-clock")).toEqual({ total: 2, remaining: 2, failed: 0 });
 	await waitFor(() => stub.pending() === 2);
 	stub.release();
 	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock")?.remaining === 1);
@@ -210,4 +213,73 @@ test("a digest window reads exactly the preceding Messages it declares", () => {
 	const read = (preceding: number) => readSelectedPathForMemory(database, chat.id, { messageId: source, preceding })?.map((message) => message.variant?.content);
 	expect(read(0)).toEqual(["Six."]);
 	expect(read(5)).toEqual(["One.", "Two.", "Three.", "Four.", "Five.", "Six."]);
+});
+
+test("a failed digest keeps its error, live work skips that text, and catch-up retries it", async () => {
+	const chat = createChat();
+	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+	const clock = insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+	const slot = () => readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage);
+
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	await waitFor(() => stub.pending() === 1);
+	stub.release(true);
+	await waitFor(() => slot()?.error !== undefined);
+	expect(slot()?.error?.message).toBe("Decision Model request failed with HTTP 500.");
+
+	// @approved
+	//  Had live work queued the failed text again, catch-up would find it
+	//  already queued and start no run.
+	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	startBoxCatchUp(database, chat.id, "world-clock");
+	expect(readBoxCatchUp(database, chat.id, "world-clock")).toEqual({ total: 1, remaining: 1, failed: 0 });
+	await waitFor(() => stub.pending() === 1);
+	stub.release();
+	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
+	expect(slot()?.automatic?.weather).toBe("storm");
+	expect(slot()?.error).toBeUndefined();
+});
+
+test("a catch-up run reports how many of its passages failed", async () => {
+	const chat = createChat();
+	addPassage(chat.id, 1, "The storm breaks over the tower.");
+	addPassage(chat.id, 2, "Snow drifts against the shutters.");
+	insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+
+	startBoxCatchUp(database, chat.id, "world-clock");
+	await waitFor(() => stub.pending() === 2);
+	stub.release(true);
+	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock")?.remaining === 1);
+	expect(readBoxCatchUp(database, chat.id, "world-clock")).toEqual({ total: 2, remaining: 1, failed: 1 });
+	stub.release();
+	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
+});
+
+test("a digest reads its passages' Message ids, the Cast and its own Chat values", async () => {
+	const chat = createChat();
+	addPassage(chat.id, 1, "The storm breaks over the tower.");
+	const passage = addPassage(chat.id, 2, "Snow drifts against the shutters.");
+	const clock = insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const windows: DigestWindow[] = [];
+	const run = spyOn(worldClockBox.records.digest, "run").mockImplementation(async (window) => {
+		windows.push(window);
+		return { minutes: 0, weather: null };
+	});
+	try {
+		stopDigests = startBoxDigests(database);
+		queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+		await waitFor(() => windows.length === 1);
+	} finally { run.mockRestore(); }
+	const messageIds = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ? ORDER BY position").all(chat.id).map((row) => row.id);
+	expect(windows[0]?.passage).toEqual({ messageId: messageIds[1], speaker: null, authorId: null, content: "Snow drifts against the shutters." });
+	expect(windows[0]?.preceding.map((entry) => entry.messageId)).toEqual([messageIds[0]]);
+	expect(windows[0]?.cast.map(({ name, removed }) => ({ name, removed }))).toEqual([{ name: "Writer", removed: false }, { name: "Maren", removed: false }]);
+	expect(windows[0]?.data).toEqual({ enabled: "true", instance: clock });
 });

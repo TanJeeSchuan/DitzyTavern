@@ -1,6 +1,6 @@
 # Digests read the Chat
 
-Status: TODO
+Status: DONE
 
 Blocked By: none
 
@@ -21,13 +21,13 @@ A digest gets what an `advance` already gets: the services its Box injects, and 
 
 ## Work
 
-- [ ] Pass injected services, message ids, the Cast and the Box's conversation data to `digest.run`.
-- [ ] Add `error` to the record slot, write it on failure, and skip and retry as above.
-- [ ] Show a failed digest in the passage timeline (`PassageTimeline.tsx`) for World Clock and Mood, following DESIGN.MD.
-- [ ] Update `docs/box-system/README.md` for the new digest inputs and the `error` slot field.
-- [ ] Unit-test failure, skip and catch-up retry in `src/server/box/digest.test.ts`.
-- [ ] Run `bun run check` and the World Clock and Mood e2e specs.
-- [ ] Set this ticket to DONE and commit.
+- [x] Pass injected services, message ids, the Cast and the Box's conversation data to `digest.run`.
+- [x] Add `error` to the record slot, write it on failure, and skip and retry as above.
+- [x] Show a failed digest in the passage timeline (`PassageTimeline.tsx`) for World Clock and Mood, following DESIGN.MD.
+- [x] Update `docs/box-system/README.md` for the new digest inputs and the `error` slot field.
+- [x] Unit-test failure, skip and catch-up retry in `src/server/box/digest.test.ts`.
+- [x] Run `bun run check` and the World Clock and Mood e2e specs.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

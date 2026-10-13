@@ -22,7 +22,7 @@ A Box is three registrations and its folder `src/boxes/<id>/`. The shapes below 
 
 // 2. Server Box: src/boxes/<id>/server.ts, listed in `serverBox` in src/server/box/registry.ts
 export const exampleBox = {
-  inject: ["llm", "decide", "embed"],                // provider services `advance.run` receives on `ctx`
+  inject: ["llm", "decide", "embed"],                // provider services `advance.run` and `digest.run` receive on `ctx`
   setupError(setup, previous) { … },                 // a message rejecting a setup the schema accepts
   moves: { render(move, author) { … } },             // a Move as history reads it; required by `moves`
   dependencies(read, setup) { … },                   // inputs beyond setup, state and Moves, from the host's CaptureRead
@@ -117,9 +117,9 @@ Pick the record's granularity by what an upstream change should do to it:
 
 `decision` makes the Box a digesting Box: the server Box must declare `records.digest`, and may declare `status` but not `read`. That one key gives the Box the [digest queue and catch-up](#digest-queue-and-catch-up), the [passage timeline](#passage-timeline) as its window read, and a global Decision Model selection in Connection Settings, worded by the four `decision` strings. The host stores the selection (profile, model and state token limit) in `library_data` under its own `box-decision` namespace, keyed by the Box id. Without a selection no digest runs.
 
-`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed }`. `passage` and each `preceding` entry are `{ speaker, content }`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `ctx.signal` aborts when the job is superseded or cancelled.
+`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed, cast, data }`. `passage` and each `preceding` entry are `{ messageId, speaker, authorId, content }`; `authorId` is the authoring Participant's id, or `null`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `cast` is every Participant in the Chat as `{ id, name, removed }`, removed ones included so every author resolves. `data` is the Box's own `box:<id>` `conversation_data` values by key, as stored strings. A Box that should not digest a passage, such as one by an author it ignores, returns an empty record. `ctx` holds the services the Box [injects](#inject), and `ctx.signal` aborts when the job is superseded or cancelled.
 
-`ctx.decide(state, questions)` asks the Box's own Decision Model selection. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
+`ctx.decide(state, questions)` is always present and asks the Box's own Decision Model selection, replacing the injected `decide`. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
 
 ```ts
 const answers = await ctx.decide({ passage, preceding }, {
@@ -128,7 +128,7 @@ const answers = await ctx.decide({ passage, preceding }, {
 const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
 ```
 
-Throw on an answer outside your options. A thrown error is logged and leaves no record. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
+Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
 
 `status(setup, state)` is the dock tab's line, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The dock tab's accessible name is `<label>: <status>`, which is how an e2e test finds it.
 
@@ -161,7 +161,7 @@ Inputs `advance` needs beyond setup, state and Moves. The host calls `dependenci
 
 ### `inject`
 
-The provider services `advance.run` receives on `ctx`: `llm`, `decide` and `embed`. The host builds `ctx` from exactly the declared keys, plus `signal`, which aborts when the server shuts down.
+The provider services `advance.run` and `digest.run` receive on `ctx`: `llm`, `decide` and `embed`. The host builds `ctx` from exactly the declared keys, plus `signal`, which aborts when the server shuts down or, in a digest, when the job is superseded or cancelled. A digest's `decide` is always its own [Decision Model selection](#decision-recordsdigest-and-status).
 
 ### `read`
 
@@ -234,7 +234,7 @@ The layer rules read Box file names too: a `client*` file imports `server*` code
 
 `put-box-data` takes the Box id, not a namespace, and the Panel's `boxData` prop fixes it, so no window can name another Box's namespace. The host rejects it for a Box not enabled in the Chat and for an owner that does not exist. Library and Character writes carry the value's revision as last read (0 when absent), because the Chat revision cannot guard values shared across Chats. Values are strings the Box decodes; a value that fails its schema is an error, never a row to skip. Character and Participant data are independent after the copy.
 
-A record slot is `{ automatic?, writer?, source? }`, keyed by the instance that wrote it. `source` hashes the digested text, so an edit is digested again and a reselection is not. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
+A record slot is `{ automatic?, writer?, source?, error? }`, keyed by the instance that wrote it. `source` hashes the digested text, so an edit is digested again and a reselection is not. `error` is `{ source, message }`, the last failed digest and the hash of the text it failed on. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
 
 Setups, records, Moves and Decision Model selections are decoded against their schemas on every read, and commands check them before they land. There is no migration path: a stored value that fails to decode after a schema change is an error naming the namespace or key to clear. A feature that needs relational queries stays in-tree code that owns its tables, like Lorebooks and Memory's collections.
 
@@ -266,13 +266,13 @@ Each Box has at most one block per preset, reference `box:<id>`, labelled and gi
 
 ### Digest queue and catch-up
 
-The host queues a digest for a selected, settled, non-empty Variant when it resolves, when it becomes selected without a record for its current text, or when its text is edited. Two workers drain the queue, live jobs before catch-up jobs. Each Variant and Box has one current job: a newer one aborts the older, and only the current job's result lands. A result is discarded if the text changed, the job was replaced or cancelled, the Box stopped being enabled, or the Decision Model selection went away. Jobs live in memory; work lost on restart is queued again on the next selection, resolution or edit, or by catch-up.
+The host queues a digest for a selected, settled, non-empty Variant when it resolves, when it becomes selected without a record for its current text, or when its text is edited. Two workers drain the queue, live jobs before catch-up jobs. Each Variant and Box has one current job: a newer one aborts the older, and only the current job's result lands. A result, or a failure, is discarded if the text changed, the job was replaced or cancelled, the Box stopped being enabled, or the Decision Model selection went away. A failed digest is not queued again for the same text; an edit queues it, and so does catch-up. A successful digest clears the slot's `error`. Jobs live in memory; work lost on restart is queued again on the next selection, resolution or edit, or by catch-up.
 
-Catch-up queues every selected Variant without a record for its current text, behind live work. The window shows its progress and can cancel it. A second request while one runs does nothing.
+Catch-up queues every selected Variant without a record for its current text, failed ones included, behind live work. The window shows its progress, with how many failed, and can cancel it. A second request while one runs does nothing.
 
 ### Passage timeline
 
-`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock tab polls only the status.
+`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, a "Digest failed" mark carrying the error when the last digest of its current text failed, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock tab polls only the status.
 
 The override editor is built from the `record` schema:
 

@@ -26,9 +26,6 @@ import { readConversationGenerationSettingsFromConnection } from "../conversatio
 import { readSelectedHistoryFromConnection } from "../conversation";
 import { readVariantData, type VariantDataRecords } from "../conversation";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot } from "../memory/recall";
-import { embedMemoryQuery } from "../memory/indexing";
-import { createModelClient } from "../model-client";
-import { requestDecisions } from "../decision-model";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
@@ -68,6 +65,7 @@ import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { SelectedHistoryRead } from "../conversation";
+import { boxServices } from "../box/services";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
@@ -450,12 +448,7 @@ export async function prepareGenerationInputsAsync(
 	const lorePromise = needsSemantic && sources !== undefined
 		? evaluateScopedLoreAsync(sources, { fetch: input.preparationFetch, signal })
 		: Promise.resolve(preparation.lore);
-	const boxesPromise = advanceBoxes(boxInputs, {
-		signal,
-		llm: (options) => createModelClient({ ...options, fetch: input.preparationFetch }),
-		decide: (request) => requestDecisions({ ...request, fetch: input.preparationFetch, signal }),
-		embed: (text, configuration) => embedMemoryQuery(input.database, text, configuration, input.preparationFetch, signal),
-	});
+	const boxesPromise = advanceBoxes(boxInputs, boxServices(input.database, input.preparationFetch, signal));
 	const [lore, boxes] = await Promise.all([lorePromise, boxesPromise]);
 	signal.throwIfAborted();
 	const ready: Preparation = {
