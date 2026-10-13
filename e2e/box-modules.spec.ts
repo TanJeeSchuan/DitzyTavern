@@ -28,6 +28,16 @@ test("a Box client module that fails to import or is malformed loses its surface
 	await expect(page.getByRole("dialog", { name: "Phone" })).toBeVisible();
 });
 
+test("a Box client module that never finishes loading is refused at its deadline, and the Chat renders and still turns the Box off", async ({ page }) => {
+	await page.route("**/boxes/memory/client.js", (route) => route.fulfill({ contentType: "text/javascript", body: "await new Promise(() => {});\nexport default {};" }));
+	await page.goto("/");
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	const memory = page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Memory" });
+	await expect(memory).toContainText("Did not load: Its client module did not load within 10 seconds.");
+	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
+	await expect(memory).toContainText("Off · setup kept");
+});
+
 test("a Box surface or icon that throws shows its failure in its frame, and the rest of the Chat keeps working", async ({ page, llm }) => {
 	await page.route("**/boxes/memory/client.js", (route) => route.fulfill({ contentType: "text/javascript", body: `
 		import memory from "/boxes/memory/client.js?original";

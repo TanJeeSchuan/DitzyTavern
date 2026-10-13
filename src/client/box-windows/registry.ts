@@ -103,14 +103,30 @@ const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinitio
 };
 
 // @approved
+//  The host renders only once every Box module has settled, so a module whose
+// import never does, such as one whose stylesheet request stalls, would keep
+// the whole app blank. Each gets ten seconds, plenty for a same-origin module
+// and its stylesheet on a slow link and short enough that a stalled Box blanks
+// the app only briefly; past it, the module is refused like a failed import.
+const BOX_CLIENT_DEADLINE_MS = 10_000;
+const withinDeadline = async <T>(load: Promise<T>): Promise<T> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`Its client module did not load within ${BOX_CLIENT_DEADLINE_MS / 1000} seconds.`)), BOX_CLIENT_DEADLINE_MS);
+	});
+	try { return await Promise.race([load, late]); } finally { clearTimeout(timer); }
+};
+
+// @approved
 //  Startup imports every loaded Box's client module, in parallel, before the
 // host renders any Box surface, and installs their descriptors and surfaces.
-// A module that fails to import, or whose descriptor the host refuses, keeps
-// its reason for the Box manager, which still manages the Box: the server
-// owns which Boxes exist, and a Box runs there whether or not its client loads.
+// A module that fails to import, misses its deadline, or whose descriptor the
+// host refuses keeps its reason for the Box manager, which still manages the
+// Box: the server owns which Boxes exist, and a Box runs there whether or not
+// its client loads.
 export const loadBoxClients = async (): Promise<void> => {
 	const boxes = await requestData(api.api.boxes.get(), boxList);
-	const loaded = await Promise.allSettled(boxes.map(({ id, client }) => loadBoxClient(id, client)));
+	const loaded = await Promise.allSettled(boxes.map(({ id, client }) => withinDeadline(loadBoxClient(id, client))));
 	const modules = loaded.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 	installBoxDescriptors(modules.map(({ descriptor }) => descriptor));
 	clients = new Map(modules.map((client) => [client.descriptor.id, client]));
