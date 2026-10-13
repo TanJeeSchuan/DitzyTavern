@@ -2,7 +2,7 @@
 
 Status: TODO
 
-Blocked By: 26-boxes-are-discovered-from-folders
+Blocked By: 26b-memory-ui-moves-into-its-box
 
 Source: GitHub #72. Today the SPA is one Vite chunk with React bundled in, and Box UIs are imported statically by `src/client/box-windows/registry.tsx`.
 
