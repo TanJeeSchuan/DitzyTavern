@@ -132,7 +132,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 
 	const override = { minutes: 600, weather: "clear" as const };
-	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override });
+	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override, expected: { minutes: 60, weather: "rain" } });
 	expect(applied.status).toBe(200);
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
 	// @approved
@@ -152,7 +152,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, overridden: false });
 });
 
-test("an override naming the record it replaces is refused once a digest changed that record", async () => {
+test("an override is refused once a digest changed the record it replaces, or wrote one where it read none", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
@@ -161,8 +161,9 @@ test("an override naming the record it replaces is refused once a digest changed
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, read, sha256("The lamp turns."));
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
 	const override = { type: "set-box-record" as const, box: "world-clock" as const, messageId, variantId, record: { minutes: 600, weather: "clear" as const } };
-	const refused = await command(app, chat.id, chat.revision, { ...override, expected: read });
-	expect(await refused.json()).toEqual({ outcome: "invalid", reason: "This record changed since you read it. Review it before changing it again." });
+	const refusal = { outcome: "invalid", reason: "This record changed since you read it. Review it before changing it again." };
+	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: read })).json()).toEqual(refusal);
+	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: null })).json()).toEqual(refusal);
 	expect((await command(app, chat.id, chat.revision, { ...override, expected: { minutes: 120, weather: "storm" } })).status).toBe(200);
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override.record, overridden: true });
 });
@@ -182,7 +183,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] });
 	if (record === undefined) throw new Error("The Stretch produced no record.");
 	const { messageId, provisionalVariantId: variantId, conversation } = accepted;
-	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record });
+	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record, expected: null });
 	expect(await response.json()).toEqual({ outcome: "invalid", reason: "This Variant is still generating. Override its record once it settles." });
 });
 
@@ -193,7 +194,7 @@ test("an override outside the Box record schema is refused", async () => {
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
 		method: "POST", headers: { "content-type": "application/json" },
-		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" } } }),
+		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" }, expected: null } }),
 	}));
 	expect(response.status).toBe(422);
 	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [variantId]).size).toBe(0);

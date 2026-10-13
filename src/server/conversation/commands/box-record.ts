@@ -20,9 +20,9 @@ const requireRecord = (box: BoxId) => {
 //  the `expected` one it replaces, must pass the Box's record schema before
 //  anything is written, so storage only ever holds decodable records, and the
 //  Variant is checked to belong to this Conversation before anything lands.
-export function setBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: BoxId; messageId: number; variantId: number; record: BoxValue; expected?: BoxValue }): void {
+export function setBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: BoxId; messageId: number; variantId: number; record: BoxValue; expected: BoxValue }): void {
 	const { label, record } = requireRecord(input.box);
-	if (!fitsBoxSchema(record, input.record) || !(input.expected === undefined || input.expected === null || fitsBoxSchema(record, input.expected))) {
+	if (!fitsBoxSchema(record, input.record) || !(input.expected === null || fitsBoxSchema(record, input.expected))) {
 		throw new InvalidConversationCommandError(`The ${label} record does not match its schema.`);
 	}
 	requireVariant(db, input.conversationId, input.messageId, input.variantId);
@@ -32,7 +32,7 @@ export function setBoxRecord(db: ConversationDatabase, input: { conversationId: 
 	const active = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, input.variantId)).get();
 	if (active !== undefined) throw new InvalidConversationCommandError("This Variant is still generating. Override its record once it settles.");
 	const instance = requireBoxInstance(db, input.conversationId, input.box);
-	if (input.expected !== undefined && !Value.Equal(effectiveRecord(readRecordSlots(db, input.box, record, instance, [input.variantId]).get(input.variantId)) ?? null, input.expected)) {
+	if (!Value.Equal(effectiveRecord(readRecordSlots(db, input.box, record, instance, [input.variantId]).get(input.variantId)) ?? null, input.expected)) {
 		throw new InvalidConversationCommandError("This record changed since you read it. Review it before changing it again.");
 	}
 	writeWriterRecord(db, input.box, instance, input.variantId, input.record);

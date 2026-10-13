@@ -38,8 +38,9 @@ export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state
 //  Sets one Variant's Writer override for a Box record. The command checks
 //  the record against that Box's schema before anything is written, so
 //  storage only ever holds decodable values. `expected` is the effective
-//  record the writer read, null for none: digests change records without a
-//  Conversation revision, so a stale override is refused against it instead.
+//  record the writer's draft started from, null for none: digests change
+//  records without a Conversation revision, so the command refuses an
+//  override once the slot no longer holds it.
 //  Reset removes the override and leaves the automatic record, if any, as the
 //  effective value.
 export const setBoxRecordAction = Type.Object({
@@ -48,7 +49,7 @@ export const setBoxRecordAction = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	record: boxValue,
-	expected: Type.Optional(boxValue),
+	expected: boxValue,
 });
 
 export const resetBoxRecordAction = Type.Object({

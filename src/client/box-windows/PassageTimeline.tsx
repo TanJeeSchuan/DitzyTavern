@@ -142,19 +142,25 @@ const summaryOf = (fields: readonly RecordField[], record: RecordValue): string 
 	return [field.kind === "choice" ? field.options.find((option) => option.value === value)?.label ?? String(value) : String(value)];
 }).join(" · ");
 
-function RecordEditor({ box, passage, fields, busy, onCancel, onSave }: {
+// @approved
+//  The draft starts from `expected`, the record the editor replaces, which
+// the editor names so a writer whose save was refused sees what is there now.
+function RecordEditor({ box, passage, expected, fields, summarize, busy, onCancel, onSave }: {
 	box: BoxId;
 	passage: BoxDigestPassage;
+	expected: RecordValue | null;
 	fields: readonly RecordField[];
+	summarize: (record: RecordValue) => string;
 	busy: boolean;
 	onCancel: () => void;
 	onSave: (record: RecordValue) => void;
 }): ReactNode {
-	const [draft, setDraft] = useState(() => draftOf(fields, passage.record));
+	const [draft, setDraft] = useState(() => draftOf(fields, expected));
 	const record = recordOf(fields, draft);
 	const valid = Value.Check(boxRecordSchema(box), record);
 	const set = (key: string, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 	return <div className="box-timeline-editor">
+		<p className="box-timeline-note">Replaces: {expected === null ? "Not read yet" : summarize(expected)}</p>
 		{fields.map((field) => {
 			const id = `${box}-${passage.variantId}-${field.key}`;
 			if (field.kind === "choice") return <Field key={field.key} label={field.label}>
@@ -193,7 +199,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 }): ReactNode {
 	const client = useQueryClient();
 	const read = useBoxDigest(conversation.id, box);
-	const [editing, setEditing] = useState<number | null>(null);
+	const [editing, setEditing] = useState<{ readonly variantId: number; readonly expected: RecordValue | null } | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const locked = disabled || busy;
@@ -214,9 +220,17 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 		} finally { setBusy(false); }
 		return applied;
 	};
-	const save = async (passage: BoxDigestPassage, record: RecordValue) => {
+	// @approved
+	//  A refused save keeps the draft and moves `expected` to the record now
+	// there, which the editor shows, so saving again overrides it knowingly.
+	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue) => {
 		if (locked) return;
-		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record })) setEditing(null);
+		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record, expected })) {
+			setEditing(null);
+			return;
+		}
+		const current = (await read.refetch()).data?.passages.find(({ variantId }) => variantId === passage.variantId);
+		if (current !== undefined) setEditing((open) => open?.variantId === passage.variantId ? { ...open, expected: current.record } : open);
 	};
 	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, messageId: passage.messageId, variantId: passage.variantId });
 
@@ -252,8 +266,9 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 				<li key={passage.variantId}>
 					<strong>{passage.author ?? "Unknown"}</strong>
 					<span className="box-timeline-text">{passage.content}</span>
-					{editing === passage.variantId
-						? <RecordEditor box={box} passage={passage} fields={fields} busy={locked} onCancel={() => setEditing(null)} onSave={(record) => void save(passage, record)} />
+					{editing?.variantId === passage.variantId
+						? <RecordEditor box={box} passage={passage} expected={editing.expected} fields={fields} summarize={summarize} busy={locked}
+							onCancel={() => setEditing(null)} onSave={(record) => void save(passage, editing.expected, record)} />
 						: <div className="box-timeline-read">
 							<span className="box-timeline-summary">
 								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}
@@ -261,7 +276,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 								{passage.error !== null && <span className="box-timeline-error">Digest failed: {passage.error}</span>}
 							</span>
 							<span className="box-timeline-actions">
-								<Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing(passage.variantId)}><Pencil aria-hidden="true" />Edit</Button>
+								<Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing({ variantId: passage.variantId, expected: passage.record })}><Pencil aria-hidden="true" />Edit</Button>
 								{passage.overridden && <Button variant="ghost" size="sm" disabled={locked} onClick={() => void reset(passage)}>Reset</Button>}
 							</span>
 						</div>}
