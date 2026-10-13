@@ -1,11 +1,11 @@
 import { Minus, X } from "lucide-react";
 import { FocusScope } from "radix-ui/internal";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import type { BoxWindowLayout } from "../../shared/contract/box";
+import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice } from "./BoxBlockNotice";
-import { boxTitle, boxWindow, windowBoxIds, type MoveStaging, type WindowBoxId } from "./registry";
+import { boxTitle, boxWindows, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const NARROW = "(max-width: 78rem)";
@@ -132,23 +132,20 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	onConversationChange: (conversation: ConversationSummary) => void;
 }): ReactNode {
 	const requestNavigation = useNavigationRequest();
-	const [order, setOrder] = useState<WindowBoxId[]>([]);
+	const [order, setOrder] = useState<BoxId[]>([]);
 	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
 	if (conversation === null) return null;
-	const running = windowBoxIds.filter((id) => conversation.boxes[id] === "enabled");
-	const minimized = running.filter((id) => controller.layouts[id]?.minimized === true);
-	const opened = running.filter((id) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
-	const raise = (id: WindowBoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
-	const zIndex = (id: WindowBoxId) => 30 + order.indexOf(id) + 1;
+	const running = [...boxWindows].filter(([id]) => conversation.boxes[id] === "enabled");
+	const minimized = running.filter(([id]) => controller.layouts[id]?.minimized === true);
+	const opened = running.filter(([id]) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
+	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
+	const zIndex = (id: BoxId) => 30 + order.indexOf(id) + 1;
 	// @approved
 	//  The window painted last at the highest z-index is the one on top.
-	const top = opened.reduce<WindowBoxId | undefined>((best, id) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
+	const top = opened.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map((id) => {
-				const { DockTab } = boxWindow(id);
-				return <DockTab key={id} conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} />;
-			})}
+			{minimized.map(([id, { DockTab }]) => <DockTab key={id} conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} />)}
 		</div>}
 		{/* @approved
 		  A narrow viewport shows the top window as one full-screen layer over
@@ -157,8 +154,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 		  windows usable at once, where trapping focus would be wrong. */}
 		<FocusScope.Root asChild trapped={narrow && opened.length > 0} loop={narrow && opened.length > 0}
 			onMountAutoFocus={(event) => event.preventDefault()} onUnmountAutoFocus={(event) => event.preventDefault()}><div className="box-window-layer">
-		{opened.map((id) => {
-			const definition = boxWindow(id);
+		{opened.map(([id, definition]) => {
 			const { Panel } = definition;
 			const layout = controller.layouts[id];
 			if (layout === undefined) return null;

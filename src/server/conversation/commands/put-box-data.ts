@@ -9,7 +9,7 @@ import {
 import { putLibraryValue } from "../../box/stored-value";
 import { InvalidConversationCommandError } from "../errors";
 import { isBoxEnabled } from "../../box/setup";
-import { requireParticipant, type ConversationDatabase } from "../internal";
+import { requireBox, requireParticipant, type ConversationDatabase } from "../internal";
 
 const guardShared = (row: { revision: number } | undefined, expected: number) => {
 	if ((row?.revision ?? 0) !== expected) throw new InvalidConversationCommandError("Another Chat changed this value since it was read. Review it and try again.");
@@ -23,6 +23,7 @@ const guardShared = (row: { revision: number } | undefined, expected: number) =>
 //  command, never a silent orphan row. A setup save runs the same handler for
 //  each write it carries.
 export function putBoxData(db: ConversationDatabase, input: { conversationId: number; box: BoxId } & BoxDataWrite) {
+	requireBox(input.box);
 	if (!isBoxEnabled(db, input.conversationId, input.box)) throw new InvalidConversationCommandError(`The ${input.box} Box is not enabled in this Chat, so it takes no data.`);
 	const namespace = boxReference(input.box);
 	switch (input.owner.type) {

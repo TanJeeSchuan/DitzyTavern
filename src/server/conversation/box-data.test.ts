@@ -8,6 +8,8 @@ import { executeConversationCommand, InvalidConversationCommandError } from "../
 import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { readBoxSetups } from "../box/setup";
 import { initialRaceSetup } from "../../boxes/race/shared-data";
+import { raceSetup } from "../../boxes/race/contract";
+import { boxSetupOf } from "../../shared/contract/box-value";
 
 const prompt = () => ({
 	systemInstruction: "",
@@ -144,12 +146,12 @@ describe("put-box-data and the Character seed copy", () => {
 		expect(() => save(3)).toThrow(InvalidConversationCommandError);
 		expect(participantData()).toEqual([]);
 		expect(characterData()).toEqual([]);
-		expect(readBoxSetups(drizzle(database), conversationId).race.slots).toEqual([]);
+		expect(boxSetupOf({ boxSetups: readBoxSetups(drizzle(database), conversationId) }, "race", raceSetup).slots).toEqual([]);
 
 		save(0);
 		expect(storedParticipantData()).toEqual([{ participant_id: participantId, namespace: "box:race", key: "stats", value: "{\"speed\":600}" }]);
 		expect(characterData()).toEqual([expect.objectContaining({ character_id: character.id, value: "{\"speed\":600}", revision: 1 })]);
-		expect(readBoxSetups(drizzle(database), conversationId).race.slots).toEqual([runner]);
+		expect(boxSetupOf({ boxSetups: readBoxSetups(drizzle(database), conversationId) }, "race", raceSetup).slots).toEqual([runner]);
 	});
 
 	test("copies Character data into a seeded Participant and later Character edits never reach it", () => {

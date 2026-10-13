@@ -8,19 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { boxDescriptors, type DigestBoxId } from "../../shared/contract/box";
-import type { BoxRecord } from "../../shared/contract/box-generation";
+import { boxDescriptor, boxRecordSchema, type BoxId, type BoxRecord } from "../../shared/contract/box";
+import type { BoxValue } from "../../shared/contract/box-value";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
 import type { BoxWindowDefinition } from "./registry";
 
-export const boxDigestKey = (conversationId: number, box: DigestBoxId) => ["box-digest", conversationId, box] as const;
+export const boxDigestKey = (conversationId: number, box: BoxId) => ["box-digest", conversationId, box] as const;
 
 /** @approved The window's polled read: a digest that lands while it is open
  *  refreshes the status and the timeline, and a running catch-up polls faster
  *  so its progress moves. */
-function useBoxDigest(conversationId: number, box: DigestBoxId) {
+function useBoxDigest(conversationId: number, box: BoxId) {
 	return useQuery({
 		queryKey: boxDigestKey(conversationId, box),
 		queryFn: ({ signal }) => loadBoxDigest(conversationId, box, signal),
@@ -33,20 +33,20 @@ function useBoxDigest(conversationId: number, box: DigestBoxId) {
 //  A digesting Box's folded status line, polled; the label stands in for a
 //  null status. The dock tab and top bar items read it. Its key extends the
 //  digest's, so a save that refreshes the timeline refreshes the status too.
-export function useBoxStatus(conversationId: number, box: DigestBoxId): string {
+export function useBoxStatus(conversationId: number, box: BoxId): string {
 	const read = useQuery({
 		queryKey: [...boxDigestKey(conversationId, box), "status"],
 		queryFn: ({ signal }) => loadBoxDigestStatus(conversationId, box, signal),
 		refetchInterval: 2_500,
 		refetchIntervalInBackground: false,
 	});
-	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptors[box].label : "Reading…");
+	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptor(box).label : "Reading…");
 }
 
 /** @approved A digesting Box's dock tab: its folded status line. */
-function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
+function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: BoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
 	const status = useBoxStatus(conversation.id, box);
-	const { label } = boxDescriptors[box];
+	const { label } = boxDescriptor(box);
 	return <button type="button" className="box-dock-tab" title={`Restore ${label}`} onClick={onRestore}>
 		<Icon aria-hidden="true" />
 		<span className="sr-only">{label}: </span>
@@ -79,8 +79,11 @@ const recordField = (key: string, schema: TSchema): RecordField => {
 	if (KindGuard.IsString(schema)) return { key, label, kind: "text" };
 	throw new Error(`A passage timeline cannot edit the record field "${key}".`);
 };
-const recordFields = (box: DigestBoxId): readonly RecordField[] =>
-	Object.entries(boxDescriptors[box].record.properties).map(([key, schema]) => recordField(key, schema));
+const recordFields = (box: BoxId): readonly RecordField[] => {
+	const { record } = boxDescriptor(box);
+	if (record === undefined) throw new Error(`The ${box} Box keeps no records for a passage timeline.`);
+	return Object.entries(record.properties).map(([key, schema]) => recordField(key, schema));
+};
 
 // @approved
 //  A digesting Box's window: its own Panel, if it has one, then the host's
@@ -88,11 +91,11 @@ const recordFields = (box: DigestBoxId): readonly RecordField[] =>
 // record on the timeline in place of the generic summary. The override
 // editor is built from the record schema here, so a schema the timeline
 // cannot edit fails when the Box registers its window, not when it opens.
-export function digestWindow<Id extends DigestBoxId>(box: Id, { icon, size, Panel, describe }: {
+export function digestWindow<Rec>(box: BoxId, { icon, size, Panel, describe }: {
 	icon: LucideIcon;
 	size: BoxWindowDefinition["size"];
 	Panel?: BoxWindowDefinition["Panel"];
-	describe?(record: BoxRecord<Id>): string;
+	describe?(record: Rec): string;
 }): BoxWindowDefinition {
 	const fields = recordFields(box);
 	// @approved
@@ -109,8 +112,8 @@ export function digestWindow<Id extends DigestBoxId>(box: Id, { icon, size, Pane
 	};
 }
 
-type RecordValue = BoxRecord<DigestBoxId>;
-const fieldValues = (record: RecordValue | null): ReadonlyMap<string, FieldValue> => new Map(record === null ? [] : Object.entries(record));
+type RecordValue = BoxRecord;
+const fieldValues = (record: RecordValue | null): ReadonlyMap<string, BoxValue> => new Map(record === null ? [] : Object.entries(record));
 /** @approved The record the editor's fields hold; the record schema checks it before it is saved. */
 type RecordCandidate = Readonly<Record<string, FieldValue | undefined>>;
 /** @approved A choice holds its option's index, because Radix Select values must be non-empty strings. */
@@ -140,7 +143,7 @@ const summaryOf = (fields: readonly RecordField[], record: RecordValue): string 
 }).join(" · ");
 
 function RecordEditor({ box, passage, fields, busy, onCancel, onSave }: {
-	box: DigestBoxId;
+	box: BoxId;
 	passage: BoxDigestPassage;
 	fields: readonly RecordField[];
 	busy: boolean;
@@ -149,7 +152,7 @@ function RecordEditor({ box, passage, fields, busy, onCancel, onSave }: {
 }): ReactNode {
 	const [draft, setDraft] = useState(() => draftOf(fields, passage.record));
 	const record = recordOf(fields, draft);
-	const valid = Value.Check(boxDescriptors[box].record, record);
+	const valid = Value.Check(boxRecordSchema(box), record);
 	const set = (key: string, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 	return <div className="box-timeline-editor">
 		{fields.map((field) => {
@@ -181,7 +184,7 @@ const commandNotices = { conflict: "The Chat changed elsewhere. Review the passa
  *  Selected path's passages: each one's record, a Writer override editor
  *  built from the record schema, reset, and a catch-up run with its progress. */
 function PassageTimeline({ box, fields, summarize, conversation, disabled, onConversationChange }: {
-	box: DigestBoxId;
+	box: BoxId;
 	fields: readonly RecordField[];
 	summarize: (record: RecordValue) => string;
 	conversation: ConversationSummary;
@@ -194,7 +197,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const locked = disabled || busy;
-	const { label } = boxDescriptors[box];
+	const { label } = boxDescriptor(box);
 	const passages = read.data?.passages ?? [];
 	const catchUp = read.data?.catchUp ?? null;
 	const digestReady = read.data?.digestReady ?? false;
@@ -213,10 +216,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	};
 	const save = async (passage: BoxDigestPassage, record: RecordValue) => {
 		if (locked) return;
-		// @approved
-		// SAFETY: the editor checked the record against this Box's record schema, which the command accepts for it.
-		const command = { type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record } as ConversationAction;
-		if (await apply(command)) setEditing(null);
+		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record })) setEditing(null);
 	};
 	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, messageId: passage.messageId, variantId: passage.variantId });
 

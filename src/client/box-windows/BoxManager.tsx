@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { boxIds, type BoxId, type BoxState } from "../../shared/contract/box";
+import { boxDescriptors, type BoxId, type BoxState } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useNavigationRequest } from "../SaveGuard";
@@ -52,7 +52,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 			<PopoverContent side="top" align="start" className="box-manager">
 				<PopoverHeader><PopoverTitle>Boxes in this Chat</PopoverTitle></PopoverHeader>
 				<ul aria-label="Boxes">
-					{boxIds.map((box) => {
+					{[...boxDescriptors.keys()].map((box) => {
 						const state = conversation.boxes[box];
 						return <li key={box}>
 							<div>

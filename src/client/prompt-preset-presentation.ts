@@ -6,13 +6,13 @@
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
 
-import { singleUseReferenceLabels, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+import { singleUseReferenceLabels, withBoxReferences, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
 
 // @approved
 //  One vocabulary for both the recipe editor and the SillyTavern import
 // review, so a slot label or outgoing-role label can never drift between
 // them.
-export const slotLabels = {
+export const slotLabels = withBoxReferences({
 	"model-system-instruction": "System Instruction",
 	"human-identity": "Identity (you)",
 	"model-identity": "Identity (character)",
@@ -20,9 +20,9 @@ export const slotLabels = {
 	"model-example-dialogue": "Example Dialogue",
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
-	...singleUseReferenceLabels,
+	lore: singleUseReferenceLabels.lore,
 	instruction: "Instruction",
-} as const satisfies Record<PromptPresetBlockReference, string>;
+}, ({ label }) => label) satisfies Record<PromptPresetBlockReference, string>;
 
 export const outgoingRoleLabels = {
 	system: "System message",

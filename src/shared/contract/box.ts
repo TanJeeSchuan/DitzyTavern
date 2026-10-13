@@ -1,5 +1,7 @@
 import { raceMove, raceRecord, raceSetup } from "../../boxes/race/contract";
-import { Kind, Type, type Static, type TLiteral, type TObject, type TSchema } from "@sinclair/typebox";
+import { Type, type Static, type TObject, type TSchema } from "@sinclair/typebox";
+import { boxValue, type BoxValue } from "./box-value";
+import { authorNoteSetup } from "../../boxes/author-note/contract";
 import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "../../boxes/world-clock/contract";
 import { MAX_PHONE_MOVES, phoneMove } from "../../boxes/phone/contract";
 import { initialRaceSetup } from "../../boxes/race/shared-data";
@@ -7,48 +9,40 @@ import { MAX_RACE_MOVES, raceMoveLabel } from "../../boxes/race/shared";
 import { phoneInstructions, phoneMoveLabel } from "../../boxes/phone/shared";
 import { thoughtInstructions } from "../../boxes/thought/shared";
 import { moodRecord } from "../../boxes/mood/shared";
-import type { GenerationJsonValue } from "../generation-json";
 import { decisionSelection } from "./decision-model";
 import { memoryRecord } from "../../boxes/memory/contract";
 import { numericWire } from "./wire";
 import type { PromptOutgoingRole } from "./prompt-preset";
 
 // @approved
-//  Every compiled-in Box (ADR-0050). A Box's preset reference and its data
-// namespace are both `box:<id>`.
-export const boxIds = ["author-note", "memory", "world-clock", "race", "phone", "thought", "mood"] as const;
-export type BoxId = typeof boxIds[number];
-/** @approved Mapped over a tuple, so Elysia's route types resolve each member. */
-type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
-// SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
-const literals = <Values extends readonly string[]>(values: Values) => values.map((value) => Type.Literal(value)) as LiteralSchemas<Values>;
-export const boxId = Type.Union(literals(boxIds));
-
-export const promptBoxReference = Type.TemplateLiteral([Type.Literal("box:"), boxId]);
+//  A Box's id is a string the host checks against the registry at runtime
+// (ADR-0050). A Box's preset reference and its data namespace are both
+// `box:<id>`.
+export type BoxId = string;
+export const promptBoxReference = Type.TemplateLiteral("box:${string}");
 export type PromptBoxReference = Static<typeof promptBoxReference>;
 export const boxReference = (id: BoxId): PromptBoxReference => `box:${id}`;
-export const isBoxReference = (reference: string): reference is PromptBoxReference =>
-	boxIds.some((id) => boxReference(id) === reference);
 
 // @approved
 //  A Box's lifecycle in one Chat. Only an enabled Box runs; a disabled one
 // keeps its Chat-scoped data; an absent one has none.
 export const boxState = Type.Union([Type.Literal("enabled"), Type.Literal("disabled"), Type.Literal("absent")]);
 export type BoxState = Static<typeof boxState>;
-export const boxStates = Type.Record(boxId, boxState);
+export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
-type BoxDescriptor = {
+export type BoxDescriptor = {
 	readonly label: string;
 	readonly role: PromptOutgoingRole;
 	readonly startsEnabled: boolean;
 	readonly instructions: string;
 	readonly alwaysRender?: true;
-	readonly setup?: { readonly schema: TSchema; readonly initial: unknown };
+	readonly block?: { readonly description: string; readonly source: string };
+	readonly setup?: { readonly schema: TSchema; readonly initial: BoxValue };
 	readonly record?: TObject;
 	readonly moves?: { readonly schema: TSchema; readonly max: number; label(move: never): string; readonly seatBound?: true };
 	readonly decision?: { readonly summary: string; readonly description: string; readonly off: string; readonly context: string };
 };
-const setupOf = <Schema extends TSchema>(schema: Schema, initial: Static<Schema>) => ({ schema, initial });
+const setupOf = <Schema extends TSchema>(schema: Schema, initial: Static<Schema> & BoxValue) => ({ schema, initial });
 const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (move: Static<Schema>) => string) => ({ schema, max, label });
 
 // @approved
@@ -56,18 +50,26 @@ const movesOf = <Schema extends TSchema>(schema: Schema, max: number, label: (mo
 // label, the role its block starts with, and whether a new Chat starts with
 // it enabled. `instructions` is the text a new block starts with, after which
 // it belongs to the preset; the block renders it before the Box's items, and
-// renders nothing without items unless the Box declares `alwaysRender`. `setup` is its Conversation-scoped setup, which the
+// renders nothing without items unless the Box declares `alwaysRender`.
+// `block` is how the preset editor describes the block, in place of its
+// generic copy. `setup` is its Conversation-scoped setup, which the
 // set-box-setup command accepts. `record` is the schema of the record each
 // Variant holds for it, which Writer overrides accept. `moves` are the Moves
 // the human attaches to a Message, each shown as its chip `label`; seat-bound
 // Moves are dropped from the composer when the human seat changes. A record is
 // an object, so an absent record is never confused with a record's value. `decision`
 // gives the Box a global Decision Model selection, which its digests ask, and
-// the settings copy that selection shows.
-export const boxDescriptors = {
-	"author-note": { label: "Author Note", role: "system", startsEnabled: true, instructions: "", setup: setupOf(Type.String(), "") },
+// the settings copy that selection shows. The registry is keyed by Box id, in
+// the order the host lists and runs Boxes.
+export const boxDescriptors: ReadonlyMap<BoxId, BoxDescriptor> = new Map(Object.entries({
+	"author-note": {
+		label: "Author Note", role: "system", startsEnabled: true, instructions: "",
+		block: { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" },
+		setup: setupOf(authorNoteSetup, ""),
+	},
 	memory: {
 		label: "Memory", role: "system", startsEnabled: true, instructions: "",
+		block: { description: "Uses Conversation Memories recalled when a Generation is assembled.", source: "Conversation Memories" },
 		record: memoryRecord,
 		decision: {
 			summary: "Judges the Memories extraction proposes and scores saved Memories for recall.",
@@ -105,27 +107,39 @@ export const boxDescriptors = {
 			context: "Each passage is read with the Message before it.",
 		},
 	},
-} as const satisfies Record<BoxId, BoxDescriptor>;
-export type BoxDescriptors = typeof boxDescriptors;
-/** @approved The descriptor behind a Box's preset block reference. */
-export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptors[boxIds.find((id) => boxReference(id) === reference)!];
-/** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
-export const defaultBoxIds = boxIds.filter((id) => boxDescriptors[id].startsEnabled);
+} satisfies Readonly<Record<BoxId, BoxDescriptor>>));
 
-type BoxIdsWith<Ids extends readonly BoxId[], Hook extends string> = Ids extends readonly [infer Id extends BoxId, ...infer Rest extends readonly BoxId[]]
-	? Hook extends keyof BoxDescriptors[Id] ? [Id, ...BoxIdsWith<Rest, Hook>] : BoxIdsWith<Rest, Hook>
-	: [];
-// SAFETY: filtering keeps the order of boxIds, which the tuple type follows.
-const boxIdsWith = <Hook extends string>(hook: Hook) => boxIds.filter((id) => hook in boxDescriptors[id]) as BoxIdsWith<typeof boxIds, Hook>;
-export const setupBoxIds = boxIdsWith("setup");
-export type SetupBoxId = typeof setupBoxIds[number];
-export const recordBoxIds = boxIdsWith("record");
-export type RecordBoxId = typeof recordBoxIds[number];
-export const moveBoxIds = boxIdsWith("moves");
-export type MoveBoxId = typeof moveBoxIds[number];
-export const digestBoxIds = boxIdsWith("decision");
-export type DigestBoxId = typeof digestBoxIds[number];
-export const isDigestBoxId = (id: BoxId): id is DigestBoxId => digestBoxIds.some((digest) => digest === id);
+/** @approved The registered Box `id`'s descriptor. An unknown id throws, so a boundary checks ids before the host looks one up. */
+export const boxDescriptor = (id: BoxId): BoxDescriptor => {
+	const descriptor = boxDescriptors.get(id);
+	if (descriptor === undefined) throw new Error(`There is no ${id} Box.`);
+	return descriptor;
+};
+/** @approved A Box record as the host holds it: an object of the Box's own values. */
+export type BoxRecord = { readonly [key: string]: BoxValue };
+/** @approved Box `id`'s record schema, typed as the record the host holds; a Box that keeps no records has none. */
+export const boxRecordSchema = (id: BoxId) => {
+	const { record } = boxDescriptor(id);
+	if (record === undefined) throw new Error(`The ${id} Box keeps no records.`);
+	return Type.Unsafe<BoxRecord>(record);
+};
+/** @approved Whether `reference` names a registered Box. */
+export const isBoxReference = (reference: string): reference is PromptBoxReference =>
+	reference.startsWith("box:") && boxDescriptors.has(reference.slice("box:".length));
+/** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
+export const isUnknownBoxReference = (reference: string): boolean => reference.startsWith("box:") && !isBoxReference(reference);
+/** @approved The descriptor behind a Box's preset block reference. */
+export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptor(reference.slice("box:".length));
+/** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
+export const isDigestBox = (id: BoxId): boolean => boxDescriptors.get(id)?.decision !== undefined;
+/** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
+export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
+	[...boxDescriptors].flatMap(([id, descriptor]) => {
+		const value = descriptor[key];
+		return value === undefined ? [] : [[id, value]];
+	});
+/** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
+export const defaultBoxIds = [...boxDescriptors].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
@@ -141,21 +155,13 @@ export const boxWindowLayouts = Type.Record(Type.String(), boxWindowLayout);
 export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 
 // @approved
-//  Each Box's Conversation-scoped setup, as the Chat summary carries it and
-// the set-box-setup command writes it. The Author Note's setup is its text,
-// Image References included.
-// SAFETY: the entries are exactly the setup Boxes, each with its own schema.
-const setupSchemas = Object.fromEntries(setupBoxIds.map((id) => [id, boxDescriptors[id].setup.schema])) as { [Id in SetupBoxId]: BoxDescriptors[Id]["setup"]["schema"] };
-export const boxSetups = Type.Object(setupSchemas);
+//  Each Box's Conversation-scoped setup, by Box id, as the Chat summary
+// carries it.
+export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-export const digestBoxId = Type.Union(literals(digestBoxIds));
-export const recordBoxId = Type.Union(literals(recordBoxIds));
-export const digestBoxParams = Type.Object({ box: digestBoxId });
-export const boxWindowParams = Type.Object({ id: numericWire, box: digestBoxId });
-export const boxReadParams = Type.Object({ id: numericWire, box: boxId });
-/** @approved A Box window read; the client decodes it with that Box's own read schema. */
-export const boxRead = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
+export const boxParams = Type.Object({ box: Type.String() });
+export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });
 
 export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;

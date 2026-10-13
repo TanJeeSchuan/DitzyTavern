@@ -2,13 +2,14 @@ import {
 	Alert, AlertDescription, BoxBlockNotice, Button, ProseEditor, useBoxSetupDraft,
 	type ConversationSummary,
 } from "../../box-sdk/client";
+import { authorNoteSetup } from "./contract";
 
 export function AuthorNotePanel({ conversation, onConversationChange, disabled }: {
 	conversation: ConversationSummary;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	disabled: boolean;
 }) {
-	const { draft, setDraft, saved, dirty, pending, notice, save, discard } = useBoxSetupDraft("author-note", {
+	const { draft, setDraft, saved, dirty, pending, notice, save, discard } = useBoxSetupDraft("author-note", authorNoteSetup, {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed elsewhere. Your draft was kept. Review the current note before saving again.",
 	});

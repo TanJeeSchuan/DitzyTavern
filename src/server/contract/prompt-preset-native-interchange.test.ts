@@ -93,6 +93,14 @@ describe("Native Prompt Preset interchange", () => {
 		expect(await listPresets(routes.library)).toHaveLength(1);
 	});
 
+	test("rejects a reference to a Box that is not registered", async () => {
+		const routes = createRoutes(database);
+		const result = await importPreset(routes.library, { name: "Unknown Box", slots: [{ reference: "box:nope", enabled: true, role: "system", content: "" }] });
+		expect(result.status).toBe(422);
+		expect(result.body).toMatchObject({ reason: "There is no Box for box:nope." });
+		expect(await listPresets(routes.library)).toHaveLength(1);
+	});
+
 	test("imports as a new independent preset and invalid input leaves the library unchanged", async () => {
 		const routes = createRoutes(database);
 		const native: NativePromptPreset = {

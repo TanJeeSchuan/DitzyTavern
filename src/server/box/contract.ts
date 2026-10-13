@@ -1,5 +1,6 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
+import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { DecisionJson, DecisionQuestions, requestDecisions } from "../decision-model";
 import type { EmbeddingConfiguration } from "./embedding";
@@ -46,6 +47,8 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 	};
 	/** @approved A digesting Box's one-line dock status, or null when it has nothing to say; the passage timeline read reports it. */
 	status?(setup: Setup, state: State): string | null;
+	/** @approved The setup a SillyTavern chat's Author's Note imports as; a Box without it ignores the note. */
+	importSillyTavernNote?(note: string): Setup;
 	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
 	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
 }
@@ -53,7 +56,7 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Services ex
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it.
-export type HostBox = Box<unknown, unknown, GenerationJsonValue, keyof BoxServices, GenerationJsonValue, unknown, unknown>;
+export type HostBox = Box<BoxValue, unknown, GenerationJsonValue, keyof BoxServices, GenerationJsonValue, unknown, unknown>;
 
 /** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
 export type CaptureMessage = {

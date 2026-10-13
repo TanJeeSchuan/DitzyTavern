@@ -9,6 +9,7 @@ import { cancelBoxCatchUp, queueBoxDigest, queueBoxDigests, readBoxCatchUp, star
 import { readRecordSlots } from "./records";
 import { readSelectedPassages } from "../conversation";
 import { worldClockBox } from "../../boxes/world-clock/server";
+import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -109,7 +110,7 @@ test("catch-up digests every selected Variant without a record and reports its p
 	stub.release();
 	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
 
-	const records = readRecordSlots(drizzle(database), "world-clock", clock, [first, second]);
+	const records = readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [first, second]);
 	for (const variantId of [first, second]) {
 		const record = records.get(variantId)?.automatic;
 		expect(record?.weather).toBe("storm");
@@ -133,7 +134,7 @@ test("cancelling a catch-up run discards its in-flight results", async () => {
 	stub.release();
 	await stopDigests();
 	stopDigests = undefined;
-	expect(readRecordSlots(drizzle(database), "world-clock", clock, [passage]).size).toBe(0);
+	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
 });
 
 test("a clock that stops running abandons its in-flight digest, even when it is enabled again before the result lands", async () => {
@@ -150,7 +151,7 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 	stub.release();
 	await stopDigests();
 	stopDigests = undefined;
-	expect(readRecordSlots(drizzle(database), "world-clock", clock, [passage]).size).toBe(0);
+	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
 });
 
 test("a cancelled run can be restarted for the same Variants before the aborted job settles", async () => {
@@ -169,7 +170,7 @@ test("a cancelled run can be restarted for the same Variants before the aborted 
 	await waitFor(() => stub.pending() === 1);
 	stub.release();
 	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
-	expect(readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage)?.automatic?.weather).toBe("storm");
+	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage)?.automatic?.weather).toBe("storm");
 });
 
 test("a live digest takes over a running catch-up job for the same Variant", async () => {
@@ -186,7 +187,7 @@ test("a live digest takes over a running catch-up job for the same Variant", asy
 	await waitFor(() => stub.contents().length === 2);
 	stub.release();
 	stub.release();
-	await waitFor(() => readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage)?.automatic !== undefined);
+	await waitFor(() => readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage)?.automatic !== undefined);
 });
 
 test("a live digest runs before the catch-up jobs still queued behind it", async () => {
@@ -224,7 +225,7 @@ test("a failed digest keeps its error, live work skips that text, and catch-up r
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
-	const slot = () => readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage);
+	const slot = () => readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage);
 
 	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
 	await waitFor(() => stub.pending() === 1);
@@ -252,7 +253,7 @@ test("digesting one passage retries text whose digest failed and leaves digested
 	enableDecision();
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
-	const slot = () => readRecordSlots(drizzle(database), "world-clock", clock, [passage]).get(passage);
+	const slot = () => readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage);
 
 	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
 	await waitFor(() => stub.pending() === 1);

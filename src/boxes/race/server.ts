@@ -1,11 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
+import { isRaceAutoValid, raceRecord, raceSetup, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
 import type { Database } from "bun:sqlite";
 import { and, eq, inArray, like } from "drizzle-orm";
 import {
 	boxReference, characterDataTable, foldRecords, libraryDataTable, readBoxInstances, readConversationSummaryFromConnection, readRecordSlots, readSelectedHistoryFromConnection,
 	runConversationReadTransaction, type Box,
 } from "../../box-sdk/server";
+import { boxSetupOf } from "../../box-sdk/shared";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
 import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "./shared";
@@ -95,9 +96,9 @@ function readRace(database: Database, conversationId: number): RaceRead | undefi
 		if (summary === undefined) return undefined;
 		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
 		if (history === undefined) return undefined;
-		const setup = summary.boxSetups.race;
+		const setup = boxSetupOf(summary, "race", raceSetup);
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const { intents, replay, ...state } = foldRecords(raceBox.records, setup, readRecordSlots(db, "race", readBoxInstances(db, conversationId).race, ids), ids) ?? initialRaceState(setup);
+		const { intents, replay, ...state } = foldRecords(raceBox.records, setup, readRecordSlots(db, "race", raceRecord, readBoxInstances(db, conversationId).race, ids), ids) ?? initialRaceState(setup);
 		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
 		return {
 			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,

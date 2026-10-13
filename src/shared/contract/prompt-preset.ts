@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { boxDescriptors, boxIds, boxReference, isBoxReference, promptBoxReference, type BoxId, type PromptBoxReference } from "./box";
+import { boxDescriptors, boxReference, isBoxReference, promptBoxReference, type BoxDescriptor, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -32,15 +32,11 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-const fromBoxDescriptors = <Value>(value: (id: BoxId) => Value) =>
-	// @approved
-	// SAFETY: the entries cover every Box id exactly once, each under its reference.
-	Object.fromEntries(boxIds.map((id) => [boxReference(id), value(id)])) as Record<PromptBoxReference, Value>;
+/** @approved `fixed`, plus one entry per registered Box under its `box:<id>` reference. */
+export const withBoxReferences = <Fixed extends object, Value>(fixed: Fixed, value: (descriptor: BoxDescriptor) => Value): Fixed & Readonly<Record<PromptBoxReference, Value>> =>
+	({ ...fixed, ...Object.fromEntries([...boxDescriptors].map(([id, descriptor]) => [boxReference(id), value(descriptor)])) });
 
-export const singleUseReferenceLabels = {
-	lore: "Lore",
-	...fromBoxDescriptors((id) => boxDescriptors[id].label),
-} satisfies Record<PromptLoreReference | PromptBoxReference, string>;
+export const singleUseReferenceLabels = withBoxReferences({ lore: "Lore" }, ({ label }) => label) satisfies Record<PromptLoreReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
@@ -62,7 +58,7 @@ export type PromptOutgoingRole = Static<typeof promptOutgoingRole>;
 // Default recipe reproduces the established request and a newly added
 // reference starts with the familiar presentation. History is absent: its
 // entries carry the roles of their own Messages.
-export const defaultOutgoingRoles = {
+export const defaultOutgoingRoles = withBoxReferences({
 	"model-system-instruction": "system",
 	"human-identity": "user",
 	"model-identity": "assistant",
@@ -70,8 +66,7 @@ export const defaultOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-	...fromBoxDescriptors((id) => boxDescriptors[id].role),
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
+} as const, ({ role }) => role) satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,

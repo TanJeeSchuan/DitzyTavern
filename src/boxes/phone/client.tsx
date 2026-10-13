@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, SegmentedControl, Textarea, type ConversationSummary, type MoveStaging } from "../../box-sdk/client";
-import { MAX_PHONE_MOVES, type PhoneRead } from "./contract";
+import { boxMovesOf } from "../../box-sdk/shared";
+import { MAX_PHONE_MOVES, phoneMove, type PhoneRead } from "./contract";
 import type { Sms } from "./shared";
 import { loadPhone } from "./client-read";
 
@@ -54,7 +55,7 @@ export function PhonePanel({ conversation, disabled, staging }: { conversation: 
 	const [draft, setDraft] = useState("");
 	const threads = read.data?.threads ?? [];
 	const thread = threads.find(({ contact }) => contact === picked) ?? threads.find((candidate) => unread(candidate, seen) > 0) ?? threads[0];
-	const staged = staging.moves.phone ?? [];
+	const staged = boxMovesOf(staging.moves, "phone", phoneMove);
 	// @approved
 	//  An open thread is a read thread, including texts that arrive while it
 	//  is showing. The thread opened by default stays open once read.

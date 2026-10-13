@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { boxDescriptors, boxReference, type BoxId } from "../../shared/contract/box";
+import { boxDescriptor, boxReference, type BoxId } from "../../shared/contract/box";
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 
@@ -31,7 +31,7 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
 		enabled: on,
 	});
-	const { label } = boxDescriptors[box];
+	const { label } = boxDescriptor(box);
 	const slot = preset.data?.slots.find((entry) => entry.reference === boxReference(box));
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {

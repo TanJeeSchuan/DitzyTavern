@@ -4,6 +4,7 @@
 // `ditzy/no-box-boundary-imports` lint enforces.
 export { imageHash } from "../shared/contract/image";
 export { boxCatchUp } from "../shared/contract/box-digest";
+export { boxMovesOf, boxSetupOf } from "../shared/contract/box-value";
 export { invalidOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
 export { projectImageAnchors } from "../shared/image-reference";

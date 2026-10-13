@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus, type ConversationSummary } from "../../box-sdk/client";
-import { isWorldClockStart, weatherLabels, type WorldClockRecord, type WorldClockSetup } from "./contract";
+import { isWorldClockStart, weatherLabels, worldClockSetup, type WorldClockRecord, type WorldClockSetup } from "./contract";
 
 const elapsedLabel = (minutes: number): string => {
 	if (minutes === 0) return "No time passes";
@@ -26,7 +26,7 @@ export function WorldClockPanel({ conversation, disabled, onConversationChange }
 }): ReactNode {
 	const client = useQueryClient();
 	const [startTouched, setStartTouched] = useState(false);
-	const { draft, setDraft, dirty, pending, locked, notice, save, discard } = useBoxSetupDraft("world-clock", {
+	const { draft, setDraft, dirty, pending, locked, notice, save, discard } = useBoxSetupDraft("world-clock", worldClockSetup, {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed elsewhere. Your draft was kept. Review it before saving again.",
 		valid: (setup) => isWorldClockStart(setup.start),

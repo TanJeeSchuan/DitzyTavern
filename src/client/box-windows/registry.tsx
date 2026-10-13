@@ -1,10 +1,10 @@
-import { Drama, Flag, MessageCircleDashed, Clock, Smartphone, type LucideIcon } from "lucide-react";
+import { Drama, Flag, MessageCircleDashed, Clock, NotebookPen, Smartphone, type LucideIcon } from "lucide-react";
 import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "../../boxes/race/client-window";
 import { RacePanel } from "../../boxes/race/client";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import { boxDescriptors, boxIds, type BoxId } from "../../shared/contract/box";
+import { boxDescriptor, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import { describeWorldClock, WorldClockPanel, WorldClockTopBarItem } from "../../boxes/world-clock/client";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "../../boxes/phone/client";
@@ -13,8 +13,7 @@ import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "../../boxes/thoug
 import { stripThoughts } from "../../boxes/thought/shared";
 import { digestWindow } from "./PassageTimeline";
 
-/** @approved The Author Note edits in the workspace's primary panel rather than a window. */
-export { AuthorNotePanel } from "../../boxes/author-note/client";
+import { AuthorNotePanel } from "../../boxes/author-note/client";
 
 // @approved
 //  Memory's contract and shared logic, for its in-tree side panel, settings
@@ -29,7 +28,7 @@ type PutBoxData = Extract<ConversationAction, { type: "put-box-data" }>;
 /** @approved Builds a `put-box-data` command for the window's own Box, so a window cannot name another Box's namespace. */
 export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: string) => PutBoxData;
 
-export const boxTitle = (id: BoxId): string => boxDescriptors[id].label;
+export const boxTitle = (id: BoxId): string => boxDescriptor(id).label;
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
 type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
@@ -86,15 +85,20 @@ const castNames = ({ cast, control }: ConversationSummary) => {
 //  `read`; this registry declares the icon, size, Panel, lens and top bar
 //  item, because they are React and the server contract is not. The
 //  composer's launcher, the dock, the story's lenses and the top bar render
-//  the Boxes listed here.
-export const boxWindows = {
+//  the Boxes listed here, in this order.
+export const boxWindows: ReadonlyMap<BoxId, BoxWindowDefinition> = new Map(Object.entries({
 	"world-clock": { ...digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }), TopBarItem: WorldClockTopBarItem },
 	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
 	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },
 	mood: digestWindow("mood", { icon: Drama, size: { width: 22, height: 26 } }),
-} satisfies { readonly [Id in BoxId]?: BoxWindowDefinition };
+} satisfies Readonly<Record<BoxId, BoxWindowDefinition>>));
 
-export type WindowBoxId = keyof typeof boxWindows;
-export const windowBoxIds = boxIds.filter((id): id is WindowBoxId => Object.hasOwn(boxWindows, id));
-export const boxWindow = (id: WindowBoxId): BoxWindowDefinition => boxWindows[id];
+/** @approved A Box that edits in the workspace's primary panel rather than a window; the composer opens it there. */
+export interface BoxPanelDefinition {
+	readonly icon: LucideIcon;
+	readonly Panel: ComponentType<{ conversation: ConversationSummary; disabled: boolean; onConversationChange: (conversation: ConversationSummary) => void }>;
+}
+export const boxPanels: ReadonlyMap<BoxId, BoxPanelDefinition> = new Map(Object.entries({
+	"author-note": { icon: NotebookPen, Panel: AuthorNotePanel },
+} satisfies Readonly<Record<BoxId, BoxPanelDefinition>>));

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { boxDescriptorOf, boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxDescriptorOf, boxReference, isBoxReference, isUnknownBoxReference, type BoxId } from "../../shared/contract/box";
 import {
 	defaultOutgoingRoles,
 	isSingleUseReference,
@@ -200,6 +200,7 @@ export const savePromptPresetBlockPatches = (
 	});
 
 const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] | undefined => {
+	if (isUnknownBoxReference(reference)) throw new InvalidPromptPresetOperationError(`There is no Box for ${reference}.`);
 	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 	const ordered = recipe.slots.map((slot) => slot.id);
 	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, { reference, enabled: true });

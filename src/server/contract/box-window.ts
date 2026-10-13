@@ -1,48 +1,52 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { boxRead, boxReadParams, boxWindowParams, isDigestBoxId, type BoxId } from "../../shared/contract/box";
+import { conversationBoxParams as params, isDigestBox, type BoxId } from "../../shared/contract/box";
+import { boxValue } from "../../shared/contract/box-value";
 import { digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, queueBoxDigest, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
 import { serverBox } from "../box/registry";
 import { notFoundResponse } from "./responses";
 
-const readResponse = { 200: boxRead, 404: notFoundOutcome };
-/** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read`. */
+const readResponse = { 200: boxValue, 404: notFoundOutcome };
+/** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read`, and an unknown id has none. */
 const readBox = (database: Database, conversationId: number, box: BoxId) =>
-	isDigestBoxId(box) ? readDigest(database, conversationId, box) : serverBox(box).read?.(database, conversationId);
+	isDigestBox(box) ? readDigest(database, conversationId, box) : serverBox(box)?.read?.(database, conversationId);
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/boxes/:box", ({ params }) => readBox(database, params.id, params.box) ?? notFoundResponse(),
-		{ params: boxReadParams, response: readResponse })
-	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => readDigestStatus(database, params.id, params.box) ?? notFoundResponse(),
-		{ params: boxWindowParams, response: { 200: digestStatusRead, 404: notFoundOutcome } })
+		{ params, response: readResponse })
+	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => (isDigestBox(params.box) ? readDigestStatus(database, params.id, params.box) : undefined) ?? notFoundResponse(),
+		{ params, response: { 200: digestStatusRead, 404: notFoundOutcome } })
 	// @approved
 	//  Catch-up, cancellation and digesting one passage are in-memory queue
 	//  work, not Conversation state, so they are their own routes: the polled
 	//  digest read carries their progress and they never touch the
-	//  Conversation revision.
+	//  Conversation revision. Only a digesting Box has them.
 	.post(
 		"/api/conversations/:id/boxes/:box/digest",
 		({ params, body }) => {
+			if (!isDigestBox(params.box)) return notFoundResponse();
 			queueBoxDigest(database, params.id, params.box, body.variantId);
 			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
-		{ params: boxWindowParams, body: digestPassageCommand, response: readResponse },
+		{ params, body: digestPassageCommand, response: readResponse },
 	)
 	.post(
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
+			if (!isDigestBox(params.box)) return notFoundResponse();
 			startBoxCatchUp(database, params.id, params.box);
 			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
-		{ params: boxWindowParams, response: readResponse },
+		{ params, response: readResponse },
 	)
 	.delete(
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
+			if (!isDigestBox(params.box)) return notFoundResponse();
 			cancelBoxCatchUp(database, params.id, params.box);
 			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
-		{ params: boxWindowParams, response: readResponse },
+		{ params, response: readResponse },
 	);

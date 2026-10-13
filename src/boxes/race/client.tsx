@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentProps } from "react";
 import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type ConversationSummary, type MoveStaging } from "../../box-sdk/client";
-import type { RaceMoveKind } from "./contract";
+import { boxMovesOf, boxSetupOf } from "../../box-sdk/shared";
+import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
 import { loadRace } from "./client-read";
 import { RaceWindow } from "./client-window";
@@ -15,7 +16,7 @@ const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns ex
 //  the Runner the writer picks.
 function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging }) {
 	const read = useQuery({ queryKey: ["race", conversation.id, conversation.revision], queryFn: ({ signal }) => loadRace(conversation.id, signal) });
-	const setup = conversation.boxSetups.race;
+	const setup = boxSetupOf(conversation, "race", raceSetup);
 	const humanSeatId = conversation.control.humanParticipantId;
 	const seat = humanSeatId === null ? undefined : setup.slots.find(({ participantId }) => participantId === humanSeatId)?.name;
 	const seated = seat !== undefined;
@@ -23,7 +24,7 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 	const runner = seated ? seat : ordered ?? setup.slots[0]?.name;
 	const state = read.data?.state;
 	if (setup.phase !== "running" || state === undefined || state.finished || runner === undefined) return null;
-	const staged = staging.moves.race ?? [];
+	const staged = boxMovesOf(staging.moves, "race", raceMove);
 	const offers = kinds.map((kind) => ({ kind, check: checkRaceMove(setup, state, staged, { kind, runner }) }));
 	const open = checkRaceMove(setup, state, [], { kind: "hold", runner });
 	return <section className="race-moves" aria-label="Race Moves">

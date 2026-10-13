@@ -1,4 +1,5 @@
 import { useState, type Dispatch } from "react";
+import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
@@ -62,7 +63,7 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenPanel: (panel: "author-note") => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;

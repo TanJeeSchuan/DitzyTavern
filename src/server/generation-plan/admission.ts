@@ -34,7 +34,7 @@ export const admitDynamicBlocks = (input: {
 	const admissionOrder = (left: BlockItem, right: BlockItem) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) || right.priority - left.priority;
 	const items: BoxItems = Object.fromEntries(Object.entries(input.boxes).map(([reference, result]) =>
 		[reference, (result?.items ?? []).map((item, index) => ({ ...item, index })).sort(admissionOrder)]));
-	const boxes: BoxItems = Object.fromEntries(Object.entries(items).map(([reference, entries]) => [reference, entries.filter((item) => item.pinned)]));
+	const boxes: BoxItems = Object.fromEntries(Object.entries(items).map(([reference, entries]) => [reference, (entries ?? []).filter((item) => item.pinned)]));
 	const decisions: Partial<Record<string, BoxAdmission[]>> = {};
 	const trial = (trialLore: readonly PromptLoreEntry[], trialBoxes: BoxItems) => input.compile(input.protectedContext, trialLore, trialBoxes);
 	const fits = (plan: PromptPlan) => measurePromptPlan({ plan, contextLimit: input.contextLimit, responseBudget: input.responseBudget, safetyAllowance: input.safetyAllowance, estimator: input.estimator }).fits;
@@ -81,7 +81,7 @@ export const admitDynamicBlocks = (input: {
 		decisions[reference] = blockDecisions;
 		for (const item of (items[reference] ?? []).filter((item) => !item.pinned)) {
 			const next = [...selected, item];
-			const nextBoxes = { ...boxes, [reference]: [...pinned, ...next] };
+			const nextBoxes: BoxItems = { ...boxes, [reference]: [...pinned, ...next] };
 			const reason = cost(block([item])) > allowance ? "oversized"
 				: cost(block(next)) > allowance ? "allowance"
 					: fits(trial(lore, nextBoxes)) ? "admitted" : "context-limit";

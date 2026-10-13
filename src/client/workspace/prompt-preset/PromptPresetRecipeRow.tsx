@@ -73,11 +73,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 	if ("sourceName" in slot) return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
-	return slot.reference === "box:memory"
-		? { description: "Uses Conversation Memories recalled when a Generation is assembled.", source: "Conversation Memories" }
-		: slot.reference === "box:author-note"
-			? { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" }
-			: { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
+	return boxDescriptorOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
 type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;

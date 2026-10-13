@@ -37,7 +37,7 @@ const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) =>
 	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
 };
 
-const json = (status: number, payload: JsonValue): Response =>
+const json = (status: number, payload: WirePayload): Response =>
 	new Response(JSON.stringify(payload), {
 		status,
 		headers: { "content-type": "application/json" },

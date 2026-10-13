@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { type BoxDecisionSettings, type BoxDecisionSettingsCommand, type DigestBoxId } from "../../shared/contract/box";
+import type { BoxDecisionSettings, BoxDecisionSettingsCommand, BoxId } from "../../shared/contract/box";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT, decisionSelection, type DecisionSelection } from "../../shared/contract/decision-model";
 import { putLibraryValue, readLibraryValue } from "./stored-value";
 import { tryResolveDecisionSelection, validateDecisionSelection } from "../decision-model";
@@ -13,10 +13,10 @@ import { guardRevision } from "../revision";
 const NAMESPACE = "box-decision";
 const unselected: DecisionSelection = { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: DEFAULT_DECISION_STATE_TOKEN_LIMIT };
 
-export const readBoxDecisionSettings = (database: Database, id: DigestBoxId): BoxDecisionSettings =>
+export const readBoxDecisionSettings = (database: Database, id: BoxId): BoxDecisionSettings =>
 	readLibraryValue(drizzle(database), NAMESPACE, id, decisionSelection, unselected);
 
-export const applyBoxDecisionSettings = (database: Database, id: DigestBoxId, { expectedRevision, decisionProfileId, decisionModel, decisionStateTokenLimit }: BoxDecisionSettingsCommand): BoxDecisionSettings =>
+export const applyBoxDecisionSettings = (database: Database, id: BoxId, { expectedRevision, decisionProfileId, decisionModel, decisionStateTokenLimit }: BoxDecisionSettingsCommand): BoxDecisionSettings =>
 	database.transaction(() => {
 		validateDecisionSelection(database, { decisionProfileId, decisionModel, decisionStateTokenLimit });
 		const value = JSON.stringify({ decisionProfileId, decisionModel: decisionModel.trim(), decisionStateTokenLimit });
@@ -24,10 +24,10 @@ export const applyBoxDecisionSettings = (database: Database, id: DigestBoxId, { 
 		return readBoxDecisionSettings(database, id);
 	}).immediate();
 
-export const resolveBoxDecision = (database: Database, id: DigestBoxId) => tryResolveDecisionSelection(database, readBoxDecisionSettings(database, id));
+export const resolveBoxDecision = (database: Database, id: BoxId) => tryResolveDecisionSelection(database, readBoxDecisionSettings(database, id));
 
 /** @approved A Box's Decision Model selection as the Box may see it: the stored selection, and the profile it resolves to or why it does not; never its endpoint or credential. */
-export const readBoxDecision = (database: Database, id: DigestBoxId) => {
+export const readBoxDecision = (database: Database, id: BoxId) => {
 	const resolution = resolveBoxDecision(database, id);
 	return { ...readBoxDecisionSettings(database, id), status: resolution.kind === "ready" ? { kind: "ready" as const, profileName: resolution.decision.profileName } : resolution };
 };

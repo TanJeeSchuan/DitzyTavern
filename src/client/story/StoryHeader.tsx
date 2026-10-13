@@ -1,7 +1,8 @@
 import { Brain, ChevronDown, Info, UsersRound, Variable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { boxTitle, boxWindow, windowBoxIds, type WindowBoxId } from "../box-windows/registry";
+import type { BoxId } from "../../shared/contract/box";
+import { boxTitle, boxWindows } from "../box-windows/registry";
 import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
 
@@ -24,10 +25,9 @@ export function StoryHeader({
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;
-	onOpenWindow: (box: WindowBoxId) => void;
+	onOpenWindow: (box: BoxId) => void;
 }) {
-	const items = conversation === null ? [] : windowBoxIds.flatMap((id) => {
-		const { icon: Icon, TopBarItem } = boxWindow(id);
+	const items = conversation === null ? [] : [...boxWindows].flatMap(([id, { icon: Icon, TopBarItem }]) => {
 		if (conversation.boxes[id] !== "enabled" || TopBarItem === undefined) return [];
 		return [<Button key={id} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
 			<Icon aria-hidden="true" />

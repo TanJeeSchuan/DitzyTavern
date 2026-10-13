@@ -7,20 +7,21 @@ A **Box** is a compiled-in story feature with its own state and a fixed set of o
 A Box is three registrations and its folder `src/boxes/<id>/`. The shapes below are a summary; the types live in `src/shared/contract/box.ts`, `src/server/box/contract.ts` and `src/client/box-windows/registry.tsx`.
 
 ```ts
-// 1. Descriptor: the id in `boxIds` and its `boxDescriptors` entry, src/shared/contract/box.ts
+// 1. Descriptor: its `boxDescriptors` entry, keyed by the Box id, src/shared/contract/box.ts
 "<id>": {
   label: "…",                                        // display name everywhere the host shows the Box
   role: "system",                                    // the preset block's role until an author changes it
   startsEnabled: false,                              // whether a new Chat starts with the Box enabled
   instructions: "…",                                 // the text a new preset block starts with; "" for none
   alwaysRender: true,                                // optional: render the block even when `advance` returns no items
+  block: { description, source },                    // optional: the preset editor's copy for the block, in place of the generic copy
   setup: setupOf(schema, initial),                   // optional: per-Chat configuration
   record: Type.Object({ … }),                        // optional: one Variant's record, folded into state
   moves: movesOf(schema, max, label),                // optional: actions on a Human-authored Message; add `seatBound: true` to drop them on a seat change
   decision: { summary, description, off, context },  // optional: digest settled prose; copy for its Decision Model setting
 },
 
-// 2. Server Box: src/boxes/<id>/server.ts, listed in `serverBox` in src/server/box/registry.ts
+// 2. Server Box: src/boxes/<id>/server.ts, listed in the modules of src/server/box/registry.ts
 export const exampleBox = {
   inject: ["llm", "decide", "embed"],                // provider services `advance.run` and `digest.run` receive on `ctx`
   setupError(setup, previous) { … },                 // a message rejecting a setup the schema accepts
@@ -38,21 +39,25 @@ export const exampleBox = {
   },
   status(setup, state) { … },                        // the dock line; digesting Boxes only
   read(database, conversationId) { … },              // the window's JSON; non-digesting Boxes only
+  importSillyTavernNote(note) { … },                 // the setup a SillyTavern chat's Author's Note imports as
 } satisfies Box<Setup, Dependencies, Trace, Services, Rec, State, Move>;
 
 // 3. Client window: the `boxWindows` entry in src/client/box-windows/registry.tsx, only for a Box with a window
 "<id>": { icon, size, Panel, DockTab, lens, TopBarItem }, // lucide icon, { width, height } in rem, window body, minimized tab, optional lens, optional top bar item
 "<id>": digestWindow("<id>", { icon, size, Panel, describe }), // a digesting Box: optional Panel, then the passage timeline; a status dock tab
 "<id>": { ...digestWindow("<id>", { … }), TopBarItem },  // a digesting Box with a top bar item
+// or the `boxPanels` entry, for a Box that edits in the workspace's primary panel, as the Author Note does
+"<id>": { icon, Panel },                             // the composer's launcher opens the Panel as the `box:<id>` primary panel
 ```
 
-Every server hook is optional, as are the descriptor keys marked optional. The type checker enforces each "required by" pair and each "only". `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Services = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
+Every server hook is optional, as are the descriptor keys marked optional. The server registry checks each "required by" pair and each "only" when it is first read, and throws for a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Services = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
 
 ## The rules
 
 - **Records are resolved values.** State is the fold of each selected Variant's effective record, in Message order, from `records.initial`. Selecting an earlier Variant, editing it or overriding it never re-evaluates, invalidates or drops a later record. A swipe reuses the Moves and seed of the Variant it replaces, and the same setup, state, Moves, seed and other dependencies give the same outcome, so a swipe with nothing else changed rewrites only the prose. A re-roll keeps the Moves and draws a fresh seed, so it can draw a new outcome. See [`records`](#record-and-records).
 - **Each Box is absent, enabled or disabled in each Chat.** Only an enabled Box runs. Each insert starts a new instance, and the fold reads only the current instance's records, so a reinserted Box starts fresh. See [Lifecycle per Chat](#lifecycle-per-chat).
 - **Box data lives in six storage scopes under the `box:<id>` namespace.** Boxes cannot add tables. A Box's own data never reaches another Box's namespace. The host's own per-Box values, such as the Decision Model selection, live outside it under `box-decision`. See [Storage](#storage).
+- **The host knows a Box only by its id.** The id is a string checked against the registrations at runtime: a Box route answers an unknown id with 404, and a Box command fails it. The host holds every setup, record and Move as a `BoxValue` and checks it against the Box's own schema wherever it crosses the HTTP or database boundary. Each Box types its own values: its server hooks through `satisfies Box<…>`, and its reads through `boxSetupOf` and `boxMovesOf`.
 - **A Box reaches the host only through the SDK.** A file in `src/boxes/<id>/` imports its own folder, packages, and its layer's entries in `src/box-sdk/`. Elsewhere in `src/`, only the three registrations and tests import a Box. The `ditzy/no-box-boundary-imports` lint enforces both directions. See [Folder and SDK](#folder-and-sdk).
 - **Boxes compose only through the Prompt Plan.** Every Box advances in parallel and never sees another Box's result from the same Generation.
 - **Writer overrides overlay automatic records.** The effective record is `writer ?? automatic`. An override never rewrites prose, a later automatic result never displaces it, and reset removes it.
@@ -61,15 +66,15 @@ Every server hook is optional, as are the descriptor keys marked optional. The t
 
 The host finds every hook through the registrations, so adding a Box edits no host file except an SDK entry that lacks an export. If a Box needs more, the host is missing a generalization: raise it instead of adding a special case. Run heavy commands through `flock /tmp/ditzy-heavy.lock`.
 
-1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the type checker demands. Done when you can name each one.
+1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the registry demands. Done when you can name each one.
 2. **Create the folder.** Make `src/boxes/<id>/` with files named by layer ([Folder and SDK](#folder-and-sdk)). Schemas go in `contract.ts`, or `shared.ts` for a small Box such as Thoughts or Mood. Logic both the server and the client use goes in `shared.ts`. Done when `bun run lint` and `bun run check:contracts` pass.
-3. **Register it.** Add the id to `boxIds` and its `boxDescriptors` entry. Write `server.ts` exporting `<id>Box` that `satisfies Box<…>`, and add it to `serverBox`. Do all three before checking: `serverBox` is typed over every id in `boxIds`, and each entry is checked against its own descriptor's schemas and keys. Done when `bun run typecheck` passes.
-4. **Add the window**, if the Box has one. Write `client.tsx` and add the `boxWindows` entry. A digesting Box needs the entry for its window and dock tab; Memory, which keeps its own side panel, has none. A digesting Box needs no window file when it has no setup and the generic record summary reads well: the entry is just `digestWindow("<id>", { icon, size })`, as for Mood. Done when `bun run typecheck` passes.
+3. **Register it.** Add its `boxDescriptors` entry under the id. Write `server.ts` exporting `<id>Box` that `satisfies Box<…>` with the types of your own schemas, and add it to the modules in `src/server/box/registry.ts`. The registry checks the Box's hooks against its descriptor's keys and throws on the first read, so every server test fails until they match. Done when `bun run typecheck` and the Box's server tests pass.
+4. **Add the window**, if the Box has one. Write `client.tsx` and add the `boxWindows` entry, or the `boxPanels` entry for a Box that edits in the primary panel. A digesting Box needs the entry for its window and dock tab; Memory, which keeps its own side panel, has none. A digesting Box needs no window file when it has no setup and the generic record summary reads well: the entry is just `digestWindow("<id>", { icon, size })`, as for Mood. Done when `bun run typecheck` passes.
 5. **Test it.** Write `e2e/<id>.spec.ts` with one test per user flow, asserting through Prompt Plan inspection. Inserting the Box adds its block to the Chat's preset. Insert it with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box also needs `selectBoxDecisionModel(request, "<id>")` and scripted `llm.decisions(…)`. Digests also read the human's Messages, and the first matching rule wins, so end with a catch-all rule after the passage-specific ones (`e2e/world-clock.spec.ts`). Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a seed, or a fold. Write no UI component tests and no tests of the contract's shape. Done when `bun run check` and `bun run test:e2e` pass.
 
 ## Hooks
 
-### `label`, `role`, `startsEnabled`, `instructions`, `alwaysRender`
+### `label`, `role`, `startsEnabled`, `instructions`, `alwaysRender`, `block`
 
 | Key | The host uses it for |
 |---|---|
@@ -78,20 +83,23 @@ The host finds every hook through the registrations, so adding a Box edits no ho
 | `startsEnabled` | `defaultBoxIds`: the Boxes a new Chat starts with |
 | `instructions` | the text a new [preset block](#preset-block) starts with, and what its Reset action restores |
 | `alwaysRender` | renders the block when `advance` returns no items, for a Box whose instructions are its whole contribution |
+| `block` | the preset editor's `{ description, source }` for the block, in place of "Uses the `<label>` Box when it is enabled in this Chat." from "This Chat" |
 
-The id itself is the entry in `boxIds`, not a field.
+The id itself is the entry's key in `boxDescriptors`, not a field.
 
 Put fixed teaching and framing in `instructions` and only live data in `advance`'s items, so an author can rewrite the wording and the Box never repeats it. Instructions are authored preset text: the [Prompt Macro](../../GLOSSARY.md) pass expands them with `{{self}}` as the human-controlled Participant and `{{other}}` as the model-controlled one.
 
 ### `setup` and `setupError`
 
-Per-Chat configuration, declared as `setupOf(schema, initial)`. The host stores it in `conversation_data` under key `setup`. A Chat with no stored setup reads `initial`. The Chat summary carries every setup as `conversation.boxSetups[<id>]`.
+Per-Chat configuration, declared as `setupOf(schema, initial)`. The host stores it in `conversation_data` under key `setup`. A Chat with no stored setup reads `initial`. The Chat summary carries every setup in `conversation.boxSetups` as a `BoxValue`. Read your own with `boxSetupOf(conversation, "<id>", schema)` from the shared SDK, which checks it against your schema and types it, as the Race does.
 
-A Panel saves a whole new setup with `{ type: "set-box-setup", box, setup, writes? }`. Use `useBoxSetupDraft("<id>", { conversation, disabled, onConversationChange, conflict, valid?, onSaved?, extra? })` from the client SDK, as the Author Note, World Clock and Race do. It holds the draft against the saved setup and its expected revision, and saves with `save(setup?, writes?)`. On a conflict it keeps the draft and loads the current saved setup beside it. It registers the window's SaveGuard; `extra` adds further unsaved work, such as the Race's open stat sheet, that the guard saves or discards with the draft.
+A Panel saves a whole new setup with `{ type: "set-box-setup", box, setup, writes? }`. Use `useBoxSetupDraft("<id>", schema, { conversation, disabled, onConversationChange, conflict, valid?, onSaved?, extra? })` from the client SDK, as the Author Note, World Clock and Race do. It holds the draft against the saved setup and its expected revision, and saves with `save(setup?, writes?)`. On a conflict it keeps the draft and loads the current saved setup beside it. It registers the window's SaveGuard; `extra` adds further unsaved work, such as the Race's open stat sheet, that the guard saves or discards with the draft.
 
 The command accepts a Box that is present in the Chat, enabled or disabled, and checks the value against the schema. An absent Box takes no setup, so nothing saved before an insert survives into it. `writes` are the Box's own data writes, each `{ owner, key, value }` as in [`put-box-data`](#storage), that must land with the setup or not at all. They pass the `put-box-data` checks in the setup's transaction, so one refused write commits neither the setup nor any other write.
 
 `setupError(setup, previous)` rejects a setup the schema accepts but the Box does not. Its message fails the command and shows in the window.
+
+`importSillyTavernNote(note)` returns the setup a SillyTavern chat's Author's Note imports as. The host checks it against the setup schema and writes it to the new Chat. Only the Author Note declares it.
 
 ### `moves` and `moves.render`
 
@@ -186,7 +194,7 @@ foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id
 |---|---|
 | `conversation` | the `ConversationSummary`, with `boxSetups`, `boxes`, `cast`, `control` and `revision` |
 | `disabled` | true while a Prompt Plan preview is open or a Generation is assembling; disable every control that sends a command |
-| `staging` | the composer's staged Moves: read `staging.moves[<id>]`, write with `staging.onChange({ ...staging.moves, <id>: [...staged, move] })` |
+| `staging` | the composer's staged Moves: read your own with `boxMovesOf(staging.moves, "<id>", moveSchema)` from the shared SDK, write with `staging.onChange({ ...staging.moves, <id>: [...staged, move] })` |
 | `boxData` | `boxData(owner, key, value)` builds a `put-box-data` command for this Box |
 | `onConversationChange` | pass to `runConversationCommand` so the Chat summary updates |
 
@@ -285,13 +293,13 @@ The override editor is built from the `record` schema:
 | `Type.Integer()` or `Type.Number()` | a number input bounded by `minimum` and `maximum` |
 | `Type.String()` | a text input |
 
-Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the entry, so the client fails at load. A field that may be unset is a union of literals with `Type.Null()`. The union's members must type as a fixed tuple: write each literal out, or cast a mapped array to a tuple type as the World Clock's `weatherSchemas` does. A spread of a plain `names.map(Type.Literal)` typechecks on the server but collapses the `set-box-record` route type on the client. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
+Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the entry, so the client fails at load. A field that may be unset is a union of literals with `Type.Null()`. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
 
 The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline, the dock tab and the top bar item with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
 
 ### Lens pipeline
 
-The story view applies the lens of each enabled Box whose `gate` returns a value, in `boxIds` order, each to the prose the earlier ones left. A lifted piece is never lensed again. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
+The story view applies the lens of each enabled Box whose `gate` returns a value, in `boxWindows` order, each to the prose the earlier ones left. A lifted piece is never lensed again. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
 
 ### Move staging
 
@@ -301,7 +309,7 @@ A Send with Moves for a Box that is not enabled is rejected. The composer drops 
 
 ### Windows and dock
 
-The composer shows a launcher button for each enabled Box with a window entry. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
+The composer shows a launcher button for each enabled Box with a panel or window entry, panels first. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
 
 The host styles the frame, the dock and the passage timeline in `src/styles/box-windows.css`. A Box adds no stylesheet: style the Panel with Tailwind utilities and the shadcn components the client SDK re-exports, as `src/boxes/thought/client.tsx` does (`text-muted-foreground`, `bg-muted`, `rounded-xl`, `font-(family-name:--font-reading)` for story text). The World Clock and Race windows still use classes in `box-windows.css` from before the host was generic; do not copy that. Follow `DESIGN.md` for visual decisions.
 

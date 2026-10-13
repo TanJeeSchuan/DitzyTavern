@@ -1,4 +1,5 @@
-import { AuthorNotePanel } from "../box-windows/registry";
+import type { PromptBoxReference } from "../../shared/contract/box";
+import { boxPanels, boxTitle } from "../box-windows/registry";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -25,13 +26,13 @@ import type { PrimaryPanel } from "./types";
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.
 const sharedHeaderTitles = {
-	"author-note": "Author Note",
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
 	memory: "Memory",
 	settings: "Settings",
-} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | null>, string>;
+} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | null>, string>;
+const isBoxPanel = (panel: PrimaryPanel): panel is PromptBoxReference => panel?.startsWith("box:") === true;
 
 export function PrimaryPanelView({
 	panel,
@@ -72,9 +73,11 @@ export function PrimaryPanelView({
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
+	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
+	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxPanels.get(box)?.Panel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
-		: sharedHeaderTitles[panel];
+		: isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
 	return (
 		<aside
 			className="primary-panel"
@@ -102,8 +105,8 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{panel === "author-note" && conversation?.boxes["author-note"] === "enabled" && (
-						<AuthorNotePanel
+					{BoxPanel !== undefined && conversation !== null && (
+						<BoxPanel
 							key={conversation.id}
 							conversation={conversation}
 							onConversationChange={onConversationChange}

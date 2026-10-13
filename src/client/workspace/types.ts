@@ -1,5 +1,8 @@
+import type { PromptBoxReference } from "../../shared/contract/box";
+
+/** @approved A Box with a panel opens under its own `box:<id>` name. */
 export type PrimaryPanelName =
-	| "author-note"
+	| PromptBoxReference
 	| "chats"
 	| "characters"
 	| "lorebooks"
