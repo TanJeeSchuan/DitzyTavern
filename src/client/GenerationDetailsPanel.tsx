@@ -1,6 +1,7 @@
 import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { Value } from "@sinclair/typebox/value";
 import {
 	loadActiveGenerationDetails,
@@ -251,27 +252,38 @@ const admissionLabel = (candidate: MemoryActivationRecord["candidates"][number],
 	return "Does not fit the context limit";
 };
 
-/** @approved Memory's trace view; it renders nothing when the Generation captured no Memory. Links go only to sources still in the Chat. */
+/** @approved Memory's trace view; it renders nothing when the Generation captured no Memory, and says so when the stored trace no longer matches Memory's schema. Links go only to sources still in the Chat. */
 export function MemoryActivationDetails({ conversationId, trace, onNavigateSource }: {
 	conversationId: number;
 	trace: BoxTrace | undefined;
 	onNavigateSource?: (messageId: number) => void;
 }) {
-	const record = useMemo(() => trace?.trace === undefined ? null : Value.Parse(memoryActivationRecord, trace.trace), [trace]);
+	const record = useMemo(() => trace?.trace !== undefined && Value.Check(memoryActivationRecord, trace.trace) ? trace.trace : null, [trace]);
 	const cited = useMemo(() => ({
 		messageIds: [...new Set([...(record?.scanMessageIds ?? []), ...(record?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? [])])],
 		variantIds: [...new Set(record?.candidates.map(({ variantId }) => variantId) ?? [])],
 	}), [record]);
-	const memorySources = useQuery({
+	const sources = useQuery({
 		queryKey: ["memory-sources", conversationId, cited],
 		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
 		enabled: record !== null,
-	}).data ?? { messageIds: [], variantIds: [] };
-	if (trace === undefined || record === null) return null;
+	});
+	const memorySources = sources.data ?? { messageIds: [], variantIds: [] };
+	if (trace === undefined) return null;
+	if (record === null) return (
+		<section className="generation-detail-section">
+			<h3>Memory recall</h3>
+			<p className="text-xs text-destructive" role="alert">This Generation's Memory trace no longer matches Memory's schema.</p>
+		</section>
+	);
 	const manuallyEdited = trace.finalText !== trace.automaticText;
 	return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
+			{sources.isError && <div className="grid justify-items-start gap-2">
+				<p className="text-xs text-destructive" role="alert">Which sources are still in this Chat could not be checked, so they are not linked.</p>
+				<Button type="button" size="sm" variant="outline" onClick={() => void sources.refetch()}>Try again</Button>
+			</div>}
 			<dl className="detail-list compact-detail-list">
 				<div><dt>Status</dt><dd>{memoryStateLabel(record.state)}</dd></div>
 				<div><dt>Eligible sources</dt><dd>{record.eligibleSourceCount}</dd></div>

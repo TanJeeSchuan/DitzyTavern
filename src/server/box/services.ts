@@ -8,8 +8,12 @@ import type { BoxContext, BoxServices } from "./contract";
 import { resolveBoxDecision } from "./decision-settings";
 import { embedTexts } from "./embedding";
 
-/** @approved Every host service for Box `id`, sending its requests through `fetch` and aborting with `signal`. */
-export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId): BoxContext<keyof BoxServices> => ({
+export type BoxDecision = ReturnType<typeof resolveBoxDecision> | { readonly kind: "off" };
+/** @approved The Decision Model selection Box `id`'s `decide` asks, resolved now: only a digesting Box has one. */
+export const resolveDecisionOf = (database: Database, id: BoxId): BoxDecision => isDigestBoxId(id) ? resolveBoxDecision(database, id) : { kind: "off" };
+
+/** @approved Every host service for Box `id`, sending its requests through `fetch` and aborting with `signal`. `decide` asks `decision`, resolved once, so a selection changed while the Box runs never splits one Generation or digest across two models. */
+export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId, decision = resolveDecisionOf(database, id)): BoxContext<keyof BoxServices> => ({
 	signal,
 	llm: (profileId) => {
 		const connections = createConnectionSettingsModule(database);
@@ -29,12 +33,11 @@ export const boxServices = (database: Database, fetch: ModelFetch | undefined, s
 	},
 	decide: (state, questions) => {
 		const { label } = boxDescriptors[id];
-		const resolution = isDigestBoxId(id) ? resolveBoxDecision(database, id) : { kind: "off" as const };
-		if (resolution.kind === "off") throw new Error(`Choose a ${label} Decision Model in Connection Settings.`);
-		if (resolution.kind === "unavailable") throw new Error(`${resolution.reason} Check the ${label} Decision Model in Connection Settings.`);
-		const { request, fits } = decisionRequest(resolution.decision, state, questions);
+		if (decision.kind === "off") throw new Error(`Choose a ${label} Decision Model in Connection Settings.`);
+		if (decision.kind === "unavailable") throw new Error(`${decision.reason} Check the ${label} Decision Model in Connection Settings.`);
+		const { request, fits } = decisionRequest(decision.decision, state, questions);
 		if (!fits) throw new Error(`The state sent to the ${label} Decision Model exceeds its token limit.`);
-		return requestDecisions({ request, questions, selection: resolution.decision, fetch, signal });
+		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal });
 	},
 	embed: (texts, configuration, options) => embedTexts(database, texts, configuration, { ...options, fetch, signal }),
 });

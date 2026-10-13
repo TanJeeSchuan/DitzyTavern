@@ -193,6 +193,29 @@ describe("Memory recall in Generation preparation", () => {
 		expect(counts.decisions).toBe(1);
 	});
 
+	test("recall asks the Decision Model captured with it, even when the selection changes while it embeds", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
+		const models: string[] = [];
+		const counts = recallCounts();
+		const answer = recallFetch(counts);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: async (input, init) => {
+			if (String(input).includes("embedding.test")) {
+				const { revision, ...selection } = readBoxDecisionSettings(database, "memory");
+				applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, decisionModel: "cloudflare/clef-flash" });
+			}
+			if (String(input).endsWith("/systemone")) models.push(JSON.parse(String(init?.body)).model);
+			return answer(input, init);
+		} });
+		const preview = Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).json());
+		expect(models).toEqual(["jev-1.13.0"]);
+		expect(memoryOf(preview)).toMatchObject({ decisionModel: "jev-1.13.0", candidates: [{ admission: "admitted" }] });
+	});
+
 	test("recall embeds a corrected claim the cache lacks, once", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);

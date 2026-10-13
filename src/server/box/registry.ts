@@ -18,6 +18,7 @@ import { phoneBox } from "../../boxes/phone/server";
 import { thoughtBox } from "../../boxes/thought/server";
 import { moodBox } from "../../boxes/mood/server";
 import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
+import { resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
 //  The server module of every Box. A lookup rather than a table, because Box
@@ -62,7 +63,7 @@ interface CapturedBox {
 }
 export type BoxInputs = readonly CapturedBox[];
 /** @approved The host services for each Box, as `boxServices` builds them. */
-type BoxServicesOf = (id: BoxId) => BoxContext<keyof BoxServices>;
+type BoxServicesOf = (id: BoxId, decision: BoxDecision) => BoxContext<keyof BoxServices>;
 
 /** @approved The services a Box declared in `inject`, and the signal. */
 export const injectServices = (box: HostBox, services: BoxContext<keyof BoxServices>): BoxContext<keyof BoxServices> => {
@@ -72,11 +73,15 @@ export const injectServices = (box: HostBox, services: BoxContext<keyof BoxServi
 	return { ...injected, signal: services.signal };
 };
 
-const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>): CapturedBox => ({
+// @approved
+//  The Decision Model selection is resolved with the rest of the capture and
+// kept in `run`'s closure, so its credential never reaches the capture's
+// serialized fields.
+const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies }),
 	run: async (services) => {
-		const result = await box.advance?.run(input, injectServices(box, services(id))) ?? { items: [] };
+		const result = await box.advance?.run(input, injectServices(box, services(id, decision))) ?? { items: [] };
 		if (result.record !== undefined) {
 			const descriptor = boxDescriptors[id];
 			if (!("record" in descriptor)) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
@@ -99,7 +104,7 @@ export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetu
 		const box = serverBox(id);
 		const setup = setupOf[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return [captureBox(id, box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies })];
+		return [captureBox(id, box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies }, resolveDecisionOf(read.database, id))];
 	});
 };
 
