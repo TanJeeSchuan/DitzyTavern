@@ -3,6 +3,7 @@ import type { ConversationSummary } from "../conversation";
 import type { BoxId } from "../../shared/contract/box";
 import { BoxBoundary, BoxFailure } from "../box-windows/BoxBoundary";
 import { boxClients, errorMessage } from "../box-windows/registry";
+import { assertLensPieces } from "../../shared/contract/box-descriptor";
 import type { LensPiece } from "../box-windows/lens";
 import { Prose } from "./prose";
 
@@ -11,9 +12,9 @@ export type StoryLens = { readonly conversation: ConversationSummary; open(box: 
 
 // @approved
 //  Lenses apply in registry order, each to the prose the earlier ones left.
-//  A lifted piece is never lensed again. A lens that throws leaves its prose
-//  unlifted behind its failure, and each lifted mark renders in its Box's
-//  boundary.
+//  A lifted piece is never lensed again. A lens that throws, or returns
+//  pieces that fail their schema, leaves its prose unlifted behind its
+//  failure, and each lifted mark renders in its Box's boundary.
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
 	const lenses = lens === undefined ? [] : [...boxClients()].flatMap(([id, { Window }]) => {
 		const boxLens = Window?.lens;
@@ -23,7 +24,9 @@ export function LensedProse({ text, streaming, lens }: { text: string; streaming
 			const lift = boxLens.gate(lens.conversation);
 			return lift === undefined ? [] : [{ tag: boxLens.tag, lift: (prose: string): readonly LensPiece[] => {
 				try {
-					return lift(prose, () => lens.open(id)).map((piece) => piece.kind === "prose" ? piece : { kind: "lifted", element: <BoxBoundary box={id}>{piece.element}</BoxBoundary> });
+					const pieces = lift(prose, () => lens.open(id));
+					assertLensPieces(pieces);
+					return pieces.map((piece) => piece.kind === "prose" ? piece : { kind: "lifted", element: <BoxBoundary box={id}>{piece.element}</BoxBoundary> });
 				} catch (error) {
 					return failed(errorMessage(error), prose);
 				}

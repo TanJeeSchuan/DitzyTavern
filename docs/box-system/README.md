@@ -360,7 +360,7 @@ The generic summary joins the fields with ` · `: a choice shows its option's ti
 
 ### Lens pipeline
 
-The story view applies the lens of each enabled Box whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
+The story view applies the lens of each enabled Box whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws, or returns pieces that fail their schema, shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
 
 ### Move staging
 

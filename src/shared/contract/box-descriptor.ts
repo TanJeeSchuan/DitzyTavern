@@ -90,6 +90,17 @@ export const boxClientSchema = Type.Object({
 	TraceView: Type.Optional(component),
 });
 
+// @approved
+//  What a lens returns for a stretch of prose, checked each time the story
+// lenses it: the prose it leaves and the marks it lifts, each a React element.
+const lensPieces = Type.Array(Type.Union([
+	Type.Object({ kind: Type.Literal("prose"), text: Type.String() }),
+	Type.Object({ kind: Type.Literal("lifted"), element: Type.Object({ $$typeof: Type.Symbol() }) }),
+]));
+export function assertLensPieces(pieces: unknown): asserts pieces is Static<typeof lensPieces> {
+	assertChecked(lensPieces, pieces, "Its lens output");
+}
+
 /** @approved Throws why the host refuses a Box's client module: a surface, or its descriptor as `assertBoxDescriptor` checks it. */
 export function assertBoxClient(client: unknown): asserts client is Static<typeof boxClientSchema> & { readonly descriptor: BoxDescriptor } {
 	assertChecked(boxClientSchema, client, "Its client module");

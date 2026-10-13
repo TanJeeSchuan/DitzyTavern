@@ -1,4 +1,4 @@
-import { test, expect, send, story } from "./fixtures";
+import { test, expect, insertBox, send, story } from "./fixtures";
 
 test.use({ allowedBrowserErrors: /is broken/ });
 
@@ -44,4 +44,18 @@ test("a Box surface or icon that throws shows its failure in its frame, and the 
 	await expect(inspector).toHaveCount(0);
 	await send(page, "Watch the lantern.");
 	await expect(story(page).getByText("The lantern stays lit.")).toBeVisible();
+});
+
+test("a lens whose output is malformed shows its failure beside the prose it left unlifted", async ({ page, llm }) => {
+	await page.route("**/boxes/thought/client.js", (route) => route.fulfill({ contentType: "text/javascript", body: `
+		import thought from "/boxes/thought/client.js?original";
+		export default { ...thought, Window: { ...thought.Window, lens: { tag: "thought", gate: () => () => [{ kind: "prose" }] } } };
+	` }));
+	await llm.chat({ chunks: ["Theodora smiles.\n<thought>He knows.</thought>"] });
+	await page.goto("/");
+	await insertBox(page, "Thoughts");
+	await send(page, "The night is quiet.");
+	const reply = story(page).locator("article").last();
+	await expect(reply.getByRole("alert")).toContainText("Thoughts failed: Its lens output is invalid");
+	await expect(reply).toContainText("Theodora smiles.");
 });
