@@ -6,7 +6,7 @@ import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
 import { boxDescriptor, boxList, installBoxDescriptors, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
-import { assertBoxDescriptor } from "../../shared/contract/box-descriptor";
+import { assertBoxClient } from "../../shared/contract/box-descriptor";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
@@ -73,9 +73,11 @@ export const boxClients = (): ReadonlyMap<BoxId, BoxClientDefinition> => clients
 export const boxClientFailures = (): readonly BoxClientFailure[] => failures;
 
 const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinition> => {
+	// @approved
+	// SAFETY: assertBoxClient checks the descriptor and that each surface is a component; each Box types its own with `satisfies BoxClientDefinition`.
 	const { default: client }: { default: BoxClientDefinition | undefined } = await import(/* @vite-ignore */ url);
 	if (client === undefined) throw new Error("Its client module has no default export.");
-	assertBoxDescriptor(client.descriptor);
+	assertBoxClient(client);
 	if (client.descriptor.id !== id) throw new Error(`Its client module is the ${client.descriptor.id} Box's.`);
 	return client;
 };

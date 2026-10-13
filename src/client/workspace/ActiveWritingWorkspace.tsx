@@ -278,7 +278,7 @@ export function ActiveWritingWorkspace({
 			{!assemblyActive && inspector !== undefined && inspectorBox !== undefined && session.conversation !== null && (
 				<aside className="details-panel" data-open="true" aria-label={inspector.label}>
 					<BoxBoundary key={`${session.conversation.id}:${inspectorBox}`} box={inspectorBox}
-						header={<PanelHeader title={inspector.label} onClose={() => dispatchPanel({ type: "details-closed" })} />}>
+						fallback={(failure) => <><PanelHeader title={inspector.label} onClose={() => dispatchPanel({ type: "details-closed" })} />{failure}</>}>
 						<inspector.Component
 							conversation={session.conversation}
 							onConversationChange={session.setConversation}

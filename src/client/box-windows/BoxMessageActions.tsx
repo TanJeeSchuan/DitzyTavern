@@ -1,4 +1,5 @@
 import type { ConversationSummary } from "../conversation";
+import { BoxIcon } from "./BoxBoundary";
 import { boxClients } from "./registry";
 
 export function BoxMessageActions({ conversation, messageId, onOpen }: {
@@ -6,9 +7,9 @@ export function BoxMessageActions({ conversation, messageId, onOpen }: {
 	messageId: number;
 	onOpen: (box: string, focus: { messageId: number }) => void;
 }) {
-	return [...boxClients()].map(([id, { icon: Icon, Inspector }]) => Inspector && conversation.boxes[id] === "enabled" && (
+	return [...boxClients()].map(([id, { icon, Inspector }]) => Inspector && conversation.boxes[id] === "enabled" && (
 		<button key={id} className="edit-action" type="button" onClick={() => onOpen(id, { messageId })}>
-			<Icon aria-hidden="true" /> {Inspector.label}
+			<BoxIcon box={id} icon={icon} /> {Inspector.label}
 		</button>
 	));
 }

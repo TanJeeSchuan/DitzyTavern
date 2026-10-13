@@ -5,7 +5,7 @@ import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice } from "./BoxBlockNotice";
-import { BoxBoundary } from "./BoxBoundary";
+import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { boxClients, boxTitle, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
@@ -162,7 +162,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			return <FloatingWindow
 				key={id}
 				title={boxTitle(id)}
-				icon={<definition.icon aria-hidden="true" />}
+				icon={<BoxIcon box={id} icon={definition.icon} />}
 				size={definition.size}
 				layout={layout}
 				zIndex={zIndex(id)}

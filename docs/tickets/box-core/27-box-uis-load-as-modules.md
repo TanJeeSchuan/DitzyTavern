@@ -47,9 +47,11 @@ The client gets every Box's UI the same way: it reads `GET /api/boxes` and impor
 - `GET /boxes/<id>/client.js|client.css` serves from `dist/boxes/<id>` for a built-in and the plugin's own folder for a plugin; no other file in a plugin folder is served. Host chunks and Box modules keep their names between builds, so they are served `no-cache`, while hashed assets keep a day's cache.
 - `boxWindows` and `boxPanels` are gone; host surfaces read `boxClients()`. Lens `gate` and `strip` run in the host's render, so `LensedProse` catches a throw from either, shows the failure and leaves the prose unlifted. Move chip lists, lifted marks and every component surface render inside `BoxBoundary`.
 - The Vite dev server maps `/boxes/<id>/client.js` to `src/boxes/<id>/client.tsx`, or a plugin's `data/boxes/<id>/client.js`.
+- Review round 1 (Astra): the client also checks each module against `boxClientSchema` (`src/shared/contract/box-descriptor.ts`), so a malformed registration such as a window without a size is refused at load rather than crashing its host frame, and Box icons render through `BoxIcon`, which bounds them.
 
 ## Verification
 
 - `bun run check` passed: lint, 133 lint-rule tests, contract ownership, both typechecks, 1,492 unit tests across 172 files and 3 harness tests. The full `bun run test:e2e` then passed 79 of 79, including the new `e2e/box-modules.spec.ts` (a module that fails to import; an inspector that throws).
 - After that run, lint warnings in touched files were restructured, `@vite-ignore` joined the comment rule's ignored directives, and a route test was added (`src/server/box/registry.test.ts`, plugin client files only). Then lint, 134 lint-rule tests, the typecheck, `bun run build`, the registry tests (4) and the Box modules, inspector and Memory specs (9) passed.
 - Checked by hand in the built app and the Vite dev server: Memory's inspector renders with `/boxes/memory/client.css` linked and its React Query data loaded; failures show in the top bar item, the inspector frame and the Box manager.
+- After review round 1's fixes: `bun run check` passed (134 lint-rule tests, 1,493 unit tests, 3 harness tests), then the full `bun run test:e2e` passed 79 of 79.

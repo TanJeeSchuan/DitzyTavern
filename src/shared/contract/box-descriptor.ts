@@ -53,14 +53,47 @@ export const boxDescriptorSchema = Type.Object({
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 
+/** @approved Throws why `value` fails `schema`, naming what it is and where it fails. */
+function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, what: string): asserts value is Static<Schema> {
+	if (Value.Check(schema, value)) return;
+	const error = Value.Errors(schema, value).First();
+	throw new Error(`${what} is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
+}
+
 /** @approved Throws why the host refuses a Box module's descriptor. The server checks each folder's, the client each client module's. */
 export function assertBoxDescriptor(descriptor: unknown): asserts descriptor is BoxDescriptor {
-	if (!Value.Check(boxDescriptorSchema, descriptor)) {
-		const error = Value.Errors(boxDescriptorSchema, descriptor).First();
-		throw new Error(`Its descriptor is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
-	}
+	assertChecked(boxDescriptorSchema, descriptor, "Its descriptor");
 	if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
 	if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
+}
+
+// @approved
+//  What the host reads from a Box's client module beside its descriptor,
+// before it renders any of it: each surface is a component, a function or a
+// React component object such as a lucide icon, and a window has a size.
+// The client checks each module against it and refuses one that fails.
+const component = Type.Union([Type.Function([], Type.Unknown()), Type.Object({ $$typeof: Type.Symbol() })]);
+export const boxClientSchema = Type.Object({
+	descriptor: Type.Unknown(),
+	icon: component,
+	Window: Type.Optional(Type.Object({
+		size: Type.Object({ width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }) }),
+		Panel: component,
+		DockTab: component,
+		lens: Type.Optional(Type.Object({ tag: Type.String({ minLength: 1 }), gate: Type.Function([], Type.Unknown()) })),
+	})),
+	PrimaryPanel: Type.Optional(component),
+	TopBarItem: Type.Optional(component),
+	Inspector: Type.Optional(Type.Object({ label: Type.String(), Component: component })),
+	Settings: Type.Optional(component),
+	ParticipantSection: Type.Optional(component),
+	TraceView: Type.Optional(component),
+});
+
+/** @approved Throws why the host refuses a Box's client module: a surface, or its descriptor as `assertBoxDescriptor` checks it. */
+export function assertBoxClient(client: unknown): asserts client is Static<typeof boxClientSchema> & { readonly descriptor: BoxDescriptor } {
+	assertChecked(boxClientSchema, client, "Its client module");
+	assertBoxDescriptor(client.descriptor);
 }
 
 /** @approved A descriptor's `setup`, its initial value typed by its schema. */
