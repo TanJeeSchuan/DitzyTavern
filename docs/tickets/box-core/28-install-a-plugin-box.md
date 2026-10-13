@@ -38,9 +38,11 @@ A plugin author can build a Box outside this repository, drop it into `data/boxe
 - A plugin's client builds into `<folder>/dist/`, not beside its sources. Building in place makes Vite's `outDir` its root, which Vite warns can overwrite sources, and it would overwrite a source stylesheet named `client.css`, as Memory's is. The server serves a plugin's `client.js` and `client.css` from `data/boxes/<id>/dist/`, and the Vite dev server maps to it.
 - The fixture plugin is `e2e/fixtures/boxes/tip-jar/`: a window that stages a Move, an `advance` that writes a record each Generation, and a `read` that folds them. It imports a stylesheet, so the spec also covers a plugin's `client.css`.
 - Each e2e worker's plugin folder is `.scratch/e2e-boxes-*` under the repository, passed to the server as `E2E_BOXES`, so the fixture's `@/box-sdk` imports and packages resolve. The databases stay in the OS temp directory, which is tmpfs on this host; a synchronous write to the repository's disk took about 50 ms. A reset empties the plugin folder and reloads the registry, so an installed plugin never outlives its test; a restarted server loads the folder as it stands.
+- Review round 1 (Astra) found one P3: `bun run typecheck` left out `data/boxes/`, so the README's typecheck step passed for a plugin with type errors. `tsconfig.json` now includes `data/boxes`, which also gives an editor the SDK paths there. Nothing at P0–P2.
 
 ## Verification
 
 - `bun run check` passed: lint, 134 lint-rule tests, contract ownership, both typechecks, 1,493 unit tests across 172 files and 3 harness tests. `bun run build` passed. The full `bun run test:e2e` then passed 81 of 81, including `e2e/box-plugin.spec.ts`.
 - `box:build` then gained a required folder argument; lint, the typecheck and a rebuild of the fixture passed after it.
 - `grep -rniE "tip-jar|tip jar|tipjar|tip_jar" src/` finds nothing.
+- After review round 1's fix: with `data/boxes` in `tsconfig.json`, `bun run typecheck` passed without plugins and reported a type error in a probe plugin at `data/boxes/zz-probe/server.ts`, which was then removed.
