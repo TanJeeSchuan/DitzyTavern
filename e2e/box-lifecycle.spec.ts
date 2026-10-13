@@ -16,7 +16,7 @@ const generate = async (page: Page, text: string) => {
 
 const sendPlan = async (page: Page, reply: string) => {
 	await page.getByRole("button", { name: "Send exact plan" }).click();
-	await expect(story(page).getByText(reply)).toBeVisible();
+	await expect(story(page).getByText(reply, { exact: true })).toBeVisible();
 };
 
 test("a disabled Phone has no prompt item, window or dock tab, and comes back as it was", async ({ page, llm }) => {
