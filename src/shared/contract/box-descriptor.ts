@@ -91,6 +91,29 @@ export const boxClientSchema = Type.Object({
 });
 
 // @approved
+//  What the host calls on a Box's server module, checked when it loads: each
+// hook it declares is a function, or an object holding the functions the host
+// calls on it, and a trace schema is a TypeBox schema. The server refuses a
+// module that fails, then pairs its hooks with the descriptor.
+const hook = Type.Function([], Type.Unknown());
+export const boxServerSchema = Type.Object({
+	inject: Type.Optional(Type.Array(Type.String())),
+	setupError: Type.Optional(hook),
+	moves: Type.Optional(Type.Object({ render: hook })),
+	dependencies: Type.Optional(hook),
+	records: Type.Optional(Type.Object({
+		initial: Type.Unknown(),
+		fold: hook,
+		digest: Type.Optional(Type.Object({ window: Type.Integer({ minimum: 0 }), run: hook })),
+	})),
+	advance: Type.Optional(Type.Object({ trace: Type.Optional(schema), run: hook, fingerprint: Type.Optional(hook) })),
+	status: Type.Optional(hook),
+	importSillyTavernNote: Type.Optional(hook),
+	read: Type.Optional(hook),
+	routes: Type.Optional(hook),
+});
+
+// @approved
 //  What a lens returns for a stretch of prose, checked each time the story
 // lenses it: the prose it leaves and the marks it lifts, each a React element.
 const lensPieces = Type.Array(Type.Union([
@@ -105,6 +128,13 @@ export function assertLensPieces(pieces: unknown): asserts pieces is Static<type
 export function assertBoxClient(client: unknown): asserts client is Static<typeof boxClientSchema> & { readonly descriptor: BoxDescriptor } {
 	assertChecked(boxClientSchema, client, "Its client module");
 	assertBoxDescriptor(client.descriptor);
+}
+
+/** @approved A Box's server module as the host checked it: each hook it declares has the shape the host calls. */
+export type BoxServerModule = Static<typeof boxServerSchema>;
+/** @approved Throws why the host refuses a Box's server module: a hook that is not a function, or a hook object without one. */
+export function assertBoxServer(server: unknown): asserts server is BoxServerModule {
+	assertChecked(boxServerSchema, server, "Its server module");
 }
 
 /** @approved A descriptor's `setup`, its initial value typed by its schema. */

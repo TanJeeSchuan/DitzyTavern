@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { Elysia } from "elysia";
-import { boxList } from "../../shared/contract/box";
+import { boxDescriptor, boxList } from "../../shared/contract/box";
 import { boxClientFolder, serverBoxes } from "../box/registry";
 
 // @approved
@@ -12,7 +12,7 @@ import { boxClientFolder, serverBoxes } from "../box/registry";
 // and revalidated, since they keep their names across builds.
 export const createBoxRoutes = (database: Database) => {
 	const app = new Elysia()
-		.get("/api/boxes", () => [...serverBoxes().keys()].map((id) => ({ id, client: `/boxes/${id}/client.js` })), { response: boxList })
+		.get("/api/boxes", () => [...serverBoxes().keys()].map((id) => ({ id, label: boxDescriptor(id).label, client: `/boxes/${id}/client.js` })), { response: boxList })
 		.get("/boxes/:box/:file", async ({ params: { box, file }, set, status }) => {
 			const folder = boxClientFolder(box);
 			const served = folder === undefined || (file !== "client.js" && file !== "client.css") ? undefined : Bun.file(join(folder, file));

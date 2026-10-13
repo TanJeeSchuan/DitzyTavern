@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { boxDescriptor, boxReference, type BoxId } from "../../shared/contract/box";
+import { boxReference, type BoxId } from "../../shared/contract/box";
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
+import { boxTitle } from "./registry";
 
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
@@ -31,7 +32,7 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
 		enabled: on,
 	});
-	const { label } = boxDescriptor(box);
+	const label = boxTitle(box);
 	const slot = preset.data?.slots.find((entry) => entry.reference === boxReference(box));
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {

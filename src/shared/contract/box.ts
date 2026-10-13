@@ -84,8 +84,8 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-/** @approved The loaded Boxes, in registry order, each with the URL its client module loads from. */
-export const boxList = Type.Array(Type.Object({ id: Type.String(), client: Type.String() }));
+/** @approved The loaded Boxes, in registry order, each with its label and the URL its client module loads from. */
+export const boxList = Type.Array(Type.Object({ id: Type.String(), label: Type.String(), client: Type.String() }));
 
 export const boxParams = Type.Object({ box: Type.String() });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });

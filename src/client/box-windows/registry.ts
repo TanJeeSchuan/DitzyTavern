@@ -5,7 +5,7 @@ import type { CastParticipant, ConversationSummary } from "../conversation";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
-import { boxDescriptor, boxList, installBoxDescriptors, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxList, installBoxDescriptors, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { assertBoxClient } from "../../shared/contract/box-descriptor";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
@@ -16,7 +16,6 @@ type PutBoxData = Extract<ConversationAction, { type: "put-box-data" }>;
 /** @approved Builds a `put-box-data` command for the window's own Box, so a window cannot name another Box's namespace. */
 export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: string) => PutBoxData;
 
-export const boxTitle = (id: BoxId): string => boxDescriptor(id).label;
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
 type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
@@ -63,14 +62,22 @@ export interface BoxClientDefinition {
 /** @approved What a thrown value says, for a failure the host shows. */
 export const errorMessage = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
-/** @approved A loaded Box whose client module did not load, with why; none of its surfaces show. */
-export type BoxClientFailure = { readonly id: BoxId; readonly reason: string };
+/** @approved A Box the server loaded, with why its client module did not load, or null; a Box without its client module has no surfaces. */
+export type ListedBox = { readonly id: BoxId; readonly label: string; readonly failure: string | null };
 
+let listed: ReadonlyMap<BoxId, ListedBox> = new Map();
 let clients: ReadonlyMap<BoxId, BoxClientDefinition> = new Map();
-let failures: readonly BoxClientFailure[] = [];
+/** @approved Every Box the server loaded, by id, in registry order, whether or not its client module loaded. */
+export const listedBoxes = (): ReadonlyMap<BoxId, ListedBox> => listed;
 /** @approved Each loaded Box's client module, by id, in registry order. */
 export const boxClients = (): ReadonlyMap<BoxId, BoxClientDefinition> => clients;
-export const boxClientFailures = (): readonly BoxClientFailure[] => failures;
+
+/** @approved A loaded Box's label, as the server lists it. An unknown id throws, so a boundary checks ids first. */
+export const boxTitle = (id: BoxId): string => {
+	const box = listed.get(id);
+	if (box === undefined) throw new Error(`There is no ${id} Box.`);
+	return box.label;
+};
 
 const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinition> => {
 	// @approved
@@ -85,15 +92,17 @@ const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinitio
 // @approved
 //  Startup imports every loaded Box's client module, in parallel, before the
 // host renders any Box surface, and installs their descriptors and surfaces.
-// A module that fails to import, or whose descriptor the host refuses, is
-// kept with its reason for the Box manager; the other Boxes still load.
+// A module that fails to import, or whose descriptor the host refuses, keeps
+// its reason for the Box manager, which still manages the Box: the server
+// owns which Boxes exist, and a Box runs there whether or not its client loads.
 export const loadBoxClients = async (): Promise<void> => {
-	const listed = await requestData(api.api.boxes.get(), boxList);
-	const loaded = await Promise.allSettled(listed.map(({ id, client }) => loadBoxClient(id, client)));
+	const boxes = await requestData(api.api.boxes.get(), boxList);
+	const loaded = await Promise.allSettled(boxes.map(({ id, client }) => loadBoxClient(id, client)));
 	const modules = loaded.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 	installBoxDescriptors(modules.map(({ descriptor }) => descriptor));
 	clients = new Map(modules.map((client) => [client.descriptor.id, client]));
-	failures = loaded.flatMap((result, index) => result.status === "rejected"
-		? [{ id: listed[index]!.id, reason: errorMessage(result.reason) }]
-		: []);
+	listed = new Map(boxes.map(({ id, label }, index) => {
+		const result = loaded[index]!;
+		return [id, { id, label, failure: result.status === "rejected" ? errorMessage(result.reason) : null }];
+	}));
 };

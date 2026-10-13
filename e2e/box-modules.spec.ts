@@ -2,7 +2,7 @@ import { test, expect, insertBox, send, story } from "./fixtures";
 
 test.use({ allowedBrowserErrors: /is broken/ });
 
-test("a Box client module that fails to import or is malformed is listed in the Box manager without its surfaces", async ({ page }) => {
+test("a Box client module that fails to import or is malformed loses its surfaces, and the Box manager still turns the Box off", async ({ page }) => {
 	await page.route("**/boxes/memory/client.js", async (route) => {
 		const response = await route.fetch();
 		await route.fulfill({ response, body: `${await response.text()}\nthrow new Error("The Memory client is broken.");` });
@@ -14,10 +14,13 @@ test("a Box client module that fails to import or is malformed is listed in the 
 	await page.goto("/");
 	await page.getByRole("button", { name: "Boxes", exact: true }).click();
 	const boxes = page.getByRole("list", { name: "Boxes" });
-	await expect(boxes.getByRole("listitem").filter({ hasText: "memory" })).toContainText("Did not load: The Memory client is broken.");
-	await expect(boxes.getByRole("listitem").filter({ hasText: "thought" })).toContainText("Did not load: Its client module is invalid at /Window/size");
-	await expect(boxes.getByRole("switch", { name: "Memory in this Chat" })).toHaveCount(0);
-	await expect(boxes.getByRole("switch", { name: "Thoughts in this Chat" })).toHaveCount(0);
+	const memory = boxes.getByRole("listitem").filter({ hasText: "Memory" });
+	await expect(memory).toContainText("Did not load: The Memory client is broken.");
+	await expect(boxes.getByRole("listitem").filter({ hasText: "Thoughts" })).toContainText("Did not load: Its client module is invalid at /Window/size");
+	await expect(boxes.getByRole("switch", { name: "Thoughts in this Chat" })).not.toBeChecked();
+	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
+	await expect(memory.getByRole("switch", { name: "Memory in this Chat" })).not.toBeChecked();
+	await expect(memory).toContainText("Off · setup kept");
 	await boxes.getByRole("switch", { name: "Phone in this Chat" }).click();
 	await page.keyboard.press("Escape");
 	await expect(page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);

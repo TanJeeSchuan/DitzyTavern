@@ -54,6 +54,9 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		broken: { server: 'throw new Error("The wick is wet.");' },
 		unhooked: { fields: 'decision: { summary: "", description: "", off: "", context: "" }' },
 		unrouted: { server: 'export default { routes: () => { throw new Error("The hook is bent."); } };' },
+		"hollow-moves": { server: "export default { moves: {} };" },
+		"hollow-records": { server: "export default { records: { initial: 0 } };" },
+		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
 	});
 	const database = openObservedDatabase();
 	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins], database).finally(() => database.close());
@@ -61,6 +64,9 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
 		["broken", "The wick is wet."],
+		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
+		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
+		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
 		["renamed", "Its folder must be named for its id, lantern."],

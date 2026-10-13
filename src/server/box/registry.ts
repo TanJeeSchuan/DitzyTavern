@@ -5,7 +5,7 @@ import { Value } from "@sinclair/typebox/value";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
-import { assertBoxDescriptor } from "../../shared/contract/box-descriptor";
+import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { RecordStates } from "./records";
@@ -14,13 +14,13 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxServices, C
 import { resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
-//  The descriptor decides which hooks a Box must declare: records for a
-// `record` schema, a digest for a `decision`, and a render for `moves`. A
-// digesting Box's window read is the host's passage timeline, so it declares
-// no `read`; only that read calls `status`, so no other Box declares one.
-// Ids are known only at runtime, so the registry checks this when it is built.
-const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undefined): HostBox => {
-	if (box === undefined) throw new Error(`The ${id} Box's server.ts has no default export.`);
+//  Once each hook has the shape the host calls, the descriptor decides which
+// hooks a Box must declare: records for a `record` schema, a digest for a
+// `decision`, and a render for `moves`. A digesting Box's window read is the
+// host's passage timeline, so it declares no `read`; only that read calls
+// `status`, so no other Box declares one. Ids are known only at runtime, so
+// the registry checks this when it is built.
+const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule): HostBox => {
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
@@ -29,7 +29,9 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undef
 		[descriptor.decision !== undefined || box.status === undefined, "no status, since it does not digest"],
 	] as const).flatMap(([holds, rule]) => holds ? [] : [rule]);
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
-	return box;
+	// @approved
+	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
+	return box as HostBox;
 };
 
 // @approved
@@ -54,9 +56,9 @@ export const discoverBoxes = async (folders: readonly string[], database?: Datab
 				assertBoxDescriptor(descriptor);
 				if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
 				if (boxes.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
-				// @approved
-				// SAFETY: checkedHooks checks the hooks the host relies on against the descriptor; each Box types its own with `satisfies Box<…>`.
-				const { default: box }: { default: HostBox | undefined } = await import(join(folder, "server.ts"));
+				const { default: box }: { default: unknown } = await import(join(folder, "server.ts"));
+				if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
+				assertBoxServer(box);
 				const checked = checkedHooks(descriptor.id, descriptor, box);
 				if (database !== undefined) checked.routes?.(database);
 				boxes.set(descriptor.id, { descriptor, box: checked, folder });
