@@ -6,7 +6,7 @@ import { RacePanel } from "../../boxes/race/client";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { boxDescriptors, boxIds, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
-import { describeWorldClock, WorldClockPanel } from "../../boxes/world-clock/client";
+import { describeWorldClock, WorldClockPanel, WorldClockTopBarItem } from "../../boxes/world-clock/client";
 import { PhoneDockTab, PhoneLensView, PhonePanel } from "../../boxes/phone/client";
 import { phoneNames, stripPhoneTexts } from "../../boxes/phone/shared";
 import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "../../boxes/thought/client";
@@ -33,6 +33,8 @@ export const boxTitle = (id: BoxId): string => boxDescriptors[id].label;
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
 type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
+/** @approved A top bar item's content; the host wraps it in a button that opens the window. */
+type TopBarItem = ComponentType<{ conversation: ConversationSummary }>;
 
 /** @approved Any Box's window; a digesting Box builds its own with `digestWindow`. */
 export interface BoxWindowDefinition {
@@ -41,6 +43,7 @@ export interface BoxWindowDefinition {
 	readonly lens?: BoxLens;
 	readonly Panel: Panel;
 	readonly DockTab: DockTab;
+	readonly TopBarItem?: TopBarItem;
 }
 
 // @approved
@@ -80,11 +83,12 @@ const castNames = ({ cast, control }: ConversationSummary) => {
 
 // @approved
 //  The client half of the Box contract: the server Box declares `status` and
-//  `read`; this registry declares the icon, size, Panel and lens, because
-//  they are React and the server contract is not. The composer's launcher,
-//  the dock and the story's lenses render the Boxes listed here.
+//  `read`; this registry declares the icon, size, Panel, lens and top bar
+//  item, because they are React and the server contract is not. The
+//  composer's launcher, the dock, the story's lenses and the top bar render
+//  the Boxes listed here.
 export const boxWindows = {
-	"world-clock": digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }),
+	"world-clock": { ...digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }), TopBarItem: WorldClockTopBarItem },
 	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
 	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
 	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },

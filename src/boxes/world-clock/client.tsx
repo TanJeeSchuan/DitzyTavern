@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, type ConversationSummary } from "../../box-sdk/client";
+import { Alert, AlertDescription, boxDigestKey, Button, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus, type ConversationSummary } from "../../box-sdk/client";
 import { isWorldClockStart, weatherLabels, type WorldClockRecord, type WorldClockSetup } from "./contract";
 
 const elapsedLabel = (minutes: number): string => {
@@ -14,6 +14,9 @@ const elapsedLabel = (minutes: number): string => {
 /** @approved A passage's record on the timeline, such as `+5m · ☀️ Clear`. */
 export const describeWorldClock = ({ minutes, weather }: WorldClockRecord): string =>
 	`${elapsedLabel(minutes)}${weather === null ? "" : ` · ${weatherLabels[weather]}`}`;
+
+/** @approved The top bar item: the in-story time, as the dock tab shows it. */
+export const WorldClockTopBarItem = ({ conversation }: { conversation: ConversationSummary }): ReactNode => useBoxStatus(conversation.id, "world-clock");
 
 /** @approved The World Clock's setup form; the host's passage timeline follows it in the window. */
 export function WorldClockPanel({ conversation, disabled, onConversationChange }: {

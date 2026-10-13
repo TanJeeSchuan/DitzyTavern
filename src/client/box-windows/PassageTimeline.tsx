@@ -29,19 +29,28 @@ function useBoxDigest(conversationId: number, box: DigestBoxId) {
 	});
 }
 
-/** @approved A digesting Box's dock tab: its folded status line. */
-function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
+// @approved
+//  A digesting Box's folded status line, polled; the label stands in for a
+//  null status. The dock tab and top bar items read it. Its key extends the
+//  digest's, so a save that refreshes the timeline refreshes the status too.
+export function useBoxStatus(conversationId: number, box: DigestBoxId): string {
 	const read = useQuery({
-		queryKey: ["box-digest-status", conversation.id, box],
-		queryFn: ({ signal }) => loadBoxDigestStatus(conversation.id, box, signal),
+		queryKey: [...boxDigestKey(conversationId, box), "status"],
+		queryFn: ({ signal }) => loadBoxDigestStatus(conversationId, box, signal),
 		refetchInterval: 2_500,
 		refetchIntervalInBackground: false,
 	});
+	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptors[box].label : "Reading…");
+}
+
+/** @approved A digesting Box's dock tab: its folded status line. */
+function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: DigestBoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
+	const status = useBoxStatus(conversation.id, box);
 	const { label } = boxDescriptors[box];
 	return <button type="button" className="box-dock-tab" title={`Restore ${label}`} onClick={onRestore}>
 		<Icon aria-hidden="true" />
 		<span className="sr-only">{label}: </span>
-		<span>{read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? label : "Reading…")}</span>
+		<span>{status}</span>
 	</button>;
 }
 

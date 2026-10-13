@@ -41,7 +41,8 @@ const enableClock = async (page: Page) => {
 	await window.getByRole("button", { name: "Minimize World Clock" }).click();
 };
 
-const dockTab = (page: Page) => page.getByRole("button", { name: /^World Clock: / });
+const dockTab = (page: Page) => page.getByRole("toolbar", { name: "Minimized Boxes" }).getByRole("button", { name: /^World Clock: / });
+const topBarItem = (page: Page) => page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: /^World Clock: / });
 
 test("the World Clock digests passages in the background and follows the selected Variant", async ({ page, request, llm }) => {
 	await selectBoxDecisionModel(request, "world-clock");
@@ -88,7 +89,7 @@ test("the World Clock digests passages in the background and follows the selecte
 	await digested(llm, "She keeps watch.");
 });
 
-test("the dock status updates when a digest lands without reopening the window", async ({ page, request, llm }) => {
+test("the dock tab and the top bar item follow a digest that lands while the window is minimized, and the item opens it", async ({ page, request, llm }) => {
 	await selectBoxDecisionModel(request, "world-clock");
 	await llm.decisions(
 		...digest("Wait out the night.", "overnight", "clear"),
@@ -98,6 +99,7 @@ test("the dock status updates when a digest lands without reopening the window",
 	await page.goto("/");
 	await enableClock(page);
 	await expect(dockTab(page)).toHaveText("World Clock: 8:00 AM");
+	await expect(topBarItem(page)).toHaveText("World Clock: 8:00 AM");
 
 	await sendWithClock(page, "Wait out the night.");
 	await page.getByRole("button", { name: "Send exact plan" }).click();
@@ -106,6 +108,10 @@ test("the dock status updates when a digest lands without reopening the window",
 	await digested(llm, "Dawn comes");
 
 	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM( · .+)?$/, { timeout: 15_000 });
+	await expect(topBarItem(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM( · .+)?$/, { timeout: 15_000 });
+	await topBarItem(page).click();
+	await expect(page.getByRole("dialog", { name: "World Clock" })).toBeVisible();
+	await expect(dockTab(page)).toHaveCount(0);
 });
 
 test("a clock that is off contributes no clock line and queues no digest", async ({ page, request, llm }) => {
@@ -146,7 +152,9 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 	const cancelPreview = () => page.getByRole("complementary", { name: "Prompt Plan preview" }).getByRole("button", { name: "Cancel" }).click();
 
 	await toggle((boxes) => clockSwitch(boxes).click());
+	await expect(topBarItem(page)).toHaveCount(0);
 	await toggle((boxes) => clockSwitch(boxes).click());
+	await expect(topBarItem(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/);
 	await expect(await sendWithClock(page, "Look outside.")).toHaveText(/^\d{1,2}:\d\d PM \| 🗓️ Sunday, June 1, 2025 AD \| .+ Clear, -?\d+°C$/);
 	await cancelPreview();
 

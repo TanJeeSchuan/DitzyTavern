@@ -41,8 +41,9 @@ export const exampleBox = {
 } satisfies Box<Setup, Dependencies, Trace, Services, Rec, State, Move>;
 
 // 3. Client window: the `boxWindows` entry in src/client/box-windows/registry.tsx, only for a Box with a window
-"<id>": { icon, size, Panel, DockTab, lens },        // lucide icon, { width, height } in rem, window body, minimized tab, optional lens
+"<id>": { icon, size, Panel, DockTab, lens, TopBarItem }, // lucide icon, { width, height } in rem, window body, minimized tab, optional lens, optional top bar item
 "<id>": digestWindow("<id>", { icon, size, Panel, describe }), // a digesting Box: optional Panel, then the passage timeline; a status dock tab
+"<id>": { ...digestWindow("<id>", { … }), TopBarItem },  // a digesting Box with a top bar item
 ```
 
 Every server hook is optional, as are the descriptor keys marked optional. The type checker enforces each "required by" pair and each "only". `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Services = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
@@ -128,7 +129,7 @@ const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
 
 Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
 
-`status(setup, state)` is the dock tab's line, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The dock tab's accessible name is `<label>: <status>`, which is how an e2e test finds it.
+`status(setup, state)` is the dock tab's line, and a top bar item's through `useBoxStatus`, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The dock tab's accessible name is `<label>: <status>`, which is how an e2e test finds it.
 
 ### `advance`
 
@@ -191,6 +192,8 @@ foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id
 
 `DockTab` gets `conversation` and `onRestore`. Render a `<button type="button" className="box-dock-tab">` with the icon, an `sr-only` label and one short line, as `ThoughtDockTab` does.
 
+`TopBarItem` is optional. It gets `conversation` and renders one short line, such as the World Clock's in-story time. The host wraps it in a button in the Story header's Chat tools group, beside the host's own icons, with the Box's icon and an `sr-only` label, so a Box writes no button and no style. Clicking it opens the window. Only an enabled Box shows its item. A digesting Box can show its `status` with `useBoxStatus(conversation.id, "<id>")`, which the dock tab reads too, as `WorldClockTopBarItem` does. The item's accessible name is `<label>: <line>`, the same as the dock tab's, so an e2e test finds it inside `getByRole("group", { name: "Chat tools" })` and the dock tab inside `getByRole("toolbar", { name: "Minimized Boxes" })`. Below 78rem wide the Chat tools group is hidden; the launcher and dock tab stay.
+
 A digesting Box builds its entry with `digestWindow`, which supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `DockTab` showing `status`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
 
 ### `lens`
@@ -217,7 +220,7 @@ Each file in `src/boxes/<id>/` takes its layer from its name. A layer with sever
 | `contract*.ts` | shared | TypeBox schemas and their types | `src/box-sdk/shared.ts` |
 | `shared*.ts` | shared | logic the server and client both use | `src/box-sdk/shared.ts` |
 | `server*.ts` | server | the server Box | `src/box-sdk/server.ts`, `src/box-sdk/shared.ts` |
-| `client*.ts(x)` | client | the Panel, DockTab and lens View | `src/box-sdk/client.ts`, `src/box-sdk/shared.ts` |
+| `client*.ts(x)` | client | the Panel, DockTab, TopBarItem and lens View | `src/box-sdk/client.ts`, `src/box-sdk/shared.ts` |
 
 The layer rules read Box file names too: a `client*` file imports `server*` code only for types, a `shared*` or `contract*` file imports neither, and a `Type.Object` in a `server*` or `client*` file fails `check:contracts`. The SDK entries re-export only what the built-in Boxes use; read them for the list. When a Box needs something else from the host, add it to its layer's entry.
 
@@ -244,7 +247,7 @@ The host stores `enabled: true | false` and an `instance` id in `conversation_da
 
 | State | Runs | Keeps |
 |---|---|---|
-| enabled | [captured](#generation-lifecycle) into Generations, digests, accepts Moves and `put-box-data`, shows its launcher, window, dock tab and lens | everything |
+| enabled | [captured](#generation-lifecycle) into Generations, digests, accepts Moves and `put-box-data`, shows its launcher, window, dock tab, top bar item and lens | everything |
 | disabled | nothing; re-enabling picks up where it left off | setup, data, instance |
 | absent | nothing | Library and Character data, Variant records and Message Moves |
 
@@ -284,7 +287,7 @@ The override editor is built from the `record` schema:
 
 Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the entry, so the client fails at load. A field that may be unset is a union of literals with `Type.Null()`. The union's members must type as a fixed tuple: write each literal out, or cast a mapped array to a tuple type as the World Clock's `weatherSchemas` does. A spread of a plain `names.map(Type.Literal)` typechecks on the server but collapses the `set-box-record` route type on the client. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
 
-The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
+The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline, the dock tab and the top bar item with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
 
 ### Lens pipeline
 
@@ -308,7 +311,7 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 |---|---|---|
 | Author Note | yes | `setup`, `advance` |
 | Memory | yes | `record`, `decision`, `inject: ["llm", "decide", "embed"]`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`; no window, its own side panel and routes |
-| World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe` |
+| World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe`, and a top bar item |
 | Race | no | `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; window |
 | Phone | no | `instructions`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
 | Thoughts | no | `instructions`, `alwaysRender`, `read`; window and lens |

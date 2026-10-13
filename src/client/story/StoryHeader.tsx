@@ -1,22 +1,37 @@
 import { Brain, ChevronDown, Info, UsersRound, Variable } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { boxTitle, boxWindow, windowBoxIds, type WindowBoxId } from "../box-windows/registry";
+import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
 
 export function StoryHeader({
 	chat,
+	conversation,
 	onOpenNavigation,
 	onOpenCast,
 	onOpenInfo,
 	onOpenVariables,
 	onOpenMemories,
+	onOpenWindow,
 }: {
 	chat: ChatSummary;
+	conversation: ConversationSummary | null;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;
+	onOpenWindow: (box: WindowBoxId) => void;
 }) {
+	const items = conversation === null ? [] : windowBoxIds.flatMap((id) => {
+		const { icon: Icon, TopBarItem } = boxWindow(id);
+		if (conversation.boxes[id] !== "enabled" || TopBarItem === undefined) return [];
+		return [<button key={id} className="box-top-bar-item" type="button" title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
+			<Icon aria-hidden="true" />
+			<span className="sr-only">{boxTitle(id)}: </span>
+			<span><TopBarItem conversation={conversation} /></span>
+		</button>];
+	});
 	return (
 		<header className="story-header">
 			<button className="brand-mark navigation-button" type="button" onClick={onOpenNavigation} aria-label="Open navigation">
@@ -38,23 +53,12 @@ export function StoryHeader({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
-			<button
-				className="icon-button chat-info-button"
-				type="button"
-				onClick={onOpenInfo}
-				aria-label="Chat information"
-			>
-				<Info aria-hidden="true" />
-			</button>
-			<button
-				className="icon-button variables-button"
-				type="button"
-				onClick={onOpenVariables}
-				aria-label="Macro Variables"
-			>
-				<Variable aria-hidden="true" />
-			</button>
-			<button className="icon-button memories-button" type="button" onClick={onOpenMemories} aria-label="Memories"><Brain aria-hidden="true" /></button>
+			<div className="story-header-tools" role="group" aria-label="Chat tools">
+				{items}
+				<button className="icon-button chat-info-button" type="button" onClick={onOpenInfo} aria-label="Chat information"><Info aria-hidden="true" /></button>
+				<button className="icon-button" type="button" onClick={onOpenVariables} aria-label="Macro Variables"><Variable aria-hidden="true" /></button>
+				<button className="icon-button" type="button" onClick={onOpenMemories} aria-label="Memories"><Brain aria-hidden="true" /></button>
+			</div>
 			<button className="cast-control" type="button" onClick={onOpenCast} aria-label="Cast">
 				<UsersRound aria-hidden="true" />
 				<span>Cast</span>
