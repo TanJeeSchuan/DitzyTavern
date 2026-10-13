@@ -1,4 +1,5 @@
-import { Type, type Static, type TArray, type TObject, type TOptional, type TString } from "@sinclair/typebox";
+import { Kind, Type, type Static, type TArray, type TObject, type TOptional, type TString } from "@sinclair/typebox";
+import type { GenerationJsonValue } from "../generation-json";
 import { boxDescriptors, moveBoxIds, recordBoxIds, type BoxDescriptors, type MoveBoxId, type RecordBoxId } from "./box";
 import { boxRecordSlot } from "./box-digest";
 
@@ -17,6 +18,25 @@ const recordSlots = Object.fromEntries(recordBoxIds.map((id) => [id, boxRecordSl
 export const boxRecordSlots = recordSlots;
 export type BoxRecordSlot<Id extends RecordBoxId> = Static<typeof boxRecordSlots[Id]>;
 export type BoxRecord<Id extends RecordBoxId> = Static<RecordOf<Id>>;
+
+export const boxAdmission = Type.Union([Type.Literal("admitted"), Type.Literal("allowance"), Type.Literal("oversized"), Type.Literal("context-limit")]);
+export type BoxAdmission = Static<typeof boxAdmission>;
+// @approved
+//  What one captured Box contributed to a Generation, for inspection: its own
+// `trace`, which only the Box reads; its allowance; the host's admission of
+// each item it returned, in its order; and its block's text as budgeted and
+// as sent, which differ once the writer edits the inspected Prompt Plan.
+export const boxTrace = Type.Object({
+	trace: Type.Optional(Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" })),
+	allowance: Type.Optional(Type.Integer()),
+	items: Type.Array(Type.Object({ text: Type.String(), admission: boxAdmission })),
+	automaticText: Type.String(),
+	finalText: Type.String(),
+});
+export type BoxTrace = Static<typeof boxTrace>;
+/** @approved Each captured Box's trace, keyed by `box:<id>`. */
+export const boxTraces = Type.Record(Type.String(), boxTrace);
+export type BoxTraces = Static<typeof boxTraces>;
 
 // SAFETY: the entries are exactly the Move Boxes, each with its own Move schema.
 const moveLists = Object.fromEntries(moveBoxIds.map((id) => {

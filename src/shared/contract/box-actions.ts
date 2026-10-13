@@ -1,4 +1,4 @@
-import { Type, type Static, type TInteger, type TLiteral, type TObject } from "@sinclair/typebox";
+import { Type, type Static, type TInteger, type TLiteral, type TNull, type TObject, type TOptional, type TUnion } from "@sinclair/typebox";
 import { boxDescriptors, boxId, boxSetups, boxState, recordBoxId, recordBoxIds, setupBoxIds, type BoxDescriptors, type RecordBoxId, type SetupBoxId } from "./box";
 
 // @approved
@@ -38,10 +38,15 @@ export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state
 // @approved
 //  Sets one Variant's Writer override for a Box record. The record is
 //  validated against that Box's schema here, so storage only ever holds
-//  decodable values. Reset removes the override and leaves the automatic
-//  record, if any, as the effective value.
+//  decodable values. `expected` is the effective record the writer read,
+//  null for none: digests change records without a Conversation revision,
+//  so a stale override is refused against it instead. Reset removes the
+//  override and leaves the automatic record, if any, as the effective value.
 type SetBoxRecordActions<Ids extends readonly RecordBoxId[]> = {
-	-readonly [K in keyof Ids]: TObject<{ type: TLiteral<"set-box-record">; box: TLiteral<Ids[K]>; messageId: TInteger; variantId: TInteger; record: BoxDescriptors[Ids[K]]["record"] }>
+	-readonly [K in keyof Ids]: TObject<{
+		type: TLiteral<"set-box-record">; box: TLiteral<Ids[K]>; messageId: TInteger; variantId: TInteger; record: BoxDescriptors[Ids[K]]["record"];
+		expected: TOptional<TUnion<[BoxDescriptors[Ids[K]]["record"], TNull]>>;
+	}>
 };
 // SAFETY: one action per record Box in tuple order, each with its own record schema.
 const setBoxRecordAction = Type.Union(recordBoxIds.map((id) => Type.Object({
@@ -50,6 +55,7 @@ const setBoxRecordAction = Type.Union(recordBoxIds.map((id) => Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	record: boxDescriptors[id].record,
+	expected: Type.Optional(Type.Union([boxDescriptors[id].record, Type.Null()])),
 })) as SetBoxRecordActions<typeof recordBoxIds>);
 
 export const resetBoxRecordAction = Type.Object({

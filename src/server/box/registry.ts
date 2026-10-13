@@ -7,7 +7,9 @@ import {
 	type BoxId, type BoxSetups, type BoxStates, type DigestBoxId, type MoveBoxId, type PromptBoxReference, type RecordBoxId, type SetupBoxId,
 } from "../../shared/contract/box";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
+import type { Database } from "bun:sqlite";
 import { memoryBox } from "../../boxes/memory/server";
+import { memoryRoutes } from "../../boxes/memory/server-routes";
 import { authorNoteBox } from "../../boxes/author-note/server";
 import type { RecordStates } from "./records";
 import type { BoxMoves, BoxRecord } from "../../shared/contract/box-generation";
@@ -16,6 +18,7 @@ import { phoneBox } from "../../boxes/phone/server";
 import { thoughtBox } from "../../boxes/thought/server";
 import { moodBox } from "../../boxes/mood/server";
 import type { AdvanceInput, AdvanceResult, BlockItem, Box, BoxContext, BoxServices, CaptureRead, HostBox } from "./contract";
+import { resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
 //  The server module of every Box. A lookup rather than a table, because Box
@@ -56,19 +59,29 @@ export type BoxResults = Partial<Record<PromptBoxReference, AdvanceResult<Genera
 interface CapturedBox {
 	readonly reference: PromptBoxReference;
 	readonly fingerprint: string;
-	run(services: BoxContext<keyof BoxServices>): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
+	run(services: BoxServicesOf): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
 }
 export type BoxInputs = readonly CapturedBox[];
+/** @approved The host services for each Box, as `boxServices` builds them. */
+type BoxServicesOf = (id: BoxId, decision: BoxDecision) => BoxContext<keyof BoxServices>;
 
-const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, blockEnabled: boolean): CapturedBox => ({
+/** @approved The services a Box declared in `inject`, and the signal. */
+export const injectServices = (box: HostBox, services: BoxContext<keyof BoxServices>): BoxContext<keyof BoxServices> => {
+	// @approved
+	// SAFETY: The entries are exactly the services this Box declared in inject.
+	const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, keyof BoxServices>;
+	return { ...injected, signal: services.signal };
+};
+
+// @approved
+//  The Decision Model selection is resolved with the rest of the capture and
+// kept in `run`'s closure, so its credential never reaches the capture's
+// serialized fields.
+const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies }),
 	run: async (services) => {
-		// @approved
-		// SAFETY: The entries are exactly the services this Box declared in inject.
-		const injected = Object.fromEntries((box.inject ?? []).map((key) => [key, services[key]])) as Pick<BoxServices, keyof BoxServices>;
-		const withoutBlock = box.advance?.withoutBlock;
-		const result = !blockEnabled && withoutBlock !== undefined ? withoutBlock(input) : await box.advance?.run(input, { ...injected, signal: services.signal }) ?? { items: [] };
+		const result = await box.advance?.run(input, injectServices(box, services(id, decision))) ?? { items: [] };
 		if (result.record !== undefined) {
 			const descriptor = boxDescriptors[id];
 			if (!("record" in descriptor)) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
@@ -81,22 +94,26 @@ const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<unknown, unknow
 
 // @approved
 //  The preset decides where a Box goes; the Chat decides whether it runs. A
-// Box that declares `advance.withoutBlock` is captured without its block.
+// Box is captured only while it is enabled and its block is.
 export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, boxes: BoxStates, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs => {
 	const setupOf: Partial<Record<BoxId, BoxSetups[keyof BoxSetups]>> = setups;
 	const stateOf: { readonly [Id in BoxId]?: RecordStates[RecordBoxId] } = states;
 	const movesOf: Partial<Record<BoxId, BoxMoves[keyof BoxMoves]>> = moves;
 	return boxIds.flatMap((id) => {
+		if (boxes[id] !== "enabled" || !slots.some((slot) => slot.enabled && slot.reference === boxReference(id))) return [];
 		const box = serverBox(id);
-		const blockEnabled = slots.some((slot) => slot.enabled && slot.reference === boxReference(id));
-		if (boxes[id] !== "enabled" || (!blockEnabled && box.advance?.withoutBlock === undefined)) return [];
 		const setup = setupOf[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return [captureBox(id, box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies }, blockEnabled)];
+		return [captureBox(id, box, { setup, state: stateOf[id], moves: movesOf[id] ?? [], dependencies }, resolveDecisionOf(read.database, id))];
 	});
 };
 
+// @approved
+//  Routes a Box serves beside the contract's: Memory's, for its in-tree side
+// panel, settings editor and trace view, until that UI moves into its Box.
+export const boxRoutes = (database: Database) => memoryRoutes(database);
+
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
 
-export const advanceBoxes = async (inputs: BoxInputs, services: BoxContext<keyof BoxServices>): Promise<BoxResults> =>
+export const advanceBoxes = async (inputs: BoxInputs, services: BoxServicesOf): Promise<BoxResults> =>
 	Object.fromEntries(await Promise.all(inputs.map(async (box) => [box.reference, await box.run(services)])));

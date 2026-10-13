@@ -22,7 +22,7 @@ A Box is three registrations and its folder `src/boxes/<id>/`. The shapes below 
 
 // 2. Server Box: src/boxes/<id>/server.ts, listed in `serverBox` in src/server/box/registry.ts
 export const exampleBox = {
-  inject: ["llm", "decide", "embed"],                // provider services `advance.run` receives on `ctx`
+  inject: ["llm", "decide", "embed"],                // provider services `advance.run` and `digest.run` receive on `ctx`
   setupError(setup, previous) { … },                 // a message rejecting a setup the schema accepts
   moves: { render(move, author) { … } },             // a Move as history reads it; required by `moves`
   dependencies(read, setup) { … },                   // inputs beyond setup, state and Moves, from the host's CaptureRead
@@ -35,11 +35,9 @@ export const exampleBox = {
     async run(input, ctx) { … },                     // the Box's live content for a Generation: { items, allowance?, trace?, record? }
     trace: schema,                                   // checks the returned trace
     fingerprint(input) { … },                        // replaces dependencies in the preview fingerprint
-    withoutBlock(input) { … },                       // captures the Box while its preset block is disabled
   },
   status(setup, state) { … },                        // the dock line; digesting Boxes only
   read(database, conversationId) { … },              // the window's JSON; non-digesting Boxes only
-  remove(db, conversationId) { … },                  // deletes Chat data kept outside the data scopes
 } satisfies Box<Setup, Dependencies, Trace, Services, Rec, State, Move>;
 
 // 3. Client window: the `boxWindows` entry in src/client/box-windows/registry.tsx, only for a Box with a window
@@ -65,7 +63,7 @@ The host finds every hook through the registrations, so adding a Box edits no ho
 1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the type checker demands. Done when you can name each one.
 2. **Create the folder.** Make `src/boxes/<id>/` with files named by layer ([Folder and SDK](#folder-and-sdk)). Schemas go in `contract.ts`, or `shared.ts` for a small Box such as Thoughts or Mood. Logic both the server and the client use goes in `shared.ts`. Done when `bun run lint` and `bun run check:contracts` pass.
 3. **Register it.** Add the id to `boxIds` and its `boxDescriptors` entry. Write `server.ts` exporting `<id>Box` that `satisfies Box<…>`, and add it to `serverBox`. Do all three before checking: `serverBox` is typed over every id in `boxIds`, and each entry is checked against its own descriptor's schemas and keys. Done when `bun run typecheck` passes.
-4. **Add the window**, if the Box has one. Write `client.tsx` and add the `boxWindows` entry. A digesting Box always needs the entry, because it is what gives the Box its window and dock tab. It needs no window file when it has no setup and the generic record summary reads well: the entry is just `digestWindow("<id>", { icon, size })`, as for Mood. Done when `bun run typecheck` passes.
+4. **Add the window**, if the Box has one. Write `client.tsx` and add the `boxWindows` entry. A digesting Box needs the entry for its window and dock tab; Memory, which keeps its own side panel, has none. A digesting Box needs no window file when it has no setup and the generic record summary reads well: the entry is just `digestWindow("<id>", { icon, size })`, as for Mood. Done when `bun run typecheck` passes.
 5. **Test it.** Write `e2e/<id>.spec.ts` with one test per user flow, asserting through Prompt Plan inspection. Inserting the Box adds its block to the Chat's preset. Insert it with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box also needs `selectBoxDecisionModel(request, "<id>")` and scripted `llm.decisions(…)`. Digests also read the human's Messages, and the first matching rule wins, so end with a catch-all rule after the passage-specific ones (`e2e/world-clock.spec.ts`). Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a seed, or a fold. Write no UI component tests and no tests of the contract's shape. Done when `bun run check` and `bun run test:e2e` pass.
 
 ## Hooks
@@ -98,7 +96,7 @@ The command accepts a Box that is present in the Chat, enabled or disabled, and 
 
 Actions the writer attaches to a Human-authored Message, declared as `movesOf(schema, max, label)`. `max` bounds the Moves per Message, and `label(move)` is the chip text. `seatBound: true` ties staged Moves to the human seat ([Move staging](#move-staging)). The server Box must declare `render(move, author)`.
 
-The host stores each Box's Moves in order in `messages_data` under key `moves`. For the Generation prompt, Lore scanning and Generation-time Memory recall, the Message's text becomes each Move's `render`, one per line, then the prose. Digests and background Memory extraction read the raw prose. While the Box is not enabled, the host uses the Move's chip label instead of `render`, so a removed Box never breaks past Messages. [Move staging](#move-staging) covers the composer.
+The host stores each Box's Moves in order in `messages_data` under key `moves`. For the Generation prompt, Lore scanning and Generation-time Memory recall, the Message's text becomes each Move's `render`, one per line, then the prose. Digests, Memory's extraction among them, read the raw prose. While the Box is not enabled, the host uses the Move's chip label instead of `render`, so a removed Box never breaks past Messages. [Move staging](#move-staging) covers the composer.
 
 Validate staged Moves with the same function the Box resolves them with, kept in `shared.ts`. A Move that was legal when staged may fizzle at resolution, and the Box narrates the failure.
 
@@ -106,7 +104,7 @@ Validate staged Moves with the same function the Box resolves them with, kept in
 
 `record` is the `Type.Object` schema of one Variant's record. An object, so an absent record is never confused with a record's value. The server Box must declare `records: { initial, fold }`. State is never stored: the host folds it whenever it needs it.
 
-Records come from two places: `advance` returns one at Generation time (the Race), or `records.digest` reads settled prose later (World Clock, Mood). Any Box with a `record` accepts Writer overrides through `set-box-record` and `reset-box-record`. Only digesting Boxes get an editor for them, in the [passage timeline](#passage-timeline). An override is refused while its Variant is still generating.
+Records come from two places: `advance` returns one at Generation time (the Race), or `records.digest` reads settled prose later (World Clock, Mood). Any Box with a `record` accepts Writer overrides through `set-box-record` and `reset-box-record`. Only digesting Boxes get an editor for them, in the [passage timeline](#passage-timeline). An override is refused while its Variant is still generating. Digests change records without a Conversation revision, so `set-box-record` may name the effective record the writer read as `expected`, `null` for none; the host refuses the override when the slot no longer holds it. Memory's claim corrections send it.
 
 Pick the record's granularity by what an upstream change should do to it:
 
@@ -117,9 +115,9 @@ Pick the record's granularity by what an upstream change should do to it:
 
 `decision` makes the Box a digesting Box: the server Box must declare `records.digest`, and may declare `status` but not `read`. That one key gives the Box the [digest queue and catch-up](#digest-queue-and-catch-up), the [passage timeline](#passage-timeline) as its window read, and a global Decision Model selection in Connection Settings, worded by the four `decision` strings. The host stores the selection (profile, model and state token limit) in `library_data` under its own `box-decision` namespace, keyed by the Box id. Without a selection no digest runs.
 
-`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed }`. `passage` and each `preceding` entry are `{ speaker, content }`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `ctx.signal` aborts when the job is superseded or cancelled.
+`digest.run(window, ctx)` returns one record for one selected passage. `window` is `{ passage, preceding, seed, cast, data }`. `passage` and each `preceding` entry are `{ messageId, speaker, authorId, content }`; `authorId` is the authoring Participant's id, or `null`. `preceding` holds up to `digest.window` selected Messages before the passage, oldest first. `seed` is this Box's stream of the Variant's seed. `cast` is every Participant in the Chat as `{ id, name, removed }`, removed ones included so every author resolves. `data` is the Box's own `box:<id>` `conversation_data` values by key, as stored strings. A Box that should not digest a passage, such as one by an author it ignores, returns an empty record. `ctx` holds the services the Box [injects](#inject), `ctx.database` for reads the window does not carry, as `read` gets it, and `ctx.signal`, which aborts when the job is superseded or cancelled.
 
-`ctx.decide(state, questions)` asks the Box's own Decision Model selection. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
+`ctx.decide(state, questions)` is always present and asks the Box's own Decision Model selection. The host packs the request and throws if `state` exceeds the selection's token limit. Questions are keyed by name, and the answers come back as a `Map` with the same keys. A `choice` question names its options as `criteria` keys:
 
 ```ts
 const answers = await ctx.decide({ passage, preceding }, {
@@ -128,7 +126,7 @@ const answers = await ctx.decide({ passage, preceding }, {
 const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
 ```
 
-Throw on an answer outside your options. A thrown error is logged and leaves no record. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
+Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
 
 `status(setup, state)` is the dock tab's line, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The dock tab's accessible name is `<label>: <status>`, which is how an e2e test finds it.
 
@@ -141,11 +139,9 @@ It returns `{ items, allowance?, trace?, record? }`:
 - `items` are `{ text, priority, pinned?, literal? }`. [Admission](#generation-lifecycle) places them in the Box's block after its instructions. A `literal` item skips the Prompt Macro pass; Memory marks recalled claims literal so a stored claim never runs a macro. An empty list leaves the whole block out, instructions included, unless the descriptor declares `alwaysRender`. A Box without `advance` returns an empty list.
 - `allowance` caps the unpinned items' tokens.
 - `record` is checked against the descriptor's `record` and written to the new Variant as the slot's `automatic` value when the Variant resolves. Returning a record without a `record` descriptor throws.
-- `trace` is checked against `advance.trace` when declared. Only Memory's trace has a consumer: it becomes the Generation's Memory activation record.
+- `trace` is checked against `advance.trace` when declared. The host keeps it, unread, in the Generation's Box traces, keyed by `box:<id>`, beside its budget evidence: the allowance, each item's admission (`admitted`, `allowance`, `oversized` or `context-limit`) in the Box's order, and the block's text as budgeted and as sent, which differ once the writer edits the inspected Prompt Plan. An edited block may not exceed its Box's allowance. Memory's trace view reads Memory's entry.
 
 `fingerprint(input)` replaces `dependencies` in the [preview fingerprint](#generation-lifecycle). Declare it only when the dependencies do not serialize to what should mark a preview stale. Only Memory declares it.
-
-`withoutBlock(input)` captures the Box while its preset block is disabled, returning this result instead of calling `run`. Only Memory declares it, to record activation evidence with no items.
 
 ### `dependencies`
 
@@ -153,15 +149,23 @@ Inputs `advance` needs beyond setup, state and Moves. The host calls `dependenci
 
 | Field | Value |
 |---|---|
+| `database`, `conversationId` | further reads, as `read` gets them |
 | `seed` | this Box's stream of the Variant's seed |
 | `intent` | `"continue"` for a Continuation and for a Sibling whose preceding Message the model wrote; otherwise `"respond"` |
 | `human` | the human-controlled Participant's `{ id, name }` |
 | `cast` | every Cast member's `{ id, name }` |
-| `memory()` | Memory's recall snapshot; only Memory calls it |
+| `messages` | the Selected path as the model reads it: `{ messageId, variantId, position, authorId, speaker, role, content, prose }`, where `content` renders the Message's Moves before its prose and `prose` is the stored text |
+| `pending` | the text a Send submits, Moves rendered, before it becomes a Message; `undefined` otherwise |
 
 ### `inject`
 
-The provider services `advance.run` receives on `ctx`: `llm`, `decide` and `embed`. The host builds `ctx` from exactly the declared keys, plus `signal`, which aborts when the server shuts down.
+The provider services `advance.run` and `digest.run` receive on `ctx`. The host builds `ctx` from exactly the declared keys, plus `signal`, which aborts when the server shuts down or, in a digest, when the job is superseded or cancelled. A digest always gets `decide`.
+
+| Service | Does |
+|---|---|
+| `llm(profileId)` | the chat Connection Profile, or `undefined` once it is gone; its `complete({ model, prompt, contextLimit, responseBudget, signal?, onContent? })` streams one completion with `prompt` as the system message and returns `{ content, finishReason }` |
+| `decide(state, questions)` | asks the Box's own [Decision Model selection](#decision-recordsdigest-and-status); it throws without one |
+| `embed(texts, configuration, { cache? })` | one vector per text, in one request, from an `EmbeddingConfiguration` the SDK's `readEmbeddingConfiguration(database, profileId, model)` resolves; with `cache`, texts embedded before under the same model and credentials are read back from the host's `embedding_cache` |
 
 ### `read`
 
@@ -172,10 +176,6 @@ Declare the read schema in `contract.ts` or `shared.ts`, decode it on the client
 ```ts
 foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id>" }).get({ fetch: { signal } }), <id>Read, notFoundOutcome))
 ```
-
-### `remove`
-
-Deletes Chat-scoped data the Box keeps outside `conversation_data` and `participant_data` when the writer removes it. The host calls it inside the removal transaction, after deleting those two.
 
 ### Window entry
 
@@ -234,9 +234,9 @@ The layer rules read Box file names too: a `client*` file imports `server*` code
 
 `put-box-data` takes the Box id, not a namespace, and the Panel's `boxData` prop fixes it, so no window can name another Box's namespace. The host rejects it for a Box not enabled in the Chat and for an owner that does not exist. Library and Character writes carry the value's revision as last read (0 when absent), because the Chat revision cannot guard values shared across Chats. Values are strings the Box decodes; a value that fails its schema is an error, never a row to skip. Character and Participant data are independent after the copy.
 
-A record slot is `{ automatic?, writer?, source? }`, keyed by the instance that wrote it. `source` hashes the digested text, so an edit is digested again and a reselection is not. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
+A record slot is `{ automatic?, writer?, source?, error? }`, keyed by the instance that wrote it. `source` hashes the digested text, so an edit is digested again and a reselection is not. `error` is `{ source, message }`, the last failed digest and the hash of the text it failed on. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
 
-Setups, records, Moves and Decision Model selections are decoded against their schemas on every read, and commands check them before they land. There is no migration path: a stored value that fails to decode after a schema change is an error naming the namespace or key to clear. A feature that needs relational queries stays in-tree code that owns its tables, like Lorebooks and Memory's collections.
+Setups, records, Moves and Decision Model selections are decoded against their schemas on every read, and commands check them before they land. There is no migration path: a stored value that fails to decode after a schema change is an error naming the namespace or key to clear. A feature that needs relational queries stays in-tree code that owns its tables, like Lorebooks and the `embed` service's cache.
 
 ### Lifecycle per Chat
 
@@ -248,15 +248,15 @@ The host stores `enabled: true | false` and an `instance` id in `conversation_da
 | disabled | nothing; re-enabling picks up where it left off | setup, data, instance |
 | absent | nothing | Library and Character data, Variant records and Message Moves |
 
-Removing, after confirmation in the Box manager, deletes the Box's `conversation_data` (its instance included), this Chat's `participant_data` in its namespace, and whatever `remove` deletes. Each insert creates a new instance; disabling keeps it. The fold reads only the current instance's slots, so a reinserted Box starts from `setup.initial` and `records.initial` while its old records stay stored. A Box writes no filter for this. One Chat holds at most one instance of each Box.
+Removing, after confirmation in the Box manager, deletes the Box's `conversation_data` (its instance included) and this Chat's `participant_data` in its namespace. Each insert creates a new instance; disabling keeps it. The fold reads only the current instance's slots, so a reinserted Box starts from `setup.initial` and `records.initial` while its old records stay stored. A Box writes no filter for this. One Chat holds at most one instance of each Box.
 
-Turning a Box on, at creation or later, adds its [preset block](#preset-block) when the Chat's preset has none. Disabling or removing reports `stoppedBox` on the Conversation change. The digest queue drops that Box's jobs and aborts those in flight; a Box with other background work cancels it on `stoppedBox`, as `src/server/memory/sync.ts` does. A new Chat starts with the `startsEnabled` Boxes, today the Author Note and Memory. No Box is exempt from removal. The writer manages Boxes in the composer's Box manager.
+Turning a Box on, at creation or later, adds its [preset block](#preset-block) when the Chat's preset has none. Disabling or removing reports `stoppedBox` on the Conversation change. The digest queue drops that Box's jobs and aborts those in flight. A new Chat starts with the `startsEnabled` Boxes, today the Author Note and Memory. No Box is exempt from removal. The writer manages Boxes in the composer's Box manager.
 
 ### Generation lifecycle
 
-1. **Capture.** For each enabled Box whose preset block is enabled (or that declares `withoutBlock`), the host reads its setup, its folded state, the Moves, and its `dependencies`. A swipe reuses the seed of the Variant selected at its Message; every other Generation, re-roll included, gets a new one.
+1. **Capture.** For each enabled Box whose preset block is enabled, the host reads its setup, its folded state, the Moves, and its `dependencies`. A swipe reuses the seed of the Variant selected at its Message; every other Generation, re-roll included, gets a new one.
 2. **Advance.** Records and traces are held on the Active Generation with the captured instance and copied to the Variant when it resolves.
-3. **Admission and budget.** The block's instructions and its items pass through the Prompt Macro pass, except literal items. Pinned items are admitted first, ignore the allowance, and count toward the context limit. Then each unpinned item, by descending `priority`, is admitted whole if it fits both `allowance` (or the remaining context when none is given) and the context limit. `allowance` counts items only; the instructions count toward the context limit. The block renders its instructions, a newline, then the admitted items in that order, separated by blank lines. A plan that still overflows the context, pinned items included, raises `PromptBudgetExceededError`. Per-item admission reasons reach inspection only for Memory.
+3. **Admission and budget.** The block's instructions and its items pass through the Prompt Macro pass, except literal items. Pinned items are admitted first, ignore the allowance, and count toward the context limit. Then each unpinned item, by descending `priority`, is admitted whole if it fits both `allowance` (or the remaining context when none is given) and the context limit. `allowance` counts items only; the instructions count toward the context limit. The block renders its instructions, a newline, then the admitted items in that order, separated by blank lines. A plan that still overflows the context, pinned items included, raises `PromptBudgetExceededError`. Each item's admission reaches inspection in the Box's [trace](#advance).
 4. **Preview fingerprint.** The host fingerprints the whole preparation snapshot, seed included, with each Box's setup, state, Moves and `dependencies` (or its `fingerprint`). Sending from a preview reuses that capture and sends the inspected plan without advancing any Box again; if the fingerprint changed meanwhile, the Send fails with "The Prompt Plan is stale. Refresh it before sending."
 5. **Digest.** Resolution queues the Variant's [digests](#digest-queue-and-catch-up). Generations never wait for digests, and a finished Variant keeps the inputs it was generated with: a digest that lands later changes only what the next Generation folds.
 
@@ -266,13 +266,13 @@ Each Box has at most one block per preset, reference `box:<id>`, labelled and gi
 
 ### Digest queue and catch-up
 
-The host queues a digest for a selected, settled, non-empty Variant when it resolves, when it becomes selected without a record for its current text, or when its text is edited. Two workers drain the queue, live jobs before catch-up jobs. Each Variant and Box has one current job: a newer one aborts the older, and only the current job's result lands. A result is discarded if the text changed, the job was replaced or cancelled, the Box stopped being enabled, or the Decision Model selection went away. Jobs live in memory; work lost on restart is queued again on the next selection, resolution or edit, or by catch-up.
+The host queues a digest for a selected, settled, non-empty Variant when it resolves, when it becomes selected without a record for its current text, or when its text is edited. Two workers drain the queue, live jobs before catch-up jobs. Each Variant and Box has one current job: a newer one aborts the older, and only the current job's result lands. A result, or a failure, is discarded if the text changed, the job was replaced or cancelled, the Box stopped being enabled, or the Decision Model selection went away. A failed digest is not queued again for the same text; an edit queues it, and so does catch-up. A successful digest clears the slot's `error`. Jobs live in memory; work lost on restart is queued again on the next selection, resolution or edit, or by catch-up.
 
-Catch-up queues every selected Variant without a record for its current text, behind live work. The window shows its progress and can cancel it. A second request while one runs does nothing.
+Catch-up queues every selected Variant without a record for its current text, failed ones included, behind live work. The window shows its progress, with how many failed, and can cancel it. A second request while one runs does nothing. `POST /api/conversations/:id/boxes/<id>/digest` with `{ variantId }` queues one selected passage now as live work, retrying a digest that failed on its text and leaving one already digested for it alone; Memory's Remember and Retry actions use it.
 
 ### Passage timeline
 
-`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock tab polls only the status.
+`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, a "Digest failed" mark carrying the error when the last digest of its current text failed, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock tab polls only the status.
 
 The override editor is built from the `record` schema:
 
@@ -307,7 +307,7 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 | Box | Starts enabled | Declares |
 |---|---|---|
 | Author Note | yes | `setup`, `advance` |
-| Memory | yes | `inject: ["decide", "embed"]`, `dependencies`, `advance` with `trace`, `fingerprint`, `withoutBlock`; `remove` |
+| Memory | yes | `record`, `decision`, `inject: ["llm", "decide", "embed"]`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`; no window, its own side panel and routes |
 | World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe` |
 | Race | no | `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; window |
 | Phone | no | `instructions`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
@@ -316,7 +316,7 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 
 **Author Note.** Setup is the note text, Image References included. `advance` returns it as one pinned item, or nothing when blank. It has no instructions. Lore scanning, Semantic Trigger judging and Memory extraction never read it. It edits in the workspace's primary panel, not a Box window.
 
-**Memory.** It has no instructions. A seam port: `advance` is recall (capture, embedding query, Decision Model relevance), returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint. Memory keeps `memory_collection`, its settings tables and its extraction queue in-tree; `remove` deletes the per-Chat settings row. It keeps its own side panel. The full port onto records and digests is [#68](https://github.com/TanJeeSchuan/DitzyTavern/issues/68).
+**Memory.** It has no instructions. It digests like the World Clock and Mood, and its digest also calls an extraction model. Its record is `{ claims }`, each claim an attributed statement with its people, its evidence excerpts and the Decision Model's judgment. A digest reads the passage with up to four preceding Messages, trimmed to the extraction context; asks the extraction model chosen in Memory Settings through `ctx.llm`, with the Chat's identity sentences and Memory note; has `ctx.decide` judge each candidate's support, attribution and usefulness; keeps the supported, correctly attributed ones whose retain probability meets the minimum; and embeds what it kept through `ctx.embed` with `cache`. A passage by an author who is not in the story digests to no claims. Its Decision Model is the host's selection for the Box. Identities and label merges apply when claims are shown and recalled, never to stored records. Editing or removing a claim writes the passage's whole claims list as its Writer record through `set-box-record`; reset drops that record and the automatic claims return. A passage is extracted again only when its text changes. `advance` is recall over the Selected path's effective records, read from `CaptureRead`'s `messages`: it embeds any claim text the cache lacks, such as a Writer's edit, shortlists by embedding similarity and recency, and has the Decision Model score relevance, returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint: Memory's settings, Decision Model, allowance, labels and Writer records mark a preview stale, a digest landing in the background does not. Its side panel lists each passage's claims from the record slots, with the slot's `error`, and starts catch-up through the host. Its own routes in `server-routes.ts` serve that panel, its settings editor and its trace view, which links only to the sources still in the Chat. The server registry mounts them as `boxRoutes`, and the client registry re-exports its contract and shared logic to that in-tree UI, until the UI moves into its folder (GitHub #24).
 
 **World Clock.** Setup is a naive Gregorian start (`YYYY-MM-DDTHH:mm`; `setupError` rejects dates such as February 31), an era suffix (default `AD`), a climate (temperate, tropical, arid, cold), a hemisphere and a unit (default °C). A digest reads the passage with one preceding Message and asks two `choice` questions: the elapsed time (`none`, `~5m`, `~15m`, `~30m`, `~1h`, `~2h`, `~4h`, `~8h`, `overnight`, `~1 day`, `several days`), with the exact minutes drawn inside the bin from `seed`; and the weather established (`not mentioned`, `clear`, `cloudy`, `rain`, `storm`, `snow`, `fog`). The record is `{ minutes, weather }`. The fold adds minutes and keeps the latest weather with the minute it was mentioned; the clock stops showing it 24 in-world hours after that. Temperature follows climate, hemisphere, season, hour and weather. It has no instructions: `advance` pins one line, `8:41 AM | 🗓️ Saturday, December 20, 2025 AD | ☀️ Clear, 3°C`, omitting unknown weather; without a Decision Model selection the clock stays where it is. Status is `8:41 AM · ☀️ 3°C`.
 

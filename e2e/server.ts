@@ -4,7 +4,6 @@ import { createApp } from "../src/server/app";
 import { openInitializedDatabase } from "../src/server/database/database";
 import { seed } from "../src/server/database/seed";
 import { createConnectionSettingsModule } from "../src/server/connection-settings";
-import { createMemorySettingsModule } from "../src/server/memory/settings";
 import { initializeConnectionSecretKey } from "../src/server/connection-secrets";
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../src/server/model-client";
@@ -152,9 +151,6 @@ const provision = (databasePath: string) => {
 		expectedRevision: connections.get().revision,
 		profile: { ...profile, displayName: "E2E embeddings", apiFormat: "embeddings", requestUrl: "https://e2e.invalid/v1/embeddings", pinnedModels: ["e2e-embedding"] },
 	});
-	const memory = createMemorySettingsModule(database);
-	const { revision, ...memorySettings } = memory.get();
-	memory.apply({ ...memorySettings, expectedRevision: revision, enabled: false });
 	return database;
 };
 

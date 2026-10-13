@@ -1,5 +1,8 @@
 import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Value } from "@sinclair/typebox/value";
 import {
 	loadActiveGenerationDetails,
 	loadVariantDetails,
@@ -16,7 +19,10 @@ import type { GenerationJsonValue } from "../shared/generation-json";
 import type { PromptImage } from "../shared/contract/conversation-schema";
 import { projectImageAnchors } from "../shared/image-reference";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
-import type { MemoryActivationRecord } from "../shared/contract/memory-recall";
+import { memoryActivationRecord, renderMemoryClaim, type MemoryActivationRecord, type MemorySources } from "./box-windows/registry";
+import { boxReference } from "../shared/contract/box";
+import type { BoxTrace } from "../shared/contract/box-generation";
+import { loadMemorySources } from "./memories";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -120,7 +126,7 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 				</section>
 			)}
 			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
-			{details.memoryActivation != null && <MemoryActivationDetails record={details.memoryActivation} memorySources={details.memorySources} onNavigateSource={onNavigateSource} />}
+			<MemoryActivationDetails conversationId={details.conversationId} trace={details.boxTraces[boxReference("memory")]} onNavigateSource={onNavigateSource} />
 			<PromptImageList images={details.promptPlan.images} />
 			<PromptPlan plan={details.promptPlan} />
 		</>
@@ -194,7 +200,7 @@ function VariantDetailsView({ details, onNavigateSource }: { details: VariantDet
 			</dl>
 			{provenance !== null && <ProvenanceSettings provenance={provenance} />}
 			{details.loreActivation !== null && <LoreActivationDetails record={details.loreActivation} />}
-			{details.memoryActivation !== null && <MemoryActivationDetails record={details.memoryActivation} memorySources={details.memorySources} onNavigateSource={onNavigateSource} />}
+			<MemoryActivationDetails conversationId={details.conversationId} trace={details.boxTraces[boxReference("memory")]} onNavigateSource={onNavigateSource} />
 			{provenance === null && <p className="panel-note">This Variant has no Generation provenance.</p>}
 		</>
 	);
@@ -223,68 +229,94 @@ export function LoreActivationDetails({ record }: { record: LoreActivationRecord
 }
 
 const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
-	disabled: "Memory block disabled",
 	"allowance-zero": "Memory Allowance is zero",
 	empty: "No ready Memories",
-	rebuilding: "Memory indexes are being built",
-	partial: "Some Memory indexes are unavailable",
-	ready: "Memory indexes ready",
-	"index-failed": "Memory indexing failed",
-	"source-failed": "Some Memory sources failed",
+	rebuilding: "Messages are still being remembered",
+	partial: "Some Messages are not remembered yet",
+	ready: "Every Message is remembered",
+	"source-failed": "Some Messages could not be remembered",
 	unconfigured: "Embedding settings needed",
 }[state]);
 
-const admissionLabel = (record: MemoryActivationRecord["candidates"][number], manuallyEdited: boolean): string => {
-	if (record.admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
-	if (record.admission === "not-retained") return "Below relevance minimum";
-	if (record.admission === "request-limit") return "Omitted from Decision Model request";
-	if (record.admission === "duplicate-rendering") return "Duplicate rendering";
-	if (record.admission === "allowance") return "Over Memory Allowance";
-	if (record.admission === "oversized") return "Too large for Memory Allowance";
+// @approved
+//  A claim recall offered to the prompt was then admitted or refused by the
+//  host's budget, which the trace's items record by text.
+const admissionLabel = (candidate: MemoryActivationRecord["candidates"][number], trace: BoxTrace, manuallyEdited: boolean): string => {
+	if (candidate.admission === "not-retained") return "Below relevance minimum";
+	if (candidate.admission === "request-limit") return "Omitted from Decision Model request";
+	if (candidate.admission === "duplicate-rendering") return "Duplicate rendering";
+	const admission = trace.items.find((item) => item.text === renderMemoryClaim(candidate))?.admission ?? "admitted";
+	if (admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
+	if (admission === "allowance") return "Over Memory Allowance";
+	if (admission === "oversized") return "Too large for Memory Allowance";
 	return "Does not fit the context limit";
 };
 
-export function MemoryActivationDetails({ record, memorySources, onNavigateSource }: {
-	record: MemoryActivationRecord;
-	memorySources: ActiveGenerationDetails["memorySources"];
+/** @approved Memory's trace view; it renders nothing when the Generation captured no Memory, and says so when the stored trace no longer matches Memory's schema. Links go only to sources still in the Chat. */
+export function MemoryActivationDetails({ conversationId, trace, onNavigateSource }: {
+	conversationId: number;
+	trace: BoxTrace | undefined;
 	onNavigateSource?: (messageId: number) => void;
 }) {
+	const record = useMemo(() => trace?.trace !== undefined && Value.Check(memoryActivationRecord, trace.trace) ? trace.trace : null, [trace]);
+	const cited = useMemo(() => ({
+		messageIds: [...new Set([...(record?.scanMessageIds ?? []), ...(record?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? [])])],
+		variantIds: [...new Set(record?.candidates.map(({ variantId }) => variantId) ?? [])],
+	}), [record]);
+	const sources = useQuery({
+		queryKey: ["memory-sources", conversationId, cited],
+		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
+		enabled: record !== null,
+	});
+	const memorySources = sources.isError || sources.data === undefined ? { messageIds: [], variantIds: [] } : sources.data;
+	if (trace === undefined) return null;
+	if (record === null) return (
+		<section className="generation-detail-section">
+			<h3>Memory recall</h3>
+			<p className="text-xs text-destructive" role="alert">This Generation's Memory trace no longer matches Memory's schema.</p>
+		</section>
+	);
+	const manuallyEdited = trace.finalText !== trace.automaticText;
 	return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
+			{sources.isError && <div className="grid justify-items-start gap-2">
+				<p className="text-xs text-destructive" role="alert">Which sources are still in this Chat could not be checked, so they are not linked.</p>
+				<Button type="button" size="sm" variant="outline" onClick={() => void sources.refetch()}>Try again</Button>
+			</div>}
 			<dl className="detail-list compact-detail-list">
 				<div><dt>Status</dt><dd>{memoryStateLabel(record.state)}</dd></div>
 				<div><dt>Eligible sources</dt><dd>{record.eligibleSourceCount}</dd></div>
 				<div><dt>Ready claims</dt><dd>{record.readyRecordCount}</dd></div>
 				<div><dt>Shortlist</dt><dd>{record.semanticShortlistCount} semantic · {record.recentShortlistCount} recent</dd></div>
-				<div><dt>Pending indexes</dt><dd>{record.pendingIndexCount}{record.pendingSourceCount > 0 ? ` · ${record.pendingSourceCount} sources processing` : ""}</dd></div>
-				<div><dt>Failed</dt><dd>{record.failedIndexCount} indexes · {record.failedSourceCount} sources</dd></div>
+				<div><dt>Not remembered yet</dt><dd>{record.pendingSourceCount} sources</dd></div>
+				<div><dt>Failed</dt><dd>{record.failedSourceCount} sources</dd></div>
 				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
 				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
 				<div><dt>Decision Model</dt><dd>{record.decisionProfileName ?? "No profile"} · {record.decisionModel || "No model"}{record.decisionConfigured ? " · configured" : " · not configured"}</dd></div>
 				<div><dt>Relevance minimum</dt><dd>{record.relevanceMinimum}</dd></div>
-				<div><dt>Prompt edit</dt><dd>{record.manuallyEdited ? "Manual" : "Automatic"}</dd></div>
+				<div><dt>Prompt edit</dt><dd>{manuallyEdited ? "Manual" : "Automatic"}</dd></div>
 			</dl>
 			<p className="panel-note">
-			{record.manuallyEdited
+			{manuallyEdited
 				? "This Memory block was edited for this Generation. Saved source Memories are unchanged."
 				: "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}
 		</p>
-			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && (
-			<p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>
+			{record.readyRecordCount === 0 && record.pendingSourceCount > 0 && (
+			<p className="panel-note">The empty block reflects Messages not remembered yet; it does not mean recall found no relevant claims.</p>
 		)}
-			{record.manuallyEdited && (
+			{manuallyEdited && (
 			<details>
 				<summary>Automatic Memory selection</summary>
-				<pre className="generation-detail-preformatted">{record.automaticMemoryText || "No Memory text was selected automatically."}</pre>
+				<pre className="generation-detail-preformatted">{trace.automaticText || "No Memory text was selected automatically."}</pre>
 			</details>
 		)}
-			<details><summary>Final Memory block</summary><pre className="generation-detail-preformatted">{record.finalMemoryText || "The final Memory block was empty."}</pre></details>
+			<details><summary>Final Memory block</summary><pre className="generation-detail-preformatted">{trace.finalText || "The final Memory block was empty."}</pre></details>
 			<details>
 				<summary>Considered claims ({record.candidates.length})</summary>
 				{record.candidates.length === 0 ? <p className="panel-note">No ready claims were considered for this scene.</p> : <ol>
 					{record.candidates.map((candidate) => <li key={candidate.identity}>
-						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
+						<strong>{admissionLabel(candidate, trace, manuallyEdited)}</strong>
 						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
 						<p className="panel-note">
 							<MemorySourceLink
@@ -292,10 +324,10 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 								variantId={candidate.variantId}
 								sources={memorySources}
 								onNavigateSource={onNavigateSource}
-							/> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}
+							/> · Variant {candidate.variantId} · {candidate.writer ? "writer-maintained" : "automatic"}
 							{candidate.sourceChanged
 								? " · source changed since this Memory was saved"
-								: ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null
+								: ""} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null
 									? "no semantic rank"
 									: `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}
 							{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null
@@ -353,7 +385,7 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 function MemorySourceLink({ messageId, variantId, sources, onNavigateSource }: {
 	messageId: number;
 	variantId: number | null;
-	sources: ActiveGenerationDetails["memorySources"];
+	sources: MemorySources;
 	onNavigateSource?: (messageId: number) => void;
 }) {
 	const exists = variantId === null ? sources.messageIds.includes(messageId) : sources.variantIds.includes(variantId);

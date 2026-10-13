@@ -8,7 +8,7 @@ import { variantDataCodecs } from "../../shared/variant-data-codecs";
 
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	generationReplayTable,
@@ -196,7 +196,6 @@ export function readActiveGenerationDetailsFromConnection(
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	const loreActivation = variantDataCodecs.loreActivation.decode(row.lore_activation_json);
-	const memoryActivation = variantDataCodecs.memoryActivation.decode(row.memory_activation_json);
 	return {
 		conversationId,
 		generationId: row.id,
@@ -212,8 +211,7 @@ export function readActiveGenerationDetailsFromConnection(
 		promptPlan: persistedPromptPlan(row.prompt_plan_json),
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		loreActivation,
-		memoryActivation,
-		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
+		boxTraces: variantDataCodecs.boxTraces.decode(row.box_traces_json),
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
@@ -263,9 +261,8 @@ export function readVariantDetailsFromConnection(
 		eq(messageVariantTable.message_id, messageId),
 	)).get();
 	if (variant === undefined) return undefined;
-	const data = readVariantData(db, [variantId], ["provenance", "loreActivation", "memoryActivation"]).get(variantId);
+	const data = readVariantData(db, [variantId], ["provenance", "loreActivation", "boxTraces"]).get(variantId);
 	const loreActivation = data?.loreActivation ?? null;
-	const memoryActivation = data?.memoryActivation ?? null;
 	const castIds = message.author_participant_id === null
 		? new Set<number>()
 		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));
@@ -279,54 +276,9 @@ export function readVariantDetailsFromConnection(
 		historicalContext: toHistoricalContext(message),
 		provenance: data?.provenance ?? null,
 		loreActivation,
-		memoryActivation,
-		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
+		boxTraces: data?.boxTraces ?? {},
 	};
 }
-
-const readMemorySourceAvailabilityFromConnection = (
-	db: ConversationDatabase,
-	conversationId: number,
-	activation: ActiveGenerationDetails["memoryActivation"],
-): ActiveGenerationDetails["memorySources"] => {
-	const messageIds = [...new Set([
-		...(activation?.scanMessageIds ?? []),
-		...(activation?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? []),
-	])];
-	const variantIds = [...new Set(activation?.candidates.map(({ variantId }) => variantId) ?? [])];
-	return {
-		messageIds: messageIds.length === 0
-			? []
-			: db
-				.select({ id: messageTable.id })
-				.from(messageTable)
-				.where(and(
-					eq(messageTable.conversation_id, conversationId),
-					inArray(messageTable.id, messageIds),
-				))
-				.all()
-				.map(({ id }) => id),
-		variantIds: variantIds.length === 0
-			? []
-			: db
-				.select({ id: messageVariantTable.id })
-				.from(messageVariantTable)
-				.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
-				.where(and(
-					eq(messageTable.conversation_id, conversationId),
-					inArray(messageVariantTable.id, variantIds),
-				))
-				.all()
-				.map(({ id }) => id),
-	};
-};
-
-export const readMemorySourceAvailability = (
-	database: Database,
-	conversationId: number,
-	activation: ActiveGenerationDetails["memoryActivation"],
-): ActiveGenerationDetails["memorySources"] =>
-	readMemorySourceAvailabilityFromConnection(connectConversationDatabase(database), conversationId, activation);
 
 export function readActiveGenerationsForRecovery(database: Database) {
  return connectConversationDatabase(database).select({

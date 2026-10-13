@@ -58,8 +58,9 @@ import type {
 } from "../types";
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
-import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import { Value } from "@sinclair/typebox/value";
+import { boxTraces } from "../../../shared/contract/box-generation";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 
 // @approved
 //  Acceptance seams for the server-owned Generation lifecycles. Every accept
@@ -85,7 +86,7 @@ const jsonText = (
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
+	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "generationIntent" |
 	"provenance" | "macroPresetId" | "macroWrites" | "seed" | "boxRecords"
 >;
 
@@ -112,10 +113,8 @@ const persistActiveGeneration = (
 			"The Lore Activation Record does not match the canonical schema.",
 		);
 	}
-	const memoryActivation = input.memoryActivation ?? null;
-	if (memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
-		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
-	}
+	const traces = input.boxTraces ?? {};
+	if (!Value.Check(boxTraces, traces)) throw new InvalidConversationCommandError("The Box traces do not match their schema.");
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -135,7 +134,7 @@ const persistActiveGeneration = (
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
-			memory_activation_json: jsonText(memoryActivation, "Memory activation evidence"),
+			box_traces_json: jsonText(traces, "Box traces"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,
@@ -278,7 +277,7 @@ const tailHumanChange = (
 	db: ConversationDatabase,
 	conversationId: number,
 	humanMessageId: number,
-): ConversationMemoryChange => ({
+): ConversationWriteChange => ({
 	conversationId,
 	touchedVariantIds: db
 		.select({ id: messageVariantTable.id })

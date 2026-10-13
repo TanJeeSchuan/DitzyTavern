@@ -230,7 +230,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 					Digest missing passages
 				</Button>
 				: <span className="box-timeline-progress" role="status">
-					Digesting {catchUp.total - catchUp.remaining} of {catchUp.total}…
+					Digesting {catchUp.total - catchUp.remaining} of {catchUp.total}…{catchUp.failed > 0 && ` ${catchUp.failed} failed.`}
 					<Button variant="ghost" size="sm" disabled={busy} onClick={() => void runCatchUp(() => cancelBoxCatchUp(conversation.id, box))}>Cancel</Button>
 				</span>}
 		</div>
@@ -249,6 +249,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 							<span className="box-timeline-summary">
 								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}
 								{passage.overridden && <span className="box-timeline-override-mark">Overridden</span>}
+								{passage.error !== null && <span className="box-timeline-error">Digest failed: {passage.error}</span>}
 							</span>
 							<span className="box-timeline-actions">
 								<Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing(passage.variantId)}><Pencil aria-hidden="true" />Edit</Button>

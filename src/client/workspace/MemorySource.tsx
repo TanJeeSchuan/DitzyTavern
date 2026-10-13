@@ -1,79 +1,68 @@
 import { Check, ChevronLeft, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
+import { Value } from "@sinclair/typebox/value";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { formatJudgment, formatTimestamp } from "../lib/format";
-import { loadMemoryTrace, type ConversationMemories } from "../memories";
-import type { MemoryTraceStep } from "../../shared/contract/memory";
+import { formatJudgment } from "../lib/format";
+import type { ConversationMemories } from "../memories";
+import { memoryCandidate } from "../box-windows/registry";
 import { memorySourceState } from "./memory-source-state";
 import type { ClaimDraft } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
-type Claim = Source["claims"][number];
+type Claim = NonNullable<Source["claims"]>[number];
 
-/** @approved The retries a source card sends for its Message. */
+/** @approved What a source card asks for its Message: a digest now, or the Writer override reset. */
 type SourceCardActions = {
-	retry: (source: Source) => void;
-	retryIndex: (source: Source) => void;
+	remember: (source: Source) => void;
+	requestReset: (source: Source) => void;
 };
 
 /** @approved The corrections a claim row sends, and the label of its source's Message. */
 type ClaimRowActions = {
 	label: (messageId: number) => string;
 	edit: (source: Source, index: number | null) => void;
-	save: (source: Source, index: number, draft: ClaimDraft) => void;
+	save: (source: Source, draft: ClaimDraft) => void;
 	remove: (source: Source, index: number) => void;
 };
 
-export function MemorySourceCard({ conversationId, source, label, busy, enabled, excluded, actions, onNavigate, onStep, onClear }: {
-	conversationId: number;
+export function MemorySourceCard({ source, label, busy, ready, excluded, actions, onNavigate, onStep, onClear }: {
 	source: Source | undefined;
 	label: string;
 	busy: boolean;
-	enabled: boolean;
+	ready: boolean;
 	excluded: boolean;
 	actions: SourceCardActions;
 	onNavigate: () => void;
 	onStep: ((offset: -1 | 1) => void) | null;
 	onClear: () => void;
 }) {
-	const [traceOpen, setTraceOpen] = useState(false);
 	const { kind, text } = memorySourceState(source);
-	const notes = [excluded ? "Author isn't in the story" : text, source?.ownership === "writer" && "Writer-maintained", source?.sourceChanged && "Source changed"].filter(Boolean).join(" · ");
-	const error = source?.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? "Memory indexing failed." : source?.error;
+	const stale = source !== undefined && source.claims !== null && !source.digested && !source.overridden;
+	const notes = [excluded ? "Author isn't in the story" : text, source?.overridden && "Writer-maintained", stale && "Source changed"].filter(Boolean).join(" · ");
 	return <section className="memory-source-card" aria-label={`Memories from ${label}`} data-kind={kind}>
 		<header>
 			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Previous Message" onClick={() => onStep(-1)}><ChevronLeft aria-hidden="true" /></Button>}
 			<button type="button" className="memory-source-link" onClick={onNavigate}>{label}</button>
 			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Next Message" onClick={() => onStep(1)}><ChevronRight aria-hidden="true" /></Button>}
-			<span className="memory-source-notes" data-working={kind === "working"}>{notes}</span>
+			<span className="memory-source-notes">{notes}</span>
 			<Button type="button" variant="ghost" size="icon-xs" aria-label="Show every Message" onClick={onClear}><X aria-hidden="true" /></Button>
 		</header>
 		{kind === "failed" && source && <div className="memory-source-error">
-			<p>{error ?? "Memory extraction failed."}</p>
-			{source.indexing.status === "failed" && source.status !== "failed"
-				? <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.retryIndex(source)}>Retry indexing</Button>
-				: <Button type="button" size="xs" variant="outline" disabled={busy || !enabled} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
+			<p>{source.error}</p>
+			<Button type="button" size="xs" variant="outline" disabled={busy || !ready} onClick={() => actions.remember(source)}>Retry</Button>
 		</div>}
-		{source?.status === "complete" && source.ownership === "writer" && source.claims.length === 0 && (
-			<p className="memory-source-empty">All Memories were removed. Automatic updates are paused for this source.</p>
+		{source?.overridden && source.claims?.length === 0 && (
+			<p className="memory-source-empty">All Memories were removed. Reset to bring back the automatic ones.</p>
 		)}
-		{source && <div className="memory-source-actions">
-			{kind !== "failed" && (
-				<Button
-					type="button"
-					size="xs"
-					variant="outline"
-					disabled={busy || !enabled || kind === "working"}
-					title={enabled ? undefined : "Memory is off for this Chat."}
-					onClick={() => actions.retry(source)}
-				>
-				{kind === "working" ? "Remembering…" : source.status === "unprocessed" ? "Remember this Message" : source.ownership === "writer" ? "Reset and re-extract…" : "Re-extract"}
-					</Button>
-					)}
-			{source.status !== "unprocessed" && <Button type="button" size="xs" variant="ghost" aria-expanded={traceOpen} onClick={() => setTraceOpen(!traceOpen)}>Pipeline trace</Button>}
+		{source && (kind === "unprocessed" || source.overridden) && <div className="memory-source-actions">
+			{kind === "unprocessed" && !source.overridden && (
+				<Button type="button" size="xs" variant="outline" disabled={busy || !ready} onClick={() => actions.remember(source)}>Remember this Message</Button>
+			)}
+			{source.overridden && (
+				<Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.requestReset(source)}>Reset corrections…</Button>
+			)}
 		</div>}
-		{traceOpen && source && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={kind === "working"} onClose={() => setTraceOpen(false)} />}
 	</section>;
 }
 
@@ -82,24 +71,31 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	index: number;
 	group: string;
 	busy: boolean;
-	editing: boolean;
+	/** @approved The stored claim open for editing in this row, people as extraction or the writer named them rather than as labelled. */
+	editing: Claim | null;
 	actions: ClaimRowActions;
 	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
 }) {
-	const claim = source.claims[index]!;
-	const [confirming, setConfirming] = useState(false);
+	const claim = source.claims![index]!;
+	// @approved
+	//  A removal confirmation belongs to the claim it was opened for; a claim a
+	//  digest replaced meanwhile closes it.
+	const claimKey = JSON.stringify(claim);
+	const [confirmed, setConfirmed] = useState<string | null>(null);
+	const confirming = confirmed === claimKey;
+	const setConfirming = (open: boolean) => setConfirmed(open ? claimKey : null);
 	const editButton = useRef<HTMLButtonElement>(null);
-	const wasEditing = useRef(editing);
-	useEffect(() => { if (wasEditing.current && !editing) editButton.current?.focus(); wasEditing.current = editing; }, [editing]);
+	const wasEditing = useRef(editing !== null);
+	useEffect(() => { if (wasEditing.current && editing === null) editButton.current?.focus(); wasEditing.current = editing !== null; }, [editing]);
 	if (editing)
 		return (
 			<article className="memory-claim" data-editing="true">
 				<MemoryClaimEditor
-					claim={claim}
+					claim={editing}
 					busy={busy}
 					onCancel={() => actions.edit(source, null)}
-					onSave={(draft) => actions.save(source, index, draft)}
+					onSave={(draft) => actions.save(source, draft)}
 				/>
 			</article>
 		);
@@ -110,7 +106,7 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 			<button type="button" className="memory-source-link" onClick={() => onSelectSource(source)}>{actions.label(source.messageId)}</button>
 			{claim.attribution !== group && <span> · {claim.attribution}</span>}
 			{claim.writerMaintained && <span> · Edited</span>}
-			{source.sourceChanged && <span> · Source changed</span>}
+			{!source.digested && !source.overridden && <span> · Source changed</span>}
 		</p>
 		<div className="memory-claim-actions" data-confirming={confirming} onKeyDown={(event) => { if (event.key === "Escape") setConfirming(false); }}>
 			{confirming ? (
@@ -184,13 +180,11 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 
 function MemoryClaimEditor({ claim, busy, onCancel, onSave }: { claim: Claim; busy: boolean; onCancel: () => void; onSave: (draft: ClaimDraft) => void }) {
 	const [draft, setDraft] = useState({ claim: claim.claim, attribution: claim.attribution, people: claim.people.join(", ") });
+	const corrected = { claim: draft.claim, attribution: draft.attribution, people: draft.people.split(",").map((person) => person.trim()).filter(Boolean) };
+	const valid = Value.Check(memoryCandidate, { ...claim, ...corrected });
 	const submit = (event?: FormEvent) => {
 		event?.preventDefault();
-		onSave({
-			claim: draft.claim,
-			attribution: draft.attribution,
-			people: draft.people.split(",").map((person) => person.trim()).filter(Boolean),
-		});
+		if (valid) onSave(corrected);
 	};
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.key === "Escape") { event.stopPropagation(); onCancel(); }
@@ -217,38 +211,7 @@ function MemoryClaimEditor({ claim, busy, onCancel, onSave }: { claim: Claim; bu
 		<div className="memory-editor-actions">
 			<span>Ctrl+Enter saves · Esc cancels</span>
 			<Button type="button" size="sm" variant="ghost" onClick={onCancel}><X aria-hidden="true" /> Cancel</Button>
-			<Button type="submit" size="sm" disabled={busy}><Check aria-hidden="true" /> Save</Button>
+			<Button type="submit" size="sm" disabled={busy || !valid}><Check aria-hidden="true" /> Save</Button>
 		</div>
 	</form>;
-}
-
-function MemoryTraceView({ conversationId, variantId, live, onClose }: { conversationId: number; variantId: number; live: boolean; onClose: () => void }) {
-	const [steps, setSteps] = useState<MemoryTraceStep[] | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	useEffect(() => {
-		const load = () => { void loadMemoryTrace(conversationId, variantId).then((loaded) => { setSteps(loaded); setError(null); }).catch(() => setError("Pipeline trace could not be loaded.")); };
-		load();
-		if (!live) return;
-		const interval = window.setInterval(load, 2000);
-		return () => window.clearInterval(interval);
-	}, [live, conversationId, variantId]);
-	return <div className="memory-trace">
-		<header>
-			<span>
-				Pipeline trace{steps
-					? ` · ${steps.length} ${steps.length === 1 ? "step" : "steps"}`
-					: ""}
-				{live ? " · live" : ""}
-			</span>
-			<Button type="button" size="icon-xs" variant="ghost" aria-label="Hide pipeline trace" onClick={onClose}>
-				<X aria-hidden="true" />
-			</Button>
-		</header>
-		{error && <p className="import-problem" role="alert">{error}</p>}
-		{steps?.length === 0 && <p className="memory-source-empty">No trace recorded yet. Retry extraction to capture one.</p>}
-		<ol>{steps?.map((step, index) => <li key={index} data-failed={step.label === "Failed"}><details open={step.label === "Failed"}>
-			<summary><span>{step.label}</span><time>{formatTimestamp(step.at)}{step.fields.elapsed ? ` · ${step.fields.elapsed}` : ""}</time></summary>
-			{Object.entries(step.fields).map(([key, value]) => <div className="memory-trace-field" key={key}><span>{key}</span><pre>{value}</pre></div>)}
-		</details></li>)}</ol>
-	</div>;
 }

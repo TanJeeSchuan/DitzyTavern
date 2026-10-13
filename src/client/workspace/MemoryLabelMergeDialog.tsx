@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { mergeMemoryLabels, type ConversationMemories } from "../memories";
+import { labelledMemories } from "./memories-view";
 
 export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels, onClose, onMerged }: {
 	conversationId: number;
@@ -17,10 +18,10 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const listId = useId();
-	const names = [...new Set(snapshot.sources.flatMap((source) => source.claims.flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
+	const names = [...new Set(snapshot.sources.flatMap((source) => (source.claims ?? []).flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
 	const target = destination.trim();
 	const affected = snapshot.sources.flatMap((source) =>
-		source.claims.flatMap((claim, index) =>
+		(source.claims ?? []).flatMap((claim, index) =>
 			claim.people.some((name) => labels.includes(name) && name !== target)
 				? [{ source, claim, index }]
 				: [],
@@ -32,7 +33,7 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 			const result = await mergeMemoryLabels(conversationId, { expectedRevision: snapshot.labelRevision, labels, destination: target });
 			if (result.outcome === "available") onMerged(result.value.memories, target);
 			else if (result.outcome === "conflict") {
-				setSnapshot(result.memories); setLabels([]);
+				setSnapshot(labelledMemories(result.memories)); setLabels([]);
 				setError("These labels changed elsewhere. Review the current labels and select them again.");
 			}
 			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Labels could not be merged. Try again.");

@@ -1,4 +1,4 @@
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import type { ConversationDatabase } from "../internal";
 import { appendSelectedVariant, requireMessage } from "../internal";
 
@@ -11,7 +11,7 @@ export interface CreateVariantInput {
 export function createVariant(
 	db: ConversationDatabase,
 	input: CreateVariantInput,
-): ConversationMemoryChange {
+): ConversationWriteChange {
 	const message = requireMessage(db, input.conversationId, input.messageId);
 	const variantId = appendSelectedVariant(db, {
 		messageId: input.messageId,

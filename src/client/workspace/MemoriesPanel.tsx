@@ -4,8 +4,9 @@ import { Fragment, useDeferredValue, useEffect, useState, type ReactNode } from 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { MemoryIdentity } from "../../shared/contract/memory";
+import type { MemoryIdentity } from "../box-windows/registry";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
+import type { ConversationSummary } from "../conversation";
 import type { ConversationMemories } from "../memories";
 import { PanelHeader } from "../PanelHeader";
 import { Portrait } from "../story/Portrait";
@@ -16,25 +17,24 @@ import { MemoryIdentityDialog } from "./MemoryIdentityDialog";
 import { MemoryNoteDialog } from "./MemoryNoteDialog";
 import { MemoryClaimRow, MemorySourceCard } from "./MemorySource";
 import { groupEntriesByPeople, memoryCastMembers, memoryEntries, memoryPositions, type MemoryEntry } from "./memories-view";
-import { useConversationMemories } from "./useConversationMemories";
+import { useConversationMemories, useMemoryActions } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
 type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
-export function MemoriesPanel({ conversationId, conversationRevision, cast, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
-	conversationId: number;
-	conversationRevision: number;
-	cast: CastMember[];
+export function MemoriesPanel({ conversation, onConversationChange, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
+	conversation: ConversationSummary;
+	onConversationChange: (conversation: ConversationSummary) => void;
 	focusRequest: { messageId: number } | null;
 	onClose: () => void;
 	onNavigateSource: (messageId: number) => void;
-	onOpenPanel: (panel: "memory" | "prompts") => void;
+	onOpenPanel: (panel: "memory" | "connections") => void;
 }) {
-	const {
-		status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget,
-		actions, refresh, settingsSaved, startCatchup, cancelCatchup, confirmReset, cancelReset,
-		labelsMerged, identitySaved,
-	} = useConversationMemories(conversationId, conversationRevision);
+	const conversationId = conversation.id;
+	const enabled = conversation.boxes.memory === "enabled";
+	const { status, memories, stored, settings, refresh, settingsSaved, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversation.revision, { poll: true });
+	const actions = useMemoryActions({ conversationId, conversation, onConversationChange, stored, refresh });
+	const { notice, busy, catchupBusy, editing, resetTarget } = actions;
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<number | null>(null);
 	useEffect(() => { setFocus(focusRequest?.messageId ?? null); }, [focusRequest]);
@@ -43,15 +43,17 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 	const [noteOpen, setNoteOpen] = useState(false);
 	const [alternativesOpen, setAlternativesOpen] = useState(false);
 
+	const labels = new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`]));
+	const label = (messageId: number) => labels.get(messageId) ?? "Earlier Message";
 	const position = memoryPositions(memories?.path ?? []);
 	const selected = memories?.sources.filter((source) => source.selected) ?? [];
 	const alternatives = memories?.sources.filter((source) => !source.selected) ?? [];
-	const awaitingEmbedding = selected.filter((source) => source.indexing.status === "unconfigured").length;
 	const search = useDeferredValue(query);
 	const searching = search.trim() !== "";
-	const memoryCast = memoryCastMembers(cast, memories);
+	const memoryCast = memoryCastMembers(conversation.cast, memories);
 	const entries = (sources: Source[]) => memoryEntries(sources, position, focus, search);
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
+	const ready = enabled && memories?.digestReady === true;
 	const render = (list: MemoryEntry[]) =>
 		groupEntriesByPeople(list, memoryCast).map(({ key, people, entries: group }) => (
 			<PeopleGroup
@@ -69,8 +71,8 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 			index={index}
 			group={people.join(" & ")}
 			busy={busy.has(source.variantId)}
-			editing={editing?.variantId === source.variantId && editing.index === index}
-			actions={actions}
+			editing={editing?.variantId === source.variantId && editing.index === index ? editing.claims[index] ?? null : null}
+			actions={{ ...actions, label }}
 			onSelectSource={(target) => target.selected ? select(target.messageId) : onNavigateSource(target.messageId)}
 			onNavigate={onNavigateSource}
 		/>}
@@ -79,8 +81,10 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 	);
 	const visible = entries(selected);
 	const hidden = alternativesOpen ? entries(alternatives) : [];
-	const alternativeCount = alternatives.reduce((total, source) => total + source.claims.length, 0);
-	const hasPeople = memories?.sources.some((source) => source.claims.some((claim) => claim.people.length > 0)) ?? false;
+	const alternativeCount = alternatives.reduce((total, source) => total + (source.claims?.length ?? 0), 0);
+	const hasClaims = memories?.sources.some((source) => (source.claims?.length ?? 0) > 0) ?? false;
+	const hasPeople = memories?.sources.some((source) => source.claims?.some((claim) => claim.people.length > 0)) ?? false;
+	const focused = selected.find((source) => source.messageId === focus);
 
 	return <aside className="details-panel" data-open="true" aria-label="Memories">
 		<PanelHeader title="Memories" onClose={onClose} actions={<>
@@ -109,18 +113,16 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 			)}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{settings?.enabled === false && (
+				{!enabled && <div className="memory-callout"><p>Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.</p></div>}
+				{enabled && !memories.digestReady && (
 					<div className="memory-callout">
-						<p>Memory is off. Turn it on in Memory Settings to start remembering. Saved Memories stay here.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button>
+						<p>Choose a Memory Decision Model before Messages can be remembered.</p>
+						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("connections")}>Connections</Button>
 					</div>
 				)}
-				{awaitingEmbedding > 0 && (
+				{hasClaims && !memories.embeddingReady && (
 					<div className="memory-callout">
-						<p>
-							{awaitingEmbedding} {awaitingEmbedding === 1 ? "Message is" : "Messages are"} waiting for embedding
-							settings before their Memories can be recalled.
-						</p>
+						<p>Choose an embedding model before these Memories can be recalled.</p>
 						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button>
 					</div>
 				)}
@@ -128,22 +130,21 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 					<MemoryCoverage
 						path={memories.path}
 						sources={new Map(selected.map((source) => [source.messageId, source]))}
-						catchup={catchup}
-						enabled={settings?.enabled ?? false}
+						catchup={memories.catchUp}
+						enabled={ready}
 						busy={catchupBusy}
 						selected={focus}
-						label={actions.label}
-						onStart={() => void startCatchup()}
-						onCancel={() => void cancelCatchup()}
+						label={label}
+						onStart={() => void actions.startCatchup()}
+						onCancel={() => void actions.cancelCatchup()}
 						onSelect={select}
 					/>
 				)}
 				{focus !== null && <MemorySourceCard
-					conversationId={conversationId}
-					source={selected.find((source) => source.messageId === focus)}
-					label={actions.label(focus)}
-					busy={busy.has(selected.find((source) => source.messageId === focus)?.variantId ?? -1)}
-					enabled={settings?.enabled ?? false}
+					source={focused}
+					label={label(focus)}
+					busy={busy.has(focused?.variantId ?? -1)}
+					ready={ready}
 					excluded={memories.identities[memories.path.find((entry) => entry.messageId === focus)?.authorParticipantId ?? -1]?.kind === "excluded"}
 					actions={actions}
 					onNavigate={() => onNavigateSource(focus)}
@@ -161,7 +162,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 					onClear={() => setFocus(null)}
 				/>}
 				{notice && <p className="import-problem" role="alert">{notice}</p>}
-				{memories.sources.some((source) => source.claims.length > 0) && (
+				{hasClaims && (
 					<label className="search-field">
 						<Search aria-hidden="true" />
 						<input
@@ -200,7 +201,8 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 				initialLabels={merging}
 				onClose={() => setMerging(null)}
 				onMerged={(updated, destination) => {
-					labelsMerged(updated, destination);
+					void labelsMerged(updated);
+					actions.announce(`Labels merged into ${destination}.`);
 					setMerging(null);
 				}}
 			/>
@@ -214,23 +216,24 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 				onClose={() => setIdentityTarget(null)}
 				onSaved={(updated) => {
 					void identitySaved(updated);
+					actions.announce(null);
 					setIdentityTarget(null);
 				}}
 			/>
 		)}
 		{noteOpen && settings && <MemoryNoteDialog conversationId={conversationId} settings={settings} onClose={() => setNoteOpen(false)} onSettings={settingsSaved} onSaved={() => setNoteOpen(false)} />}
-		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) cancelReset(); }}>
+		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) actions.cancelReset(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Reset and re-extract?</DialogTitle>
+					<DialogTitle>Reset corrections?</DialogTitle>
 					<DialogDescription>
-						This discards every saved correction for {resetTarget ? actions.label(resetTarget.messageId) : "this source"} and
-						resumes automatic updates. Its Memories are extracted again from the current Message.
+						This discards every saved correction for {resetTarget ? label(resetTarget.messageId) : "this source"}. The
+						Memories remembered automatically from it come back.
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button type="button" variant="ghost" onClick={cancelReset}>Keep corrections</Button>
-					<Button type="button" variant="destructive" onClick={confirmReset}>Reset and re-extract</Button>
+					<Button type="button" variant="ghost" onClick={actions.cancelReset}>Keep corrections</Button>
+					<Button type="button" variant="destructive" onClick={actions.confirmReset}>Reset corrections</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

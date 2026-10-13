@@ -2,9 +2,9 @@ import { useId, useState, type FormEvent } from "react";
 import { RadioGroup } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { MemoryIdentity } from "../../shared/contract/memory";
-import { applyMemoryPeople } from "../../shared/memory-identity";
+import { applyMemoryPeople, type MemoryIdentity } from "../box-windows/registry";
 import { saveMemoryIdentity, type ConversationMemories } from "../memories";
+import { labelledMemories } from "./memories-view";
 
 export function MemoryIdentityDialog({ conversationId, participant, memories, initialKind, onClose, onSaved }: {
 	conversationId: number;
@@ -26,8 +26,8 @@ export function MemoryIdentityDialog({ conversationId, participant, memories, in
 	const identities = { ...snapshot.identities, [participant.id]: identity };
 	const personLabel = applyMemoryPeople([participant.name], snapshot.cast, identities, snapshot.labelMerges)[0];
 	const ownMessages = new Set(snapshot.path.filter((entry) => entry.authorParticipantId === participant.id).map((entry) => entry.messageId));
-	const names = [...new Set(snapshot.sources.flatMap((source) => source.claims.flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
-	const affected = snapshot.sources.flatMap((source) => source.claims.flatMap((claim, index) => {
+	const names = [...new Set(snapshot.sources.flatMap((source) => (source.claims ?? []).flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
+	const affected = snapshot.sources.flatMap((source) => (source.claims ?? []).flatMap((claim, index) => {
 		const removed = kind === "excluded" && ownMessages.has(source.messageId);
 		const people = applyMemoryPeople(claim.people, snapshot.cast, identities, snapshot.labelMerges);
 		return removed || JSON.stringify(people) !== JSON.stringify(claim.people) ? [{ source, claim, index, removed, people }] : [];
@@ -38,7 +38,7 @@ export function MemoryIdentityDialog({ conversationId, participant, memories, in
 			const result = await saveMemoryIdentity(conversationId, { expectedRevision: snapshot.labelRevision, participantId: participant.id, identity });
 			if (result.outcome === "available") onSaved(result.value.memories);
 			else if (result.outcome === "conflict") {
-				setSnapshot(result.memories);
+				setSnapshot(labelledMemories(result.memories));
 				setError("Memory settings changed elsewhere. Review the updated preview before applying again.");
 			}
 			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory identity could not be saved. Try again.");

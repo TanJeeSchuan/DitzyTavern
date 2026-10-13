@@ -6,7 +6,7 @@ import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
-import { memoryActivationWithFinalText } from "../shared/contract/memory-recall";
+import { boxReference } from "../shared/contract/box";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -35,12 +35,8 @@ export function PromptPlanPreviewPanel({
 	const pending = isAssemblyPending(assembly);
 	const editable = preview !== null && !pending;
 	const canSend = preview !== null && (assembly.phase === "ready" || assembly.phase === "failed");
-	const memoryActivation = preview?.memoryActivation == null
-		? null
-		: memoryActivationWithFinalText(
-			preview.memoryActivation,
-			preview.promptPlan.blocks.find((block) => block.kind === "box:memory")?.content ?? "",
-		);
+	const memory = boxReference("memory");
+	const memoryTrace = preview?.boxTraces[memory];
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">
 			<PanelHeader
@@ -78,7 +74,11 @@ export function PromptPlanPreviewPanel({
 					</section>
 				)}
 				{preview?.loreActivation != null && <LoreActivationDetails record={preview.loreActivation} />}
-				{preview !== null && memoryActivation !== null && <MemoryActivationDetails record={memoryActivation} memorySources={preview.memorySources} onNavigateSource={onNavigateSource} />}
+				{preview !== null && memoryTrace !== undefined && <MemoryActivationDetails
+					conversationId={preview.conversationId}
+					trace={{ ...memoryTrace, finalText: preview.promptPlan.blocks.find((block) => block.kind === memory)?.content ?? "" }}
+					onNavigateSource={onNavigateSource}
+				/>}
 				{preview !== null && <section className="generation-detail-section prompt-plan-edit-list">
 					<h3>Expanded blocks</h3>
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}

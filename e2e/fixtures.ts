@@ -57,17 +57,18 @@ const createDecisionProfile = async (request: APIRequestContext) => {
 	return { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
 };
 
-/** @approved Gives a digesting Box a Decision Model selection, so its digests run against the scripted `/systemone`. */
-export const selectBoxDecisionModel = async (request: APIRequestContext, box: DigestBoxId) => {
-	const selection = await createDecisionProfile(request);
+const applyBoxDecision = async (request: APIRequestContext, box: DigestBoxId, selection: Awaited<ReturnType<typeof createDecisionProfile>>) => {
 	const { revision } = await (await request.get(`/api/boxes/${box}/decision-settings`)).json();
 	await request.post(`/api/boxes/${box}/decision-settings/commands`, { data: { type: "apply", expectedRevision: revision, ...selection } });
 };
 
+/** @approved Gives a digesting Box a Decision Model selection, so its digests run against the scripted `/systemone`. */
+export const selectBoxDecisionModel = async (request: APIRequestContext, box: DigestBoxId) => applyBoxDecision(request, box, await createDecisionProfile(request));
+
+/** @approved Gives Semantic Triggers and Memory one Decision Model selection. */
 export const enableDecisionModels = async (request: APIRequestContext) => {
 	const selection = await createDecisionProfile(request);
-	const { revision: semanticRevision } = await (await request.get("/api/semantic-trigger-settings")).json();
-	await request.post("/api/semantic-trigger-settings/commands", { data: { type: "apply", expectedRevision: semanticRevision, ...selection, triggerThreshold: 0.5 } });
-	const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();
-	await request.post("/api/memory-settings/commands", { data: { ...settings, expectedRevision: revision, ...selection } });
+	const { revision } = await (await request.get("/api/semantic-trigger-settings")).json();
+	await request.post("/api/semantic-trigger-settings/commands", { data: { type: "apply", expectedRevision: revision, ...selection, triggerThreshold: 0.5 } });
+	await applyBoxDecision(request, "memory", selection);
 };

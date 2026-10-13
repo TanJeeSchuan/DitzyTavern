@@ -12,7 +12,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
-import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../boxes/memory/contract";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
@@ -76,8 +76,7 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	identity,
 	messageId: sourcePosition + 1,
 	variantId: sourcePosition + 1,
-	collectionRevision: 1,
-	ownership: "automatic",
+	writer: false,
 	sourceChanged: false,
 	claimIndex: 0,
 	claim,
@@ -94,7 +93,6 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 });
 
 const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], allowance = 2_048): MemoryActivationRecord => ({
-	version: 1,
 	state: "ready",
 	allowance,
 	eligibleSourceCount: candidates.length,
@@ -105,8 +103,6 @@ const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], al
 	decisionConfigured: true,
 	relevanceMinimum: 1.5,
 	pendingSourceCount: 0,
-	pendingIndexCount: 0,
-	failedIndexCount: 0,
 	failedSourceCount: 0,
 	sourceSnapshotFingerprint: "sources",
 	embeddingConfigurationFingerprint: "embedding",
@@ -116,9 +112,6 @@ const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], al
 	semanticShortlistCount: candidates.length,
 	recentShortlistCount: 0,
 	candidates: [...candidates],
-	automaticMemoryText: "",
-	finalMemoryText: "",
-	manuallyEdited: false,
 });
 
 // The transcript length is a monotone stand-in for a tokenizer: a longer
@@ -266,11 +259,12 @@ describe("Generation Plan Compiler", () => {
 			role: "system",
 			content: "fits (attribution: Narrated event)",
 		}]);
-		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
-			["large", "oversized"],
-			["small", "admitted"],
-		]);
-		expect(plan.memoryActivation?.automaticMemoryText).toBe("fits (attribution: Narrated event)");
+		expect(plan.boxTraces["box:memory"]).toMatchObject({
+			allowance: 6,
+			items: [{ text: "oversized claim (attribution: Narrated event)", admission: "oversized" }, { text: "fits (attribution: Narrated event)", admission: "admitted" }],
+			automaticText: "fits (attribution: Narrated event)",
+			finalText: "fits (attribution: Narrated event)",
+		});
 	});
 
 	test("admits more relevant Memory claims before shortlist order", () => {
@@ -285,9 +279,9 @@ describe("Generation Plan Compiler", () => {
 			estimator: (transcript) => (transcript.includes("lower relevance") ? 4 : 0) + (transcript.includes("higher relevance") ? 4 : 0),
 		});
 
-		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
-			["lower", "allowance"],
-			["higher", "admitted"],
+		expect(plan.boxTraces["box:memory"]?.items).toEqual([
+			{ text: "higher relevance (attribution: Narrated event)", admission: "admitted" },
+			{ text: "lower relevance (attribution: Narrated event)", admission: "allowance" },
 		]);
 	});
 
@@ -368,7 +362,7 @@ describe("Generation Plan Compiler", () => {
 			});
 
 		expect(loreFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["lore"]);
-		expect(loreFirst.memoryActivation?.candidates[0]?.admission).toBe("context-limit");
+		expect(loreFirst.boxTraces["box:memory"]?.items[0]?.admission).toBe("context-limit");
 		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["box:memory"]);
 		expect(memoryFirst.loreActivation).toBeNull();
 	});

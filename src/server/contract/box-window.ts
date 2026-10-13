@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { boxRead, boxReadParams, boxWindowParams, isDigestBoxId, type BoxId } from "../../shared/contract/box";
-import { digestStatusRead } from "../../shared/contract/box-digest";
+import { digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
-import { cancelBoxCatchUp, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
+import { cancelBoxCatchUp, queueBoxDigest, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
 import { serverBox } from "../box/registry";
 import { notFoundResponse } from "./responses";
 
@@ -18,9 +18,18 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => readDigestStatus(database, params.id, params.box) ?? notFoundResponse(),
 		{ params: boxWindowParams, response: { 200: digestStatusRead, 404: notFoundOutcome } })
 	// @approved
-	//  Catch-up and cancellation are in-memory queue work, not Conversation
-	//  state, so they are their own routes: the polled digest read carries the
-	//  run's progress and the run never touches the Conversation revision.
+	//  Catch-up, cancellation and digesting one passage are in-memory queue
+	//  work, not Conversation state, so they are their own routes: the polled
+	//  digest read carries their progress and they never touch the
+	//  Conversation revision.
+	.post(
+		"/api/conversations/:id/boxes/:box/digest",
+		({ params, body }) => {
+			queueBoxDigest(database, params.id, params.box, body.variantId);
+			return readDigest(database, params.id, params.box) ?? notFoundResponse();
+		},
+		{ params: boxWindowParams, body: digestPassageCommand, response: readResponse },
+	)
 	.post(
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {

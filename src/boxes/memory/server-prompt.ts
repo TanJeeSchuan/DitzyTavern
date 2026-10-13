@@ -1,4 +1,6 @@
-import { renderMemoryClaim, type AdvanceResult, type MemoryActivationRecord } from "../../box-sdk/server";
+import type { AdvanceResult } from "../../box-sdk/server";
+import type { MemoryActivationRecord } from "./contract";
+import { renderMemoryClaim } from "./shared";
 
 export const memoryItems = (trace: MemoryActivationRecord): AdvanceResult<MemoryActivationRecord> => {
 	const seen = new Set<string>();

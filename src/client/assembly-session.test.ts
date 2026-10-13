@@ -11,7 +11,7 @@ afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true
 const plan = (content: string): PromptPlan => ({ blocks: [{ kind: "instruction", role: "system", content }], warnings: [], images: [] });
 const preview = (conversationId = 7, content = "Expanded"): GenerationPreview => ({
 	outcome: "available", previewId: "preview-1", conversationId, kind: "send", promptPlan: plan(content),
-	participants: { human: null, model: null }, pendingWrites: [], memorySources: { messageIds: [], variantIds: [] },
+	participants: { human: null, model: null }, pendingWrites: [], boxTraces: {},
 	effectiveSettings: {
 		modelId: "model", temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null,
 		contextLimit: 10, responseBudget: 1, safetyAllowance: 1, siblingGenerationLimit: null,

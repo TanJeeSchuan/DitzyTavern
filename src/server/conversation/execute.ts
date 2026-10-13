@@ -53,7 +53,7 @@ import type {
 	ConversationCommand,
 	ConversationSummary,
 } from "./types";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 
 type ConversationCommandInput<K extends ConversationAction["type"]> = {
 	conversationId: number;
@@ -62,7 +62,7 @@ type ConversationCommandInput<K extends ConversationAction["type"]> = {
 type CommandHandler<K extends ConversationAction["type"]> = (
 	db: ConversationDatabase,
 	input: ConversationCommandInput<K>,
-) => ConversationMemoryChange | void;
+) => ConversationWriteChange | void;
 
 const handlers = {
 	"create-message": createMessage,

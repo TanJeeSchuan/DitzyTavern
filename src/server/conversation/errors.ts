@@ -124,7 +124,7 @@ export type ContinuationUnavailableReason =
 // @approved
 //  The composition contract, thrown instead of silently dropping a
 // reported write change: a Conversation write reported its
-// ConversationMemoryChange, but the composition owning the write's database
+// ConversationWriteChange, but the composition owning the write's database
 // never registered an observer with observeConversationWrites(database,
 // observer). The throwing transaction rolls back so the missing wiring cannot
 // pass unnoticed; app.ts installs the sync for the application database and

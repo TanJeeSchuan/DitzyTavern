@@ -265,6 +265,12 @@
 	text-transform: uppercase;
 }
 
+.box-timeline-error {
+	min-width: 0;
+	color: var(--destructive);
+	overflow-wrap: anywhere;
+}
+
 .box-timeline-actions {
 	display: inline-flex;
 	align-items: center;
