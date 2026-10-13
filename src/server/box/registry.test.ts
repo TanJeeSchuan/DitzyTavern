@@ -123,18 +123,21 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 	}
 });
 
-test("a plugin's client module and stylesheet are served from its dist folder, and nothing else in it is", async () => {
-	const plugins = installPlugins({ lantern: {} });
+test("a plugin's routes are served as the loader built them, its client module and stylesheet from its dist folder, and nothing else in it", async () => {
+	const plugins = installPlugins({ lantern: {
+		server: 'let built = false; export default { routes: () => { if (built) throw new Error("Built twice."); built = true; return (app) => app.get("/lit", () => "The lantern is lit."); } };',
+	} });
 	mkdirSync(join(plugins, "lantern", "dist"));
 	writeFileSync(join(plugins, "lantern", "dist", "client.js"), "export default {};");
 	const database = openObservedDatabase();
 	try {
-		await loadBoxes([builtInBoxes, plugins]);
-		const app = createBoxRoutes(database);
+		await loadBoxes([builtInBoxes, plugins], database);
+		const app = createBoxRoutes();
 		const served = async (path: string) => {
 			const response = await app.handle(new Request(`http://localhost${path}`));
 			return [response.status, response.status === 200 ? await response.text() : ""];
 		};
+		expect(await served("/api/boxes/lantern/lit")).toEqual([200, "The lantern is lit."]);
 		expect(await served("/boxes/lantern/client.js")).toEqual([200, "export default {};"]);
 		expect(await served("/boxes/lantern/client.css")).toEqual([404, ""]);
 		expect(await served("/boxes/lantern/server.ts")).toEqual([404, ""]);

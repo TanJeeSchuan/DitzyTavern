@@ -200,7 +200,7 @@ foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id
 
 ### `routes`
 
-Routes the Box serves beside the host's, as an Elysia app built from the database. The host mounts it under `/api/boxes/<id>`, so its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` is there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. Only Memory declares routes; a Box with a window reads through `read` instead.
+Routes the Box serves beside the host's, as an Elysia app built from the database. The server builds it once, when it loads the Box, for the database it serves, and refuses the Box if building throws; it mounts that app under `/api/boxes/<id>`, so its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` is there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. Only Memory declares routes; a Box with a window reads through `read` instead.
 
 ### Client surfaces
 

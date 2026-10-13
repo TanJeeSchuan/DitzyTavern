@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "../src/server/app";
@@ -140,9 +141,17 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	return refuse(call);
 };
 
-const provision = (databasePath: string) => {
-	seed(databasePath);
-	const database = openInitializedDatabase({ path: databasePath });
+// @approved
+//  A test's database, with the Boxes loaded for it: a Box's routes are built
+// for one database, so each database the server opens loads them again.
+const openDatabase = async (directory: string) => {
+	const database = openInitializedDatabase({ path: join(directory, "e2e.sqlite") });
+	await loadBoxes([builtInBoxes, pluginFolder], database);
+	return database;
+};
+
+const provision = (directory: string, database: Database) => {
+	seed(join(directory, "e2e.sqlite"));
 	const connections = createConnectionSettingsModule(database, { masterKey });
 	const profile = {
 		apiFormat: "chat-completions", adapter: "openai-compatible",
@@ -157,7 +166,7 @@ const provision = (databasePath: string) => {
 	return database;
 };
 
-let current: { directory: string; database: ReturnType<typeof provision>; app: Awaited<ReturnType<typeof createApp>>["app"]; close: () => Promise<void> } | undefined;
+let current: { directory: string; database: Database; app: Awaited<ReturnType<typeof createApp>>["app"]; close: () => Promise<void> } | undefined;
 
 const reset = async () => {
 	held.resolve();
@@ -177,12 +186,11 @@ const reset = async () => {
 	registryCalls = [];
 	held = Promise.withResolvers();
 	rmSync(pluginFolder, { recursive: true, force: true });
-	await loadBoxes([builtInBoxes, pluginFolder]);
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
-	await open(directory, provision(join(directory, "e2e.sqlite")));
+	await open(directory, provision(directory, await openDatabase(directory)));
 };
 
-const open = async (directory: string, database: ReturnType<typeof provision>) => {
+const open = async (directory: string, database: Database) => {
 	updateDirectory = directory;
 	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
 };
@@ -191,8 +199,7 @@ const resumed = process.env.E2E_RESUME;
 if (resumed) {
 	if (existsSync(join(resumed, "updates.json"))) updateScenario = JSON.parse(readFileSync(join(resumed, "updates.json"), "utf8"));
 	if (existsSync(join(resumed, "calls.json"))) calls = JSON.parse(readFileSync(join(resumed, "calls.json"), "utf8"));
-	await loadBoxes([builtInBoxes, pluginFolder]);
-	await open(resumed, openInitializedDatabase({ path: join(resumed, "e2e.sqlite") }));
+	await open(resumed, await openDatabase(resumed));
 } else await reset();
 
 const unsentPlans = async () => {
@@ -226,7 +233,7 @@ const server = Bun.serve({
 				const directory = current!.directory;
 				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
 				await current!.close();
-				await open(directory, openInitializedDatabase({ path: join(directory, "e2e.sqlite") }));
+				await open(directory, await openDatabase(directory));
 				break;
 			}
 			case "/__e2e/release": held.resolve(); break;
