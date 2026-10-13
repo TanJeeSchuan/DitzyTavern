@@ -207,6 +207,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	const passages = read.data?.passages ?? [];
 	const catchUp = read.data?.catchUp ?? null;
 	const digestReady = read.data?.digestReady ?? false;
+	const running = conversation.boxes[box] === "enabled";
 
 	const apply = async (command: ConversationAction): Promise<boolean> => {
 		let applied = false;
@@ -249,7 +250,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 		<div className="box-timeline-head">
 			<h3 id={`${box}-passages-title`}>Passages</h3>
 			{catchUp === null
-				? <Button variant="outline" size="sm" disabled={locked || !digestReady || !missing} onClick={() => void runCatchUp(() => startBoxCatchUp(conversation.id, box))}>
+				? <Button variant="outline" size="sm" disabled={locked || !running || !digestReady || !missing} onClick={() => void runCatchUp(() => startBoxCatchUp(conversation.id, box))}>
 					Digest missing passages
 				</Button>
 				: <span className="box-timeline-progress" role="status">

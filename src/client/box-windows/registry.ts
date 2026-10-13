@@ -57,8 +57,9 @@ export interface BoxInspectorProps {
 // @approved
 //  A Box's client module default-exports this: its descriptor and its client
 // surfaces, each optional. A `PrimaryPanel` edits in the workspace's primary
-// panel rather than a window, and the composer opens it there. Every surface
-// shows while the Box is present in the Chat, enabled or disabled.
+// panel rather than a window, and the composer opens it there. Every Chat
+// surface shows while the Box is present in the Chat, enabled or disabled; a
+// trace view belongs to its Generation and shows whenever its trace exists.
 export interface BoxClientDefinition {
 	readonly descriptor: BoxDescriptor;
 	readonly icon: LucideIcon;

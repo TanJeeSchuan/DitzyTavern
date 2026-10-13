@@ -260,7 +260,6 @@ export function ActiveWritingWorkspace({
 			{assembly !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
-					boxes={session.conversation?.boxes ?? {}}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
@@ -297,7 +296,6 @@ export function ActiveWritingWorkspace({
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
-					boxes={session.conversation?.boxes ?? {}}
 					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
