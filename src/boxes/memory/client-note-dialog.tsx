@@ -1,8 +1,7 @@
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Textarea } from "@/box-sdk/client";
 import { useState, type KeyboardEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { saveMemoryNote, type ConversationMemoryAllowance } from "../box-windows/registry";
+import { saveMemoryNote } from "./client-api";
+import { type ConversationMemoryAllowance } from "./contract";
 
 const LIMIT = 2_000;
 const COUNT_AT = 1_800;

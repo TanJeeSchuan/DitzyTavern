@@ -1,36 +1,22 @@
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type PortraitImage, type BoxInspectorProps, PanelHeader, Portrait } from "@/box-sdk/client";
 import { ChevronDown, Ellipsis, Search } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { Fragment, useDeferredValue, useEffect, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { MemoryIdentity, ConversationMemories } from "../box-windows/registry";
-import type { Portrait as PortraitImage } from "../../shared/contract/image";
-import type { ConversationSummary } from "../conversation";
-import { PanelHeader } from "../PanelHeader";
-import { Portrait } from "../story/Portrait";
-import { MemoryAllowancePopover } from "./MemoryAllowancePopover";
-import { MemoryCoverage } from "./MemoryCoverage";
-import { MemoryLabelMergeDialog } from "./MemoryLabelMergeDialog";
-import { MemoryIdentityDialog } from "./MemoryIdentityDialog";
-import { MemoryNoteDialog } from "./MemoryNoteDialog";
-import { MemoryClaimRow, MemorySourceCard } from "./MemorySource";
-import { groupEntriesByPeople, memoryCastMembers, memoryEntries, memoryPositions, type MemoryEntry } from "./memories-view";
-import { useConversationMemories, useMemoryActions } from "./useConversationMemories";
+import type { MemoryIdentity, ConversationMemories } from "./contract";
+import { MemoryAllowancePopover } from "./client-allowance";
+import { MemoryCoverage } from "./client-coverage";
+import { MemoryLabelMergeDialog } from "./client-label-merge-dialog";
+import { MemoryIdentityDialog } from "./client-identity-dialog";
+import { MemoryNoteDialog } from "./client-note-dialog";
+import { MemoryClaimRow, MemorySourceCard } from "./client-source";
+import { groupEntriesByPeople, memoryCastMembers, memoryEntries, memoryPositions, type MemoryEntry } from "./client-view";
+import { useConversationMemories, useMemoryActions } from "./client-use-memories";
 
 type Source = ConversationMemories["sources"][number];
 type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
-export function MemoriesPanel({ conversation, onConversationChange, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
-	conversation: ConversationSummary;
-	onConversationChange: (conversation: ConversationSummary) => void;
-	focusRequest: { messageId: number } | null;
-	onClose: () => void;
-	onNavigateSource: (messageId: number) => void;
-	onOpenPanel: (panel: "memory" | "connections") => void;
-}) {
+export function MemoriesPanel({ conversation, onConversationChange, focusRequest, onClose, onNavigateSource, onOpenSettings, onOpenConnections }: BoxInspectorProps) {
 	const conversationId = conversation.id;
-	const enabled = conversation.boxes.memory === "enabled";
 	const { status, memories, stored, settings, refresh, settingsSaved, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversation.revision, { poll: true });
 	const actions = useMemoryActions({ conversationId, conversation, onConversationChange, stored, refresh });
 	const { notice, busy, catchupBusy, editing, resetTarget } = actions;
@@ -52,7 +38,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 	const memoryCast = memoryCastMembers(conversation.cast, memories);
 	const entries = (sources: Source[]) => memoryEntries(sources, position, focus, search);
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const ready = enabled && memories?.digestReady === true;
+	const ready = memories?.digestReady === true;
 	const render = (list: MemoryEntry[]) =>
 		groupEntriesByPeople(list, memoryCast).map(({ key, people, entries: group }) => (
 			<PeopleGroup
@@ -93,7 +79,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 				<DropdownMenuContent align="end" className="min-w-44">
 					<DropdownMenuItem disabled={!hasPeople} onSelect={() => setMerging([])}>Merge labels…</DropdownMenuItem>
 					<DropdownMenuItem onSelect={() => setNoteOpen(true)}>Memory note…</DropdownMenuItem>
-					<DropdownMenuItem onSelect={() => onOpenPanel("memory")}>Memory Settings</DropdownMenuItem>
+					<DropdownMenuItem onSelect={onOpenSettings}>Memory Settings</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</>} />
@@ -112,17 +98,16 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			)}
 			{status === "loading" && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
 			{memories !== null && <>
-				{!enabled && <div className="memory-callout"><p>Memory is off in this Chat. Turn it on in Boxes to start remembering. Saved Memories stay here.</p></div>}
-				{enabled && !memories.digestReady && (
+				{!memories.digestReady && (
 					<div className="memory-callout">
 						<p>Choose a Memory Decision Model before Messages can be remembered.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("connections")}>Connections</Button>
+						<Button type="button" size="xs" variant="outline" onClick={onOpenConnections}>Connections</Button>
 					</div>
 				)}
 				{hasClaims && !memories.embeddingReady && (
 					<div className="memory-callout">
 						<p>Choose an embedding model before these Memories can be recalled.</p>
-						<Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("memory")}>Memory Settings</Button>
+						<Button type="button" size="xs" variant="outline" onClick={onOpenSettings}>Memory Settings</Button>
 					</div>
 				)}
 				{memories.path.length > 0 && (

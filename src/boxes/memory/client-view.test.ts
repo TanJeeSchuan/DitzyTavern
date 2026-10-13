@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ConversationMemories } from "../box-windows/registry";
+import type { ConversationMemories } from "./contract";
 import {
 	groupEntriesByPeople,
 	memoryCastMembers,
@@ -7,7 +7,7 @@ import {
 	memoryPositions,
 	type MemoryClaim,
 	type MemorySource,
-} from "./memories-view";
+} from "./client-view";
 
 const claim = (text: string, people: string[] = [], attribution = "Sage"): MemoryClaim => ({
 	claim: text,

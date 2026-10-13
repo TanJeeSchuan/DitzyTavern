@@ -1,5 +1,5 @@
 import type { PromptBoxReference } from "../../shared/contract/box";
-import { boxPanels, boxTitle } from "../box-windows/registry";
+import { boxClients, boxPanels, boxTitle } from "../box-windows/registry";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -14,7 +14,6 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import { GenerationPanel } from "./GenerationPanel";
 import { LorebookPanel } from "./LorebookPanel";
-import { MemorySettingsEditor } from "./MemorySettingsEditor";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import type { GenerationPanelDraft } from "./GenerationPanel";
 import type { SplitInspector } from "./panel-coordination";
@@ -29,9 +28,9 @@ const sharedHeaderTitles = {
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
-	memory: "Memory",
 	settings: "Settings",
-} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | null>, string>;
+} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | `box-settings:${string}` | null>, string>;
+const isBoxSettings = (panel: PrimaryPanel): panel is `box-settings:${string}` => panel?.startsWith("box-settings:") === true;
 const isBoxPanel = (panel: PrimaryPanel): panel is PromptBoxReference => panel?.startsWith("box:") === true;
 
 export function PrimaryPanelView({
@@ -73,11 +72,13 @@ export function PrimaryPanelView({
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
+	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
+	const BoxSettings = settingsBox === undefined ? undefined : boxClients.get(settingsBox)?.Settings;
 	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
 	const BoxPanel = box === undefined || conversation?.boxes[box] !== "enabled" ? undefined : boxPanels.get(box)?.Panel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
-		: isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
+		: isBoxSettings(panel) ? boxTitle(panel.slice("box-settings:".length)) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
 	return (
 		<aside
 			className="primary-panel"
@@ -135,9 +136,9 @@ export function PrimaryPanelView({
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>
 					)}
-					{panel === "memory" && (
+					{BoxSettings !== undefined && (
 						<div className="panel-fill">
-							<MemorySettingsEditor />
+							<BoxSettings key={settingsBox} />
 						</div>
 					)}
 					{panel === "connections" && (

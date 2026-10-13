@@ -1,12 +1,11 @@
+import { Button, formatJudgment } from "@/box-sdk/client";
 import { Check, ChevronLeft, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { Value } from "@sinclair/typebox/value";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { formatJudgment } from "../lib/format";
-import { type ConversationMemories, memoryCandidate } from "../box-windows/registry";
-import { memorySourceState } from "./memory-source-state";
-import type { ClaimDraft } from "./useConversationMemories";
+import { type ConversationMemories, memoryCandidate } from "./contract";
+import { memorySourceState } from "./client-source-state";
+import type { ClaimDraft } from "./client-use-memories";
 
 type Source = ConversationMemories["sources"][number];
 type Claim = NonNullable<Source["claims"]>[number];

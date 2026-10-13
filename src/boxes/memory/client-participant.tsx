@@ -1,9 +1,8 @@
+import { Button, type ConversationSummary } from "@/box-sdk/client";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import type { ConversationSummary } from "../conversation";
-import { memoryIdentityLabel } from "../box-windows/registry";
-import { MemoryIdentityDialog } from "../workspace/MemoryIdentityDialog";
-import { useConversationMemories } from "../workspace/useConversationMemories";
+import { memoryIdentityLabel } from "./shared";
+import { MemoryIdentityDialog } from "./client-identity-dialog";
+import { useConversationMemories } from "./client-use-memories";
 
 export function ParticipantMemory({ conversation, participant }: { conversation: ConversationSummary; participant: ConversationSummary["cast"][number] }) {
 	const { memories, status, refresh, identitySaved } = useConversationMemories(conversation.id, conversation.revision);

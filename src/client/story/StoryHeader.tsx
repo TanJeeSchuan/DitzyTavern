@@ -1,8 +1,8 @@
-import { Brain, ChevronDown, Info, UsersRound, Variable } from "lucide-react";
+import { ChevronDown, Info, UsersRound, Variable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { BoxId } from "../../shared/contract/box";
-import { boxTitle, boxWindows } from "../box-windows/registry";
+import { boxTitle, boxClients } from "../box-windows/registry";
 import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
 
@@ -15,7 +15,7 @@ export function StoryHeader({
 	onOpenCast,
 	onOpenInfo,
 	onOpenVariables,
-	onOpenMemories,
+	onOpenInspector,
 	onOpenWindow,
 }: {
 	chat: ChatSummary;
@@ -24,11 +24,14 @@ export function StoryHeader({
 	onOpenCast: () => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
-	onOpenMemories: () => void;
+	onOpenInspector: (box: BoxId, focus: { messageId: number } | null) => void;
 	onOpenWindow: (box: BoxId) => void;
 }) {
-	const items = conversation === null ? [] : [...boxWindows].flatMap(([id, { icon: Icon, TopBarItem }]) => {
+	const items = conversation === null ? [] : [...boxClients].flatMap(([id, { icon: Icon, TopBarItem, Inspector }]) => {
 		if (conversation.boxes[id] !== "enabled" || TopBarItem === undefined) return [];
+		if (Inspector !== undefined) return [<button key={id} type="button" className="icon-button" aria-label={Inspector.label} onClick={() => onOpenInspector(id, null)}>
+			<Icon aria-hidden="true" /><TopBarItem conversation={conversation} />
+		</button>];
 		return [<Button key={id} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
 			<Icon aria-hidden="true" />
 			<span className="sr-only">{boxTitle(id)}: </span>
@@ -52,7 +55,9 @@ export function StoryHeader({
 					<DropdownMenuContent align="start" className="w-48">
 						<DropdownMenuItem onSelect={onOpenInfo}><Info aria-hidden="true" /> Chat information</DropdownMenuItem>
 						<DropdownMenuItem onSelect={onOpenVariables}><Variable aria-hidden="true" /> Macro Variables</DropdownMenuItem>
-						<DropdownMenuItem onSelect={onOpenMemories}><Brain aria-hidden="true" /> Memories</DropdownMenuItem>
+						{conversation !== null && [...boxClients].map(([id, { icon: Icon, Inspector }]) => Inspector && conversation.boxes[id] === "enabled" && (
+							<DropdownMenuItem key={id} onSelect={() => onOpenInspector(id, null)}><Icon aria-hidden="true" /> {Inspector.label}</DropdownMenuItem>
+						))}
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
@@ -60,7 +65,6 @@ export function StoryHeader({
 				{items}
 				<button className="icon-button chat-info-button" type="button" onClick={onOpenInfo} aria-label="Chat information"><Info aria-hidden="true" /></button>
 				<button className="icon-button" type="button" onClick={onOpenVariables} aria-label="Macro Variables"><Variable aria-hidden="true" /></button>
-				<button className="icon-button" type="button" onClick={onOpenMemories} aria-label="Memories"><Brain aria-hidden="true" /></button>
 			</div>
 			<button className="cast-control" type="button" onClick={onOpenCast} aria-label="Cast">
 				<UsersRound aria-hidden="true" />

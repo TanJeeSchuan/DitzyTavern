@@ -1,16 +1,16 @@
+import type { BoxLens } from "./lens";
+import memoryClient from "../../boxes/memory/client";
 import { Drama, Flag, MessageCircleDashed, Clock, NotebookPen, Smartphone, type LucideIcon } from "lucide-react";
-import type { ComponentType, ReactElement } from "react";
+import type { ComponentType } from "react";
 import type { ConversationSummary } from "../conversation";
 import { RaceDockTab } from "../../boxes/race/client-window";
 import { RacePanel } from "../../boxes/race/client";
-import type { BoxMoves } from "../../shared/contract/box-generation";
+import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
 import { boxDescriptor, installBoxDescriptors, type BoxId } from "../../shared/contract/box";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import { describeWorldClock, WorldClockPanel, WorldClockTopBarItem } from "../../boxes/world-clock/client";
-import { PhoneDockTab, PhoneLensView, PhonePanel } from "../../boxes/phone/client";
-import { phoneNames, stripPhoneTexts } from "../../boxes/phone/shared";
-import { ThoughtDockTab, ThoughtLensView, ThoughtPanel } from "../../boxes/thought/client";
-import { stripThoughts } from "../../boxes/thought/shared";
+import { PhoneDockTab, phoneLens, PhonePanel } from "../../boxes/phone/client";
+import { ThoughtDockTab, thoughtLens, ThoughtPanel } from "../../boxes/thought/client";
 import { digestWindow } from "./PassageTimeline";
 
 import { AuthorNotePanel } from "../../boxes/author-note/client";
@@ -22,14 +22,6 @@ import phone from "../../boxes/phone/shared-descriptor";
 import race from "../../boxes/race/shared-descriptor";
 import thought from "../../boxes/thought/shared-descriptor";
 import worldClock from "../../boxes/world-clock/shared-descriptor";
-
-// @approved
-//  Memory's contract, shared logic and client helpers, for its in-tree side
-//  panel, settings editor and trace view, until that UI moves into its Box
-//  (GitHub #24).
-export * from "../../boxes/memory/contract";
-export * from "../../boxes/memory/shared";
-export * from "../../boxes/memory/client";
 
 // @approved
 //  The built-in Boxes' descriptors, in the server's registry order, installed
@@ -48,7 +40,7 @@ export const boxTitle = (id: BoxId): string => boxDescriptor(id).label;
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
 type Panel = ComponentType<{ conversation: ConversationSummary; disabled: boolean; staging: MoveStaging; boxData: BoxDataAction; onConversationChange: (conversation: ConversationSummary) => void }>;
-/** @approved A top bar item's content; the host wraps it in a button that opens the window. */
+/** @approved A top bar item's content; the host wraps it in a button that opens its inspector or window. */
 type TopBarItem = ComponentType<{ conversation: ConversationSummary }>;
 
 /** @approved Any Box's window; a digesting Box builds its own with `digestWindow`. */
@@ -58,63 +50,48 @@ export interface BoxWindowDefinition {
 	readonly lens?: BoxLens;
 	readonly Panel: Panel;
 	readonly DockTab: DockTab;
-	readonly TopBarItem?: TopBarItem;
 }
 
 // @approved
-//  The story view replaces each `<tag>` a lens lifts with a mark that opens
-//  the Box; the prompt keeps the markup. `gate` returns nothing when the lens
-//  has nothing to lift in this Chat. While streaming, an unclosed `<tag`
-//  stays hidden rather than flash as markup.
-export interface BoxLens {
-	readonly tag: string;
-	gate(conversation: ConversationSummary): ((text: string, onOpen: () => void) => readonly LensPiece[]) | undefined;
-}
-export type LensPiece = { readonly kind: "prose"; readonly text: string } | { readonly kind: "lifted"; readonly element: ReactElement };
-
-type Segment<Kind extends string, Text> = { readonly kind: "prose"; readonly text: string } | { readonly kind: Kind; readonly text: Text };
-const lens = <Context, Kind extends string, Text>(
-	tag: Kind,
-	gate: (conversation: ConversationSummary) => Context | undefined,
-	strip: (text: string, context: Context) => readonly Segment<Kind, Text>[],
-	View: ComponentType<{ text: Text; onOpen: () => void }>,
-): BoxLens => {
-	const lifted = (segment: Segment<Kind, Text>): segment is { readonly kind: Kind; readonly text: Text } => segment.kind === tag;
-	return {
-		tag,
-		gate: (conversation) => {
-			const context = gate(conversation);
-			return context === undefined ? undefined : (text, onOpen) => strip(text, context).map((segment) => lifted(segment)
-				? { kind: "lifted", element: <View text={segment.text} onOpen={onOpen} /> }
-				: { kind: "prose", text: segment.text });
-		},
-	};
-};
-
-const castNames = ({ cast, control }: ConversationSummary) => {
-	const human = cast.find(({ id }) => id === control.humanParticipantId);
-	return human === undefined ? undefined : phoneNames(cast, human);
-};
-
-// @approved
-//  The client half of the Box contract: the server Box declares `status` and
-//  `read`; this registry declares the icon, size, Panel, lens and top bar
-//  item, because they are React and the server contract is not. The
-//  composer's launcher, the dock, the story's lenses and the top bar render
-//  the Boxes listed here, in this order.
-export const boxWindows: ReadonlyMap<BoxId, BoxWindowDefinition> = new Map(Object.entries({
-	"world-clock": { ...digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }), TopBarItem: WorldClockTopBarItem },
-	race: { icon: Flag, size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel },
-	phone: { icon: Smartphone, size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: lens("sms", castNames, stripPhoneTexts, PhoneLensView) },
-	thought: { icon: MessageCircleDashed, size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: lens("thought", () => true, stripThoughts, ThoughtLensView) },
-	mood: digestWindow("mood", { icon: Drama, size: { width: 22, height: 26 } }),
-} satisfies Readonly<Record<BoxId, BoxWindowDefinition>>));
+//  Client surfaces are registered once. Window and primary-panel consumers
+//  select their entries below; every other surface reads this registry.
+export const boxClients: ReadonlyMap<BoxId, BoxClientDefinition> = new Map(Object.entries({
+	"world-clock": { icon: Clock, Window: digestWindow("world-clock", { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock }), TopBarItem: WorldClockTopBarItem },
+	race: { icon: Flag, Window: { size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel } },
+	phone: { icon: Smartphone, Window: { size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: phoneLens } },
+	thought: { icon: MessageCircleDashed, Window: { size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: thoughtLens } },
+	mood: { icon: Drama, Window: digestWindow("mood", { icon: Drama, size: { width: 22, height: 26 } }) },
+	"author-note": { icon: NotebookPen, Panel: AuthorNotePanel },
+	memory: memoryClient,
+} satisfies Readonly<Record<BoxId, BoxClientDefinition>>));
 
 /** @approved A Box that edits in the workspace's primary panel rather than a window; the composer opens it there. */
 export interface BoxPanelDefinition {
 	readonly icon: LucideIcon;
 	readonly Panel: ComponentType<{ conversation: ConversationSummary; disabled: boolean; onConversationChange: (conversation: ConversationSummary) => void }>;
 }
-export const boxPanels: ReadonlyMap<BoxId, BoxPanelDefinition> = new Map(Object.entries({
-	"author-note": { icon: NotebookPen, Panel: AuthorNotePanel },
-} satisfies Readonly<Record<BoxId, BoxPanelDefinition>>));
+export const boxWindows: ReadonlyMap<BoxId, BoxWindowDefinition> = new Map([...boxClients].flatMap(([id, entry]) => entry.Window ? [[id, { icon: entry.icon, ...entry.Window }]] : []));
+export const boxPanels: ReadonlyMap<BoxId, BoxPanelDefinition> = new Map([...boxClients].flatMap(([id, entry]) => entry.Panel ? [[id, { icon: entry.icon, Panel: entry.Panel }]] : []));
+
+/** @approved Props shared by every Box inspector; the host owns focus and workspace navigation. */
+export interface BoxInspectorProps {
+	conversation: ConversationSummary;
+	onConversationChange: (conversation: ConversationSummary) => void;
+	focusRequest: { messageId: number } | null;
+	onClose: () => void;
+	onNavigateSource: (messageId: number) => void;
+	onOpenSettings: () => void;
+	onOpenConnections: () => void;
+}
+
+/** @approved Optional client surfaces; Chat surfaces render only while the Box is enabled. */
+export interface BoxClientDefinition {
+	readonly icon: LucideIcon;
+	readonly Window?: Omit<BoxWindowDefinition, "icon">;
+	readonly Panel?: BoxPanelDefinition["Panel"];
+	readonly TopBarItem?: TopBarItem;
+	readonly Inspector?: { readonly label: string; readonly Component: ComponentType<BoxInspectorProps> };
+	readonly Settings?: ComponentType;
+	readonly ParticipantSection?: ComponentType<{ conversation: ConversationSummary; participant: ConversationSummary["cast"][number] }>;
+	readonly TraceView?: ComponentType<{ conversationId: number; trace: BoxTrace; onNavigateSource?: (messageId: number) => void }>;
+}

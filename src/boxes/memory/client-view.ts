@@ -1,5 +1,6 @@
-import type { Portrait as PortraitImage } from "../../shared/contract/image";
-import { applyMemoryPeople, type MemoryCandidateJudgment, type ConversationMemories } from "../box-windows/registry";
+import { type PortraitImage } from "@/box-sdk/client";
+import { applyMemoryPeople } from "./shared";
+import { type MemoryCandidateJudgment, type ConversationMemories } from "./contract";
 
 export type MemorySource = ConversationMemories["sources"][number];
 export type MemoryClaim = MemoryCandidateJudgment;

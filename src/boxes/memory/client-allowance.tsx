@@ -1,8 +1,8 @@
+import { Button, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/box-sdk/client";
 import { Gauge } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { saveMemoryAllowance, type ConversationMemoryAllowance } from "../box-windows/registry";
+import { saveMemoryAllowance } from "./client-api";
+import { type ConversationMemoryAllowance } from "./contract";
 
 export function MemoryAllowancePopover({
 	conversationId,

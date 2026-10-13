@@ -1,10 +1,9 @@
+import { type ConversationSummary, CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } from "@/box-sdk/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ConversationSummary } from "../conversation";
-import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
-import { cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } from "../box-digest";
-import { loadConversationMemories, loadMemoryAllowance, type ConversationMemories, type ConversationMemoryAllowance } from "../box-windows/registry";
-import { labelledMemories, type MemoryClaim } from "./memories-view";
+import { loadConversationMemories, loadMemoryAllowance } from "./client-api";
+import { type ConversationMemories, type ConversationMemoryAllowance } from "./contract";
+import { labelledMemories, type MemoryClaim } from "./client-view";
 
 type Source = ConversationMemories["sources"][number];
 type MemoryData = { memories: ConversationMemories; settings: ConversationMemoryAllowance };

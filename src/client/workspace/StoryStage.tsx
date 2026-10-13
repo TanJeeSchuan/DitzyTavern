@@ -1,3 +1,4 @@
+import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
@@ -47,9 +48,8 @@ export function StoryStage({
 	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
-	onOpenMemories,
+	onOpenInspector,
 	onInspectVariant,
-	onOpenMessageMemories,
 	onOpenGenerationDetails,
 	onControlChange,
 }: {
@@ -66,9 +66,8 @@ export function StoryStage({
 	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
-	onOpenMemories: () => void;
+	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onInspectVariant: (messageId: number, variantId: number) => void;
-	onOpenMessageMemories: (messageId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 }) {
@@ -110,7 +109,7 @@ export function StoryStage({
 				onOpenCast={onOpenCast}
 				onOpenInfo={onOpenInfo}
 				onOpenVariables={onOpenVariables}
-				onOpenMemories={onOpenMemories}
+				onOpenInspector={onOpenInspector}
 				onOpenWindow={boxWindows.open}
 			/>
 
@@ -188,7 +187,7 @@ export function StoryStage({
 								generation.regenerateResponse(messageId);
 							}}
 							onInspect={onInspectVariant}
-							onMemories={onOpenMessageMemories}
+							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
 									showStopAll={generation.activeGenerationTargets.length > 1}

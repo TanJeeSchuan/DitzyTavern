@@ -9,7 +9,7 @@ export type PrimaryPanelName =
 	| "prompts"
 	| "connections"
 	| "generation"
-	| "memory"
+	| `box-settings:${string}`
 	| "settings";
 
 export type PrimaryPanel = PrimaryPanelName | null;

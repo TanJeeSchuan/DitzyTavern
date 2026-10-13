@@ -7,7 +7,7 @@ import {
 	useSaveNavigation,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
-import { MemoriesPanel } from "./MemoriesPanel";
+import { boxClients } from "../box-windows/registry";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
@@ -152,7 +152,8 @@ export function ActiveWritingWorkspace({
 
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
-	const memoryFocus = panelState.memoryFocus;
+	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
+	const BoxInspector = inspectorBox === undefined || conversation?.boxes[inspectorBox] !== "enabled" ? undefined : boxClients.get(inspectorBox)?.Inspector?.Component;
 
 	const openActiveGenerationDetails = () => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
@@ -166,9 +167,9 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
-	const openMessageMemories = (messageId: number) => {
+	const openBoxInspector = (box: string, focus: { messageId: number } | null) => {
 		if (assemblyActive) return;
-		dispatchPanel({ type: "memories-opened", focus: { messageId } });
+		dispatchPanel({ type: "box-inspector-opened", box, focus });
 	};
 
 	const openVariantDetails = (messageId: number, variantId: number) => {
@@ -242,21 +243,18 @@ export function ActiveWritingWorkspace({
 					if (assemblyActive) return;
 					dispatchPanel({ type: "macro-variables-opened" });
 				}}
-				onOpenMemories={() => {
-					if (assemblyActive) return;
-					dispatchPanel({ type: "memories-opened", focus: null });
-				}}
+				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
-				onOpenMessageMemories={openMessageMemories}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
 			</SaveNavigationContext.Provider>
 			</SaveGuardContext.Provider>
 
-			{assembly !== null && (
+			{assembly !== null && conversation !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
+					conversation={conversation}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
@@ -273,20 +271,22 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
-				<MemoriesPanel
-					key={session.conversation.id}
+			{!assemblyActive && BoxInspector !== undefined && session.conversation !== null && (
+				<BoxInspector
+					key={`${session.conversation.id}:${inspectorBox}`}
 					conversation={session.conversation}
 					onConversationChange={session.setConversation}
-					focusRequest={memoryFocus}
+					focusRequest={panelState.boxFocus}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
-					onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}
+					onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
+					onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
 				/>
 			)}
-			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
+			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && conversation !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
+					conversation={conversation}
 					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>

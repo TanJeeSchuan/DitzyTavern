@@ -1,3 +1,5 @@
+import { createBoxLens } from "@/box-sdk/client";
+import { stripThoughts } from "./shared";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircleDashed } from "lucide-react";
 import { api, foundOrNull, notFoundOutcome, requestOutcome, type ConversationSummary } from "@/box-sdk/client";
@@ -38,3 +40,5 @@ export function ThoughtPanel({ conversation }: { conversation: ConversationSumma
 		</li>)}
 	</ol>;
 }
+
+export const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);

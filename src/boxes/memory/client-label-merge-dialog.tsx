@@ -1,9 +1,8 @@
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, ToggleGroup, ToggleGroupItem } from "@/box-sdk/client";
 import { useId, useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { mergeMemoryLabels, type ConversationMemories } from "../box-windows/registry";
-import { labelledMemories } from "./memories-view";
+import { mergeMemoryLabels } from "./client-api";
+import { type ConversationMemories } from "./contract";
+import { labelledMemories } from "./client-view";
 
 export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels, onClose, onMerged }: {
 	conversationId: number;

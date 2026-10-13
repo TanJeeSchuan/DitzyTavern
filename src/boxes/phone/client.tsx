@@ -1,3 +1,5 @@
+import { createBoxLens } from "@/box-sdk/client";
+import { phoneNames, stripPhoneTexts } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
@@ -99,3 +101,8 @@ export function PhonePanel({ conversation, disabled, staging }: { conversation: 
 		</form>
 	</div>;
 }
+
+export const phoneLens = createBoxLens("sms", ({ cast, control }) => {
+	const human = cast.find(({ id }) => id === control.humanParticipantId);
+	return human === undefined ? undefined : phoneNames(cast, human);
+}, stripPhoneTexts, PhoneLensView);

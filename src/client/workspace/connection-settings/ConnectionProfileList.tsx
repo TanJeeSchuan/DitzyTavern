@@ -36,7 +36,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<h3 id="connections-title">Chat models</h3>
 					<PresetMenu controller={controller} apiFormat="chat-completions" label="Add chat connection" />
 				</div>
-				<p>Write Messages and extract Memories.</p>
+				<p>Write Messages and run Box tasks.</p>
 				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "chat-completions")} controller={controller}
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
@@ -52,11 +52,11 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 						</Button>
 					)}
 				</div>
-				<p>Shortlist saved Memories for recall. The Memory tab picks which one recall uses.</p>
+				<p>Find related text. Each Box selects its embedding model in its settings.</p>
 				<ProfileRows label="Embeddings endpoints" profiles={settings.profiles.filter(isEmbeddingsProfile)} controller={controller}
 					describe={(profile) => hostOf(profile.requestUrl)}
 					badge={() => null}
-					empty={<EmptyProfiles title="No endpoints yet">Memory recall stays off until you add one.</EmptyProfiles>} />
+					empty={<EmptyProfiles title="No endpoints yet">Embedding tasks stay off until you add an endpoint.</EmptyProfiles>} />
 				{feedback !== null && <p className={`mt-3 text-xs ${controller.error ? "text-destructive" : "text-muted-foreground"}`} role={controller.error ? "alert" : "status"}>{feedback}</p>}
 			</section>
 
@@ -98,7 +98,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 							{pending?.apiFormat === "system-one"
 								? `${listOf(roles, "and")} using it will need another Decision Model.`
 								: pending?.apiFormat === "embeddings"
-									? "Memory recall stops until you choose another embedding model."
+									? "Tasks using this endpoint stop until you choose another embedding model."
 									: "Chats using it will need another connection before they can generate."}
 						</DialogDescription>
 					</DialogHeader>

@@ -8,7 +8,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
-import { ParticipantMemory } from "./ParticipantMemory";
+import { boxClients } from "../box-windows/registry";
 
 // @approved
 //  The wording this surface shows for each standard command failure; the
@@ -87,7 +87,7 @@ export function ParticipantEditor({
 			onSave={() => void apply()}
 			onBack={onBack}
 		>
-			<ParticipantMemory conversation={conversation} participant={participant} />
+			{[...boxClients].map(([id, { ParticipantSection }]) => ParticipantSection && <ParticipantSection key={id} conversation={conversation} participant={participant} />)}
 			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
 		</DefinitionEditor>
 	);

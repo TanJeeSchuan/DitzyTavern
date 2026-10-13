@@ -1,7 +1,7 @@
+import { Button } from "@/box-sdk/client";
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Button } from "@/components/ui/button";
-import type { ConversationMemories } from "../box-windows/registry";
-import { memorySourceState } from "./memory-source-state";
+import type { ConversationMemories } from "./contract";
+import { memorySourceState } from "./client-source-state";
 
 type Source = ConversationMemories["sources"][number];
 const severity = ["failed", "remembered", "unprocessed", "empty", "skipped"] as const;

@@ -1,9 +1,10 @@
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/box-sdk/client";
 import { useId, useState, type FormEvent } from "react";
 import { RadioGroup } from "radix-ui";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { applyMemoryPeople, type MemoryIdentity, saveMemoryIdentity, type ConversationMemories } from "../box-windows/registry";
-import { labelledMemories } from "./memories-view";
+import { applyMemoryPeople } from "./shared";
+import { type MemoryIdentity, type ConversationMemories } from "./contract";
+import { saveMemoryIdentity } from "./client-api";
+import { labelledMemories } from "./client-view";
 
 export function MemoryIdentityDialog({ conversationId, participant, memories, initialKind, onClose, onSaved }: {
 	conversationId: number;

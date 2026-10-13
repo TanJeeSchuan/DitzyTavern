@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import type { ConversationSummary } from "../conversation";
 import type { BoxId } from "../../shared/contract/box";
-import { boxWindows, type LensPiece } from "../box-windows/registry";
+import { boxWindows } from "../box-windows/registry";
+import type { LensPiece } from "../box-windows/lens";
 import { Prose } from "./prose";
 
 /** @approved What the story's lenses need: the Chat, which gates each lens, and how a lifted mark opens its Box. */

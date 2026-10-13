@@ -1,15 +1,7 @@
+import { Button, Field, Popover, PopoverContent, PopoverTrigger, useConnectionSettingsQuery, useAsyncEffect, ProfileModelPicker, SaveFooter, useSaveGuard, NumberGroup, NumberRow } from "@/box-sdk/client";
 import { CircleHelp } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useConnectionSettingsQuery } from "../connection-settings-query";
-import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../box-windows/registry";
-import { useAsyncEffect } from "../lib/use-async";
-import { ProfileModelPicker } from "../ProfileModelPicker";
-import { SaveFooter } from "../SaveFooter";
-import { useSaveGuard } from "../SaveGuard";
-import { NumberGroup, NumberRow } from "./NumberControls";
+import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "./client-api";
 
 type Draft = Omit<MemorySettings, "revision">;
 type State = { settings: MemorySettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };

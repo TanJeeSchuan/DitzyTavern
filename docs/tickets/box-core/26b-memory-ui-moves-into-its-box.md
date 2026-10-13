@@ -1,6 +1,6 @@
 # Memory's UI moves into its Box
 
-Status: TODO
+Status: DONE
 
 Blocked By: 26-boxes-are-discovered-from-folders
 
@@ -26,16 +26,25 @@ Memory's UI lives in `src/boxes/memory/` and plugs into generic surfaces that an
 
 ## Work
 
-- [ ] Add the four generic surfaces to the Box client registration and render them in the host.
-- [ ] Move the Memory UI files into `src/boxes/memory/` (`client-*.tsx` layer naming) and register them on those surfaces.
-- [ ] Replace the host Memories icon with Memory's `TopBarItem`, keeping message-focus opening.
-- [ ] Remove the registry's Memory re-exports (`export * from "../../boxes/memory/..."`) and every `src/client` import of Memory code.
-- [ ] Document the new surfaces in `docs/box-system/README.md`.
-- [ ] Run `bun run check` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Add the four generic surfaces to the Box client registration and render them in the host.
+- [x] Move the Memory UI files into `src/boxes/memory/` (`client-*.tsx` layer naming) and register them on those surfaces.
+- [x] Replace the host Memories icon with Memory's `TopBarItem`, keeping message-focus opening.
+- [x] Remove the registry's Memory re-exports (`export * from "../../boxes/memory/..."`) and every `src/client` import of Memory code.
+- [x] Document the new surfaces in `docs/box-system/README.md`.
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
 - `git grep -iE "memor" -- src/client` finds no Memory UI, contract or helper code. Generic code that merely mentions Memory in a comment is allowed.
 - The only `src/client` file importing from `src/boxes/` is `src/client/box-windows/registry.tsx`, and only Box client modules and descriptors, no `export *` re-exports.
 - A Box gets an inspector, a settings section, a participant section or a trace view by declaring it in its client registration, with no host edit.
+
+## Implementation and verification
+
+- Memory owns its inspector, settings, participant section, trace view, helpers, tests and stylesheet. The host registers optional `Inspector`, `Settings`, `ParticipantSection` and `TraceView` surfaces in `boxClients`, alongside its window, primary panel and top bar item.
+- Inspector openers preserve message focus and the narrow Chat title menu. Chat surfaces hide while their Box is disabled; settings and participant sections remain available for loaded Boxes. Connection helper copy now describes Box tasks without naming Memory.
+- The registry no longer re-exports Memory modules or imports other Boxes' shared helpers. Phone and Thoughts create their lenses through `createBoxLens` in their client modules.
+- After the final code change, ran `bun run check` and then the full `bun run test:e2e`, sequentially under `/tmp/ditzy-heavy.lock`: 133 lint-rule tests, 1,492 unit tests across 172 files, 3 harness tests, and 76 e2e tests passed. Lint, contract ownership and both typechecks passed; lint still reports warnings.
+- Earlier focused runs passed all 8 moved Memory view tests, 2 inspector-focus reducer tests, 3 Memory e2e flows, 3 new Box inspector e2e flows and 7 lifecycle e2e flows. The lifecycle reply locator now uses an exact match because `One.` also matched `Check the phone.`.
+- No component or snapshot tests added. No code review run. Nothing left open in this ticket; runtime client-module loading remains ticket 27.
