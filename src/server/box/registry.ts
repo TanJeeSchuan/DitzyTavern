@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
@@ -37,8 +38,11 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: HostBox | undef
 // Box's id. Folders load in order, each folder's Boxes by name, so a plugin
 // folder listed after the built-in one cannot replace a built-in Box. An
 // absent folder holds no Boxes, as before any plugin is installed. A Box
-// that fails to load is refused with its reason; the rest still load.
-export const discoverBoxes = async (folders: readonly string[]) => {
+// that fails to load is refused with its reason; the rest still load. The
+// server passes the database it serves, and each Box's routes are built
+// against it here, so a Box whose routes throw is refused instead of
+// stopping the server; the contract builds them again to mount them.
+export const discoverBoxes = async (folders: readonly string[], database?: Database) => {
 	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox; readonly folder: string }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];
 	for (const parent of folders) {
@@ -53,7 +57,9 @@ export const discoverBoxes = async (folders: readonly string[]) => {
 				// @approved
 				// SAFETY: checkedHooks checks the hooks the host relies on against the descriptor; each Box types its own with `satisfies Box<…>`.
 				const { default: box }: { default: HostBox | undefined } = await import(join(folder, "server.ts"));
-				boxes.set(descriptor.id, { descriptor, box: checkedHooks(descriptor.id, descriptor, box), folder });
+				const checked = checkedHooks(descriptor.id, descriptor, box);
+				if (database !== undefined) checked.routes?.(database);
+				boxes.set(descriptor.id, { descriptor, box: checked, folder });
 			} catch (error) {
 				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
 			}
@@ -68,9 +74,9 @@ export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
 
 let registered: ReadonlyMap<BoxId, HostBox> = new Map();
 let clientFolders: ReadonlyMap<BoxId, string> = new Map();
-/** @approved Builds the registry from `folders` at startup, before anything reads it, logging each refused Box. */
-export const loadBoxes = async (folders: readonly string[] = boxFolders): Promise<void> => {
-	const { boxes, refused } = await discoverBoxes(folders);
+/** @approved Builds the registry from `folders` at startup, before anything reads it, logging each refused Box; a server passes its database. */
+export const loadBoxes = async (folders: readonly string[] = boxFolders, database?: Database): Promise<void> => {
+	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
 	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
 	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));

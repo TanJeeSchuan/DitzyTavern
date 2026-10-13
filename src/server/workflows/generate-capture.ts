@@ -306,7 +306,7 @@ export function prepareGenerationInputsSnapshot(
 			const boxInstances = readBoxInstances(db, input.conversationId);
 			return { boxInstances, summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxInstances),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, summary.boxes, boxInstances),
 				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);

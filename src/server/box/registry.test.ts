@@ -7,8 +7,8 @@ import { boxDescriptors } from "../../shared/contract/box";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
 import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
-import { captureModelFetch, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
+import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
+import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes } from "./registry";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
@@ -53,8 +53,10 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		renamed: { fields: 'id: "lantern"' },
 		broken: { server: 'throw new Error("The wick is wet.");' },
 		unhooked: { fields: 'decision: { summary: "", description: "", off: "", context: "" }' },
+		unrouted: { server: 'export default { routes: () => { throw new Error("The hook is bent."); } };' },
 	});
-	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins]);
+	const database = openObservedDatabase();
+	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins], database).finally(() => database.close());
 	expect(boxes.map(({ descriptor }) => descriptor.id)).toEqual([...boxDescriptors().keys(), "lantern"]);
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
@@ -64,8 +66,34 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["renamed", "Its folder must be named for its id, lantern."],
 		["unhooked", "The unhooked Box must declare a digest exactly when it declares a decision."],
 		["unlabelled", "Its descriptor is invalid at /label: Expected string."],
+		["unrouted", "The hook is bent."],
 		["unschemed", "Its descriptor is invalid at /setup/schema: Expected kind 'BoxSchema'."],
 	]);
+});
+
+test("a disabled Box's records are not folded, so turning off a Box whose fold throws lets the Chat generate", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: 'export default { records: { initial: 0, fold: () => { throw new Error("The wick is wet."); } }, advance: { run: async () => ({ items: [], record: {} }) } };',
+		} })]);
+		const conversation = createChat(database);
+		insertBox(database, conversation.id, "lantern");
+		withProfile(database);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const send = async () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it." }),
+		}));
+		await completeGeneration(app, conversation.id, (await (await send()).json()).generationId);
+		expect((await send()).status).toBe(500);
+		setBoxState(database, conversation.id, "lantern", "disabled");
+		expect((await send()).status).toBe(200);
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
 });
 
 test("a Chat keeps its preset and its Generations once a Box in it is no longer loaded", async () => {

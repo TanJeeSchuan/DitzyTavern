@@ -2,7 +2,7 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
+import { boxRecordSchema, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
@@ -54,12 +54,15 @@ export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, u
 		return record === undefined ? state : records.fold(state, record, setup);
 	}, records.initial);
 
-/** @approved Every record Box's folded state, by Box id, as one Generation captures it; only the Box that folded a state reads it. */
+/** @approved Every enabled record Box's folded state, by Box id, as one Generation captures it; only the Box that folded a state reads it. */
 export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]>["initial"]>>;
 
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, instances: BoxInstances): RecordStates =>
+// @approved
+//  Only an enabled Box is captured, so a disabled Box's records are not read
+// or folded: turning off a Box whose fold throws keeps Generations working.
+export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: BoxStates, instances: BoxInstances): RecordStates =>
 	Object.fromEntries([...serverBoxes()].flatMap(([id, { records }]) => {
-		if (records === undefined) return [];
+		if (records === undefined || boxes[id] !== "enabled") return [];
 		const slots = readRecordSlots(db, id, boxRecordSchema(id), instances[id], selectedVariantIds);
 		return [[id, foldRecords<unknown, unknown, unknown>(records, setups[id], slots, selectedVariantIds)]];
 	}));

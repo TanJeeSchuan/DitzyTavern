@@ -13,7 +13,8 @@ const linkStylesheet = `await new Promise((resolve, reject) => document.head.app
 
 // A Box's client module, `client.js`, built from its folder's `client.tsx`
 // alone, a built-in's and a plugin's alike: the host modules stay imports the
-// import map resolves. A stylesheet the module imports is emitted beside it as
+// import map resolves, and a dynamic import is inlined, since the server serves
+// no other chunk. A stylesheet the module imports is emitted beside it as
 // `client.css`, and the module links it and waits for it before it resolves,
 // so the host renders no surface of a Box without its styles.
 export const buildBoxClient = async (folder: string, outDir: string): Promise<void> => {
@@ -28,7 +29,7 @@ export const buildBoxClient = async (folder: string, outDir: string): Promise<vo
 			outDir,
 			emptyOutDir: true,
 			lib: { entry: join(folder, "client.tsx"), formats: ["es"], fileName: () => "client.js", cssFileName: "client" },
-			rolldownOptions: { external: Object.keys(hostModules) },
+			rolldownOptions: { external: Object.keys(hostModules), output: { codeSplitting: false } },
 		},
 	});
 	if (!existsSync(join(outDir, "client.css"))) return;

@@ -6,6 +6,9 @@ import { tipMove, tipRecord } from "./shared";
 import descriptor from "./shared-descriptor";
 import "./tip-jar.css";
 
+/** @approved A dynamic import, which `box:build` inlines: the server serves a Box only its `client.js` and `client.css`. */
+const { dropCoin } = await import("./client-drop");
+
 const useTipJar = (conversation: ConversationSummary) => useQuery({
 	queryKey: ["tip-jar", conversation.id, conversation.revision],
 	queryFn: async ({ signal }) => foundOrNull(await requestOutcome(
@@ -25,7 +28,7 @@ function TipJarPanel({ conversation, disabled, staging }: { conversation: Conver
 	const staged = boxMovesOf(staging.moves, "tip-jar", tipMove);
 	return <div className="tip-jar">
 		<output aria-label="Coins in the jar">{coins ?? "…"}</output>
-		<Button disabled={disabled || staged.length > 0} onClick={() => staging.onChange({ ...staging.moves, "tip-jar": [{ coins: 1 }] })}>Drop a coin</Button>
+		<Button disabled={disabled || staged.length > 0} onClick={() => dropCoin(staging)}>Drop a coin</Button>
 	</div>;
 }
 
