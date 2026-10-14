@@ -1,5 +1,5 @@
 import { Type, type Static, type TLiteral } from "@sinclair/typebox";
-import { generationJsonValue } from "./json-value";
+import { generationJsonObject } from "./json-value";
 
 // The one canonical runtime declaration of the Generation Settings
 // structure (ADR-0032): model selection, sampling parameters, budget
@@ -14,8 +14,6 @@ import { generationJsonValue } from "./json-value";
 // sampling, budget, continuation, and Request Overrides values the domain
 // rejects. Normalization such as trimming a model ID stays with the owning
 // domain adapter; this declaration is structural, not mutating.
-
-const generationJsonObject = Type.Record(Type.String(), generationJsonValue);
 
 // Sampling values: null means the provider default; otherwise a finite
 // value between -2 and 2.

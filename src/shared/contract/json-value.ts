@@ -20,3 +20,6 @@ type ReadonlyJson<T> = T extends readonly (infer Item)[] ? readonly ReadonlyJson
 export const generationJsonValue = Type.Unsafe<ReadonlyJson<Static<typeof jsonValue>>>(jsonValue);
 
 export type GenerationJsonValue = Static<typeof generationJsonValue>;
+
+export const generationJsonObject = Type.Readonly(Type.Record(Type.String(), generationJsonValue));
+export type GenerationJsonObject = Static<typeof generationJsonObject>;

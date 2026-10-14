@@ -1,4 +1,1 @@
-export type { GenerationJsonValue } from "./contract/json-value";
-import type { GenerationJsonValue } from "./contract/json-value";
-
-export type GenerationJsonObject = Readonly<{ [key: string]: GenerationJsonValue }>;
+export type { GenerationJsonValue, GenerationJsonObject } from "./contract/json-value";
