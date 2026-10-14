@@ -67,7 +67,7 @@ export function GenerationSphere({ authorName }: { authorName: string }) {
 
 			points.sort((a, b) => a.depth - b.depth);
 			points.forEach((point, slot) => {
-				const circle = circles[slot];
+				const circle = circles[slot]!; // @approved points maps circles one to one.
 				const normalizedDepth = (point.depth + 1) * 0.5;
 				circle.setAttribute("cx", point.screenX.toFixed(2));
 				circle.setAttribute("cy", point.screenY.toFixed(2));

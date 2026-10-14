@@ -9,3 +9,4 @@ export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from 
 export { invalidOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
 export { projectImageAnchors } from "../shared/image-reference";
+export { isNonEmpty, type NonEmpty } from "../shared/non-empty";

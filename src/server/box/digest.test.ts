@@ -303,8 +303,8 @@ test("a digest reads its passages' Message ids, the Cast and its own Chat values
 		await waitFor(() => windows.length === 1);
 	} finally { run.mockRestore(); }
 	const messageIds = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ? ORDER BY position").all(chat.id).map((row) => row.id);
-	expect(windows[0]?.passage).toEqual({ messageId: messageIds[1], speaker: null, authorId: null, content: "Snow drifts against the shutters." });
-	expect(windows[0]?.preceding.map((entry) => entry.messageId)).toEqual([messageIds[0]]);
+	expect(windows[0]?.passage).toEqual({ messageId: messageIds[1]!, speaker: null, authorId: null, content: "Snow drifts against the shutters." });
+	expect(windows[0]?.preceding.map((entry) => entry.messageId)).toEqual([messageIds[0]!]);
 	expect(windows[0]?.cast.map(({ name, removed }) => ({ name, removed }))).toEqual([{ name: "Writer", removed: false }, { name: "Maren", removed: false }]);
 	expect(windows[0]?.data).toEqual({ enabled: "true", instance: clock });
 });

@@ -45,9 +45,9 @@ const parsedInitial = (
 export const macroWritesToData = (
 	presetId: number,
 	writes: readonly MacroVariableWrite[],
-): ConversationDataEntry[] => {
-	if (writes.length === 0) return [];
-	return [{ namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey(presetId), value: variantDataCodecs.macroWrites.encode(writes) }];
+): ConversationDataEntry | null => {
+	if (writes.length === 0) return null;
+	return { namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey(presetId), value: variantDataCodecs.macroWrites.encode(writes) };
 };
 
 /** @approved Convert initial preset-scoped values into Conversation records. */

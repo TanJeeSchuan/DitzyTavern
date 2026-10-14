@@ -27,7 +27,7 @@ const target = (generationId: number): GenerationSessionTarget => ({
 
 const contentEvent = (text: string): GenerationEvent => ({ type: "content", text });
 
-const stateSnapshot = (overrides: Partial<GenerationStatePayload>): GenerationStatePayload => ({
+const stateSnapshot = (overrides: Partial<Pick<GenerationStatePayload, "content" | "reasoning" | "latestEventId">>): GenerationStatePayload => ({
 	outcome: "active-state",
 	generationId: 7,
 	conversationId: 42,
@@ -37,7 +37,6 @@ const stateSnapshot = (overrides: Partial<GenerationStatePayload>): GenerationSt
 	reasoning: "",
 	latestEventId: 0,
 	status: "active",
-	terminalReason: null,
 	...overrides,
 });
 

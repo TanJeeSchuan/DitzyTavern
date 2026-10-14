@@ -40,7 +40,9 @@ const arg = (name: string, fallback: string) =>
 let BASE = "";
 let captureFailed = false;
 const OUT_DIR = join(ROOT, arg("out", ".scratch/screenshots/states"));
-const [WIDTH, HEIGHT] = arg("viewport", "1440x900").split("x").map(Number);
+const viewport = /^(\d+)x(\d+)$/.exec(arg("viewport", "1440x900"));
+if (viewport === null) throw new Error("--viewport must be WIDTHxHEIGHT, such as 1440x900.");
+const [WIDTH, HEIGHT] = [Number(viewport[1]), Number(viewport[2])];
 const SCALE = Number(arg("scale", "1"));
 const MAX_DEPTH = Number(arg("depth", "4"));
 const MAX_STATES = Number(arg("max-states", "150"));
@@ -96,7 +98,8 @@ const readSurface = async (page: Page) => {
 		const indent = line.indexOf("- ");
 		const node = unquoteKey(line.slice(indent + 2)).match(NODE);
 		if (indent < 0 || !node) continue;
-		const [, role, rawName, flags] = node;
+		/** @approved NODE always captures the role and the (possibly empty) flags; only the name is optional. */
+		const [role, rawName, flags] = [node[1]!, node[2], node[3]!];
 		const name: string = rawName === undefined ? "" : JSON.parse(`"${rawName}"`);
 		const key = `${role} "${name}"`;
 		const nth = counts.get(key) ?? 0;
@@ -233,15 +236,15 @@ type Session = Awaited<ReturnType<typeof openSession>>;
 const crawl = async (session: Session) => {
 	await session.open([]);
 	const root = await readSurface(session.page);
-	const surfaces: Surface[] = [
-		{ path: [], signature: root.signature, actions: new Set(root.actions.map(stepKey)), explore: root.actions, problems: session.takeProblems() },
-	];
+	const home: Surface = { path: [], signature: root.signature, actions: new Set(root.actions.map(stepKey)), explore: root.actions, problems: session.takeProblems() };
+	const surfaces = [home];
 	const known = new Set([root.signature]);
-	await session.capture(fileOf(0, surfaces[0]), []);
-	surfaces[0].problems.push(...session.takeProblems());
+	await session.capture(fileOf(0, home), []);
+	home.problems.push(...session.takeProblems());
 
-	for (let i = 0; i < surfaces.length && surfaces.length < MAX_STATES; i++) {
-		const surface = surfaces[i];
+	/** @approved The array iterator reads the length on each step, so Surfaces discovered below are explored too. */
+	for (const [i, surface] of surfaces.entries()) {
+		if (surfaces.length >= MAX_STATES) break;
 		if (surface.path.length >= MAX_DEPTH) continue;
 		for (const step of surface.explore) {
 			if (surfaces.length >= MAX_STATES) break;

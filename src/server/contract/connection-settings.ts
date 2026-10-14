@@ -172,6 +172,10 @@ export const createConnectionSettingsRoutes = (
 						case "reset-credential": return { outcome: "applied" as const, settings: toSettingsPayload(settings.resetCredential(body)) };
 						case "delete-profile": return { outcome: "applied" as const, settings: toSettingsPayload(settings.deleteProfile(body)) };
 						case "set-pinned-models": return { outcome: "applied" as const, settings: toSettingsPayload(settings.setPinnedModels(body)) };
+						default: {
+							const _exhaustive: never = body;
+							throw new Error(`Unhandled Connection Settings command: ${JSON.stringify(_exhaustive)}`);
+						}
 					}
 				} catch (error) {
 					return presentDomainError(error, commandResponse);

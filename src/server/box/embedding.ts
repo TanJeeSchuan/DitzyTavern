@@ -38,7 +38,7 @@ export const readCachedVectors = (database: Database, spaceKey: string, texts: r
 		.from(embeddingCacheTable)
 		.where(and(eq(embeddingCacheTable.space_key, spaceKey), inArray(embeddingCacheTable.text_hash, batch)))
 		.all());
-	return new Map(rows.map(({ hash, vector }) => [byHash.get(hash)!, decodeVector(vector)]));
+	return new Map(rows.map(({ hash, vector }) => [byHash.get(hash)!, decodeVector(vector)])); // @approved The query selects only hashes byHash holds.
 };
 
 // @approved
@@ -61,6 +61,7 @@ export const embedTexts = async (
 	const vectors = readCachedVectors(database, configuration.spaceKey, texts);
 	const missing = [...new Set(texts)].filter((text) => !vectors.has(text));
 	if (missing.length > 0) {
+		/** @approved `request` returned exactly one vector per missing text. */
 		const embedded = await request(missing);
 		const db = drizzle(database);
 		database.transaction(() => {
@@ -73,5 +74,5 @@ export const embedTexts = async (
 			}
 		}).immediate();
 	}
-	return texts.map((text) => vectors.get(text)!);
+	return texts.map((text) => vectors.get(text)!); // @approved Every text was cached or embedded above.
 };

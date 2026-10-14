@@ -114,11 +114,10 @@ export function RaceOval({ course, state, avatars }: { course: RaceCourse; state
 		lane: laneFor(index, runners.length),
 	}));
 	const placements = usePlacements(targets);
-	const placed = runners.map((runner, index) => {
-		const target = targets[index]!;
-		const placement = placements.get(runner.name) ?? target;
+	const placed = targets.map((target, index) => {
+		const placement = placements.get(target.name) ?? target;
 		const point = pointBehind(placement.offset, course.direction);
-		return { name: runner.name, avatar: avatars.get(runner.name), rank: index + 1, x: point.x + point.normalX * placement.lane, y: point.y + point.normalY * placement.lane };
+		return { name: target.name, avatar: avatars.get(target.name), rank: index + 1, x: point.x + point.normalX * placement.lane, y: point.y + point.normalY * placement.lane };
 	});
 	const finish = pointBehind(0, course.direction);
 	const start = pointBehind(startBehind, course.direction);
@@ -159,13 +158,13 @@ export function RaceOval({ course, state, avatars }: { course: RaceCourse; state
 			</g>)}
 		</svg>
 		<ol className="race-field" aria-label="Race order">
-			{runners.map((runner, index) => <li key={runner.name} data-leader={index === 0 ? true : undefined}>
+			{runners.map((runner, index, [first = runner]) => <li key={runner.name} data-leader={index === 0 ? true : undefined}>
 				<span className="race-field-place">{index + 1}</span>
 				<Portrait name={runner.name} portrait={avatars.get(runner.name)} size="small" />
 				<span className="race-field-name">{runner.name}</span>
 				<span className="race-field-gap">{state.finished
-					? index === 0 ? `${runner.time.toFixed(2)} s` : `+${(runner.time - (leader?.time ?? runner.time)).toFixed(2)} s`
-					: index === 0 ? "Leader" : `+${(leader!.distance - runner.distance).toFixed(1)} m`}</span>
+					? index === 0 ? `${runner.time.toFixed(2)} s` : `+${(runner.time - first.time).toFixed(2)} s`
+					: index === 0 ? "Leader" : `+${(first.distance - runner.distance).toFixed(1)} m`}</span>
 			</li>)}
 		</ol>
 	</div>;

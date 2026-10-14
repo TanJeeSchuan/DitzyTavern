@@ -131,7 +131,7 @@ export const loadBoxClients = async (): Promise<void> => {
 	installBoxDescriptors(modules.map(({ descriptor }) => descriptor));
 	clients = new Map(modules.map((client) => [client.descriptor.id, client]));
 	listed = new Map(boxes.map(({ id, label }, index) => {
-		const result = loaded[index]!;
+		const result = loaded[index]!; // @approved allSettled answers each Box, in order.
 		return [id, { id, label, failure: result.status === "rejected" ? errorMessage(result.reason) : null }];
 	}));
 };

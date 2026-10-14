@@ -16,7 +16,7 @@ export const moods = {
 	eerie: { emote: "👻", criteria: "Unsettling, uncanny or ominous" },
 } as const satisfies Record<Mood, { emote: string; criteria: string }>;
 
-const option = <Name extends Mood>(mood: Name) => Type.Literal(mood, { title: `${moods[mood].emote} ${mood[0]!.toUpperCase()}${mood.slice(1)}` });
+const option = <Name extends Mood>(mood: Name) => Type.Literal(mood, { title: `${moods[mood].emote} ${mood.charAt(0).toUpperCase()}${mood.slice(1)}` });
 
 /** @approved One passage's answer; "not clear" keeps the mood the scene already had. */
 export const moodRecord = Type.Object({

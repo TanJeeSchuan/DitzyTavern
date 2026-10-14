@@ -54,6 +54,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 				<ul aria-label="Boxes">
 					{[...listedBoxes().values()].map(({ id: box, label, failure }) => {
 						const state = conversation.boxes[box];
+						if (state === undefined) throw new Error(`Chat ${conversation.id} has no state for Box ${box}.`);
 						return <li key={box}>
 							<div>
 								<strong>{label}</strong>

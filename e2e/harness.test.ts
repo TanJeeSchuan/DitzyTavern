@@ -6,6 +6,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
+import { isChatModelCall } from "./protocol.ts";
 import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
 import type { MemorySettingsCommand } from "../src/boxes/memory/contract.ts";
 import type { BoxDecisionSettingsCommand } from "../src/shared/contract/box.ts";
@@ -35,6 +36,27 @@ test("startup timeout kills and joins a child that never reports readiness", asy
 		}
 		t.mock.restoreAll();
 		syncBuiltinESMExports();
+	}
+});
+
+test("the intercepted call log keeps provider request fields the interceptor does not declare", async () => {
+	const server = await startE2eServer();
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | BoxDecisionSettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
+		method: body === undefined ? "GET" : "POST",
+		headers: { "content-type": "application/json" },
+		body: body === undefined ? undefined : JSON.stringify(body),
+	})).json();
+	try {
+		await server.reset();
+		const { profiles } = await call("connection-settings");
+		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
+		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...draft } = chat;
+		await call("connection-settings/test-connection", { profileId: id, profile: draft, modelId: "e2e-model" });
+		const chatCall = (await server.log()).calls.find(isChatModelCall);
+		assert.ok(chatCall, "the Test Connection logged a chat call");
+		assert.match(JSON.stringify(chatCall.body), /"max_tokens"/, "the log keeps provider fields the call schema does not declare");
+	} finally {
+		await server.stop();
 	}
 });
 

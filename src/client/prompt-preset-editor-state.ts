@@ -95,7 +95,8 @@ export function dirtyBlockPatches(
 	const submitted: Record<number, BlockDraft> = {};
 	for (const slot of preset.slots) {
 		const draft = drafts[slot.id];
-		const patch = draft === undefined ? null : draftToPatch(slot, draft);
+		if (draft === undefined) continue;
+		const patch = draftToPatch(slot, draft);
 		if (patch === null) continue;
 		patches.push(patch);
 		submitted[slot.id] = draft;
@@ -342,11 +343,10 @@ function adoptRecipe(
 		session = { ...session, pendingRetire: null };
 		const byId = new Map(selected.slots.map((slot) => [slot.id, slot]));
 		drafts = {};
-		for (const key of Object.keys(state.drafts)) {
+		for (const [key, draft] of Object.entries(state.drafts)) {
 			const blockId = Number(key);
 			const slot = byId.get(blockId);
 			if (slot === undefined) continue;
-			const draft = state.drafts[blockId];
 			const submitted = retire?.[blockId];
 			if (
 				submitted !== undefined

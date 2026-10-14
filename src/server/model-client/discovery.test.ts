@@ -14,6 +14,10 @@ const profile = {
 };
 
 describe("Model discovery", () => {
+	test.each([{}, { data: {} }, { data: null }])("rejects a catalog without an array %j", async (body) => {
+		const result = await discoverModels({ profile }, { fetch: async () => Response.json(body) });
+		expect(result).toMatchObject({ outcome: "failure", kind: "malformed-response" });
+	});
 	test("performs one credentialed, non-redirecting GET and normalizes IDs", async () => {
 		let calls = 0;
 		const result = await discoverModels(

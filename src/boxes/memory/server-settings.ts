@@ -57,7 +57,7 @@ export const createMemorySettingsModule = (database: Database) => {
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidMemoryCommandError("The recall relevance minimum must be between 0 and 3.");
 		const value = Value.Clean(memorySettingsValue, { ...command, extractionModel: model, embeddingModel });
 		const { expectedRevision } = command;
-		putLibraryValue(db, boxReference("memory"), KEY, JSON.stringify(value), memoryGuard(expectedRevision, (actualRevision) => ({ expectedRevision, actualRevision, currentSettings: get() })));
+		putLibraryValue(db, { namespace: boxReference("memory"), key: KEY, value: JSON.stringify(value) }, memoryGuard(expectedRevision, (actualRevision) => ({ expectedRevision, actualRevision, currentSettings: get() })));
 		return get();
 	}).immediate();
 	return { get, apply };

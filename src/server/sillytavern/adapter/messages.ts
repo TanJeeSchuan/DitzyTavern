@@ -20,16 +20,16 @@ type JsonValue =
 	| JsonValue[]
 	| JsonObject;
 
-const isObject = (value: JsonValue): value is JsonObject =>
+const isObject = (value: JsonValue | undefined): value is JsonObject =>
 	value !== null && value !== undefined && !Array.isArray(value) && value.constructor === Object;
 
-const isString = (value: JsonValue): value is string =>
+const isString = (value: JsonValue | undefined): value is string =>
 	value !== null && value !== undefined && value.constructor === String;
 
-const isNumber = (value: JsonValue): value is number =>
+const isNumber = (value: JsonValue | undefined): value is number =>
 	value !== null && value !== undefined && value.constructor === Number;
 
-const isTimestamp = (value: JsonValue): value is string =>
+const isTimestamp = (value: JsonValue | undefined): value is string =>
 	isString(value) && Number.isFinite(Date.parse(value));
 
 // @approved
@@ -87,7 +87,7 @@ const authorEntry = (
 	value: name,
 });
 
-const isScalar = (value: JsonValue): value is string | number | boolean => {
+const isScalar = (value: JsonValue | undefined): value is string | number | boolean => {
 	if (value === null || value === undefined) return false;
 	const constructor = value.constructor;
 	return (
@@ -112,7 +112,7 @@ const promote = (
 };
 
 const requireTimestampWhenPresent = (
-	value: JsonValue,
+	value: JsonValue | undefined,
 	description: string,
 ) => {
 	if (value === undefined || value === null) return;
@@ -283,8 +283,8 @@ const variantsFromSwipes = (
 // reasoning duration and type, nonempty reasoning, and reasoning signatures.
 const provenance = (
 	data: ConversationDataEntry[],
-	genStarted: JsonValue,
-	genFinished: JsonValue,
+	genStarted: JsonValue | undefined,
+	genFinished: JsonValue | undefined,
 	extra: JsonObject | undefined,
 ) => {
 	promote(data, VARIANT_KEYS.api, extra?.api);

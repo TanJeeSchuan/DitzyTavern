@@ -10,7 +10,19 @@ import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import { builtInBoxes, loadBoxes } from "../src/server/box/registry";
 import type { ModelFetch } from "../src/server/model-client";
 import { toMessages } from "../src/server/model-client/chat-messages";
-import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
+import { Value } from "@sinclair/typebox/value";
+import type { ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
+import {
+	chatCompletionCallBody,
+	decisionCallBody,
+	embeddingsCallBody,
+	hasDecisionPassage,
+	isChatModelCall,
+	type ChatReply,
+	type DecisionRule,
+	type MemoryClaim,
+	type UpdateScenario,
+} from "./protocol";
 
 const masterKey = new Uint8Array(32).fill(1);
 const directoryRoot = process.env.E2E_ROOT;
@@ -80,27 +92,30 @@ const completion = (chunks: readonly string[], stream: boolean, hold = false, ch
 	choices: [{ index: 0, message: { role: "assistant", content: chunks.join("") }, finish_reason: "stop" }],
 });
 
-const extraction = (call: ModelCall) => {
-	if (memoryClaims === undefined) return refuse(call);
-	const prompt: string = call.body.messages[0].content;
+const extraction = (call: ChatModelCall) => {
+	const [system] = call.body.messages;
+	if (memoryClaims === undefined || system === undefined) return refuse(call);
+	const prompt = system.content;
 	const { source } = JSON.parse(prompt.slice(prompt.indexOf("{", prompt.indexOf("Captured source and reference context:"))));
 	const candidates = memoryClaims.filter((memory) => source.content.includes(memory.excerpt)).map(({ excerpt, ...memory }) => ({ ...memory, evidence: [{ messageId: source.messageId, excerpt }] }));
-	return completion([JSON.stringify({ candidates })], call.body.stream);
+	return completion([JSON.stringify({ candidates })], call.body.stream === true);
 };
 
-const chat = async (call: ModelCall) => {
+const chat = async (call: ChatModelCall) => {
 	const reply = chatReplies[0];
 	if (!reply) return refuse(call);
 	if (!reply.repeat) chatReplies.shift();
 	if ("chunks" in reply && reply.firstChunkDelayMs) await Bun.sleep(reply.firstChunkDelayMs);
 	if ("status" in reply && reply.hold) await held.promise;
 	if ("status" in reply) return Response.json({ error: { message: reply.error } }, { status: reply.status });
-	return completion(reply.chunks, call.body.stream, reply.hold, reply.chunkDelayMs, reply.truncate);
+	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.chunkDelayMs, reply.truncate);
 };
 
-const decisions = async (call: ModelCall) => {
+const decisions = async (call: DecisionModelCall) => {
+	const state = call.body.state;
+	const passage = hasDecisionPassage(state) ? JSON.stringify(state.passage) : undefined;
 	const rules = Object.entries(call.body.questions).map(([id, question]) => [id, decisionRules.find((rule) =>
-		rule.match.every((text) => JSON.stringify(question).includes(text)) && (rule.passage === undefined || JSON.stringify(call.body.state.passage).includes(rule.passage)))] as const);
+		rule.match.every((text) => JSON.stringify(question).includes(text)) && (rule.passage === undefined || (passage !== undefined && passage.includes(rule.passage))))] as const);
 	if (rules.some(([, rule]) => !rule)) return refuse(call);
 	const failure = rules.find(([, rule]) => rule && "status" in rule)?.[1];
 	if (failure && "status" in failure) return Response.json({ error: "Scripted Decision Model failure." }, { status: failure.status });
@@ -109,36 +124,46 @@ const decisions = async (call: ModelCall) => {
 };
 
 const embed = (text: string) => {
-	const vector = Array<number>(64).fill(0);
-	for (const word of text.toLowerCase().match(/[a-z']+/g) ?? []) vector[[...word].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7) % 64] += 1;
+	const buckets = (text.toLowerCase().match(/[a-z']+/g) ?? []).map((word) => [...word].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7) % 64);
+	const vector = Array.from({ length: 64 }, (_, slot) => buckets.filter((bucket) => bucket === slot).length);
 	const length = Math.hypot(...vector) || 1;
 	return vector.map((value) => value / length);
 };
 
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
-	const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-	const kind = new URL(url).pathname.endsWith("/systemone") ? "decision"
-		: new URL(url).pathname.endsWith("/models") ? "models"
-		: url.endsWith("/embeddings") ? "embeddings"
-		: !url.endsWith("/chat/completions") ? "unknown"
-		: body.messages[0]?.content.startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat";
-	const call = { kind, url, headers: Object.fromEntries(new Headers(init?.headers)), body };
+	const raw: unknown = init?.body ? JSON.parse(String(init.body)) : undefined;
+	const headers = Object.fromEntries(new Headers(init?.headers));
+	const path = new URL(url).pathname;
+	let call: ModelCall;
+	if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
+		call = { kind: "decision", url, headers, body: raw };
+	} else if (path.endsWith("/models")) {
+		call = { kind: "models", url, headers, body: raw };
+	} else if (url.endsWith("/embeddings") && Value.Check(embeddingsCallBody, raw)) {
+		call = { kind: "embeddings", url, headers, body: raw };
+	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
+		call = { kind: raw.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
+	} else {
+		call = { kind: "unknown", url, headers, body: raw };
+	}
 	calls.push(call);
 	writeFileSync(join(current!.directory, "calls.json"), JSON.stringify(calls));
-	if (kind === "chat") return chat(call);
-	if (kind === "extraction") return extraction(call);
-	if (kind === "decision") return decisions(call);
-	if (kind === "models") {
-		const catalog = modelCatalogs.shift();
-		return catalog === undefined ? refuse(call) : Response.json({ data: catalog.map((id) => ({ id })) });
+	switch (call.kind) {
+		case "chat": return chat(call);
+		case "extraction": return extraction(call);
+		case "decision": return decisions(call);
+		case "models": {
+			const catalog = modelCatalogs.shift();
+			return catalog === undefined ? refuse(call) : Response.json({ data: catalog.map((id) => ({ id })) });
+		}
+		case "embeddings": {
+			const texts: string[] = [call.body.input].flat();
+			if (embeddingMatches.length === 0 || texts.some((text) => !embeddingMatches.some((match) => text.includes(match)))) return refuse(call);
+			return Response.json({ data: texts.map((text, index) => ({ index, embedding: embed(text) })) });
+		}
+		case "unknown": return refuse(call);
 	}
-	if (kind === "embeddings") {
-		const texts: string[] = [body.input].flat();
-		if (embeddingMatches.length === 0 || texts.some((text) => !embeddingMatches.some((match) => text.includes(match)))) return refuse(call);
-		return Response.json({ data: texts.map((text, index) => ({ index, embedding: embed(text) })) });
-	}
-	return refuse(call);
 };
 
 // @approved
@@ -204,7 +229,7 @@ if (resumed) {
 
 const unsentPlans = async () => {
 	const generations = current!.database.query<{ id: number; conversation_id: number }, []>("SELECT id, conversation_id FROM active_generation UNION SELECT id, conversation_id FROM generation_replay").all();
-	const sent = calls.filter((call) => call.kind === "chat").map((call) => JSON.stringify([call.body.model, call.body.messages]));
+	const sent = calls.filter(isChatModelCall).map((call) => JSON.stringify([call.body.model, call.body.messages]));
 	const unsent: string[] = [];
 	for (const { id, conversation_id } of generations) {
 		const details = await (await current!.app.handle(new Request(`http://localhost/api/conversations/${conversation_id}/generations/${id}/inspection`))).json();

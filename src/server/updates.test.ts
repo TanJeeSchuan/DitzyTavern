@@ -23,7 +23,7 @@ test("anonymous registry access reads only the latest index with bounded request
 	const checker = createUpdateChecker(database, { build: official, registryFetch: async (url, init) => { requests.push({ url, init }); return responses.shift()!; } });
 	await checker.check();
 	expect(requests.map(({ url }) => url)).toEqual(["https://ghcr.io/token?service=ghcr.io&scope=repository:tanjeeschuan/ditzytavern:pull", "https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest"]);
-	expect(new Headers(requests[1].init?.headers).get("authorization")).toBe("Bearer public-pull");
+	expect(new Headers(requests[1]!.init?.headers).get("authorization")).toBe("Bearer public-pull");
 	expect(requests.every(({ init }) => init?.signal instanceof AbortSignal)).toBe(true);
 });
 

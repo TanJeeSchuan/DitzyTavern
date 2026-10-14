@@ -77,8 +77,8 @@ describe("Native New Chat workflow", () => {
 		expect(model?.name).toBe("Juno Ashfeld");
 		expect(human?.id).not.toBe(model?.id);
 		expect(snapshot.control).toEqual({
-			humanParticipantId: human?.id,
-			modelParticipantId: model?.id,
+			humanParticipantId: human!.id,
+			modelParticipantId: model!.id,
 		});
 		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants[0]?.content).toBe(
 			"The workshop bell rings twice.",

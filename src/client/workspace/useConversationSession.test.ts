@@ -70,7 +70,7 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const hook = await renderHook(() => useConversationSession({
 		initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
-		story: { ...createStoryState(), conversationId: 1 },
+		story: { ...createStoryState(), status: "loading-first", conversationId: 1 },
 		dispatchStory,
 	}), client);
 	await flushHook();

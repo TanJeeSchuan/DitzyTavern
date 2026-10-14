@@ -1,6 +1,7 @@
+import type { NonEmpty } from "@/box-sdk/shared";
 import type { RaceCourse, RaceRunner, RaceSetup, RaceStats, RunningStyle } from "./contract";
 
-export const raceCourses: readonly RaceCourse[] = [
+export const raceCourses: Readonly<NonEmpty<RaceCourse>> = [
 	{ name: "Japan Cup · Tokyo", distance: 2400, surface: "turf", direction: "left" },
 	{ name: "Arima Kinen · Nakayama", distance: 2500, surface: "turf", direction: "right" },
 	{ name: "Tokyo Yushun · Tokyo", distance: 2400, surface: "turf", direction: "left" },
@@ -35,7 +36,7 @@ export const raceRoster: readonly { name: string; style: RunningStyle }[] = [
 export const RACE_AVATAR_PREFIX = "avatar:";
 
 export const initialRaceSetup: RaceSetup = {
-	raceId: "", course: raceCourses[0]!, metresPerStretch: 400, slots: [], auto: "on", phase: "setup",
+	raceId: "", course: raceCourses[0], metresPerStretch: 400, slots: [], auto: "on", phase: "setup",
 };
 
 export const raceRandom = (seed: string): (() => number) => {

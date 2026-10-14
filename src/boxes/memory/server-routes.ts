@@ -53,7 +53,7 @@ export const memoryRoutes = (database: Database) => new Elysia()
 	.get("/conversations/:id/allowance", ({ params }) => readMemoryChatSettings(database, params.id), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
 	.post("/conversations/:id/allowance", ({ params, body }) => {
 		try {
-			return { outcome: "applied" as const, settings: setMemoryAllowance(database, params.id, body.expectedRevision, body.allowance) };
+			return { outcome: "applied" as const, settings: setMemoryAllowance(database, params.id, body) };
 		} catch (error) {
 			return presentDomainError(error, allowanceResponse);
 		}

@@ -11,6 +11,7 @@ import {
 	shownVariant,
 	type StoryAction,
 	type StoryState,
+	isStoryReady,
 } from "../story";
 
 // @approved
@@ -63,8 +64,7 @@ export function useStoryMessageActions({
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const surface = {
-		conversationId: story.conversationId,
-		revision: () => conversation?.revision ?? story.revision,
+		revision: () => conversation?.revision ?? (isStoryReady(story) ? story.revision : null),
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
@@ -77,7 +77,7 @@ export function useStoryMessageActions({
 		if (current.queued) return;
 		current.queued = true;
 		let sent: RequestedSelection | undefined;
-		const applied = await runConversationCommand(surface, (expectedRevision) => {
+		const applied = await runConversationCommand({ ...surface, conversationId }, (expectedRevision) => {
 			current.queued = false;
 			sent = current.requested ?? requested;
 			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", ...sent });
@@ -127,21 +127,21 @@ export function useStoryMessageActions({
 			return;
 		}
 
-		if (story.conversationId === null) return;
+		if (!isStoryReady(story)) return;
 		queueSwipeScroll(selection.messageId);
 		await requestSelection(story.conversationId, { messageId: selection.messageId, variantId: selection.variantId });
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
-		if (story.preview !== null) return false;
+		if (!isStoryReady(story) || story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return false;
 		const variantId = shownVariant(story, storyMessage)?.id;
 		const conversationId = story.conversationId;
-		if (variantId === undefined || conversationId === null) return false;
+		if (variantId === undefined) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, revision: () => story.revision }, {
+		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, {
 			type: "edit-variant",
 			messageId,
 			variantId,
@@ -154,9 +154,9 @@ export function useStoryMessageActions({
 	};
 
 	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
-		if (story.preview !== null || story.conversationId === null) return;
+		if (!isStoryReady(story) || story.preview !== null) return;
 		dispatchStory({ type: "moves-requested", messageId, moves });
-		const applied = await runConversationCommand({ ...surface, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
 			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
 		});
@@ -164,11 +164,11 @@ export function useStoryMessageActions({
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {
-		if (story.preview !== null) return;
+		if (!isStoryReady(story) || story.preview !== null) return;
 		const conversationId = story.conversationId;
-		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
+		if (!story.messages.some((entry) => entry.id === messageId)) return;
 
-		await runConversationCommand(surface, {
+		await runConversationCommand({ ...surface, conversationId }, {
 			type: "delete-message",
 			messageId,
 		}, {

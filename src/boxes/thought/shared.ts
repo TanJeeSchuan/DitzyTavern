@@ -14,6 +14,7 @@ export const stripThoughts = (text: string): ThoughtSegment[] => {
 	const segments: ThoughtSegment[] = [];
 	let at = 0;
 	for (const match of text.matchAll(THOUGHT)) {
+		/** @approved THOUGHT always captures its body group. */
 		const body = match[1]!.trim();
 		if (body === "") continue;
 		segments.push({ kind: "prose", text: text.slice(at, match.index) }, { kind: "thought", text: body });

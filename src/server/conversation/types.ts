@@ -2,23 +2,25 @@ import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation"
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import type {
-	GenerationProvenance as SharedGenerationProvenance,
-} from "../../shared/generation-provenance";
+import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	ActiveGenerationDetails as SharedActiveGenerationDetails,
 	CapabilityAvailability as SharedCapabilityAvailability,
 	CastParticipant as SharedCastParticipant,
+	ChatHistoryAuthorStamp as SharedChatHistoryAuthorStamp,
 	ChatHistoryMessage as SharedChatHistoryMessage,
 	ChatHistoryPage as SharedChatHistoryPage,
 	ChatHistoryVariant as SharedChatHistoryVariant,
 	ConversationAction as SharedConversationAction,
+	ConversationDataScope as SharedConversationDataScope,
 	ConversationSummary as SharedConversationSummary,
 	ConversationCapabilities as SharedConversationCapabilities,
 	ConversationControl as SharedConversationControl,
 	ConversationControlValidity as SharedConversationControlValidity,
 	ConversationGenerationSettings as SharedConversationGenerationSettings,
+	HistoricalControlSnapshot as SharedHistoricalControlSnapshot,
+	MessageSwipeEligibility as SharedMessageSwipeEligibility,
 	ParticipantDefinition as SharedParticipantDefinition,
 	PromptPlan,
 	VariantDetails as SharedVariantDetails,
@@ -172,32 +174,21 @@ export type CapabilityBlockReason =
 // denied with the typed reason while existing Variants remain selectable and
 // editable. Discriminated on `eligible` so code never fabricates a reason
 // for an ineligible Message (or a reason for an eligible one).
+export type MessageSwipeEligibility = SharedMessageSwipeEligibility;
+
 export type MessageSwipeBlockReason =
-	| "conversation-not-playable"
-	| "missing-historical-context"
-	| "historical-participant-unavailable";
+	Extract<MessageSwipeEligibility, { eligible: false }>["reason"];
 
-export type MessageSwipeEligibility =
-	| { eligible: true; reason: null }
-	| { eligible: false; reason: MessageSwipeBlockReason };
-
-export interface AuthorStampSnapshot {
-	participantId: number | null;
-	capturedName: string | null;
-	// Derived at snapshot time, never stored: whether the authoring
-	// Participant is still an active Cast member. Historical Messages keep
-	// displaying the captured name with a no-longer-in-Cast state after the
-	// Participant is removed. False for preservation records with no
-	// resolved author as well as for removed Participants.
-	inCast: boolean;
-}
+// Derived at snapshot time, never stored: whether the authoring Participant
+// is still an active Cast member. Historical Messages keep displaying the
+// captured name with a no-longer-in-Cast state after the Participant is
+// removed. False for preservation records with no resolved author as well as
+// for removed Participants.
+export type AuthorStampSnapshot = SharedChatHistoryAuthorStamp;
 
 // The human/model pair active when native generation began. Imported
 // Messages carry no fabricated pair.
-export interface HistoricalControlSnapshot {
-	humanParticipantId: number;
-	modelParticipantId: number;
-}
+export type HistoricalControlSnapshot = SharedHistoricalControlSnapshot;
 
 export type ConversationSummary = SharedConversationSummary;
 
@@ -231,10 +222,7 @@ export interface ChatHistoryPageRequest {
 	pageSize?: number;
 }
 
-export type ConversationDataScope =
-	| { type: "conversation" }
-	| { type: "message"; messageId: number }
-	| { type: "variant"; messageId: number; variantId: number };
+export type ConversationDataScope = SharedConversationDataScope;
 
 // The command vocabulary derives from the canonical wire union (ADR-0032):
 // a transport command added to the shared schema automatically becomes a
@@ -313,9 +301,7 @@ export interface GenerationAcceptanceCapture {
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
 	promptPlan: PromptPlan;
-	// Active-only budget/omission diagnostics. Older direct callers may omit
-	// this field; workflow callers always capture it before acceptance.
-	promptInspection?: ConversationJsonValue | undefined;
+	promptInspection: ConversationJsonValue;
 	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
@@ -326,8 +312,7 @@ export interface GenerationAcceptanceCapture {
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
-	macroPresetId?: number | undefined;
-	macroWrites?: readonly MacroVariableWrite[] | undefined;
+	macro?: { readonly presetId: number; readonly writes: readonly MacroVariableWrite[] };
 }
 
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
