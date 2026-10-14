@@ -334,7 +334,7 @@ const evaluateCondition = (condition: MacroArgument | undefined, node: MacroNode
 			warn(context, node);
 			return undefined;
 		}
-		const name = shorthand[2];
+		const name = shorthand[2]!; // @approved Group 2 is not optional, so every match captures it.
 		const operator = shorthand[3];
 		const rhs = shorthand[4] ?? "";
 		const current = variable(context, name);

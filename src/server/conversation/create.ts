@@ -180,16 +180,8 @@ const deriveChatTimes = (
 		message.variants.map((variant) => variant.timestamp),
 	);
 	return {
-		creationTime:
-			messageTimestamps.length > 0
-				? [...messageTimestamps].sort(chronological)[0]
-				: fallbackTime,
-		lastMessageTime:
-			variantTimestamps.length > 0
-				? [...variantTimestamps].sort(chronological)[
-						variantTimestamps.length - 1
-					]
-				: fallbackTime,
+		creationTime: [...messageTimestamps].sort(chronological).at(0) ?? fallbackTime,
+		lastMessageTime: [...variantTimestamps].sort(chronological).at(-1) ?? fallbackTime,
 	};
 };
 
@@ -413,9 +405,9 @@ export function createConversation(
 		// is persisted rather than derived, so a later Default change never
 		// silently rewrites what an existing Conversation assembles through.
 		selectDefaultPromptPreset(db, conversation.id);
-		if (greeting !== null && modelIndex !== undefined && humanIndex !== undefined) {
-			const modelSeed = seeds[modelIndex];
-			const humanSeed = seeds[humanIndex];
+		const modelSeed = modelIndex === undefined ? undefined : seeds[modelIndex];
+		const humanSeed = humanIndex === undefined ? undefined : seeds[humanIndex];
+		if (greeting !== null && modelSeed !== undefined && humanSeed !== undefined) {
 			const promptPresetId = readDefaultPromptPresetId(db);
 			messages = [expandGreetingOpenings(greeting, {
 				conversationId: conversation.id,
@@ -446,16 +438,12 @@ export function createConversation(
 		//  Creation seeds Control through the canonical seat write. Its leading
 		// DELETE is a no-op on the brand-new Conversation row, so the two seats
 		// are written exactly as assign-control writes them.
-		if (humanIndex !== undefined || modelIndex !== undefined) {
+		const human = humanIndex === undefined ? undefined : insertedParticipants[humanIndex];
+		const model = modelIndex === undefined ? undefined : insertedParticipants[modelIndex];
+		if (human !== undefined || model !== undefined) {
 			writeControlAssignment(db, conversation.id, {
-				humanParticipantId:
-					humanIndex !== undefined
-						? insertedParticipants[humanIndex].id
-						: null,
-				modelParticipantId:
-					modelIndex !== undefined
-						? insertedParticipants[modelIndex].id
-						: null,
+				humanParticipantId: human?.id ?? null,
+				modelParticipantId: model?.id ?? null,
 			});
 		}
 
@@ -476,9 +464,7 @@ export function createConversation(
 		for (const [messageIndex, message] of messages.entries()) {
 			const greetingMessage = greeting !== null && messageIndex === 0;
 			const authorSeed = greetingMessage
-				? modelIndex !== undefined
-					? insertedParticipants[modelIndex]
-					: undefined
+				? model
 				: message.authorParticipantIndex !== undefined
 					? insertedParticipants[message.authorParticipantIndex]
 					: undefined;
@@ -486,13 +472,8 @@ export function createConversation(
 			//  The greeting carries the historical Control pair captured at
 			// creation; preservation records never receive a fabricated pair.
 			const context =
-				greetingMessage &&
-				humanIndex !== undefined &&
-				modelIndex !== undefined
-					? {
-							humanParticipantId: insertedParticipants[humanIndex].id,
-							modelParticipantId: insertedParticipants[modelIndex].id,
-						}
+				greetingMessage && human !== undefined && model !== undefined
+					? { humanParticipantId: human.id, modelParticipantId: model.id }
 					: null;
 
 			const messageId = asCreationError(() =>
@@ -525,7 +506,8 @@ export function createConversation(
 			);
 
 			const variantData = message.variants.flatMap((variant, variantIndex) => {
-				const variantId = variantIds[variantIndex];
+				/** @approved insertVariants returns one id per Variant, in insertion order. */
+				const variantId = variantIds[variantIndex]!;
 				if (variant.data === undefined) return [];
 				return variant.data.map((entry) => ({
 					...entry,

@@ -134,7 +134,7 @@ type BoxContextOf = (id: BoxId, decision: BoxDecision) => BoxContext;
 // kept in `run`'s closure, so its credential never reaches the capture's
 // serialized fields; the fingerprint holds its identity, so a changed
 // selection marks a preview stale.
-const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
+const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | undefined, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies, decision: decisionIdentity(decision) }),
 	run: async (services) => {
