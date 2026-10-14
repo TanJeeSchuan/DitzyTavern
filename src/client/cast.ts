@@ -14,7 +14,7 @@ import {
 import type { CharacterSummary } from "./character-library";
 import type { ConversationControl } from "./conversation";
 
-export const usedCharacterCount = (
+const usedCharacterCount = (
 	cast: readonly { sourceCharacterId: number | null }[],
 	characterId: number,
 ): number =>

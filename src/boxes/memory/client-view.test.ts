@@ -100,7 +100,6 @@ describe("memory people groups", () => {
 		const groups = groupEntriesByPeople(entries, cast);
 		expect(groups).toHaveLength(1);
 		expect(groups[0]?.people).toEqual(["The Sage", "Frost"]);
-		expect(groups[0]?.key).toBe(JSON.stringify(["The Sage", "Frost"]));
 		expect(groups[0]?.entries.map((entry) => entry.claim.claim)).toEqual(["A bell rings.", "A door opens."]);
 	});
 

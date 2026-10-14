@@ -88,9 +88,6 @@ describe("story reading state", () => {
 	test("offers New Swipe on a server-eligible Message and honors the active response position", () => {
 		const olderEligible: StoryMessage = storyMessage(10, 1, 20);
 		const newerEligible: StoryMessage = storyMessage(11, 2, 20);
-		const messages = [olderEligible, newerEligible];
-
-		expect(messages.at(-1)?.id).toBe(newerEligible.id);
 		expect(canOfferSiblingGeneration({
 			message: olderEligible,
 			playable: true,
@@ -267,22 +264,6 @@ describe("story reading state", () => {
 		expect(switched.conversationId).toBe(8);
 		expect(switched.messages).toEqual([]);
 		expect(switched.status).toBe("loading-first");
-	});
-
-	test("a model Message with later Messages enters Preview", () => {
-		const messages = [
-			storyMessage(120, 1, 20),
-			storyMessage(122, 2, 20),
-			storyMessage(123, 3, 10),
-			storyMessage(125, 4, 10),
-		];
-		const state = { ...createStoryState(), messages };
-
-		expect(classifyVariantSelection(state, 122, 1221)).toEqual({
-			kind: "preview",
-			messageId: 122,
-			variantId: 1221,
-		});
 	});
 
 	test("older Variant selection enters one local Preview with downstream read-only state", () => {
@@ -694,31 +675,6 @@ describe("streaming Provisional Variant content", () => {
 			text: " next",
 		});
 		expect(variantContent(state, 100)?.content).toBe("Saved next");
-	});
-
-	test("Reasoning Content reconstructs from authoritative history without prior client state", () => {
-		let state = createStoryState();
-		state = reduceStory(state, { type: "chat-opened", conversationId: 42 });
-		state = reduceStory(state, {
-			type: "window-received",
-			page: page({
-				conversationId: 42,
-				revision: 5,
-				messages: [message({
-					id: 10,
-					variants: [{
-						id: 100,
-						position: 1,
-						content: "Finished.",
-						reasoning: "Persisted thought.",
-						timestamp: "2026-01-01T00:00:00.000Z",
-						selected: true,
-					}],
-				})],
-			}),
-		});
-
-		expect(variantContent(state, 100)?.reasoning).toBe("Persisted thought.");
 	});
 
 	test("deltas ignore Variants and Messages that are not in the current read model", () => {

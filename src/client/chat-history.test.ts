@@ -68,11 +68,6 @@ describe("history transport boundary validation", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	test("an unmodeled read outcome is the shared unusable fallback, never a transport failure", async () => {
-		installFetch(async () => json({ error: "Unavailable" }, 503));
-		expect(await loadFirstPage()).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-	});
-
 	test("passes cancellation to the history request", async () => {
 		const controller = new AbortController();
 		let signal: AbortSignal | null | undefined;

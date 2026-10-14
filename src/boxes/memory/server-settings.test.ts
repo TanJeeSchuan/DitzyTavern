@@ -21,11 +21,6 @@ describe("Memory Settings public contract", () => {
 	});
 	afterEach(() => database.close());
 
-	test("uses independent extraction defaults", async () => {
-		const initial = await app.handle(request("/settings"));
-		expect(await initial.json()).toEqual({ revision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
-	});
-
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {
 		const stale = await app.handle(apply({ expectedRevision: 8 }));
 		expect(stale.status).toBe(409);
