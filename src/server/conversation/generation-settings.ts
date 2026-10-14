@@ -256,23 +256,23 @@ const normalizeGenerationSettings = (
 const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => {
 	try {
 		return {
-	connectionProfileId: row.connection_profile_id,
-	...Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, {
-		modelId: row.model_id,
-		temperature: row.temperature,
-		topP: row.top_p,
-		frequencyPenalty: row.frequency_penalty,
-		presencePenalty: row.presence_penalty,
-		contextLimit: row.context_limit,
-		responseBudget: row.response_budget,
-		safetyAllowance: row.safety_allowance,
-		siblingGenerationLimit: row.sibling_generation_limit,
-		continuationStrategy: row.continuation_strategy,
-		continuationInstruction: row.continuation_instruction,
-		continuationPrefillSuffix: row.continuation_prefill_suffix,
-		repeatedImagePlacement: row.repeated_image_placement,
-		requestOverrides: parseRequestOverrides(row.request_overrides_json, row.conversation_id),
-	}),
+			connectionProfileId: row.connection_profile_id,
+			...Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, {
+				modelId: row.model_id,
+				temperature: row.temperature,
+				topP: row.top_p,
+				frequencyPenalty: row.frequency_penalty,
+				presencePenalty: row.presence_penalty,
+				contextLimit: row.context_limit,
+				responseBudget: row.response_budget,
+				safetyAllowance: row.safety_allowance,
+				siblingGenerationLimit: row.sibling_generation_limit,
+				continuationStrategy: row.continuation_strategy,
+				continuationInstruction: row.continuation_instruction,
+				continuationPrefillSuffix: row.continuation_prefill_suffix,
+				repeatedImagePlacement: row.repeated_image_placement,
+				requestOverrides: parseRequestOverrides(row.request_overrides_json, row.conversation_id),
+			}),
 		};
 	} catch (cause) {
 		throw new Error(`Conversation ${row.conversation_id} Generation Settings are corrupt: ${cause instanceof Error ? cause.message : "invalid stored row"}`, { cause });

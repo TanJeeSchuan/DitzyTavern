@@ -88,21 +88,21 @@ export function readProfile(
 	}
 	try {
 		return Value.Decode<typeof connectionProfile>(connectionProfile, {
-		id: row.id,
-		displayName: row.display_name,
-		apiFormat: row.api_format,
-		requestUrl: row.request_url,
-		modelsUrl: row.models_url,
-		modelBackend: row.model_backend,
-		adapter: row.adapter,
-		outputTokenRepresentation: row.output_token_representation,
-		timeoutMs: row.timeout_ms,
-		pinnedModels: pins,
-		discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
-		textOnlyModels: normalizeDiscoveryCatalog(textOnlyModels),
-		credentialConfigured,
-		headers,
-	});
+			id: row.id,
+			displayName: row.display_name,
+			apiFormat: row.api_format,
+			requestUrl: row.request_url,
+			modelsUrl: row.models_url,
+			modelBackend: row.model_backend,
+			adapter: row.adapter,
+			outputTokenRepresentation: row.output_token_representation,
+			timeoutMs: row.timeout_ms,
+			pinnedModels: pins,
+			discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
+			textOnlyModels: normalizeDiscoveryCatalog(textOnlyModels),
+			credentialConfigured,
+			headers,
+		});
 	} catch (cause) {
 		throw new Error(`Connection Profile ${row.id} is corrupt.`, { cause });
 	}
