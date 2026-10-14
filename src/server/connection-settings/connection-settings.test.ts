@@ -39,6 +39,23 @@ describe("Connection Settings", () => {
 		database.close();
 	});
 
+	test("rejects corrupt persisted Profile vocabularies when reading settings", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		for (const [column, valid] of [["model_backend", "automatic"], ["adapter", "deepseek"], ["output_token_representation", "automatic"], ["api_format", "chat-completions"]]) {
+			database.query(`UPDATE connection_profile SET ${column} = 'invalid'`).run();
+			expect(() => settings.get()).toThrow();
+			database.query(`UPDATE connection_profile SET ${column} = ?`).run(valid);
+		}
+	});
+
+	test("rejects a fractional persisted timeout instead of rounding it", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		database.query("UPDATE connection_profile SET timeout_ms = 1.5").run();
+		expect(() => settings.get()).toThrow();
+	});
+
 	test("saves Profile edits and a replacement credential in one revision", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft(), credential: "first-secret" });

@@ -1,3 +1,5 @@
+import { Value } from "@sinclair/typebox/value";
+import { connectionProfile } from "../../shared/contract/connection-settings";
 import type { Database } from "bun:sqlite";
 import { asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -84,31 +86,22 @@ export function readProfile(
 			headers.push({ name, configured: true });
 		}
 	}
-	return {
+	return Value.Decode<typeof connectionProfile>(connectionProfile, {
 		id: row.id,
 		displayName: row.display_name,
 		apiFormat: row.api_format,
 		requestUrl: row.request_url,
 		modelsUrl: row.models_url,
-		// @approved
-		//  SAFETY: validateConnectionProfileDraft rejects every Model Backend value
-		// outside the closed v1 vocabulary before the row can be written.
-		modelBackend: row.model_backend as ConnectionProfile["modelBackend"],
-		// @approved
-		//  SAFETY: validateConnectionProfileDraft rejects every Adapter value outside
-		// the three bundled adapter identifiers before the row can be written.
-		adapter: row.adapter as ConnectionProfile["adapter"],
-		// @approved
-		//  SAFETY: validateConnectionProfileDraft rejects every output-token
-		// representation outside the Chat Completions v1 vocabulary.
-		outputTokenRepresentation: row.output_token_representation as ConnectionProfile["outputTokenRepresentation"],
+		modelBackend: row.model_backend,
+		adapter: row.adapter,
+		outputTokenRepresentation: row.output_token_representation,
 		timeoutMs: row.timeout_ms,
 		pinnedModels: pins,
 		discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
 		textOnlyModels: normalizeDiscoveryCatalog(textOnlyModels),
 		credentialConfigured,
 		headers,
-	};
+	});
 }
 
 export type EncryptedSecretRow = {
