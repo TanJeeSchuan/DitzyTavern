@@ -253,7 +253,9 @@ const normalizeGenerationSettings = (
 	requestOverrides: normalizeSettingsField.requestOverrides(draft.requestOverrides),
 });
 
-const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => ({
+const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => {
+	try {
+		return {
 	connectionProfileId: row.connection_profile_id,
 	...Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, {
 		modelId: row.model_id,
@@ -269,9 +271,13 @@ const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSett
 		continuationInstruction: row.continuation_instruction,
 		continuationPrefillSuffix: row.continuation_prefill_suffix,
 		repeatedImagePlacement: row.repeated_image_placement,
-		requestOverrides: parseRequestOverrides(row.request_overrides_json),
+		requestOverrides: parseRequestOverrides(row.request_overrides_json, row.conversation_id),
 	}),
-});
+		};
+	} catch (cause) {
+		throw new Error(`Conversation ${row.conversation_id} Generation Settings are corrupt: ${cause instanceof Error ? cause.message : "invalid stored row"}`, { cause });
+	}
+};
 
 export function updateConversationModelSelection(
 	db: ConversationDatabase,
@@ -297,11 +303,11 @@ function validateContinuationPrefillSuffix(
 	);
 }
 
-function parseRequestOverrides(value: string): ConversationGenerationSettings["requestOverrides"] {
+function parseRequestOverrides(value: string, conversationId: number): ConversationGenerationSettings["requestOverrides"] {
 	try {
-		return Value.Parse(canonicalGenerationSettings.properties.requestOverrides, JSON.parse(value));
+		return Value.Decode(canonicalGenerationSettings.properties.requestOverrides, JSON.parse(value));
 	} catch (cause) {
-		throw new Error("Conversation Generation Request Overrides are corrupt.", { cause });
+		throw new Error(`Conversation ${conversationId} Generation Request Overrides are corrupt.`, { cause });
 	}
 }
 

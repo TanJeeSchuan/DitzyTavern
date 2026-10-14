@@ -64,7 +64,7 @@ export const canonicalGenerationSettings = Type.Object({
 		"chat-completions": generationJsonObject,
 		responses: generationJsonObject,
 		"anthropic-messages": generationJsonObject,
-	}),
+	}, { additionalProperties: false }),
 });
 
 // The settings an individual attempt actually uses. Continuation operands and

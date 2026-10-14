@@ -44,7 +44,7 @@ describe("Connection Settings", () => {
 		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
 		for (const [column, valid] of [["model_backend", "automatic"], ["adapter", "deepseek"], ["output_token_representation", "automatic"], ["api_format", "chat-completions"]]) {
 			database.query(`UPDATE connection_profile SET ${column} = 'invalid'`).run();
-			expect(() => settings.get()).toThrow();
+			expect(() => settings.get()).toThrow("Connection Profile 1 is corrupt.");
 			database.query(`UPDATE connection_profile SET ${column} = ?`).run(valid);
 		}
 	});
@@ -53,7 +53,7 @@ describe("Connection Settings", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
 		database.query("UPDATE connection_profile SET timeout_ms = 1.5").run();
-		expect(() => settings.get()).toThrow();
+		expect(() => settings.get()).toThrow("Connection Profile 1 is corrupt.");
 	});
 
 	test("saves Profile edits and a replacement credential in one revision", () => {

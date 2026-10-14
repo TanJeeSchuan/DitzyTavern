@@ -86,7 +86,8 @@ export function readProfile(
 			headers.push({ name, configured: true });
 		}
 	}
-	return Value.Decode<typeof connectionProfile>(connectionProfile, {
+	try {
+		return Value.Decode<typeof connectionProfile>(connectionProfile, {
 		id: row.id,
 		displayName: row.display_name,
 		apiFormat: row.api_format,
@@ -102,6 +103,9 @@ export function readProfile(
 		credentialConfigured,
 		headers,
 	});
+	} catch (cause) {
+		throw new Error(`Connection Profile ${row.id} is corrupt.`, { cause });
+	}
 }
 
 export type EncryptedSecretRow = {

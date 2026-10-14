@@ -64,20 +64,21 @@ describe("Conversation Generation Settings", () => {
 			["context_limit", 1.5], ["response_budget", 1.5], ["safety_allowance", 1.5], ["sibling_generation_limit", 1.5],
 		]) {
 			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(value, conversation.id);
-			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow();
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Settings are corrupt`);
 			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(column === "temperature" ? null : 1, conversation.id);
 		}
 	});
 
-	test("rejects stored Request Overrides with missing or non-object namespaces", () => {
+	test("rejects stored Request Overrides with missing, unknown or non-object namespaces", () => {
 		const conversation = createConversationWithHistory(database, { name: "Corrupt overrides", participants: [] });
 		for (const overrides of [
 			{ responses: {}, "anthropic-messages": {} },
 			{ "chat-completions": [], responses: {}, "anthropic-messages": {} },
+			{ "chat-completions": {}, responses: {}, "anthropic-messages": {}, unexpected: {} },
 		]) {
 			database.query("UPDATE conversation_generation_settings SET request_overrides_json = ? WHERE conversation_id = ?")
 				.run(JSON.stringify(overrides), conversation.id);
-			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow("Request Overrides are corrupt");
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Request Overrides are corrupt`);
 		}
 	});
 
