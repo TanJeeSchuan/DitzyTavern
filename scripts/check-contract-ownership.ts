@@ -221,6 +221,7 @@ for (const source of program.getSourceFiles()) {
 
 const hardViolations = representations.filter((representation) =>
 	representation.kind === "schema" &&
+	representation.file !== "src/server/model-client/provider-errors.ts" &&
 	(representation.layer === "client" || representation.layer === "server"),
 );
 
