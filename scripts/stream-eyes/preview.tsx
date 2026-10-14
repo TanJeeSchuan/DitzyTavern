@@ -112,9 +112,8 @@ function Preview() {
 								message={entry}
 								isLatest={entry.id === reply.id}
 								generationActive={entry.id === reply.id && generating}
-								canContinue={entry.id === reply.id && !generating}
+								onContinue={entry.id === reply.id && !generating ? () => {} : undefined}
 								continueLabel="Continue as Theodora Kline"
-								onContinue={() => {}}
 								onMoveSwipe={() => {}}
 								onEdit={async () => false}
 								generationControls={entry.id === reply.id && generating && (

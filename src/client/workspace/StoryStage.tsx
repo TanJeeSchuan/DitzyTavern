@@ -160,18 +160,25 @@ export function StoryStage({
 							mutationsDisabled={story.preview !== null}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
-							canContinue={
+							onContinue={
 								generation.assemblyAvailable &&
 								latestStoryMessage?.id === message.id &&
 								generation.activeGenerationTargets.length === 0 &&
 								isModelAuthoredMessage(message) &&
 								message.continuable === true
+									? generation.continueMessage
+									: undefined
 							}
-							canRegenerate={
+							onRegenerate={
 								generation.assemblyAvailable &&
 								latestStoryMessage?.id === message.id &&
 								generation.activeGenerationTargets.length === 0 &&
 								message.authorParticipantId === conversation?.control.humanParticipantId
+									? (messageId) => {
+										viewport.followLatest(messageId);
+										generation.regenerateResponse(messageId);
+									}
+									: undefined
 							}
 							onSibling={generation.canOfferSiblingMessage(message)
 								? (messageId) => {
@@ -181,11 +188,6 @@ export function StoryStage({
 								: undefined}
 							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-							onContinue={generation.continueMessage}
-							onRegenerate={(messageId) => {
-								viewport.followLatest(messageId);
-								generation.regenerateResponse(messageId);
-							}}
 							onInspect={onInspectVariant}
 							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
