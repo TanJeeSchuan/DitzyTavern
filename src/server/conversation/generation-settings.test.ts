@@ -56,6 +56,19 @@ describe("Conversation Generation Settings", () => {
 		database.close();
 	});
 
+	test("rejects persisted settings outside the sampling, budget and limit domains", () => {
+		const conversation = createConversationWithHistory(database, { name: "Corrupt settings", participants: [] });
+		for (const [column, value] of [
+			["temperature", 3], ["context_limit", 0], ["response_budget", -1],
+			["safety_allowance", -1], ["sibling_generation_limit", 0],
+			["context_limit", 1.5], ["response_budget", 1.5], ["safety_allowance", 1.5], ["sibling_generation_limit", 1.5],
+		]) {
+			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(value, conversation.id);
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow();
+			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(column === "temperature" ? null : 1, conversation.id);
+		}
+	});
+
 	test("rejects stored Request Overrides with missing or non-object namespaces", () => {
 		const conversation = createConversationWithHistory(database, { name: "Corrupt overrides", participants: [] });
 		for (const overrides of [

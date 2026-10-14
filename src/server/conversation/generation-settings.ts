@@ -253,49 +253,24 @@ const normalizeGenerationSettings = (
 	requestOverrides: normalizeSettingsField.requestOverrides(draft.requestOverrides),
 });
 
-// @approved
-//  The row value for each canonical field, parsed back into the domain
-// vocabulary. Compile-locked to the canonical field map; corrupt persisted
-// values fail loudly instead of decoding as defaults.
-type SettingsFieldRowReader = {
-	readonly [K in GenerationSettingsField]: (row: SettingsRow) => CanonicalGenerationSettings[K];
-};
-
-const readSettingsFieldValue: SettingsFieldRowReader = {
-	modelId: (row) => row[settingsColumn.modelId],
-	temperature: (row) => row[settingsColumn.temperature],
-	topP: (row) => row[settingsColumn.topP],
-	frequencyPenalty: (row) => row[settingsColumn.frequencyPenalty],
-	presencePenalty: (row) => row[settingsColumn.presencePenalty],
-	contextLimit: (row) => row[settingsColumn.contextLimit],
-	responseBudget: (row) => row[settingsColumn.responseBudget],
-	safetyAllowance: (row) => row[settingsColumn.safetyAllowance],
-	siblingGenerationLimit: (row) => row[settingsColumn.siblingGenerationLimit],
-	continuationStrategy: (row) =>
-		parseContinuationStrategy(row[settingsColumn.continuationStrategy]),
-	continuationInstruction: (row) => row[settingsColumn.continuationInstruction],
-	continuationPrefillSuffix: (row) =>
-		parseContinuationPrefillSuffix(row[settingsColumn.continuationPrefillSuffix]),
-	repeatedImagePlacement: (row) => parseRepeatedImagePlacement(row[settingsColumn.repeatedImagePlacement]),
-	requestOverrides: (row) => parseRequestOverrides(row[settingsColumn.requestOverrides]),
-};
-
 const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => ({
 	connectionProfileId: row.connection_profile_id,
-	modelId: readSettingsFieldValue.modelId(row),
-	temperature: readSettingsFieldValue.temperature(row),
-	topP: readSettingsFieldValue.topP(row),
-	frequencyPenalty: readSettingsFieldValue.frequencyPenalty(row),
-	presencePenalty: readSettingsFieldValue.presencePenalty(row),
-	contextLimit: readSettingsFieldValue.contextLimit(row),
-	responseBudget: readSettingsFieldValue.responseBudget(row),
-	safetyAllowance: readSettingsFieldValue.safetyAllowance(row),
-	siblingGenerationLimit: readSettingsFieldValue.siblingGenerationLimit(row),
-	continuationStrategy: readSettingsFieldValue.continuationStrategy(row),
-	continuationInstruction: readSettingsFieldValue.continuationInstruction(row),
-	continuationPrefillSuffix: readSettingsFieldValue.continuationPrefillSuffix(row),
-	repeatedImagePlacement: readSettingsFieldValue.repeatedImagePlacement(row),
-	requestOverrides: readSettingsFieldValue.requestOverrides(row),
+	...Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, {
+		modelId: row.model_id,
+		temperature: row.temperature,
+		topP: row.top_p,
+		frequencyPenalty: row.frequency_penalty,
+		presencePenalty: row.presence_penalty,
+		contextLimit: row.context_limit,
+		responseBudget: row.response_budget,
+		safetyAllowance: row.safety_allowance,
+		siblingGenerationLimit: row.sibling_generation_limit,
+		continuationStrategy: row.continuation_strategy,
+		continuationInstruction: row.continuation_instruction,
+		continuationPrefillSuffix: row.continuation_prefill_suffix,
+		repeatedImagePlacement: row.repeated_image_placement,
+		requestOverrides: parseRequestOverrides(row.request_overrides_json),
+	}),
 });
 
 export function updateConversationModelSelection(
@@ -311,25 +286,6 @@ export function updateConversationModelSelection(
 		.get();
 	if (updated === undefined) throw new ConversationNotFoundError(conversationId);
 	return readGenerationSettingsRow(updated);
-}
-
-function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffix {
-	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;
-	throw new Error("Conversation Continuation prefill suffix is corrupt.");
-}
-
-function parseRepeatedImagePlacement(
-	value: string,
-): ConversationGenerationSettings["repeatedImagePlacement"] {
-	if (isRepeatedImagePlacement(value)) return value;
-	throw new Error("Conversation Repeated Image Placement is corrupt.");
-}
-
-function parseContinuationStrategy(
-	value: string,
-): ConversationGenerationSettings["continuationStrategy"] {
-	if (value === "instruction" || value === "assistant-prefill") return value;
-	throw new Error("Conversation Continuation strategy is corrupt.");
 }
 
 function validateContinuationPrefillSuffix(
