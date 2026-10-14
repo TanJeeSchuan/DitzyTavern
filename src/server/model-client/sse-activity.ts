@@ -24,8 +24,7 @@ export function monitorSseActivity(
 			try {
 				const parsed: unknown = JSON.parse(data);
 				if (!Value.Check(providerActivityFrame, parsed)) return;
-				const [firstChoice] = parsed.choices ?? [];
-				if ((firstChoice !== undefined && Value.Check(providerActivityChoice, firstChoice)) || parsed.usage !== undefined) options.onActivity();
+				if (Value.Check(providerActivityChoice, parsed.choices?.[0]) || parsed.usage !== undefined) options.onActivity();
 			} catch { /* @approved The AI SDK owns malformed provider payloads. */ }
 		},
 	});
