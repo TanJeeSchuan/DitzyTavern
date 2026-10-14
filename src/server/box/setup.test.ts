@@ -31,6 +31,6 @@ describe("readBoxStates", () => {
 	test("rejects a stored enablement that is not a boolean", () => {
 		database.query("UPDATE conversation_data SET value = ? WHERE conversation_id = ? AND namespace = ? AND key = ?")
 			.run(JSON.stringify("true"), conversationId, "box:race", "enabled");
-		expect(() => readBoxStates(drizzle(database), conversationId)).toThrow("Stored box:race enablement is not a boolean.");
+		expect(() => readBoxStates(drizzle(database), conversationId)).toThrow("box:race enabled does not match its schema.");
 	});
 });

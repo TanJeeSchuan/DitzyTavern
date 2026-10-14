@@ -1,5 +1,5 @@
+import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
@@ -33,8 +33,7 @@ export const readRecordSlots = <Rec extends TSchema>(db: BunSQLiteDatabase, id: 
 		.where(and(inArray(messageVariantDataTable.message_variant_id, [...variantIds]), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
 		.all()
 		.map((row) => {
-			const slot: unknown = JSON.parse(row.value);
-			if (!Value.Check(schema, slot)) throw new Error(`A stored ${id} Box record does not match its schema. Clear the ${boxReference(id)} namespace.`);
+			const slot = parseStoredBoxJson(row.value, schema, `Variant ${row.variantId} ${boxReference(id)} ${recordKey(instance)}`);
 			return [row.variantId, slot];
 		}));
 };

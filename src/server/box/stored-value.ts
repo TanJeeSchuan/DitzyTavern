@@ -1,5 +1,5 @@
+import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, libraryDataTable } from "../database/schema";
@@ -28,8 +28,7 @@ export interface ChatValueWrite {
 
 const decode = <T extends TSchema>(row: Row, schema: T, initial: Static<T>, place: string): Static<T> & { revision: number } => {
 	if (row === undefined) return Object.assign({}, initial, { revision: 0 });
-	const value: unknown = JSON.parse(row.value);
-	if (!Value.Check(schema, value)) throw new Error(`The stored value at ${place} does not match its schema. Clear it.`);
+	const value = parseStoredBoxJson(row.value, schema, place);
 	return Object.assign({}, value, { revision: row.revision });
 };
 
