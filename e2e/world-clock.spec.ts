@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
+import { isDecisionModelCall } from "./protocol";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
 const weather = ["not mentioned", "clear", "cloudy", "rain", "storm", "snow", "fog"];
@@ -14,7 +15,7 @@ const digest = (passage: string | undefined, bin: string, established: string, h
 ];
 
 const digested = (llm: E2eServer, passage: string) => expect.poll(async () => (await llm.log()).calls
-	.some((call) => call.kind === "decision" && JSON.stringify(call.body.state.passage).includes(passage))).toBe(true);
+	.some((call) => isDecisionModelCall(call) && JSON.stringify(call.body.state).includes(passage))).toBe(true);
 
 const clockLine = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
@@ -126,7 +127,7 @@ test("a clock that is off contributes no clock line and queues no digest", async
 	await expect(preview.getByText(/^World Clock ·/)).toHaveCount(0);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("The lamp turns above you.")).toBeVisible();
-	expect((await llm.log()).calls.some((call) => call.kind === "decision")).toBe(false);
+	expect((await llm.log()).calls.some((call) => isDecisionModelCall(call))).toBe(false);
 });
 
 test("a reinserted clock starts from its initial time while a re-enabled one keeps its digested time", async ({ page, request, llm }) => {

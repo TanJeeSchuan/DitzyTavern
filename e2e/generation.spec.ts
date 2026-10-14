@@ -1,4 +1,5 @@
 import { test, expect, send, story } from "./fixtures";
+import { isChatModelCall } from "./protocol";
 
 test("a sent message streams the scripted reply and survives a reload", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["The lamp ", "flickers twice."] });
@@ -8,7 +9,7 @@ test("a sent message streams the scripted reply and survives a reload", async ({
 	await page.reload();
 	await expect(story(page).getByText("I climb the stairs.")).toBeVisible();
 	await expect(story(page).getByText("The lamp flickers twice.")).toBeVisible();
-	const [call] = (await llm.log()).calls.filter((entry) => entry.kind === "chat");
+	const [call] = (await llm.log()).calls.filter(isChatModelCall);
 	expect(JSON.stringify(call.body.messages)).toContain("I climb the stairs.");
 });
 
@@ -106,7 +107,7 @@ test("an edited Prompt Plan is sent exactly as edited", async ({ page, llm }) =>
 	await preview.getByRole("textbox").filter({ hasText: "Original guidance." }).fill("Rewritten guidance.");
 	await preview.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("Edited reply.")).toBeVisible();
-	const [call] = (await llm.log()).calls.filter((entry) => entry.kind === "chat");
+	const [call] = (await llm.log()).calls.filter(isChatModelCall);
 	expect(JSON.stringify(call.body.messages)).toContain("Rewritten guidance.");
 	expect(JSON.stringify(call.body.messages)).not.toContain("Original guidance.");
 });
@@ -136,7 +137,7 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 
 			await preview.getByRole("button", { name: "Send exact plan" }).click();
 			await expect(story(page).getByText("Edited reply.")).toBeVisible();
-			const calls = (await llm.log()).calls.filter((entry) => entry.kind === "chat");
+			const calls = (await llm.log()).calls.filter(isChatModelCall);
 			expect(calls).toHaveLength(1);
 			expect(JSON.stringify(calls[0].body.messages)).toContain("Rewritten guidance.");
 		});

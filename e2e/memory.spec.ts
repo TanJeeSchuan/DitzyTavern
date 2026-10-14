@@ -1,6 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, enableDecisionModels, insertBox, send, story } from "./fixtures";
 import type { DecisionRule } from "./protocol";
+import { isChatModelCall } from "./protocol";
 
 const enableMemory = async (request: APIRequestContext) => {
 	const { profiles } = await (await request.get("/api/connection-settings")).json();
@@ -52,7 +53,7 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 
 	await send(page, "Show me.");
 	await expect(story(page).getByText("She taps the map twice.")).toBeVisible();
-	const prompt = JSON.stringify((await llm.log()).calls.filter((entry) => entry.kind === "chat").at(-1)!.body.messages);
+	const prompt = JSON.stringify((await llm.log()).calls.filter(isChatModelCall).at(-1)!.body.messages);
 	expect(prompt).toContain("Theodora hid the brass key under the third map.");
 	expect(prompt).not.toContain("Theodora fears the dark.");
 
