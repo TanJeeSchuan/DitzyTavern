@@ -165,7 +165,8 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 	} catch (error) {
 		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted macro writes.");
 	}
-	return macroWritesToData(active.macro_preset_id, writes);
+	const data = macroWritesToData(active.macro_preset_id, writes);
+	return data === null ? [] : [data];
 };
 
 const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {

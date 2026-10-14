@@ -226,16 +226,17 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 				.get();
 			if (variant === undefined) throw new InvalidConversationCommandError("The selected history position has no selected Variant.");
 			const stored = readVariantData(db, [variant.id], ["macroWrites"]).get(variant.id)?.macroWrites ?? [];
-			const entries = macroWritesToData(input.promptPresetId, [...readMacroWrites(stored, input.promptPresetId), write]);
+			const entry = macroWritesToData(input.promptPresetId, [...readMacroWrites(stored, input.promptPresetId), write]);
+			if (entry === null) throw new InvalidConversationCommandError("A Macro write must become a Variant record.");
 			db.insert(messageVariantDataTable)
-				.values(entries.map((entry) => ({ message_variant_id: variant.id, ...entry })))
+				.values({ message_variant_id: variant.id, ...entry })
 				.onConflictDoUpdate({
 					target: [
 						messageVariantDataTable.message_variant_id,
 						messageVariantDataTable.namespace,
 						messageVariantDataTable.key,
 					],
-					set: { value: entries[0]!.value },
+					set: { value: entry.value },
 				})
 				.run();
 		}

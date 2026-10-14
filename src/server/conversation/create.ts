@@ -290,12 +290,13 @@ const expandGreetingOpenings = (
 					index + 1,
 					attempt,
 				);
+			const macroData = macroWritesToData(input.promptPresetId, expanded.writes);
 			return {
 				...variant,
 				content: expanded.text,
 				data: [
 					...(variant.data ?? []),
-					...macroWritesToData(input.promptPresetId, expanded.writes),
+					...(macroData === null ? [] : [macroData]),
 				],
 			};
 		}),

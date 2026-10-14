@@ -199,12 +199,12 @@ export const savePromptPresetBlockPatches = (
 		patches.forEach((patch) => applyBlockPatch(db, patch));
 	});
 
-const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] | undefined => {
+const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] => {
 	if (isUnknownBoxReference(reference)) throw new InvalidPromptPresetOperationError(`There is no Box for ${reference}.`);
 	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 	const ordered = recipe.slots.map((slot) => slot.id);
 	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, { reference, enabled: true });
-	if (!isBoxReference(reference)) return;
+	if (!isBoxReference(reference)) return [...ordered, inserted];
 	const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
 	ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
 	return ordered;
@@ -228,7 +228,7 @@ export const installBoxBlocks = (db: PromptPresetDatabase, conversationId: numbe
 	for (const box of boxes) {
 		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId)!;
 		if (recipe.slots.some((slot) => slot.reference === boxReference(box))) continue;
-		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, placeBlock(db, recipe, boxReference(box))!);
+		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, placeBlock(db, recipe, boxReference(box)));
 	}
 };
 

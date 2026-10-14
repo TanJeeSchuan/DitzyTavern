@@ -64,8 +64,9 @@ export function MemorySourceCard({ source, label, busy, ready, excluded, actions
 	</section>;
 }
 
-export function MemoryClaimRow({ source, index, group, busy, editing, actions, onSelectSource, onNavigate }: {
+export function MemoryClaimRow({ source, claim, index, group, busy, editing, actions, onSelectSource, onNavigate }: {
 	source: Source;
+	claim: Claim;
 	index: number;
 	group: string;
 	busy: boolean;
@@ -75,7 +76,6 @@ export function MemoryClaimRow({ source, index, group, busy, editing, actions, o
 	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
 }) {
-	const claim = source.claims![index]!;
 	// @approved
 	//  A removal confirmation belongs to the claim it was opened for; a claim a
 	//  digest replaced meanwhile closes it.

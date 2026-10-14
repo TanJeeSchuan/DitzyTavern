@@ -51,9 +51,10 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 				onMerge={(person) => setMerging([person])}
 				onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}
 			>
-		{({ source, index }) => <MemoryClaimRow
+		{({ source, claim, index }) => <MemoryClaimRow
 			key={`${source.variantId}:${index}`}
 			source={source}
+			claim={claim}
 			index={index}
 			group={people.join(" & ")}
 			busy={busy.has(source.variantId)}

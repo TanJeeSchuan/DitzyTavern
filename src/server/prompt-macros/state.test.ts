@@ -8,8 +8,8 @@ import {
 import { variantDataCodecs } from "../../shared/variant-data-codecs";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 
-const decodedRecords = (entries: readonly { key: string; value: string }[]) =>
-	entries.map((entry) => ({ key: entry.key, writes: variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [] }));
+const decodedRecords = (entry: { key: string; value: string } | null) =>
+	entry === null ? [] : [{ key: entry.key, writes: variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [] }];
 
 describe("Macro state persistence", () => {
 	test("applies selected Variant writes in order while ignoring unselected siblings", () => {
