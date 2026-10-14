@@ -257,6 +257,10 @@ const assertSubmittedTargetUnchanged = (
 			return;
 		case "continuation":
 			return;
+		default: {
+			const _exhaustive: never = recorded;
+			throw new InvalidConversationCommandError(`Unhandled Generation target: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 };
 

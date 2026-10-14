@@ -238,6 +238,10 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 		case "off": throw new Error("Choose a Memory Decision Model in Connection Settings.");
 		case "unavailable": throw new Error(`${snapshot.decision.reason} Check the Memory Decision Model in Connection Settings.`);
 		case "ready": break;
+		default: {
+			const _exhaustive: never = snapshot.decision;
+			throw new Error(`Unhandled Memory Decision state: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 	let semantic: { candidate: ClaimedMemory; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {

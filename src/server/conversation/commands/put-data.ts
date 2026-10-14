@@ -74,5 +74,10 @@ export function putData(db: ConversationDatabase, input: PutDataInput) {
 					set: { value: input.value },
 				})
 				.run();
+			return;
+		default: {
+			const _exhaustive: never = input.scope;
+			throw new Error(`Unhandled Conversation data scope: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 }

@@ -345,6 +345,10 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				break;
+			default: {
+				const _exhaustive: never = command;
+				throw new Error(`Unhandled Lorebook command: ${JSON.stringify(_exhaustive)}`);
+			}
 		}
 		incrementRevision(db, command.bookId);
 		return requireBook(db, command.bookId);
