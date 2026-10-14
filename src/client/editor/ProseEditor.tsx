@@ -77,6 +77,8 @@ const theme = EditorView.theme({
 
 const baseName = (fileName: string) => fileName.replace(/\.[^.]+$/, "");
 
+const editability = (disabled: boolean) => [EditorView.editable.of(!disabled), EditorView.contentAttributes.of({ "aria-disabled": String(disabled) })];
+
 const contentAttributes = (ariaLabel: string, placeholder: string) =>
 	EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-placeholder": placeholder, "aria-multiline": "true", spellcheck: "true" });
 
@@ -171,7 +173,7 @@ export function ProseEditor({
 					EditorView.lineWrapping,
 					chipPlugin,
 					theme,
-					settings.editable.of(EditorView.editable.of(!disabled)),
+					settings.editable.of(editability(disabled)),
 					settings.label.of(contentAttributes(ariaLabel, placeholder)),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
@@ -223,7 +225,7 @@ export function ProseEditor({
 	useEffect(() => {
 		view.current?.dispatch({
 			effects: [
-				settings.editable.reconfigure(EditorView.editable.of(!disabled)),
+				settings.editable.reconfigure(editability(disabled)),
 				settings.label.reconfigure(contentAttributes(ariaLabel, placeholder)),
 			],
 		});
