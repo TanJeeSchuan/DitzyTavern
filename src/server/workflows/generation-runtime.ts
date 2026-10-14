@@ -160,16 +160,6 @@ export class GenerationRuntimeRegistry {
 		this.runtimes.delete(generationId);
 	}
 
-	/** @approved Request cancellation for one Generation without touching subscribers. */
-	stop(generationId: number, conversationId?: number): GenerationRuntime | undefined {
-		const runtime = this.get(generationId);
-		if (runtime === undefined || (conversationId !== undefined && runtime.state.conversationId !== conversationId)) {
-			return undefined;
-		}
-		runtime.stop();
-		return runtime;
-	}
-
 	/** @approved Drop terminal runtime state after the bounded reconnect/replay window.
 	 * Called lazily on registry access and by the process-state sweep tick
 	 * while the process is idle; retention is also enforced independently by
