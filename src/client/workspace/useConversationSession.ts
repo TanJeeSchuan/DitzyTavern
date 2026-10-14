@@ -1,3 +1,4 @@
+import { isStoryReady } from "../story";
 import { infiniteQueryOptions, useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type Dispatch } from "react";
 import { flushSync } from "react-dom";
@@ -131,7 +132,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 	const navigateToSourceMessage = async (messageId: number) => {
 		const current = currentSession().story;
-		if (current.conversationId === null || owner.cancellation.signal.aborted) return;
+		if (owner.cancellation.signal.aborted) return;
 		const signal = beginNavigation();
 		try {
 			if (!current.messages.some((message) => message.id === messageId)) await openAnchor({ aroundMessageId: messageId }, signal);
@@ -156,7 +157,6 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	}, [client]);
 
 	const jumpToLatest = async () => {
-		if (currentSession().story.conversationId === null) throw new Error("No Chat is open.");
 		const signal = beginNavigation();
 		try {
 			await client.cancelQueries({ queryKey: conversationKey(id) });
@@ -169,7 +169,10 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 			return loaded;
 		} finally { if (!signal.aborted) owner.navigating = false; }
 	};
-	const ensureLatest = async () => currentSession().story.page?.hasNewer ? jumpToLatest() : client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
+	const ensureLatest = async () => {
+		const current = currentSession().story;
+		return isStoryReady(current) && current.page.hasNewer ? jumpToLatest() : client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
+	};
 
 	return {
 		signal: owner.cancellation.signal, activeChatId, activeChat, conversation, setConversation, activeChatIdRef,

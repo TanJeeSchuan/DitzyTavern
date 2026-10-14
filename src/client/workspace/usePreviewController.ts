@@ -6,6 +6,7 @@ import { runConversationCommand } from "../conversation-command-runner";
 import {
 	type StoryAction,
 	type StoryState,
+	isStoryReady,
 } from "../story";
 
 type PreviewControllerOptions = {
@@ -29,8 +30,7 @@ export function usePreviewController({
 	setConversation,
 }: PreviewControllerOptions) {
 	const surface = {
-		conversationId: story.conversationId,
-		revision: () => conversation?.revision ?? story.revision,
+		revision: () => conversation?.revision ?? (isStoryReady(story) ? story.revision : null),
 		onConversationChange: setConversation,
 		setNotice: () => undefined,
 		isCurrent: () => !signal.aborted,
@@ -40,7 +40,7 @@ export function usePreviewController({
 
 	const confirmPreview = async () => {
 		const preview = story.preview;
-		if (preview === null || story.conversationId === null) return;
+		if (preview === null || !isStoryReady(story)) return;
 		const { messageId, variantId } = preview;
 		dispatchStory({ type: "preview-confirmed" });
 		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "select-variant", messageId, variantId }, {

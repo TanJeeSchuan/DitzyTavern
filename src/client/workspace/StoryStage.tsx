@@ -1,3 +1,4 @@
+import { isStoryReady } from "../story";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
 import type { PromptBoxReference } from "../../shared/contract/box";
@@ -71,10 +72,11 @@ export function StoryStage({
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 }) {
+	const readyStory = isStoryReady(story) ? story : null;
 	const viewport = useStoryViewport({
 		messages: story.messages,
-		conversationId: story.conversationId,
-		hasNewer: story.page?.hasNewer === true,
+		conversationId: "conversationId" in story ? story.conversationId : null,
+		hasNewer: readyStory?.page.hasNewer === true,
 	});
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
@@ -89,7 +91,7 @@ export function StoryStage({
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
-	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
+	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
@@ -98,7 +100,7 @@ export function StoryStage({
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId) ?? null;
-	const requested = story.page?.hasNewer ? null : story.requestedGeneration?.request ?? null;
+	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
 		<main className="story-stage" aria-label="Active Chat">
@@ -131,15 +133,15 @@ export function StoryStage({
 				if (root.scrollHeight - root.scrollTop - root.clientHeight < 48) void session.loadMoreHistory("newer");
 			}}>
 				<div className="story-content">
-					{story.page?.hasOlder === true && (
+					{readyStory?.page.hasOlder === true && (
 						<div className="history-load-more">
 							<button
 								className="secondary-button"
 								type="button"
-								disabled={story.status === "loading-more"}
+								disabled={readyStory?.loadingMore === true}
 								onClick={() => void session.loadMoreHistory()}
 							>
-								{story.status === "loading-more" ? "Loading more Messages…" : "Load more Messages"}
+								{readyStory?.loadingMore === true ? "Loading more Messages…" : "Load more Messages"}
 							</button>
 						</div>
 					)}
@@ -216,10 +218,10 @@ export function StoryStage({
 							lens={lens}
 						/>
 					)}
-					{story.page?.hasNewer === true && (
+					{readyStory?.page.hasNewer === true && (
 						<div className="history-load-more">
-							<button className="secondary-button" type="button" disabled={story.status === "loading-more"} onClick={() => void session.loadMoreHistory("newer")}>
-								{story.status === "loading-more" ? "Loading newer Messages…" : "Load newer Messages"}
+							<button className="secondary-button" type="button" disabled={readyStory?.loadingMore === true} onClick={() => void session.loadMoreHistory("newer")}>
+								{readyStory?.loadingMore === true ? "Loading newer Messages…" : "Load newer Messages"}
 							</button>
 						</div>
 					)}
@@ -232,7 +234,7 @@ export function StoryStage({
 				</div>
 			</div>
 
-			{story.page?.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+			{readyStory?.page.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
 				<button
 					className="secondary-button"
 					type="button"

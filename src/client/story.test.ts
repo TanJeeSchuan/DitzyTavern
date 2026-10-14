@@ -14,6 +14,7 @@ import {
 	visibleVariantContent,
 	type StoryPreviewState,
 	type StoryMessage,
+	type StoryState,
 } from "./story";
 
 // Focused client-state tests without a frontend framework: page
@@ -39,6 +40,15 @@ const page = (
 	messages: [],
 	...overrides,
 });
+
+const readyStory = (state: StoryState) => {
+	if (state.status !== "ready") throw new Error("Story was not ready.");
+	return state;
+};
+const createReadyStory = () => readyStory(reduceStory(
+	reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
+	{ type: "window-received", page: page() },
+));
 
 const message = (
 	overrides: Partial<Omit<
@@ -261,14 +271,14 @@ describe("story reading state", () => {
 			type: "chat-opened",
 			conversationId: 8,
 		});
-		expect(switched.conversationId).toBe(8);
+		expect(switched).toMatchObject({ conversationId: 8 });
 		expect(switched.messages).toEqual([]);
 		expect(switched.status).toBe("loading-first");
 	});
 
 	test("older Variant selection enters one local Preview with downstream read-only state", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -312,7 +322,7 @@ describe("story reading state", () => {
 			],
 		};
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -363,7 +373,7 @@ describe("story reading state", () => {
 
 	test("Preview only starts for a different Variant and navigation warns only for another Chat", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 20)],
@@ -384,7 +394,7 @@ describe("story reading state", () => {
 
 	test("cancelling Preview restores the authoritative path without a command", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10)],
@@ -401,7 +411,7 @@ describe("story reading state", () => {
 
 	test("an authoritative history reload discards client-only Preview state", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -422,7 +432,7 @@ describe("story reading state", () => {
 
 	test("confirming a second Message keeps the first confirmation shown", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
@@ -434,7 +444,7 @@ describe("story reading state", () => {
 
 	test("a confirmation that applies while another Message is previewed settles its Message", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
@@ -449,7 +459,7 @@ describe("story reading state", () => {
 
 	test("confirmation makes the previewed Variant authoritative and leaves later Messages intact", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20)],
@@ -711,7 +721,7 @@ describe("detached story windows", () => {
 	test("a source jump replaces the latest window with one page", () => {
 		const state = detach();
 		expect(state.messages.map(({ id }) => id)).toEqual([3, 4]);
-		expect(state.page).toMatchObject({ index: 3, hasNewer: true, hasOlder: true });
+		expect(readyStory(state).page).toMatchObject({ index: 3, hasNewer: true, hasOlder: true });
 	});
 
 	test("a refresh preserves Preview until its Variant or Message disappears", () => {
@@ -749,7 +759,7 @@ describe("detached story windows", () => {
 		final.messages[1]!.variants[0]!.content = "Finished";
 		const settled = reduceStory(refreshed, { type: "window-received", page: final });
 		expect(settled.messages.at(-1)?.swipes[0]?.content).toBe("Finished");
-		expect(settled.page?.hasNewer).toBe(true);
+		expect(readyStory(settled).page.hasNewer).toBe(true);
 	});
 
 	test("a detached final visible Message needs Swipe preview", () => {
