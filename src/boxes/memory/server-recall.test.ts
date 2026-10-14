@@ -160,7 +160,7 @@ describe("Memory recall in Generation preparation", () => {
 			const { revision, ...selection } = readBoxDecisionSettings(database, "memory");
 			applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, ...(change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
-			setMemoryAllowance(database, conversation.id, readMemoryChatSettings(database, conversation.id).revision, 1024);
+			setMemoryAllowance(database, conversation.id, { expectedRevision: readMemoryChatSettings(database, conversation.id).revision, allowance: 1024 });
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
 		else if (change === "correction") correct(database, conversation.id, source.variantId, claims);
 		else resetWriterRecord(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId);

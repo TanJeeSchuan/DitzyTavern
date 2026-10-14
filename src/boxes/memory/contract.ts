@@ -54,6 +54,7 @@ export const memoryConversationIdParams = Type.Object({ id: numericWire });
 
 export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(), allowance: Type.Integer(), note: Type.String() });
 export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.Integer(), allowance: Type.Integer() });
+export type ConversationMemoryAllowanceCommand = Static<typeof conversationMemoryAllowanceCommand>;
 export const conversationMemoryNoteCommand = Type.Object({ expectedRevision: Type.Integer(), note: Type.String() });
 export const conversationMemoryAllowanceApplied = Type.Object({ outcome: Type.Literal("applied"), settings: conversationMemoryAllowance });
 export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });

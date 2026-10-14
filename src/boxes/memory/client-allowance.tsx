@@ -20,7 +20,7 @@ export function MemoryAllowancePopover({
 	const save = async (event: FormEvent) => {
 		event.preventDefault();
 		setPending(true); setMessage(null);
-		const result = await saveMemoryAllowance(conversationId, revision, Number(value));
+		const result = await saveMemoryAllowance(conversationId, { expectedRevision: revision, allowance: Number(value) });
 		if (result.outcome === "available") {
 			onSaved(result.value.settings);
 			setRevision(result.value.settings.revision);

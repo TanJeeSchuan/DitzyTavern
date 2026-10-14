@@ -60,7 +60,7 @@ describe("Memory label merging", () => {
 	test("advances the label revision only on merges and the allowance revision only on allowance saves", async () => {
 		const chat = createChat(database);
 		addSource(database, chat.id, 1, ["assistant"]);
-		setMemoryAllowance(database, chat.id, 0, 500);
+		setMemoryAllowance(database, chat.id, { expectedRevision: 0, allowance: 500 });
 		expect(readConversationMemories(database, chat.id).labelRevision).toBe(0);
 		expect((await merge(database, chat.id, ["assistant"], "Alice", 0)).status).toBe(200);
 		expect(readMemoryChatSettings(database, chat.id).revision).toBe(1);

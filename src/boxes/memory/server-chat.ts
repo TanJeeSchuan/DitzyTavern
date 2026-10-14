@@ -14,10 +14,10 @@ export const readMemoryChatSettings = (database: Database, conversationId: numbe
 	readChatValue(drizzle(database), conversationId, "memory", "settings", memoryChatSettings, { allowance: 2048, note: "" });
 
 export const putMemoryChatSettings = (database: Database, conversationId: number, value: Static<typeof memoryChatSettings>, guard: Guard) =>
-	putChatValue(drizzle(database), conversationId, "memory", "settings", JSON.stringify(value), guard);
+	putChatValue(drizzle(database), conversationId, "memory", { key: "settings", value: JSON.stringify(value) }, guard);
 
 export const putMemoryLabels = (database: Database, conversationId: number, value: Static<typeof memoryLabels>, guard: Guard) =>
-	putChatValue(drizzle(database), conversationId, "memory", "labels", JSON.stringify(value), guard);
+	putChatValue(drizzle(database), conversationId, "memory", { key: "labels", value: JSON.stringify(value) }, guard);
 
 export interface MemoryLabelState {
 	revision: number;

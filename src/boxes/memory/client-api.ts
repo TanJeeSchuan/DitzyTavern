@@ -12,6 +12,7 @@ import {
 	memorySources,
 	type ConversationMemories,
 	type ConversationMemoryAllowance,
+	type ConversationMemoryAllowanceCommand,
 	type MemoryIdentityCommand,
 	type MemoryLabelMergeCommand,
 	type MemorySettingsCommand,
@@ -49,8 +50,8 @@ export async function loadMemoryAllowance(conversationId: number, signal?: Abort
 	return requestData(conversation(conversationId).allowance.get({ fetch: { signal } }), conversationMemoryAllowance);
 }
 
-export async function saveMemoryAllowance(conversationId: number, expectedRevision: number, allowance: number) {
-	return requestOutcome(conversation(conversationId).allowance.post({ expectedRevision, allowance }), conversationMemoryAllowanceApplied, memoryAllowanceCommandErrors);
+export async function saveMemoryAllowance(conversationId: number, command: ConversationMemoryAllowanceCommand) {
+	return requestOutcome(conversation(conversationId).allowance.post(command), conversationMemoryAllowanceApplied, memoryAllowanceCommandErrors);
 }
 
 export async function saveMemoryNote(conversationId: number, expectedRevision: number, note: string) {
