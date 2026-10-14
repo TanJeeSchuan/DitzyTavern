@@ -14,19 +14,26 @@ const linkStylesheet = `await new Promise((resolve, reject) => document.head.app
 	rel: "stylesheet", href: new URL("./client.css", import.meta.url).href, onload: resolve, onerror: () => reject(new Error("Its stylesheet did not load.")),
 })));`;
 
-// A selector's classes, elements and combinators, enough to find it in the source.
-const printed = (selector: Selector): string => selector.map((part) =>
-	part.type === "class" ? `.${part.name}` : part.type === "type" ? part.name : part.type === "universal" ? "*" : part.type === "combinator" ? " " : "").join("");
+// A selector's classes, elements, pseudo-classes and combinators, enough to find it in the source.
+const printed = (selector: Selector): string => selector.map((part) => {
+	if (part.type === "pseudo-class") return part.kind === "is" || part.kind === "where" ? `:${part.kind}(${part.selectors.map(printed).join(", ")})` : `:${part.kind}`;
+	return part.type === "class" ? `.${part.name}` : part.type === "type" ? part.name : part.type === "universal" ? "*" : part.type === "combinator" ? " " : "";
+}).join("");
 
-// The selectors in a Box's stylesheet that name none of its classes, `<id>`
-// and `<id>-…`, and so could match the host's elements or another Box's.
-// Tailwind's `properties` layer only sets its variables' defaults everywhere.
+// Whether a selector names one of the Box's classes, `<id>` or `<id>-…`,
+// directly or in every alternative of an `:is()` or `:where()`.
+const owned = (selector: Selector, id: string): boolean => selector.some((part) => part.type === "class"
+	? part.name === id || part.name.startsWith(`${id}-`)
+	: part.type === "pseudo-class" && (part.kind === "is" || part.kind === "where") && part.selectors.every((inner) => owned(inner, id)));
+
+// The selectors in a Box's stylesheet that name none of its classes, and so
+// could match the host's elements or another Box's. The build has already
+// flattened nesting. Tailwind's `properties` layer only sets its variables'
+// defaults everywhere; a `@scope` root doesn't own the rules inside it.
 const strays = (rules: readonly Rule[], id: string): string[] => rules.flatMap((rule) => {
-	if (rule.type === "style") return rule.value.selectors
-		.filter((selector) => !selector.some((part) => part.type === "class" && (part.name === id || part.name.startsWith(`${id}-`))))
-		.map(printed);
+	if (rule.type === "style") return rule.value.selectors.filter((selector) => !owned(selector, id)).map(printed);
 	if (rule.type === "layer-block" && rule.value.name?.join(".") === "properties") return [];
-	const grouping = rule.type === "media" || rule.type === "supports" || rule.type === "container" || rule.type === "layer-block" || rule.type === "starting-style";
+	const grouping = rule.type === "media" || rule.type === "supports" || rule.type === "container" || rule.type === "layer-block" || rule.type === "starting-style" || rule.type === "scope";
 	return grouping ? strays(rule.value.rules, id) : [];
 });
 
