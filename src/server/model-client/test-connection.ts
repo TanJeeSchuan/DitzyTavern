@@ -10,14 +10,8 @@ import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
 import { ModelFetchTimeoutError } from "./model-fetch";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
-import {
-	formatProviderError,
-	providerDiagnosticError,
-	providerErrorFields,
-	type ProviderErrorLike,
-	providerErrorStatus,
-	snapshotProviderError,
-} from "./provider-errors";
+import { formatProviderError, providerErrorFields, providerErrorStatus, snapshotProviderError } from "./provider-errors";
+import { providerDiagnosticError, type ProviderErrorLike } from "../../shared/contract/provider-response";
 
 export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
 export const TEST_CONNECTION_TIMEOUT_MS = 10_000;

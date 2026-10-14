@@ -1,20 +1,5 @@
-import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- In-process diagnostic fields, not a wire contract.
-export const providerDiagnosticError = Type.Object({
-	name: Type.String(),
-	message: Type.String(),
-	causeName: Type.Optional(Type.String()),
-	statusCode: Type.Optional(Type.Number()),
-	status: Type.Optional(Type.Number()),
-	responseBody: Type.Optional(Type.String()),
-	responseHeaders: Type.Optional(Type.Record(Type.String(), Type.String())),
-});
-export type ProviderErrorLike = Static<typeof providerDiagnosticError>;
-
-// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- In-process cause fields, not a wire contract.
-const providerErrorCause = Type.Object({ name: Type.Optional(Type.String()) });
+import { providerDiagnosticError, providerErrorCause, type ProviderErrorLike } from "../../shared/contract/provider-response";
 
 export function providerErrorFields(error: Error): ProviderErrorLike {
 	const fields = providerDiagnosticError.properties;
