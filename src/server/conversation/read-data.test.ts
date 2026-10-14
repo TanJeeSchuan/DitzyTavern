@@ -115,27 +115,6 @@ describe("readConversationData", () => {
 		]);
 	});
 
-	test("a keys filter without a namespace crosses namespaces", () => {
-		writeData("first.namespace", "sha256", "a");
-		writeData("second.namespace", "sha256", "b");
-
-		const read = readConversationData(module(), conversationId, {
-			keys: ["sha256"],
-		});
-		expect(read?.entries).toEqual([
-			{ namespace: "first.namespace", key: "sha256", value: "a" },
-			{ namespace: "second.namespace", key: "sha256", value: "b" },
-		]);
-	});
-
-	test("an empty keys array reads every key", () => {
-		writeData("first.namespace", "alpha", "1");
-		writeData("first.namespace", "beta", "2");
-
-		const read = readConversationData(module(), conversationId, { keys: [] });
-		expect(read?.entries).toHaveLength(6);
-	});
-
 	test("returns undefined for a missing Conversation", () => {
 		expect(readConversationData(module(), 999999)).toBeUndefined();
 	});

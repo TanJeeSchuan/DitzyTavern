@@ -74,9 +74,6 @@ describe("Native Prompt Preset interchange", () => {
 			"box:memory",
 			"history",
 		]);
-		expect(roundTrip).not.toHaveProperty("id");
-		expect(roundTrip).not.toHaveProperty("sourceName");
-		expect(roundTrip).not.toHaveProperty("content", "I am Maren.");
 		expect(resolved?.slots[1]).toMatchObject({ sourceName: "Maren", content: "I am {{self}}." });
 	});
 

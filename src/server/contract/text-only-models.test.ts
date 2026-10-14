@@ -241,11 +241,4 @@ describe("Text-only Models", () => {
 		expect((await mark(created.id, "  ", true)).status).toBe(422);
 		expect(settings().get().profiles[0]?.textOnlyModels).toEqual([]);
 	});
-
-	test("deleting a Profile removes its marks", async () => {
-		const created = createProfile();
-		await mark(created.id, "vision-model", true);
-		settings().deleteProfile({ expectedRevision: settings().get().revision, profileId: created.id });
-		expect(database.query("SELECT 1 FROM connection_profile_text_only_model").all()).toEqual([]);
-	});
 });

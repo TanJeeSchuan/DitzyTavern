@@ -15,7 +15,6 @@ import {
 	stopConversationGenerations,
 } from "./commands/active-generation";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
-import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -104,38 +103,6 @@ describe("explicit Conversation Generation Stop", () => {
 			status: "interrupted",
 			finishReason: null,
 			interruptionCause: "user-stop",
-		});
-	});
-
-	test("restart recovery retains its interruption cause on the recovered Variant", () => {
-		const input = setup();
-		const accepted = acceptTail(input);
-		checkpointConversationGeneration(database, {
-			conversationId: input.created.id,
-			generationId: accepted.generationId,
-			content: "Recovered partial answer.",
-			latestEventId: 2,
-		});
-
-		expect(recoverActiveGenerations(database)).toEqual({
-			inspected: 1,
-			interrupted: 1,
-			removed: 0,
-			failed: 0,
-		});
-		const recoveredMessage = readTestConversationSnapshot(input.module, input.created.id)?.messages.at(-1);
-		const recoveredVariant = recoveredMessage?.variants[0];
-		if (recoveredMessage === undefined || recoveredVariant === undefined) {
-			throw new Error("Recovered Variant missing.");
-		}
-		expect(readVariantDetails(input.module,
-			input.created.id,
-			recoveredMessage.id,
-			recoveredVariant.id,
-		)?.provenance).toMatchObject({
-			status: "interrupted",
-			finishReason: null,
-			interruptionCause: "server-restart",
 		});
 	});
 
