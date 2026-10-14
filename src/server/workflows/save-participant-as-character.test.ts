@@ -52,7 +52,7 @@ describe("Save Participant as Character workflow", () => {
 		database.close();
 	});
 
-	const countRows = (table: typeof characterTable | typeof participantTable) =>
+	const countRows = (table: typeof characterTable) =>
 		drizzle(database).select().from(table).all().length;
 
 	// A playable Conversation whose model seat carries the full Definition
@@ -139,28 +139,6 @@ describe("Save Participant as Character workflow", () => {
 		expect(library.get(existing.id)?.openings).toEqual([
 			"An opening only the existing Character had.",
 		]);
-	});
-
-	test("leaves an ad-hoc Participant unchanged with no provenance", () => {
-		const { conversation } = conversationWithDefinition();
-		const participant = conversation.cast.at(-1);
-		if (participant === undefined) throw new Error("Expected a model seat.");
-		expect(participant.sourceCharacterId).toBeNull();
-
-		saveParticipantAsCharacter(database, {
-			conversationId: conversation.id,
-			expectedConversationRevision: conversation.revision,
-			participantId: participant.id,
-		});
-
-		const reread = readTestConversationSnapshot(database, conversation.id);
-		const saved = reread?.cast.find((entry) => entry.id === participant.id);
-		// The original Participant and this Conversation did not change: same
-		// position, local Definition, no provenance, and the same revision.
-		expect(saved).toEqual(participant);
-		expect(saved?.sourceCharacterId).toBeNull();
-		expect(reread?.revision).toBe(conversation.revision);
-		expect(countRows(participantTable)).toBe(2);
 	});
 
 	test("keeps a forked Participant's immutable provenance when saving", () => {

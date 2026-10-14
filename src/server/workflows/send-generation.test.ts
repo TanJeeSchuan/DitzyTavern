@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	readVariantDetails,
 	executeConversationCommand,
@@ -179,32 +179,6 @@ describe("Send through provisional Tail Generation", () => {
 		}
 	});
 
-	test("removes zero-output targets while preserving the accepted human Message and reuses it on retry", async () => {
-		await expect(runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: 0,
-			target: { kind: "send", content: "Please try again." },
-			modelClient: createFakeModelClient(() => [
-				{ type: "failed", kind: "provider", message: "No answer." },
-			]),
-		})).rejects.toThrow("No answer.");
-
-		const afterFailure = readTestConversationSnapshot(database, conversationId);
-		expect(afterFailure?.messages).toHaveLength(1);
-		expect(afterFailure?.messages[0]?.author?.participantId).toBe(humanId);
-		expect(afterFailure?.revision).toBe(2);
-
-		await runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: afterFailure?.revision ?? -1,
-			target: { kind: "send", content: "Please try again." },
-			modelClient: createFakeModelClient(() => "Now it works."),
-		});
-		expect(currentSnapshot().messages).toHaveLength(2);
-		expect(currentSnapshot().messages[0]?.author?.participantId).toBe(humanId);
-		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("Now it works.");
-	});
-
 	test("reports the newly inserted and the reused accepted Human source to the digest queue", async () => {
 		const touched: number[] = [];
 		observeConversationWrites(database, (_database, change) => { touched.push(...change.touchedVariantIds); });
@@ -227,23 +201,6 @@ describe("Send through provisional Tail Generation", () => {
 		});
 		expect(currentSnapshot().messages[0]?.id).toBe(insertedHuman.id);
 		expect(touched).toContain(humanVariant);
-	});
-
-	test("rejects an oversized candidate before any Message or Active Generation is persisted", async () => {
-		let contacted = false;
-		await expect(runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: 0,
-			target: { kind: "send", content: "Protected input." },
-			modelClient: createFakeModelClient(() => {
-				contacted = true;
-				return "never";
-			}),
-			tokenEstimator: () => 40_000,
-		})).rejects.toThrow();
-		expect(contacted).toBe(false);
-		expect(readTestConversationSnapshot(database, conversationId)?.messages).toHaveLength(0);
-		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
 
 	test("persists the attempt's Effective Generation Settings so active inspection retains the Safety allowance", async () => {

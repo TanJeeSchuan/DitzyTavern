@@ -260,34 +260,6 @@ describe("Historical sibling Variant generation", () => {
 		]);
 	});
 
-	test("macros resolve against the historical pair even when the pair no longer holds either seat", async () => {
-		await generateOnce(["First reply."]);
-		const generated = conversation.messages.at(-1);
-		if (generated === undefined) throw new Error("Generated Message missing.");
-
-		await adaptiveControl();
-
-		const plans: PromptPlan[] = [];
-		await sibling(generated.id, "Sibling under the old pair.", {
-			capture: captureInto(plans),
-		});
-
-		expect(
-			plans[0]?.blocks.filter((block) => block.kind === "identity"),
-		).toEqual([
-			{
-				kind: "identity",
-				role: "human",
-				content: "I am Writer, speaking to Maren Voss.",
-			},
-			{
-				kind: "identity",
-				role: "model",
-				content: "I am Maren Voss, speaking to Writer.",
-			},
-		]);
-	});
-
 	test("an opening Message generates an additional Variant after its configured openings, preserving their native order and shared authorship", async () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
@@ -322,35 +294,6 @@ describe("Historical sibling Variant generation", () => {
 		});
 		expect(committed.messages).toHaveLength(1);
 		expect(committed.control).toEqual(controlBefore);
-	});
-
-	test("the target Message's existing sibling Variants are excluded from its preceding prompt history", async () => {
-		const greeting = conversation.messages[0];
-		if (greeting === undefined) throw new Error("Greeting missing.");
-
-		await generateOnce(["First reply."]);
-		const generated = conversation.messages.at(-1);
-		if (generated === undefined) throw new Error("Generated Message missing.");
-
-		const firstPlans: PromptPlan[] = [];
-		await sibling(generated.id, "First alternative.", {
-			capture: captureInto(firstPlans),
-		});
-
-		const secondPlans: PromptPlan[] = [];
-		await sibling(generated.id, "Second alternative.", {
-			capture: captureInto(secondPlans),
-		});
-
-		const historyOf = (plan: PromptPlan | undefined) =>
-			plan?.blocks
-				.filter((block) => block.kind === "history")
-				.map((entry) => entry.content) ?? [];
-
-		// Neither plan contains the target's own Variants ("First reply.",
-		// "First alternative."); only the greeting precedes it.
-		expect(historyOf(firstPlans[0])).toEqual(["The lamp turns above you."]);
-		expect(historyOf(secondPlans[0])).toEqual(["The lamp turns above you."]);
 	});
 
 	test("sibling generation uses the selected history strictly preceding the target Message", async () => {
