@@ -39,6 +39,20 @@ const failureMessage = (result: TestConnectionResult): string =>
 	result.outcome === "failure" ? result.message : "";
 
 describe("Model Test Connection", () => {
+	test("keeps socket errors with non-Error causes classified as endpoint failures", async () => {
+		const result = await testConnection({ profile, modelId: "test-model" }, {
+			fetch: async () => { throw new Error("socket hang up", { cause: "ECONNRESET" }); },
+		});
+		expect(result).toMatchObject({ outcome: "failure", kind: "endpoint" });
+	});
+
+	test("keeps abort errors with provider-specific causes classified as timeouts", async () => {
+		const result = await testConnection({ profile, modelId: "test-model" }, {
+			fetch: async () => { throw Object.assign(new Error("aborted", { cause: { code: 20 } }), { name: "AbortError" }); },
+		});
+		expect(result).toMatchObject({ outcome: "failure", kind: "timeout" });
+	});
+
 	test("rejects non-string provider diagnostics before redaction", async () => {
 		const result = await testConnection({ profile, modelId: "test-model" }, {
 			fetch: async () => { throw Object.assign(new Error("Provider failure"), { responseBody: 42 }); },

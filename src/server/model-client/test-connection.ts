@@ -1,4 +1,3 @@
-import { providerDiagnosticError, type ProviderDiagnosticError } from "../../shared/contract/provider-response";
 import { Value } from "@sinclair/typebox/value";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
@@ -13,6 +12,9 @@ import { ModelFetchTimeoutError } from "./model-fetch";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
 import {
 	formatProviderError,
+	providerDiagnosticError,
+	providerErrorFields,
+	type ProviderErrorLike,
 	providerErrorStatus,
 	snapshotProviderError,
 } from "./provider-errors";
@@ -143,8 +145,9 @@ export async function testConnection(
 		if (!(error instanceof Error)) {
 			return failure("endpoint", "The provider request failed.");
 		}
-		if (!Value.Check(providerDiagnosticError, error)) return failure("malformed-response", "The provider returned malformed error diagnostics.");
-		return normalizeTestConnectionError(error, { timedOut, secretValues });
+		if (timedOut || error.name === "AbortError") return failure("timeout", "The provider did not respond within the short Test Connection timeout.");
+		if ("responseBody" in error && !Value.Check(providerDiagnosticError.properties.responseBody, error.responseBody)) return failure("malformed-response", "The provider returned malformed error diagnostics.");
+		return normalizeTestConnectionError(providerErrorFields(error), { timedOut, secretValues });
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -177,7 +180,7 @@ interface ErrorContext {
 }
 
 function normalizeTestConnectionError(
-	error: ProviderDiagnosticError,
+	error: ProviderErrorLike,
 	context: ErrorContext,
 ): TestConnectionResult {
 	if (context.timedOut || isAbortError(error)) {
@@ -200,23 +203,23 @@ function normalizeTestConnectionError(
 	return failure("endpoint", providerFailureMessage(error), responseBody);
 }
 
-function providerFailureMessage(error: ProviderDiagnosticError): string {
+function providerFailureMessage(error: ProviderErrorLike): string {
 	return formatProviderError(
 		snapshotProviderError(error),
 	);
 }
 
-function isMalformedResponseError(error: ProviderDiagnosticError): boolean {
-	const name = `${error.name} ${error.cause?.name ?? ""}`.toLowerCase();
+function isMalformedResponseError(error: ProviderErrorLike): boolean {
+	const name = `${error.name} ${error.causeName ?? ""}`.toLowerCase();
 	return name.includes("jsonparse") || name.includes("invalidresponsedata") || name.includes("emptyresponse");
 }
 
-function isRedirectError(error: ProviderDiagnosticError): boolean {
+function isRedirectError(error: ProviderErrorLike): boolean {
 	const message = error.message.toLowerCase();
 	return message.includes("redirect") || message.includes("maximum redirect");
 }
 
-function isAbortError(error: ProviderDiagnosticError): boolean {
+function isAbortError(error: ProviderErrorLike): boolean {
 	return error.name === "AbortError";
 }
 

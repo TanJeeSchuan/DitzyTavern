@@ -1,9 +1,30 @@
-export interface ProviderErrorLike extends Error {
-	readonly cause?: Error;
-	readonly statusCode?: number;
-	readonly status?: number;
-	readonly responseBody?: string;
-	readonly responseHeaders?: Readonly<Record<string, string>>;
+import { Type, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+
+// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- In-process diagnostic fields, not a wire contract.
+export const providerDiagnosticError = Type.Object({
+	name: Type.String(),
+	message: Type.String(),
+	causeName: Type.Optional(Type.String()),
+	statusCode: Type.Optional(Type.Number()),
+	status: Type.Optional(Type.Number()),
+	responseBody: Type.Optional(Type.String()),
+	responseHeaders: Type.Optional(Type.Record(Type.String(), Type.String())),
+});
+export type ProviderErrorLike = Static<typeof providerDiagnosticError>;
+
+export function providerErrorFields(error: Error): ProviderErrorLike {
+	const fields = providerDiagnosticError.properties;
+	const { cause } = error;
+	return {
+		name: error.name,
+		message: error.message,
+		causeName: cause instanceof Error && Value.Check(fields.causeName, cause.name) ? cause.name : undefined,
+		statusCode: "statusCode" in error && Value.Check(fields.statusCode, error.statusCode) ? error.statusCode : undefined,
+		status: "status" in error && Value.Check(fields.status, error.status) ? error.status : undefined,
+		responseBody: "responseBody" in error && Value.Check(fields.responseBody, error.responseBody) ? error.responseBody : undefined,
+		responseHeaders: "responseHeaders" in error && Value.Check(fields.responseHeaders, error.responseHeaders) ? error.responseHeaders : undefined,
+	};
 }
 
 export interface ProviderErrorSnapshot {
