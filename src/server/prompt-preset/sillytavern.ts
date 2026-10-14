@@ -1,4 +1,4 @@
-import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
+import { defaultOutgoingRole, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
 import { parseMacroDocument, type MacroDocumentNode, type MacroNode } from "../../shared/prompt-macros";
 import { InvalidPromptPresetCommandError } from "./errors";
 
@@ -303,7 +303,7 @@ const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition =
 	if (sourceReference !== null) {
 		const reference = supportedReferences[sourceReference];
 		if (reference === "history") return { slot: { reference } };
-		return { slot: { reference, role: defaultOutgoingRoles[reference] } };
+		return { slot: { reference, role: defaultOutgoingRole(reference) } };
 	}
 	if (definition.identifier === "worldInfoBefore" || definition.identifier === "worldInfoAfter") {
 		return { slot: { reference: "lore", role: "system" } };

@@ -1,12 +1,12 @@
-import { isSingleUseReference, singleUseReferenceLabels } from "../shared/contract/prompt-preset";
+import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { RefreshCw, Send, Settings, X } from "lucide-react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
-import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
+import { LoreActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
-import { boxReference } from "../shared/contract/box";
+import { BoxTraceViews } from "./box-windows/BoxTraceViews";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -35,8 +35,6 @@ export function PromptPlanPreviewPanel({
 	const pending = isAssemblyPending(assembly);
 	const editable = preview !== null && !pending;
 	const canSend = preview !== null && (assembly.phase === "ready" || assembly.phase === "failed");
-	const memory = boxReference("memory");
-	const memoryTrace = preview?.boxTraces[memory];
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">
 			<PanelHeader
@@ -74,9 +72,10 @@ export function PromptPlanPreviewPanel({
 					</section>
 				)}
 				{preview?.loreActivation != null && <LoreActivationDetails record={preview.loreActivation} />}
-				{preview !== null && memoryTrace !== undefined && <MemoryActivationDetails
+				{preview !== null && <BoxTraceViews
 					conversationId={preview.conversationId}
-					trace={{ ...memoryTrace, finalText: preview.promptPlan.blocks.find((block) => block.kind === memory)?.content ?? "" }}
+					traces={preview.boxTraces}
+					plan={preview.promptPlan}
 					onNavigateSource={onNavigateSource}
 				/>}
 				{preview !== null && <section className="generation-detail-section prompt-plan-edit-list">
@@ -85,7 +84,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const fields = run.map(({ block, index }) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabels[block.kind] : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}

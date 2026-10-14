@@ -17,6 +17,7 @@ import {
 	type NewChatSeat,
 } from "../workflows";
 import { openInitializedDatabase } from "./database";
+import { loadBoxes } from "../box/registry";
 import { characterTable } from "./schema";
 
 export interface SeedCharacter extends CharacterDefinition {
@@ -260,5 +261,6 @@ export function seed(databasePath?: string) {
 
 const isDirectRun = import.meta.main;
 if (isDirectRun) {
+	await loadBoxes();
 	seed();
 }

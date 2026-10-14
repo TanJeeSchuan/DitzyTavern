@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { boxDescriptors, boxReference, type BoxId } from "../../shared/contract/box";
+import { boxReference, type BoxId } from "../../shared/contract/box";
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
+import { boxTitle } from "./registry";
 
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
@@ -31,7 +32,7 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
 		enabled: on,
 	});
-	const { label } = boxDescriptors[box];
+	const label = boxTitle(box);
 	const slot = preset.data?.slots.find((entry) => entry.reference === boxReference(box));
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {
@@ -50,5 +51,16 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		<Button type="button" size="xs" variant="outline" className="mt-1 w-fit" disabled={disabled || fix.isPending || preset.isFetching} onClick={() => fix.mutate(id)}>
 			{slot === undefined ? "Add block" : "Enable"}
 		</Button>
+	</Alert>;
+}
+
+// @approved
+//  A disabled Box keeps its surfaces so the writer can read and configure it;
+//  the host's frame for each one says, the same way for every Box, that it
+//  does not run.
+export function BoxOffNotice({ conversation, box, className }: { conversation: ConversationSummary; box: BoxId; className?: string }) {
+	if (conversation.boxes[box] !== "disabled") return null;
+	return <Alert className={className}>
+		<AlertDescription>{boxTitle(box)} is off in this Chat. Turn it on in Boxes to run it again.</AlertDescription>
 	</Alert>;
 }

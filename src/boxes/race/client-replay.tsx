@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Portrait, Slider, type PortraitImage } from "../../box-sdk/client";
+import { Portrait, Slider, type PortraitImage } from "@/box-sdk/client";
 import type { RaceRead } from "./contract";
 import { raceMoveCatalog } from "./shared";
 

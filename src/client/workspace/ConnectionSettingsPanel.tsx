@@ -4,7 +4,7 @@ import { ConnectionProfileList } from "./connection-settings/ConnectionProfileLi
 import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
 import { DecisionSettingsEditor, useSettingsDraft } from "./DecisionSettingsEditor";
 import { boxDecisionClients } from "../box-decision-settings";
-import { boxDescriptors, type DigestBoxId } from "../../shared/contract/box";
+import type { BoxId } from "../../shared/contract/box";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -24,13 +24,13 @@ export function ConnectionSettingsPanel({
 	const semanticTriggers = useSemanticTriggerSettings();
 	// @approved
 	//  boxDecisionClients never changes, so these drafts keep their hook order.
-	const boxDecisions = boxDecisionClients.map(({ box, load, save }) => ({ box, editor: useSettingsDraft(`${boxDescriptors[box].label} Settings`, load, save) }));
-	const [open, setOpen] = useState<"semantic-triggers" | DigestBoxId | null>(null);
+	const boxDecisions = boxDecisionClients().map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
+	const [open, setOpen] = useState<"semantic-triggers" | BoxId | null>(null);
 	const openBox = boxDecisions.find(({ box }) => box === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
 	if (openBox !== undefined) {
-		const { label, decision } = boxDescriptors[openBox.box];
+		const { label, decision } = openBox;
 		return <DecisionSettingsEditor
 			editor={openBox.editor}
 			id={`${openBox.box}-settings`}

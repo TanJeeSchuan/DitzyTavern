@@ -1,5 +1,6 @@
-import { Type, type Static, type TInteger, type TLiteral, type TNull, type TObject, type TOptional, type TUnion } from "@sinclair/typebox";
-import { boxDescriptors, boxId, boxSetups, boxState, recordBoxId, recordBoxIds, setupBoxIds, type BoxDescriptors, type RecordBoxId, type SetupBoxId } from "./box";
+import { Type, type Static } from "@sinclair/typebox";
+import { boxState } from "./box";
+import { boxValue } from "./box-value";
 
 // @approved
 //  A Box window writes one value into its own namespace. The Box id owns the
@@ -22,49 +23,40 @@ const boxDataWrite = Type.Object({
 export type BoxDataWrite = Static<typeof boxDataWrite>;
 
 // @approved
-//  Replaces one Box's whole setup. The setup is validated against that Box's
-// schema here, so storage only ever holds decodable values. `writes` are the
-// Box's own data writes that land in the same transaction, so a setup that
-// depends on them never commits without them.
-const boxSetupWrites = Type.Optional(Type.Array(boxDataWrite));
-type SetBoxSetupActions<Ids extends readonly SetupBoxId[]> = { -readonly [K in keyof Ids]: TObject<{ type: TLiteral<"set-box-setup">; box: TLiteral<Ids[K]>; setup: BoxDescriptors[Ids[K]]["setup"]["schema"]; writes: typeof boxSetupWrites }> };
-// SAFETY: one action per setup Box in tuple order, each with its own setup schema.
-const setBoxSetupAction = Type.Union(setupBoxIds.map((id) => Type.Object({ type: Type.Literal("set-box-setup"), box: Type.Literal(id), setup: boxSetups.properties[id], writes: boxSetupWrites })) as SetBoxSetupActions<typeof setupBoxIds>);
+//  Replaces one Box's whole setup. The command checks the setup against that
+// Box's schema before anything is written, so storage only ever holds
+// decodable values. `writes` are the Box's own data writes that land in the
+// same transaction, so a setup that depends on them never commits without
+// them.
+export const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup"), box: Type.String(), setup: boxValue, writes: Type.Optional(Type.Array(boxDataWrite)) });
 
 // @approved
 //  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
-export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: boxId, state: boxState });
+export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: Type.String(), state: boxState });
 
 // @approved
-//  Sets one Variant's Writer override for a Box record. The record is
-//  validated against that Box's schema here, so storage only ever holds
-//  decodable values. `expected` is the effective record the writer read,
-//  null for none: digests change records without a Conversation revision,
-//  so a stale override is refused against it instead. Reset removes the
-//  override and leaves the automatic record, if any, as the effective value.
-type SetBoxRecordActions<Ids extends readonly RecordBoxId[]> = {
-	-readonly [K in keyof Ids]: TObject<{
-		type: TLiteral<"set-box-record">; box: TLiteral<Ids[K]>; messageId: TInteger; variantId: TInteger; record: BoxDescriptors[Ids[K]]["record"];
-		expected: TOptional<TUnion<[BoxDescriptors[Ids[K]]["record"], TNull]>>;
-	}>
-};
-// SAFETY: one action per record Box in tuple order, each with its own record schema.
-const setBoxRecordAction = Type.Union(recordBoxIds.map((id) => Type.Object({
+//  Sets one Variant's Writer override for a Box record. The command checks
+//  the record against that Box's schema before anything is written, so
+//  storage only ever holds decodable values. `expected` is the effective
+//  record the writer's draft started from, null for none: digests change
+//  records without a Conversation revision, so the command refuses an
+//  override once the slot no longer holds it.
+//  Reset removes the override and leaves the automatic record, if any, as the
+//  effective value.
+export const setBoxRecordAction = Type.Object({
 	type: Type.Literal("set-box-record"),
-	box: Type.Literal(id),
+	box: Type.String(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
-	record: boxDescriptors[id].record,
-	expected: Type.Optional(Type.Union([boxDescriptors[id].record, Type.Null()])),
-})) as SetBoxRecordActions<typeof recordBoxIds>);
+	record: boxValue,
+	expected: boxValue,
+});
 
 export const resetBoxRecordAction = Type.Object({
 	type: Type.Literal("reset-box-record"),
-	box: recordBoxId,
+	box: Type.String(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 });
 
-export const putBoxDataAction = Type.Object({ type: Type.Literal("put-box-data"), box: boxId, ...boxDataWrite.properties });
-
-export { setBoxRecordAction, setBoxSetupAction };
+export const putBoxDataAction = Type.Object({ type: Type.Literal("put-box-data"), box: Type.String(), ...boxDataWrite.properties });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isWorldClockStart, type WorldClockRecord, type WorldClockSetup } from "./contract";
-import { clockAt, clockLine, clockStatus, drawMinutes, temperature, worldClockBox } from "./server";
+import worldClockBox, { clockAt, clockLine, clockStatus, drawMinutes, temperature } from "./server";
 
 const setup: WorldClockSetup = { start: "2025-12-20T08:41", era: "AD", climate: "temperate", hemisphere: "north", unit: "C" };
 const fold = (records: WorldClockRecord[]) => records.reduce(worldClockBox.records.fold, worldClockBox.records.initial);

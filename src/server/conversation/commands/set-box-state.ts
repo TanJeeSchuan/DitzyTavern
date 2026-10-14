@@ -3,7 +3,7 @@ import { boxReference, type BoxId, type BoxState } from "../../../shared/contrac
 import { boxInstanceEntry, boxStateEntry } from "../../box/setup";
 import { installBoxBlocks } from "../../prompt-preset";
 import { conversationDataTable, participantDataTable, participantTable } from "../../database/schema";
-import type { ConversationDatabase } from "../internal";
+import { requireBox, type ConversationDatabase } from "../internal";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 
 // @approved
@@ -13,6 +13,7 @@ import type { ConversationWriteChange } from "../../../shared/contract/conversat
 // Inserting a Box that is absent starts a new instance, and turning a Box on
 // adds its block to the Chat's preset when the preset has none.
 export function setBoxState(db: ConversationDatabase, input: { conversationId: number; box: BoxId; state: BoxState }): ConversationWriteChange | void {
+	requireBox(input.box);
 	const namespace = boxReference(input.box);
 	if (input.state === "absent") {
 		db.delete(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, input.conversationId), eq(conversationDataTable.namespace, namespace))).run();

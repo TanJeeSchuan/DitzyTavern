@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import {
 	Button, Field, imageAccept, Input, Portrait, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, uploadImage, useBoxSetupDraft,
 	type BoxDataAction, type BoxDataWrite, type CastParticipant, type ConversationSummary,
-} from "../../box-sdk/client";
+} from "@/box-sdk/client";
 import { Value } from "@sinclair/typebox/value";
 import { raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
 import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "./shared-data";
@@ -30,7 +30,7 @@ const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAut
 export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = useRace(conversation);
 	return <button type="button" className="box-dock-tab" title="Restore Race" onClick={onRestore}>
-		<Flag aria-hidden="true" /><span className="sr-only">Race: </span>
+		<Flag aria-hidden="true" /><span className="race-label">Race: </span>
 		<span>{read.isError ? "Unavailable" : read.data?.status ?? "Set up a race"}</span>
 	</button>;
 }
@@ -64,7 +64,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	// @approved
 	//  An open stat sheet is this window's unsaved work: the shared guard saves
 	//  it by adding the Runner, and discards it with the setup draft.
-	const { draft, setDraft, dirty, locked, notice, setNotice, run, command, save } = useBoxSetupDraft("race", {
+	const { draft, setDraft, dirty, locked, notice, setNotice, run, command, save } = useBoxSetupDraft("race", raceSetup, {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed. Review your setup and save again.",
 		valid: isValid,

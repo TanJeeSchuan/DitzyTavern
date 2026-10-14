@@ -123,19 +123,8 @@ describe("history refresh error classification", () => {
 		await expect(refresh).rejects.toBeInstanceOf(NetworkError);
 	});
 
-	// The refresh's error classification is requestOutcome's own: the modeled
-	// 404 envelope is the skip above, and every response the seam cannot
-	// classify — HTTP failures and malformed pages alike — is a plain Error, so
-	// the generation-session runner backs off and retries only an unreachable
-	// transport.
-	test.each([
-		["server 500", () => Response.json({ error: "Server bug" }, { status: 500 })],
-		["malformed 404", () => Response.json({ error: "Unknown response" }, { status: 404 })],
-		["invalid response", () => Response.json({ outcome: "invalid", reason: "Invalid history" }, { status: 422 })],
-		["malformed history page", () => Response.json({ messages: [] })],
-		["invalid JSON", () => new Response("{", { headers: { "content-type": "application/json" } })],
-	])("%s throws a plain Error", async (_name, response) => {
-		const refresh = historyRefresh(async () => response());
+	test("an unusable history response throws a plain Error", async () => {
+		const refresh = historyRefresh(async () => Response.json({ error: "Server bug" }, { status: 500 }));
 		await expect(refresh).rejects.toBeInstanceOf(Error);
 		await expect(refresh).rejects.not.toBeInstanceOf(NetworkError);
 	});

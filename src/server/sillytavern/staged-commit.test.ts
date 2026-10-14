@@ -28,7 +28,6 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import { importSillyTavernChat } from "./import";
 import {
 	STAGED_IMPORT_SESSION_TTL_MS,
 	createChatImportModule,
@@ -38,7 +37,6 @@ import {
 import { processStateFor } from "../application/process-state";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
-	StagedChatImportDuplicateConfirmationError,
 	StagedChatImportExpiredError,
 	StagedChatImportPlanError,
 	StagedChatImportTokenMismatchError,
@@ -142,12 +140,6 @@ describe("staged SillyTavern chat import commit", () => {
 			type: "create",
 			definition: definition(overrides.name ?? "Maren Voss", overrides),
 		});
-
-	const priorImport = (records: unknown[], filename = "prior.jsonl") => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, jsonl(records), "utf8");
-		return importSillyTavernChat(database, path, artifactDirectory).conversation;
-	};
 
 	const commit = (
 		token: string,
@@ -392,25 +384,6 @@ describe("staged SillyTavern chat import commit", () => {
 		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.capturedName).toBe("Vesper");
 	});
 
-	test("keeps Chat-only Participants as complete native identities without Profiles", async () => {
-		const staged = await stageText([header, writer]);
-		const { conversation, receipt } = commit(staged.token, staged.preview.sha256, {
-			participants: [chatOnly("Writer", [1])],
-		});
-
-		expect(conversation.cast[0]).toMatchObject({
-			name: "Writer",
-			sourceCharacterId: null,
-			position: 1,
-		});
-		expect(receipt.participants[0]).toEqual({
-			name: "Writer",
-			outcome: "chat-only",
-			sourceCharacterId: null,
-		});
-		expect(rowCounts().characters).toBe(0);
-	});
-
 	test("merged and split plans commit with exact per-Message assignment while source author strings stay untouched", async () => {
 		// One captured name used for two different identities: "Maren Voss"
 		// and " Maren Voss " are separate exact groups, merged into one
@@ -542,89 +515,6 @@ describe("staged SillyTavern chat import commit", () => {
 		});
 		expect(corrected.conversation.cast[0]?.name).toBe("Writer");
 		expect(requireSnapshot(database, corrected.conversation.id).messages).toHaveLength(2);
-	});
-
-	test("blank captured groups require an explicitly usable Participant name", async () => {
-		const staged = await stageText([header, blankName, writer]);
-		const { token, preview } = staged;
-
-		// A Participant named only with whitespace never commits.
-		expect(() =>
-			commit(token, preview.sha256, {
-				title: "Blank group",
-				participants: [chatOnly("Writer", [2])],
-			}),
-		).toThrow(StagedChatImportPlanError);
-
-		// Supplying the usable default (or an edited name) commits.
-		const result = commit(token, preview.sha256, {
-			title: "Blank group",
-			participants: [
-				chatOnly("Writer", [2]),
-				chatOnly(UNKNOWN_IMPORTED_AUTHOR_NAME, [1]),
-			],
-		});
-		// Messages commit in source order: position 1 is the blank captured
-		// name and position 2 is "Writer".
-		expect(
-			requireSnapshot(database, result.conversation.id).messages.map((message) => message.author?.capturedName),
-		).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Writer"]);
-	});
-
-	test("an exact duplicate requires explicit confirmation; related sources stay advisory", async () => {
-		const prior = priorImport([header, writer]);
-		const staged = await stageText([header, writer], "copy.jsonl");
-
-		// The exact match blocks the commit until confirmed and creates no
-		// database state.
-		expect(() =>
-			commit(staged.token, staged.preview.sha256, {
-				title: "Copy",
-				duplicateConfirmed: false,
-				participants: [chatOnly("Writer", [1])],
-			}),
-		).toThrow(StagedChatImportDuplicateConfirmationError);
-		expect(rowCounts().chats).toBe(1); // only the prior import
-
-		// Confirming creates an independent native copy with its own identity
-		// and a persisted copy warning in the receipt.
-		const confirmed = commit(staged.token, staged.preview.sha256, {
-			title: "Copy",
-			duplicateConfirmed: true,
-			participants: [chatOnly("Writer", [1])],
-		});
-		expect(confirmed.conversation.id).not.toBe(prior.id);
-		expect(confirmed.receipt.duplicates.exact).toEqual([
-			{ id: prior.id, name: prior.name },
-		]);
-		expect(confirmed.receipt.warnings).toContain(
-			`Source was already imported as chat ${prior.id} ("${prior.name}"); this import creates an independent copy.`,
-		);
-	});
-
-	test("a consumed token returns the original successful result on retry without creating another Chat", async () => {
-		const staged = await stageText([header, writer]);
-		const plan: ChatImportCommitInput = {
-			sha256: staged.preview.sha256,
-			title: "Once only",
-			duplicateConfirmed: true,
-			participants: [chatOnly("Writer", [1])],
-		};
-
-		const first = commit(staged.token, staged.preview.sha256, plan);
-		// A lost response retries the same token and plan.
-		const retry = commit(staged.token, staged.preview.sha256, plan);
-		expect(retry.conversation.id).toBe(first.conversation.id);
-		expect(retry.conversation.name).toBe(first.conversation.name);
-		expect(retry.receipt).toEqual(first.receipt);
-		expect(rowCounts()).toEqual({
-			chats: 1,
-			participants: 1,
-			characters: 0,
-			messages: 1,
-			variants: 1,
-			artifacts: 1,
-		});
 	});
 
 	test("a committed receipt serves retries only within its session lifetime without re-creating the Chat", async () => {

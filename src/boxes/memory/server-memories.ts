@@ -3,8 +3,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxInstances,
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
-} from "../../box-sdk/server";
-import type { ConversationMemories, MemoryIdentityCommand, MemoryLabelMerge, MemoryLabelMergeCommand } from "./contract";
+} from "@/box-sdk/server";
+import { memoryRecord, type ConversationMemories, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
 import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
 import { InvalidMemoryCommandError, memoryGuard } from "./server-errors";
 import { readMemoryEmbedding } from "./server-settings";
@@ -16,7 +16,7 @@ import { readMemoryEmbedding } from "./server-settings";
 export function readConversationMemories(database: Database, conversationId: number): ConversationMemories {
 	const state = readMemoryLabelState(database, conversationId);
 	const variants = readChatVariants(database, conversationId);
-	const slots = readRecordSlots(drizzle(database), "memory", readBoxInstances(drizzle(database), conversationId).memory, variants.map(({ variantId }) => variantId));
+	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxInstances(drizzle(database), conversationId).memory, variants.map(({ variantId }) => variantId));
 	const sources = variants
 		.filter((variant) => !isExcludedAuthor(state, variant.authorParticipantId)
 			&& (variant.selected ? variant.content.trim() !== "" : effectiveRecord(slots.get(variant.variantId)) !== undefined))

@@ -260,22 +260,6 @@ export const decodeGenerationProvenanceRecord = (
 	};
 };
 
-// @approved
-//  Strict transport decoder for terminal Variant details. Start-time records
-// intentionally permit a null status, but a terminal response must identify
-// its status and carry a generationSettings object.
-export const decodeGenerationProvenance = (
-	value: GenerationJsonValue | null | undefined,
-): GenerationProvenance | null | undefined => {
-	if (value === null) return null;
-	const source = generationJsonObject(value);
-	if (source === null || generationJsonObject(source.generationSettings) === null) return undefined;
-	const status = provenanceStatus(source.status);
-	if (status === null) return undefined;
-	const record = decodeGenerationProvenanceRecord(value);
-	return record === null || record === undefined ? undefined : { ...record, status };
-};
-
 export const encodeGenerationProvenance = (value: GenerationProvenanceRecord | GenerationProvenance): string =>
 	JSON.stringify(value);
 
@@ -341,8 +325,6 @@ export const decodeStoredGenerationProvenance = (
 //  Named as a codec so persistence and transport call the same boundary
 // explicitly instead of each growing another local provenance parser.
 export const generationProvenanceCodec = {
-	decode: decodeGenerationProvenance,
-	decodeRecord: decodeGenerationProvenanceRecord,
 	decodeStored: decodeStoredGenerationProvenance,
 	encode: encodeGenerationProvenance,
 	project: projectGenerationProvenance,

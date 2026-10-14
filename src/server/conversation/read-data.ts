@@ -59,7 +59,7 @@ export function readConversationDataBatch(
 			.where(and(
 				inArray(conversationDataTable.conversation_id, batch),
 				filter.namespace === undefined ? undefined : eq(conversationDataTable.namespace, filter.namespace),
-				filter.keys === undefined || filter.keys.length === 0 ? undefined : inArray(conversationDataTable.key, filter.keys),
+				filter.keys === undefined ? undefined : inArray(conversationDataTable.key, filter.keys),
 			))
 			.orderBy(asc(conversationDataTable.conversation_id), asc(conversationDataTable.namespace), asc(conversationDataTable.key))
 			.all();

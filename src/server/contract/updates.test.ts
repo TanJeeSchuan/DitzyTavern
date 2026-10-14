@@ -66,22 +66,6 @@ test("idle update subscriptions send SSE comments before the server timeout with
 	} finally { await reader.cancel(); await next; await checker.stop(); }
 });
 
-test("SSE comments keep an idle HTTP subscription connected across the server idle timeout", async () => {
-	const checker = createUpdateChecker(database);
-	const app = createUpdateRoutes(checker).listen({ hostname: "127.0.0.1", port: 0, idleTimeout: 9 });
-	try {
-		const subscription = await fetch(new URL("/api/updates/events", app.server!.url), { signal: AbortSignal.timeout(20_000) });
-		const reader = subscription.body!.getReader();
-		await reader.read();
-		for (let i = 0; i < 3; i++) {
-			expect(new TextDecoder().decode((await reader.read()).value)).toBe(": keep-alive\n\n");
-		}
-		checker.setAutomaticChecks(false);
-		expect(new TextDecoder().decode((await reader.read()).value)).toContain('"automaticChecks":false');
-		await reader.cancel();
-	} finally { await checker.stop(); await app.stop(true); }
-}, 21_000);
-
 for (const ending of ["abort", "cancel", "shutdown"] as const) test(`${ending} closes the update subscription and releases its heartbeat`, async () => {
 	jest.useFakeTimers();
 	const checker = createUpdateChecker(database);

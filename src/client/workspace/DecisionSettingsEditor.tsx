@@ -12,7 +12,7 @@ import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT, type DecisionSelection } from "../../shared/contract/decision-model";
 
 type Settings = DecisionSelection & { revision: number };
-type SaveOutcome<S> = RequestOutcome<{ settings: S }, { outcome: "conflict"; currentSettings: S } | { outcome: "invalid"; reason: string }>;
+type SaveOutcome<S> = RequestOutcome<{ settings: S }, { outcome: "conflict"; currentSettings: S } | { outcome: "invalid"; reason: string } | { outcome: "not-found" }>;
 type State<S> = { settings: S | null; draft: Omit<S, "revision"> | null; loading: boolean; pending: boolean; error: string | null };
 
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";

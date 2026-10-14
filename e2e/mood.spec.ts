@@ -73,3 +73,38 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await expect(await moodLine(page, "And now?")).toHaveText(["Scene mood:", "eerie"]);
 	await preview(page).getByRole("button", { name: "Cancel" }).click();
 });
+
+test.describe("a Writer override against a digest that landed meanwhile", () => {
+	// The refused save's 422 response logs one browser console error.
+	test.use({ allowedBrowserErrors: /status of 422/ });
+
+	test("a digest that lands while an override is open refuses its save, and the writer saves over what landed", async ({ page, request, llm }) => {
+		await selectBoxDecisionModel(request, "mood");
+		await llm.decisions({ ...mood(undefined, "tense"), hold: true });
+		await llm.chat({ chunks: ["The storm breaks over the tower at dusk."] });
+		await page.goto("/");
+		await insertBox(page, "Mood");
+		await send(page, "Wait out the night.");
+		await expect(story(page).getByText("The storm breaks")).toBeVisible();
+		await page.getByRole("button", { name: "Mood", exact: true }).click();
+		const window = page.getByRole("dialog", { name: "Mood" });
+		const passage = window.getByRole("listitem").filter({ hasText: "The storm breaks" });
+		await expect(passage).toContainText("Not read yet");
+		await passage.hover();
+		await passage.getByRole("button", { name: "Edit" }).click();
+		await expect(passage).toContainText("Replaces: Not read yet");
+
+		await llm.release();
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		await expect.poll(async () => (await (await request.get(`/api/conversations/${activeChatId}/boxes/mood`)).json()).passages.at(-1)?.record, { timeout: 15_000 }).toEqual({ mood: "tense" });
+		await passage.getByRole("combobox", { name: "Mood" }).click();
+		await page.getByRole("option", { name: "👻 Eerie" }).click();
+		await passage.getByRole("button", { name: "Save override" }).click();
+		await expect(window.getByRole("alert")).toHaveText("This record changed since you read it. Review it before changing it again.");
+		await expect(passage).toContainText("Replaces: 😬 Tense");
+
+		await passage.getByRole("button", { name: "Save override" }).click();
+		await expect(passage).toContainText("Overridden");
+		await expect(passage).toContainText("👻 Eerie");
+	});
+});

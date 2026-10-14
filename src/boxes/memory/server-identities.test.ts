@@ -20,7 +20,7 @@ const source = (database: Database, conversationId: number, position: number, au
 	if (people) writeAutomaticRecord(db, "memory", readBoxInstances(db, conversationId).memory!, variant.id, { claims: [claim(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
-const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));
+const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));
 
 describe("Cast Memory identities", () => {
 	let database: Database;
@@ -37,7 +37,7 @@ describe("Cast Memory identities", () => {
 		source(database, chat.id, 3, { ...writer, name: "Director" });
 		const unknown = source(database, chat.id, 5, writer);
 		database.run("UPDATE messages SET author_name = NULL WHERE id = ?", [unknown.messageId]);
-		const response = await memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/memories`));
+		const response = await memoryRoutes(database).handle(new Request(`http://localhost/conversations/${chat.id}/memories`));
 		expect(response.status).toBe(200);
 		expect(Value.Parse(conversationMemories, await response.json()).cast).toEqual([{ id: writer.id, names: ["Director", "Guide", "Writer"] }, { id: chat.cast[1]!.id, names: ["Maren"] }]);
 	});

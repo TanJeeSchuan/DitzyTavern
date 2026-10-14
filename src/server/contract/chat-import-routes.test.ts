@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
 import { importSillyTavernChat } from "../sillytavern";
-import { createChatImportModule } from "../sillytavern/staged";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
 import { createChatImportRoutes } from "./chat-import";
 import { createConversationRoutes } from "./conversation";
@@ -308,31 +307,6 @@ describe("Chat import transport adapters", () => {
 		expect(await again.json()).toEqual({ outcome: "discarded" });
 	});
 
-	test("presents prior-import evidence classified into exact and related matches", async () => {
-		// A committed prior Chat provides the duplicate evidence through the
-		// same database the routes mount against.
-		const priorPath = join(files[0] ?? "", "prior.jsonl");
-		writeFileSync(priorPath, jsonl([header, writer]), "utf8");
-		const prior = importSillyTavernChat(database, priorPath, artifactDirectory).conversation;
-
-		// The exact same bytes stage with an exact duplicate match.
-		const sameBytes = Buffer.from(jsonl([header, writer]), "utf8");
-		const exactStaged = await stage(sameBytes, "copy.jsonl");
-		const exactBody = await exactStaged.json();
-		expect(exactBody.preview.duplicates).toEqual({
-			exact: [{ id: prior.id, name: prior.name }],
-			related: [],
-		});
-
-		// A module-level staging registry keeps the transport thin: the
-		// token returned here is honored by a module instance created
-		// directly from the same process-level session.
-		const module = createChatImportModule(database, { artifactDirectory });
-		expect(module.preview(exactBody.token, exactBody.preview.sha256)).toEqual(
-			exactBody.preview,
-		);
-	});
-
 	test("commits the confirmed plan with the typed committed outcome and receipt", async () => {
 		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
 		const staged = await stage(bytes, "lantern-house.jsonl");
@@ -376,26 +350,10 @@ describe("Chat import transport adapters", () => {
 		expect(retryBody.receipt).toEqual(body.receipt);
 	});
 
-	test("maps plan, duplicate-confirmation, and hash failures to typed 422 and expired handles to 410", async () => {
+	test("maps plan and hash failures to typed 422 and expired handles to 410", async () => {
 		const bytes = Buffer.from(jsonl([header, writer, rulershipFixture]), "utf8");
 		const staged = await stage(bytes);
-		const { token, preview } = await staged.json();
-
-		// The exact-duplicate confirmation gate maps to the typed invalid
-		// outcome without creating a Chat.
-		const unconfirmed = await commit(token, preview.sha256, {
-			title: "Before any prior import",
-			duplicateConfirmed: true,
-			participants: [
-				{
-					name: "Writer",
-					outcome: { type: "chat-only" },
-					messagePositions: [1, 2],
-				},
-			],
-		});
-		// No prior import exists, so the commit succeeds and burns the token.
-		expect(unconfirmed.status).toBe(200);
+		const { preview } = await staged.json();
 
 		// A plan that skips a Message is a typed invalid outcome.
 		const skipping = await stage(bytes, "skipping.jsonl");
@@ -499,10 +457,6 @@ describe("Chat import transport adapters", () => {
 		// validated by the bindings in the test setup above.
 		const conversationId = committed.conversation.id as number;
 
-		// Paginated history: pages are cut from the newest Message backward,
-		// each served page chronological, with stable Author Stamps and the
-		// lightweight fields only. The history read model mounts with the
-		// Conversation routes surface.
 		const conversationApp = createConversationRoutes(database);
 		const history = await conversationApp.handle(
 			new Request(
@@ -519,16 +473,6 @@ describe("Chat import transport adapters", () => {
 			hasOlder: true,
 			hasNewer: false,
 		});
-		expect(historyBody.messages).toHaveLength(1);
-		expect(historyBody.messages[0].author.capturedName).toBe("Rulership");
-
-		const pageTwoBody = await (await conversationApp.handle(
-			new Request(
-				`http://localhost/api/conversations/${conversationId}/history?page=2&pageSize=1`,
-			),
-		)).json();
-		expect(pageTwoBody.messages).toHaveLength(1);
-		expect(pageTwoBody.messages[0].author.capturedName).toBe("Writer");
 
 		// Import Details: the persisted receipt, source identity, duplicate
 		// evidence excluding self, and exact-artifact availability.

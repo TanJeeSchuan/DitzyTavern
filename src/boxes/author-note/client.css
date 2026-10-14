@@ -1,0 +1,38 @@
+@reference "@/index.css";
+
+.author-note-panel {
+	@apply overflow-y-auto p-5;
+}
+
+.author-note-lead {
+	@apply mb-4 text-sm text-muted-foreground;
+}
+
+.author-note-block {
+	@apply mb-4;
+}
+
+.author-note-editor {
+	@apply h-56;
+}
+
+.author-note-notice {
+	@apply mt-3;
+}
+
+.author-note-saved-label {
+	@apply mt-2 text-muted-foreground;
+}
+
+.author-note-saved {
+	@apply mt-1 whitespace-pre-wrap;
+	font: inherit;
+}
+
+.author-note-actions {
+	@apply mt-4 flex items-center justify-between gap-2;
+}
+
+.author-note-load {
+	@apply mt-2;
+}

@@ -10,14 +10,12 @@ export {
 	decodeSillyTavernImportSource,
 	decodeSillyTavernSourceBytes,
 	inspectSillyTavernChatJsonl,
-	parseSillyTavernChatJsonl,
 	toSillyTavernImportSource,
 } from "./adapter";
 export type {
 	SillyTavernChatInspection,
 	SillyTavernDecodedImportSource,
 	SillyTavernExactAuthor,
-	ParsedSillyTavernChat,
 	SillyTavernImportMeta,
 	SillyTavernImportReport,
 	SillyTavernImportSource,

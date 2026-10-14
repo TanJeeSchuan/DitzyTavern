@@ -1,8 +1,9 @@
+import { boxReference, type PromptBoxReference } from "../../shared/contract/box";
 import type { GenerationDetailsTarget } from "../GenerationDetailsPanel";
 import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 export type SplitInspector = "generation";
-export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables" | "memories";
+export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables" | PromptBoxReference;
 
 export interface PanelCoordinationState {
 	primaryPanel: PrimaryPanel;
@@ -10,7 +11,7 @@ export interface PanelCoordinationState {
 	detailsSurface: DetailsSurface | null;
 	previewMode: boolean;
 	generationDetailsTarget: GenerationDetailsTarget | null;
-	memoryFocus: { messageId: number } | null;
+	boxFocus: { messageId: number } | null;
 }
 
 export type PanelCoordinationAction =
@@ -22,7 +23,7 @@ export type PanelCoordinationAction =
 	| { type: "chat-info-opened" }
 	| { type: "generation-details-opened"; target: GenerationDetailsTarget }
 	| { type: "macro-variables-opened" }
-	| { type: "memories-opened"; focus: { messageId: number } | null }
+	| { type: "box-inspector-opened"; box: string; focus: { messageId: number } | null }
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
 	| { type: "preview-exited" }
@@ -34,7 +35,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	detailsSurface: null,
 	previewMode: false,
 	generationDetailsTarget: null,
-	memoryFocus: null,
+	boxFocus: null,
 });
 
 // @approved
@@ -43,7 +44,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState => ({
 	...state,
 	generationDetailsTarget: null,
-	memoryFocus: null,
+	boxFocus: null,
 });
 
 const openDetailSurface = (
@@ -93,8 +94,8 @@ export function reducePanelCoordination(
 			return { ...openDetailSurface(state, "generation-details"), generationDetailsTarget: action.target };
 		case "macro-variables-opened":
 			return openDetailSurface(state, "macro-variables");
-		case "memories-opened":
-			return { ...openDetailSurface(state, "memories"), memoryFocus: action.focus };
+		case "box-inspector-opened":
+			return state.previewMode ? state : { ...openDetailSurface(state, boxReference(action.box)), boxFocus: action.focus };
 		case "details-closed":
 			return { ...dropFocusData(state), detailsSurface: null };
 		case "preview-entered":

@@ -1,7 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { useCallback, useState } from "react";
-import { boxWindowLayouts, type BoxWindowLayout, type BoxWindowLayouts } from "../../shared/contract/box";
-import type { WindowBoxId } from "./registry";
+import { boxWindowLayouts, type BoxId, type BoxWindowLayout, type BoxWindowLayouts } from "../../shared/contract/box";
 
 const storageKey = (conversationId: number) => `ditzytavern.box-windows.${conversationId}`;
 const DEFAULT_LAYOUT: BoxWindowLayout = { open: false, minimized: false };
@@ -21,10 +20,10 @@ const readLayouts = (conversationId: number | null): BoxWindowLayouts => {
 
 export interface BoxWindowsController {
 	readonly layouts: BoxWindowLayouts;
-	open(box: WindowBoxId): void;
-	minimize(box: WindowBoxId): void;
-	close(box: WindowBoxId): void;
-	move(box: WindowBoxId, x: number, y: number): void;
+	open(box: BoxId): void;
+	minimize(box: BoxId): void;
+	close(box: BoxId): void;
+	move(box: BoxId, x: number, y: number): void;
 }
 
 // @approved
@@ -35,7 +34,7 @@ export function useBoxWindows(conversationId: number | null): BoxWindowsControll
 	const [state, setState] = useState(() => ({ conversationId, layouts: readLayouts(conversationId) }));
 	if (state.conversationId !== conversationId) setState({ conversationId, layouts: readLayouts(conversationId) });
 
-	const update = useCallback((box: WindowBoxId, patch: Partial<BoxWindowLayout>) => {
+	const update = useCallback((box: BoxId, patch: Partial<BoxWindowLayout>) => {
 		if (conversationId === null) return;
 		const layout: BoxWindowLayout = { ...DEFAULT_LAYOUT, ...state.layouts[box], ...patch };
 		const layouts: BoxWindowLayouts = { ...state.layouts, [box]: layout };

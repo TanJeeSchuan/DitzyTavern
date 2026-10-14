@@ -4,9 +4,9 @@ import {
 	cosineSimilarity, effectiveRecord, hasAutomaticRecord, hasDigestError, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
 	readBoxInstances, readRecordSlots, sha256, tokenxEstimator,
 	type BoxContext, type CaptureRead, type DecisionAnswer, type EmbeddingConfiguration,
-} from "../../box-sdk/server";
-import { projectImageAnchors } from "../../box-sdk/shared";
-import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "./contract";
+} from "@/box-sdk/server";
+import { projectImageAnchors } from "@/box-sdk/shared";
+import { memoryRecord, type MemoryActivationRecord, type MemoryRecallCandidateRecord } from "./contract";
 import { applyMemoryPeople, renderMemoryClaim } from "./shared";
 import { isExcludedAuthor, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
@@ -101,7 +101,7 @@ export async function judgeMemoryRecallCandidates({ candidates, scene, relevance
 	scene: string;
 	relevanceMinimum: number;
 	selection: MemoryRecallSnapshot["selection"];
-	decide: BoxContext<"decide">["decide"];
+	decide: BoxContext["decide"];
 }): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
 	const batch = largestFittingBatch(candidates, (values) => {
@@ -146,7 +146,7 @@ const scanMemorySources = (read: CaptureRead) => {
 	const active = readActiveVariantIds(read.database, read.conversationId);
 	const labels = readMemoryLabelState(read.database, read.conversationId);
 	const messages = read.messages.filter((message) => !active.has(message.variantId) && !isExcludedAuthor(labels, message.authorId) && message.prose.trim() !== "");
-	const slots = readRecordSlots(db, "memory", readBoxInstances(db, read.conversationId).memory, messages.map((message) => message.variantId));
+	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxInstances(db, read.conversationId).memory, messages.map((message) => message.variantId));
 	const sources: { readonly variantId: number; readonly record: string | null; readonly digested: boolean; readonly failed: boolean }[] = [];
 	const writers: { readonly variantId: number; readonly record: string }[] = [];
 	const claimed: ClaimedMemory[] = [];
@@ -217,7 +217,6 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead): MemoryRecallSnap
 	const recent = [...claimed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
 	const freshnessFingerprint = sha256(JSON.stringify({
 		recallRelevanceMinimum,
-		decision: { profileId: decision.decisionProfileId, model: decision.decisionModel, stateTokenLimit: decision.decisionStateTokenLimit },
 		allowanceRevision,
 		labelRevision: scan.labelRevision,
 		embedding,
@@ -232,7 +231,7 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead): MemoryRecallSnap
 // @approved
 //  Recall embeds any claim text the cache lacks, such as a Writer's edit,
 //  before ranking every claim against the scene.
-export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext<"decide" | "embed">): Promise<MemoryActivationRecord> => {
+export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext): Promise<MemoryActivationRecord> => {
 	const { activation, claimed, recent, embedding } = snapshot;
 	if (activation.allowance === 0 || claimed.length === 0) return activation;
 	switch (snapshot.decision.kind) {

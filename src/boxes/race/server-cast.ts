@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { boxReference, participantDataTable } from "../../box-sdk/server";
+import { boxReference, participantDataTable } from "@/box-sdk/server";
 import { raceStats, type RaceCastStats } from "./contract";
 
 /** @approved

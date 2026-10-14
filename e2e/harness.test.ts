@@ -77,8 +77,8 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
 		await call("connection-settings/discovery", { profileId: chat.id });
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
-		const { revision, ...settings } = await call("memory-settings");
-		await call("memory-settings/commands", {
+		const { revision, ...settings } = await call("boxes/memory/settings");
+		await call("boxes/memory/settings/commands", {
 			...settings, expectedRevision: revision,
 			extractionProfileId: chat.id, extractionModel: "e2e-model", embeddingProfileId: id, embeddingModel: "e2e-embedding",
 		});

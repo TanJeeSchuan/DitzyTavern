@@ -44,29 +44,6 @@ export interface ChatCompletionsModelClientOptions {
 export { ModelClientTransportError } from "./errors";
 
 // @approved
-//  Production v1 Model Client. The adapter owns all provider request shaping;
-// callers only supply the opaque Prompt Plan and provider-neutral generation
-// settings. The request destination is captured when this client is created,
-// so Profile edits cannot redirect an in-flight Generation.
-export function createDeepSeekModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "deepseek");
-}
-
-export function createOpenAICompatibleModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "openai-compatible");
-}
-
-export function createOpenRouterModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "openrouter");
-}
-
-// @approved
 //  The adapter dispatch lives inside the deep Model Client: routes and
 // workflows select one provider-neutral factory and never import concrete
 // transport constructors.
@@ -79,21 +56,10 @@ export function createModelClient(
 			"transport",
 		);
 	}
-	return createConfiguredModelClient(options, options.profile.adapter);
-}
-
-function createConfiguredModelClient(
-	options: ChatCompletionsModelClientOptions,
-	adapter: "deepseek" | "openrouter" | "openai-compatible",
-): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {
 		throw new ModelClientTransportError("The selected API Format is unavailable.");
 	}
-	if (options.profile.adapter !== adapter) {
-		throw new ModelClientTransportError(
-			`The profile uses ${options.profile.adapter}; expected ${adapter}.`,
-		);
-	}
+	const adapter = options.profile.adapter;
 	const requestUrl = resolveRequestUrl(options.profile.requestUrl, options.profile.apiFormat);
 	const credential = options.secrets?.credential ?? "";
 	const customHeaders = { ...options.secrets?.headers };

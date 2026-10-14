@@ -1,6 +1,6 @@
 # Top bar Box items
 
-Status: TODO
+Status: DONE
 
 Blocked By: none
 
@@ -20,14 +20,18 @@ A Box's client definition may declare a top bar item. The host shows the items o
 
 ## Work
 
-- [ ] Add the top bar item to the Box client definition and render enabled Boxes' items in `StoryHeader`.
-- [ ] Add the World Clock item.
-- [ ] Document the item in `docs/box-system/README.md`.
-- [ ] Add an e2e step in the World Clock spec: the item shows the in-story time and opens the window.
-- [ ] Run `bun run check` and the World Clock e2e spec.
-- [ ] Set this ticket to DONE and commit.
+- [x] Add the top bar item to the Box client definition and render enabled Boxes' items in `StoryHeader`.
+- [x] Add the World Clock item.
+- [x] Document the item in `docs/box-system/README.md`.
+- [x] Add an e2e step in the World Clock spec: the item shows the in-story time and opens the window.
+- [x] Run `bun run check` and the World Clock e2e spec.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
 - A new Box gets a top bar item by declaring one in its client registration, with no `StoryHeader` edit.
 - A Box disabled in the Chat shows no item.
+
+## Later change
+
+- The box-core review fixes (ticket 28's "Core review fixes") reverse "A Box disabled in the Chat shows no item". Every Chat surface, a top bar item included, now shows while its Box is present in the Chat, enabled or disabled, and only what runs needs an enabled Box. A disabled Box's item still opens its window, where the host says the Box is off.

@@ -10,6 +10,7 @@ import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/
 import { readCachedVectors } from "../../server/box/embedding";
 import type { ModelFetch } from "../../server/model-client";
 import { formatImageReference } from "../../shared/image-reference";
+import { memoryRecord } from "./contract";
 import { setMemoryIdentity, setMemoryNote } from "./server-memories";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
 
@@ -76,7 +77,7 @@ describe("Memory's digest", () => {
 		const variant = database.query<{ id: number }, [number, string]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-10-07T00:00:00Z', 1) RETURNING id").get(message.id, content)!;
 		return { messageId: message.id, variantId: variant.id };
 	};
-	const digest = (variantId: number, fetch: ModelFetch) => digestNow(database, chat.id, "memory", variantId, fetch);
+	const digest = (variantId: number, fetch: ModelFetch) => digestNow(database, chat.id, "memory", memoryRecord, variantId, fetch);
 
 	test.each([{ minimum: 0.3, kept: 1 }, { minimum: 0.9, kept: 0 }])("keeps claims whose retain probability meets the $minimum minimum", async ({ minimum, kept }) => {
 		const settings = createMemorySettingsModule(database);

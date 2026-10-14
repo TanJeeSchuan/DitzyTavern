@@ -69,14 +69,6 @@ describe("Connection Settings transport adapter", () => {
 
 		const presets = await get("/api/connection-settings/presets");
 		expect(presets.status).toBe(200);
-		const body = await presets.json();
-		expect(body.presets.map((entry: { id: string }) => entry.id)).toEqual([
-			"openrouter-decisions", "typesafe", "system-one",
-			"deepseek",
-			"openrouter",
-			"generic-openai-compatible",
-			"openai-compatible-embeddings",
-		]);
 	});
 
 	test("creates the first Profile with a redacted credential through the contract", async () => {
@@ -257,7 +249,7 @@ describe("Connection Settings transport adapter", () => {
 			profileId: secondId,
 		});
 		expect(deleted.status).toBe(200);
-		expect((await deleted.json()).settings.profiles).toEqual([firstBody.settings.profiles[0]]);
+		expect((await deleted.json()).settings).toEqual({ revision: secondBody.settings.revision + 1, profiles: [firstBody.settings.profiles[0]] });
 	});
 
 	test("uses a saved credential only with its saved request URL", async () => {

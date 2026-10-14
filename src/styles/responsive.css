@@ -44,9 +44,7 @@ body > .details-panel > .panel-body {
 		padding-left: 0.6rem;
 	}
 
-	.chat-info-button,
-	.variables-button,
-	.memories-button {
+	.story-header-tools {
 		display: none;
 	}
 

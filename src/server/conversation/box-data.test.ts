@@ -6,8 +6,10 @@ import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import { executeConversationCommand, InvalidConversationCommandError } from "../conversation";
 import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
-import { readBoxSetups } from "../box/setup";
+import { boxStateEntry, readBoxSetups } from "../box/setup";
 import { initialRaceSetup } from "../../boxes/race/shared-data";
+import { raceSetup } from "../../boxes/race/contract";
+import { boxSetupOf } from "../../shared/contract/box-value";
 
 const prompt = () => ({
 	systemInstruction: "",
@@ -124,8 +126,12 @@ describe("put-box-data and the Character seed copy", () => {
 		expect(drizzle(database).select().from(libraryDataTable).all()).toEqual([expect.objectContaining({ value: "current", revision: 2 })]);
 	});
 
-	test("refuses data for a Box that is not enabled in the Chat", () => {
+	test("refuses data for a Box absent from the Chat and takes it for a disabled one, whose window stays open", () => {
 		expect(() => write({ box: "phone", owner: { type: "library", revision: 0 }, key: "theme", value: "dark" })).toThrow(InvalidConversationCommandError);
+		const off = boxStateEntry("race", false);
+		database.query("UPDATE conversation_data SET value = ? WHERE conversation_id = ? AND namespace = ? AND key = ?").run(off.value, conversationId, off.namespace, off.key);
+		write({ box: "race", owner: { type: "library", revision: 0 }, key: "avatar:Maren Voss", value: "lantern" });
+		expect(drizzle(database).select().from(libraryDataTable).all()).toEqual([expect.objectContaining({ namespace: "box:race", value: "lantern" })]);
 	});
 
 	test("a setup save carries its scoped data writes, and a refused write keeps the setup and every other write out", () => {
@@ -144,12 +150,12 @@ describe("put-box-data and the Character seed copy", () => {
 		expect(() => save(3)).toThrow(InvalidConversationCommandError);
 		expect(participantData()).toEqual([]);
 		expect(characterData()).toEqual([]);
-		expect(readBoxSetups(drizzle(database), conversationId).race.slots).toEqual([]);
+		expect(boxSetupOf({ boxSetups: readBoxSetups(drizzle(database), conversationId) }, "race", raceSetup).slots).toEqual([]);
 
 		save(0);
 		expect(storedParticipantData()).toEqual([{ participant_id: participantId, namespace: "box:race", key: "stats", value: "{\"speed\":600}" }]);
 		expect(characterData()).toEqual([expect.objectContaining({ character_id: character.id, value: "{\"speed\":600}", revision: 1 })]);
-		expect(readBoxSetups(drizzle(database), conversationId).race.slots).toEqual([runner]);
+		expect(boxSetupOf({ boxSetups: readBoxSetups(drizzle(database), conversationId) }, "race", raceSetup).slots).toEqual([runner]);
 	});
 
 	test("copies Character data into a seeded Participant and later Character edits never reach it", () => {

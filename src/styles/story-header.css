@@ -25,7 +25,7 @@
 
 .story-header {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) repeat(4, auto);
+	grid-template-columns: minmax(0, 1fr) repeat(2, auto);
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
@@ -94,5 +94,11 @@
 
 .story-title-trigger[data-state="open"] svg {
 	transform: rotate(180deg);
+}
+
+.story-header-tools {
+	display: flex;
+	align-items: center;
+	gap: 0.8rem;
 }
 

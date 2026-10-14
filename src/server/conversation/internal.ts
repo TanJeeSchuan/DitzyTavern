@@ -24,7 +24,7 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { isBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxDescriptors, isBoxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { readBoxInstances } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
 import {
@@ -445,7 +445,15 @@ export const requireMessage = (
 };
 
 /** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
+/** @approved A registered Box's descriptor; an unknown id fails the command. */
+export const requireBox = (box: BoxId): BoxDescriptor => {
+	const descriptor = boxDescriptors().get(box);
+	if (descriptor === undefined) throw new InvalidConversationCommandError(`There is no ${box} Box.`);
+	return descriptor;
+};
+
 export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
+	requireBox(box);
 	const instance = readBoxInstances(db, conversationId)[box];
 	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
 	return instance;

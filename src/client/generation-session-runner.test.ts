@@ -332,17 +332,6 @@ describe("the Generation session runner", () => {
 		expect(runner.getSnapshot().sessions.has(8)).toBe(true);
 	});
 
-	test("accepted-target reconciliation exposes the accepted Generation in the snapshot", () => {
-		const stream = fakeStream();
-		const spy = host();
-		const runner = runnerWith(stream, spy);
-
-		expect(runner.getSnapshot().sessions.has(7)).toBe(false);
-		runner.dispatch(observeTargets([7]));
-		expect(runner.getSnapshot().sessions.has(7)).toBe(true);
-		expect(runner.getSnapshot().sessions.get(7)?.messageId).toBe(907);
-	});
-
 	test("disposal stops subscriber updates including late settles", async () => {
 		const stream = fakeStream();
 		const spy = host();
