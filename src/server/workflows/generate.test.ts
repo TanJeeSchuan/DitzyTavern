@@ -259,8 +259,8 @@ describe("Generation runtime behavior", () => {
 		const message = committed.messages.at(-1);
 		expect(message?.author?.participantId).toBe(swapped.cast[0]?.id);
 		expect(message?.historicalContext).toEqual({
-			humanParticipantId: swapped.cast[1]?.id,
-			modelParticipantId: swapped.cast[0]?.id,
+			humanParticipantId: swapped.cast[1]!.id,
+			modelParticipantId: swapped.cast[0]!.id,
 		});
 	});
 

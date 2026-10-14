@@ -56,3 +56,9 @@ export type ModelCall = ChatModelCall | DecisionModelCall | EmbeddingsModelCall 
 /** @approved Narrow logged calls by their decoded kind; the raw `kind` string on an old log entry is untyped. */
 export const isChatModelCall = (call: ModelCall): call is ChatModelCall => call.kind === "chat";
 export const isDecisionModelCall = (call: ModelCall): call is DecisionModelCall => call.kind === "decision";
+/** @approved The first logged call `accepts` picks; it throws when the fake received none, so a test reading it fails at the cause. */
+export const firstCall = <Call extends ModelCall>(calls: readonly ModelCall[], accepts: (call: ModelCall) => call is Call): Call => {
+	const call = calls.find(accepts);
+	if (call === undefined) throw new Error("The fake received no matching model call.");
+	return call;
+};

@@ -1,5 +1,5 @@
 import { test, expect, send, story } from "./fixtures";
-import { isChatModelCall } from "./protocol";
+import { firstCall, isChatModelCall } from "./protocol";
 
 test("writer saves an Author Note and sends it after history", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["Maren closes the door."] });
@@ -11,7 +11,7 @@ test("writer saves an Author Note and sends it after history", async ({ page, ll
 	await page.getByRole("button", { name: "Close Author Note" }).click();
 	await send(page, "Close the door.");
 	await expect(story(page).getByText("Maren closes the door.")).toBeVisible();
-	const [call] = (await llm.log()).calls.filter(isChatModelCall);
+	const call = firstCall((await llm.log()).calls, isChatModelCall);
 	const messages = call.body.messages;
 	const history = messages.findIndex((message) => message.content.includes("Close the door."));
 	expect(messages[history + 1]).toMatchObject({ role: "system", content: expect.stringContaining("Keep the room silent.") });

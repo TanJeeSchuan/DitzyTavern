@@ -1,6 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, enableDecisionModels, send, story } from "./fixtures";
-import { isChatModelCall, isDecisionModelCall } from "./protocol";
+import { firstCall, isChatModelCall, isDecisionModelCall } from "./protocol";
 
 const entry = (title: string, content: string, keywords: string[], semanticTriggers: string[]) => ({
 	title, content, keywords, semanticTriggers,
@@ -27,7 +27,7 @@ const sendWithLore = async (page: import("@playwright/test").Page, llm: import("
 	await page.goto("/");
 	await send(page, "I was home all night, nowhere near the lighthouse.");
 	await expect(story(page).getByText("The keeper says nothing.")).toBeVisible();
-	const [call] = (await llm.log()).calls.filter(isChatModelCall);
+	const call = firstCall((await llm.log()).calls, isChatModelCall);
 	return JSON.stringify(call.body.messages);
 };
 
@@ -42,7 +42,7 @@ test("Lore activates by keyword and by Decision Model judgments", async ({ page,
 	expect(prompt).toContain("LORE-LIGHTHOUSE");
 	expect(prompt).toContain("LORE-ALIBI");
 	expect(prompt).not.toContain("LORE-DRAGON");
-	const [decisionCall] = (await llm.log()).calls.filter(isDecisionModelCall);
+	const decisionCall = firstCall((await llm.log()).calls, isDecisionModelCall);
 	expect(JSON.stringify(decisionCall.body.state)).toContain("I was home all night");
 });
 

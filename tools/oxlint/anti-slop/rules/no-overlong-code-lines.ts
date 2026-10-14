@@ -47,7 +47,7 @@ const longestCodeRun = (line: string, covered: Uint8Array, lineStart: number): n
 			run = 0;
 			continue;
 		}
-		if (isWhitespace(line[column])) continue;
+		if (isWhitespace(line.charAt(column))) continue;
 		run += 1;
 		longest = Math.max(longest, run);
 	}
@@ -85,7 +85,8 @@ export const noOverlongCodeLinesRule = defineRule({
 				const covered = markLiteralFields(source);
 				for (const [lineIndex, line] of source.getLines().entries()) {
 					if (line.length <= max) continue;
-					const lineStart = source.lineStartIndices[lineIndex];
+					// getLines and lineStartIndices both hold one entry per line.
+					const lineStart = source.lineStartIndices[lineIndex]!;
 					if (longestCodeRun(line, covered, lineStart) > MAX_INLINE_CODE_DEBRIS || inlineLiteralCount(line, covered, lineStart, source) > 2) {
 						context.report({
 							loc: { line: lineIndex + 1, column: 0 },

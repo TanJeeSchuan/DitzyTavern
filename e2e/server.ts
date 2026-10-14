@@ -93,8 +93,9 @@ const completion = (chunks: readonly string[], stream: boolean, hold = false, ch
 });
 
 const extraction = (call: ChatModelCall) => {
-	if (memoryClaims === undefined) return refuse(call);
-	const prompt = call.body.messages[0].content;
+	const [system] = call.body.messages;
+	if (memoryClaims === undefined || system === undefined) return refuse(call);
+	const prompt = system.content;
 	const { source } = JSON.parse(prompt.slice(prompt.indexOf("{", prompt.indexOf("Captured source and reference context:"))));
 	const candidates = memoryClaims.filter((memory) => source.content.includes(memory.excerpt)).map(({ excerpt, ...memory }) => ({ ...memory, evidence: [{ messageId: source.messageId, excerpt }] }));
 	return completion([JSON.stringify({ candidates })], call.body.stream === true);
@@ -123,8 +124,8 @@ const decisions = async (call: DecisionModelCall) => {
 };
 
 const embed = (text: string) => {
-	const vector = Array<number>(64).fill(0);
-	for (const word of text.toLowerCase().match(/[a-z']+/g) ?? []) vector[[...word].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7) % 64] += 1;
+	const buckets = (text.toLowerCase().match(/[a-z']+/g) ?? []).map((word) => [...word].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7) % 64);
+	const vector = Array.from({ length: 64 }, (_, slot) => buckets.filter((bucket) => bucket === slot).length);
 	const length = Math.hypot(...vector) || 1;
 	return vector.map((value) => value / length);
 };

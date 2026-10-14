@@ -42,7 +42,8 @@ describe("Connection Settings", () => {
 	test("rejects corrupt persisted Profile vocabularies when reading settings", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		for (const [column, valid] of [["model_backend", "automatic"], ["adapter", "deepseek"], ["output_token_representation", "automatic"], ["api_format", "chat-completions"]]) {
+		const columns: [string, string][] = [["model_backend", "automatic"], ["adapter", "deepseek"], ["output_token_representation", "automatic"], ["api_format", "chat-completions"]];
+		for (const [column, valid] of columns) {
 			database.query(`UPDATE connection_profile SET ${column} = 'invalid'`).run();
 			expect(() => settings.get()).toThrow("Connection Profile 1 is corrupt.");
 			database.query(`UPDATE connection_profile SET ${column} = ?`).run(valid);

@@ -8,6 +8,7 @@ import { build } from "vite";
 
 // The modules a Box client shares with the host, as `index.html`'s import
 // map names them: each specifier to the stable host chunk it is built as.
+// index.html declares that import map, and the pattern always captures its body.
 export const hostModules: Record<string, string> = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(readFileSync(new URL("../index.html", import.meta.url), "utf8"))![1]!).imports;
 
 const linkStylesheet = `await new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement("link"), {

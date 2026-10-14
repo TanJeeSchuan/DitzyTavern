@@ -128,10 +128,10 @@ describe("Prompt Preset authored instructions", () => {
 		});
 
 		// Removing one occurrence leaves the other exactly where it was.
-		await readOperation(removeBlock(database, preset.id, copies[0].id));
+		await readOperation(removeBlock(database, preset.id, copies[0]!.id));
 		const removed = readStoredRecipe(database, preset.id);
 		expect(removed.slots.filter((slot) => slot.reference === "instruction")).toEqual([
-			copies[1],
+			copies[1]!,
 		]);
 	});
 
