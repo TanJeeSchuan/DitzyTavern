@@ -224,7 +224,6 @@ describe("Generation runtime", () => {
 
 		expect(runtime.state.status).toBe("stopped");
 		expect(runtime.state.content).toBe("partial");
-		expect(runtime.state.terminalReason).toBeNull();
 		expect(checkpoints).toHaveLength(1);
 	});
 

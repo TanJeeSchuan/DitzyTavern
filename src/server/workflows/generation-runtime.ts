@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { ModelClientGenerationError } from "../model-client";
-import type { GenerationImageModel } from "../../shared/contract/generation-events";
+import type { GenerationFailure, GenerationStatus } from "../../shared/contract/generation-events";
 import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
@@ -19,7 +19,7 @@ export interface GenerationEventEnvelope {
 	readonly event: ModelClientEvent;
 }
 
-export interface GenerationRuntimeState {
+interface GenerationRuntimeProgress {
 	readonly generationId: number;
 	readonly conversationId: number;
 	readonly messageId: number;
@@ -28,11 +28,9 @@ export interface GenerationRuntimeState {
 	readonly content: string;
 	readonly reasoning: string;
 	readonly latestEventId: number;
-	readonly status: "active" | "complete" | "stopped" | "failed";
-	readonly terminalReason: string | null;
-	/** @approved Set on a failure whose request carried Images. */
-	readonly imageModel?: GenerationImageModel;
 }
+
+export type GenerationRuntimeState = GenerationRuntimeProgress & GenerationStatus;
 
 export interface GenerationRuntimeSubscription {
 	readonly replayAvailable: boolean;
@@ -73,18 +71,16 @@ type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
 // @approved
-//  The runtime's own mutable view of GenerationRuntimeState: one field
+//  The runtime's own mutable view of GenerationRuntimeProgress: one field
 // derivation from the published state, so a field addition touches one
 // declaration and cannot drift between the two.
-type MutableRuntimeState = {
-	-readonly [K in keyof GenerationRuntimeState]: GenerationRuntimeState[K];
+type MutableRuntimeProgress = {
+	-readonly [K in keyof GenerationRuntimeProgress]: GenerationRuntimeProgress[K];
 };
 
-interface GenerationRuntimeFailure {
-	readonly reason: string;
+interface GenerationRuntimeFailure extends GenerationFailure {
 	readonly kind?: ModelClientFailureKind;
 	readonly responseBody?: string;
-	readonly imageModel?: GenerationImageModel;
 }
 
 type PendingProviderTerminal =
@@ -202,7 +198,8 @@ export class GenerationRuntime {
 	private lastCheckpointEventId = 0;
 	private lastCheckpointAt: number;
 	private checkpointPending = false;
-	private stateValue: MutableRuntimeState;
+	private progress: MutableRuntimeProgress;
+	private statusValue: GenerationStatus = { status: "active" };
 	private readonly controller = new AbortController();
 	private stopRequested = false;
 	private pendingProviderTerminal: PendingProviderTerminal | null = null;
@@ -216,7 +213,7 @@ export class GenerationRuntime {
 		this.checkpointIntervalMs = Math.max(0, input.checkpoint?.intervalMs ?? 1_000);
 		this.checkpointNow = input.checkpoint?.now ?? Date.now;
 		this.lastCheckpointAt = this.checkpointNow();
-		this.stateValue = {
+		this.progress = {
 			generationId: input.generationId,
 			conversationId: input.conversationId,
 			messageId: input.messageId,
@@ -225,8 +222,6 @@ export class GenerationRuntime {
 			content: "",
 			reasoning: "",
 			latestEventId: 0,
-			status: "active",
-			terminalReason: null,
 		};
 	}
 
@@ -235,7 +230,7 @@ export class GenerationRuntime {
 	}
 
 	get state(): GenerationRuntimeState {
-		return { ...this.stateValue };
+		return { ...this.progress, ...this.statusValue };
 	}
 
 	get retainedEvents(): readonly GenerationEventEnvelope[] {
@@ -243,26 +238,26 @@ export class GenerationRuntime {
 	}
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
-		if (this.stateValue.status !== "active" || this.stopRequested) {
+		if (this.statusValue.status !== "active" || this.stopRequested) {
 			// @approved
 			//  A late provider frame is ignored rather than being allowed to mutate
 			// a terminal generation or appear out of order to a reconnecting client.
 			return {
-				generationId: this.stateValue.generationId,
-				eventId: this.stateValue.latestEventId,
+				generationId: this.progress.generationId,
+				eventId: this.progress.latestEventId,
 				event,
 			};
 		}
 
-		if (event.type === "content") this.stateValue.content += event.text;
-		if (event.type === "reasoning") this.stateValue.reasoning += event.text;
+		if (event.type === "content") this.progress.content += event.text;
+		if (event.type === "reasoning") this.progress.reasoning += event.text;
 
 		const envelope: GenerationEventEnvelope = {
-			generationId: this.stateValue.generationId,
-			eventId: this.stateValue.latestEventId + 1,
+			generationId: this.progress.generationId,
+			eventId: this.progress.latestEventId + 1,
 			event,
 		};
-		this.stateValue.latestEventId = envelope.eventId;
+		this.progress.latestEventId = envelope.eventId;
 		this.events.push(envelope);
 		while (this.events.length > GenerationRuntimeRegistry.MAX_RETAINED_EVENTS) {
 			this.events.shift();
@@ -285,20 +280,20 @@ export class GenerationRuntime {
 	}
 
 	complete(): void {
-		if (this.stateValue.status !== "active") return;
+		if (this.statusValue.status !== "active") return;
 		if (this.stopRequested) {
 			this.pendingProviderTerminal ??= { status: "complete" };
 			return;
 		}
 		this.flushCheckpoint();
-		this.stateValue.status = "complete";
+		this.statusValue = { status: "complete" };
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
 	}
 
 	fail(failure: GenerationRuntimeFailure): void {
 		const { reason, kind = "transport", responseBody, imageModel } = failure;
-		if (this.stateValue.status !== "active") return;
+		if (this.statusValue.status !== "active") return;
 		if (this.stopRequested) {
 			this.pendingProviderTerminal ??= { status: "failed", failure };
 			return;
@@ -313,28 +308,26 @@ export class GenerationRuntime {
 			this.publish(event);
 		}
 		this.flushCheckpoint();
-		this.stateValue.status = "failed";
-		this.stateValue.terminalReason = reason;
-		if (imageModel !== undefined) this.stateValue.imageModel = imageModel;
+		this.statusValue = { status: "failed", reason, imageModel };
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
 	}
 
 	/** @approved Persist the latest accumulated output immediately, including its event position. */
 	flushCheckpoint(): void {
-		if (!this.checkpointPending && this.lastCheckpointEventId === this.stateValue.latestEventId) return;
+		if (!this.checkpointPending && this.lastCheckpointEventId === this.progress.latestEventId) return;
 		this.onCheckpoint?.({
-			content: this.stateValue.content,
-			reasoning: this.stateValue.reasoning,
-			latestEventId: this.stateValue.latestEventId,
+			content: this.progress.content,
+			reasoning: this.progress.reasoning,
+			latestEventId: this.progress.latestEventId,
 		});
 		this.checkpointPending = false;
-		this.lastCheckpointEventId = this.stateValue.latestEventId;
+		this.lastCheckpointEventId = this.progress.latestEventId;
 		this.lastCheckpointAt = this.checkpointNow();
 	}
 
 	get isTerminal(): boolean {
-		return this.stateValue.status !== "active";
+		return this.statusValue.status !== "active";
 	}
 
 	get terminalTime(): number | null {
@@ -346,7 +339,7 @@ export class GenerationRuntime {
 	}
 
 	stop(): void {
-		if (this.stateValue.status !== "active") return;
+		if (this.statusValue.status !== "active") return;
 		// @approved
 		//  Stop is the explicit server-owned cancellation seam. Flush before
 		// aborting so the terminal Conversation transition can use every delta
@@ -367,7 +360,7 @@ export class GenerationRuntime {
 	 * otherwise its eventual callback can settle the still-active runtime.
 	 */
 	releaseStopRequest(): void {
-		if (this.stateValue.status !== "active" || !this.stopRequested) return;
+		if (this.statusValue.status !== "active" || !this.stopRequested) return;
 		this.stopRequested = false;
 		const pending = this.pendingProviderTerminal;
 		this.pendingProviderTerminal = null;
@@ -377,10 +370,10 @@ export class GenerationRuntime {
 
 	/** @approved Mark the runtime terminal after the durable Conversation transition. */
 	markStopped(): void {
-		if (this.stateValue.status !== "active") return;
+		if (this.statusValue.status !== "active") return;
 		this.pendingProviderTerminal = null;
 		this.flushCheckpoint();
-		this.stateValue.status = "stopped";
+		this.statusValue = { status: "stopped" };
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
 	}
@@ -389,11 +382,11 @@ export class GenerationRuntime {
 		const normalizedAfter = Number.isInteger(afterEventId) && afterEventId >= 0
 			? afterEventId
 			: 0;
-		const oldest = this.events[0]?.eventId ?? this.stateValue.latestEventId + 1;
+		const oldest = this.events[0]?.eventId ?? this.progress.latestEventId + 1;
 		const replayAvailable = normalizedAfter >= oldest - 1;
 		const effectiveAfter = replayAvailable
 			? normalizedAfter
-			: this.stateValue.latestEventId;
+			: this.progress.latestEventId;
 
 		// @approved
 		//  When a replay position has fallen out of the bounded buffer, the
@@ -416,7 +409,7 @@ export class GenerationRuntime {
 				try { onEvent(envelope); } catch { /* @approved observer failure cannot stop replay */ }
 			}
 		}
-		if (this.stateValue.status !== "active" && replayAvailable) {
+		if (this.statusValue.status !== "active" && replayAvailable) {
 			try { onState?.(this.state); } catch { /* @approved observer failure cannot stop replay */ }
 		}
 

@@ -181,7 +181,6 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 1,
 			status: "active",
-			terminalReason: null,
 		} });
 		expect(lateEvent.state).toBe(state);
 		expect(lateState.state).toBe(state);
@@ -203,7 +202,6 @@ describe("the Generation session collection", () => {
 			reasoning: "Private.",
 			latestEventId: 4,
 			status: "active",
-			terminalReason: null,
 		};
 		const applied = run(state, { type: "state-observed", generationId: 7, state: snapshot });
 		state = applied.state;
@@ -231,7 +229,7 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 2,
 			status: "failed",
-			terminalReason: "The provider went quiet.",
+			reason: "The provider went quiet.",
 		} as const;
 		const settled = run(state, { type: "state-observed", generationId: 7, state: failed });
 		state = settled.state;
@@ -294,7 +292,7 @@ describe("the Generation session collection", () => {
 				reasoning: "",
 				latestEventId: 1,
 				status: "failed",
-				terminalReason: "Images unsupported.",
+				reason: "Images unsupported.",
 				imageModel,
 			},
 		}).state;
@@ -355,7 +353,6 @@ describe("the Generation session collection", () => {
 				reasoning: "",
 				latestEventId: 2,
 				status: "complete",
-				terminalReason: null,
 			},
 		});
 		expect(stateText(terminalSnapshot.state, 7)?.phase).toBe("terminal");
@@ -583,7 +580,6 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 1,
 			status: "active",
-			terminalReason: null,
 		} as const;
 		const foreignStates = [
 			{ ...matching, conversationId: 43 },
