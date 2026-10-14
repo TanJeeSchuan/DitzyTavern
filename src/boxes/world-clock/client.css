@@ -1,0 +1,11 @@
+.world-clock-window {
+	display: grid;
+	gap: 0.85rem;
+	align-content: start;
+}
+
+.world-clock-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}

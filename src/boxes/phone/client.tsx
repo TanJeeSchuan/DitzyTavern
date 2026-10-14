@@ -1,3 +1,4 @@
+import "./client.css";
 import { phoneNames, stripPhoneTexts, type Sms } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -37,7 +38,7 @@ function PhoneDockTab({ conversation, onRestore }: { conversation: ConversationS
 	const seen = readSeen(conversation.id);
 	const count = read.data?.threads.reduce((total, thread) => total + unread(thread, seen), 0) ?? 0;
 	return <button type="button" className="box-dock-tab" title="Restore Phone" onClick={onRestore}>
-		<Smartphone aria-hidden="true" /><span className="sr-only">Phone: </span>
+		<Smartphone aria-hidden="true" /><span className="phone-label">Phone: </span>
 		<span>{read.isError ? "Unavailable" : count === 0 ? "No unread texts" : `${count} unread`}</span>
 	</button>;
 }

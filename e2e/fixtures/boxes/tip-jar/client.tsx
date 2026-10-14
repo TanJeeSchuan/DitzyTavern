@@ -19,7 +19,7 @@ const useTipJar = (conversation: ConversationSummary) => useQuery({
 function TipJarDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const coins = useTipJar(conversation).data?.coins;
 	return <button type="button" className="box-dock-tab" title="Restore Tip Jar" onClick={onRestore}>
-		<Coins aria-hidden="true" /><span className="sr-only">Tip Jar: </span><span>{coins === undefined ? "…" : `${coins} coins`}</span>
+		<Coins aria-hidden="true" /><span className="tip-jar-label">Tip Jar: </span><span>{coins === undefined ? "…" : `${coins} coins`}</span>
 	</button>;
 }
 

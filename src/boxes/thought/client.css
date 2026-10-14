@@ -1,0 +1,25 @@
+@reference "@/index.css";
+
+.thought-label {
+	@apply sr-only;
+}
+
+.thought-mark {
+	@apply mt-1 mb-3 inline-flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground [&_svg]:size-3.5;
+}
+
+.thought-note {
+	@apply text-[0.8rem] text-muted-foreground;
+}
+
+.thought-list {
+	@apply grid gap-2;
+}
+
+.thought-item {
+	@apply grid gap-0.5 rounded-xl bg-muted px-2.5 py-2 font-(family-name:--font-reading) italic whitespace-pre-wrap;
+}
+
+.thought-author {
+	@apply font-sans text-xs font-semibold not-italic text-muted-foreground;
+}

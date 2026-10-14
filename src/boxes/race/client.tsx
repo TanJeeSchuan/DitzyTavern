@@ -1,3 +1,4 @@
+import "./client.css";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentProps } from "react";
 import { Flag } from "lucide-react";

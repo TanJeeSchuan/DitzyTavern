@@ -46,19 +46,19 @@ export function MemoryIdentityDialog({ conversationId, participant, memories, in
 		finally { setPending(false); }
 	};
 	return <Dialog open onOpenChange={(open) => { if (!open && !pending) onClose(); }}>
-		<DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!pending}>
+		<DialogContent className="memory-dialog" showCloseButton={!pending}>
 			<DialogHeader>
 				<DialogTitle>{participant.name} in the story</DialogTitle>
 				<DialogDescription>Choose how {participant.name}'s Messages contribute to Memories in this Chat.</DialogDescription>
 			</DialogHeader>
 			<form className="memory-merge-form" onSubmit={(event) => void save(event)}>
-				<RadioGroup.Root aria-label="In the story as" value={kind} disabled={pending} onValueChange={(value: MemoryIdentity["kind"]) => setKind(value)} className="grid gap-3">
-					{([ ["themselves", "Themselves"], ["excluded", "Not in the story"], ["plays", "Plays a person"] ] as const).map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm">
+				<RadioGroup.Root aria-label="In the story as" value={kind} disabled={pending} onValueChange={(value: MemoryIdentity["kind"]) => setKind(value)} className="memory-identity-options">
+					{([ ["themselves", "Themselves"], ["excluded", "Not in the story"], ["plays", "Plays a person"] ] as const).map(([value, label]) => <label key={value} className="memory-identity-option">
 						<RadioGroup.Item
 							value={value}
-							className="flex size-4 shrink-0 items-center justify-center rounded-full border border-input outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[state=checked]:border-primary"
+							className="memory-identity-radio"
 						>
-							<RadioGroup.Indicator className="size-2 rounded-full bg-primary" />
+							<RadioGroup.Indicator className="memory-identity-dot" />
 						</RadioGroup.Item>
 						{label}
 					</label>)}

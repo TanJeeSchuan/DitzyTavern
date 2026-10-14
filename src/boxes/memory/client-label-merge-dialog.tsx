@@ -40,7 +40,7 @@ export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels
 		finally { setPending(false); }
 	};
 	return <Dialog open onOpenChange={(open) => { if (!open && !pending) onClose(); }}>
-		<DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!pending}>
+		<DialogContent className="memory-dialog" showCloseButton={!pending}>
 			<DialogHeader>
 				<DialogTitle>Merge labels</DialogTitle>
 				<DialogDescription>Use one name for these labels across this Chat, including other Swipes and future Memories.</DialogDescription>

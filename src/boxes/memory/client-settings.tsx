@@ -98,7 +98,7 @@ export function MemorySettingsEditor() {
 				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && (
 					<p className="settings-feedback" role="status">Memory recall is not ready. Choose an embedding model so saved Memories can be recalled.</p>
 				)}
-				<div className="grid grid-cols-1 gap-4">
+				<div className="memory-settings-fields">
 					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
 						<ProfileModelPicker
 							selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }}
@@ -119,11 +119,11 @@ export function MemorySettingsEditor() {
 				</div>
 				<NumberGroup title={<>Extraction budget <Popover>
 					<PopoverTrigger asChild>
-						<Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label="How Decision Models handle Memory">
-							<CircleHelp className="size-3.5" aria-hidden="true" />
+						<Button type="button" variant="ghost" size="icon-xs" className="memory-help" aria-label="How Decision Models handle Memory">
+							<CircleHelp className="memory-help-icon" aria-hidden="true" />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="start" aria-label="How Decision Models handle Memory" className="text-xs leading-relaxed">
+					<PopoverContent align="start" aria-label="How Decision Models handle Memory" className="memory-help-text">
 						<p>Your extraction model proposes Memories using this token budget.</p>
 						<p>
 						The Decision Model then checks whether the source supports each claim, whether it is attributed to the right

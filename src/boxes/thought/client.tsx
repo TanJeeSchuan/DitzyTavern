@@ -1,3 +1,4 @@
+import "./client.css";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircleDashed } from "lucide-react";
 import { createBoxLens, api, foundOrNull, notFoundOutcome, requestOutcome, type BoxClientDefinition, type ConversationSummary } from "@/box-sdk/client";
@@ -16,26 +17,26 @@ function ThoughtDockTab({ conversation, onRestore }: { conversation: Conversatio
 	const read = useThoughts(conversation);
 	const count = read.data?.thoughts.length ?? 0;
 	return <button type="button" className="box-dock-tab" title="Restore Thoughts" onClick={onRestore}>
-		<MessageCircleDashed aria-hidden="true" /><span className="sr-only">Thoughts: </span>
+		<MessageCircleDashed aria-hidden="true" /><span className="thought-label">Thoughts: </span>
 		<span>{read.isError ? "Unavailable" : count === 0 ? "No thoughts" : count === 1 ? "1 thought" : `${count} thoughts`}</span>
 	</button>;
 }
 
 /** @approved A thought the lens lifted out of the prose: the story keeps a mark where it was, which opens the Thoughts window. */
 function ThoughtLensView({ onOpen }: { onOpen: () => void }) {
-	return <button type="button" className="mt-1 mb-3 inline-flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground [&_svg]:size-3.5" onClick={onOpen}>
+	return <button type="button" className="thought-mark" onClick={onOpen}>
 		<MessageCircleDashed aria-hidden="true" />A thought
 	</button>;
 }
 
 function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);
-	if (read.isError) return <p className="text-[0.8rem] text-muted-foreground">The Thoughts could not be loaded.</p>;
+	if (read.isError) return <p className="thought-note">The Thoughts could not be loaded.</p>;
 	if (read.data === undefined || read.data === null) return null;
-	if (read.data.thoughts.length === 0) return <p className="text-[0.8rem] text-muted-foreground">No thoughts on this path yet.</p>;
-	return <ol className="grid gap-2" aria-label="Thoughts">
-		{read.data.thoughts.map(({ key, author, text }) => <li key={key} className="grid gap-0.5 rounded-xl bg-muted px-2.5 py-2 font-(family-name:--font-reading) italic whitespace-pre-wrap">
-			{author !== null && <strong className="font-sans text-xs font-semibold not-italic text-muted-foreground">{author}</strong>}{text}
+	if (read.data.thoughts.length === 0) return <p className="thought-note">No thoughts on this path yet.</p>;
+	return <ol className="thought-list" aria-label="Thoughts">
+		{read.data.thoughts.map(({ key, author, text }) => <li key={key} className="thought-item">
+			{author !== null && <strong className="thought-author">{author}</strong>}{text}
 		</li>)}
 	</ol>;
 }

@@ -77,7 +77,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 			{settings && <MemoryAllowancePopover conversationId={conversationId} settings={settings} onSaved={settingsSaved} />}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild><button type="button" className="icon-button" aria-label="More Memory actions"><Ellipsis aria-hidden="true" /></button></DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="min-w-44">
+				<DropdownMenuContent align="end" className="memory-menu">
 					<DropdownMenuItem disabled={!hasPeople} onSelect={() => setMerging([])}>Merge labels…</DropdownMenuItem>
 					<DropdownMenuItem onSelect={() => setNoteOpen(true)}>Memory note…</DropdownMenuItem>
 					<DropdownMenuItem onSelect={onOpenSettings}>Memory Settings</DropdownMenuItem>
@@ -208,7 +208,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 		)}
 		{noteOpen && settings && <MemoryNoteDialog conversationId={conversationId} settings={settings} onClose={() => setNoteOpen(false)} onSettings={settingsSaved} onSaved={() => setNoteOpen(false)} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) actions.cancelReset(); }}>
-			<DialogContent showCloseButton={false} className="sm:max-w-sm">
+			<DialogContent showCloseButton={false} className="memory-confirm">
 				<DialogHeader>
 					<DialogTitle>Reset corrections?</DialogTitle>
 					<DialogDescription>
@@ -248,7 +248,7 @@ function PeopleGroup({
 	const participants = cast.filter((participant) => participant.names.some((name) => people.includes(name)));
 	return <Collapsible.Root defaultOpen asChild><section className="memory-person" aria-label={name}>
 		<header className="memory-person-header">
-			<Collapsible.Trigger className="memory-person-trigger group">
+			<Collapsible.Trigger className="memory-person-trigger">
 				{people.length > 0 && (
 					<span className="memory-person-portraits">
 						{people.slice(0, 3).map((person) => (
@@ -263,11 +263,11 @@ function PeopleGroup({
 				)}
 				<span className="memory-person-name">{name}</span>
 				<span className="memory-person-count">{entries.length}</span>
-				<ChevronDown className="size-3.5 shrink-0 group-data-[state=closed]:-rotate-90" aria-hidden="true" />
+				<ChevronDown className="memory-person-chevron" aria-hidden="true" />
 			</Collapsible.Trigger>
 			{people.length > 0 && <DropdownMenu>
 				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${name}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="min-w-44">
+				<DropdownMenuContent align="end" className="memory-menu">
 					{people.map((person) => <DropdownMenuItem key={person} onSelect={() => onMerge(person)}>Rename or merge {person}…</DropdownMenuItem>)}
 					{participants.length > 0 && <DropdownMenuSeparator />}
 					{participants.map((participant) => (
@@ -283,14 +283,14 @@ function PeopleGroup({
 				</DropdownMenuContent>
 			</DropdownMenu>}
 		</header>
-		<Collapsible.Content className="grid gap-[0.1rem]">
+		<Collapsible.Content className="memory-person-entries">
 			{entries.slice(0, shown).map(children)}
 			{entries.length > shown && (
 				<Button
 					type="button"
 					size="xs"
 					variant="ghost"
-					className="justify-self-start"
+					className="memory-more"
 					onClick={() => setMore(more + 50)}
 				>
 					Show {Math.min(50, entries.length - shown)} older

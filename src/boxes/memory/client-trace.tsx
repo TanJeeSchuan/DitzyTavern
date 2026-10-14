@@ -50,15 +50,15 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 	if (record === null) return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
-			<p className="text-xs text-destructive" role="alert">This Generation's Memory trace no longer matches Memory's schema.</p>
+			<p className="memory-trace-error" role="alert">This Generation's Memory trace no longer matches Memory's schema.</p>
 		</section>
 	);
 	const manuallyEdited = trace.finalText !== trace.automaticText;
 	return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
-			{sources.isError && <div className="grid justify-items-start gap-2">
-				<p className="text-xs text-destructive" role="alert">Which sources are still in this Chat could not be checked, so they are not linked.</p>
+			{sources.isError && <div className="memory-trace-unchecked">
+				<p className="memory-trace-error" role="alert">Which sources are still in this Chat could not be checked, so they are not linked.</p>
 				<Button type="button" size="sm" variant="outline" onClick={() => void sources.refetch()}>Try again</Button>
 			</div>}
 			<dl className="detail-list compact-detail-list">

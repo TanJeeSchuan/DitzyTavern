@@ -30,7 +30,7 @@ const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAut
 export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
 	const read = useRace(conversation);
 	return <button type="button" className="box-dock-tab" title="Restore Race" onClick={onRestore}>
-		<Flag aria-hidden="true" /><span className="sr-only">Race: </span>
+		<Flag aria-hidden="true" /><span className="race-label">Race: </span>
 		<span>{read.isError ? "Unavailable" : read.data?.status ?? "Set up a race"}</span>
 	</button>;
 }

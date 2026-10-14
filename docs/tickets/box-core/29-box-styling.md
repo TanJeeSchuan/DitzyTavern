@@ -1,6 +1,6 @@
 # How a Box styles its UI
 
-Status: NEEDS DESIGN
+Status: DONE
 
 Blocked By: none
 
@@ -16,7 +16,7 @@ Source: GitHub #72. Found by the PR B reviews (ticket 28's Notes record the reve
 - **Emit only the utilities the host lacks.** Needs a custom `@tailwindcss/node` scanner pass instead of `@tailwindcss/vite`, and the host must stop scanning `e2e/`. Still misorders a Box's arbitrary base class against a host breakpoint class on the same property.
 - **Scope the Box's utilities with `@scope ([data-box="<id>"])`.** Host elements outside the Box are safe, but host SDK components render inside the Box: a scoped Box base rule (`flex-col-reverse`) beats the host's unscoped breakpoint rule (`DialogFooter`'s `sm:flex-row`) through scoping proximity. Radix portals also need the marker propagated.
 
-## Options on the table
+## Options considered
 
 - **Per-Box Tailwind prefix** (orchestrator's pick). The Box build runs Tailwind v4 on the Box folder with `prefix(<id without hyphens>)` against the host theme: `worldclock:flex worldclock:gap-2`.
   - Removed: reliance on the host scan.
@@ -29,10 +29,26 @@ Source: GitHub #72. Found by the PR B reviews (ticket 28's Notes record the reve
   - Behavior: no collisions at all. Authors write CSS declarations, and every built-in rewrites its markup styling.
 - **Built-ins keep Tailwind, plugins ship plain CSS.** Smallest change. Built-ins and plugins stop styling the same way, against the one-loader decision.
 
+- **Per-Box prefix, CSS Modules, plugins-only plain CSS** (the options above) were set aside for the decision below. A prefix makes authors write a dialect (`race:flex`) none of the built-ins use, and buys nothing for custom graphics, which are plain CSS either way. CSS Modules rewrite every `className` for a guarantee the selector check below gives. Plugins-only plain CSS was rejected for splitting built-ins from plugins, which the decision doesn't do.
+
+## Decision
+
+Every Box styles itself in its own stylesheet, as Memory already did. The built-ins mostly used semantic classes already, about 25 Tailwind utilities in total; Race's, World Clock's and Phone's rules sat in host CSS.
+
+- Removed: the host's Tailwind scan of `src/boxes/` and `e2e/` (`@source not` in `src/index.css`); Race, World Clock and Phone CSS in `src/styles/box-windows.css` and `moves.css`; the README's advice to put utilities in markup.
+- Introduced: `@tailwindcss/vite` in `buildBoxClient`, with `@/index.css` aliased to the host stylesheet, so a Box stylesheet can `@reference "@/index.css"` and `@apply` the host's utilities and theme. `@reference` emits nothing of the host's, and `@apply` emits only the Box's own selectors, so no global utility class is re-emitted. A check after the build fails it on any selector that names none of the Box's classes (`<id>`, `<id>-…`), outside Tailwind's `properties` layer.
+- Behavior: semantic utilities and host variables follow the user's theme; palette colours are fixed. Unknown utilities fail the build. A Box stylesheet is unlayered, so a Box's class on an SDK component overrides the component's layered utilities. Author Note's panel now scrolls: its `overflow-y-auto` used to lose to the host's unlayered `.panel-fill { overflow: hidden }`.
+
 ## Work
 
-- [ ] Decide the approach with the user.
-- [ ] Implement it in `scripts/build-box-client.ts`, migrate the built-in Boxes and the fixture plugin, and make the fixture use a style the host doesn't contain so `e2e/box-plugin.spec.ts` covers it.
-- [ ] Rewrite the styling paragraph of `docs/box-system/README.md` (Windows and dock).
-- [ ] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
-- [ ] Set this ticket to DONE and commit.
+- [x] Decide the approach with the user.
+- [x] Implement it in `scripts/build-box-client.ts`, migrate the built-in Boxes and the fixture plugin, and make the fixture use a style the host doesn't contain so `e2e/box-plugin.spec.ts` covers it.
+- [x] Rewrite the styling paragraph of `docs/box-system/README.md` (Windows and dock).
+- [x] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
+
+## Notes
+
+- `bun run check` and `bun run build` pass. The full `bun run test:e2e` ran 79 passed, 3 failed: `story-sync` and `story-jump` (the long-history timeouts in `docs/tickets/*/01-long-history-e2e-specs-fit-their-budget.md`) and one `recovery` restart test. All three specs pass when run alone.
+- The selector check was tried against a scratch copy of the fixture with `.tip-jar .portrait`, `@media (…) { .portrait, .tip-jar-x }` and `p`: it reports `.portrait, p`.
+- The dev server serves a built-in's stylesheet through the host's Vite, so the selector check runs only in `bun run build` and `box:build`.

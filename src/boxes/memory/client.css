@@ -1,3 +1,5 @@
+@reference "@/index.css";
+
 .memory-panel-body {
 	display: flex;
 	flex-direction: column;
@@ -510,4 +512,102 @@
 		animation: none !important;
 		transition: none;
 	}
+}
+
+/* Dialogs, menus and controls */
+
+.memory-dialog {
+	@apply max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg;
+}
+
+.memory-confirm {
+	@apply sm:max-w-sm;
+}
+
+.memory-menu {
+	@apply min-w-44;
+}
+
+.memory-person-chevron {
+	@apply size-3.5 shrink-0;
+}
+
+.memory-person-trigger[data-state="closed"] .memory-person-chevron {
+	@apply -rotate-90;
+}
+
+.memory-person-entries {
+	@apply grid gap-[0.1rem];
+}
+
+.memory-more {
+	@apply justify-self-start;
+}
+
+.memory-count {
+	@apply text-xs text-muted-foreground;
+}
+
+.memory-count-over {
+	@apply text-xs text-destructive;
+}
+
+.memory-note-hint {
+	@apply text-xs text-muted-foreground sm:mr-auto;
+}
+
+.memory-settings-fields {
+	@apply grid grid-cols-1 gap-4;
+}
+
+.memory-help {
+	@apply text-muted-foreground hover:text-foreground aria-expanded:text-foreground;
+}
+
+.memory-help-icon {
+	@apply size-3.5;
+}
+
+.memory-help-text {
+	@apply text-xs leading-relaxed;
+}
+
+.memory-identity-options {
+	@apply grid gap-3;
+}
+
+.memory-identity-option {
+	@apply flex items-center gap-2 text-sm;
+}
+
+.memory-identity-radio {
+	@apply flex size-4 shrink-0 items-center justify-center rounded-full border border-input outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-[state=checked]:border-primary;
+}
+
+.memory-identity-dot {
+	@apply size-2 rounded-full bg-primary;
+}
+
+.memory-trace-error {
+	@apply text-xs text-destructive;
+}
+
+.memory-trace-unchecked {
+	@apply grid justify-items-start gap-2;
+}
+
+.memory-participant {
+	@apply flex items-center justify-between gap-3;
+}
+
+.memory-participant-text {
+	@apply grid gap-1;
+}
+
+.memory-participant-title {
+	@apply text-xs font-medium text-muted-foreground;
+}
+
+.memory-participant-summary {
+	@apply text-sm;
 }

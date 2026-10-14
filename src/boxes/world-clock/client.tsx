@@ -1,3 +1,4 @@
+import "./client.css";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Clock } from "lucide-react";

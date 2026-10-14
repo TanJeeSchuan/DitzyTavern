@@ -7,10 +7,10 @@ import { useConversationMemories } from "./client-use-memories";
 export function ParticipantMemory({ conversation, participant }: { conversation: ConversationSummary; participant: CastParticipant }) {
 	const { memories, status, refresh, identitySaved } = useConversationMemories(conversation.id, conversation.revision);
 	const [open, setOpen] = useState(false);
-	return <section className="flex items-center justify-between gap-3" aria-label="Memory">
-		<div className="grid gap-1">
-			<h3 className="text-xs font-medium text-muted-foreground">Memory</h3>
-			<p className="text-sm">
+	return <section className="memory-participant" aria-label="Memory">
+		<div className="memory-participant-text">
+			<h3 className="memory-participant-title">Memory</h3>
+			<p className="memory-participant-summary">
 				{memories
 					? memoryIdentityLabel(memories.identities[participant.id])
 					: status === "failed"

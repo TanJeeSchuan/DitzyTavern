@@ -39,7 +39,7 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 	};
 	const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void save(); } };
 	return <Dialog open onOpenChange={(open) => { if (!open && !pending) onClose(); }}>
-		<DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" showCloseButton={!pending}>
+		<DialogContent className="memory-dialog" showCloseButton={!pending}>
 			<DialogHeader>
 				<DialogTitle>Memory note</DialogTitle>
 				<DialogDescription>Used for new extraction. Saved Memories keep their wording until you retry a Message.</DialogDescription>
@@ -55,10 +55,10 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 					onKeyDown={onKeyDown}
 					disabled={pending}
 				/>
-				{length >= COUNT_AT && <p className={overLimit ? "text-xs text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">{length} of 2,000 characters</p>}
+				{length >= COUNT_AT && <p className={overLimit ? "memory-count-over" : "memory-count"} aria-live="polite">{length} of 2,000 characters</p>}
 				{error && <p className="import-problem" role="alert">{error}</p>}
 				<DialogFooter>
-					<span className="text-xs text-muted-foreground sm:mr-auto">Ctrl+Enter saves · Esc cancels</span>
+					<span className="memory-note-hint">Ctrl+Enter saves · Esc cancels</span>
 					<Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
 					<Button type="submit" disabled={pending || overLimit || note.trim() === settings.note}>{pending ? "Saving…" : "Save"}</Button>
 				</DialogFooter>
