@@ -107,9 +107,9 @@ interface StoryContent {
 }
 
 export type StoryState = StoryContent & (
-	| { status: "idle" | "error" }
-	| { status: "loading-first"; conversationId: number }
-	| { status: "ready"; loadingMore: boolean; conversationId: number; revision: number; page: StoryPaging }
+	| { status: "idle" }
+	| { status: "loading-first" | "error"; conversationId: number }
+	| { status: "ready"; loadingMore: boolean; historyFailed: boolean; conversationId: number; revision: number; page: StoryPaging }
 );
 
 export const isStoryReady = (state: StoryState): state is Extract<StoryState, { status: "ready" }> =>
@@ -355,6 +355,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				page: action.page.page,
 				status: "ready",
 				loadingMore: false,
+				historyFailed: false,
 				preview,
 				requestedGeneration: accepted !== null && (
 					action.page.messages.some((message) => message.variants.some((variant) => variant.id === accepted.variantId)) ||
@@ -364,14 +365,13 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 			};
 		case "load-more-started":
 			return isStoryReady(state) && (state.page.hasOlder || state.page.hasNewer)
-				? { ...state, loadingMore: true }
+				? { ...state, loadingMore: true, historyFailed: false }
 				: state;
 		case "paging-cancelled":
 			return isStoryReady(state) ? { ...state, loadingMore: false } : state;
-		case "history-failed": {
-			const { title, messages, preview, requestedSelections, requestedMoves, requestedGeneration, unplacedObservations } = state;
-			return { status: "error", title, messages, preview, requestedSelections, requestedMoves, requestedGeneration, unplacedObservations };
-		}
+		case "history-failed":
+			if (isStoryReady(state)) return state.historyFailed && !state.loadingMore ? state : { ...state, loadingMore: false, historyFailed: true };
+			return state.status === "loading-first" ? { ...state, status: "error" } : state;
 		case "selection-requested":
 			return state.messages.some((message) => message.id === action.messageId && message.swipes.some((variant) => variant.id === action.variantId))
 				? { ...state, requestedSelections: new Map(state.requestedSelections).set(action.messageId, action.variantId) }

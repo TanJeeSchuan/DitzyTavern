@@ -132,7 +132,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 	const navigateToSourceMessage = async (messageId: number) => {
 		const current = currentSession().story;
-		if (owner.cancellation.signal.aborted) return;
+		if (!isStoryReady(current) || owner.cancellation.signal.aborted) return;
 		const signal = beginNavigation();
 		try {
 			if (!current.messages.some((message) => message.id === messageId)) await openAnchor({ aroundMessageId: messageId }, signal);
@@ -157,6 +157,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	}, [client]);
 
 	const jumpToLatest = async () => {
+		if (!isStoryReady(currentSession().story)) return null;
 		const signal = beginNavigation();
 		try {
 			await client.cancelQueries({ queryKey: conversationKey(id) });

@@ -95,6 +95,18 @@ const storyMessage = (
 });
 
 describe("story reading state", () => {
+	test("a failed loaded history request can retry paging", () => {
+		const failed = reduceStory(createReadyStory(), { type: "history-failed" });
+		const retry = reduceStory(failed, { type: "load-more-started" });
+		expect(retry).toMatchObject({ status: "ready", conversationId: 7, revision: 3, loadingMore: true });
+	});
+
+	test("a failed loaded history request retains Conversation and revision guards", () => {
+		const failed = reduceStory(createReadyStory(), { type: "history-failed" });
+		expect(reduceStory(failed, { type: "window-received", page: page({ conversationId: 99 }) })).toBe(failed);
+		expect(reduceStory(failed, { type: "window-received", page: page({ revision: 2 }) })).toBe(failed);
+	});
+
 	test("offers New Swipe on a server-eligible Message and honors the active response position", () => {
 		const olderEligible: StoryMessage = storyMessage(10, 1, 20);
 		const newerEligible: StoryMessage = storyMessage(11, 2, 20);

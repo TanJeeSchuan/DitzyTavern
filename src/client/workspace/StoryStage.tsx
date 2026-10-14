@@ -226,7 +226,7 @@ export function StoryStage({
 						</div>
 					)}
 					{story.status === "loading-first" && <HistoryLoading />}
-					{story.status === "error" && (
+					{(story.status === "error" || readyStory?.historyFailed) && (
 						<p className="history-error" role="alert">
 							The Chat history could not be loaded. Try opening the Chat again.
 						</p>
