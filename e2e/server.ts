@@ -136,14 +136,13 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	const path = new URL(url).pathname;
 	let call: ModelCall;
 	if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
-		call = { kind: "decision", url, headers, body: Value.Parse(decisionCallBody, raw) };
+		call = { kind: "decision", url, headers, body: raw };
 	} else if (path.endsWith("/models")) {
 		call = { kind: "models", url, headers, body: raw };
 	} else if (url.endsWith("/embeddings") && Value.Check(embeddingsCallBody, raw)) {
-		call = { kind: "embeddings", url, headers, body: Value.Parse(embeddingsCallBody, raw) };
+		call = { kind: "embeddings", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
-		const body = Value.Parse(chatCompletionCallBody, raw);
-		call = { kind: body.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body };
+		call = { kind: raw.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
 	} else {
 		call = { kind: "unknown", url, headers, body: raw };
 	}
