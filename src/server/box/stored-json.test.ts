@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { modelCatalogEntry } from "../../shared/contract/provider-response";
+import { Type } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -12,7 +12,8 @@ import { readMessageMoves } from "./moves";
 let database: Database;
 let conversationId: number;
 let instance: string;
-const record = modelCatalogEntry;
+// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- Local test Box record schema, not a wire contract.
+const record = Type.Object({ score: Type.Integer() });
 beforeEach(() => {
 	database = openInitializedDatabase({ path: ":memory:" });
 	conversationId = createConversationWithHistory(database, { name: "Stored Box values", participants: [] }).id;
@@ -23,8 +24,8 @@ afterEach(() => database.close());
 test.each(["{", '{"score":"wrong"}'])("stored library and Chat values locate invalid JSON %s", (value) => {
 	database.query("INSERT INTO library_data (namespace, key, value, revision) VALUES ('box:race', 'stats', ?, 1)").run(value);
 	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:race', 'stats', ?)").run(conversationId, value);
-	expect(() => readLibraryValue(drizzle(database), "box:race", "stats", record, { id: "initial" })).toThrow("box:race stats");
-	expect(() => readChatValue(drizzle(database), conversationId, "race", "stats", record, { id: "initial" })).toThrow(`Chat ${conversationId} box:race stats`);
+	expect(() => readLibraryValue(drizzle(database), "box:race", "stats", record, { score: 0 })).toThrow("box:race stats");
+	expect(() => readChatValue(drizzle(database), conversationId, "race", "stats", record, { score: 0 })).toThrow(`Chat ${conversationId} box:race stats`);
 });
 
 test.each(["{", '{"phase":"invalid"}'])("stored setup errors locate invalid JSON %s", (value) => {
