@@ -88,8 +88,7 @@ export const noUnapprovedCommentsRule = defineRule({
 					// Each run of standalone line comments on adjacent lines is judged once, from its first comment.
 					const block = [comment];
 					let last = comment;
-					for (const next of comments.slice(index + 1)) {
-						if (!continues(last, next)) break;
+					for (let next = comments[index + 1], at = index + 1; next !== undefined && continues(last, next); next = comments[++at]) {
 						block.push(next);
 						last = next;
 					}
