@@ -1,4 +1,4 @@
-import { Kind, Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
@@ -21,10 +21,10 @@ import {
 import { numericWire } from "./wire";
 import type {
 	GenerationJsonObject,
-	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
 	ProvenanceSettingsField,
 } from "../generation-provenance";
+import { generationJsonValue as jsonValue } from "./json-value";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
@@ -192,13 +192,6 @@ const conversationCapabilities = Type.Object({
 // cannot drift between transport and domain.
 export type CapabilityAvailability = Static<typeof capabilityAvailability>;
 export type ConversationCapabilities = Static<typeof conversationCapabilities>;
-
-// Provider request overrides and retained generation details are restricted
-// to the shared generation JSON vocabulary. The runtime schema stays open
-// like the previous opaque payload boundary, while the Unsafe generic keeps
-// Eden's Static type exact and recursive instead of widening these fields to
-// `unknown`.
-const jsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
 
 export type GenerationRequestOverrides = GenerationJsonObject;
 

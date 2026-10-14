@@ -1,5 +1,5 @@
-import { Kind, Type, type Static, type TLiteral } from "@sinclair/typebox";
-import type { GenerationJsonValue } from "../generation-json";
+import { Type, type Static, type TLiteral } from "@sinclair/typebox";
+import { generationJsonValue } from "./json-value";
 
 // The one canonical runtime declaration of the Generation Settings
 // structure (ADR-0032): model selection, sampling parameters, budget
@@ -15,11 +15,6 @@ import type { GenerationJsonValue } from "../generation-json";
 // rejects. Normalization such as trimming a model ID stays with the owning
 // domain adapter; this declaration is structural, not mutating.
 
-// Provider Request Override values keep the shared Generation JSON
-// vocabulary. The runtime schema stays open like every other opaque
-// Generation JSON boundary (the same Kind-Unknown technique the transport
-// contract uses), while the type stays exact and recursive for Eden.
-const generationJsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
 const generationJsonObject = Type.Record(Type.String(), generationJsonValue);
 
 // Sampling values: null means the provider default; otherwise a finite
