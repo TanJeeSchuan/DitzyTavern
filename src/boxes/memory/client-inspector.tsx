@@ -137,6 +137,7 @@ export function MemoriesPanel({ conversation, onConversationChange, focusRequest
 					onStep={
 						memories.path.length > 1
 							? (offset) => {
+							/** @approved The step is clamped to the path, which holds more than one source here. */
 							const next =
 								memories.path[Math.min(memories.path.length - 1, Math.max(0, (position.get(focus) ?? 0) + offset))]!
 									.messageId;

@@ -2,6 +2,7 @@ import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contrac
 import { RefreshCw, Send, Settings, X } from "lucide-react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
+import type { NonEmpty } from "../shared/non-empty";
 import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
@@ -82,7 +83,7 @@ export function PromptPlanPreviewPanel({
 					<h3>Expanded blocks</h3>
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
-						const fields = run.map(({ block, index }) => (
+						const field = ({ block, index }: PlanBlockAt) => (
 							<div key={index} className="prompt-plan-block">
 								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 								<ProseEditor
@@ -93,10 +94,10 @@ export function PromptPlanPreviewPanel({
 									onChange={(content) => onPlanChange(updateBlock(preview.promptPlan, index, content))}
 								/>
 							</div>
-						));
+						);
 						return run[0].block.kind === "history"
-							? <details key={run[0].index} className="prompt-plan-history"><summary>History · {run.length} {run.length === 1 ? "message" : "messages"}</summary>{fields}</details>
-							: fields[0];
+							? <details key={run[0].index} className="prompt-plan-history"><summary>History · {run.length} {run.length === 1 ? "message" : "messages"}</summary>{run.map(field)}</details>
+							: field(run[0]);
 					})}
 				</section>}
 			{assembly.error !== null && <p className="import-problem" role="alert">{assembly.error}</p>}
@@ -118,10 +119,12 @@ export function PromptPlanPreviewPanel({
 	);
 }
 
+type PlanBlockAt = { block: PromptPlan["blocks"][number]; index: number };
+
 // @approved
 // Consecutive history blocks share one run; every other block is its own run.
 function groupHistoryRuns(blocks: PromptPlan["blocks"]) {
-	const runs: { block: PromptPlan["blocks"][number]; index: number }[][] = [];
+	const runs: NonEmpty<PlanBlockAt>[] = [];
 	blocks.forEach((block, index) => {
 		const last = runs.at(-1);
 		if (block.kind === "history" && last?.[0].block.kind === "history") last.push({ block, index });

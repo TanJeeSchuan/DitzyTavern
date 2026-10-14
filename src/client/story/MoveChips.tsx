@@ -23,7 +23,7 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 	// @approved
 	//  Equal Moves are interchangeable, so a Move's id is its label and its
 	//  occurrence.
-	const ids = labels.map((text, index) => `${text}:${labels.slice(0, index).filter((earlier) => earlier === text).length}`);
+	const chips = labels.map((text, index) => ({ label: text, id: `${text}:${labels.slice(0, index).filter((earlier) => earlier === text).length}` }));
 	return <DragDropProvider onDragEnd={(event) => {
 		if (event.canceled || !isSortableOperation(event.operation)) return;
 		const { source } = event.operation;
@@ -33,7 +33,7 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 		onChange?.(next);
 	}}>
 		<ol aria-label={name}>
-			{list.map((_, index) => <MoveChip key={ids[index]} id={ids[index]!} index={index} label={labels[index]!} disabled={disabled}
+			{chips.map(({ id, label: text }, index) => <MoveChip key={id} id={id} index={index} label={text} disabled={disabled}
 				onRemove={onChange === undefined ? undefined : () => onChange(list.filter((__, position) => position !== index))} />)}
 		</ol>
 	</DragDropProvider>;

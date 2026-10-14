@@ -53,7 +53,7 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 				<PopoverHeader><PopoverTitle>Boxes in this Chat</PopoverTitle></PopoverHeader>
 				<ul aria-label="Boxes">
 					{[...listedBoxes().values()].map(({ id: box, label, failure }) => {
-						const state = conversation.boxes[box];
+						const state = conversation.boxes[box] ?? "absent";
 						return <li key={box}>
 							<div>
 								<strong>{label}</strong>

@@ -6,7 +6,7 @@ import type { HeaderEditorData, HeaderEditorValue } from "../../connection-setti
 export function HeaderEditor({ data, onChange }: { data: HeaderEditorData; onChange: (data: HeaderEditorData) => void }) {
 	const [name, setName] = useState("");
 	const [value, setValue] = useState("");
-	const update = (key: string, patch: Partial<HeaderEditorValue>) => onChange({ ...data, [key]: { ...data[key]!, ...patch } });
+	const update = (key: string, header: HeaderEditorValue, patch: Partial<HeaderEditorValue>) => onChange({ ...data, [key]: { ...header, ...patch } });
 	const drop = (key: string) => onChange(Object.fromEntries(Object.entries(data).filter(([candidate]) => candidate !== key)));
 	const newName = name.trim();
 	const add = () => { onChange({ ...data, [newName]: { configured: false, operation: "replace", replacement: value } }); setName(""); setValue(""); };
@@ -22,7 +22,7 @@ export function HeaderEditor({ data, onChange }: { data: HeaderEditorData; onCha
 								type="password"
 								aria-label={`${key} value`}
 								value={header.replacement}
-								onChange={(event) => update(key, { replacement: event.target.value })}
+								onChange={(event) => update(key, header, { replacement: event.target.value })}
 								placeholder={header.configured ? "New value" : "Value"}
 								autoComplete="off"
 							/>
@@ -33,10 +33,10 @@ export function HeaderEditor({ data, onChange }: { data: HeaderEditorData; onCha
 							? <Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${key}`} onClick={() => drop(key)}><X aria-hidden="true" /></Button>
 							: header.operation === "keep"
 								? <>
-									<Button type="button" size="sm" variant="ghost" onClick={() => update(key, { operation: "replace" })}>Replace</Button>
-									<Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${key}`} onClick={() => update(key, { operation: "remove" })}><X aria-hidden="true" /></Button>
+									<Button type="button" size="sm" variant="ghost" onClick={() => update(key, header, { operation: "replace" })}>Replace</Button>
+									<Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${key}`} onClick={() => update(key, header, { operation: "remove" })}><X aria-hidden="true" /></Button>
 								</>
-								: <Button type="button" size="sm" variant="ghost" onClick={() => update(key, { operation: "keep", replacement: "" })}>{header.operation === "remove" ? "Undo" : "Cancel"}</Button>}
+								: <Button type="button" size="sm" variant="ghost" onClick={() => update(key, header, { operation: "keep", replacement: "" })}>{header.operation === "remove" ? "Undo" : "Cancel"}</Button>}
 					</span>
 				</div>
 			))}
