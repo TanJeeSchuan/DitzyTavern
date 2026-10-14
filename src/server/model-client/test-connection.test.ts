@@ -39,6 +39,13 @@ const failureMessage = (result: TestConnectionResult): string =>
 	result.outcome === "failure" ? result.message : "";
 
 describe("Model Test Connection", () => {
+	test("rejects non-string provider diagnostics before redaction", async () => {
+		const result = await testConnection({ profile, modelId: "test-model" }, {
+			fetch: async () => { throw Object.assign(new Error("Provider failure"), { responseBody: 42 }); },
+		});
+		expect(result).toEqual({ outcome: "failure", kind: "malformed-response", message: "The provider returned malformed error diagnostics." });
+	});
+
 	test("tests an Embeddings connection against its base URL with its saved headers", async () => {
 		const seen: { url: string; authorization: string | null; tenant: string | null }[] = [];
 		const result = await testConnection({

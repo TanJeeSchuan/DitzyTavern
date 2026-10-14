@@ -1,3 +1,5 @@
+import { providerDiagnosticError, type ProviderDiagnosticError } from "../../shared/contract/provider-response";
+import { Value } from "@sinclair/typebox/value";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
@@ -13,7 +15,6 @@ import {
 	formatProviderError,
 	providerErrorStatus,
 	snapshotProviderError,
-	type ProviderErrorLike,
 } from "./provider-errors";
 
 export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
@@ -142,13 +143,8 @@ export async function testConnection(
 		if (!(error instanceof Error)) {
 			return failure("endpoint", "The provider request failed.");
 		}
-		// @approved
-		// SAFETY: AI SDK provider failures extend Error and expose these optional
-		// response fields; the parser below reads only those known fields.
-		return normalizeTestConnectionError(error as ProviderErrorLike, {
-			timedOut,
-			secretValues,
-		});
+		if (!Value.Check(providerDiagnosticError, error)) return failure("malformed-response", "The provider returned malformed error diagnostics.");
+		return normalizeTestConnectionError(error, { timedOut, secretValues });
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -181,7 +177,7 @@ interface ErrorContext {
 }
 
 function normalizeTestConnectionError(
-	error: ProviderErrorLike,
+	error: ProviderDiagnosticError,
 	context: ErrorContext,
 ): TestConnectionResult {
 	if (context.timedOut || isAbortError(error)) {
@@ -204,23 +200,23 @@ function normalizeTestConnectionError(
 	return failure("endpoint", providerFailureMessage(error), responseBody);
 }
 
-function providerFailureMessage(error: ProviderErrorLike): string {
+function providerFailureMessage(error: ProviderDiagnosticError): string {
 	return formatProviderError(
 		snapshotProviderError(error),
 	);
 }
 
-function isMalformedResponseError(error: ProviderErrorLike): boolean {
+function isMalformedResponseError(error: ProviderDiagnosticError): boolean {
 	const name = `${error.name} ${error.cause?.name ?? ""}`.toLowerCase();
 	return name.includes("jsonparse") || name.includes("invalidresponsedata") || name.includes("emptyresponse");
 }
 
-function isRedirectError(error: ProviderErrorLike): boolean {
+function isRedirectError(error: ProviderDiagnosticError): boolean {
 	const message = error.message.toLowerCase();
 	return message.includes("redirect") || message.includes("maximum redirect");
 }
 
-function isAbortError(error: ProviderErrorLike): boolean {
+function isAbortError(error: ProviderDiagnosticError): boolean {
 	return error.name === "AbortError";
 }
 
