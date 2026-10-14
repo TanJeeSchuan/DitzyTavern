@@ -86,14 +86,13 @@ export function capturedAcceptanceFields(
 		loreActivation: capture.plan.loreActivation,
 		boxTraces: capture.plan.boxTraces,
 		provenance: capture.provenance,
-		macroPresetId: capture.macroPresetId,
-		macroWrites: capture.macroWrites,
+		macro: { presetId: capture.macroPresetId, writes: capture.macroWrites },
 	} satisfies Pick<
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "provenance" |
-		"macroPresetId" | "macroWrites" | "seed" | "boxRecords"
+		"macro" | "seed" | "boxRecords"
 	>;
 }
 

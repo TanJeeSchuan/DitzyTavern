@@ -303,9 +303,7 @@ export interface GenerationAcceptanceCapture {
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
 	promptPlan: PromptPlan;
-	// Active-only budget/omission diagnostics. Older direct callers may omit
-	// this field; workflow callers always capture it before acceptance.
-	promptInspection?: ConversationJsonValue | undefined;
+	promptInspection: ConversationJsonValue;
 	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
@@ -316,8 +314,7 @@ export interface GenerationAcceptanceCapture {
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
-	macroPresetId?: number | undefined;
-	macroWrites?: readonly MacroVariableWrite[] | undefined;
+	macro?: { readonly presetId: number; readonly writes: readonly MacroVariableWrite[] };
 }
 
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
