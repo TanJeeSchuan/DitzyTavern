@@ -38,6 +38,10 @@ export const decisionCallBody = Type.Object({
 });
 export type DecisionCallBody = Static<typeof decisionCallBody>;
 
+/** @approved A Decision call's state is a provider-defined object, a string for the Test Connection ping, or absent. */
+export const hasDecisionPassage = (state: unknown): state is { readonly passage: unknown } =>
+	typeof state === "object" && state !== null && "passage" in state;
+
 export const embeddingsCallBody = Type.Object({
 	input: Type.Union([Type.String(), Type.Array(Type.String())]),
 });

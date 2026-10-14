@@ -16,6 +16,7 @@ import {
 	chatCompletionCallBody,
 	decisionCallBody,
 	embeddingsCallBody,
+	hasDecisionPassage,
 	isChatModelCall,
 	type ChatReply,
 	type DecisionRule,
@@ -110,8 +111,10 @@ const chat = async (call: ChatModelCall) => {
 };
 
 const decisions = async (call: DecisionModelCall) => {
+	const state = call.body.state;
+	const passage = hasDecisionPassage(state) ? JSON.stringify(state.passage) : undefined;
 	const rules = Object.entries(call.body.questions).map(([id, question]) => [id, decisionRules.find((rule) =>
-		rule.match.every((text) => JSON.stringify(question).includes(text)) && (rule.passage === undefined || JSON.stringify(call.body.state).includes(rule.passage)))] as const);
+		rule.match.every((text) => JSON.stringify(question).includes(text)) && (rule.passage === undefined || (passage !== undefined && passage.includes(rule.passage))))] as const);
 	if (rules.some(([, rule]) => !rule)) return refuse(call);
 	const failure = rules.find(([, rule]) => rule && "status" in rule)?.[1];
 	if (failure && "status" in failure) return Response.json({ error: "Scripted Decision Model failure." }, { status: failure.status });
