@@ -88,6 +88,25 @@ describe("SSE activity monitor", () => {
 		expect(activityCount).toBe(2);
 	});
 
+	test("reads activity from the first choice only, ignoring empty and later choices", async () => {
+		let activityCount = 0;
+		const signal = new AbortController().signal;
+		const source = [
+			`data: ${JSON.stringify({ choices: [] })}\r\n\r\n`,
+			`data: ${JSON.stringify({ choices: [{ delta: { role: "assistant" } }] })}\r\n\r\n`,
+			`data: ${JSON.stringify({ choices: [{ delta: { content: "Hi" } }, { delta: { role: "assistant" } }] })}\r\n\r\n`,
+		];
+		const monitored = monitorSseActivity(responseFromChunks(source), {
+			onActivity: () => {
+				activityCount += 1;
+			},
+			signal,
+		});
+
+		expect(await monitored.text()).toBe(source.join(""));
+		expect(activityCount).toBe(1);
+	});
+
 	test("cancels the underlying reader when the signal aborts", async () => {
 		let cancelled = false;
 		let resolveCancelled: (() => void) | undefined;

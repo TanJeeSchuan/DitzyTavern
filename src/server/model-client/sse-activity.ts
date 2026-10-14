@@ -1,6 +1,6 @@
 import { createParser } from "eventsource-parser";
 import { Value } from "@sinclair/typebox/value";
-import { providerActivityFrame } from "../../shared/contract/provider-sse";
+import { providerActivityChoice, providerActivityFrame } from "../../shared/contract/provider-sse";
 // @approved
 //  The AI SDK surfaces parsed deltas. Observe SSE comments and meaningful
 // events at the fetch boundary so keep-alive pings reset the Stream Inactivity Timeout.
@@ -22,7 +22,10 @@ export function monitorSseActivity(
 		onEvent: ({ data }) => {
 			if (data === "[DONE]") { options.onActivity(); return; }
 			try {
-				if (Value.Check(providerActivityFrame, JSON.parse(data))) options.onActivity();
+				const parsed: unknown = JSON.parse(data);
+				if (!Value.Check(providerActivityFrame, parsed)) return;
+				const [firstChoice] = parsed.choices ?? [];
+				if ((firstChoice !== undefined && Value.Check(providerActivityChoice, firstChoice)) || parsed.usage !== undefined) options.onActivity();
 			} catch { /* @approved The AI SDK owns malformed provider payloads. */ }
 		},
 	});
