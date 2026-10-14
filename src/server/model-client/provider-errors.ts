@@ -13,13 +13,16 @@ export const providerDiagnosticError = Type.Object({
 });
 export type ProviderErrorLike = Static<typeof providerDiagnosticError>;
 
+// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- In-process cause fields, not a wire contract.
+const providerErrorCause = Type.Object({ name: Type.Optional(Type.String()) });
+
 export function providerErrorFields(error: Error): ProviderErrorLike {
 	const fields = providerDiagnosticError.properties;
 	const { cause } = error;
 	return {
 		name: error.name,
 		message: error.message,
-		causeName: cause instanceof Error && Value.Check(fields.causeName, cause.name) ? cause.name : undefined,
+		causeName: Value.Check(providerErrorCause, cause) ? cause.name : undefined,
 		statusCode: "statusCode" in error && Value.Check(fields.statusCode, error.statusCode) ? error.statusCode : undefined,
 		status: "status" in error && Value.Check(fields.status, error.status) ? error.status : undefined,
 		responseBody: "responseBody" in error && Value.Check(fields.responseBody, error.responseBody) ? error.responseBody : undefined,
