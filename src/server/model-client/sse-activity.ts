@@ -1,20 +1,9 @@
 import { createParser } from "eventsource-parser";
+import { Value } from "@sinclair/typebox/value";
+import { providerActivityFrame } from "../../shared/contract/provider-sse";
 // @approved
 //  The AI SDK surfaces parsed deltas. Observe SSE comments and meaningful
 // events at the fetch boundary so keep-alive pings reset the Stream Inactivity Timeout.
-
-interface ProviderSseFrame {
-	choices?: Array<{
-		delta?: {
-			content?: string;
-			reasoning?: string;
-			reasoning_content?: string;
-			reasoning_details?: unknown;
-		};
-		finish_reason?: string | null;
-	}>;
-	usage?: unknown;
-}
 
 export interface SseActivityMonitorOptions {
 	readonly onActivity: () => void;
@@ -33,14 +22,7 @@ export function monitorSseActivity(
 		onEvent: ({ data }) => {
 			if (data === "[DONE]") { options.onActivity(); return; }
 			try {
-				// @approved
-				// SAFETY: only optional activity fields are inspected; malformed payloads are caught below.
-				const parsed = JSON.parse(data) as ProviderSseFrame;
-				const choice = parsed.choices?.[0];
-				const delta = choice?.delta;
-				if (delta?.content !== undefined || delta?.reasoning !== undefined ||
-					delta?.reasoning_content !== undefined || delta?.reasoning_details !== undefined ||
-					parsed.usage !== undefined || choice?.finish_reason != null) options.onActivity();
+				if (Value.Check(providerActivityFrame, JSON.parse(data))) options.onActivity();
 			} catch { /* @approved The AI SDK owns malformed provider payloads. */ }
 		},
 	});
