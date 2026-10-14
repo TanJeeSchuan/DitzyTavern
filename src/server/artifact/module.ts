@@ -82,10 +82,6 @@ export function createArtifactModule(
 			const row = findRow(conversationId, namespace, key);
 			return row === undefined ? undefined : inspectRow(row);
 		},
-		readArtifact(conversationId, namespace, key) {
-			const row = findRow(conversationId, namespace, key);
-			return row === undefined ? undefined : readRow(row);
-		},
 		downloadArtifact(conversationId, namespace, key) {
 			const row = findRow(conversationId, namespace, key);
 			if (row === undefined) return undefined;

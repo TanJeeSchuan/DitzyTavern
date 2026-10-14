@@ -69,13 +69,6 @@ export interface ArtifactModule {
 		namespace: string,
 		key: string,
 	): ArtifactInspection | undefined;
-	// Streams the exact stored bytes after verification (byte length and
-	// SHA-256), or reports the artifact as cleaned up.
-	readArtifact(
-		conversationId: number,
-		namespace: string,
-		key: string,
-	): ArtifactReadResult | undefined;
 	// Download variant: adds sanitized response metadata (Content-Disposition
 	// built from the stored original leaf filename) without changing the
 	// bytes.
