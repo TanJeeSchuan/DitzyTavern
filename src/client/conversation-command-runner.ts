@@ -76,27 +76,22 @@ export function queueConversationCommand(conversationId: number, command: (revis
  * Runs one Conversation command against `surface` through the Conversation's command queue: an action goes
  * through the Conversation command route, a function is the surface's own send seam. Resolves whether it applied.
  */
-type ConversationSendSurface = Omit<ConversationCommandSurface, "conversationId"> & { conversationId: number | null };
-
-export function runConversationCommand<TOperation = never>(surface: ConversationCommandSurface, command: ConversationAction, options?: ConversationCommandRunOptions<TOperation>): Promise<boolean>;
-export function runConversationCommand<TOperation = never>(surface: ConversationSendSurface, command: ConversationCommandSend<TOperation>, options?: ConversationCommandRunOptions<TOperation>): Promise<boolean>;
 export async function runConversationCommand<TOperation = never>(
-	surface: ConversationSendSurface,
+	surface: ConversationCommandSurface,
 	command: ConversationAction | ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation> = {},
 ): Promise<boolean> {
 	let send: ConversationCommandSend<TOperation>;
 	if ("type" in command) {
 		const conversationId = surface.conversationId;
-		if (conversationId === null) throw new Error("A Conversation action requires a Conversation ID.");
 		send = (revision) => applyConversationCommand(conversationId, revision, command);
 	} else send = command;
 	const run = (previous: number | null) => executeConversationCommand(surface, send, options, previous);
-	return await (surface.conversationId === null ? run(null) : queueConversationCommand(surface.conversationId, run)) !== false;
+	return await queueConversationCommand(surface.conversationId, run) !== false;
 }
 
 async function executeConversationCommand<TOperation>(
-	surface: ConversationSendSurface,
+	surface: ConversationCommandSurface,
 	command: ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation>,
 	previous: number | null,
