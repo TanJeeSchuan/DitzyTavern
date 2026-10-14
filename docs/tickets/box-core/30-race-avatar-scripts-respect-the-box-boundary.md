@@ -28,4 +28,4 @@ No file outside `src/boxes/race/` imports Race's code, and the rule that says so
 
 ## Acceptance
 
-- `git grep -n "boxes/race" -- ':!src/boxes/race'` outside `docs/` finds nothing.
+- `git grep -n "boxes/" -- scripts` finds nothing. (Host test files such as `src/server/contract/box-window.test.ts` that import Race on purpose are allowed by the rule and stay.)
