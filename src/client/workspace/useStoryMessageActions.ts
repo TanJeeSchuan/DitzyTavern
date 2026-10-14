@@ -77,7 +77,7 @@ export function useStoryMessageActions({
 		if (current.queued) return;
 		current.queued = true;
 		let sent: RequestedSelection | undefined;
-		const applied = await runConversationCommand(surface, (expectedRevision) => {
+		const applied = await runConversationCommand({ ...surface, conversationId }, (expectedRevision) => {
 			current.queued = false;
 			sent = current.requested ?? requested;
 			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", ...sent });
@@ -141,7 +141,7 @@ export function useStoryMessageActions({
 		if (variantId === undefined || conversationId === null) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, revision: () => story.revision }, {
+		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, {
 			type: "edit-variant",
 			messageId,
 			variantId,
@@ -156,7 +156,7 @@ export function useStoryMessageActions({
 	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
 		if (story.preview !== null || story.conversationId === null) return;
 		dispatchStory({ type: "moves-requested", messageId, moves });
-		const applied = await runConversationCommand({ ...surface, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
 			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
 		});
@@ -168,7 +168,7 @@ export function useStoryMessageActions({
 		const conversationId = story.conversationId;
 		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
 
-		await runConversationCommand(surface, {
+		await runConversationCommand({ ...surface, conversationId }, {
 			type: "delete-message",
 			messageId,
 		}, {

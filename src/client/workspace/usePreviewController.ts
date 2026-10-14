@@ -43,7 +43,7 @@ export function usePreviewController({
 		if (preview === null || story.conversationId === null) return;
 		const { messageId, variantId } = preview;
 		dispatchStory({ type: "preview-confirmed" });
-		const applied = await runConversationCommand(surface, { type: "select-variant", messageId, variantId }, {
+		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "select-variant", messageId, variantId }, {
 			onApplied: () => dispatchStory({ type: "swipe-selected", messageId, variantId }),
 		});
 		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId });
