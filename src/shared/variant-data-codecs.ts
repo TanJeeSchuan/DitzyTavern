@@ -1,7 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import {
 	generationProvenanceCodec, generationJsonObject, parseGenerationJson,
-	type GenerationJsonValue, type GenerationProvenanceDataEntry, type GenerationProvenanceRecord,
+	type GenerationJsonValue, type GenerationProvenanceDataEntry,
 } from "./generation-provenance";
 import { loreActivationRecord, type LoreActivationRecord } from "./contract/lore-activation";
 import { boxTraces, type BoxTraces } from "./contract/box-generation";
@@ -88,14 +88,7 @@ export const variantDataCodecs = {
 	provenance: {
 		namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.provenance,
 		keys: [GENERATION_DATA_KEYS.provenance, GENERATION_DATA_KEYS.outcome, GENERATION_DATA_KEYS.usage, GENERATION_DATA_KEYS.finish, GENERATION_DATA_KEYS.interruptionCause],
-		decode: (serialized: string) => parseGenerationJson(serialized, null),
-		read: (entries: readonly GenerationProvenanceDataEntry[]) => generationProvenanceCodec.decodeStored(
-			parseGenerationJson(entries.find((entry) => entry.namespace === variantDataCodecs.provenance.namespace && entry.key === variantDataCodecs.provenance.key)?.value ?? "null", null), entries,
-		),
-		encode: (value: GenerationProvenanceRecord) => generationProvenanceCodec.encode(value),
-		terminal: (serialized: string, entries: readonly GenerationProvenanceDataEntry[]) => generationProvenanceCodec.encode(
-			generationProvenanceCodec.project(parseGenerationJson(serialized, null), generationProvenanceCodec.readTerminalMetadata(entries)),
-		),
+		...generationProvenanceCodec,
 	},
 	intent: {
 		namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.intent, keys: [GENERATION_DATA_KEYS.intent],

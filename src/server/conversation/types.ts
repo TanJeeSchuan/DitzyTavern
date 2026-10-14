@@ -2,9 +2,7 @@ import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation"
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import type {
-	GenerationProvenance as SharedGenerationProvenance,
-} from "../../shared/generation-provenance";
+import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	ActiveGenerationDetails as SharedActiveGenerationDetails,

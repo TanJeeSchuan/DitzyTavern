@@ -1,4 +1,4 @@
-import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
@@ -19,11 +19,8 @@ import {
 	conflictReasonOutcome,
 } from "./outcomes";
 import { numericWire } from "./wire";
-import type {
-	GenerationJsonObject,
-	GenerationProvenance as SharedGenerationProvenance,
-	ProvenanceSettingsField,
-} from "../generation-provenance";
+import type { GenerationJsonObject } from "../generation-provenance";
+import { generationProvenance } from "./generation-provenance";
 import { generationJsonValue as jsonValue } from "./json-value";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
@@ -258,56 +255,6 @@ export const generationVariant = Type.Object({
 
 export type GenerationVariant = Static<typeof generationVariant>;
 
-// Provenance describes one historical attempt, so every retained settings
-// field widens to a nullable wire kind instead of reusing the capture-time
-// validation domain: a value a past or future version recorded must still
-// display, and a value that did not participate decodes as null rather than
-// an accidental zero or empty string. The satisfies lock makes a missing or
-// unknown canonical field a compile error, and the focused contract test
-// keeps the declared keys aligned with the canonical retained vocabulary.
-const provenanceSettingsWireSchemas = {
-	temperature: Type.Union([Type.Null(), Type.Number()]),
-	topP: Type.Union([Type.Null(), Type.Number()]),
-	frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
-	presencePenalty: Type.Union([Type.Null(), Type.Number()]),
-	contextLimit: Type.Union([Type.Null(), Type.Integer()]),
-	responseBudget: Type.Union([Type.Null(), Type.Integer()]),
-	safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
-	siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer()]),
-	continuationStrategy: Type.Union([
-		Type.Null(),
-		Type.Literal("instruction"),
-		Type.Literal("assistant-prefill"),
-	]),
-	continuationInstruction: Type.Union([Type.Null(), Type.String()]),
-	continuationPrefillSuffix: Type.Union([
-		Type.Null(),
-		Type.Literal(""),
-		Type.Literal(" "),
-		Type.Literal("\n"),
-		Type.Literal("\n\n"),
-	]),
-	repeatedImagePlacement: Type.Union([
-		Type.Null(),
-		canonicalGenerationSettings.properties.repeatedImagePlacement,
-	]),
-} as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
-
-export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
-
-const generationProvenance = Type.Union([Type.Null(), Type.Object({
-	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
-	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
-	modelBackend: Type.Union([Type.Null(), Type.String()]),
-	adapter: Type.Union([Type.Null(), Type.String()]),
-	modelId: Type.Union([Type.Null(), Type.String()]),
-	generationSettings: generationProvenanceSettingsWire,
-	usage: Type.Union([Type.Null(), Type.Record(Type.String(), Type.Number())]),
-	finishReason: Type.Union([Type.Literal("stop"), Type.Literal("length"), Type.Literal("other"), Type.Null()]),
-	status: Type.Union([Type.Literal("complete"), Type.Literal("length-limited"), Type.Literal("interrupted")]),
-	interruptionCause: Type.Union([Type.Null(), Type.String()]),
-})]);
-
 // Active details are intentionally a separate contract from Conversation
 // summaries and ordinary history. Opaque prompt JSON is provider-neutral and
 // retained only for the bounded Active Generation/replay lifecycle.
@@ -368,14 +315,14 @@ export const variantDetails = Type.Object({
 		humanParticipantId: Type.Integer(),
 		modelParticipantId: Type.Integer(),
 	})]),
-	provenance: generationProvenance,
+	provenance: Type.Union([Type.Null(), generationProvenance]),
 	// Captured activation evidence is independent from compact Generation provenance
 	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
 	boxTraces,
 });
 
-export type GenerationProvenance = SharedGenerationProvenance;
+export type { GenerationProvenance } from "./generation-provenance";
 export type VariantDetails = Static<typeof variantDetails>;
 
 // The captured historical Control pair is inline in the Variant details;

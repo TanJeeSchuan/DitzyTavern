@@ -10,7 +10,7 @@ import { projectModelClientGenerationSettings, type ModelClientConnectionSnapsho
 import {
 	type GenerationProvenanceRecord,
 	type GenerationProvenanceSettings,
-} from "../../shared/generation-provenance";
+} from "../../shared/contract/generation-provenance";
 
 const connectionIdentityOf = (
 	connection: ModelClientConnectionSnapshot | null,
