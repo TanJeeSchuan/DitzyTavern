@@ -28,9 +28,6 @@ export type {
 } from "./types";
 export {
 	createModelClient,
-	createDeepSeekModelClient,
-	createOpenRouterModelClient,
-	createOpenAICompatibleModelClient,
 	normalizeUsage,
 	ModelClientTransportError,
 } from "./chat-completions";

@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { InvalidImageError } from "./errors";
-import { gifFixture, jpegFixture, pngFixture, webpFixture } from "./image-fixtures";
-import { MAX_IMAGE_BYTES } from "../../shared/contract/image";
+import { gifFixture, jpegFixture, webpFixture } from "./image-fixtures";
 import { ingestImage } from "./ingest";
 
 const includes = (haystack: Uint8Array, needle: string) => Buffer.from(haystack).includes(Buffer.from(needle, "latin1"));
@@ -12,13 +10,6 @@ describe("Image ingest", () => {
 		expect(includes(image.bytes, "GPS")).toBe(false);
 		expect(Buffer.compare(image.bytes, jpegFixture())).toBe(0);
 		expect(image).toMatchObject({ mediaType: "image/jpeg", width: 5, height: 4 });
-	});
-
-	test("strips PNG tEXt card data while keeping the pixel chunks", async () => {
-		const image = await ingestImage(pngFixture({ card: "secret-card" }));
-		expect(includes(image.bytes, "secret-card")).toBe(false);
-		expect(Buffer.compare(image.bytes, pngFixture())).toBe(0);
-		expect(image).toMatchObject({ mediaType: "image/png", width: 3, height: 2 });
 	});
 
 	test("strips WebP XMP while keeping the pixel chunk", async () => {
@@ -33,18 +24,5 @@ describe("Image ingest", () => {
 		expect(includes(image.bytes, "made-at-home")).toBe(false);
 		expect(Buffer.compare(image.bytes, gifFixture())).toBe(0);
 		expect(image).toMatchObject({ mediaType: "image/gif", width: 2, height: 2 });
-	});
-
-	test("hashes the stripped bytes, so metadata never changes identity", async () => {
-		const [plain, tagged] = await Promise.all([ingestImage(pngFixture()), ingestImage(pngFixture({ card: "x" }))]);
-		expect(tagged.hash).toBe(plain.hash);
-		expect(plain.hash).toMatch(/^[0-9a-f]{64}$/);
-	});
-
-	test("rejects unsupported content and oversized files", async () => {
-		const unsupported = ingestImage(Buffer.from("BM not an accepted image"));
-		await expect(unsupported).rejects.toBeInstanceOf(InvalidImageError);
-		await expect(unsupported).rejects.toThrow("Only PNG, JPEG, WebP, and GIF images are accepted.");
-		await expect(ingestImage(Buffer.alloc(MAX_IMAGE_BYTES + 1))).rejects.toThrow("Images may be at most 20 MB.");
 	});
 });

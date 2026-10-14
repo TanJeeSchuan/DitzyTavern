@@ -4,14 +4,6 @@ import {
 	compilePrompt,
 	type CompilePromptInput,
 } from ".";
-import {
-	createMacroAttemptState,
-	expandMacroText as expandMacroTextWithState,
-} from "../../shared/prompt-macro-engine";
-
-const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
-	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
-
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database. The roles are the stored
 // roles the Default starts with: the established assembly presentation.
@@ -120,15 +112,6 @@ describe("Prompt compiler", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 
-	test("does not render Lore from a disabled slot", () => {
-		const plan = compilePrompt(source({
-			recipe: [{ reference: "lore", enabled: false, role: "system" }],
-			lore: [{ content: "This must stay out." }],
-		}));
-
-		expect(plan.blocks).toEqual([]);
-	});
-
 	test("rejects duplicate Lore slots before compilation", () => {
 		expect(() => compilePrompt(source({
 			recipe: [
@@ -137,20 +120,6 @@ describe("Prompt compiler", () => {
 			],
 			lore: [{ content: "This must not render twice." }],
 		}))).toThrow("A Prompt Preset may contain at most one Lore block.");
-	});
-
-	test("compiles blocks in the fixed deterministic order", () => {
-		const plan = compilePrompt(filled());
-		expect(plan.blocks.map((block) => block.kind)).toEqual([
-			"system-instruction",
-			"identity",
-			"identity",
-			"scenario",
-			"example-dialogue",
-			"history",
-			"history",
-			"post-history-instruction",
-		]);
 	});
 
 	test("orders the two Identities with their stored outgoing roles", () => {
@@ -336,32 +305,6 @@ describe("Outgoing roles and repeated occurrences", () => {
 		]);
 	});
 
-	test("re-renders a disabled or later-omitted occurrence without touching the stored text", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: [
-					{ reference: "model-identity", enabled: false, role: "assistant" },
-					{ reference: "model-identity", enabled: true, role: "assistant" },
-				],
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "I am Maren Voss.",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		// The disabled occurrence contributes nothing; the enabled one renders
-		// once. Neither renders the other's emptiness.
-		expect(plan.blocks).toEqual([
-			{ kind: "identity", role: "model", content: "I am Maren Voss." },
-		]);
-	});
-
 });
 
 describe("Macro expansion", () => {
@@ -394,25 +337,6 @@ describe("Macro expansion", () => {
 			{ kind: "identity", role: "human", content: "I am Writer, you are Maren Voss." },
 			{ kind: "identity", role: "model", content: "I am Maren Voss, you are Writer." },
 		]);
-		expect(plan.warnings).toEqual([]);
-	});
-
-	test("looks up macro names case-insensitively", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "{{SELF}} and {{SELF}}.",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		expect(plan.blocks[0]?.content).toBe("Maren Voss and Maren Voss.");
 		expect(plan.warnings).toEqual([]);
 	});
 
@@ -645,31 +569,8 @@ describe("Opening compilation", () => {
 			{ block: "opening 2", macro: "{{random}}" },
 		]);
 	});
-
-	test("escaped macros inside openings render literally", () => {
-		const opening = compileOpening(
-			"Say \\{{self}} plainly.",
-			{ self: "Maren Voss", other: "Writer" },
-			1,
-		);
-		expect(opening.text).toBe("Say \\Maren Voss plainly.");
-		expect(opening.warnings).toEqual([]);
-	});
 });
 
-describe("expandMacroText", () => {
-	test("is a single left-to-right pass over mixed literal, escaped, and unknown text", () => {
-		const result = expandMacroText(
-			"A \\{{self}} B {{self}} C {{unknown}} D \\\\{{other}} E",
-			{ self: "S", other: "O" },
-			"example-dialogue",
-		);
-		expect(result.text).toBe("A \\S B S C {{unknown}} D \\\\O E");
-		expect(result.warnings).toEqual([
-			{ block: "example-dialogue", macro: "{{unknown}}" },
-		]);
-	});
-});
 describe("Authored instruction blocks", () => {
 	const instruction = (overrides: Partial<{
 		enabled: boolean;

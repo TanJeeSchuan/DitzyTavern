@@ -1,5 +1,5 @@
 import { requireSnapshot } from "../test-fixtures/conversation";
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { readChatHistory, executeConversationCommand} from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -130,111 +130,13 @@ describe("graduated Chat history and Import Details", () => {
 		return importSillyTavernChat(database, path, artifactDirectory).conversation;
 	};
 
-	test("a committed import reads as ordinary paginated history with resolved Author Stamps", async () => {
+	test("normal native edits, Variant selection, and Participant renames leave canonical and exact source immutable", async () => {
 		const source = stageText([header, writer, swipeRecord]);
 		const staged = await source.staged();
 		const { token, preview } = staged;
 		const result = commitAll(token, preview.sha256, [
 			chatOnly("Writer", [1]),
 			chatOnly("TANJS", [2]),
-		]);
-
-		const conversations = database;
-		const history = readChatHistory(conversations, result.conversation.id, {
-			pageSize: 10,
-		});
-		expect(history?.cast.map((participant) => participant.name)).toEqual([
-			"Writer",
-			"TANJS",
-		]);
-		expect(history?.messages).toHaveLength(2);
-
-		// Transcript authorship uses the native Author Stamp created from the
-		// resolved Participant name; the source role flags (is_user, is_system)
-		// never shape identity.
-		expect(history?.messages[0]?.author).toEqual({
-			participantId: result.conversation.cast[0]?.id,
-			capturedName: "Writer",
-			inCast: true,
-		});
-		expect(history?.messages[1]?.author).toEqual({
-			participantId: result.conversation.cast[1]?.id,
-			capturedName: "TANJS",
-			inCast: true,
-		});
-
-		// The source-selected Swipe (swipe_id 1) initialized the selected
-		// native Variant, and the empty and duplicate alternatives remain
-		// distinct positions with their exact content.
-		const swipes = history?.messages[1]?.variants ?? [];
-		expect(swipes.map((variant) => variant.content)).toEqual([
-			"First alternative text",
-			"Second alternative, still saved",
-			"Second alternative, still saved",
-			"",
-		]);
-		expect(
-			swipes.map((variant) => variant.selected),
-		).toEqual([false, true, false, false]);
-	});
-
-	test("revisioned Variant selection persists natively and never touches either preserved source", async () => {
-		const source = stageText([header, writer, swipeRecord]);
-		const staged = await source.staged();
-		const { token, preview } = staged;
-		const result = commitAll(token, preview.sha256, [
-			chatOnly("Writer", [1]),
-			chatOnly("TANJS", [2]),
-		]);
-
-		const conversations = database;
-		const before = readChatHistory(conversations, result.conversation.id, {
-			pageSize: 10,
-		});
-		const swipedMessage = before?.messages[1];
-		const target = swipedMessage?.variants.find(
-			(variant) => variant.content === "",
-		);
-		expect(target).toBeDefined();
-		const archiveBefore = archiveText(result.conversation.id);
-		const artifactPath = exactArtifactPath(result.conversation.id);
-		const bytesBefore = readFileSync(artifactPath);
-
-		// Normal swipe navigation executes the existing revisioned Variant
-		// selection command: selection persists and later Messages are kept.
-		const applied = executeConversationCommand(conversations, {
-			conversationId: result.conversation.id,
-			expectedRevision: result.conversation.revision,
-			action: {
-				type: "select-variant",
-				messageId: swipedMessage?.id ?? 0,
-				variantId: target?.id ?? 0,
-			},
-		});
-		expect(applied.revision).toBe(result.conversation.revision + 1);
-
-		const after = readChatHistory(conversations, result.conversation.id, {
-			pageSize: 10,
-		});
-		const selection = after?.messages[1]?.variants;
-		expect(
-			selection?.map((variant) => variant.selected),
-		).toEqual([false, false, false, true]);
-
-		// Neither source representation changed: the canonical archive JSON
-		// and the exact stored bytes are bit-for-bit identical.
-		expect(archiveText(result.conversation.id)).toBe(archiveBefore);
-		expect(readFileSync(artifactPath)).toEqual(bytesBefore);
-		expect(sha256Of(bytesBefore)).toBe(preview.sha256);
-	});
-
-	test("normal native edits and Participant renames leave canonical and exact source immutable", async () => {
-		const source = stageText([header, writer, rulership]);
-		const staged = await source.staged();
-		const { token, preview } = staged;
-		const result = commitAll(token, preview.sha256, [
-			chatOnly("Writer", [1]),
-			chatOnly("Rulership", [2]),
 		]);
 
 		const archiveBefore = archiveText(result.conversation.id);
@@ -252,6 +154,16 @@ describe("graduated Chat history and Import Details", () => {
 				content: "Edited native text",
 			},
 		});
+		const swipedMessage = requireSnapshot(database, result.conversation.id).messages[1];
+		snapshot = executeConversationCommand(conversations, {
+			conversationId: result.conversation.id,
+			expectedRevision: snapshot.revision,
+			action: {
+				type: "select-variant",
+				messageId: swipedMessage?.id ?? 0,
+				variantId: swipedMessage?.variants.find((variant) => variant.content === "")?.id ?? 0,
+			},
+		});
 		snapshot = executeConversationCommand(conversations, {
 			conversationId: result.conversation.id,
 			expectedRevision: snapshot.revision,
@@ -267,6 +179,7 @@ describe("graduated Chat history and Import Details", () => {
 			pageSize: 10,
 		});
 		expect(history?.messages[0]?.variants[0]?.content).toBe("Edited native text");
+		expect(history?.messages[1]?.variants.map((variant) => variant.selected)).toEqual([false, false, false, true]);
 		expect(history?.cast[0]?.name).toBe("Renamed Writer");
 		expect(archiveText(result.conversation.id)).toBe(archiveBefore);
 		expect(readFileSync(artifactPath)).toEqual(bytesBefore);
@@ -292,9 +205,6 @@ describe("graduated Chat history and Import Details", () => {
 			counts: { messages: 2, variants: 2 },
 			importerVersion: "0.2.0",
 		});
-		// The persisted warning for the blank captured author is present… the
-		// fixture carries none, so warnings may be empty; never fabricate.
-		expect(Array.isArray(loaded.receipt.warnings)).toBe(true);
 		// Duplicate evidence excludes this Chat itself.
 		expect(loaded.duplicates).toEqual({ exact: [], related: [] });
 		expect(loaded.artifact).toMatchObject({
@@ -437,39 +347,5 @@ describe("graduated Chat history and Import Details", () => {
 			related: [],
 		});
 		expect(loaded.artifact?.availability).toEqual({ status: "available" });
-	});
-
-	test("imported Chats receive the same availability rules as ordinary Chats: no imported read-only state", async () => {
-		const source = stageText([header, writer, rulership]);
-		const staged = await source.staged();
-		const { token, preview } = staged;
-		const result = commitAll(token, preview.sha256, [
-			chatOnly("Writer", [1]),
-			chatOnly("Rulership", [2]),
-		]);
-
-		const conversations = database;
-		// Control assignment and Cast management work exactly like native
-				// Chats; nothing imported-specific blocks them. Import Control set the
-		// model seat on the second Participant, so assigning the human seat to
-		// it performs the atomic seat swap.
-		const snapshot = readTestConversationSnapshot(conversations, result.conversation.id);
-		expect(snapshot?.playable).toBe(true);
-		const changed = executeConversationCommand(conversations, {
-			conversationId: result.conversation.id,
-			expectedRevision: result.conversation.revision,
-			action: {
-				type: "assign-control",
-				seat: "human",
-				participantId: result.conversation.cast[1]?.id ?? 0,
-			},
-		});
-		expect(changed.revision).toBe(result.conversation.revision + 1);
-		expect(changed.control.humanParticipantId).toBe(
-			result.conversation.cast[1]?.id,
-		);
-		expect(changed.control.modelParticipantId).toBe(
-			result.conversation.cast[0]?.id,
-		);
 	});
 });

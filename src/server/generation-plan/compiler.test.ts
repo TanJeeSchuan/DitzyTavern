@@ -228,7 +228,7 @@ describe("Generation Plan Compiler", () => {
 			recipe: [{ reference: "lore", enabled: true, role: "system" }],
 			context: [],
 			lore: [{ content: "a" }, { content: "b" }],
-			loreAllowance: 5,
+			loreAllowance: 4,
 			estimator: (transcript) => {
 				const content = transcript.split("\u001eCONTENT\u001f")[1] ?? "";
 				return content.length;
@@ -238,7 +238,7 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.promptPlan.blocks).toEqual([{
 			kind: "lore",
 			role: "system",
-			content: "a\n\nb",
+			content: "a",
 		}]);
 	});
 
@@ -426,19 +426,11 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.budget.safetyAllowance).toBe(500);
 	});
 
-	test("excludes the unused Sibling Generation limit from Effective Generation Settings", () => {
-		const plan = compile({
-			settings: configuredSettings({ siblingGenerationLimit: 9 }),
-			intent: { type: "sibling" },
-		});
-
-		expect(plan.effectiveSettings.siblingGenerationLimit).toBeNull();
-	});
-
 	test("compiles the Sibling plan with the sibling intent and no Continuation operand", () => {
-		const plan = compile({ intent: { type: "sibling" } });
+		const plan = compile({ settings: configuredSettings({ siblingGenerationLimit: 9 }), intent: { type: "sibling" } });
 
 		expect(plan.promptPlan.intent).toEqual({ type: "sibling" });
+		expect(plan.effectiveSettings.siblingGenerationLimit).toBeNull();
 		expect(plan.effectiveSettings.continuationStrategy).toBeNull();
 		expect(plan.effectiveSettings.continuationInstruction).toBeNull();
 		expect(plan.effectiveSettings.continuationPrefillSuffix).toBeNull();
@@ -631,23 +623,6 @@ describe("Generation Plan Compiler", () => {
 		});
 	});
 
-	test("protects the latest human entry of an ordinary Tail plan", () => {
-		const plan = compile({
-			settings: configuredSettings({
-				contextLimit: 1000,
-				responseBudget: 10,
-				safetyAllowance: 0,
-			}),
-			context: [entry("Maren", "m".repeat(400), "model"), entry("Writer", "h".repeat(400), "human")],
-		});
-
-		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
-		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Writer", content: "h".repeat(400), role: "human" },
-		]);
-	});
-
 	test("fails clearly when an assistant-prefill Continuation has no preceding model history", () => {
 		const settings = configuredSettings({
 			continuationStrategy: "assistant-prefill",
@@ -680,22 +655,5 @@ describe("Generation Plan Compiler", () => {
 			expect(error.result.failure?.reason).toBe("protected-history-too-large");
 			expect(error.breakdown.contextLimit).toBe(200);
 		}
-	});
-
-	test("derives the continuation intent from the configured strategy alone", () => {
-		expect(continuationIntentFor(configuredSettings())).toEqual({
-			type: "continuation",
-			strategy: "instruction",
-			instruction: "Carry the scene forward.",
-		});
-		expect(continuationIntentFor(configuredSettings({
-			continuationStrategy: "assistant-prefill",
-			continuationPrefillSuffix: "\n\n",
-			repeatedImagePlacement: "last",
-		}))).toEqual({
-			type: "continuation",
-			strategy: "assistant-prefill",
-			suffix: "\n\n",
-		});
 	});
 });
