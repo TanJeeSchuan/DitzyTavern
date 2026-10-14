@@ -1,3 +1,4 @@
+import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
@@ -8,6 +9,8 @@ import { conversationDataTable } from "../database/schema";
 const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
 const INSTANCE_KEY = "instance";
+
+const storedBoolean = Type.Boolean();
 
 export const boxStateEntry = (id: BoxId, enabled: boolean) =>
 	({ namespace: boxReference(id), key: ENABLED_KEY, value: JSON.stringify(enabled) });
@@ -38,7 +41,10 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.map((row) => [row.namespace, row.value]));
 	return Object.fromEntries([...boxDescriptors().keys()].map((id) => {
 		const value = stored.get(boxReference(id));
-		return [id, value === undefined ? "absent" : JSON.parse(value) === true ? "enabled" : "disabled"];
+		if (value === undefined) return [id, "absent"];
+		const parsed: unknown = JSON.parse(value);
+		if (!Value.Check(storedBoolean, parsed)) throw new Error(`Stored ${boxReference(id)} enablement is not a boolean. Clear the ${boxReference(id)} namespace.`);
+		return [id, parsed ? "enabled" : "disabled"];
 	}));
 };
 
