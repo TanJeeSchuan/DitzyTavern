@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { asc, eq } from "drizzle-orm";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 import { compileOpening } from "../prompt-compiler";
 import {
 	artifactTable,
@@ -402,6 +403,7 @@ export function createConversation(
 			.get();
 		const generationSettings: typeof conversationGenerationSettingsTable.$inferInsert = {
 			conversation_id: conversation.id,
+			request_overrides_json: JSON.stringify(DEFAULT_CONVERSATION_GENERATION_SETTINGS.requestOverrides),
 			connection_profile_id: defaultProfile?.id ?? null,
 		};
 		if (defaultModel !== undefined) generationSettings.model_id = defaultModel.modelId;

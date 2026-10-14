@@ -56,6 +56,18 @@ describe("Conversation Generation Settings", () => {
 		database.close();
 	});
 
+	test("rejects stored Request Overrides with missing or non-object namespaces", () => {
+		const conversation = createConversationWithHistory(database, { name: "Corrupt overrides", participants: [] });
+		for (const overrides of [
+			{ responses: {}, "anthropic-messages": {} },
+			{ "chat-completions": [], responses: {}, "anthropic-messages": {} },
+		]) {
+			database.query("UPDATE conversation_generation_settings SET request_overrides_json = ? WHERE conversation_id = ?")
+				.run(JSON.stringify(overrides), conversation.id);
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow("Request Overrides are corrupt");
+		}
+	});
+
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Invalid budget settings",

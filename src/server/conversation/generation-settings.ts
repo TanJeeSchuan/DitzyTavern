@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
 import {
+	canonicalGenerationSettings,
 	isRepeatedImagePlacement,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
@@ -18,7 +20,6 @@ import type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
-	GenerationRequestOverrides,
 } from "./types";
 
 const DEFAULT_REQUEST_OVERRIDES = {
@@ -141,7 +142,7 @@ export function updateConversationGenerationSettings(
 ): ConversationGenerationSettings {
 	const normalized = normalizeGenerationSettings(input);
 	db.insert(conversationGenerationSettingsTable)
-		.values({ conversation_id: conversationId })
+		.values({ conversation_id: conversationId, ...settingsRowValues(normalized) })
 		.onConflictDoNothing()
 		.run();
 	const updated = db
@@ -342,34 +343,14 @@ function validateContinuationPrefillSuffix(
 
 function parseRequestOverrides(value: string): ConversationGenerationSettings["requestOverrides"] {
 	try {
-		// @approved
-		//  SAFETY: the persisted value is written only by settingsRowValues, from
-		// a cloneRequestOverrides-verified draft; parsing it restores the same
-		// closed JSON value domain, and cloneRequestOverrides re-verifies all
-		// three required format namespaces before returning it.
-		const parsed = JSON.parse(value) as ConversationGenerationSettings["requestOverrides"];
-		return cloneRequestOverrides(parsed);
-	} catch {
-		throw new Error("Conversation Generation Request Overrides are corrupt.");
+		return Value.Parse(canonicalGenerationSettings.properties.requestOverrides, JSON.parse(value));
+	} catch (cause) {
+		throw new Error("Conversation Generation Request Overrides are corrupt.", { cause });
 	}
 }
 
 function cloneRequestOverrides(
 	value: ConversationGenerationSettings["requestOverrides"],
 ): ConversationGenerationSettings["requestOverrides"] {
-	const copy = (candidate: GenerationRequestOverrides): GenerationRequestOverrides => {
-		const serialized = JSON.stringify(candidate);
-		if (serialized === undefined) {
-			throw new InvalidConversationCommandError("Request Overrides must be JSON values.");
-		}
-		// @approved
-		//  SAFETY: serialized is produced from the typed GenerationRequestOverrides
-		// contract, so parsing it restores the same closed JSON value domain.
-		return JSON.parse(serialized) as GenerationRequestOverrides;
-	};
-	return {
-		"chat-completions": copy(value["chat-completions"] ?? {}),
-		responses: copy(value.responses ?? {}),
-		"anthropic-messages": copy(value["anthropic-messages"] ?? {}),
-	};
+	return structuredClone(value);
 }
