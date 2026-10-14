@@ -385,6 +385,11 @@ export const variantDetails = Type.Object({
 export type GenerationProvenance = SharedGenerationProvenance;
 export type VariantDetails = Static<typeof variantDetails>;
 
+// The captured historical Control pair is inline in the Variant details;
+// derive it so the paginated history client can type it without a duplicate
+// declaration.
+export type HistoricalControlSnapshot = NonNullable<VariantDetails["historicalContext"]>;
+
 // Lightweight paginated history read contract: stable chronological pages
 // of native Messages with the Participant identity and selected Variant
 // state needed for rendering. Reasoning Content is included when present;
@@ -421,6 +426,8 @@ const messageSwipeEligibility = Type.Union([
 		]),
 	}),
 ]);
+
+export type MessageSwipeEligibility = Static<typeof messageSwipeEligibility>;
 
 const chatHistoryMessage = Type.Object({
 	id: Type.Integer(),
@@ -492,6 +499,8 @@ const dataScope = Type.Union([
 		variantId: Type.Integer(),
 	}),
 ]);
+
+export type ConversationDataScope = Static<typeof dataScope>;
 
 const createMessageAction = Type.Object({
 	type: Type.Literal("create-message"),
