@@ -38,10 +38,27 @@ export function initializeDatabase(
 	migrate(drizzle(database), { migrationsFolder: migrationsDirectory });
 }
 
+// @approved
+//  Tests open hundreds of in-memory databases; each one copies a migrated
+// image instead of running every migration again.
+const migratedImages = new Map<string, Uint8Array>();
+
 export function openInitializedDatabase(
 	options: OpenDatabaseOptions = {},
 	migrationsDirectory = defaultMigrationsDirectory,
 ): Database {
+	if (options.path === ":memory:") {
+		let image = migratedImages.get(migrationsDirectory);
+		if (!image) {
+			const template = openDatabase(options);
+			initializeDatabase(template, migrationsDirectory);
+			migratedImages.set(migrationsDirectory, image = template.serialize());
+			template.close();
+		}
+		const database = Database.deserialize(image);
+		database.exec("PRAGMA foreign_keys = ON");
+		return database;
+	}
 	const database = openDatabase(options);
 	try {
 		initializeDatabase(database, migrationsDirectory);
