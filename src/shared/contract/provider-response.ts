@@ -1,7 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { generationJsonValue } from "./json-value";
 
-export const catalogBody = Type.Object({ data: Type.Array(generationJsonValue) });
+export const catalogBody = Type.Object({ data: Type.Array(Type.Unknown()) });
 export const modelCatalogEntry = Type.Object({ id: Type.String() });
 export type ModelCatalogEntry = Static<typeof modelCatalogEntry>;
 

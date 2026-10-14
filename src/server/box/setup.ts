@@ -1,10 +1,9 @@
 import { parseStoredBoxJson } from "./stored-json";
 import { Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors, boxesWith, boxReference, isBoxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
-import { boxValue, type BoxValue } from "../../shared/contract/box-value";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { conversationDataTable } from "../database/schema";
 
 const SETUP_KEY = "setup";
@@ -43,7 +42,7 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 	return Object.fromEntries([...boxDescriptors().keys()].map((id) => {
 		const value = stored.get(boxReference(id));
 		if (value === undefined) return [id, "absent"];
-		const parsed: unknown = parseStoredBoxJson(value, storedBoolean, `Chat ${conversationId} ${boxReference(id)} ${ENABLED_KEY}`);
+		const parsed = parseStoredBoxJson(value, storedBoolean, `Chat ${conversationId} ${boxReference(id)} ${ENABLED_KEY}`);
 		return [id, parsed ? "enabled" : "disabled"];
 	}));
 };
@@ -78,8 +77,7 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 	return Object.fromEntries(boxesWith("setup").map(([id, { schema, initial }]) => {
 		const value = stored.get(boxReference(id));
 		if (value === undefined) return [id, initial];
-		const decoded: unknown = parseStoredBoxJson(value, schema, `Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY}`);
-		if (!Value.Check(boxValue, decoded) || !Value.Check(schema, decoded)) throw new Error(`Stored Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY} does not match its schema.`);
+		const decoded = parseStoredBoxJson(value, Type.Unsafe<BoxValue>(schema), `Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY}`);
 		return [id, decoded];
 	}));
 };

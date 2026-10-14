@@ -1,10 +1,10 @@
-import { generationJsonValue } from "../../shared/contract/json-value";
+import { Type } from "@sinclair/typebox";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { parseStoredBoxJson } from "./stored-json";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxMoves, boxMovesError, hasMoves, moveLabel, type BoxMoves } from "../../shared/contract/box-generation";
-import { boxesWith, boxReference, type BoxStates } from "../../shared/contract/box";
+import { hasMoves, moveLabel, type BoxMoves } from "../../shared/contract/box-generation";
+import { boxDescriptor, boxesWith, boxReference, type BoxStates } from "../../shared/contract/box";
 import { messageDataTable } from "../database/schema";
 import { serverBox } from "./registry";
 
@@ -38,8 +38,11 @@ export const readMessageMoves = (db: BunSQLiteDatabase, messageIds: readonly num
 		eq(messageDataTable.key, MOVES_KEY),
 	)).all();
 	for (const row of rows) {
-		const moves = { ...result.get(row.message_id), [row.namespace.slice(4)]: parseStoredBoxJson(row.value, generationJsonValue, `Message ${row.message_id} ${row.namespace} ${MOVES_KEY}`) };
-		if (!Value.Check(boxMoves, moves) || boxMovesError(moves) !== undefined) throw new Error(`Stored Message ${row.message_id} ${row.namespace} ${MOVES_KEY} does not match its schema.`);
+		const id = row.namespace.slice(4);
+		const declared = boxDescriptor(id).moves;
+		if (declared === undefined) throw new Error(`The ${id} Box takes no Moves.`);
+		const schema = Type.Array(Type.Unsafe<BoxValue>(declared.schema), { minItems: 1, maxItems: declared.max });
+		const moves = { ...result.get(row.message_id), [id]: parseStoredBoxJson(row.value, schema, `Message ${row.message_id} ${row.namespace} ${MOVES_KEY}`) };
 		result.set(row.message_id, moves);
 	}
 	return result;
