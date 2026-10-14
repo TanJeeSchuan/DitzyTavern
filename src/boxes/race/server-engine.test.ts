@@ -45,6 +45,19 @@ test("resolved later Stretches survive earlier selections and a new race starts 
 	expect(foldRaceRecords([first, next, second], "race-c")).toBeNull();
 });
 
+test("a raceId reused for a different field rejects its records, naming the Runner without a gate", () => {
+	const first = advanceRace({ setup, state: null, seed: "first", intent: "respond", moves: [] })!;
+	const other = { ...setup, slots: fillRaceField([], setup.slots.map(({ name }) => name), "other") };
+	const [stranded] = first.after.standings;
+	expect(() => advanceRace({ setup: other, state: first.after, seed: "second", intent: "respond", moves: [] }))
+		.toThrow(`Race race-a has a record for ${stranded!.name}, who holds no gate in this setup. Start a new race.`);
+});
+
+test("a running race whose every standing was withdrawn runs no Stretch, though rejoined gates remain", () => {
+	const first = advanceRace({ setup, state: null, seed: "first", intent: "respond", moves: [] })!;
+	expect(advanceRace({ setup, state: { ...first.after, standings: [] }, seed: "second", intent: "respond", moves: [] })).toBeUndefined();
+});
+
 test("respond advances with Auto off; both intents stop at the configured distance from the finish, and respond advances past it", () => {
 	const off = { ...setup, auto: "off" as const };
 	expect(advanceRace({ setup: off, state: null, seed: "a", intent: "continue", moves: [] })).toBeUndefined();

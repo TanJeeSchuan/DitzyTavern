@@ -46,6 +46,7 @@ export type RaceSetup = Static<typeof raceSetup>;
 export const raceStanding = Type.Object({
 	name: Type.String(), distance: Type.Number(), energy: Type.Number(), time: Type.Number(),
 });
+export type RaceStanding = Static<typeof raceStanding>;
 const raceMoveKind = Type.Union([Type.Literal("overtake"), Type.Literal("conserve"), Type.Literal("spurt"), Type.Literal("hold")]);
 // @approved
 //  A Hidden intent is formed in one Stretch and pays off in a later one; the
