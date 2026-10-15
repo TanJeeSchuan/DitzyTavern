@@ -141,7 +141,7 @@ describe("OpenAI Compatible Model Client", () => {
 			generationSettings: settings,
 		})).rejects.toMatchObject({
 			kind: "provider",
-			message: JSON.stringify({ message: "raw upstream failure" }),
+			message: "raw upstream failure",
 		});
 	});
 

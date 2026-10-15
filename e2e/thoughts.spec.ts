@@ -37,6 +37,7 @@ test("a thought in a reply moves from the prose to the Thoughts window, follows 
 	await expect(story(page).getByText("Theodora frowns.")).toBeVisible();
 	await reply.getByRole("button", { name: "A thought" }).click();
 	await expect(thoughts.getByRole("listitem")).toHaveText(["Theodora KlineStay calm."]);
+	await story(page).locator(".story-scroll").evaluate((element) => element.scrollTo({ top: element.scrollHeight, behavior: "instant" }));
 
 	await openBoxes(page);
 	await page.getByRole("switch", { name: "Thoughts in this Chat" }).click();

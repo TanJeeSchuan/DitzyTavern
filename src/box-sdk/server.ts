@@ -10,7 +10,7 @@ export { effectiveRecord, hasAutomaticRecord, hasDigestError, readRecordSlots } 
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
-export { putChatValue, putLibraryValue, readCharacterRevisions, readChatValue, readLibraryValue, readLibraryValues, readParticipantValues } from "../server/box/stored-value";
+export { deleteLibraryValue, putChatValue, putLibraryValue, readCharacterRevisions, readChatValue, readLibraryValue, readLibraryValues, readParticipantValues } from "../server/box/stored-value";
 export { readProfileApiFormat } from "../server/connection-settings/persistence";
 export { readEmbeddingConfiguration, type EmbeddingConfiguration } from "../server/box/embedding";
 export { seededFraction } from "../server/box/seed";
@@ -20,3 +20,6 @@ export { cosineSimilarity } from "../server/model-client/embeddings";
 export { tokenxEstimator } from "../server/prompt-compiler";
 export { sha256 } from "../server/hash";
 export { presentDomainError } from "../server/contract/domain-error";
+export { openInitializedDatabase } from "../server/database/database";
+export { uploadImage } from "../server/image";
+export { ingestImage } from "../server/image/ingest";

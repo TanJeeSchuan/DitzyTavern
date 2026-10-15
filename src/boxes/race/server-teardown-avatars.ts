@@ -4,14 +4,10 @@
 // exact Image its folder file produces, so an avatar the writer replaced
 // stays. The Images themselves are left to the orphan sweep.
 
-import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxReference } from "../src/shared/contract/box";
-import { RACE_AVATAR_PREFIX } from "../src/boxes/race/shared-data";
-import { ingestImage } from "../src/server/image/ingest";
-import { openInitializedDatabase } from "../src/server/database/database";
-import { libraryDataTable } from "../src/server/database/schema";
-import { RACE_AVATAR_FOLDER, raceAvatarFiles } from "./seed-race-avatars";
+import { RACE_AVATAR_PREFIX } from "./shared-data";
+import { deleteLibraryValue, ingestImage, openInitializedDatabase } from "@/box-sdk/server";
+import { RACE_AVATAR_FOLDER, raceAvatarFiles } from "./server-seed-avatars";
 
 export async function teardownRaceAvatars(databasePath?: string, folder?: string) {
 	const database = openInitializedDatabase({ path: databasePath });
@@ -19,9 +15,7 @@ export async function teardownRaceAvatars(databasePath?: string, folder?: string
 		let removed = 0;
 		for (const { name, path } of raceAvatarFiles(folder)) {
 			const { hash } = await ingestImage(await Bun.file(path).bytes());
-			removed += drizzle(database).delete(libraryDataTable).where(and(
-				eq(libraryDataTable.namespace, boxReference("race")), eq(libraryDataTable.key, `${RACE_AVATAR_PREFIX}${name}`), eq(libraryDataTable.value, hash),
-			)).returning().all().length;
+			removed += deleteLibraryValue(drizzle(database), "race", { key: `${RACE_AVATAR_PREFIX}${name}`, value: hash });
 		}
 		console.log(`[teardown:race-avatars] removed ${removed} avatars matching ${folder ?? RACE_AVATAR_FOLDER}/`);
 	} finally {
@@ -29,4 +23,4 @@ export async function teardownRaceAvatars(databasePath?: string, folder?: string
 	}
 }
 
-if (import.meta.main) await teardownRaceAvatars();
+if (import.meta.main) await teardownRaceAvatars(Bun.argv[2], Bun.argv[3]);

@@ -17,6 +17,7 @@ const focus = (page: Page, visibilityState: "hidden" | "visible") => page.evalua
 }, visibilityState);
 
 test("conflict and focus refresh every loaded history page across two tabs", async ({ page, context, request }) => {
+	test.slow(); // @approved Cross-tab edits dominate the measured ~19 s browser flow; setup takes ~0.6 s.
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const url = `/api/conversations/${activeChatId}`;
 	let conversation = await (await request.get(url)).json();

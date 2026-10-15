@@ -52,6 +52,10 @@ export const readLibraryValue = <T extends TSchema>(db: BunSQLiteDatabase, box: 
 export const putLibraryValue = (db: BunSQLiteDatabase, box: BoxId, write: ValueWrite, guard: SharedGuard) =>
 	putNamespacedLibraryValue(db, boxReference(box), write, guard);
 
+/** @approved Removes the Box's `key` Library value only while it still holds `value`; returns how many rows went. */
+export const deleteLibraryValue = (db: BunSQLiteDatabase, box: BoxId, { key, value }: ValueWrite) =>
+	db.delete(libraryDataTable).where(and(libraryRow(boxReference(box), key), eq(libraryDataTable.value, value))).returning().all().length;
+
 /** @approved The Box's Library values whose keys start with `prefix`, as stored, with their revisions. */
 export const readLibraryValues = (db: BunSQLiteDatabase, box: BoxId, prefix: string) =>
 	db.select({ key: libraryDataTable.key, value: libraryDataTable.value, revision: libraryDataTable.revision }).from(libraryDataTable)
