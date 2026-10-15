@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, enableDecisionModels, insertBox, send, story } from "./fixtures";
+import { test, expect, enableDecisionModels, insertBox, send, story, openBoxes, closeBoxes } from "./fixtures";
 import type { DecisionRule } from "./protocol";
 import { isChatModelCall } from "./protocol";
 
@@ -59,9 +59,10 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 
 	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(memories).toBeVisible();
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
+	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(memories).toContainText("Memory is off in this Chat.");
 	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
 	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
@@ -77,9 +78,9 @@ test("a Message's Memories action remembers it on demand", async ({ page, reques
 	await llm.chat({ chunks: ["She nods. \"I keep the lantern lit all night.\""] }, { chunks: ["She turns back to the map."] });
 
 	await page.goto("/");
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await send(page, "Why is the light on?");
 	const reply = story(page).locator("article", { hasText: "She nods." });
 	await expect(reply).toBeVisible();

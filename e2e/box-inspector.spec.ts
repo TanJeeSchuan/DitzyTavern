@@ -1,14 +1,15 @@
-import { test, expect, insertBox, story } from "./fixtures";
+import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
 
 test("Memory inspector, settings and participant identity stay available while Memory is off", async ({ page, request }) => {
 	await page.goto("/");
 	const tools = page.getByRole("group", { name: "Chat tools" });
 	await tools.getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(page.getByRole("complementary", { name: "Memories" })).toBeVisible();
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await expect(tools.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
+	await tools.getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(page.getByRole("complementary", { name: "Memories" })).toContainText("Memory is off in this Chat.");
 	const message = story(page).getByRole("article").last();
 	await message.hover();
@@ -40,9 +41,9 @@ test("Memory inspector, settings and participant identity stay available while M
 test("the narrow Chat title menu opens the Box inspector and returns to the story", async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto("/");
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await page.getByRole("heading", { level: 1 }).getByRole("button").click();
 	await page.getByRole("menuitem", { name: "Memories", exact: true }).click();
 	const inspector = page.getByRole("complementary", { name: "Memories" });
@@ -71,9 +72,11 @@ test("Memory traces render in previews, active Generations and saved details eve
 	await reply.hover();
 	await reply.getByRole("button", { name: "Details", exact: true }).click();
 	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
+	await reply.hover();
+	await reply.getByRole("button", { name: "Details", exact: true }).click();
 	await expect(details.getByRole("heading", { name: "Memory recall" })).toBeVisible();
 });
 
@@ -84,7 +87,7 @@ test("removing an inspected Box closes it without reopening on reinsertion", asy
 	const inspector = page.getByRole("complementary", { name: "Memories" });
 	await opener.click();
 	await expect(inspector).toBeVisible();
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("button", { name: "Remove Memory", exact: true }).click();
 	await page.getByRole("dialog", { name: "Remove Memory?" }).getByRole("button", { name: "Remove", exact: true }).click();
 	await expect(inspector).toHaveCount(0);
