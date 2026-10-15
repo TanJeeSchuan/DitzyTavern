@@ -1,5 +1,6 @@
 import type { PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
+import { BoxManager } from "../box-windows/BoxManager";
 import { boxClients, boxPresent, boxTitle } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
@@ -30,6 +31,7 @@ const sharedHeaderTitles = {
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
+	boxes: "Boxes",
 	settings: "Settings",
 } satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | `box-settings:${string}` | null>, string>;
 const isBoxSettings = (panel: PrimaryPanel): panel is `box-settings:${string}` => panel?.startsWith("box-settings:") === true;
@@ -126,6 +128,9 @@ export function PrimaryPanelView({
 								onConversationChange={onConversationChange}
 							/>
 						</div>
+					)}
+					{panel === "boxes" && conversation !== null && (
+						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange} />
 					)}
 					{panel === "lorebooks" && (
 						<div className="panel-fill">

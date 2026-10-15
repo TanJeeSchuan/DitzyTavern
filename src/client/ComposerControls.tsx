@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { boxReference, type BoxId, type PromptBoxReference } from "../shared/contract/box";
 import { boxClients, boxPresent, boxTitle } from "./box-windows/registry";
 import { BoxIcon } from "./box-windows/BoxBoundary";
-import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
@@ -123,7 +122,6 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			<BoxManager conversation={conversation} disabled={disabled} onConversationChange={onConversationChange} />
 			{launchers.map(({ box, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector

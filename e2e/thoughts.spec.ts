@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, insertBox, story } from "./fixtures";
+import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
 
 const generate = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });
@@ -38,9 +38,9 @@ test("a thought in a reply moves from the prose to the Thoughts window, follows 
 	await reply.getByRole("button", { name: "A thought" }).click();
 	await expect(thoughts.getByRole("listitem")).toHaveText(["Theodora KlineStay calm."]);
 
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await page.getByRole("switch", { name: "Thoughts in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await expect((await generate(page, "Goodnight.")).getByText(/^Thoughts ·/)).toHaveCount(0);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("She leaves.")).toBeVisible();

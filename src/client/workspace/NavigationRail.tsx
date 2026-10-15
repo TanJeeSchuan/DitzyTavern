@@ -2,6 +2,7 @@ import { BoxIcon } from "../box-windows/BoxBoundary";
 import { boxClients, boxTitle } from "../box-windows/registry";
 import {
 	BookMarked,
+	Boxes,
 	Cable,
 	ListOrdered,
 	MessageSquare,
@@ -73,6 +74,14 @@ export function NavigationRail({
 					onClick={() => onOpenPanel("generation")}
 				>
 					<SlidersHorizontal aria-hidden="true" />
+				</RailButton>
+				<RailButton
+					disabled={inspecting}
+					label="Boxes"
+					active={activePanel === "boxes"}
+					onClick={() => onOpenPanel("boxes")}
+				>
+					<Boxes aria-hidden="true" />
 				</RailButton>
 				{[...boxClients()].map(([id, { icon, Settings }]) => Settings && (
 					<RailButton key={id} disabled={inspecting} label={boxTitle(id)} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>

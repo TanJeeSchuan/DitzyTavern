@@ -30,13 +30,27 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 
 export const story = (page: Page) => page.getByRole("main", { name: "Active Chat" });
 
+export const openBoxes = async (page: Page) => {
+	await expect(story(page)).toBeVisible({ timeout: 15_000 });
+	const boxes = page.getByRole("list", { name: "Boxes", exact: true });
+	if (await page.locator(".box-manager").isVisible()) return boxes;
+	const navigation = page.getByRole("button", { name: "Open navigation", exact: true });
+	if (await navigation.isVisible()) await navigation.click();
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Boxes", exact: true }).click();
+	return boxes;
+};
+
+export const closeBoxes = async (page: Page) => {
+	await page.locator(".primary-panel").getByRole("button", { name: /^(Close Boxes|Back to Chat)$/ }).filter({ visible: true }).click();
+};
+
 /** @approved A new Chat holds only the Author Note and Memory; a spec inserts any other Box through the Box manager. */
 export const insertBox = async (page: Page, title: string) => {
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	const toggle = page.getByRole("switch", { name: `${title} in this Chat` });
 	await toggle.click();
 	await expect(toggle).toBeChecked();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 };
 
 export const send = async (page: Page, text: string) => {
