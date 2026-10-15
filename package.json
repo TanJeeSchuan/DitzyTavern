@@ -2,7 +2,7 @@
 	"name": "ditzytavern",
 	"private": true,
 	"type": "module",
-	"packageManager": "bun@1.3.14",
+	"packageManager": "bun@1.4.3",
 	"scripts": {
 		"dev:server": "bun --watch src/server/index.ts",
 		"dev:client": "vite",
