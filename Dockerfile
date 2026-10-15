@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.3 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -9,12 +9,12 @@ ARG SOURCE_REVISION
 RUN bun scripts/write-build-metadata.ts
 RUN bun run build
 
-FROM oven/bun:1.3.14 AS dependencies
+FROM oven/bun:1.4.3 AS dependencies
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
-FROM oven/bun:1.3.14 AS runtime
+FROM oven/bun:1.4.3 AS runtime
 ARG DISTRIBUTION=custom
 ARG BUILD_NUMBER
 ARG SOURCE_REVISION
