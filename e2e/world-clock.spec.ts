@@ -1,7 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "./fixtures";
-import type { E2eServer } from "./harness";
-import { hasDecisionPassage, isDecisionModelCall } from "./protocol";
+import { isDecisionModelCall } from "./protocol";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
 const weather = ["not mentioned", "clear", "cloudy", "rain", "storm", "snow", "fog"];
@@ -14,8 +13,13 @@ const digest = (passage: string | undefined, bin: string, established: string, h
 	{ passage, match: ["What weather does"], answer: choice(established, weather), hold },
 ];
 
-const digested = (llm: E2eServer, passage: string) => expect.poll(async () => (await llm.log()).calls
-	.some((call) => isDecisionModelCall(call) && hasDecisionPassage(call.body.state) && JSON.stringify(call.body.state.passage).includes(passage))).toBe(true);
+const digested = async (page: Page, passage: string) => {
+	const { activeChatId } = await (await page.request.get("/api/workspace")).json();
+	await expect.poll(async () => {
+		const read = await (await page.request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
+		return read.passages.some((entry: { content: string; digested: boolean }) => entry.content.includes(passage) && entry.digested);
+	}).toBe(true);
+};
 
 const clockLine = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
@@ -24,9 +28,7 @@ const clockLine = async (page: Page) => {
 };
 
 const sendWithClock = async (page: Page, text: string) => {
-	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
-	await composer.fill(text);
+	await page.getByRole("textbox", { name: "Message draft" }).fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	return clockLine(page);
 };
@@ -66,19 +68,19 @@ test("the World Clock digests passages in the background and follows the selecte
 	await send.click();
 	await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 	const reply = story(page).locator("article").nth(await story(page).locator("article").count() - 1);
-	await digested(llm, "Wait out the night.");
-	await digested(llm, "The storm breaks");
+	await digested(page, "Wait out the night.");
+	await digested(page, "The storm breaks");
 
 	await reply.getByRole("button", { name: "New Swipe" }).click();
 	await expect(await clockLine(page)).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
 	await send.click();
 	await expect(reply.getByText("Snow drifts")).toBeVisible();
-	await digested(llm, "Snow drifts");
+	await digested(page, "Snow drifts");
 
 	await expect(await sendWithClock(page, "Look outside.")).toHaveText(/^(9|10):\d\d AM \| 🗓️ Sunday, June 1, 2025 AD \| 🌨️ Snow, -?\d+°C$/);
 	await send.click();
 	await expect(story(page).locator("article").getByText("She lights the lamp.")).toBeVisible();
-	await digested(llm, "She lights the lamp.");
+	await digested(page, "She lights the lamp.");
 
 	await reply.hover();
 	await reply.getByRole("button", { name: "Previous Swipe" }).click();
@@ -87,7 +89,7 @@ test("the World Clock digests passages in the background and follows the selecte
 	await expect(await sendWithClock(page, "And now?")).toHaveText(/^\d+:\d\d PM \| 🗓️ Sunday, June 1, 2025 AD \| ⛈️ Storm, -?\d+°C$/);
 	await send.click();
 	await expect(story(page).locator("article").getByText("She keeps watch.")).toBeVisible();
-	await digested(llm, "She keeps watch.");
+	await digested(page, "She keeps watch.");
 });
 
 test("the dock tab and the top bar item follow a digest that lands while the window is minimized, and the item opens it", async ({ page, request, llm }) => {
@@ -105,8 +107,8 @@ test("the dock tab and the top bar item follow a digest that lands while the win
 	await sendWithClock(page, "Wait out the night.");
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).locator("article").getByText("Dawn comes")).toBeVisible();
-	await digested(llm, "Wait out the night.");
-	await digested(llm, "Dawn comes");
+	await digested(page, "Wait out the night.");
+	await digested(page, "Dawn comes");
 
 	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM( · .+)?$/, { timeout: 15_000 });
 	await expect(topBarItem(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM( · .+)?$/, { timeout: 15_000 });
@@ -119,9 +121,7 @@ test("a clock that is off contributes no clock line and queues no digest", async
 	await selectBoxDecisionModel(request, "world-clock");
 	await llm.chat({ chunks: ["The lamp turns above you."] });
 	await page.goto("/");
-	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
-	await composer.fill("Look outside.");
+	await page.getByRole("textbox", { name: "Message draft" }).fill("Look outside.");
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
 	await expect(preview.getByText(/^World Clock ·/)).toHaveCount(0);
@@ -227,7 +227,7 @@ test("a Writer override survives a late digest, reset restores the automatic val
 	await expect(passage("The storm breaks")).toContainText("+5m · ☀️ Clear");
 	await expect(passage("The storm breaks")).toContainText("Overridden");
 	await expect(passage("Snow drifts")).toContainText("🌨️ Snow");
-	await digested(llm, "The storm breaks");
+	await digested(page, "The storm breaks");
 
 	await passage("The storm breaks").hover();
 	await passage("The storm breaks").getByRole("button", { name: "Reset" }).click();

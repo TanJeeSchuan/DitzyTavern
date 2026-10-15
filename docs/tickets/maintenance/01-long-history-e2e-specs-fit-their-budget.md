@@ -40,3 +40,16 @@ The complete-run requirement also exposed a reproducible Thoughts spec failure a
 ## Final validation
 
 Three consecutive full `bun run test:e2e` runs passed all 84 tests, with two workers and no retries: 2.3 min, 2.4 min, 2.3 min. `story-jump` took 6.1/6.3/6.3 s; `story-sync` took 5.8/6.1/6.5 s. The focused Thoughts test passed three consecutive repetitions after its scroll correction.
+
+## Follow-up: completion boundaries
+
+Adversarial probes reproduced two races that ordinary repetitions missed:
+
+- Delaying another tab's save by 400 ms made focus refresh run before commit. The edit helper now waits for its actual command response (including the intentional 409) and closes the successful editor before continuing. This removes the need for `test.slow()`; the normal 30 s budget applies again.
+- Holding a World Clock model reply let the old helper report a digest as complete while its record was still missing. It now polls the passage's persisted `digested` state before the next prompt capture.
+
+A 5.5 s delayed workspace reproduced the duplicate 5 s pre-fill assertion failures. Local typing helpers now use Playwright's existing `fill()` actionability wait directly, matching the shared Send helper. No timeout was increased.
+
+Each minimized adversarial probe failed before the fix and passed three repetitions afterward. Forty repeated World Clock/story-sync cases passed. Temporary probes and injected delays were removed.
+
+Follow-up validation: three consecutive complete suites passed all 84 tests without retries (3.0/2.5/2.5 min). Lint and typechecking passed. The overwrite assertion also waits for the command response and editor closure before reading storage, so it cannot accept optimistic text as a completed overwrite.
