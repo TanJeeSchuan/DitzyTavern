@@ -6,12 +6,9 @@
 
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxReference } from "../src/shared/contract/box";
-import { RACE_AVATAR_PREFIX } from "../src/boxes/race/shared-data";
-import { ingestImage } from "../src/server/image/ingest";
-import { openInitializedDatabase } from "../src/server/database/database";
-import { libraryDataTable } from "../src/server/database/schema";
-import { RACE_AVATAR_FOLDER, raceAvatarFiles } from "./seed-race-avatars";
+import { RACE_AVATAR_PREFIX } from "./shared-data";
+import { boxReference, ingestImage, libraryDataTable, openInitializedDatabase } from "@/box-sdk/server";
+import { RACE_AVATAR_FOLDER, raceAvatarFiles } from "./server-seed-avatars";
 
 export async function teardownRaceAvatars(databasePath?: string, folder?: string) {
 	const database = openInitializedDatabase({ path: databasePath });
@@ -29,4 +26,4 @@ export async function teardownRaceAvatars(databasePath?: string, folder?: string
 	}
 }
 
-if (import.meta.main) await teardownRaceAvatars();
+if (import.meta.main) await teardownRaceAvatars(Bun.argv[2], Bun.argv[3]);

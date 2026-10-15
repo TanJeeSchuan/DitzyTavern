@@ -21,3 +21,7 @@ export { tokenxEstimator } from "../server/prompt-compiler";
 export { sha256 } from "../server/hash";
 export { presentDomainError } from "../server/contract/domain-error";
 export { characterDataTable, connectionProfileTable, libraryDataTable, participantDataTable } from "../server/database/schema";
+
+export { openInitializedDatabase } from "../server/database/database";
+export { uploadImage } from "../server/image";
+export { ingestImage } from "../server/image/ingest";

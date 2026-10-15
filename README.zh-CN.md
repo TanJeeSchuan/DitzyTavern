@@ -93,7 +93,7 @@ DitzyTavern 在本地运行。一个 Bun 进程提供整个应用，所有数据
 
 ## 运行
 
-需要 [Bun](https://bun.sh) 1.3。
+需要 [Bun](https://bun.sh) 1.4.3。
 
 ```sh
 bun install
@@ -114,6 +114,8 @@ Intel/AMD 和 ARM64 的 Docker 镜像发布到 `ghcr.io/tanjeeschuan/ditzytavern
 Connections 提供 OpenRouter Decisions、TypeSafe 和空白 System One 预设。记忆与语义触发可以共用一个密钥，但选择不同模型。状态令牌限制默认 16,000；Clef 建议约 2,000。Lore 会分块读取场景，召回会裁剪场景，提取状态超限则明确报错。支持无需密钥的本地 HTTP 服务、自定义请求头和正数请求超时。
 
 ### 开发
+
+开发检查还需要 Node，请使用 `.nvmrc` 中的版本。
 
 ```sh
 bun run dev:server   # 带 --watch 的 API

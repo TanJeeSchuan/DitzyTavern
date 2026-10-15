@@ -24,7 +24,9 @@ test("jumping to a source reads one window, pages newer, returns to latest and s
 	const coverage = page.getByRole("slider", { name: "Messages by Memory state" });
 	await coverage.focus();
 	await coverage.press("Home");
-	for (let step = 1; step < 50; step++) await coverage.press("ArrowRight");
+	for (let step = 0; step < 4; step++) await coverage.press("PageDown");
+	for (let step = 0; step < 5; step++) await coverage.press("ArrowRight");
+	await expect(coverage).toHaveAttribute("aria-valuenow", "50");
 	requests.length = 0;
 	await coverage.press("Enter");
 	const targetMessage = story(page).locator(`[data-message-id="${target.id}"]`);

@@ -17,9 +17,9 @@ tester.run("no-box-boundary-imports", noBoxBoundaryImportsRule, {
 		{ filename: "src/boxes/race/shared-descriptor.ts", code: 'import { describeSetup } from "@/box-sdk/shared"; import { raceSetup } from "./contract";' },
 		{ filename: "src/boxes/race/shared-data.ts", code: 'import type { RaceSetup } from "./contract";' },
 		{ filename: "src/boxes/race/server-cast.test.ts", code: 'import { openInitializedDatabase } from "../../server/database/database"; import { stripThoughts } from "../thought/shared";' },
-		{ filename: "scripts/seed-race-avatars.ts", code: 'import { raceRoster } from "../src/boxes/race/shared-data";' },
 	],
 	invalid: [
+		{ filename: "scripts/seed-race-avatars.ts", code: 'import { raceRoster } from "../src/boxes/race/shared-data";', errors: [{ messageId: "coreImport" }] },
 		{ filename: "src/boxes/phone/server.ts", code: 'import { raceBox } from "../race/server";', errors: [{ messageId: "boxImport" }] },
 		{ filename: "src/boxes/phone/client.tsx", code: 'import { Button } from "@/components/ui/button";', errors: [{ messageId: "boxImport" }] },
 		{ filename: "src/boxes/phone/server.ts", code: 'import { readMessageMoves } from "../../server/box/moves";', errors: [{ messageId: "boxImport" }] },

@@ -22,7 +22,7 @@ export const noBoxBoundaryImportsRule = defineRule({
 			const target = importTarget(path, source);
 			const box = /^src\/boxes\/([^/]+)\//.exec(path)?.[1];
 			if (box === undefined) {
-				if (path.startsWith("src/") && target !== undefined && /^src\/boxes(?:\/|$)/.test(target)) context.report({ node, messageId: "coreImport" });
+				if (target !== undefined && /^src\/boxes(?:\/|$)/.test(target)) context.report({ node, messageId: "coreImport" });
 				return;
 			}
 			if (target === undefined) return;

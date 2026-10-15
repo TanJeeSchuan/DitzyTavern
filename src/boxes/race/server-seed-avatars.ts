@@ -7,11 +7,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, parse } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxReference } from "../src/shared/contract/box";
-import { RACE_AVATAR_PREFIX, raceRoster } from "../src/boxes/race/shared-data";
-import { uploadImage } from "../src/server/image";
-import { openInitializedDatabase } from "../src/server/database/database";
-import { libraryDataTable } from "../src/server/database/schema";
+import { RACE_AVATAR_PREFIX, raceRoster } from "./shared-data";
+import { boxReference, libraryDataTable, openInitializedDatabase, uploadImage } from "@/box-sdk/server";
 
 export const RACE_AVATAR_FOLDER = "race-avatars";
 
@@ -33,4 +30,4 @@ export async function seedRaceAvatars(databasePath?: string, folder?: string) {
 	}
 }
 
-if (import.meta.main) await seedRaceAvatars();
+if (import.meta.main) await seedRaceAvatars(Bun.argv[2], Bun.argv[3]);
