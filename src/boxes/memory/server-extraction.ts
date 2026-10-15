@@ -214,17 +214,17 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 			const usefulness = parseChoice(answers.get(`candidate_${id}_usefulness`), ["retain", "omit"] as const);
 			const prefixed = (name: string, probabilities: Record<string, number>) =>
 				Object.fromEntries(Object.entries(probabilities).map(([key, value]) => [`${name}:${key}`, value]));
+			const confidence: MemoryCandidateJudgment["judgment"]["confidence"] = {};
+			if (support.confidence !== undefined) confidence.support = support.confidence;
+			if (attribution.confidence !== undefined) confidence.attribution = attribution.confidence;
+			if (usefulness.confidence !== undefined) confidence.usefulness = usefulness.confidence;
 			output.push({
 				...candidate,
 				judgment: {
 					support: support.label,
 					attribution: attribution.label,
 					usefulness: usefulness.label,
-					confidence: {
-						support: support.confidence,
-						attribution: attribution.confidence,
-						usefulness: usefulness.confidence,
-					},
+					confidence,
 					probabilities: {
 						...prefixed("support", support.probabilities),
 						...prefixed("attribution", attribution.probabilities),

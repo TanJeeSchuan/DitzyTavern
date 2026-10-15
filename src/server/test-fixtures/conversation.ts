@@ -27,7 +27,7 @@ import type {
 
 export function openObservedDatabase(): Database {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	observeConversationWrites(database, () => {});
+	observeConversationWrites(database, () => () => {});
 	return database;
 }
 

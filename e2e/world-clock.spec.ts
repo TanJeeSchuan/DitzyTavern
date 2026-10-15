@@ -64,7 +64,7 @@ test("the World Clock digests passages in the background and follows the selecte
 
 	await expect(await sendWithClock(page, "Wait out the night.")).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
 	await send.click();
-	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 	const reply = story(page).locator("article").nth(await story(page).locator("article").count() - 1);
 	await digested(llm, "Wait out the night.");
 	await digested(llm, "The storm breaks");
@@ -77,7 +77,7 @@ test("the World Clock digests passages in the background and follows the selecte
 
 	await expect(await sendWithClock(page, "Look outside.")).toHaveText(/^(9|10):\d\d AM \| 🗓️ Sunday, June 1, 2025 AD \| 🌨️ Snow, -?\d+°C$/);
 	await send.click();
-	await expect(story(page).getByText("She lights the lamp.")).toBeVisible();
+	await expect(story(page).locator("article").getByText("She lights the lamp.")).toBeVisible();
 	await digested(llm, "She lights the lamp.");
 
 	await reply.hover();
@@ -86,7 +86,7 @@ test("the World Clock digests passages in the background and follows the selecte
 	await expect(reply.getByText("The storm breaks")).toBeVisible();
 	await expect(await sendWithClock(page, "And now?")).toHaveText(/^\d+:\d\d PM \| 🗓️ Sunday, June 1, 2025 AD \| ⛈️ Storm, -?\d+°C$/);
 	await send.click();
-	await expect(story(page).getByText("She keeps watch.")).toBeVisible();
+	await expect(story(page).locator("article").getByText("She keeps watch.")).toBeVisible();
 	await digested(llm, "She keeps watch.");
 });
 
@@ -104,7 +104,7 @@ test("the dock tab and the top bar item follow a digest that lands while the win
 
 	await sendWithClock(page, "Wait out the night.");
 	await page.getByRole("button", { name: "Send exact plan" }).click();
-	await expect(story(page).getByText("Dawn comes")).toBeVisible();
+	await expect(story(page).locator("article").getByText("Dawn comes")).toBeVisible();
 	await digested(llm, "Wait out the night.");
 	await digested(llm, "Dawn comes");
 
@@ -126,7 +126,7 @@ test("a clock that is off contributes no clock line and queues no digest", async
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
 	await expect(preview.getByText(/^World Clock ·/)).toHaveCount(0);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
-	await expect(story(page).getByText("The lamp turns above you.")).toBeVisible();
+	await expect(story(page).locator("article").getByText("The lamp turns above you.")).toBeVisible();
 	expect((await llm.log()).calls.some((call) => isDecisionModelCall(call))).toBe(false);
 });
 
@@ -141,7 +141,7 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 	await enableClock(page);
 	await expect(await sendWithClock(page, "Wait out the night.")).toHaveText("8:00 AM | 🗓️ Sunday, June 1, 2025 AD");
 	await page.getByRole("button", { name: "Send exact plan" }).click();
-	await expect(story(page).getByText("Dawn comes")).toBeVisible();
+	await expect(story(page).locator("article").getByText("Dawn comes")).toBeVisible();
 	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/, { timeout: 15_000 });
 
 	const toggle = async (action: (boxes: Locator) => Promise<void>) => {
@@ -185,9 +185,9 @@ test("a Writer override survives a late digest, reset restores the automatic val
 	);
 	await page.goto("/");
 	await send(page, "Wait out the night.");
-	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 	await send(page, "Look outside.");
-	await expect(story(page).getByText("Snow drifts")).toBeVisible();
+	await expect(story(page).locator("article").getByText("Snow drifts")).toBeVisible();
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 
 	await insertBox(page, "World Clock");
@@ -240,7 +240,7 @@ test("catch-up shows its progress and can be cancelled", async ({ page, request,
 	await llm.chat({ chunks: ["The storm breaks over the tower."] });
 	await page.goto("/");
 	await send(page, "Wait out the night.");
-	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 	await insertBox(page, "World Clock");
 	const window = await openWorldClock(page);
 

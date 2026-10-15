@@ -27,7 +27,7 @@ export interface BoxContext {
 	readonly signal: AbortSignal;
 }
 
-export interface Box<Setup, Dependencies = undefined, Trace = never, Rec = never, State = undefined, Move = never> {
+export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State = undefined, Move = never> {
 	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
 	setupError?(setup: Setup, previous: Setup): string | undefined;
 	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
@@ -86,7 +86,7 @@ export type CaptureRead = {
 
 /** @approved `moves` are the ones on the triggering Human-authored Message, in order; a Continuation has none. */
 export type AdvanceInput<Setup, Dependencies = undefined, State = undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
-export type AdvanceResult<Trace = never, Rec = never> = {
+export type AdvanceResult<Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never> = {
 	readonly items: readonly BlockItem[];
 	readonly allowance?: number;
 	readonly trace?: Trace;

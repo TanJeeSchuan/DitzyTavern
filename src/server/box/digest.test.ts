@@ -5,9 +5,10 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { cancelBoxCatchUp, queueBoxDigest, queueBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
+import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
-import { readSelectedPassages } from "../conversation";
+import { executeConversationCommand, observeConversationWrites, readConversationSummary, readSelectedPassages } from "../conversation";
+import memoryBox from "../../boxes/memory/server";
 import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
@@ -145,9 +146,9 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 	const stub = heldDecisionFetch();
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
 
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 	await waitFor(() => stub.pending() === 1);
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "world-clock" });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "world-clock" })();
 	stub.release();
 	await stopDigests();
 	stopDigests = undefined;
@@ -183,7 +184,7 @@ test("a live digest takes over a running catch-up job for the same Variant", asy
 
 	startBoxCatchUp(database, chat.id, "world-clock");
 	await waitFor(() => stub.pending() === 1);
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 	await waitFor(() => stub.contents().length === 2);
 	stub.release();
 	stub.release();
@@ -203,7 +204,7 @@ test("a live digest runs before the catch-up jobs still queued behind it", async
 	startBoxCatchUp(database, chat.id, "world-clock");
 	await waitFor(() => stub.pending() === 2);
 	const live = addPassage(chat.id, 4, "The lantern gutters.");
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [live], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [live], removedVariantIds: [] })();
 	stub.release();
 	await waitFor(() => stub.pending() === 2);
 	expect(stub.contents()[2]).toContain("The lantern gutters.");
@@ -227,7 +228,7 @@ test("a failed digest keeps its error, live work skips that text, and catch-up r
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
 	const slot = () => readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage);
 
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 	await waitFor(() => stub.pending() === 1);
 	stub.release(true);
 	await waitFor(() => slot()?.error !== undefined);
@@ -236,7 +237,7 @@ test("a failed digest keeps its error, live work skips that text, and catch-up r
 	// @approved
 	//  Had live work queued the failed text again, catch-up would find it
 	//  already queued and start no run.
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 	startBoxCatchUp(database, chat.id, "world-clock");
 	expect(readBoxCatchUp(database, chat.id, "world-clock")).toEqual({ total: 1, remaining: 1, failed: 0 });
 	await waitFor(() => stub.pending() === 1);
@@ -255,7 +256,7 @@ test("digesting one passage retries text whose digest failed and leaves digested
 	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
 	const slot = () => readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).get(passage);
 
-	queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 	await waitFor(() => stub.pending() === 1);
 	stub.release(true);
 	await waitFor(() => slot()?.error !== undefined);
@@ -299,7 +300,7 @@ test("a digest reads its passages' Message ids, the Cast and its own Chat values
 	});
 	try {
 		stopDigests = startBoxDigests(database);
-		queueBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] });
+		prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 		await waitFor(() => windows.length === 1);
 	} finally { run.mockRestore(); }
 	const messageIds = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ? ORDER BY position").all(chat.id).map((row) => row.id);
@@ -307,4 +308,46 @@ test("a digest reads its passages' Message ids, the Cast and its own Chat values
 	expect(windows[0]?.preceding.map((entry) => entry.messageId)).toEqual([messageIds[0]!]);
 	expect(windows[0]?.cast.map(({ name, removed }) => ({ name, removed }))).toEqual([{ name: "Writer", removed: false }, { name: "Maren", removed: false }]);
 	expect(windows[0]?.data).toEqual({ enabled: "true", instance: clock });
+});
+
+
+test("a rejected edit leaves the running Memory catch-up intact", async () => {
+	const chat = createChat();
+	setBoxState(database, chat.id, "memory", "enabled");
+	const passage = addPassage(chat.id, 1, "Original passage.");
+	const clock = insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, ?, ?, ?)")
+		.run(passage, "box:world-clock", `record:${clock}`, '{"automatic":{"minutes":"bad","weather":null}}');
+	let signal: AbortSignal | undefined;
+	let release: (() => void) | undefined;
+	const run = spyOn(memoryBox.records.digest, "run").mockImplementation(async (_window, services) => {
+		signal = services.signal;
+		await new Promise<void>((resolve) => { release = resolve; });
+		return { claims: [] };
+	});
+	stopDigests = startBoxDigests(database);
+	observeConversationWrites(database, prepareBoxDigests);
+	try {
+		startBoxCatchUp(database, chat.id, "memory");
+		await waitFor(() => signal !== undefined);
+		const revision = readConversationSummary(database, chat.id)!.revision;
+		const messageId = database.query<{ id: number }, [number]>("SELECT message_id AS id FROM message_variant WHERE id = ?").get(passage)!.id;
+		expect(() => executeConversationCommand(database, {
+			conversationId: chat.id, expectedRevision: revision,
+			action: { type: "edit-variant", messageId, variantId: passage, content: "Rejected edit." },
+		})).toThrow("does not match its schema");
+		expect(readConversationSummary(database, chat.id)!.revision).toBe(revision);
+		expect(readSelectedPassages(database, chat.id)![0]!.variant!.content).toBe("Original passage.");
+		expect(signal!.aborted).toBe(false);
+		expect(readBoxCatchUp(database, chat.id, "memory")).toEqual({ total: 1, remaining: 1, failed: 0 });
+		release!();
+		await waitFor(() => readBoxCatchUp(database, chat.id, "memory") === null);
+		expect(database.query<{ value: string }, [number]>("SELECT value FROM message_variant_data WHERE message_variant_id = ? AND namespace = 'box:memory'").get(passage)?.value).toContain('"claims":[]');
+	} finally {
+		release?.();
+		await stopDigests();
+		stopDigests = undefined;
+		run.mockRestore();
+	}
 });
