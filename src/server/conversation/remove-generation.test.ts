@@ -162,7 +162,7 @@ describe("canonical Conversation Generation removal", () => {
 	// The per-database registration is the same seam the application or the
 	// test composition installs once; a specific case may scope a finer
 	// observer for the write it inspects.
-	observeConversationWrites(database, (_observedDatabase, change: ConversationWriteChange) => {
+	observeConversationWrites(database, (_observedDatabase, change: ConversationWriteChange) => () => {
 		delivered.push(change);
 	});
 

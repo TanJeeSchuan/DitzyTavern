@@ -174,3 +174,27 @@ test("on a narrow screen, closing the last Box window releases keyboard focus", 
 	await expect(page.locator(".box-window-layer")).not.toBeFocused();
 	expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
 });
+
+for (const width of [1440, 390]) test(`minimizing a Box preserves its unsaved setup at ${width}px`, async ({ page }) => {
+	await page.setViewportSize({ width, height: 900 });
+	await page.goto("/");
+	await insertBox(page, "World Clock");
+	await page.getByRole("button", { name: "World Clock", exact: true }).click();
+	const window = page.getByRole("dialog", { name: "World Clock", exact: true });
+	await window.getByRole("textbox", { name: "Era" }).fill("BE");
+	await window.getByRole("button", { name: "Minimize World Clock" }).click();
+	await expect(window).toBeHidden();
+	await expect(page.getByRole("dialog", { name: "Unsaved changes" })).toHaveCount(0);
+	const dock = page.getByRole("toolbar", { name: "Minimized Boxes" }).getByRole("button", { name: /^World Clock: / });
+	await expect(dock).toBeVisible();
+	await dock.focus();
+	await expect(dock).toBeFocused();
+	await dock.press("Enter");
+	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
+	await expect(window).toBeFocused();
+	await window.getByRole("button", { name: "Save World Clock" }).click();
+	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
+	await window.getByRole("button", { name: "Close World Clock" }).click();
+	await page.getByRole("button", { name: "World Clock", exact: true }).click();
+	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
+});

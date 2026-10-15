@@ -17,13 +17,14 @@ const subscribeNarrow = (onChange: () => void) => {
 };
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
 
-function FloatingWindow({ title, icon, size, layout, zIndex, narrow, covered, onRaise, onMove, onMinimize, onClose, children }: {
+function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
 	title: string;
 	icon: ReactNode;
 	size: { width: number; height: number };
 	layout: BoxWindowLayout;
 	zIndex: number;
 	narrow: boolean;
+	minimized: boolean;
 	covered: boolean;
 	onRaise: () => void;
 	onMove: (x: number, y: number) => void;
@@ -36,17 +37,18 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, covered, on
 	const latest = useRef<{ x: number; y: number } | null>(null);
 	const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 	useEffect(() => {
+		if (minimized) return;
 		const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		frame.current?.focus();
 		return () => previous?.focus();
-	}, []);
+	}, [minimized]);
 	// @approved
 	//  A desktop window can be focused behind while the viewport shrinks, and a
 	//  covered window comes to the top when the one above it closes; either way
 	//  the visible layer is modal, so focus must move inside it.
 	useEffect(() => {
-		if (narrow && !covered && frame.current !== null && !frame.current.contains(document.activeElement)) frame.current.focus();
-	}, [narrow, covered]);
+		if (narrow && !minimized && !covered && frame.current !== null && !frame.current.contains(document.activeElement)) frame.current.focus();
+	}, [narrow, minimized, covered]);
 
 	const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
 		// @approved
@@ -88,6 +90,7 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, covered, on
 	//  it inside this one, on open and on every resize, with the drag's bounds.
 	const style: CSSProperties = {
 		zIndex,
+		display: minimized ? "none" : undefined,
 		width: `${size.width}rem`,
 		height: `${size.height}rem`,
 		left: x === undefined ? undefined : `clamp(0px, ${x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`,
@@ -138,22 +141,23 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	if (conversation === null) return null;
 	const present = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && boxPresent(conversation, id) ? [[id, { icon, ...Window }] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
-	const opened = present.filter(([id]) => controller.layouts[id]?.open === true && controller.layouts[id]?.minimized !== true);
+	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
+	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
 	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
 	const zIndex = (id: BoxId) => 30 + order.indexOf(id) + 1;
 	// @approved
 	//  The window painted last at the highest z-index is the one on top.
-	const top = opened.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
+	const top = visible.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map(([id, { DockTab }]) => <BoxBoundary key={id} box={id}><DockTab conversation={conversation} onRestore={() => requestNavigation(() => controller.open(id))} /></BoxBoundary>)}
+			{minimized.map(([id, { DockTab }]) => <BoxBoundary key={id} box={id}><DockTab conversation={conversation} onRestore={() => controller.open(id)} /></BoxBoundary>)}
 		</div>}
 		{/* @approved
 		  A narrow viewport shows the top window as one full-screen layer over
 		  the Chat, so focus is trapped in the layer and Tab cycles inside it;
 		  the windows it covers are hidden. Wide layouts keep several non-modal
 		  windows usable at once, where trapping focus would be wrong. */}
-		<FocusScope.Root asChild trapped={narrow && opened.length > 0} loop={narrow && opened.length > 0}
+		<FocusScope.Root asChild trapped={narrow && visible.length > 0} loop={narrow && visible.length > 0}
 			onMountAutoFocus={(event) => event.preventDefault()} onUnmountAutoFocus={(event) => event.preventDefault()}><div className="box-window-layer">
 		{opened.map(([id, definition]) => {
 			const { Panel } = definition;
@@ -167,6 +171,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				layout={layout}
 				zIndex={zIndex(id)}
 				narrow={narrow}
+				minimized={layout.minimized}
 				covered={id !== top}
 				onRaise={() => raise(id)}
 				onMove={(x, y) => controller.move(id, x, y)}
@@ -176,7 +181,8 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				<BoxOffNotice conversation={conversation} box={id} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<BoxBoundary box={id}>
-					<Panel conversation={conversation} disabled={disabled} staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange}
+					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}
+						staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange}
 						boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
 				</BoxBoundary>
 			</FloatingWindow>;

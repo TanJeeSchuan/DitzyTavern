@@ -2,7 +2,7 @@ import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxRecordSchema, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
@@ -10,7 +10,6 @@ import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import type { BoxInstances } from "./setup";
 import type { Box, HostBox } from "./contract";
-import { serverBoxes } from "./registry";
 
 // @approved
 //  Record slots live in Variant data under `box:<id>`, key
@@ -47,7 +46,7 @@ export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["w
 export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
+export const foldRecords = <Setup, Rec extends BoxValue, State>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
 	selectedVariantIds.reduce((state, variantId) => {
 		const record = effectiveRecord(slots.get(variantId));
 		return record === undefined ? state : records.fold(state, record, setup);
@@ -57,13 +56,12 @@ export const foldRecords = <Setup, Rec, State>(records: NonNullable<Box<Setup, u
 export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]>["initial"]>>;
 
 // @approved
-//  Only an enabled Box is captured, so a disabled Box's records are not read
-// or folded: turning off a Box whose fold throws keeps Generations working.
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: BoxStates, instances: BoxInstances): RecordStates =>
-	Object.fromEntries([...serverBoxes()].flatMap(([id, { records }]) => {
-		if (records === undefined || boxes[id] !== "enabled") return [];
+//  Only participating Boxes read and fold records for this Generation.
+export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, instances: BoxInstances): RecordStates =>
+	Object.fromEntries([...boxes].flatMap(([id, { records }]) => {
+		if (records === undefined) return [];
 		const slots = readRecordSlots(db, id, boxRecordSchema(id), instances[id], selectedVariantIds);
-		return [[id, foldRecords<unknown, unknown, unknown>(records, setups[id], slots, selectedVariantIds)]];
+		return [[id, foldRecords<unknown, BoxValue, unknown>(records, setups[id], slots, selectedVariantIds)]];
 	}));
 
 const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, slot: RecordSlot<BoxValue>): void => {

@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
-import type { RaceMove, RaceRecord, RaceState } from "./contract";
+import type { RaceInput, RaceMove, RaceRecord, RaceState } from "./contract";
 import { fillRaceField, initialRaceSetup } from "./shared-data";
-import { advanceRace, foldRace } from "./server-engine";
+import { advanceRace as advanceRaceTurn, foldRace } from "./server-engine";
+
+const advanceRace = (input: RaceInput) => advanceRaceTurn(input)?.record;
 
 const foldRaceRecords = (records: readonly RaceRecord[], raceId: string) => records.reduce<RaceState | null>((state, record) => foldRace(state, record, { raceId }), null);
 const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
@@ -168,4 +170,17 @@ test("salient events favour Cast Runners", () => {
 		.filter((outcome) => outcome.split("\n").some((line) => line.startsWith(quiet))).length;
 	const cast = { ...setup, slots: setup.slots.map((slot, index) => index === 5 ? { ...slot, participantId: 1 } : slot) };
 	expect(mentions(cast)).toBeGreaterThan(mentions(setup));
+});
+
+
+test("a legal Hold stops the turn without changing state", () => {
+	const held = { ...setup, auto: "off" as const };
+	const first = advanceRace({ setup: held, state: null, seed: "first", intent: "respond", moves: [] })!;
+	const state = structuredClone(first.after);
+	const input = { setup: held, state, seed: "hold", intent: "respond" as const, moves: [{ kind: "hold" as const, runner: held.slots[0]!.name }] };
+	const turn = advanceRaceTurn(input)!;
+	expect(turn.record).toBeUndefined();
+	expect(turn.narrative).toContain(`Do not narrate race progress past ${state.metres} m.`);
+	expect(advanceRaceTurn({ ...input, seed: "another" })).toEqual(turn);
+	expect(state).toEqual(first.after);
 });

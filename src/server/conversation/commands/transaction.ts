@@ -42,7 +42,7 @@ const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 type ConversationWriteObserver = (
 	database: Database,
 	change: ConversationWriteChange,
-) => void;
+) => () => void;
 
 const writeObservers = new WeakMap<Database, ConversationWriteObserver>();
 
@@ -56,10 +56,9 @@ export function observeConversationWrites(
 /** @approved
  * Run one Conversation write as a single immediate transaction. The
  * work reports the change it made through the transaction-scoped reporter and
- * the observer runs as this wrapper's last statement, so it sees exactly
- * the state this transaction commits, with the writes still uncommitted to
- * other transactions — identical ordering to the pre-refactor per-handler
- * calls without the deep module ever calling the Box host itself.
+ * observer prepares its effects against the transaction's coherent state.
+ * Its returned publisher runs synchronously after commit, before the next
+ * write can prepare, and is discarded if the transaction fails.
  */
 export function runConversationTransaction<T>(
 	database: Database,
@@ -69,7 +68,8 @@ export function runConversationTransaction<T>(
 	) => T,
 ): T {
 	let reported: ConversationWriteChange | undefined;
-	return database
+	let publish: (() => void) | undefined;
+	const result = database
 		.transaction(() => {
 			const result = work(
 				connectConversationDatabase(database),
@@ -85,11 +85,13 @@ export function runConversationTransaction<T>(
 			if (reported !== undefined) {
 				const observer = writeObservers.get(database);
 				if (observer === undefined) throw new ConversationWriteObserverMissingError();
-				observer(database, reported);
+				publish = observer(database, reported);
 			}
 			return result;
 		})
 		.immediate();
+	publish?.();
+	return result;
 }
 
 /** @approved Run one coherent Conversation read without reserving SQLite's write lock. */

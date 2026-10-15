@@ -12,16 +12,17 @@ import { configureDecisionModels } from "../contract/decision-model-test-fixture
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
 import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
+import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
-import { builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes } from "./registry";
+import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
 	const human = { id: 1, name: "Ann" };
 	const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-		[{ reference: "box:phone", enabled: true, role: "system", content: "" }],
+		participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: "enabled" }),
 		{},
-		{ "author-note": "absent", memory: "absent", mood: "absent", phone: "enabled", race: "absent", thought: "absent", "world-clock": "absent" },
 		{},
 		{},
 		// SAFETY: Phone reads nothing through the database.
@@ -37,9 +38,8 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 		const selection = configureDecisionModels(database, key, "model-a");
 		const human = { id: 1, name: "Ann" };
 		const capture = () => fingerprintBoxes(captureBoxes(
-			[{ reference: "box:mood", enabled: true, role: "system", content: "" }],
+			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: "enabled" }),
 			{},
-			{ "author-note": "absent", memory: "absent", mood: "enabled", phone: "absent", race: "absent", thought: "absent", "world-clock": "absent" },
 			{},
 			{},
 			{ database, conversationId: 1, seed: "seed", intent: "respond", human, cast: [human], messages: [], pending: undefined },
@@ -111,7 +111,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	]);
 });
 
-test("a disabled Box's records are not folded, so turning off a Box whose fold throws lets the Chat generate", async () => {
+for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by its ${disabledBy} neither folds nor decodes records during generation`, async () => {
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
@@ -128,7 +128,15 @@ test("a disabled Box's records are not folded, so turning off a Box whose fold t
 		}));
 		await completeGeneration(app, conversation.id, (await (await send()).json()).generationId);
 		expect((await send()).status).toBe(500);
-		setBoxState(database, conversation.id, "lantern", "disabled");
+		if (disabledBy === "chat") setBoxState(database, conversation.id, "lantern", "disabled");
+		else {
+			const preset = await readPreset(app, conversation.id);
+			setPromptPresetBlockEnabled(database, preset.id, preset.slots.find(({ reference }) => reference === "box:lantern")!.id, false);
+		}
+		const accepted = await send();
+		expect(accepted.status).toBe(200);
+		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
+		database.query("UPDATE message_variant_data SET value = 'invalid json' WHERE namespace = 'box:lantern'").run();
 		expect((await send()).status).toBe(200);
 	} finally {
 		database.close();
@@ -230,6 +238,56 @@ test("a plugin's routes are served as the loader built them, its client module a
 		expect(await served("/boxes/lantern/server.ts")).toEqual([404, ""]);
 		expect(await served("/boxes/unloaded/client.js")).toEqual([404, ""]);
 	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+for (const field of ["record", "trace"] as const) for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested: [null, true, 3, "lit", { wick: false }] }']) test(`advance checks ${field} is JSON: ${value}`, async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
+			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
+		} })]);
+		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" }), {}, {}, {}, {
+			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
+		});
+		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
+		if (value.startsWith("{")) expect((await result)["box:lantern"]?.[field]).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
+		else await expect(result).rejects.toThrow();
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested: [null, true, 3, "lit", { wick: false }] }']) test(`digest checks records are JSON: ${value}`, async () => {
+	const database = openObservedDatabase();
+	let stop: (() => Promise<void>) | undefined;
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }, decision: { summary: "", description: "", off: "", context: "" }',
+			server: `export default { records: { initial: 0, fold: (state) => state, digest: { window: 0, run: async () => ({ value: ${value} }) } } };`,
+		} })]);
+		const chat = createChat(database);
+		insertBox(database, chat.id, "lantern");
+		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+		configureDecisionModels(database, key);
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(chat.id)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Light it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		stop = startBoxDigests(database);
+		startBoxCatchUp(database, chat.id, "lantern");
+		for (let attempt = 0; attempt < 400 && readBoxCatchUp(database, chat.id, "lantern") !== null; attempt += 1) await Bun.sleep(1);
+		expect(readBoxCatchUp(database, chat.id, "lantern")).toBeNull();
+		const stored = database.query<{ value: string }, [number]>("SELECT value FROM message_variant_data WHERE message_variant_id = ? AND namespace = 'box:lantern'").get(variant.id)!;
+		if (value.startsWith("{")) expect(JSON.parse(stored.value).automatic).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
+		else {
+			expect(JSON.parse(stored.value).automatic).toBeUndefined();
+			expect(JSON.parse(stored.value).error.message).toBeString();
+		}
+	} finally {
+		await stop?.();
 		database.close();
 		await loadBoxes([builtInBoxes]);
 	}

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxesWith, boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
+import { boxValue, type BoxValue } from "../../shared/contract/box-value";
 import type { BoxCatchUp } from "../../shared/contract/box-digest";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 import {
@@ -139,6 +140,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			cast: readParticipants(database, job.conversationId),
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
 		}, { ...services, database });
+		Value.Assert(boxValue, record);
 		Value.Assert(boxRecordSchema(job.box), record);
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
@@ -208,10 +210,11 @@ type Passage = ReturnType<typeof readChatVariants>[number];
 const digestible = (variant: Passage): boolean => variant.selected && !variant.active && variant.content.trim() !== "";
 
 // @approved
-//  Queues each passage without a record for its current text as live work;
+//  Prepares each passage without a record for its current text as live work;
 //  `retry` also queues one whose digest failed on that text.
-const queueLive = (database: Database, queue: DigestQueue, conversationId: number, box: BoxId, instance: string, variants: readonly Passage[], retry: boolean): void => {
+const prepareLive = (database: Database, queue: DigestQueue, conversationId: number, box: BoxId, instance: string, variants: readonly Passage[], retry: boolean): DigestJob[] => {
 	const slots = readRecordSlots(drizzle(database), box, boxRecordSchema(box), instance, variants.map((variant) => variant.variantId));
+	const jobs: DigestJob[] = [];
 	for (const variant of variants) {
 		const source = sha256(variant.content);
 		const key = keyOf(variant.variantId, box);
@@ -221,31 +224,36 @@ const queueLive = (database: Database, queue: DigestQueue, conversationId: numbe
 		//  of a catch-up run.
 		const slot = slots.get(variant.variantId);
 		if (hasAutomaticRecord(slot, variant.content) || (!retry && hasDigestError(slot, variant.content)) || queuedFor(queue, key, source, false)) continue;
-		enqueue(queue, {
+		jobs.push({
 			key, conversationId, messageId: variant.messageId, variantId: variant.variantId,
 			box, instance, source, catchUp: null, controller: new AbortController(),
 		});
 	}
-	queueMicrotask(() => pump(database, queue));
+	return jobs;
 };
 
 // @approved
-//  Queue digests for one Conversation write. A selected, settled passage is
-// digested by each digesting Box when it has no record for its current text
-// and no digest failed on it: when it resolves, is selected without a record,
-// or is edited. Runs inside the write transaction, so the workers start only
-// after it commits.
-export function queueBoxDigests(database: Database, change: ConversationWriteChange): void {
+//  Prepare queue changes from the write transaction's coherent state.
+// Publish only after commit: rejected writes must never abort current work.
+export function prepareBoxDigests(database: Database, change: ConversationWriteChange): () => void {
 	const queue = queues.get(database);
-	if (queue === undefined) return;
-	if (change.stoppedBox !== undefined) abandon(queue, change.conversationId, change.stoppedBox);
+	if (queue === undefined) return () => {};
+	const jobs: DigestJob[] = [];
+	const removedKeys: string[] = [];
 	for (const [box] of boxesWith("decision")) {
-		for (const variantId of change.removedVariantIds) dropKey(queue, keyOf(variantId, box));
+		for (const variantId of change.removedVariantIds) removedKeys.push(keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
 		const variants = readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
-		queueLive(database, queue, change.conversationId, box, instance, variants, false);
+		jobs.push(...prepareLive(database, queue, change.conversationId, box, instance, variants, false));
 	}
+	const { conversationId, stoppedBox } = change;
+	return () => {
+		if (stoppedBox !== undefined) abandon(queue, conversationId, stoppedBox);
+		for (const key of removedKeys) dropKey(queue, key);
+		for (const job of jobs) enqueue(queue, job);
+		queueMicrotask(() => pump(database, queue));
+	};
 }
 
 /** @approved Queues one selected passage now as live work, retrying a digest that failed on its text; one already digested for its text is left alone. */
@@ -253,7 +261,8 @@ export function queueBoxDigest(database: Database, conversationId: number, box: 
 	const queue = queues.get(database);
 	const instance = queue === undefined ? undefined : digestInstance(database, conversationId, box);
 	if (queue === undefined || instance === undefined) return;
-	queueLive(database, queue, conversationId, box, instance, readChatVariants(database, conversationId, { variantIds: [variantId] }).filter(digestible), true);
+	for (const job of prepareLive(database, queue, conversationId, box, instance, readChatVariants(database, conversationId, { variantIds: [variantId] }).filter(digestible), true)) enqueue(queue, job);
+	queueMicrotask(() => pump(database, queue));
 }
 
 /** @approved A Box window's live view of its catch-up run in one Conversation, or null when none runs. */
@@ -310,7 +319,7 @@ const foldDigest = (db: BunSQLiteDatabase, conversationId: number, box: BoxId, s
 	const slots = readRecordSlots(db, box, boxRecordSchema(box), readBoxInstances(db, conversationId)[box], variantIds);
 	const { box: { status }, records } = digesting(box);
 	const setup = setups[box];
-	return { slots, status: status?.(setup, foldRecords<unknown, unknown, unknown>(records, setup, slots, variantIds)) ?? null };
+	return { slots, status: status?.(setup, foldRecords<unknown, BoxValue, unknown>(records, setup, slots, variantIds)) ?? null };
 };
 
 /** @approved A minimized digesting Box's dock read: the folded status from the selected Variant ids, loading no prose. */

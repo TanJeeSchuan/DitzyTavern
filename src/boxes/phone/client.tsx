@@ -50,7 +50,7 @@ function PhoneLensView({ text, onOpen }: { text: Sms; onOpen: () => void }) {
 	</button>;
 }
 
-function PhonePanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
+function PhonePanel({ visible, conversation, disabled, staging }: { visible: boolean; conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const read = usePhone(conversation);
 	const [seen, setSeen] = useState(() => readSeen(conversation.id));
 	const [picked, setPicked] = useState<string | null>(null);
@@ -63,13 +63,13 @@ function PhonePanel({ conversation, disabled, staging }: { conversation: Convers
 	//  An open thread is a read thread, including texts that arrive while it
 	//  is showing. The thread opened by default stays open once read.
 	useEffect(() => {
-		if (thread === undefined) return;
+		if (!visible || thread === undefined) return;
 		if (picked === null) setPicked(thread.contact);
 		if (unread(thread, seen) === 0) return;
 		const next = new Set([...seen, ...thread.texts.map(({ key }) => key)]);
 		window.localStorage.setItem(seenStorageKey(conversation.id), JSON.stringify([...next]));
 		setSeen(next);
-	}, [conversation.id, thread, seen, picked]);
+	}, [visible, conversation.id, thread, seen, picked]);
 
 	if (read.isError) return <p className="phone-note">The Phone could not be loaded.</p>;
 	if (read.data === undefined || read.data === null) return null;

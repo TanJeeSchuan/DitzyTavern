@@ -8,7 +8,7 @@ import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import type { BoxValue } from "../../shared/contract/box-value";
+import { boxValue, type BoxValue } from "../../shared/contract/box-value";
 import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
@@ -142,22 +142,26 @@ const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | unde
 		if (result.record !== undefined) {
 			const { record } = boxDescriptor(id);
 			if (record === undefined) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
+			Value.Assert(boxValue, result.record);
 			Value.Assert(record, result.record);
 		}
-		if (result.trace !== undefined && box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
+		if (result.trace !== undefined) {
+			Value.Assert(boxValue, result.trace);
+			if (box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
+		}
 		return result;
 	},
 });
 
-// @approved
-//  The preset decides where a Box goes; the Chat decides whether it runs. A
-// Box is captured only while it is enabled and its block is.
-export const captureBoxes = (slots: readonly PromptPresetSlot[], setups: BoxSetups, boxes: BoxStates, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
-	[...serverBoxes()].flatMap(([id, box]) => {
-		if (boxes[id] !== "enabled" || !slots.some((slot) => slot.enabled && slot.reference === boxReference(id))) return [];
+/** @approved The Boxes enabled in both the Chat and its preset, selected once for record folding and capture. */
+export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: BoxStates): ReadonlyMap<BoxId, HostBox> =>
+	new Map([...serverBoxes()].filter(([id]) => boxes[id] === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id))));
+
+export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
+	[...boxes].map(([id, box]) => {
 		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return [captureBox(id, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id))];
+		return captureBox(id, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));

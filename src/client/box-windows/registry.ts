@@ -24,8 +24,9 @@ export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: str
 
 
 type DockTab = ComponentType<{ conversation: ConversationSummary; onRestore: () => void }>;
-/** @approved `staging` is null while the Box is not enabled, so it shows its Move controls as unavailable. */
+/** @approved Hidden windows stay mounted; `visible` gates effects that require viewing. `staging` is null while the Box is not enabled. */
 type Panel = ComponentType<{
+	visible: boolean;
 	conversation: ConversationSummary;
 	disabled: boolean;
 	staging: MoveStaging | null;

@@ -9,8 +9,8 @@ import {
 import { boxSetupOf } from "@/box-sdk/shared";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
-import { checkRaceMove, raceMoveCatalog, raceMoveLabel } from "./shared";
-import { advanceRace, currentRaceState, foldRace, initialRaceState, raceStatus } from "./server-engine";
+import { raceMoveCatalog } from "./shared";
+import { advanceRace, foldRace, initialRaceState, raceStatus } from "./server-engine";
 
 const raceBox = {
 	setupError: raceSetupError,
@@ -25,68 +25,8 @@ const raceBox = {
 	read: readRace,
 	advance: {
 		async run({ setup, state, dependencies, moves }) {
-			const before = currentRaceState(setup, state);
-			// @approved
-			//  A slotted Cast Runner whose Participant left the Cast is withdrawn:
-			//  the captured slots, folded standings and Hidden intents drop them,
-			//  and the item reports the withdrawal before narrating the Stretch.
-			const withdrawn = new Set(dependencies.withdrawn ?? []);
-			const withdrawalLines = before.standings.flatMap(({ name }) => withdrawn.has(name) ? [`${name} is withdrawn.`] : []);
-			const remaining = {
-				...before,
-				standings: before.standings.filter(({ name }) => !withdrawn.has(name)),
-				intents: before.intents.filter(({ runner }) => !withdrawn.has(runner)),
-			};
-			// @approved
-			//  A withdrawal saved on an earlier Hold leaves the folded state clean
-			//  but the setup still slots the Runner, so the slots are always filtered.
-			const captured = {
-				setup: { ...setup, slots: setup.slots.filter(({ name }) => !withdrawn.has(name)) },
-				state: withdrawalLines.length === 0 ? state : remaining,
-			};
-			const withWithdrawals = (text: string) => {
-				if (withdrawalLines.length === 0) return text;
-				const [heading, ...rest] = text.split("\n");
-				return [heading, ...withdrawalLines, ...rest].join("\n");
-			};
-			const [first] = moves;
-			// @approved
-			//  A withdrawal is captured once and persisted even when no Stretch
-			//  advances, so it is announced exactly once instead of on every Hold.
-			const withdrawalRecord = (text: string): RaceRecord => ({ raceId: setup.raceId, stretch: before.stretch, outcome: text, after: remaining });
-			const holds = dependencies.intent === "respond" && captured.setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold"
-				&& checkRaceMove(captured.setup, currentRaceState(captured.setup, captured.state), [], first).legal;
-			if (holds) {
-				const text = withWithdrawals(`${setup.course.name}\n${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`);
-				return withdrawalLines.length === 0
-					? { items: [{ text, priority: 100, pinned: true }] }
-					: { items: [{ text, priority: 100, pinned: true }], record: withdrawalRecord(text) };
-			}
-			const record = advanceRace({ ...captured, moves, ...dependencies });
-			// @approved
-			//  A field reduced below two Runners cannot run another Stretch: the
-			//  withdrawal still becomes a record, and the remaining Runner wins by
-			//  default.
-			if (record === undefined && withdrawalLines.length > 0 && setup.phase === "running" && !before.finished) {
-				if (captured.setup.slots.length < 2) {
-					const { standings } = remaining;
-					const [walkover] = standings;
-					const result = walkover === undefined ? ["The race is called off."] : [`${walkover.name} wins by default.`];
-					const outcome = [setup.course.name, ...withdrawalLines, ...result, "Narrate the finish."].join("\n");
-					const stretch = before.stretch + 1;
-					const intents = remaining.intents.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
-					return {
-						items: [{ text: outcome, priority: 100, pinned: true }],
-						// @approved
-						//  The walkover settles every surviving Runner's open Hidden
-						//  intent, exactly as the Results Stretch does.
-						record: { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, standings, intents } },
-					};
-				}
-				const text = withWithdrawals(`${setup.course.name}\nThe Stretch does not advance this turn.`);
-				return { items: [{ text, priority: 100, pinned: true }], record: withdrawalRecord(text) };
-			}
-			return { items: record === undefined ? [] : [{ text: withWithdrawals(record.outcome), priority: 100, pinned: true }], record };
+			const turn = advanceRace({ setup, state, moves, ...dependencies });
+			return { items: turn === undefined ? [] : [{ text: turn.narrative, priority: 100, pinned: true }], record: turn?.record };
 		},
 	},
 } satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>;
