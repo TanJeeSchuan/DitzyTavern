@@ -106,6 +106,7 @@ test("a corrected Memory stays the writer's until reset brings back the remember
 
 	await page.goto("/");
 	await send(page, "Where is the key?");
+	await expect(story(page).getByText("She leans close.")).toBeVisible();
 	await page.getByRole("button", { name: "Memories" }).click();
 	const memories = page.getByRole("complementary", { name: "Memories" });
 	const remembered = memories.getByText("Theodora hid the brass key under the third map.");

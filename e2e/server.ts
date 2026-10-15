@@ -188,10 +188,10 @@ const provision = (directory: string, database: Database) => {
 		expectedRevision: connections.get().revision,
 		profile: { ...profile, displayName: "E2E embeddings", apiFormat: "embeddings", requestUrl: "https://e2e.invalid/v1/embeddings", pinnedModels: ["e2e-embedding"] },
 	});
-	return database;
 };
 
 let current: { directory: string; database: Database; app: Awaited<ReturnType<typeof createApp>>["app"]; close: () => Promise<void> } | undefined;
+let seedImage: Uint8Array | undefined;
 
 const reset = async () => {
 	held.resolve();
@@ -212,7 +212,13 @@ const reset = async () => {
 	held = Promise.withResolvers();
 	rmSync(pluginFolder, { recursive: true, force: true });
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
-	await open(directory, provision(directory, await openDatabase(directory)));
+	if (seedImage) writeFileSync(join(directory, "e2e.sqlite"), seedImage);
+	const database = await openDatabase(directory);
+	if (!seedImage) {
+		provision(directory, database);
+		seedImage = database.serialize();
+	}
+	await open(directory, database);
 };
 
 const open = async (directory: string, database: Database) => {
@@ -254,7 +260,12 @@ const server = Bun.serve({
 			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
 			case "/__e2e/updates": {
 				updateScenario = await request.json();
-				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
+				if (updateScenario.automaticChecks !== undefined) {
+					const response = await current!.app.handle(new Request("http://localhost/api/updates/automatic", {
+						method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }),
+					}));
+					if (!response.ok) throw new Error(`Setting automatic update checks failed: ${response.status} ${await response.text()}`);
+				}
 				const directory = current!.directory;
 				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
 				await current!.close();
