@@ -2,9 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
 
 const generate = async (page: Page, text: string) => {
-	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
-	await composer.fill(text);
+	await page.getByRole("textbox", { name: "Message draft" }).fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	return page.getByRole("complementary", { name: "Prompt Plan preview" });
 };
