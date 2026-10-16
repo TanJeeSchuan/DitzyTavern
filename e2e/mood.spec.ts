@@ -21,6 +21,16 @@ const moodLine = async (page: Page, text: string) => {
 const dockTab = (page: Page) => page.getByRole("button", { name: /^Mood: / });
 
 test("the Mood follows digested passages, a swipe and a Writer override, and an unclear passage keeps it", async ({ page, request, llm }) => {
+	await page.clock.install();
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const digestUrl = `/api/conversations/${activeChatId}/boxes/mood`;
+	// Let the real browser poll read a committed digest without waiting out its interval.
+	const pollMood = async (expected: string) => {
+		await expect.poll(async () => (await (await request.get(digestUrl)).json()).passages.at(-1)?.record).toEqual({ mood: expected });
+		const polled = page.waitForResponse((response) => new URL(response.url()).pathname === digestUrl);
+		await page.clock.fastForward(2_500);
+		await polled;
+	};
 	await selectBoxDecisionModel(request, "mood");
 	await llm.decisions(
 		mood("The storm breaks", "tense"),
@@ -40,6 +50,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 
 	await send(page, "Wait out the night.");
 	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await pollMood("tense");
 	await expect(dockTab(page)).toHaveText("Mood: 😬 tense", { timeout: 15_000 });
 
 	const reply = story(page).locator("article").nth(await story(page).locator("article").count() - 1);
@@ -47,6 +58,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await expect(preview(page).getByText(/^Mood ·/)).toHaveCount(0);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(reply.getByText("Snow drifts")).toBeVisible();
+	await pollMood("calm");
 	await expect(dockTab(page)).toHaveText("Mood: 😌 calm", { timeout: 15_000 });
 	await expect(await moodLine(page, "Look outside.")).toHaveText(["Scene mood:", "calm"]);
 	await preview(page).getByRole("button", { name: "Cancel" }).click();
@@ -67,6 +79,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("She lights the lamp.")).toBeVisible();
 	await dockTab(page).click();
+	await pollMood("not clear");
 	await expect(window.getByRole("listitem").filter({ hasText: "She lights the lamp." })).toContainText("❔ Not clear", { timeout: 15_000 });
 	await window.getByRole("button", { name: "Minimize Mood" }).click();
 	await expect(dockTab(page)).toHaveText("Mood: 👻 eerie");
