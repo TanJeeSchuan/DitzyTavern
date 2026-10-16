@@ -202,7 +202,7 @@ export async function requestDecisions(input: {
 		throw new DecisionModelError("malformed-response", "Decision Model returned invalid JSON.");
 	}
 	if (!Value.Check(decisionResponse, decoded)) {
-		const schemaError = matchingAnswerError(Value.Errors(decisionResponse, decoded).First()!);
+		const schemaError = matchingAnswerError(Value.Errors(decisionResponse, decoded).First()!); // @approved A failed Check has a first error.
 		throw new DecisionModelError("malformed-response", `Decision Model returned an invalid answer at ${schemaError.path || "/"}: ${schemaError.message}.`);
 	}
 	Value.Clean(decisionResponse, decoded);

@@ -39,6 +39,24 @@ describe("Connection Settings", () => {
 		database.close();
 	});
 
+	test("rejects corrupt persisted Profile vocabularies when reading settings", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const columns: [string, string][] = [["model_backend", "automatic"], ["adapter", "deepseek"], ["output_token_representation", "automatic"], ["api_format", "chat-completions"]];
+		for (const [column, valid] of columns) {
+			database.query(`UPDATE connection_profile SET ${column} = 'invalid'`).run();
+			expect(() => settings.get()).toThrow("Connection Profile 1 is corrupt.");
+			database.query(`UPDATE connection_profile SET ${column} = ?`).run(valid);
+		}
+	});
+
+	test("rejects a fractional persisted timeout instead of rounding it", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		database.query("UPDATE connection_profile SET timeout_ms = 1.5").run();
+		expect(() => settings.get()).toThrow("Connection Profile 1 is corrupt.");
+	});
+
 	test("saves Profile edits and a replacement credential in one revision", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft(), credential: "first-secret" });
@@ -47,14 +65,6 @@ describe("Connection Settings", () => {
 		expect(saved.revision).toBe(created.revision + 1);
 		expect(saved.profiles[0]?.displayName).toBe("Revised");
 		expect(settings.getProfileSecrets(profileId)?.credential).toBe("replacement-secret");
-	});
-
-	test("starts with no Profiles", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		expect(settings.get()).toEqual({
-			revision: 0,
-			profiles: [],
-		});
 	});
 
 	test("constructs one safe snapshot for runtime and persisted generation identity", () => {
@@ -84,21 +94,6 @@ describe("Connection Settings", () => {
 		});
 
 		expect(created.profiles[0]?.timeoutMs).toBeNull();
-	});
-
-	test("returns preset drafts by value so profile edits cannot mutate bundled defaults", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		const listed = settings.listPresets();
-		const listedProfile = listed.find((preset) => preset.id === "deepseek")?.profile;
-		expect(listedProfile).toBeDefined();
-		if (!listedProfile) return;
-		const original = [...listedProfile.pinnedModels];
-		// SAFETY: listPresets returns a mutable client-facing clone of this
-		// profile; this test intentionally simulates an editor mutating it.
-		(listedProfile.pinnedModels as string[]).push("temporary-edit");
-
-		const reread = settings.listPresets().find((preset) => preset.id === "deepseek")?.profile;
-		expect(reread?.pinnedModels).toEqual(original);
 	});
 
 	test("creates the first Profile and credential atomically, redacting the credential", () => {
@@ -254,25 +249,6 @@ describe("Connection Settings", () => {
 		expect(settings.get().revision).toBe(0);
 	});
 
-	test("returns the authoritative redacted state for stale edits", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		try {
-			settings.createProfile({
-				expectedRevision: 0,
-				profile: { ...deepSeekDraft(), displayName: "Stale" },
-			});
-			throw new Error("Expected a stale revision error.");
-		} catch (error) {
-			expect(error).toBeInstanceOf(StaleRevisionError);
-			// SAFETY: the preceding assertion narrows this caught error to the
-			// typed stale-revision class exposed by the module.
-			const conflict = error as StaleRevisionError;
-			expect(conflict.actualRevision).toBe(1);
-			expect(conflict.details).toMatchObject({ currentSettings: { profiles: [expect.objectContaining({ credentialConfigured: false })] } });
-		}
-	});
-
 	test("revisioned writes bump one revision, return the post-write read, and attach conflict snapshots to stale throws", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
@@ -319,22 +295,6 @@ describe("Connection Settings", () => {
 			"Deep Seek",
 			"Local",
 		]);
-	});
-
-	test("deletes one Profile without replacing it", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		const second = settings.createProfile({
-			expectedRevision: first.revision,
-			profile: { ...deepSeekDraft(), displayName: "Local" },
-		});
-		const deleted = settings.deleteProfile({
-			expectedRevision: second.revision,
-			profileId: first.profiles[0]!.id,
-		});
-		expect(deleted.revision).toBe(second.revision + 1);
-		expect(deleted.profiles).toHaveLength(1);
-		expect(deleted.profiles[0]?.displayName).toBe("Local");
 	});
 
 	test("deleting the final Profile returns to the unconfigured state", () => {

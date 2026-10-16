@@ -1,0 +1,33 @@
+# Phone
+
+Status: DONE
+
+Blocked By: 08-play-a-race-with-moves
+
+Source: `docs/box-system/README.md` "Built-in Boxes" (Phone), "Move staging"; GLOSSARY "Phone".
+
+## Goal
+
+Elara texts "u still up?" inside her reply. The text vanishes from the prose and appears in her Phone thread, with `📱 1 unread` in the dock. The writer replies from the Phone, as a turn containing only that text.
+
+## Ownership
+
+- Box `lens`
+- Phone Box
+
+## Work
+
+- [x] Add `lens` (`strip`, `View`) to the contract. The story view renders lens-stripped segments, and the prompt keeps the markup.
+- [x] Strip `<sms from to>` only when both names are the human-controlled Participant and a Cast member. Leave any other markup as raw text.
+- [x] Add one thread per Cast member, built from the Selected narrative path.
+- [x] Outgoing texts are Moves rendered as `<sms>` from the human-controlled Participant.
+- [x] `advance` contributes one item teaching the markup.
+- [x] Unread counts are client-side and shown in `status`.
+- [x] Unit tests: the lens on malformed, nested and unknown-name markup.
+- [x] E2E: a scripted reply containing a text appears in the thread and not in the prose; a Phone-only reply turn.
+- [x] Run `bun run check` and `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
+
+## Acceptance
+
+- Swiping a reply changes the thread to the new Variant's texts.

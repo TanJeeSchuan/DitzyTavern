@@ -1,10 +1,9 @@
-import { staticPlugin } from "@elysiajs/static";
 import { join } from "node:path";
-import { createContract } from "../../src/server/contract";
+import { createApp } from "../../src/server/app";
+import { builtInBoxes, loadBoxes } from "../../src/server/box/registry";
 import { openInitializedDatabase } from "../../src/server/database/database";
 import { seed } from "../../src/server/database/seed";
 import { createConnectionSettingsModule } from "../../src/server/connection-settings";
-import { createMemorySettingsModule } from "../../src/server/memory/settings";
 import { initializeConnectionSecretKey } from "../../src/server/connection-secrets";
 import { registerWireFormats } from "../../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../../src/server/model-client";
@@ -15,8 +14,9 @@ const databasePath = join(directory, "screenshots.sqlite");
 const masterKey = new Uint8Array(32).fill(1);
 initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(masterKey).toString("base64") } });
 registerWireFormats();
-seed(databasePath);
 const database = openInitializedDatabase({ path: databasePath });
+await loadBoxes([builtInBoxes], database);
+seed(databasePath);
 
 const prose = [
 	'"You came back," she said, not looking up from the ledger. The candle beside her had burned down to a stub, and the wax had pooled across three weeks of unpaid accounts. Outside, the rain kept its patient rhythm against the shutters. She turned a page. Then another. He waited by the door, coat dripping, saying nothing at all.',
@@ -60,17 +60,8 @@ const profile = {
 	modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
 } as const;
 connections.createProfile({ expectedRevision: 0, profile: { ...profile, displayName: "Screenshot provider", pinnedModels: ["deepseek-chat"] } });
-const embeddings = connections.createProfile({
-	expectedRevision: connections.get().revision,
-	profile: { ...profile, displayName: "Screenshot embeddings", apiFormat: "embeddings", requestUrl: "https://screenshots.invalid/v1/embeddings", pinnedModels: ["screenshot-embedding"] },
-}).profiles.find((entry) => entry.apiFormat === "embeddings");
-const memory = createMemorySettingsModule(database);
-const { revision, ...memorySettings } = memory.get();
-memory.apply({ ...memorySettings, expectedRevision: revision, embeddingProfileId: embeddings?.id ?? null, embeddingModel: "screenshot-embedding" });
 
-const app = createContract(database, { masterKey, fetch: fakeFetch }, join(directory, "artifacts"))
-	.get("/", () => Bun.file("dist/index.html"))
-	.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true }))
-	.listen({ hostname: "127.0.0.1", port: Number(process.env.PORT ?? 0) });
+const { app } = await createApp({ database, masterKey, fetch: fakeFetch, artifactDirectory: join(directory, "artifacts") });
+app.listen({ hostname: "127.0.0.1", port: Number(process.env.PORT ?? 0) });
 
 console.log(`CRAWLER_READY ${app.server?.url}`);

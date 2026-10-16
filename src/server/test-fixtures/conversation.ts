@@ -10,7 +10,9 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { syncMemorySources } from "../memory";
+import type { BoxId, BoxState } from "../../shared/contract/box";
+import { boxInstanceEntry, boxStateEntry } from "../box/setup";
+import { installBoxBlocks } from "../prompt-preset";
 import { observeConversationWrites } from "../conversation";
 import { ConversationNotFoundError } from "../conversation";
 import type {
@@ -25,7 +27,7 @@ import type {
 
 export function openObservedDatabase(): Database {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	observeConversationWrites(database, syncMemorySources);
+	observeConversationWrites(database, () => () => {});
 	return database;
 }
 
@@ -110,4 +112,17 @@ export function readTestConversationSnapshot(database: Database, conversationId:
 export function createConversationWithHistory(database: Database, input: ConversationCreationInput): TestConversationSnapshot {
  const conversation = createConversation(database, input);
  return requireSnapshot(database, conversation.id);
+}
+
+/** @approved A new Chat holds only the Author Note and Memory; suites insert any other Box they exercise. */
+export function insertBox(database: Database, conversationId: number, box: BoxId): string {
+	const instance = boxInstanceEntry(box);
+	for (const entry of [boxStateEntry(box, true), instance]) database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(conversationId, entry.namespace, entry.key, entry.value);
+	installBoxBlocks(drizzle(database), conversationId, [box]);
+	return instance.value;
+}
+
+/** @approved Sets a Box's state through the ordinary Conversation command, so an observed database delivers its Memory change. */
+export function setBoxState(database: Database, conversationId: number, box: BoxId, state: BoxState): void {
+	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action: { type: "set-box-state", box, state } });
 }

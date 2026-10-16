@@ -32,8 +32,13 @@ const canonicalDirectory = "src/shared/contract/";
 const slash = (value: string): string => value.replaceAll("\\", "/");
 const relativeFile = (fileName: string): string => slash(path.relative(root, fileName));
 
+// A Box file's layer is its file name: contract, shared, server or client.
+const boxFile = /^src\/boxes\/[^/]+\/(contract|shared|server|client)[^/]*$/;
+
 const layerOf = (file: string): Layer => {
 	if (file.startsWith(canonicalDirectory)) return "contract";
+	const box = boxFile.exec(file)?.[1];
+	if (box === "contract" || box === "shared" || box === "server" || box === "client") return box;
 	if (file.startsWith("src/client/")) return "client";
 	if (file.startsWith("src/server/")) return "server";
 	if (file.startsWith("src/shared/")) return "shared";
@@ -239,10 +244,8 @@ const fieldSimilarity = (left: Representation, right: Representation): number =>
 
 for (const group of exactGroups.values()) {
 	if (group.length < 2) continue;
-	for (let index = 0; index < group.length; index += 1) {
-		for (let other = index + 1; other < group.length; other += 1) {
-			const left = group[index];
-			const right = group[other];
+	for (const [index, left] of group.entries()) {
+		for (const right of group.slice(index + 1)) {
 			if (left.layer === right.layer) continue;
 			candidatePairs.set(`${left.file}:${left.name}|${right.file}:${right.name}`, [left, right]);
 		}

@@ -1,7 +1,7 @@
 import {
 	type ConversationSummary,
 } from "../../conversation";
-import { runConversationCommand, type ConversationCommandSurface } from "../../conversation-command-runner";
+import { runConversationCommand } from "../../conversation-command-runner";
 import {
 	applyPromptPresetCommand,
 	commitSillyTavernPromptPreset,
@@ -130,14 +130,13 @@ export function usePromptPresetLibrary({
 	//  Applies one selection through the authoritative Conversation command.
 	// `selectPreset` decides whether a pending leave must resolve first; the runtime owns the
 	// operation gate once the selection is ready to start.
-	const surface: ConversationCommandSurface = {
-		conversationId: conversation?.id ?? null,
+	const surface = {
 		revision: () => conversation?.revision ?? null,
-		onConversationChange: (next) => {
+		onConversationChange: (next: ConversationSummary) => {
 			dispatch({ type: "conversation-adopted", conversationRevision: next.revision });
 			onConversationChange(next);
 		},
-		setNotice: (notice) => dispatch({ type: "notice-changed", notice }),
+		setNotice: (notice: string) => dispatch({ type: "notice-changed", notice }),
 	};
 
 	const applySelection = (presetId: number): void => {
@@ -146,6 +145,7 @@ export function usePromptPresetLibrary({
 			const conversationClaim = conversationOperationClaim(runtime.current());
 			await runConversationCommand({
 				...surface,
+				conversationId: conversation.id,
 				isCurrent: () => ownsOperation(claim) && conversationOperationApplies(runtime.current(), conversationClaim),
 			}, {
 				type: "select-prompt-preset",

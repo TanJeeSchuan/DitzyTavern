@@ -11,6 +11,7 @@
 // never modified.
 
 import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
+import { sameMoves, type BoxMoves } from "../shared/contract/box-generation";
 
 // @approved
 //  A reading view of one Variant: the stored content plus whether the
@@ -57,6 +58,7 @@ export interface StoryMessage {
 	// @approved
 	//  Index of the persisted selected Variant within `swipes`.
 	activeSwipe: number;
+	moves: ChatHistoryMessage["moves"];
 	swipes: StoryVariant[];
 }
 
@@ -68,7 +70,7 @@ export interface StoryPreviewState {
 }
 
 export type RequestedGeneration =
-	| { kind: "send"; content: string }
+	| { kind: "send"; content: string; moves?: BoxMoves | undefined }
 	| { kind: "continuation" }
 	| { kind: "sibling"; messageId: number };
 
@@ -81,22 +83,19 @@ export interface StoryPaging {
 	hasNewer: boolean;
 }
 
-export interface StoryState {
-	conversationId: number | null;
+interface StoryContent {
 	title: string;
-	// @approved
-	//  Authoritative Conversation revision as of the last read page; the
-	// revisioned command seam needs it when the full snapshot is not loaded.
-	revision: number | null;
 	// @approved
 	//  Accumulated stable chronological Messages, deduplicated by Message id.
 	// One contiguous page window: older pages prepend and newer pages append.
 	messages: StoryMessage[];
-	page: StoryPaging | null;
-	status: "idle" | "loading-first" | "loading-more" | "ready" | "error";
 	preview: StoryPreviewState | null;
 	// Requested selections by Message id: each Variant shown in place of the persisted selection until its command settles.
 	requestedSelections: ReadonlyMap<number, number>;
+	// @approved
+	//  Requested Moves by Message id: shown in place of the Message's persisted Moves until their command settles, so
+	// a second edit builds on the first.
+	requestedMoves: ReadonlyMap<number, BoxMoves>;
 	// A Generation start the server has not accepted yet, and once it has, its accepted target. A page placing the
 	// target's Variant, or authority showing the Generation ended, retires it.
 	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number; sentRevision: number } | null } | null;
@@ -106,6 +105,15 @@ export interface StoryState {
 	// the same live Generation. Snapshots replace covered events; authoritative refreshes retire ended Generations.
 	unplacedObservations: readonly GenerationObservation[];
 }
+
+export type StoryState = StoryContent & (
+	| { status: "idle" }
+	| { status: "loading-first" | "error"; conversationId: number }
+	| { status: "ready"; loadingMore: boolean; historyFailed: boolean; conversationId: number; revision: number; page: StoryPaging }
+);
+
+export const isStoryReady = (state: StoryState): state is Extract<StoryState, { status: "ready" }> =>
+	state.status === "ready";
 
 type GenerationObservation = Extract<StoryAction, { type: "generation-observed" }>;
 
@@ -125,6 +133,11 @@ export type StoryAction =
 	// The select-variant command applied: the persisted selection moves and a matching Requested selection retires.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
 	| { type: "selection-dropped"; messageId: number }
+	| { type: "moves-requested"; messageId: number; moves: BoxMoves }
+	// @approved
+	//  The set-message-moves command applied: the persisted Moves change and matching Requested Moves retire.
+	| { type: "moves-set"; messageId: number; moves: BoxMoves }
+	| { type: "moves-dropped"; messageId: number }
 	| { type: "generation-requested"; request: RequestedGeneration }
 	| { type: "generation-request-accepted"; generationId: number; variantId: number; sentRevision: number }
 	| { type: "generation-request-failed" }
@@ -163,14 +176,12 @@ export type StoryAction =
 	| { type: "preview-confirmed" };
 
 export const createStoryState = (): StoryState => ({
-	conversationId: null,
 	title: "",
-	revision: null,
 	messages: [],
-	page: null,
 	status: "idle",
 	preview: null,
 	requestedSelections: new Map(),
+	requestedMoves: new Map(),
 	requestedGeneration: null,
 	unplacedObservations: [],
 });
@@ -226,6 +237,7 @@ const toStoryMessage = (
 		prior?.swipes.find((entry) => entry.id === variant.id),
 		activeGenerationIds,
 	)),
+	moves: message.moves,
 });
 
 // @approved
@@ -322,7 +334,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				status: "loading-first",
 			};
 		case "window-received":
-			if (state.conversationId !== action.page.conversationId || action.page.revision < (state.revision ?? 0)) return state;
+			if (state.status === "idle" || ("conversationId" in state && state.conversationId !== action.page.conversationId) || (isStoryReady(state) && action.page.revision < state.revision)) return state;
 			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
 			const accepted = state.requestedGeneration?.accepted ?? null;
 			const previewed = action.page.messages.find((message) => message.id === state.preview?.messageId);
@@ -332,6 +344,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				: null;
 			return {
 				...state,
+				conversationId: action.page.conversationId,
 				title: action.page.name,
 				revision: action.page.revision,
 				messages: action.page.messages.map((message) => toStoryMessage(
@@ -341,6 +354,8 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				)),
 				page: action.page.page,
 				status: "ready",
+				loadingMore: false,
+				historyFailed: false,
 				preview,
 				requestedGeneration: accepted !== null && (
 					action.page.messages.some((message) => message.variants.some((variant) => variant.id === accepted.variantId)) ||
@@ -349,19 +364,30 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
 		case "load-more-started":
-			return (state.status === "ready" || state.status === "error") && (state.page?.hasOlder === true || state.page?.hasNewer === true)
-				? { ...state, status: "loading-more" }
+			return isStoryReady(state) && (state.page.hasOlder || state.page.hasNewer)
+				? { ...state, loadingMore: true, historyFailed: false }
 				: state;
 		case "paging-cancelled":
-			return state.status === "loading-more" ? { ...state, status: "ready" } : state;
+			return isStoryReady(state) ? { ...state, loadingMore: false } : state;
 		case "history-failed":
-			return { ...state, status: "error" };
+			if (isStoryReady(state)) return state.historyFailed && !state.loadingMore ? state : { ...state, loadingMore: false, historyFailed: true };
+			return state.status === "loading-first" ? { ...state, status: "error" } : state;
 		case "selection-requested":
 			return state.messages.some((message) => message.id === action.messageId && message.swipes.some((variant) => variant.id === action.variantId))
 				? { ...state, requestedSelections: new Map(state.requestedSelections).set(action.messageId, action.variantId) }
 				: state;
 		case "selection-dropped":
 			return state.requestedSelections.has(action.messageId) ? { ...state, requestedSelections: without(state.requestedSelections, action.messageId) } : state;
+		case "moves-requested":
+			return { ...state, requestedMoves: new Map(state.requestedMoves).set(action.messageId, action.moves) };
+		case "moves-set":
+			return {
+				...state,
+				requestedMoves: sameMoves(state.requestedMoves.get(action.messageId), action.moves) ? without(state.requestedMoves, action.messageId) : state.requestedMoves,
+				messages: state.messages.map((message) => message.id === action.messageId ? { ...message, moves: action.moves } : message),
+			};
+		case "moves-dropped":
+			return state.requestedMoves.has(action.messageId) ? { ...state, requestedMoves: without(state.requestedMoves, action.messageId) } : state;
 		case "generation-requested":
 			return { ...state, requestedGeneration: { request: action.request, accepted: null } };
 		case "generation-request-accepted":
@@ -489,13 +515,13 @@ export const classifyVariantSelection = (
 	messageId: number,
 	variantId: number,
 ): StoryVariantSelection => {
-	if (state.preview !== null) return { kind: "blocked" };
+	if (!isStoryReady(state) || state.preview !== null) return { kind: "blocked" };
 	const message = state.messages.find((entry) => entry.id === messageId);
 	if (message === undefined) return { kind: "blocked" };
 	const target = message.swipes.find((variant) => variant.id === variantId);
 	if (target === undefined) return { kind: "blocked" };
 	if (displayedVariantId(message, null, state.requestedSelections) === target.id) return { kind: "noop" };
-	if (!state.page?.hasNewer && !state.messages.some((later) => later.position > message.position)) return { kind: "immediate", messageId, variantId };
+	if (!state.page.hasNewer && !state.messages.some((later) => later.position > message.position)) return { kind: "immediate", messageId, variantId };
 	return state.requestedSelections.has(messageId) ? { kind: "blocked" } : { kind: "preview", messageId, variantId };
 };
 
@@ -516,16 +542,25 @@ export const shownVariant = (state: StoryState, message: StoryMessage): StoryVar
 	return message.swipes.find((variant) => variant.id === id);
 };
 
-const without = (selections: ReadonlyMap<number, number>, messageId: number) => {
-	const next = new Map(selections);
+const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number) => {
+	const next = new Map(requested);
 	next.delete(messageId);
 	return next;
 };
 
-// Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text reuses it.
-export const reusesTrailingHumanMessage = (state: StoryState, humanParticipantId: number | null, content: string): boolean => {
-	const latest = state.page?.hasNewer ? undefined : state.messages.at(-1);
-	return latest !== undefined && humanParticipantId !== null && latest.authorParticipantId === humanParticipantId && shownVariant(state, latest)?.content === content;
+// @approved
+//  The Message the writer sees, with its Requested Moves in place of the persisted ones.
+export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
+	const moves = state.requestedMoves.get(message.id);
+	return moves === undefined ? message : { ...message, moves };
+};
+
+// @approved
+//  Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text and Moves reuses it.
+export const reusesTrailingHumanMessage = (state: StoryState, humanParticipantId: number | null, content: string, moves: BoxMoves | undefined): boolean => {
+	const latest = !isStoryReady(state) || state.page.hasNewer ? undefined : state.messages.at(-1);
+	return latest !== undefined && humanParticipantId !== null && latest.authorParticipantId === humanParticipantId &&
+		shownVariant(state, latest)?.content === content && sameMoves(shownMessage(state, latest).moves, moves);
 };
 
 export const isPreviewDownstream = (

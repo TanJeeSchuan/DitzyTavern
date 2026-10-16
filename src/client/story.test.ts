@@ -10,9 +10,11 @@ import {
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 	reusesTrailingHumanMessage,
+	shownMessage,
 	visibleVariantContent,
 	type StoryPreviewState,
 	type StoryMessage,
+	type StoryState,
 } from "./story";
 
 // Focused client-state tests without a frontend framework: page
@@ -39,6 +41,15 @@ const page = (
 	...overrides,
 });
 
+const readyStory = (state: StoryState) => {
+	if (state.status !== "ready") throw new Error("Story was not ready.");
+	return state;
+};
+const createReadyStory = () => readyStory(reduceStory(
+	reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
+	{ type: "window-received", page: page() },
+));
+
 const message = (
 	overrides: Partial<Omit<
 		ChatHistoryPage["messages"][number],
@@ -55,6 +66,7 @@ const message = (
 	variants: [
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 	],
+	moves: {},
 	...overrides,
 });
 
@@ -75,6 +87,7 @@ const storyMessage = (
 	swipe: { eligible: true, reason: null },
 	inCast: true,
 	activeSwipe: 0,
+	moves: {},
 	swipes: [
 		{ id: id * 10, position: 1, content: `Selected ${id}`, empty: false },
 		{ id: id * 10 + 1, position: 2, content: `Alternative ${id}`, empty: false },
@@ -82,12 +95,21 @@ const storyMessage = (
 });
 
 describe("story reading state", () => {
+	test("a failed loaded history request can retry paging", () => {
+		const failed = reduceStory(createReadyStory(), { type: "history-failed" });
+		const retry = reduceStory(failed, { type: "load-more-started" });
+		expect(retry).toMatchObject({ status: "ready", conversationId: 7, revision: 3, loadingMore: true });
+	});
+
+	test("a failed loaded history request retains Conversation and revision guards", () => {
+		const failed = reduceStory(createReadyStory(), { type: "history-failed" });
+		expect(reduceStory(failed, { type: "window-received", page: page({ conversationId: 99 }) })).toBe(failed);
+		expect(reduceStory(failed, { type: "window-received", page: page({ revision: 2 }) })).toBe(failed);
+	});
+
 	test("offers New Swipe on a server-eligible Message and honors the active response position", () => {
 		const olderEligible: StoryMessage = storyMessage(10, 1, 20);
 		const newerEligible: StoryMessage = storyMessage(11, 2, 20);
-		const messages = [olderEligible, newerEligible];
-
-		expect(messages.at(-1)?.id).toBe(newerEligible.id);
 		expect(canOfferSiblingGeneration({
 			message: olderEligible,
 			playable: true,
@@ -261,30 +283,14 @@ describe("story reading state", () => {
 			type: "chat-opened",
 			conversationId: 8,
 		});
-		expect(switched.conversationId).toBe(8);
+		expect(switched).toMatchObject({ conversationId: 8 });
 		expect(switched.messages).toEqual([]);
 		expect(switched.status).toBe("loading-first");
 	});
 
-	test("a model Message with later Messages enters Preview", () => {
-		const messages = [
-			storyMessage(120, 1, 20),
-			storyMessage(122, 2, 20),
-			storyMessage(123, 3, 10),
-			storyMessage(125, 4, 10),
-		];
-		const state = { ...createStoryState(), messages };
-
-		expect(classifyVariantSelection(state, 122, 1221)).toEqual({
-			kind: "preview",
-			messageId: 122,
-			variantId: 1221,
-		});
-	});
-
 	test("older Variant selection enters one local Preview with downstream read-only state", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -328,7 +334,7 @@ describe("story reading state", () => {
 			],
 		};
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -379,7 +385,7 @@ describe("story reading state", () => {
 
 	test("Preview only starts for a different Variant and navigation warns only for another Chat", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 20)],
@@ -400,7 +406,7 @@ describe("story reading state", () => {
 
 	test("cancelling Preview restores the authoritative path without a command", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10)],
@@ -417,7 +423,7 @@ describe("story reading state", () => {
 
 	test("an authoritative history reload discards client-only Preview state", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			revision: 3,
 			status: "ready",
@@ -438,7 +444,7 @@ describe("story reading state", () => {
 
 	test("confirming a second Message keeps the first confirmation shown", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
@@ -450,7 +456,7 @@ describe("story reading state", () => {
 
 	test("a confirmation that applies while another Message is previewed settles its Message", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20), storyMessage(3, 3, 10)],
@@ -465,7 +471,7 @@ describe("story reading state", () => {
 
 	test("confirmation makes the previewed Variant authoritative and leaves later Messages intact", () => {
 		const state: StoryStateForPreview = {
-			...createStoryState(),
+			...createReadyStory(),
 			conversationId: 7,
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20)],
@@ -693,31 +699,6 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.content).toBe("Saved next");
 	});
 
-	test("Reasoning Content reconstructs from authoritative history without prior client state", () => {
-		let state = createStoryState();
-		state = reduceStory(state, { type: "chat-opened", conversationId: 42 });
-		state = reduceStory(state, {
-			type: "window-received",
-			page: page({
-				conversationId: 42,
-				revision: 5,
-				messages: [message({
-					id: 10,
-					variants: [{
-						id: 100,
-						position: 1,
-						content: "Finished.",
-						reasoning: "Persisted thought.",
-						timestamp: "2026-01-01T00:00:00.000Z",
-						selected: true,
-					}],
-				})],
-			}),
-		});
-
-		expect(variantContent(state, 100)?.reasoning).toBe("Persisted thought.");
-	});
-
 	test("deltas ignore Variants and Messages that are not in the current read model", () => {
 		const state = stateWithProvisional();
 		const untouched = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 999, variantId: 100, text: "x", generationId: 55, eventId: 1 });
@@ -752,7 +733,7 @@ describe("detached story windows", () => {
 	test("a source jump replaces the latest window with one page", () => {
 		const state = detach();
 		expect(state.messages.map(({ id }) => id)).toEqual([3, 4]);
-		expect(state.page).toMatchObject({ index: 3, hasNewer: true, hasOlder: true });
+		expect(readyStory(state).page).toMatchObject({ index: 3, hasNewer: true, hasOlder: true });
 	});
 
 	test("a refresh preserves Preview until its Variant or Message disappears", () => {
@@ -790,7 +771,7 @@ describe("detached story windows", () => {
 		final.messages[1]!.variants[0]!.content = "Finished";
 		const settled = reduceStory(refreshed, { type: "window-received", page: final });
 		expect(settled.messages.at(-1)?.swipes[0]?.content).toBe("Finished");
-		expect(settled.page?.hasNewer).toBe(true);
+		expect(readyStory(settled).page.hasNewer).toBe(true);
 	});
 
 	test("a detached final visible Message needs Swipe preview", () => {
@@ -834,10 +815,29 @@ describe("Requested Send", () => {
 		expect(reduceStory(requested, { type: "generation-request-failed" }).requestedGeneration).toBeNull();
 	});
 
-	test("reuses the trailing human Message only when it repeats that Message's text", () => {
+	test("Requested Moves show until their command settles, and an earlier settle keeps a later request", () => {
+		const text = (body: string) => ({ to: "Mara", text: body });
+		const state = reduceStory(opened(), { type: "window-received", page: page({ messages: [message({ moves: { phone: [text("A"), text("B"), text("C")] } })] }) });
+		const first = reduceStory(state, { type: "moves-requested", messageId: 10, moves: { phone: [text("B"), text("C")] } });
+		const second = reduceStory(first, { type: "moves-requested", messageId: 10, moves: { phone: [text("C")] } });
+		expect(shownMessage(second, second.messages[0]!).moves).toEqual({ phone: [text("C")] });
+		const firstApplied = reduceStory(second, { type: "moves-set", messageId: 10, moves: { phone: [text("B"), text("C")] } });
+		expect(shownMessage(firstApplied, firstApplied.messages[0]!).moves).toEqual({ phone: [text("C")] });
+		const secondApplied = reduceStory(firstApplied, { type: "moves-set", messageId: 10, moves: { phone: [text("C")] } });
+		expect(secondApplied.requestedMoves.size).toBe(0);
+		expect(secondApplied.messages[0]!.moves).toEqual({ phone: [text("C")] });
+		const dropped = reduceStory(first, { type: "moves-dropped", messageId: 10 });
+		expect(shownMessage(dropped, dropped.messages[0]!).moves).toEqual({ phone: [text("A"), text("B"), text("C")] });
+	});
+
+	test("reuses the trailing human Message only when it repeats that Message's text and Moves", () => {
 		const state = opened();
-		expect(reusesTrailingHumanMessage(state, 1, "Once")).toBe(true);
-		expect(reusesTrailingHumanMessage(state, 1, "Once more")).toBe(false);
-		expect(reusesTrailingHumanMessage(state, 2, "Once")).toBe(false);
+		const texted = { phone: [{ to: "Mara", text: "Running late" }] };
+		expect(reusesTrailingHumanMessage(state, 1, "Once", undefined)).toBe(true);
+		expect(reusesTrailingHumanMessage(state, 1, "Once more", undefined)).toBe(false);
+		expect(reusesTrailingHumanMessage(state, 2, "Once", undefined)).toBe(false);
+		expect(reusesTrailingHumanMessage(state, 1, "Once", texted)).toBe(false);
+		const textedState = reduceStory(state, { type: "window-received", page: page({ messages: [message({ moves: texted })] }) });
+		expect(reusesTrailingHumanMessage(textedState, 1, "Once", texted)).toBe(true);
 	});
 });

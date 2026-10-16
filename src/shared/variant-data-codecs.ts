@@ -1,10 +1,10 @@
 import { Value } from "@sinclair/typebox/value";
 import {
 	generationProvenanceCodec, generationJsonObject, parseGenerationJson,
-	type GenerationJsonValue, type GenerationProvenanceDataEntry, type GenerationProvenanceRecord,
+	type GenerationJsonValue, type GenerationProvenanceDataEntry,
 } from "./generation-provenance";
 import { loreActivationRecord, type LoreActivationRecord } from "./contract/lore-activation";
-import { memoryActivationRecord, type MemoryActivationRecord } from "./contract/memory-recall";
+import { boxTraces, type BoxTraces } from "./contract/box-generation";
 import { decodeMacroVariableWrite, encodeMacroVariableWrite, type MacroVariableWrite } from "./contract/macro-variable-write";
 
 export class LoreActivationRecordParseError extends Error {
@@ -34,21 +34,20 @@ const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | n
 	return parsed as LoreActivationRecord;
 };
 
-export class MemoryActivationRecordParseError extends Error {
+export class BoxTracesParseError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };
 
 	constructor(message: string) {
 		super(message);
-		this.name = "MemoryActivationRecordParseError";
+		this.name = "BoxTracesParseError";
 	}
 }
 
-const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord | null => {
+const parseBoxTraces = (serialized: string): BoxTraces => {
 	let parsed: unknown;
-	try { parsed = JSON.parse(serialized); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record is not valid JSON."); }
-	if (parsed === null) return null;
-	try { return Value.Parse(memoryActivationRecord, parsed); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema."); }
+	try { parsed = JSON.parse(serialized); } catch { throw new BoxTracesParseError("Persisted Box traces are not valid JSON."); }
+	try { return Value.Parse(boxTraces, parsed); } catch { throw new BoxTracesParseError("Persisted Box traces do not match their schema."); }
 };
 
 export const GENERATION_DATA_NAMESPACE = "generation";
@@ -59,8 +58,8 @@ export const GENERATION_DATA_KEYS = {
 
 export const LORE_ACTIVATION_NAMESPACE = "lore-activation";
 export const LORE_ACTIVATION_KEY = "record";
-export const MEMORY_ACTIVATION_NAMESPACE = "generation-memory";
-export const MEMORY_ACTIVATION_KEY = "activation";
+export const BOX_TRACES_NAMESPACE = "generation-box";
+export const BOX_TRACES_KEY = "traces";
 export const MACRO_DATA_NAMESPACE = "prompt-macro";
 export const macroWritesKey = (presetId: number): string => `write:${presetId}`;
 
@@ -89,14 +88,7 @@ export const variantDataCodecs = {
 	provenance: {
 		namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.provenance,
 		keys: [GENERATION_DATA_KEYS.provenance, GENERATION_DATA_KEYS.outcome, GENERATION_DATA_KEYS.usage, GENERATION_DATA_KEYS.finish, GENERATION_DATA_KEYS.interruptionCause],
-		decode: (serialized: string) => parseGenerationJson(serialized, null),
-		read: (entries: readonly GenerationProvenanceDataEntry[]) => generationProvenanceCodec.decodeStored(
-			parseGenerationJson(entries.find((entry) => entry.namespace === variantDataCodecs.provenance.namespace && entry.key === variantDataCodecs.provenance.key)?.value ?? "null", null), entries,
-		),
-		encode: (value: GenerationProvenanceRecord) => generationProvenanceCodec.encode(value),
-		terminal: (serialized: string, entries: readonly GenerationProvenanceDataEntry[]) => generationProvenanceCodec.encode(
-			generationProvenanceCodec.project(parseGenerationJson(serialized, null), generationProvenanceCodec.readTerminalMetadata(entries)),
-		),
+		...generationProvenanceCodec,
 	},
 	intent: {
 		namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.intent, keys: [GENERATION_DATA_KEYS.intent],
@@ -114,10 +106,10 @@ export const variantDataCodecs = {
 		decode: parseLoreActivationRecord,
 		encode: (value: LoreActivationRecord) => JSON.stringify(value),
 	},
-	memoryActivation: {
-		namespace: MEMORY_ACTIVATION_NAMESPACE, key: MEMORY_ACTIVATION_KEY, keys: [MEMORY_ACTIVATION_KEY],
-		decode: parseMemoryActivationRecord,
-		encode: (value: MemoryActivationRecord) => JSON.stringify(value),
+	boxTraces: {
+		namespace: BOX_TRACES_NAMESPACE, key: BOX_TRACES_KEY, keys: [BOX_TRACES_KEY],
+		decode: parseBoxTraces,
+		encode: (value: BoxTraces) => JSON.stringify(value),
 	},
 	macroWrites: {
 		namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey, keys: [], keyPrefix: "write:",

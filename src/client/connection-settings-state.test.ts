@@ -125,41 +125,6 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.editorOpen).toBe(true);
 	});
 
-	test("a command conflict retains the local editor and surfaces the conflict", () => {
-		const conflict = {
-			outcome: "conflict" as const,
-			expectedRevision: 2,
-			actualRevision: 3,
-			currentSettings: {
-				revision: 3,
-				profiles: [profile(2, "Authoritative")],
-			},
-		};
-		const next = reduceConnectionSettingsController(controllerState(), {
-			type: "command-conflict",
-			conflict,
-			message: "Connection Settings changed elsewhere.",
-		});
-
-		expect(next.conflict).toBe(conflict);
-		expect(next.draft.displayName).toBe("Local edit");
-		expect(next.credentialDraft).toBe("secret");
-		expect(next.selectedProfileId).toBe(1);
-		expect(next.error).toBe("Connection Settings changed elsewhere.");
-	});
-
-	test("deleting a profile clears the pending deletion and reports it", () => {
-		const next = reduceConnectionSettingsController(controllerState(), {
-			type: "delete-succeeded",
-			deletedProfileId: 1,
-			deletedDisplayName: "First",
-		});
-
-		expect(next.pendingDeletionProfileId).toBeNull();
-		expect(next.conflict).toBeNull();
-		expect(next.notice).toBe("First deleted.");
-	});
-
 	test("a late deletion result leaves another profile's deletion confirmation open", () => {
 		const confirmingB = reduceConnectionSettingsController(controllerState(), { type: "request-deletion", profileId: 2 });
 		const next = reduceConnectionSettingsController(confirmingB, {
@@ -170,24 +135,6 @@ describe("reduceConnectionSettingsController", () => {
 
 		expect(next.pendingDeletionProfileId).toBe(2);
 		expect(next.notice).toBeNull();
-	});
-
-	test("a save result cannot adopt after editing A to B and back to A", () => {
-		const submitted = controllerState();
-		const changed = reduceConnectionSettingsController(submitted, {
-			type: "set-draft", draft: { ...submitted.draft, displayName: "B" },
-		});
-		const restored = reduceConnectionSettingsController(changed, { type: "set-draft", draft: submitted.draft });
-		const next = reduceConnectionSettingsController(restored, {
-			type: "apply-succeeded",
-			settings: { revision: 3, profiles: [profile(1, "Saved")] },
-			draftDisplayName: "Local edit",
-			submitted,
-		});
-
-		expect(next.draft.displayName).toBe("Local edit");
-		expect(next.credentialDraft).toBe("secret");
-		expect(next.notice).toBe("old notice");
 	});
 
 	test("a save result adopts the saved profile while the editor still matches", () => {

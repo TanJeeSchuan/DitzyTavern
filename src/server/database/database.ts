@@ -3,7 +3,6 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { installDefaultPresetAuthorNote } from "../prompt-preset/recipe";
 
 export interface OpenDatabaseOptions {
 	path?: string;
@@ -35,16 +34,31 @@ export function initializeDatabase(
 	database: Database,
 	migrationsDirectory = defaultMigrationsDirectory,
 ): void {
-	const fresh = database.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'prompt_preset'").get() === null;
 	database.exec("PRAGMA journal_mode = WAL");
 	migrate(drizzle(database), { migrationsFolder: migrationsDirectory });
-	if (fresh) installDefaultPresetAuthorNote(database);
 }
+
+// @approved
+//  Tests open hundreds of in-memory databases; each one copies a migrated
+// image instead of running every migration again.
+const migratedImages = new Map<string, Uint8Array>();
 
 export function openInitializedDatabase(
 	options: OpenDatabaseOptions = {},
 	migrationsDirectory = defaultMigrationsDirectory,
 ): Database {
+	if (options.path === ":memory:") {
+		let image = migratedImages.get(migrationsDirectory);
+		if (!image) {
+			const template = openDatabase(options);
+			initializeDatabase(template, migrationsDirectory);
+			migratedImages.set(migrationsDirectory, image = template.serialize());
+			template.close();
+		}
+		const database = Database.deserialize(image);
+		database.exec("PRAGMA foreign_keys = ON");
+		return database;
+	}
 	const database = openDatabase(options);
 	try {
 		initializeDatabase(database, migrationsDirectory);

@@ -264,11 +264,4 @@ describe("request override drafts", () => {
 			outputLimit: [],
 		});
 	});
-
-	test("managed keys are absent when the override does not use them", () => {
-		expect(managedOverrideKeys("chat-completions", { custom_field: "kept" })).toEqual({
-			structural: [],
-			outputLimit: [],
-		});
-	});
 });

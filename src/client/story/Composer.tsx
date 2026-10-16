@@ -1,9 +1,13 @@
 import { PenLine, Send, Square } from "lucide-react";
 import { useRef, type FormEvent, type ReactNode } from "react";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
+import type { BoxMoves } from "../../shared/contract/box-generation";
+import { MoveChips } from "./MoveChips";
 
 export function Composer({
 	draft,
+	moves,
+	onMovesChange,
 	isGenerating,
 	canWrite,
 	isReceded,
@@ -16,6 +20,8 @@ export function Composer({
 	writerName,
 }: {
 	draft: string;
+	moves: BoxMoves;
+	onMovesChange: (moves: BoxMoves) => void;
 	isGenerating: boolean;
 	canWrite: boolean;
 	isReceded: boolean;
@@ -61,6 +67,7 @@ export function Composer({
 			{controlSelectors !== undefined && (
 				<div className="composer-controls-row">{controlSelectors}</div>
 			)}
+			<MoveChips moves={moves} onChange={onMovesChange} disabled={!canWrite} />
 			<ProseEditor
 				ref={editorRef}
 				value={draft}

@@ -51,6 +51,7 @@ describe("permanent Lore Activation Records", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -60,6 +61,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: null,
@@ -116,6 +118,7 @@ describe("permanent Lore Activation Records", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -125,6 +128,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: null,
@@ -178,6 +182,7 @@ describe("permanent Lore Activation Records", () => {
 		const model = created.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
@@ -187,6 +192,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: null,
@@ -204,6 +210,7 @@ describe("permanent Lore Activation Records", () => {
 
 		const fresh = readTestConversationSnapshot(module, created.id)!;
 		const zeroOutput = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: created.id,
 			expectedRevision: fresh.revision,
 			timestamp: "2026-09-17T10:00:02Z",
@@ -213,6 +220,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: null,

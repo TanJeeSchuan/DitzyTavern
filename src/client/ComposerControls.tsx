@@ -1,7 +1,11 @@
-import { NotebookPen, Sparkles, UserRound } from "lucide-react";
+import { Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { boxReference, type BoxId, type PromptBoxReference } from "../shared/contract/box";
+import { boxClients, boxPresent, boxTitle } from "./box-windows/registry";
+import { BoxIcon } from "./box-windows/BoxBoundary";
+import { BoxManager } from "./box-windows/BoxManager";
 import { controlChangeDescription } from "./cast";
 import {
 	type ConversationSummary,
@@ -17,7 +21,8 @@ import { ModelSelector } from "./ModelSelector";
 // only Cast Participants can be referenced.
 
 interface ComposerControlSelectorsProps {
-	onAuthorNote: () => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
+	onOpenWindow: (box: BoxId) => void;
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	disabledReason?: string;
@@ -26,7 +31,8 @@ interface ComposerControlSelectorsProps {
 }
 
 export function ComposerControlSelectors({
-	onAuthorNote,
+	onOpenPanel,
+	onOpenWindow,
 	conversation,
 	disabled = false,
 	disabledReason,
@@ -46,6 +52,13 @@ export function ComposerControlSelectors({
 	if (conversation.cast.length === 0) {
 		return null;
 	}
+
+	// @approved
+	//  One launcher per Box present in the Chat with a client entry: a panel
+	//  Box opens in the primary panel, any other in its window.
+	const launchers = [...boxClients()].flatMap(([box, { icon, PrimaryPanel, Window }]) => !boxPresent(conversation, box) ? []
+		: PrimaryPanel !== undefined ? [{ box, icon, open: () => onOpenPanel(boxReference(box)) }]
+		: Window !== undefined ? [{ box, icon, open: () => onOpenWindow(box) }] : []);
 
 	const options = conversation.cast.map((participant) => ({
 		value: participant.id,
@@ -110,7 +123,8 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			<Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={onAuthorNote}><NotebookPen aria-hidden="true" /></Button>
+			<BoxManager conversation={conversation} disabled={disabled} onConversationChange={onConversationChange} />
+			{launchers.map(({ box, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}

@@ -1,3 +1,5 @@
+import type { StoryState } from "../story";
+import { boxSetups, boxes } from "../test-fixtures/box-setups";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { useCallback, useReducer } from "react";
@@ -11,7 +13,7 @@ const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
 const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: `Chat ${id}`, authorNote: "", cast: [], control: { humanParticipantId: null, modelParticipantId: null },
+	id, revision, name: `Chat ${id}`, boxSetups, boxes, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
 	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
 	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
 		generate: { available: false, reason: "conversation-not-playable" }, swipe: { available: false, reason: "conversation-not-playable" } }, activeGenerations: [],
@@ -21,7 +23,7 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
 	messages: Array.from({ length: 2 }, (_, i) => ({
 		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
 		modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
-		variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
+		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
 	})),
 	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });
@@ -189,18 +191,18 @@ test("newer paging extends a detached window and generation refresh retains that
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
-	expect(h.hook.current.story.page?.hasNewer).toBe(true);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
 	refreshing = true;
 	const before = h.requests.length;
 	await h.hook.act(async () => h.hook.current.refreshStory(1));
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
-	expect(h.hook.current.story.page?.hasNewer).toBe(true);
-	expect(h.hook.current.story.revision).toBe(6);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
 	expect(h.requests.slice(before).map(({ url }) => url.search)).toEqual(["", "?page=2", "?page=3"]);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
-	expect(h.hook.current.story.page?.hasNewer).toBe(false);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
 });
 
 test("source navigation cancels a refresh still reading the Conversation before it can fetch history", async () => {
@@ -248,7 +250,7 @@ test("a Conversation switch during the render wait suppresses the old jump's scr
 	await h.switchTo(2);
 	await h.hook.act(async () => { frames.shift()?.(0); frames.shift()?.(0); await navigation; });
 	expect(scrolls).toEqual([]);
-	expect(h.hook.current.story.conversationId).toBe(2);
+	expect(readyStory(h.hook.current.story).conversationId).toBe(2);
 });
 
 test("jump to latest replaces a detached window and ensureLatest reads newly published authority immediately", async () => {
@@ -279,7 +281,7 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 	const activeChatIdRef = { current: "1" };
 	const dispatchStory = () => {};
 	const hook = await renderHook(() => useGenerationController({
-		conversation, story: { ...createStoryState(), conversationId: conversation.id }, dispatchStory, activeChatIdRef,
+		conversation, story: { ...createStoryState(), status: "loading-first", conversationId: conversation.id }, dispatchStory, activeChatIdRef,
 		refreshStory: async () => conversation, ensureLatest: async () => conversation, inspectPromptPlanBeforeGenerating: false,
 	}), client);
 	let older: Promise<void> = Promise.resolve();
@@ -341,7 +343,7 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	expect(reopened.current.story.messages).toEqual([]);
 	await reopened.act(async () => fresh.resolve(Response.json(page(1, 1, 8))));
 	await flushHook();
-	expect(reopened.current.story.revision).toBe(8);
+	expect(readyStory(reopened.current.story).revision).toBe(8);
 	expect(reopened.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 });
 
@@ -370,7 +372,7 @@ test("an older history response cannot replace a newer cached window", async () 
 	stale = true;
 	await h.hook.act(async () => h.hook.current.refreshStory(1));
 	await flushHook();
-	expect(h.hook.current.story.revision).toBe(8);
+	expect(readyStory(h.hook.current.story).revision).toBe(8);
 	expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Before");
 });
 
@@ -387,8 +389,8 @@ test("a deleted source anchor returns to the latest history", async () => {
 	await flushHook();
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
-	expect(h.hook.current.story.page?.hasNewer).toBe(false);
-	expect(h.hook.current.story.revision).toBe(6);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
 });
 
 test("initial history behind Conversation authority refetches and finishes opening", async () => {
@@ -403,7 +405,7 @@ test("initial history behind Conversation authority refetches and finishes openi
 	await h.hook.act(async () => fresh.resolve(Response.json(page(1, 1, 6))));
 	await flushHook();
 	expect(h.hook.current.story.status).toBe("ready");
-	expect(h.hook.current.story.revision).toBe(6);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
 	expect(h.requests).toHaveLength(3);
 });
 
@@ -451,3 +453,8 @@ test("batched A to B to A selection creates a usable replacement owner", async (
 	await flushHook();
 	expect(h.hook.current.conversation?.revision).toBe(6);
 });
+
+function readyStory(state: StoryState) {
+	if (state.status !== "ready") throw new Error("Story was not ready.");
+	return state;
+}

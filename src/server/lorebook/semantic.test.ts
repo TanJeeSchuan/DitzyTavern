@@ -61,7 +61,7 @@ describe("semantic Lore evaluation", () => {
 		expect(scanned).toContain("only in the oldest message");
 		expect(scanned).toContain("newest line");
 		expect(result.matches).toHaveLength(triggers.length);
-		expect(result.matches?.[0]).toEqual({ trigger: triggers[0], score: 0.9 });
+		expect(result.matches?.[0]).toEqual({ trigger: triggers[0]!, score: 0.9 });
 	});
 
 	test("uses one unavailable result when the Decision Model fails", async () => {

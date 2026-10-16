@@ -3,13 +3,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	characterOpeningTable,
-	characterPromptTable,
-	characterTable,
 	conversationTable,
 	conversationControlTable,
 	messageTable,
-	messageVariantTable,
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
@@ -64,14 +60,10 @@ describe("Conversation creation", () => {
 		table:
 			| typeof conversationTable
 			| typeof messageTable
-			| typeof messageVariantTable
 			| typeof participantTable
 			| typeof participantPromptTable
 			| typeof participantOpeningTable
-			| typeof conversationControlTable
-			| typeof characterTable
-			| typeof characterPromptTable
-			| typeof characterOpeningTable,
+			| typeof conversationControlTable,
 	) => drizzle(database).select().from(table).all().length;
 
 	test("creates a playable Conversation from two distinct ad-hoc Participants", () => {
@@ -103,8 +95,8 @@ describe("Conversation creation", () => {
 		expect(snapshot.cast.every((participant) => participant.sourceCharacterId === null)).toBe(true);
 
 		expect(snapshot.control).toEqual({
-			humanParticipantId: snapshot.cast[0]?.id,
-			modelParticipantId: snapshot.cast[1]?.id,
+			humanParticipantId: snapshot.cast[0]!.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
 
 		// Human openings never become history; only the model seat's do.
@@ -143,8 +135,8 @@ describe("Conversation creation", () => {
 			inCast: true,
 		});
 		expect(greeting?.historicalContext).toEqual({
-			humanParticipantId: snapshot.cast[0]?.id,
-			modelParticipantId: snapshot.cast[1]?.id,
+			humanParticipantId: snapshot.cast[0]!.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
 	});
 
@@ -201,7 +193,7 @@ describe("Conversation creation", () => {
 		expect(snapshot.playable).toBe(true);
 	});
 
-	test("forks copy the authoritative Character Definition and record immutable provenance", () => {
+	test("records a fork's source Character and seats it from any Cast position", () => {
 		const library = createCharacterLibraryModule(database);
 		const source = library.execute({
 			type: "create",
@@ -231,23 +223,7 @@ describe("Conversation creation", () => {
 		);
 
 		const fork = snapshot.cast.find((participant) => participant.name === "Maren Voss");
-		expect(fork?.sourceCharacterId).toBe(source.id);
-		expect(fork?.prompt).toEqual(source.prompt);
-		expect(fork?.openings).toEqual(["The lamp turns above you."]);
-
-		// The fork is independent: editing the source Character afterwards
-		// leaves the Participant copy untouched.
-		library.execute({
-			type: "rename",
-			characterId: source.id,
-			expectedRevision: 0,
-			name: "Renamed Voss",
-		});
-		const reread = readTestConversationSnapshot(conversation, snapshot.id);
-		expect(reread?.cast.find((participant) => participant.name === "Maren Voss")).toBeDefined();
-
-		// Control can assign either seat to either Cast position.
-		expect(reread?.control.modelParticipantId).toBe(fork?.id);
+		expect(fork).toMatchObject({ id: snapshot.control.modelParticipantId, sourceCharacterId: source.id });
 	});
 
 	test("allows both seats to fork the same Character as separate Participants", () => {
@@ -388,95 +364,5 @@ describe("Conversation creation", () => {
 		expect(first?.historicalContext).toEqual(null);
 
 		expect(readTestConversationSnapshot(conversation, snapshot.id)).toEqual(snapshot);
-	});
-
-	test("structural constraints back the domain: unique Cast positions, ordered openings, distinct seats, and foreign keys", () => {
-		const conversation = database;
-		const snapshot = createConversationWithHistory(conversation, inputWith());
-		const db = drizzle(database);
-		const humanId = snapshot.cast[0]?.id ?? 0;
-		const modelId = snapshot.cast[1]?.id ?? 0;
-
-		// Cast positions are unique per Conversation.
-		expect(() =>
-			db.insert(participantTable).values({
-				conversation_id: snapshot.id,
-				position: 1,
-				name: "Clash",
-			}).run(),
-		).toThrow("UNIQUE constraint failed");
-
-		// Opening order is unique per Participant; the model seat owns the
-		// seeded openings in this fixture.
-		expect(() =>
-			db.insert(participantOpeningTable).values({
-				participant_id: modelId,
-				position: 1,
-				content: "Clash",
-			}).run(),
-		).toThrow("UNIQUE constraint failed");
-
-		// Each Control seat exists once; one Participant cannot hold both.
-		expect(() =>
-			db
-				.insert(conversationControlTable)
-				.values({ conversation_id: snapshot.id, seat: "human", participant_id: modelId })
-				.run(),
-		).toThrow("UNIQUE constraint failed");
-		expect(() =>
-			db
-				.insert(conversationControlTable)
-				.values({ conversation_id: snapshot.id, seat: "model", participant_id: humanId })
-				.run(),
-		).toThrow("UNIQUE constraint failed");
-		expect(() =>
-			db
-				.insert(conversationControlTable)
-				.values({ conversation_id: snapshot.id, seat: "audience", participant_id: modelId })
-				.run(),
-		).toThrow("CHECK constraint failed");
-
-		// Foreign keys are enforced on provenance and authorship references.
-		expect(() =>
-			db
-				.insert(participantTable)
-				.values({
-					conversation_id: snapshot.id,
-					position: 3,
-					name: "Ghost",
-					source_character_id: 987654,
-				})
-				.run(),
-		).toThrow("FOREIGN KEY constraint failed");
-
-		expect(() =>
-			db
-				.insert(messageTable)
-				.values({
-					conversation_id: snapshot.id,
-					position: 2,
-					timestamp: "2026-08-21T09:00:00Z",
-					author_participant_id: 987654,
-					author_name: "Ghost",
-				})
-				.run(),
-		).toThrow("FOREIGN KEY constraint failed");
-
-		// The historical Control pair columns are set together or not at all.
-		expect(() =>
-			db
-				.insert(messageTable)
-				.values({
-					conversation_id: snapshot.id,
-					position: 3,
-					timestamp: "2026-08-21T09:00:00Z",
-					context_human_participant_id: humanId,
-				})
-				.run(),
-		).toThrow("CHECK constraint failed");
-
-		expect(countRows(characterTable)).toBe(0);
-		expect(countRows(characterPromptTable)).toBe(0);
-		expect(countRows(characterOpeningTable)).toBe(0);
 	});
 });

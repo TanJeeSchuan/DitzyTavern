@@ -48,7 +48,7 @@ describe("Native Prompt Preset interchange", () => {
 				},
 				{ reference: "model-identity", enabled: true, role: "user" },
 				{ reference: "model-identity", enabled: true, role: "assistant" },
-				{ reference: "memory", enabled: false, role: "assistant" },
+				{ reference: "box:memory", enabled: false, role: "assistant", content: "" },
 				{ reference: "history", enabled: false },
 			],
 		};
@@ -71,12 +71,9 @@ describe("Native Prompt Preset interchange", () => {
 			"instruction",
 			"model-identity",
 			"model-identity",
-			"memory",
+			"box:memory",
 			"history",
 		]);
-		expect(roundTrip).not.toHaveProperty("id");
-		expect(roundTrip).not.toHaveProperty("sourceName");
-		expect(roundTrip).not.toHaveProperty("content", "I am Maren.");
 		expect(resolved?.slots[1]).toMatchObject({ sourceName: "Maren", content: "I am {{self}}." });
 	});
 
@@ -85,11 +82,19 @@ describe("Native Prompt Preset interchange", () => {
 		const result = await importPreset(routes.library, {
 			name: "Duplicate Memory",
 			slots: [
-				{ reference: "memory", enabled: false, role: "system" },
-				{ reference: "memory", enabled: true, role: "assistant" },
+				{ reference: "box:memory", enabled: false, role: "system", content: "" },
+				{ reference: "box:memory", enabled: true, role: "assistant", content: "" },
 			],
 		});
 		expect(result.status).toBe(422);
+		expect(await listPresets(routes.library)).toHaveLength(1);
+	});
+
+	test("rejects a reference to a Box that is not registered", async () => {
+		const routes = createRoutes(database);
+		const result = await importPreset(routes.library, { name: "Unknown Box", slots: [{ reference: "box:nope", enabled: true, role: "system", content: "" }] });
+		expect(result.status).toBe(422);
+		expect(result.body).toMatchObject({ reason: "There is no Box for box:nope." });
 		expect(await listPresets(routes.library)).toHaveLength(1);
 	});
 

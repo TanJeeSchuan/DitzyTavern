@@ -14,7 +14,6 @@ import {
 	attachmentDisposition,
 	mediaTypeFromFilename,
 	uniqueManagedRelativePath,
-	sanitizeArtifactFilename,
 } from ".";
 import type { ConversationArtifactSeed } from "../conversation";
 import { InvalidConversationCreationError } from "../conversation";
@@ -41,16 +40,12 @@ describe("Conversation artifacts", () => {
 	let database: Database;
 	let root: string;
 	let module: ArtifactModule;
-	let chatId: number;
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		root = mkdtempSync(join(tmpdir(), "ditzytavern-artifact-"));
 		module = createArtifactModule(database, { directory: root });
-		const created = createConversationWithHistory(database, {
-			name: "Artifact Holder",
-		});
-		chatId = created.id;
+		createConversationWithHistory(database, { name: "Artifact Holder" });
 	});
 
 	afterEach(() => {
@@ -189,43 +184,14 @@ describe("Conversation artifacts", () => {
 			sha256: sha256Hex(bytes),
 			relativePath: "uuid-source.bin",
 		});
-		createWithArtifact(seed);
+		const created = createWithArtifact(seed, bytes);
 
-		const snapshot = readTestConversationSnapshot(database, chatId);
+		const snapshot = readTestConversationSnapshot(database, created.id);
 		const serialized = JSON.stringify(snapshot);
 		expect(serialized).not.toContain("uuid-source.bin");
 		expect(serialized).not.toContain("opaque artifact payload");
 		// The record is only reachable through the artifact seam.
-		expect(snapshot?.data).toEqual([]);
-	});
-
-	test("reads the exact stored bytes back through the public artifact seam", () => {
-		const bytes = Buffer.from("\uFEFFline one\r\nline two\n", "utf8");
-		const seed = artifactSeed({
-			byteLength: bytes.length,
-			sha256: sha256Hex(bytes),
-		});
-		writeFileSync(join(root, seed.relativePath), bytes);
-		const created = createConversationWithHistory(database, {
-			name: "Exact Round Trip",
-			artifacts: [seed],
-		});
-
-		const read = module.readArtifact(created.id, "test.artifact", "source.exact");
-		expect(read).toEqual({
-			status: "available",
-			artifact: {
-				chatId: created.id,
-				namespace: "test.artifact",
-				key: "source.exact",
-				relativePath: seed.relativePath,
-				originalFilename: "lantern-house.jsonl",
-				mediaType: "application/jsonl",
-				byteLength: bytes.length,
-				sha256: seed.sha256,
-			},
-			bytes,
-		});
+		expect(snapshot?.data.map(({ namespace }) => namespace)).toEqual(["box:author-note", "box:author-note", "box:memory", "box:memory"]);
 	});
 
 	test("reports missing artifacts as cleaned up without throwing", () => {
@@ -247,20 +213,6 @@ describe("Conversation artifacts", () => {
 			sha256: seed.sha256,
 			availability: { status: "cleaned-up", reason: "missing" },
 		});
-		expect(module.readArtifact(owner.id, "test.artifact", "source.exact")).toEqual({
-			status: "cleaned-up",
-			artifact: {
-				chatId: owner.id,
-				namespace: "test.artifact",
-				key: "source.exact",
-				relativePath: seed.relativePath,
-				originalFilename: "lantern-house.jsonl",
-				mediaType: "application/jsonl",
-				byteLength: 5,
-				sha256: seed.sha256,
-			},
-			reason: "missing",
-		});
 		expect(module.downloadArtifact(owner.id, "test.artifact", "source.exact")).toEqual({
 			status: "cleaned-up",
 			artifact: expect.objectContaining({ chatId: owner.id }),
@@ -281,7 +233,7 @@ describe("Conversation artifacts", () => {
 		expect(
 			module.getArtifact(owner.id, "test.artifact", "source.exact")?.availability,
 		).toEqual({ status: "cleaned-up", reason: "corrupt" });
-		expect(module.readArtifact(owner.id, "test.artifact", "source.exact")).toEqual({
+		expect(module.downloadArtifact(owner.id, "test.artifact", "source.exact")).toEqual({
 			status: "cleaned-up",
 			artifact: expect.objectContaining({ chatId: owner.id }),
 			reason: "corrupt",
@@ -307,9 +259,6 @@ describe("Conversation artifacts", () => {
 		// The stored original leaf filename is kept; only the response
 		// metadata is sanitized. The bytes are never altered.
 		expect(download.artifact.originalFilename).toBe('my "quoted"\nimport.jsonl');
-		expect(download.contentDisposition).toBe(
-			`attachment; filename="${sanitizeArtifactFilename('my "quoted"\nimport.jsonl')}"`,
-		);
 		expect(download.contentDisposition).toContain("my _quoted__import.jsonl");
 		expect(download.contentDisposition).not.toContain("\n");
 		expect(download.contentDisposition).not.toContain("\r");
@@ -328,7 +277,7 @@ describe("Conversation artifacts", () => {
 			module.getArtifact(created.id, "test.artifact", "source.exact"),
 		).toThrow(ArtifactStoreError);
 		expect(() =>
-			module.readArtifact(created.id, "test.artifact", "source.exact"),
+			module.downloadArtifact(created.id, "test.artifact", "source.exact"),
 		).toThrow(ArtifactStoreError);
 	});
 

@@ -8,7 +8,8 @@ import {
 } from "../database/schema";
 import {
 	nativePromptPreset,
-	singleUseReferenceLabels,
+	repeatedSingleUseReference,
+	singleUseReferenceLabel,
 	type SillyTavernImportPreview,
 	type SillyTavernJsonValue,
 	type NativePromptPreset,
@@ -17,6 +18,7 @@ import {
 	type PromptPresetSummary,
 } from "../../shared/contract/prompt-preset";
 import { Value } from "@sinclair/typebox/value";
+import { isUnknownBoxReference } from "../../shared/contract/box";
 import {
 	DefaultPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
@@ -164,9 +166,10 @@ export const importNativePromptPreset = (
 		throw new InvalidPromptPresetCommandError("The native Prompt Preset JSON is invalid.");
 	}
 	const name = requireCommandName(native.name);
-	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
-		if (native.slots.filter((slot) => slot.reference === reference).length > 1) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${label} block.`);
-	}
+	const unknownBox = native.slots.find((slot) => isUnknownBoxReference(slot.reference));
+	if (unknownBox !== undefined) throw new InvalidPromptPresetCommandError(`There is no Box for ${unknownBox.reference}.`);
+	const repeated = repeatedSingleUseReference(native.slots.map((slot) => slot.reference));
+	if (repeated !== undefined) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const db = connect(database);
 	const execute = database.transaction(() => {
 		const insertedId = insertPresetHeader(db, name, "created");
@@ -181,11 +184,9 @@ export const importNativePromptPreset = (
 				};
 				// @approved
 				//  An authored instruction is the only slot that stores its
-				// composed name and text.
-				if (slot.reference === "instruction") {
-					row.name = slot.name;
-					row.content = slot.content;
-				}
+				// composed name; it and a Box block store their text.
+				if (slot.reference === "instruction") row.name = slot.name;
+				if ("content" in slot) row.content = slot.content;
 				return row;
 			});
 			db.insert(promptPresetBlockTable)

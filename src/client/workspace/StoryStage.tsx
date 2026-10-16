@@ -1,11 +1,17 @@
+import { isStoryReady } from "../story";
+import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
+import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
+import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
+import { useBoxWindows } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	reusesTrailingHumanMessage,
+	shownMessage,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -40,12 +46,11 @@ export function StoryStage({
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
-	onOpenAuthorNote,
+	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
-	onOpenMemories,
+	onOpenInspector,
 	onInspectVariant,
-	onOpenMessageMemories,
 	onOpenGenerationDetails,
 	onControlChange,
 }: {
@@ -59,19 +64,19 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenAuthorNote: () => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
-	onOpenMemories: () => void;
+	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onInspectVariant: (messageId: number, variantId: number) => void;
-	onOpenMessageMemories: (messageId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 }) {
+	const readyStory = isStoryReady(story) ? story : null;
 	const viewport = useStoryViewport({
 		messages: story.messages,
-		conversationId: story.conversationId,
-		hasNewer: story.page?.hasNewer === true,
+		conversationId: "conversationId" in story ? story.conversationId : null,
+		hasNewer: readyStory?.page.hasNewer === true,
 	});
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
@@ -84,26 +89,30 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
+	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
-	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
+	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
+	const lens = conversation === null ? undefined : { conversation, open: boxWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId) ?? null;
-	const requested = story.page?.hasNewer ? null : story.requestedGeneration?.request ?? null;
+	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
 		<main className="story-stage" aria-label="Active Chat">
 			<StoryHeader
 				chat={session.activeChat}
+				conversation={conversation}
 				onOpenNavigation={onOpenNavigation}
 				onOpenCast={onOpenCast}
 				onOpenInfo={onOpenInfo}
 				onOpenVariables={onOpenVariables}
-				onOpenMemories={onOpenMemories}
+				onOpenInspector={onOpenInspector}
+				onOpenWindow={boxWindows.open}
 			/>
 
 			{story.preview !== null && previewedMessage !== undefined && (
@@ -124,15 +133,15 @@ export function StoryStage({
 				if (root.scrollHeight - root.scrollTop - root.clientHeight < 48) void session.loadMoreHistory("newer");
 			}}>
 				<div className="story-content">
-					{story.page?.hasOlder === true && (
+					{readyStory?.page.hasOlder === true && (
 						<div className="history-load-more">
 							<button
 								className="secondary-button"
 								type="button"
-								disabled={story.status === "loading-more"}
+								disabled={readyStory?.loadingMore === true}
 								onClick={() => void session.loadMoreHistory()}
 							>
-								{story.status === "loading-more" ? "Loading more Messages…" : "Load more Messages"}
+								{readyStory?.loadingMore === true ? "Loading more Messages…" : "Load more Messages"}
 							</button>
 						</div>
 					)}
@@ -140,7 +149,8 @@ export function StoryStage({
 					{story.messages.map((message) => (
 						<StoryMessageView
 							key={message.id}
-							message={message}
+							message={shownMessage(story, message)}
+							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={generation.activeGenerationTargets.some((target) =>
@@ -152,18 +162,25 @@ export function StoryStage({
 							mutationsDisabled={story.preview !== null}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
-							canContinue={
+							onContinue={
 								generation.assemblyAvailable &&
 								latestStoryMessage?.id === message.id &&
 								generation.activeGenerationTargets.length === 0 &&
 								isModelAuthoredMessage(message) &&
 								message.continuable === true
+									? generation.continueMessage
+									: undefined
 							}
-							canRegenerate={
+							onRegenerate={
 								generation.assemblyAvailable &&
 								latestStoryMessage?.id === message.id &&
 								generation.activeGenerationTargets.length === 0 &&
 								message.authorParticipantId === conversation?.control.humanParticipantId
+									? (messageId) => {
+										viewport.followLatest(messageId);
+										generation.regenerateResponse(messageId);
+									}
+									: undefined
 							}
 							onSibling={generation.canOfferSiblingMessage(message)
 								? (messageId) => {
@@ -171,14 +188,10 @@ export function StoryStage({
 									generation.siblingMessage(messageId);
 								}
 								: undefined}
+							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-							onContinue={generation.continueMessage}
-							onRegenerate={(messageId) => {
-								viewport.followLatest(messageId);
-								generation.regenerateResponse(messageId);
-							}}
 							onInspect={onInspectVariant}
-							onMemories={onOpenMessageMemories}
+							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
 									showStopAll={generation.activeGenerationTargets.length > 1}
@@ -189,6 +202,9 @@ export function StoryStage({
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 							onEdit={storyActions.editStoryMessage}
+							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
+								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
+								: undefined}
 							onDelete={!assemblyActive && !generation.isGenerating
 								? (messageId) => void storyActions.deleteStoryMessage(messageId)
 								: undefined}
@@ -197,19 +213,20 @@ export function StoryStage({
 					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
 						<RequestedSendView
 							human={humanParticipant}
-							content={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content) ? requested.content : null}
+							sent={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content, requested.moves) ? requested : null}
 							model={modelParticipant}
+							lens={lens}
 						/>
 					)}
-					{story.page?.hasNewer === true && (
+					{readyStory?.page.hasNewer === true && (
 						<div className="history-load-more">
-							<button className="secondary-button" type="button" disabled={story.status === "loading-more"} onClick={() => void session.loadMoreHistory("newer")}>
-								{story.status === "loading-more" ? "Loading newer Messages…" : "Load newer Messages"}
+							<button className="secondary-button" type="button" disabled={readyStory?.loadingMore === true} onClick={() => void session.loadMoreHistory("newer")}>
+								{readyStory?.loadingMore === true ? "Loading newer Messages…" : "Load newer Messages"}
 							</button>
 						</div>
 					)}
 					{story.status === "loading-first" && <HistoryLoading />}
-					{story.status === "error" && (
+					{(story.status === "error" || readyStory?.historyFailed) && (
 						<p className="history-error" role="alert">
 							The Chat history could not be loaded. Try opening the Chat again.
 						</p>
@@ -217,7 +234,7 @@ export function StoryStage({
 				</div>
 			</div>
 
-			{story.page?.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+			{readyStory?.page.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
 				<button
 					className="secondary-button"
 					type="button"
@@ -227,28 +244,41 @@ export function StoryStage({
 					Jump to latest
 				</button>
 			</div>}
-			<Composer
-				draft={generation.draft}
-				isGenerating={generation.isGenerating}
-				canWrite={generation.assemblyAvailable}
-				isReceded={composerIsReceded}
-				onDraftChange={generation.setDraft}
-				onFocusChange={setIsComposerFocused}
-				onSubmit={generation.submitMessage}
-				onCancel={generation.cancelGeneration}
-				stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
-				writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
-				controlSelectors={session.conversation !== null ? (
-					<ComposerControlSelectors
-						onAuthorNote={onOpenAuthorNote}
-						conversation={session.conversation}
-						disabled={story.preview !== null || assemblyActive}
-						disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
-						onConversationChange={session.setConversation}
-						onControlChange={onControlChange}
-					/>
-				) : null}
-			/>
+			<div className="composer-area">
+				<BoxWindowLayer
+					key={conversation?.id ?? "no-chat"}
+					conversation={conversation}
+					controller={boxWindows}
+					disabled={previewMode || assemblyActive}
+					staging={{ moves: generation.moves, onChange: generation.setMoves }}
+					onConversationChange={session.setConversation}
+				/>
+				<Composer
+					draft={generation.draft}
+					moves={generation.moves}
+					onMovesChange={generation.setMoves}
+					isGenerating={generation.isGenerating}
+					canWrite={generation.assemblyAvailable}
+					isReceded={composerIsReceded}
+					onDraftChange={generation.setDraft}
+					onFocusChange={setIsComposerFocused}
+					onSubmit={generation.submitMessage}
+					onCancel={generation.cancelGeneration}
+					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
+					writerName={humanParticipant?.duplicateLabel}
+					controlSelectors={session.conversation !== null ? (
+						<ComposerControlSelectors
+							onOpenPanel={onOpenPanel}
+							onOpenWindow={boxWindows.open}
+							conversation={session.conversation}
+							disabled={story.preview !== null || assemblyActive}
+							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
+							onConversationChange={session.setConversation}
+							onControlChange={onControlChange}
+						/>
+					) : null}
+				/>
+			</div>
 		</main>
 	);
 }

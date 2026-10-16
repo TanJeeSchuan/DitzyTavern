@@ -1,4 +1,4 @@
-import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
+import { defaultOutgoingRole, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
 import { parseMacroDocument, type MacroDocumentNode, type MacroNode } from "../../shared/prompt-macros";
 import { InvalidPromptPresetCommandError } from "./errors";
 
@@ -185,7 +185,8 @@ const orderChoices = (orders: readonly SourceOrderList[]): SillyTavernOrderChoic
 
 const chooseOrder = (orders: readonly SourceOrderList[], requested: string | undefined): SourceOrderList | null => {
 	if (requested !== undefined) return orders.find((order) => order.id === requested) ?? null;
-	return orders.find((order) => order.id === "100001") ?? (orders.length === 1 ? orders[0] : null);
+	const [only, ...others] = orders;
+	return orders.find((order) => order.id === "100001") ?? (others.length === 0 ? only ?? null : null);
 };
 
 const diagnostic = (code: string, message: string, identifier?: string): SillyTavernImportDiagnostic => {
@@ -303,7 +304,7 @@ const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition =
 	if (sourceReference !== null) {
 		const reference = supportedReferences[sourceReference];
 		if (reference === "history") return { slot: { reference } };
-		return { slot: { reference, role: defaultOutgoingRoles[reference] } };
+		return { slot: { reference, role: defaultOutgoingRole(reference) } };
 	}
 	if (definition.identifier === "worldInfoBefore" || definition.identifier === "worldInfoAfter") {
 		return { slot: { reference: "lore", role: "system" } };

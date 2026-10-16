@@ -1,6 +1,6 @@
 import { eq, max } from "drizzle-orm";
 import { messageTable } from "../../database/schema";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { insertMessage, insertVariants, readControlAssignment, requireParticipant } from "../internal";
@@ -16,7 +16,7 @@ export interface CreateMessageInput {
 export function createMessage(
 	db: ConversationDatabase,
 	input: CreateMessageInput,
-): ConversationMemoryChange | void {
+): ConversationWriteChange | void {
 	if (input.variantContents.length === 0) {
 		throw new InvalidConversationCommandError(
 			"A Message must have at least one Variant.",

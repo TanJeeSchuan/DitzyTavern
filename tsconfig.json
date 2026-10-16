@@ -5,6 +5,7 @@
 		"moduleResolution": "bundler",
 		"jsx": "react-jsx",
 		"strict": true,
+		"noUncheckedIndexedAccess": true,
 		"skipLibCheck": true,
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
@@ -12,5 +13,5 @@
 			"@/*": ["./src/*"]
 		}
 	},
-	"include": ["src", "scripts", "e2e", "playwright.config.ts"]
+	"include": ["src", "scripts", "e2e", "data/boxes", "playwright.config.ts"]
 }

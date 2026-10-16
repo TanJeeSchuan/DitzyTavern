@@ -1,3 +1,4 @@
+import { isStoryReady } from "../story";
 import { useMutation } from "@tanstack/react-query";
 import {
 	useEffect,
@@ -34,11 +35,13 @@ import {
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
+	shownMessage,
 	shownVariant,
 	type StoryAction,
 	type StoryMessage,
 	type StoryState,
 } from "../story";
+import { hasMoves, pickMoves, seatBound, type BoxMoves } from "../../shared/contract/box-generation";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -65,6 +68,9 @@ type GenerationControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
+type StagedMoves = { conversationId: number | undefined; humanParticipantId: number | null | undefined; moves: BoxMoves };
+const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: undefined, moves: {} };
+
 /** @approved
  * Thin wiring between the view, the Generation session machine, and the
  * assembly controller. The session machine (generation-sessions) and its runner own
@@ -82,6 +88,21 @@ export function useGenerationController({
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
+	// @approved
+	//  Staged Moves belong to the Chat they were staged in. Seat-bound Moves,
+	//  such as Phone texts, also belong to the human seat that wrote them:
+	//  after a seat change they could name the new seat as their own recipient.
+	const [staged, setStaged] = useState<StagedMoves>(UNSTAGED);
+	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
+	// @approved
+	//  A Box that stops being enabled, and a seat-bound Box after a seat
+	//  change, drop their staged Moves for good.
+	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !seatBound(id)));
+	if (conversation !== null && staged.conversationId === conversation.id && (!sameSeat || Object.keys(kept).length !== Object.keys(staged.moves).length)) {
+		setStaged({ ...staged, humanParticipantId: conversation.control.humanParticipantId, moves: kept });
+	}
+	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {} : kept;
+	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {
 		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
@@ -190,8 +211,15 @@ export function useGenerationController({
 			},
 		},
 		dispatchStory,
-		draft,
-		setDraft,
+		takeComposer: () => {
+			const taken = { draft, staged };
+			setDraft("");
+			setStaged(UNSTAGED);
+			return () => {
+				setDraft((current) => current === "" ? taken.draft : current);
+				setStaged((current) => hasMoves(current.moves) ? current : taken.staged);
+			};
+		},
 	});
 	const {
 		assembly,
@@ -254,13 +282,13 @@ export function useGenerationController({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
-		requestGeneration({ kind: "send", content: draft, ...clientFormattingContext() });
+		if (!assemblyAvailable || conversation === null || (draft.trim() === "" && !hasMoves(moves))) return;
+		requestGeneration({ kind: "send", content: draft, moves, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const latest = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
@@ -271,18 +299,19 @@ export function useGenerationController({
 
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const persisted = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
+		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
 		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
 		if (
 			latest?.id !== messageId ||
 			latest.authorParticipantId !== conversation.control.humanParticipantId ||
 			content === undefined ||
-			content.trim() === ""
+			(content.trim() === "" && !hasMoves(latest.moves))
 		) return;
-		requestGeneration({ kind: "send", content, ...clientFormattingContext() });
+		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
 	};
 
-	const siblingMessage = (messageId: number) => {
+	const siblingMessage = (messageId: number, reroll = false) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
@@ -294,7 +323,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		requestGeneration({ kind: "sibling", messageId, ...clientFormattingContext() });
+		requestGeneration({ kind: "sibling", messageId, reroll, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>
@@ -308,6 +337,8 @@ export function useGenerationController({
 	return {
 		draft,
 		setDraft,
+		moves,
+		setMoves,
 		isGenerating,
 		stopPending,
 		generationError,

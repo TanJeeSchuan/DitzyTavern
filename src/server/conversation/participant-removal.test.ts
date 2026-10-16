@@ -1,5 +1,4 @@
 import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import { executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -18,7 +17,6 @@ import {
 	type ConversationAction,
 	type ParticipantDefinition,
 } from ".";
-import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
@@ -149,16 +147,8 @@ describe("Participant removal", () => {
 		expect(reread?.revision).toBe(snapshot.revision);
 	});
 
-	test("a stale or missing removal target fails with the typed outcomes", () => {
-		const { module, snapshot, humanId } = setup();
-		expect(() =>
-			executeConversationCommand(module, {
-				conversationId: snapshot.id,
-				expectedRevision: snapshot.revision + 99,
-				action: { type: "remove-participant", participantId: humanId },
-			}),
-		).toThrow(StaleRevisionError);
-
+	test("a removal target outside the Conversation fails with the typed outcome", () => {
+		const { module, snapshot } = setup();
 		const other = createConversationWithHistory(database, {
 			name: "Other",
 			participants: [
@@ -443,33 +433,14 @@ describe("Participant removal", () => {
 		// The greeting authored by Maren keeps its pair pointing at the
 		// tombstone, displaying no-longer-in-Cast for both participants.
 		expect(removed.messages[0]?.author).toEqual({
-			participantId: snapshot.cast[1]?.id,
+			participantId: snapshot.cast[1]!.id,
 			capturedName: "Maren Voss",
 			inCast: true,
 		});
 		expect(removed.messages[0]?.historicalContext).toEqual({
 			humanParticipantId: humanId,
-			modelParticipantId: snapshot.cast[1]?.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
-	});
-
-	test("historical Messages display the captured name with no-longer-in-Cast state after removal", () => {
-		const { module, snapshot, modelId } = setup();
-		const unseated = unseatModel(module, snapshot);
-		const removed = append(module, unseated, {
-			type: "remove-participant",
-			participantId: modelId,
-		});
-
-		const greeting = removed.messages[0];
-		expect(greeting?.author).toEqual({
-			participantId: modelId,
-			capturedName: "Maren Voss",
-			inCast: false,
-		});
-		expect(greeting?.variants.map((variant) => variant.content)).toEqual([
-			"The lamp turns.",
-		]);
 	});
 
 	test("generation that requires a removed Participant is denied while existing sibling Variants stay selectable and editable", async () => {

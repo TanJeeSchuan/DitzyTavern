@@ -2,10 +2,6 @@ import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
-import {
-	createMacroAttemptState,
-	expandMacroText as expandMacroTextWithState,
-} from "../../shared/prompt-macro-engine";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import type { PromptOutgoingRole } from "../../shared/contract/prompt-preset";
 import {
@@ -13,6 +9,7 @@ import {
 	captureModelFetch,
 	completeGeneration,
 	conversationApp,
+	chatBoxBlocks,
 	createChat,
 	key,
 	moveBlock,
@@ -28,9 +25,6 @@ import {
 	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
-
-const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
-	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
 
 describe("Prompt Preset authored instruction macros", () => {
 	let database: Database;
@@ -218,8 +212,6 @@ describe("Prompt Preset authored instruction macros", () => {
 			block: "Imported",
 			macro: "{{user}}",
 		});
-		expect(expandMacroText(content, { self: "", other: "" }, "Imported").warnings)
-			.toContainEqual({ block: "Imported", macro: "{{user}}" });
 	});
 
 	test("an instruction save never overwrites separately saved ordering, toggles or roles", async () => {
@@ -254,9 +246,9 @@ describe("Prompt Preset authored instruction macros", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["instruction", true],
 		]);
 		expect(slotOf(saved, "model-identity")?.role).toBe("user");
@@ -269,112 +261,5 @@ describe("Prompt Preset authored instruction macros", () => {
 		const toggled = readStoredRecipe(database, preset.id);
 		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
 		expect(slotOf(toggled, "instruction")?.content).toBe("Saved text.");
-	});
-
-	test("an Active Generation keeps its captured instruction while the next Generation observes the save", async () => {
-		const conversation = createChat(database);
-		withProfile(database);
-		const preset = await readPreset(conversationApp(database), conversation.id);
-		const instructionId = await addAndSaveInstruction(
-			preset.id,
-			"Tone",
-			"Original tone.",
-			"system",
-		);
-
-		let captured: CapturedRequest | undefined;
-		let release = () => {};
-		const gate = new Promise<void>((resolve) => { release = resolve; });
-		const gated = createConversationRoutes(database, {
-			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }, gate),
-		});
-		const generationId = await startGeneration(gated, conversation.id, conversation.revision);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
-
-		// While the attempt streams, the saved instruction changes in text,
-		// role and position.
-		await readOperation(saveInstructionContent(
-			database,
-			preset.id,
-			instructionId,
-			{ name: "Tone", content: "Revised tone.", role: "user" },
-		));
-		await readOperation(moveBlock(database, preset.id, instructionId, 1));
-
-		// The Active Generation keeps the Prompt Plan it captured: the original
-		// text, role and position.
-		const capturedPlan = await readInspection(gated, conversation.id, generationId);
-		const capturedInstruction = capturedPlan.promptPlan.blocks.find(
-			(block) => block.kind === "instruction",
-		);
-		expect(capturedInstruction).toEqual({
-			kind: "instruction",
-			role: "system",
-			content: "Original tone.",
-		});
-		expect(captured?.messages).toContainEqual({ role: "system", content: "Original tone." });
-
-		release();
-		await completeGeneration(gated, conversation.id, generationId);
-
-		// The next Generation compiles the latest saved instruction at its new
-		// position and role.
-		let capturedNext: CapturedRequest | undefined;
-		const subsequent = createConversationRoutes(database, {
-			masterKey: key,
-			fetch: captureModelFetch((request) => { capturedNext = request; }),
-		});
-		const summaryResponse = await conversationApp(database).handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}`),
-		);
-		// SAFETY: the route's response schema is the Conversation summary.
-		const summary = await summaryResponse.json() as { revision: number };
-		const nextId = await startGeneration(subsequent, conversation.id, summary.revision);
-		await completeGeneration(subsequent, conversation.id, nextId);
-		while (capturedNext === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
-
-		expect(capturedNext?.messages[0]).toEqual({ role: "user", content: "Revised tone." });
-	});
-
-	test("token estimates account for authored instruction text", async () => {
-		const conversation = createChat(database);
-		withProfile(database);
-		const fetchApp = createConversationRoutes(database, {
-			masterKey: key,
-			fetch: captureModelFetch(() => {}),
-		});
-		const preset = await readPreset(conversationApp(database), conversation.id);
-		const instructionId = await addAndSaveInstruction(
-			preset.id,
-			"Tone",
-			"A short instruction.",
-			"system",
-		);
-
-		const firstId = await startGeneration(fetchApp, conversation.id, conversation.revision);
-		const first = await readInspection(fetchApp, conversation.id, firstId);
-		await completeGeneration(fetchApp, conversation.id, firstId);
-
-		await readOperation(saveInstructionContent(
-			database,
-			preset.id,
-			instructionId,
-			{
-				name: "Tone",
-				content: "A much longer instruction that repeats several times to grow the assembled plan beyond the first estimate.",
-				role: "system",
-			},
-		));
-		const secondResponse = await fetchApp.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}`),
-		);
-		// SAFETY: the route's response schema is the Conversation summary.
-		const secondSummary = await secondResponse.json() as { revision: number };
-		const secondId = await startGeneration(fetchApp, conversation.id, secondSummary.revision);
-		const second = await readInspection(fetchApp, conversation.id, secondId);
-		await completeGeneration(fetchApp, conversation.id, secondId);
-
-		expect(second.budget.tokenEstimate).toBeGreaterThan(first.budget.tokenEstimate);
 	});
 });

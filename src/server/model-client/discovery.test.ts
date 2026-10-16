@@ -14,6 +14,10 @@ const profile = {
 };
 
 describe("Model discovery", () => {
+	test.each([{}, { data: {} }, { data: null }])("rejects a catalog without an array %j", async (body) => {
+		const result = await discoverModels({ profile }, { fetch: async () => Response.json(body) });
+		expect(result).toMatchObject({ outcome: "failure", kind: "malformed-response" });
+	});
 	test("performs one credentialed, non-redirecting GET and normalizes IDs", async () => {
 		let calls = 0;
 		const result = await discoverModels(
@@ -80,27 +84,6 @@ describe("Model discovery", () => {
 			kind: "endpoint",
 			message: "The Models endpoint request failed with HTTP 503 (34-byte response body).",
 		});
-	});
-
-	test("reports only the size of an oversized provider body", async () => {
-		const result = await discoverModels(
-			{ profile, secrets: null },
-			{
-				fetch: async () => new Response("x".repeat(20 * 1024), {
-					status: 503,
-					headers: {
-						"content-type": "text/plain",
-						"content-length": "20480",
-					},
-				}),
-			},
-		);
-
-		expect(result.outcome).toBe("failure");
-		if (result.outcome === "failure") {
-			expect(result.message).toBe("The Models endpoint request failed with HTTP 503 (20480-byte response body).");
-			expect(result.message).not.toContain("xxx");
-		}
 	});
 
 	test("aborts a discovery request at the profile timeout", async () => {

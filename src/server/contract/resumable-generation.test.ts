@@ -382,6 +382,7 @@ describe("Resumable generation transport", () => {
 		const model = conversation.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -390,6 +391,7 @@ describe("Resumable generation transport", () => {
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
 		promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

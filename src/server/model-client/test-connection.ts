@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
@@ -9,12 +10,8 @@ import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
 import { ModelFetchTimeoutError } from "./model-fetch";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
-import {
-	formatProviderError,
-	providerErrorStatus,
-	snapshotProviderError,
-	type ProviderErrorLike,
-} from "./provider-errors";
+import { formatProviderError, providerErrorFields, providerErrorStatus, snapshotProviderError } from "./provider-errors";
+import { providerDiagnosticError, type ProviderErrorLike } from "../../shared/contract/provider-response";
 
 export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
 export const TEST_CONNECTION_TIMEOUT_MS = 10_000;
@@ -142,13 +139,9 @@ export async function testConnection(
 		if (!(error instanceof Error)) {
 			return failure("endpoint", "The provider request failed.");
 		}
-		// @approved
-		// SAFETY: AI SDK provider failures extend Error and expose these optional
-		// response fields; the parser below reads only those known fields.
-		return normalizeTestConnectionError(error as ProviderErrorLike, {
-			timedOut,
-			secretValues,
-		});
+		if (timedOut || error.name === "AbortError") return failure("timeout", "The provider did not respond within the short Test Connection timeout.");
+		if ("responseBody" in error && !Value.Check(providerDiagnosticError.properties.responseBody, error.responseBody)) return failure("malformed-response", "The provider returned malformed error diagnostics.");
+		return normalizeTestConnectionError(providerErrorFields(error), { timedOut, secretValues });
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -211,7 +204,7 @@ function providerFailureMessage(error: ProviderErrorLike): string {
 }
 
 function isMalformedResponseError(error: ProviderErrorLike): boolean {
-	const name = `${error.name} ${error.cause?.name ?? ""}`.toLowerCase();
+	const name = `${error.name} ${error.causeName ?? ""}`.toLowerCase();
 	return name.includes("jsonparse") || name.includes("invalidresponsedata") || name.includes("emptyresponse");
 }
 

@@ -11,7 +11,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
-import { isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
+import { isBoxSlot, isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
+import { boxDescriptorOf, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -69,59 +70,71 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 			source: "Attached lorebooks",
 		};
 	}
-	if (slot.reference === "memory") {
-		return {
-			description: "Uses Conversation Memories recalled when a Generation is assembled.",
-			source: "Conversation Memories",
-		};
-	}
-	if (slot.reference === "author-note") return { description: "Uses the Author Note saved in this Chat. Edit its text in the Author Note panel.", source: "This Chat" };
-	return slot.sourceName === null
+	if ("sourceName" in slot) return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
+	if (!isBoxReference(slot.reference)) return { description: `The ${title} Box is not loaded, so this block sends nothing.`, source: "No Box loaded" };
+	return boxDescriptorOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
-const InstructionFieldEditor = ({
+type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
+type TextFields = { name?: string; content: string; role: PromptOutgoingRole };
+
+// @approved
+//  The editor for a block whose text the preset owns: an authored instruction's
+//  name and text, or a Box block's instructions, which render before a marker
+//  for the Box's own content and reset to the Box's default.
+const TextFieldEditor = ({
 	slot,
 	draft,
 	disabled,
 	onChange,
 }: {
-	slot: ResolvedPromptPresetSlot & { reference: "instruction" };
+	slot: TextSlot;
 	draft: BlockDraft | undefined;
 	disabled: boolean;
-	onChange: (fields: { name: string; content: string; role: PromptOutgoingRole }) => void;
+	onChange: (fields: TextFields) => void;
 }) => {
-	const fields = draft?.kind === "content"
+	const box = isBoxReference(slot.reference) ? boxDescriptorOf(slot.reference) : null;
+	const fields: TextFields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
-		: { name: slot.name, content: slot.content, role: slot.role };
-	const warnings = unknownMacrosOf(fields.content, slot.name === "" ? "instruction" : slot.name);
+		: { name: "name" in slot ? slot.name : undefined, content: slot.content, role: slot.role };
+	const label = slotTitle(slot);
+	const warnings = unknownMacrosOf(fields.content, label);
 	return <div className="flex flex-col gap-3">
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
+		{slot.reference === "instruction" && <label className="flex flex-col gap-1 text-xs text-muted-foreground">
 			<span>Name</span>
 			<input
 				type="text"
 				className={nameInputClass}
-				value={fields.name}
+				value={fields.name ?? ""}
 				disabled={disabled}
 				onChange={(event) => onChange({ ...fields, name: event.target.value })}
 			/>
-		</label>
+		</label>}
 		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
-			<span>Instruction text</span>
+			<span>{slot.reference === "instruction" ? "Instruction text" : "Instructions"}</span>
 			<textarea
 				className={textInputClass}
 				rows={8}
 				spellCheck={false}
 				value={fields.content}
 				disabled={disabled}
-				placeholder="Write the reusable instruction…"
+				placeholder={slot.reference === "instruction" ? "Write the reusable instruction…" : "No instructions"}
 				onChange={(event) => onChange({ ...fields, content: event.target.value })}
 			/>
 		</label>
+		{box !== null && <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">{box.label} content goes here</p>}
 		<div className="flex flex-wrap items-center gap-2">
 			<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
 			<OutgoingRoleSelect id={`slot-role-${slot.id}`} value={fields.role} disabled={disabled} onChange={(role) => onChange({ ...fields, role })} />
+			{box !== null && <Button
+				variant="outline"
+				size="sm"
+				className="ml-auto"
+				disabled={disabled || fields.content === box.instructions}
+				onClick={() => onChange({ ...fields, content: box.instructions })}
+			>Reset to {box.label} default</Button>}
 		</div>
 		{warnings.length > 0 && <ul className="text-xs text-muted-foreground" role="note">{warnings.map((macro) => <li key={macro}>Unknown macro {macro} stays literal.</li>)}</ul>}
 	</div>;
@@ -252,12 +265,25 @@ export function PromptPresetRecipeRow({
 				</DialogHeader>
 				<div className="min-h-0 overflow-y-auto pr-1">
 				{slot.reference === "instruction" ? (
-					<InstructionFieldEditor
+					<TextFieldEditor
 						slot={slot}
 						draft={draft}
 						disabled={pending}
 						onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 					/>
+				) : isBoxSlot(slot) ? (
+					<div className="flex flex-col gap-5">
+						<dl>
+							<dt className="text-xs text-muted-foreground">Source</dt>
+							<dd className="mt-1 text-sm font-medium">{referenceCopy?.source}</dd>
+						</dl>
+						<TextFieldEditor
+							slot={slot}
+							draft={draft}
+							disabled={pending}
+							onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
+						/>
+					</div>
 				) : (
 					<div className="flex flex-col gap-5">
 						<dl>

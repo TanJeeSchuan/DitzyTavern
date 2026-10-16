@@ -1,4 +1,4 @@
-import { LORE_ACTIVATION_NAMESPACE, MEMORY_ACTIVATION_NAMESPACE } from "./variant-data-codecs";
+import { BOX_TRACES_NAMESPACE, LORE_ACTIVATION_NAMESPACE } from "./variant-data-codecs";
 // @approved
 //  The Conversation-scoped data namespaces that Import provenance owns. A
 // committed import writes its receipt, warnings, source identity, and
@@ -26,7 +26,7 @@ const importOwnedDataNamespaces = [IMPORT_NAMESPACE, ARCHIVE_NAMESPACE] as const
 const serverOwnedDataNamespaces = [
 	...importOwnedDataNamespaces,
 	LORE_ACTIVATION_NAMESPACE,
-	MEMORY_ACTIVATION_NAMESPACE,
+	BOX_TRACES_NAMESPACE,
 ] as const;
 
 // @approved

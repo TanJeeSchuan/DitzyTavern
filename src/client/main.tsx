@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../index.css";
 import { registerWireFormats } from "../shared/contract/wire-formats";
 import { App } from "./App";
+import { loadBoxClients } from "./box-windows/registry";
 import { ImageDialogProvider } from "./ImageDialog";
 
 registerWireFormats();
@@ -23,4 +24,11 @@ const root = document.getElementById("root");
 if (!root) {
 	throw new Error("Root element not found");
 }
-createRoot(root).render(<QueryClientProvider client={queryClient}><ImageDialogProvider><App /></ImageDialogProvider></QueryClientProvider>);
+// @approved
+//  The Boxes' client modules load before the first render. A Box module
+// imports host chunks that may import this entry, so the entry finishes
+// evaluating rather than await them, which would deadlock that cycle. A
+// failed Box list leaves the Chat without Boxes.
+void loadBoxClients().catch((error) => console.error("Boxes did not load:", error)).then(() => {
+	createRoot(root).render(<QueryClientProvider client={queryClient}><ImageDialogProvider><App /></ImageDialogProvider></QueryClientProvider>);
+});

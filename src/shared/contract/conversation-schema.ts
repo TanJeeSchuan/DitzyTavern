@@ -1,4 +1,4 @@
-import { Kind, Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
@@ -6,6 +6,9 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
+import { boxSetups, boxStates, promptBoxReference } from "./box";
+import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
+import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -16,17 +19,12 @@ import {
 	conflictReasonOutcome,
 } from "./outcomes";
 import { numericWire } from "./wire";
-import type {
-	GenerationJsonObject,
-	GenerationJsonValue,
-	GenerationProvenance as SharedGenerationProvenance,
-	ProvenanceSettingsField,
-} from "../generation-provenance";
+import type { GenerationJsonObject } from "../generation-provenance";
+import { generationProvenance } from "./generation-provenance";
+import { generationJsonValue as jsonValue } from "./json-value";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
-import { memoryActivationRecord } from "./memory-recall";
-export type { MemoryActivationRecord } from "./memory-recall";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -61,8 +59,7 @@ const promptDefinitionBlockKind = Type.Union([
 	// a Participant.
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
-	Type.Literal("memory"),
-	Type.Literal("author-note"),
+	promptBoxReference,
 ]);
 
 const promptBlock = Type.Union([
@@ -193,13 +190,6 @@ const conversationCapabilities = Type.Object({
 export type CapabilityAvailability = Static<typeof capabilityAvailability>;
 export type ConversationCapabilities = Static<typeof conversationCapabilities>;
 
-// Provider request overrides and retained generation details are restricted
-// to the shared generation JSON vocabulary. The runtime schema stays open
-// like the previous opaque payload boundary, while the Unsafe generic keeps
-// Eden's Static type exact and recursive instead of widening these fields to
-// `unknown`.
-const jsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
-
 export type GenerationRequestOverrides = GenerationJsonObject;
 
 const activeGenerations = Type.Array(Type.Object({
@@ -217,7 +207,8 @@ const activeGenerations = Type.Array(Type.Object({
 // operations, and a 92-byte Cast command must not re-serialize the entire
 // Chat archive across the wire.
 export const conversationSummary = Type.Object({
-	authorNote: Type.String(),
+	boxSetups,
+	boxes: boxStates,
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -264,61 +255,6 @@ export const generationVariant = Type.Object({
 
 export type GenerationVariant = Static<typeof generationVariant>;
 
-// Provenance describes one historical attempt, so every retained settings
-// field widens to a nullable wire kind instead of reusing the capture-time
-// validation domain: a value a past or future version recorded must still
-// display, and a value that did not participate decodes as null rather than
-// an accidental zero or empty string. The satisfies lock makes a missing or
-// unknown canonical field a compile error, and the focused contract test
-// keeps the declared keys aligned with the canonical retained vocabulary.
-const provenanceSettingsWireSchemas = {
-	temperature: Type.Union([Type.Null(), Type.Number()]),
-	topP: Type.Union([Type.Null(), Type.Number()]),
-	frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
-	presencePenalty: Type.Union([Type.Null(), Type.Number()]),
-	contextLimit: Type.Union([Type.Null(), Type.Integer()]),
-	responseBudget: Type.Union([Type.Null(), Type.Integer()]),
-	safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
-	siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer()]),
-	continuationStrategy: Type.Union([
-		Type.Null(),
-		Type.Literal("instruction"),
-		Type.Literal("assistant-prefill"),
-	]),
-	continuationInstruction: Type.Union([Type.Null(), Type.String()]),
-	continuationPrefillSuffix: Type.Union([
-		Type.Null(),
-		Type.Literal(""),
-		Type.Literal(" "),
-		Type.Literal("\n"),
-		Type.Literal("\n\n"),
-	]),
-	repeatedImagePlacement: Type.Union([
-		Type.Null(),
-		canonicalGenerationSettings.properties.repeatedImagePlacement,
-	]),
-} as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
-
-export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
-
-const memorySourceAvailability = Type.Object({
-	messageIds: Type.Array(Type.Integer()),
-	variantIds: Type.Array(Type.Integer()),
-});
-
-const generationProvenance = Type.Union([Type.Null(), Type.Object({
-	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
-	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
-	modelBackend: Type.Union([Type.Null(), Type.String()]),
-	adapter: Type.Union([Type.Null(), Type.String()]),
-	modelId: Type.Union([Type.Null(), Type.String()]),
-	generationSettings: generationProvenanceSettingsWire,
-	usage: Type.Union([Type.Null(), Type.Record(Type.String(), Type.Number())]),
-	finishReason: Type.Union([Type.Literal("stop"), Type.Literal("length"), Type.Literal("other"), Type.Null()]),
-	status: Type.Union([Type.Literal("complete"), Type.Literal("length-limited"), Type.Literal("interrupted")]),
-	interruptionCause: Type.Union([Type.Null(), Type.String()]),
-})]);
-
 // Active details are intentionally a separate contract from Conversation
 // summaries and ordinary history. Opaque prompt JSON is provider-neutral and
 // retained only for the bounded Active Generation/replay lifecycle.
@@ -342,8 +278,7 @@ export const activeGenerationDetails = Type.Object({
 	promptPlan,
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
-	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -380,16 +315,20 @@ export const variantDetails = Type.Object({
 		humanParticipantId: Type.Integer(),
 		modelParticipantId: Type.Integer(),
 	})]),
-	provenance: generationProvenance,
+	provenance: Type.Union([Type.Null(), generationProvenance]),
 	// Captured activation evidence is independent from compact Generation provenance
 	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
-	memoryActivation: Type.Union([memoryActivationRecord, Type.Null()]),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 });
 
-export type GenerationProvenance = SharedGenerationProvenance;
+export type { GenerationProvenance } from "./generation-provenance";
 export type VariantDetails = Static<typeof variantDetails>;
+
+// The captured historical Control pair is inline in the Variant details;
+// derive it so the paginated history client can type it without a duplicate
+// declaration.
+export type HistoricalControlSnapshot = NonNullable<VariantDetails["historicalContext"]>;
 
 // Lightweight paginated history read contract: stable chronological pages
 // of native Messages with the Participant identity and selected Variant
@@ -428,6 +367,8 @@ const messageSwipeEligibility = Type.Union([
 	}),
 ]);
 
+export type MessageSwipeEligibility = Static<typeof messageSwipeEligibility>;
+
 const chatHistoryMessage = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
@@ -446,6 +387,7 @@ const chatHistoryMessage = Type.Object({
 		inCast: Type.Boolean(),
 	})]),
 	variants: Type.Array(chatHistoryVariant),
+	moves: boxMoves,
 });
 
 export type ChatHistoryMessage = Static<typeof chatHistoryMessage>;
@@ -498,6 +440,8 @@ const dataScope = Type.Union([
 	}),
 ]);
 
+export type ConversationDataScope = Static<typeof dataScope>;
+
 const createMessageAction = Type.Object({
 	type: Type.Literal("create-message"),
 	timestamp: Type.String(),
@@ -523,6 +467,15 @@ const editVariantAction = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	content: Type.String(),
+});
+
+// @approved
+//  Replaces the Moves on one Human-authored Message. Regenerating or swiping
+//  its reply then replays the turn with them.
+const setMessageMovesAction = Type.Object({
+	type: Type.Literal("set-message-moves"),
+	messageId: Type.Integer(),
+	moves: boxMoves,
 });
 
 const deleteVariantAction = Type.Object({
@@ -610,8 +563,6 @@ const replaceParticipantOpeningsAction = Type.Object({
 	openings: Type.Array(Type.String()),
 });
 
-const setAuthorNoteAction = Type.Object({ type: Type.Literal("set-author-note"), content: Type.String() });
-
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
 	name: Type.String(),
@@ -647,6 +598,7 @@ const conversationCommandAction = Type.Union([
 	createVariantAction,
 	selectVariantAction,
 	editVariantAction,
+	setMessageMovesAction,
 	deleteVariantAction,
 	deleteMessageAction,
 	putDataAction,
@@ -662,7 +614,11 @@ const conversationCommandAction = Type.Union([
 	removeParticipantAction,
 	selectPromptPresetAction,
 	renameConversationAction,
-	setAuthorNoteAction,
+	setBoxSetupAction,
+	setBoxStateAction,
+	setBoxRecordAction,
+	resetBoxRecordAction,
+	putBoxDataAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
@@ -698,6 +654,7 @@ export const generationBody = Type.Object({
 	kind: Type.Literal("send"),
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
+	moves: Type.Optional(boxMoves),
 	// A preview token carries the server-captured macro clock, random draws,
 	// and pending writes. The optional plan is the user's direct edit of that
 	// capture; it is never treated as provider JSON.
@@ -718,6 +675,7 @@ export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
 
 export const siblingGenerationBody = Type.Object({
+	reroll: Type.Optional(Type.Boolean()),
 	kind: Type.Literal("sibling"),
 	...inspectedPlanFields,
 });
@@ -732,6 +690,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("send"),
 		content: Type.String(),
+		moves: Type.Optional(boxMoves),
 		...generationFormattingContext.properties,
 	}),
 	Type.Object({
@@ -741,6 +700,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("sibling"),
 		messageId: Type.Integer(),
+		reroll: Type.Optional(Type.Boolean()),
 		...generationFormattingContext.properties,
 	}),
 ]);
@@ -751,9 +711,9 @@ export const generationPreviewBody = Type.Union([
 // server-owned wrapper dispatches on this union instead of restating the
 // kinds, so the wire vocabulary and the server vocabulary cannot drift.
 export type GenerationTarget =
-	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "send"; readonly content: string; readonly moves?: BoxMoves | undefined }
 	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number };
+	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
 
 export type GenerationTargetKind = GenerationTarget["kind"];
 
@@ -779,8 +739,7 @@ export const generationPreview = Type.Object({
 	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
-	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 	budget: generationPreviewBudget,
 });
 

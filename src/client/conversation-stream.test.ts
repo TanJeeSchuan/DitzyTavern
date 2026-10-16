@@ -115,7 +115,7 @@ describe("server-owned Generation client", () => {
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		});
 
-		const result = await startConversationGeneration(42, 3, "Keep going.");
+		const result = await startConversationGeneration(42, 3, "Keep going.", undefined);
 		expect(requestUrl).toBe("http://localhost/api/conversations/42/generations");
 		expect(requestBody).toBe(JSON.stringify({ kind: "send", expectedRevision: 3, content: "Keep going." }));
 		expect(result).toEqual({
@@ -170,7 +170,7 @@ describe("server-owned Generation client", () => {
 			});
 		});
 
-		await startConversationGeneration(42, 3, "Keep going.");
+		await startConversationGeneration(42, 3, "Keep going.", undefined);
 		await startConversationSiblingGeneration(42, 9);
 		await startConversationContinuationGeneration(42, 3);
 		await stopConversationGeneration(42, 7);
@@ -190,7 +190,7 @@ describe("server-owned Generation client", () => {
 			let requestUrl = "";
 			const stream =
 				"id: 4\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"Resumed.\"}\n\n" +
-				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":7,\"conversationId\":42,\"messageId\":9,\"variantId\":10,\"content\":\"Resumed.\",\"reasoning\":\"\",\"latestEventId\":5,\"status\":\"active\",\"terminalReason\":null}\n\n" +
+				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":7,\"conversationId\":42,\"messageId\":9,\"variantId\":10,\"content\":\"Resumed.\",\"reasoning\":\"\",\"latestEventId\":5,\"status\":\"active\"}\n\n" +
 				`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 5 })}\n\n`;
 			installFetch(async (input) => {
 				requestUrl = String(input);
@@ -351,11 +351,14 @@ data: ${terminalPayload({ outcome: "failed", reason: "Images unsupported.", imag
 				reasoning: "",
 				latestEventId: 4,
 				status: "active",
-				terminalReason: null,
 			};
+			const failed: GenerationStreamState = { ...state, status: "failed", reason: "The provider went quiet." };
+			const failedWithoutReason = { ...state, status: "failed" };
 			const stream =
 				"event: state\ndata: " + JSON.stringify(state) + "\n\n" +
-				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":\"7\"}\n\n";
+				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":\"7\"}\n\n" +
+				"event: state\ndata: " + JSON.stringify(failedWithoutReason) + "\n\n" +
+				"event: state\ndata: " + JSON.stringify(failed) + "\n\n";
 			installFetch(async () => new Response(stream, {
 				status: 200,
 				headers: { "content-type": "text/event-stream" },
@@ -369,7 +372,7 @@ data: ${terminalPayload({ outcome: "failed", reason: "Images unsupported.", imag
 				onState: (decoded) => states.push(decoded),
 			});
 
-			expect(states).toEqual([state]);
+			expect(states).toEqual([state, failed]);
 			expect(result).toEqual({ outcome: "interrupted", reason: "Generation ended without a terminal result." });
 		});
 
@@ -384,7 +387,6 @@ data: ${terminalPayload({ outcome: "failed", reason: "Images unsupported.", imag
 				reasoning: "Wrong reasoning.",
 				latestEventId: 4,
 				status: "active",
-				terminalReason: null,
 			};
 			const foreignFrames = [
 				`event: state\ndata: ${JSON.stringify(foreignState)}\n\n`,

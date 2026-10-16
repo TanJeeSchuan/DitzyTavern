@@ -91,7 +91,7 @@ Every generated Message keeps all its alternatives. Next on the last Swipe gener
 
 ## Running it
 
-You need [Bun](https://bun.sh) 1.3.
+You need [Bun](https://bun.sh) 1.4.3.
 
 ```sh
 bun install
@@ -112,6 +112,8 @@ Add a connection profile under Connections, pick a model from the composer, and 
 Connections include OpenRouter Decisions, TypeSafe and blank System One presets. Memory and Semantic Triggers can choose different models using the same profile and key. Each selection has its own state token limit, initially 16,000; use about 2,000 for Clef. Lore chunks long scenes, recall trims them, and extraction fails visibly on oversized judgment state. Keyless local HTTP endpoints work; custom headers and a positive request timeout belong to the profile.
 
 ### Development
+
+Development checks also need Node; use the version in `.nvmrc`.
 
 ```sh
 bun run dev:server   # API with --watch

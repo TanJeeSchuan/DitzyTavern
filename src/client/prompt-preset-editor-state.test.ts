@@ -248,7 +248,7 @@ describe("draft reconciliation", () => {
 		let state = adopt(openState(), recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: contentDraft("Write warmly.") });
 		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 5, enabled: false });
-		const submitted = state.drafts[5];
+		const submitted = state.drafts[5]!;
 		expect(dirtyBlockPatches(recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]), state.drafts).patches)
 			.toEqual([{ occurrenceId: 5, type: "content", name: "Voice", content: "Write warmly.", role: "system", enabled: false }]);
 		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: submitted } });
@@ -259,7 +259,7 @@ describe("draft reconciliation", () => {
 	test("a newer toggle survives retirement of an older submitted version", () => {
 		let state = adopt(openState(), recipe(7, [historySlot(9)]));
 		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 9, enabled: false });
-		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 9: state.drafts[9] } });
+		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 9: state.drafts[9]! } });
 		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 9, enabled: true });
 		state = adopt(state, recipe(7, [{ ...historySlot(9), enabled: false }]));
 		expect(state.drafts[9]).toEqual({ kind: "enabled", enabled: true });
@@ -267,24 +267,12 @@ describe("draft reconciliation", () => {
 		expect(dirtyDraftSummary(state.view.selected, state.drafts).dirty).toBe(true);
 	});
 
-	test("a submitted draft retires only when the fresh recipe reflects it and retains its identity", () => {
-		let state = openState();
-		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
-		const submitted = contentDraft("Write warmly.");
-		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: submitted });
-		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5] } });
-
-		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write warmly.")]));
-
-		expect(state.drafts[5]).toBeUndefined();
-	});
-
 	test("a read that predates the save cannot retire the submitted draft", () => {
 		let state = openState();
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
 		const submitted = contentDraft("Write warmly.");
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: submitted });
-		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5] } });
+		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5]! } });
 
 		// The old recipe does not reflect the submitted save, so the draft survives.
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
@@ -297,7 +285,7 @@ describe("draft reconciliation", () => {
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
 		const submitted = contentDraft("Write warmly.");
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: submitted });
-		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5] } });
+		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5]! } });
 		const newerEdit = contentDraft("Write warmly, in second person.");
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: newerEdit });
 

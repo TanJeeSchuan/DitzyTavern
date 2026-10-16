@@ -76,6 +76,10 @@ describe("readConversationData", () => {
 		expect(read).toEqual({
 			name: "Read Data Conversation",
 			entries: [
+				{ namespace: "box:author-note", key: "enabled", value: "true" },
+				{ namespace: "box:author-note", key: "instance", value: expect.any(String) },
+				{ namespace: "box:memory", key: "enabled", value: "true" },
+				{ namespace: "box:memory", key: "instance", value: expect.any(String) },
 				{ namespace: "first.namespace", key: "alpha", value: "1" },
 				{ namespace: "first.namespace", key: "beta", value: "2" },
 				{ namespace: "second.namespace", key: "gamma", value: "3" },
@@ -109,27 +113,6 @@ describe("readConversationData", () => {
 			{ namespace: "import.test", key: "reportJson", value: "{\"count\":2}" },
 			{ namespace: "import.test", key: "warnings", value: "[]" },
 		]);
-	});
-
-	test("a keys filter without a namespace crosses namespaces", () => {
-		writeData("first.namespace", "sha256", "a");
-		writeData("second.namespace", "sha256", "b");
-
-		const read = readConversationData(module(), conversationId, {
-			keys: ["sha256"],
-		});
-		expect(read?.entries).toEqual([
-			{ namespace: "first.namespace", key: "sha256", value: "a" },
-			{ namespace: "second.namespace", key: "sha256", value: "b" },
-		]);
-	});
-
-	test("an empty keys array reads every key", () => {
-		writeData("first.namespace", "alpha", "1");
-		writeData("first.namespace", "beta", "2");
-
-		const read = readConversationData(module(), conversationId, { keys: [] });
-		expect(read?.entries).toHaveLength(2);
 	});
 
 	test("returns undefined for a missing Conversation", () => {

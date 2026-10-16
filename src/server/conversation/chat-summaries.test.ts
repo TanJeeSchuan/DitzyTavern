@@ -63,8 +63,7 @@ describe("Chat list summaries", () => {
 
 		const summary = listChatSummaries(database).find((candidate) => candidate.id === chat.id);
 
-		expect(summary?.excerpt).toBe(long.replace(/\s+/g, " ").trim().slice(0, 160));
-		expect(summary?.excerpt.startsWith("Chosen swipe word")).toBe(true);
+		expect(summary?.excerpt).toBe(`Chosen swipe ${"word ".repeat(29)}wo`);
 	});
 
 	test("a Chat without Messages has an empty excerpt", () => {
@@ -81,7 +80,6 @@ describe("Chat list summaries", () => {
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[0]!.id);
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[2]!.id);
 		setPortrait.run(nox.hash, nox.focalX, nox.focalY, chat.cast[3]!.id);
-		expect(() => setPortrait.run(writer.hash, null, writer.focalY, chat.cast[4]!.id)).toThrow("CHECK constraint failed");
 		applyCommand(module, {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
@@ -93,8 +91,15 @@ describe("Chat list summaries", () => {
 		expect(summary?.cast).toEqual([{ name: "Nox", portrait: nox }, { name: "Writer", portrait: writer }, { name: "Maren", portrait: null }, { name: "Iris", portrait: null }]);
 	});
 
+	test("rejects a stored Portrait whose focal point is outside the schema", () => {
+		const chat = createChat("Corrupt Portrait", ["Writer", "Maren"]);
+		database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = ?, portrait_focal_y = ? WHERE participant_id = ?")
+			.run("a".repeat(64), 2, 0.5, chat.cast[0]?.id ?? 0);
+		expect(() => listChatSummaries(database)).toThrow();
+	});
+
 	test("a Chat without Participants has no Portraits", () => {
-		const chat = createConversationWithHistory(module, { authorNote: "", name: "No Cast" });
+		const chat = createConversationWithHistory(module, { name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

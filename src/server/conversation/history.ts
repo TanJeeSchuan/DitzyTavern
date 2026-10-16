@@ -1,3 +1,4 @@
+import { readMessageMoves } from "../box/moves";
 import { readVariantData } from "./variant-data";
 import { loadMessageRows } from "./message-rows";
 import { authorRoleOf, continuationEligibility } from "./continuation";
@@ -94,7 +95,7 @@ export function readChatHistory(
 			.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, request.aroundMessageId))).get();
 		if (target === undefined) return undefined;
 		const newer = db.select({ count: sql<number>`count(*)` }).from(messageTable)
-			.where(and(eq(messageTable.conversation_id, conversationId), gt(messageTable.position, target.position))).get()!.count;
+			.where(and(eq(messageTable.conversation_id, conversationId), gt(messageTable.position, target.position))).get()!.count; // @approved count(*) always returns a row.
 		requested = Math.floor(newer / pageSize) + 1;
 	}
 	const pageIndex = Math.min(
@@ -182,6 +183,7 @@ export function readChatHistory(
 		castIds,
 	).valid;
 
+	const moves = readMessageMoves(db, messageRows.map(({ id }) => id));
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
@@ -207,6 +209,7 @@ export function readChatHistory(
 				castIds,
 			),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
+			moves: moves.get(message.id) ?? {},
 		};
 	});
 

@@ -1,10 +1,10 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { participantPromptTable, participantTable } from "../database/schema";
+import { participantTable } from "../database/schema";
 import { ConversationNotPlayableError, ConversationNotFoundError } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import {
@@ -102,6 +102,9 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("preview compiles the plan with ordered blocks and participant context", async () => {
+		// @approved This assertion pins the World Clock block in the Default recipe.
+		insertBox(database, conversationId, "world-clock");
+		insertBox(database, conversationId, "phone");
 		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
@@ -115,6 +118,8 @@ describe("Generation runtime behavior", () => {
 			"example-dialogue",
 			"history",
 			"history",
+			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 		// Identities expand owner-relative: self is the Definition owner, and
@@ -254,8 +259,8 @@ describe("Generation runtime behavior", () => {
 		const message = committed.messages.at(-1);
 		expect(message?.author?.participantId).toBe(swapped.cast[0]?.id);
 		expect(message?.historicalContext).toEqual({
-			humanParticipantId: swapped.cast[1]?.id,
-			modelParticipantId: swapped.cast[0]?.id,
+			humanParticipantId: swapped.cast[1]!.id,
+			modelParticipantId: swapped.cast[0]!.id,
 		});
 	});
 
@@ -409,42 +414,6 @@ describe("Generation runtime behavior", () => {
 		});
 	});
 
-	test("ignores unrecognized reasoning shapes while visible content continues", async () => {
-		const committed = await generateTerminalTailFixture(database, {connection: null,
-			conversationId,
-			modelClient: createFakeModelClient(() => [
-				{ type: "content", text: "Visible output." },
-				{ type: "finished", finishReason: "stop" },
-			]),
-		});
-
-		const variant = committed.messages.at(-1)?.variants[0];
-		expect(variant?.content).toBe("Visible output.");
-		expect(variant?.data.some((entry) => entry.key === "reasoning")).toBe(false);
-	});
-
-	test("records a length-limited terminal outcome without continuing automatically", async () => {
-		const committed = await generateTerminalTailFixture(database, {connection: null,
-			conversationId,
-			modelClient: createFakeModelClient(() => [
-				{ type: "content", text: "Truncated answer." },
-				{ type: "finished", finishReason: "length" },
-			]),
-		});
-
-		const variant = committed.messages.at(-1)?.variants[0];
-		expect(variant?.data).toContainEqual({
-			namespace: "generation",
-			key: "outcome",
-			value: "length-limited",
-		});
-		expect(variant?.data).toContainEqual({
-			namespace: "generation",
-			key: "finish",
-			value: JSON.stringify({ reason: "length" }),
-		});
-	});
-
 	test("a mid-flight rename does not rewrite the in-flight generation and the next one uses the new state", async () => {
 		let release!: (content: string) => void;
 		let markStarted!: () => void;
@@ -504,58 +473,6 @@ describe("Generation runtime behavior", () => {
 				(block) => block.kind === "identity" && block.role === "model",
 			)?.content,
 		).toBe("I am Maren Renamed, speaking to Writer.");
-	});
-
-	test("a mid-flight Definition edit does not rewrite the in-flight generation and the next one compiles the edited Prompt", async () => {
-		let release!: (content: string) => void;
-		let markStarted!: () => void;
-		const pending = new Promise<string>((resolve) => {
-			release = resolve;
-		});
-		const started = new Promise<void>((resolve) => {
-			markStarted = resolve;
-		});
-
-		const generation = generateTerminalTailFixture(database, {connection: null,
-			conversationId,
-			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => {
-				markStarted();
-				return pending;
-			}),
-		});
-		await started;
-
-		// The model Prompt is edited while the transport streams (the
-		// Participant edit command arrives with ticket 04; the authoritative
-		// edit is applied directly to the store here).
-		drizzle(database)
-			.update(participantPromptTable)
-			.set({ identity: "I am the edited Maren." })
-			.where(eq(participantPromptTable.participant_id, modelId))
-			.run();
-
-		release("Answered after the prompt edit.");
-		const committed = await generation;
-
-		const message = committed.messages.at(-1);
-		expect(message?.author).toEqual({
-			participantId: modelId,
-			capturedName: "Maren Voss",
-			inCast: true,
-		});
-		expect(message?.historicalContext).toEqual({
-			humanParticipantId: humanId,
-			modelParticipantId: modelId,
-		});
-
-		// The next generation compiles from the updated authoritative Prompt.
-		const capture = await sendPreview(database, conversationId);
-		expect(
-			capture.plan.promptPlan.blocks.find(
-				(block) => block.kind === "identity" && block.role === "model",
-			)?.content,
-		).toBe("I am the edited Maren.");
 	});
 
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {

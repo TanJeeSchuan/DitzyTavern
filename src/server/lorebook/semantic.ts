@@ -30,8 +30,8 @@ const splitMessage = (sceneFits: SceneFits, text: string): string[] => {
 };
 
 const sceneChunks = (sceneFits: SceneFits, messages: readonly LoreScanMessage[]): string[][] => {
-	const chunks: string[][] = [[]];
-	let current = chunks[0];
+	let current: string[] = [];
+	const chunks = [current];
 	for (const piece of messages.flatMap((message) => splitMessage(sceneFits, message.content))) {
 		if (sceneFits([...current, piece])) current.push(piece);
 		else {

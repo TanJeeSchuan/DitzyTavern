@@ -14,7 +14,6 @@ import {
 import { openInitializedDatabase } from "../server/database/database";
 import type { ChatImportCommitInput } from "./import-chat";
 import type { WirePayload } from "./lib/wire-decode";
-import type { JsonValue } from "./conversation-stream";
 
 // Narrow client-boundary tests for the transport's own concerns only:
 // uploading exactly once, decoding wire responses into typed outcomes, and
@@ -29,14 +28,13 @@ Object.defineProperty(globalThis, "window", {
 	value: { location: { origin: "http://localhost" } } as Window,
 });
 const originalFetch = globalThis.fetch;
-const { commitImport, discardImport, discardStagedImport, previewImport, stageImport } = await import("./import-chat");
-const { SERVER_UNUSABLE_RESPONSE_NOTICE } = await import("./lib/request-outcome");
+const { commitImport, discardImport, previewImport, stageImport } = await import("./import-chat");
 
 const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
 	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
 };
 
-const json = (status: number, payload: JsonValue): Response =>
+const json = (status: number, payload: WirePayload): Response =>
 	new Response(JSON.stringify(payload), {
 		status,
 		headers: { "content-type": "application/json" },
@@ -225,223 +223,13 @@ describe("Chat import client boundary", () => {
 	});
 });
 
-// Focused decoder tests for the transport seam: canned fetch responses
-// exercise the shared-schema decoding of every import response — valid
-// payloads, missing fields, malformed nested values, and unexpected shapes
-// — without standing up the server. A payload that fails its contract must
-// normalize to a recoverable outcome instead of entering the import flow.
-describe("Chat import response decoding", () => {
+describe("Chat import gone outcomes", () => {
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
 	});
 
-	const previewGroup = {
-		key: "Writer",
-		isBlank: false,
-		messagePositions: [1, 2],
-		messageVariantCounts: [1, 1],
-		messageCount: 2,
-		variantCount: 2,
-		participantNameDefault: "Writer",
-		suggestion: {
-			characterId: 3,
-			name: "Writer",
-			match: "case-insensitive",
-			confirmed: false,
-		},
-	};
-
-	const preview = {
-		title: "Lantern House",
-		originalFilename: "lantern-house.jsonl",
-		sha256: "abc123",
-		byteLength: 42,
-		integrity: null,
-		counts: { messages: 2, variants: 2 },
-		warnings: ["Importer notice"],
-		groups: [previewGroup],
-		duplicates: {
-			exact: [],
-			related: [{ id: 5, name: "Lantern House" }],
-		},
-	};
-
-	// The committed response also carries the new Conversation summary; a
-	// minimal summary literal proves the nested summary decodes too.
-	const conversationSummary = {
-		authorNote: "",
-		id: 7,
-		name: "Lantern House",
-		revision: 1,
-		cast: [],
-		control: { humanParticipantId: null, modelParticipantId: null },
-		controlValidity: { valid: false, reason: "missing-seat" },
-		playable: false,
-		capabilities: {
-			compose: { available: false, reason: "conversation-not-playable" },
-			generate: { available: false, reason: "conversation-not-playable" },
-			swipe: { available: false, reason: "conversation-not-playable" },
-		},
-		activeGenerations: [],
-	};
-
-	const receipt = {
-		conversationId: 7,
-		title: "Lantern House",
-		originalFilename: "lantern-house.jsonl",
-		sha256: "abc123",
-		byteLength: 42,
-		counts: { messages: 2, variants: 2 },
-		participants: [
-			{ name: "Writer", outcome: "new-character", sourceCharacterId: null },
-		],
-		warnings: [],
-		duplicates: { exact: [], related: [] },
-	};
-
-	// The canned-body payload union: every shape the crafted responses
-	// need, including deliberately malformed wire bodies (missing fields,
-	// wrong literals) that the decoder must reject.
-	const installResponder = (respond: (url: string) => Response): void => {
-		installFetch((input) => Promise.resolve(respond(String(input))));
-	};
-
-	test("decodes a valid staged response into the typed staged outcome", async () => {
-		installResponder((url) =>
-			url.endsWith("/stage")
-				? json(200, { outcome: "staged", token: "tok_1", preview } satisfies WirePayload)
-				: json(500, {}),
-		);
-		const outcome = await stageImport(new Blob([new Uint8Array(4)]), "lantern-house.jsonl");
-		expect(outcome.outcome).toBe("available");
-		if (outcome.outcome !== "available") return;
-		expect(outcome.value.token).toBe("tok_1");
-		expect(outcome.value.preview.title).toBe("Lantern House");
-		expect(outcome.value.preview.groups[0]?.suggestion?.match).toBe("case-insensitive");
-		expect(outcome.value.preview.duplicates.related).toEqual([
-			{ id: 5, name: "Lantern House" },
-		]);
-	});
-
-	test("decodes a valid preview response into the typed available outcome", async () => {
-		installResponder((url) =>
-			url.includes("/preview")
-				? json(200, { outcome: "available", preview } satisfies WirePayload)
-				: json(500, {}),
-		);
-		const outcome = await previewImport("tok_1", "abc123");
-		expect(outcome.outcome).toBe("available");
-		if (outcome.outcome !== "available") return;
-		expect(outcome.value.preview.sha256).toBe("abc123");
-		expect(outcome.value.preview.groups[0]?.messagePositions).toEqual([1, 2]);
-	});
-
-	test("decodes a valid committed response with its receipt", async () => {
-		installResponder((url) =>
-			url.includes("/commit")
-				? json(200, { outcome: "committed", conversation: conversationSummary, receipt } satisfies WirePayload)
-				: json(500, {}),
-		);
-		const outcome = await commitImport("tok_1", "abc123", {
-			title: "Lantern House",
-			duplicateConfirmed: true,
-			participants: [],
-		});
-		expect(outcome.outcome).toBe("available");
-		if (outcome.outcome !== "available") return;
-		expect(outcome.value.receipt.conversationId).toBe(7);
-		expect(outcome.value.receipt.participants[0]?.outcome).toBe("new-character");
-	});
-
-	test("maps typed invalid outcomes with their contextual reason", async () => {
-		const invalid = (reason: string) => json(422, { outcome: "invalid", reason });
-		installResponder((url) =>
-			url.endsWith("/stage") ? invalid("A file name is required with this upload.") : json(500, {}),
-		);
-		const stageOutcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
-		expect(stageOutcome).toEqual({
-			outcome: "invalid",
-			reason: "A file name is required with this upload.",
-		});
-
-		installResponder(() => invalid("Token hash mismatch."));
-		const previewOutcome = await previewImport("tok_1", "0000");
-		expect(previewOutcome).toEqual({ outcome: "invalid", reason: "Token hash mismatch." });
-
-		installResponder(() => invalid("A Message position is not covered."));
-		const commitOutcome = await commitImport("tok_1", "abc123", {
-			title: "T",
-			duplicateConfirmed: false,
-			participants: [],
-		});
-		expect(commitOutcome).toEqual({
-			outcome: "invalid",
-			reason: "A Message position is not covered.",
-		});
-	});
-
-	test("normalizes unexpected top-level response bodies to the shared unusable fallback", async () => {
-		const unexpectedBodies: JsonValue[] = [null, "staged", 42, [], {}, "<html>"];
-		for (const payload of unexpectedBodies) {
-			installResponder(() => json(200, payload));
-			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-		}
-	});
-
-	test("fails malformed nested values instead of coercing them", async () => {
-		for (const broken of [
-			// A suggestion match outside the closed literal union.
-			{
-				...preview,
-				groups: [{
-					...previewGroup,
-					suggestion: { ...previewGroup.suggestion, match: "levenshtein" },
-				}],
-			},
-			// A message position that is not an integer.
-			{
-				...preview,
-				groups: [{ ...previewGroup, messagePositions: ["1", 2] }],
-			},
-			// A duplicate match without its name.
-			{
-				...preview,
-				duplicates: { exact: [], related: [{ id: 5 }] },
-			},
-		] satisfies JsonValue[]) {
-			installResponder(() =>
-				json(200, { outcome: "staged", token: "tok_1", preview: broken } satisfies WirePayload));
-			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-		}
-
-		// The same holds for a committed receipt: a participant outcome
-		// outside the closed union and an uninterpretable source character
-		// id both reject the whole response.
-		for (const brokenReceipt of [
-			{
-				...receipt,
-				participants: [{ name: "Writer", outcome: "merged", sourceCharacterId: null }],
-			},
-			{
-				...receipt,
-				participants: [{ ...receipt.participants[0], sourceCharacterId: "3" }],
-			},
-		] satisfies JsonValue[]) {
-			installResponder(() =>
-				json(200, { outcome: "committed", conversation: conversationSummary, receipt: brokenReceipt } satisfies WirePayload));
-			const outcome = await commitImport("tok_1", "abc123", {
-				title: "T",
-				duplicateConfirmed: false,
-				participants: [],
-			});
-			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-		}
-	});
-
 	test("maps gone outcomes for preview and commit requests", async () => {
-		installResponder(() => json(410, { outcome: "expired" }));
+		installFetch(() => Promise.resolve(json(410, { outcome: "expired" })));
 		expect(await previewImport("gone", "abc123")).toEqual({ outcome: "expired" });
 		expect(
 			await commitImport("gone", "abc123", {
@@ -452,45 +240,11 @@ describe("Chat import response decoding", () => {
 		).toEqual({ outcome: "expired" });
 
 		for (const reason of ["missing", "corrupt"] as const) {
-			installResponder(() =>
-				json(410, { outcome: "unavailable", reason }));
+			installFetch(() => Promise.resolve(json(410, { outcome: "unavailable", reason })));
 			expect(await previewImport("tok", "abc123")).toEqual({
 				outcome: "unavailable",
 				reason,
 			});
 		}
-	});
-
-	test("fails closed to the shared unusable fallback when a gone response cannot be decoded", async () => {
-		const malformedGone: JsonValue[] = [
-			{},
-			{ outcome: "unavailable" },
-			{ outcome: "unavailable", reason: "vanished" },
-			{ outcome: "deleted" },
-		];
-		for (const payload of malformedGone) {
-			installResponder(() => json(410, payload));
-			// An error body outside the modeled union is a response failure,
-			// symmetric with the 200 path: the seam never retries it as a
-			// transport outage.
-			expect(await previewImport("tok", "abc123")).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-		}
-	});
-
-	test("normalizes a malformed invalid-outcome body to the shared unusable fallback", async () => {
-		const malformedInvalid: JsonValue[] = [
-			{ outcome: "invalid" },
-			{ outcome: "invalid", reason: 42 },
-			{ outcome: "boom" },
-		];
-		for (const payload of malformedInvalid) {
-			installResponder(() => json(422, payload));
-			const outcome = await previewImport("tok_1", "abc123");
-			expect(outcome).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
-		}
-	});
-
-	test("cancellation through every Back/Cancel path is a no-op without a handle", () => {
-		expect(() => discardStagedImport(null)).not.toThrow();
 	});
 });

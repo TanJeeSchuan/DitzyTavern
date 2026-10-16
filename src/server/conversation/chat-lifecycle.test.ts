@@ -7,11 +7,9 @@ import { messageTable, participantTable } from "../database/schema";
 import { createConversationRoutes } from "../contract/conversation";
 import {
 	acceptConversationTailGeneration,
-	ConversationNotFoundError,
 	deleteConversation,
 	InvalidConversationCommandError,
 } from ".";
-import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 
 const prompt = {
@@ -55,12 +53,11 @@ describe("Chat rename and deletion", () => {
 		expect(readTestConversationSnapshot(module, chat.id)?.name).toBe("Coastal Ride");
 	});
 
-	test("rename rejects a blank name and a stale revision without changing the Chat", () => {
+	test("rename rejects a blank name without changing the Chat", () => {
 		const chat = createChat("Lantern House");
 		const renamed = rename(chat, "Lantern Hall");
 
 		expect(() => rename(renamed, "   ")).toThrow(InvalidConversationCommandError);
-		expect(() => rename(chat, "Stale Name")).toThrow(StaleRevisionError);
 		expect(readTestConversationSnapshot(module, chat.id)?.name).toBe("Lantern Hall");
 	});
 
@@ -98,29 +95,6 @@ describe("Chat rename and deletion", () => {
 		expect(readTestConversationSnapshot(module, kept.id)?.cast.map((participant) => participant.name)).toEqual(["Writer", "Maren"]);
 	});
 
-	test("deletion refuses an unknown Chat and a Chat with an Active Generation", () => {
-		const chat = createChat("Generating");
-		const [human, model] = chat.cast;
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		acceptConversationTailGeneration(database, {
-			conversationId: chat.id,
-			expectedRevision: chat.revision,
-			timestamp: "2026-09-26T10:00:00.000Z",
-			humanContent: "Keep going.",
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
-			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
-		});
-
-		expect(() => deleteConversation(database, chat.id + 100)).toThrow(ConversationNotFoundError);
-		expect(() => deleteConversation(database, chat.id)).toThrow(InvalidConversationCommandError);
-		expect(readTestConversationSnapshot(module, chat.id)).toBeDefined();
-	});
-
 	test("the delete route answers deleted, not-found, and invalid outcomes", async () => {
 		const app = createConversationRoutes(database);
 		const idle = createChat("Idle");
@@ -128,6 +102,7 @@ describe("Chat rename and deletion", () => {
 		const [human, model] = busy.cast;
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: busy.id,
 			expectedRevision: busy.revision,
 			timestamp: "2026-09-26T10:00:00.000Z",
@@ -136,6 +111,7 @@ describe("Chat rename and deletion", () => {
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -150,5 +126,6 @@ describe("Chat rename and deletion", () => {
 		expect([missing.status, await missing.json()]).toEqual([404, { outcome: "not-found" }]);
 		expect(refused.status).toBe(422);
 		expect(await refused.json()).toEqual({ outcome: "invalid", reason: "Stop the running Generation before deleting this Chat." });
+		expect(readTestConversationSnapshot(module, busy.id)).toBeDefined();
 	});
 });

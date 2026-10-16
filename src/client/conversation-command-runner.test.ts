@@ -1,3 +1,4 @@
+import { boxSetups, boxes } from "./test-fixtures/box-setups";
 import { describe, expect, test } from "bun:test";
 import {
 	CONVERSATION_REVISION_UNAVAILABLE_NOTICE,
@@ -12,7 +13,7 @@ import type { ConversationSummary } from "../shared/contract/conversation-schema
 // A minimal authoritative snapshot: the runner only forwards snapshots, so
 // the fixture carries the contract shape without populating Cast details.
 const summary = (overrides: Partial<ConversationSummary> = {}): ConversationSummary => ({
-	authorNote: "",
+	boxSetups, boxes,
 	id: 1,
 	name: "Seaside Letters",
 	revision: 7,
@@ -212,18 +213,6 @@ describe("runConversationCommand", () => {
 			},
 		});
 		expect(events).toEqual(["send:7", "operation-callback"]);
-	});
-
-	test("an operation outcome triggers no adoption and no notice", async () => {
-		const events: string[] = [];
-		await runConversationCommand<{ kind: string }>(surface(events), async (expectedRevision) => {
-			events.push(`send:${expectedRevision}`);
-			return { outcome: "operation", operation: { kind: "character-changed" } };
-		}, {
-			notices,
-			onOperation: () => undefined,
-		});
-		expect(events).toEqual(["send:7"]);
 	});
 
 	test("a command queued behind another is sent with the revision the earlier one produced", async () => {

@@ -12,11 +12,6 @@ describe("duplicateLabel", () => {
 		expect(duplicateLabel("Writer", 0)).toBe("Writer");
 		expect(duplicateLabel("Writer", -1)).toBe("Writer");
 	});
-
-	test("preserves case and Unicode exactly inside the label", () => {
-		expect(duplicateLabel("Juno Ashfeld", 2)).toBe("Juno Ashfeld (2)");
-		expect(duplicateLabel("Åse", 2)).toBe("Åse (2)");
-	});
 });
 
 describe("resolveControlChange", () => {

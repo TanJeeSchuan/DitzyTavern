@@ -7,6 +7,7 @@
 // managed artifact directory, whose metadata is committed with the Chat.
 
 import { openInitializedDatabase } from "./database";
+import { loadBoxes } from "../box/registry";
 import { defaultArtifactDirectory } from "../artifact";
 import { importSillyTavernChat } from "../sillytavern/import";
 import { SillyTavernImportError } from "../sillytavern/errors";
@@ -64,6 +65,7 @@ if (isDirectRun) {
 		printUsage();
 		process.exitCode = 1;
 	} else {
+		await loadBoxes();
 		printSummary(sourcePath);
 	}
 }

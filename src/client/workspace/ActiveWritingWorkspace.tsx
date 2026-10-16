@@ -7,7 +7,10 @@ import {
 	useSaveNavigation,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
-import { MemoriesPanel } from "./MemoriesPanel";
+import { BoxBoundary } from "../box-windows/BoxBoundary";
+import { boxClients, boxPresent } from "../box-windows/registry";
+import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
+import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
@@ -152,7 +155,11 @@ export function ActiveWritingWorkspace({
 
 	const conversation = session.conversation;
 	const generationDetailsTarget = panelState.generationDetailsTarget;
-	const memoryFocus = panelState.memoryFocus;
+	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
+	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClients().get(inspectorBox)?.Inspector;
+	useEffect(() => {
+		if (inspectorBox !== undefined && conversation !== null && !boxPresent(conversation, inspectorBox)) dispatchPanel({ type: "details-closed" });
+	}, [conversation, inspectorBox]);
 
 	const openActiveGenerationDetails = () => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
@@ -166,9 +173,9 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
-	const openMessageMemories = (messageId: number) => {
+	const openBoxInspector = (box: string, focus: { messageId: number } | null) => {
 		if (assemblyActive) return;
-		dispatchPanel({ type: "memories-opened", focus: { messageId } });
+		dispatchPanel({ type: "box-inspector-opened", box, focus });
 	};
 
 	const openVariantDetails = (messageId: number, variantId: number) => {
@@ -218,8 +225,6 @@ export function ActiveWritingWorkspace({
 				}}
 				mutationsDisabled={story.preview !== null}
 			/>
-			</SaveNavigationContext.Provider>
-			</SaveGuardContext.Provider>
 
 			<StoryStage
 				story={story}
@@ -235,7 +240,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
-				onOpenAuthorNote={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel: "author-note" }))}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					dispatchPanel({ type: "chat-info-opened" });
@@ -244,15 +249,13 @@ export function ActiveWritingWorkspace({
 					if (assemblyActive) return;
 					dispatchPanel({ type: "macro-variables-opened" });
 				}}
-				onOpenMemories={() => {
-					if (assemblyActive) return;
-					dispatchPanel({ type: "memories-opened", focus: null });
-				}}
+				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
-				onOpenMessageMemories={openMessageMemories}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
+			</SaveNavigationContext.Provider>
+			</SaveGuardContext.Provider>
 
 			{assembly !== null && (
 				<PromptPlanPreviewPanel
@@ -273,17 +276,22 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
-				<MemoriesPanel
-					key={session.conversation.id}
-					conversationId={session.conversation.id}
-					conversationRevision={session.conversation.revision}
-					cast={session.conversation.cast}
-					focusRequest={memoryFocus}
-					onClose={() => dispatchPanel({ type: "details-closed" })}
-					onNavigateSource={session.navigateToSourceMessage}
-					onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}
-				/>
+			{!assemblyActive && inspector !== undefined && inspectorBox !== undefined && session.conversation !== null && (
+				<aside className="details-panel" data-open="true" aria-label={inspector.label}>
+					<BoxBoundary key={`${session.conversation.id}:${inspectorBox}`} box={inspectorBox}
+						fallback={(failure) => <><PanelHeader title={inspector.label} onClose={() => dispatchPanel({ type: "details-closed" })} />{failure}</>}>
+						<inspector.Component
+							conversation={session.conversation}
+							onConversationChange={session.setConversation}
+							focusRequest={panelState.boxFocus}
+							onClose={() => dispatchPanel({ type: "details-closed" })}
+							onNavigateSource={session.navigateToSourceMessage}
+							onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
+							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
+						/>
+					</BoxBoundary>
+					<BoxOffNotice conversation={session.conversation} box={inspectorBox} className="m-4 w-auto" />
+				</aside>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel

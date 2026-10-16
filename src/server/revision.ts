@@ -14,14 +14,9 @@ import type { ConnectionSettingsPayload } from "../shared/contract/connection-se
 import type { CharacterSnapshot } from "../shared/contract/character-library";
 import type { ConversationSummary } from "../shared/contract/conversation-schema";
 import type { Lorebook, LorebookOwnerAttachmentState } from "../shared/contract/lorebook";
-import type {
-	ConversationMemories,
-	ConversationMemoryAllowance,
-	MemoryCollectionView,
-} from "../shared/contract/memory";
-import type { MemorySettingsPayload } from "../shared/contract/memory-settings";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
+import type { BoxDecisionSettings } from "../shared/contract/box";
 
 // @approved
 //  The aggregate → payload map: each state-bearing aggregate declares exactly
@@ -29,15 +24,13 @@ import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic
 //  through the shared wire contracts the 409 schemas declare. Only the prose
 //  "generation" envelope carries no state (`undefined`).
 export type CurrentByAggregate = {
-	settings: ConnectionSettingsPayload | MemorySettingsPayload | SemanticTriggerSettingsPayload | ConversationMemoryAllowance;
+	settings: ConnectionSettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings;
 	preset: PromptPresetSummary;
 	lorebook: Lorebook;
 	"lore-attachment": LorebookOwnerAttachmentState;
 	character: CharacterSnapshot;
 	conversation: ConversationSummary;
 	generation: undefined;
-	memories: ConversationMemories;
-	collection: MemoryCollectionView;
 };
 
 export type RevisionAggregate = keyof CurrentByAggregate;
@@ -60,8 +53,6 @@ const staleAggregateLabel = {
 	character: "Character",
 	conversation: "Conversation",
 	generation: "Conversation",
-	memories: "Memory label",
-	collection: "Memory collection",
 } satisfies Record<RevisionAggregate, string>;
 
 // @approved
@@ -75,9 +66,7 @@ type StaleRevisionDetails =
 	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentState: CurrentByAggregate["lore-attachment"] }
 	| { expectedRevision: number; actualRevision: number; currentCharacter: CurrentByAggregate["character"] }
 	| { expectedRevision: number; actualRevision: number; currentConversation: CurrentByAggregate["conversation"] }
-	| { reason: string }
-	| { memories: CurrentByAggregate["memories"] }
-	| { collection: CurrentByAggregate["collection"] };
+	| { reason: string };
 
 const staleRevisionDetails = (args: StaleRevisionArgs, message: string): StaleRevisionDetails => {
 	const [, expectedRevision, actualRevision] = args;
@@ -94,10 +83,6 @@ const staleRevisionDetails = (args: StaleRevisionArgs, message: string): StaleRe
 			return { expectedRevision, actualRevision, currentCharacter: args[3] };
 		case "conversation":
 			return { expectedRevision, actualRevision, currentConversation: args[3] };
-		case "memories":
-			return { memories: args[3] };
-		case "collection":
-			return { collection: args[3] };
 		case "generation":
 			return { reason: message };
 	}

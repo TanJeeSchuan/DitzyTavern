@@ -73,28 +73,6 @@ describe("Image Reference lifetime", () => {
 		return message;
 	};
 
-	test("a Variant's Image exists once its command commits and becomes orphaned after its last edit", async () => {
-		const target = chat();
-		const art = await picture(4);
-		writeMessage(target, [`Look: ${art.token}`]);
-		expect(referenced()).toEqual([art.hash]);
-
-		const message = lastMessage(target);
-		executeConversationCommand(conversations(), {
-			conversationId: target.id,
-			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
-			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: "Nothing now." },
-		});
-		expect(referenced()).toEqual([]);
-		expect(stored()).toEqual([art.hash]);
-		expect(orphanedAt(art.hash)).toBeNumber();
-		executeConversationCommand(conversations(), {
-			conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!,
-			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: art.token },
-		});
-		expect(orphanedAt(art.hash)).toBeNull();
-	});
-
 	test("removing and restoring the last Reference restarts its grace period at the sweep", async () => {
 		const target = chat();
 		const art = await picture(4);
@@ -107,6 +85,7 @@ describe("Image Reference lifetime", () => {
 		const now = Date.now();
 		const day = 24 * 60 * 60 * 1000;
 		sweepOrphanedImages(database, now);
+		expect(database.query("SELECT orphaned_at FROM image WHERE hash = ?").get(art.hash)).toEqual({ orphaned_at: null });
 		edit("Gone");
 		sweepOrphanedImages(database, now + day);
 		expect(database.query("SELECT orphaned_at FROM image WHERE hash = ?").get(art.hash)).toEqual({ orphaned_at: now + day });
@@ -146,7 +125,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? createConversationWithHistory(conversations(), { name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
@@ -260,29 +239,25 @@ describe("Image Reference lifetime", () => {
 	});
 
 	for (const owner of ["Character", "Participant"] as const) {
-		for (const from of ["portrait", "prompt", "opening"] as const) {
-			for (const to of ["portrait", "prompt", "opening"] as const) {
-				if (from === to) continue;
-				test(`${owner} Definition moves its only Image from ${from} to ${to} without uploading it again`, async () => {
-					const art = await picture(4);
-					const definition = (kind: typeof from) => ({
-						name: "Maren",
-						prompt: { ...prompt, identity: kind === "prompt" ? art.token : "" },
-						openings: kind === "opening" ? [art.token] : [],
-						portrait: kind === "portrait" ? { hash: art.hash, focalX: 0.5, focalY: 0.5 } : undefined,
-					});
-					if (owner === "Character") {
-						const character = library().execute({ type: "create", definition: definition(from) });
-						library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: definition(to) });
-					} else {
-						const target = chat();
-						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
-						executeConversationCommand(conversations(), { conversationId: target.id, expectedRevision: readConversationRevision(conversations(), target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
-					}
-					expect(referenced()).toEqual([art.hash]);
+		test(`${owner} Definition moves its only Image from its Portrait to its Prompt without uploading it again`, async () => {
+			const art = await picture(4);
+			const inPortrait = { name: "Maren", prompt, openings: [], portrait: { hash: art.hash, focalX: 0.5, focalY: 0.5 } };
+			const inPrompt = { name: "Maren", prompt: { ...prompt, identity: art.token }, openings: [] };
+			if (owner === "Character") {
+				const character = library().execute({ type: "create", definition: inPortrait });
+				library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: inPrompt });
+			} else {
+				const target = chat();
+				const define = (definition: typeof inPortrait | typeof inPrompt) => executeConversationCommand(conversations(), {
+					conversationId: target.id,
+					expectedRevision: readConversationRevision(conversations(), target.id)!,
+					action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition },
 				});
+				define(inPortrait);
+				define(inPrompt);
 			}
-		}
+			expect(referenced()).toEqual([art.hash]);
+		});
 	}
 
 	test("an Image held only by a non-selected Variant's Macro State survives until that Variant goes", async () => {

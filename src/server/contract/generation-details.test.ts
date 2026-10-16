@@ -38,6 +38,7 @@ describe("Generation detail transport", () => {
 		});
 		const module = database;
 		const accepted = acceptConversationTailGeneration(module, {
+			seed: "test-generation-seed",
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T10:00:00Z",
@@ -90,10 +91,25 @@ describe("Generation detail transport", () => {
 					adapter: "deepseek",
 					modelId: "details-model",
 					generationSettings: {
+						temperature: 0.2,
+						topP: null,
+						frequencyPenalty: null,
+						presencePenalty: null,
+						contextLimit: 128,
 						responseBudget: 64,
+						safetyAllowance: 5,
+						siblingGenerationLimit: null,
+						continuationStrategy: null,
+						continuationInstruction: null,
+						continuationPrefillSuffix: null,
+						repeatedImagePlacement: "last",
 						requestOverrides: { credential: "credential-do-not-expose" },
 					},
-				},),
+					usage: null,
+					finishReason: null,
+					status: null,
+					interruptionCause: null,
+				}),
 			},
 		});
 		const app = createConversationRoutes(database);

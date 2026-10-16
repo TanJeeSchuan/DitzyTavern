@@ -11,9 +11,10 @@ import { createConversationRoutes } from "./conversation";
 import { createNativeConversationRoutes } from "./native-conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { createLorebookRoutes } from "./lorebook-routes";
-import { createMemorySettingsRoutes } from "./memory-settings";
 import { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
-import { createMemoryRoutes } from "./memory";
+import { createBoxDecisionSettingsRoutes } from "./box-decision-settings";
+import { createBoxWindowRoutes } from "./box-window";
+import { createBoxRoutes } from "./boxes";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 import { createUpdateChecker, type UpdateChecker } from "../updates";
 import { createUpdateRoutes } from "./updates";
@@ -26,9 +27,7 @@ export { createNativeConversationRoutes } from "./native-conversation";
 export { createPromptPresetRoutes } from "./prompt-preset-routes";
 export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
-export { createMemorySettingsRoutes } from "./memory-settings";
 export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
-export { createMemoryRoutes } from "./memory";
 
 export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
@@ -40,9 +39,10 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createConversationRoutes(database, options))
 	.use(createPromptPresetRoutes(database))
 	.use(createLorebookRoutes(database, options))
-	.use(createMemorySettingsRoutes(database))
 	.use(createSemanticTriggerSettingsRoutes(database))
-	.use(createMemoryRoutes(database))
+	.use(createBoxDecisionSettingsRoutes(database))
+	.use(createBoxWindowRoutes(database))
+	.use(createBoxRoutes())
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));
 

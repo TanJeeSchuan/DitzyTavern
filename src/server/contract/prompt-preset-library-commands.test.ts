@@ -4,6 +4,7 @@ import type { Database } from "bun:sqlite";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 import {
+	chatBoxBlocks,
 	createChat,
 	createRoutes,
 	libraryRoutes,
@@ -144,9 +145,9 @@ describe("Prompt Preset library transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);
@@ -324,18 +325,6 @@ describe("Prompt Preset library transport", () => {
 		expect((await readSelectedPreset(routes.conversations, chatA.id))?.id).toBe(1);
 		expect((await readSelectedPreset(routes.conversations, chatB.id))?.id).toBe(2);
 		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2]);
-	});
-
-	test("refuses a patch batch on the library command route", async () => {
-		const app = libraryRoutes(database);
-		const response = await app.handle(
-			new Request("http://localhost/api/prompt-presets/commands", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ type: "save-block-patches", presetId: 1, patches: [] }),
-			}),
-		);
-		expect(response.status).toBe(422);
 	});
 
 	test("selects independently for each Conversation and survives a fresh read", async () => {

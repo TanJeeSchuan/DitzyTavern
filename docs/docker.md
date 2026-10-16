@@ -1,6 +1,6 @@
 # Docker and GHCR
 
-The image runs Bun 1.3.14 as the unprivileged `bun` user, serves the built frontend and API on port 3000, and stores the database and imported files under `/app/data`. Both `linux/amd64` and `linux/arm64` are built. No model runs inside this container; connection profiles point to your providers.
+The image runs Bun 1.4.3 as the unprivileged `bun` user, serves the built frontend and API on port 3000, and stores the database and imported files under `/app/data`. Both `linux/amd64` and `linux/arm64` are built. No model runs inside this container; connection profiles point to your providers.
 
 ## Publishing from GitHub
 
@@ -80,6 +80,8 @@ The app has no login or user isolation. Restrict access through your network or 
 
 Chrome and Edge only offer to install DitzyTavern as an app over HTTPS or on `localhost`. To install it on a phone, serve it through an HTTPS proxy such as `tailscale serve`; a plain `http://` LAN address still works in a browser tab.
 
+Plugin Boxes go in the data volume's `boxes` folder, one folder per Box at `/app/data/boxes/<id>/`, laid out like a built-in Box in `src/boxes/`, with its client built into `dist/` ([Install a plugin Box](box-system/README.md#install-a-plugin-box)). The server loads them at startup, so restart the container after adding or removing one. The log names each Box it refuses and why; the other Boxes still load. A plugin cannot replace a built-in Box.
+
 Provider URLs are resolved from inside the container. `127.0.0.1` in a connection profile means this container, so use the reachable address of your model service.
 
 ## Updates and backups
@@ -96,4 +98,4 @@ Back up all of `/app/data` and the encryption key. Stop the container before cop
 docker build -t ditzytavern:local .
 ```
 
-Use `ditzytavern:local` in the reference run command to test before publishing. The Docker build context admits only build inputs; `.env`, local databases, tooling credentials, and generated files are excluded. The final image contains production dependencies, the built frontend, and server/shared source with database migrations.
+Use `ditzytavern:local` in the reference run command to test before publishing. The Docker build context admits only build inputs; `.env`, local databases, tooling credentials, and generated files are excluded. The final image contains production dependencies, the built frontend, server/shared source with database migrations, the built-in Boxes and Box SDK, and `tsconfig.json`, whose `@/` path is how a Box, built-in or plugin, imports the SDK.

@@ -24,7 +24,9 @@ import {
 import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
-	singleUseReferenceLabels,
+	isBoxSlot,
+	repeatedSingleUseReference,
+	singleUseReferenceLabel,
 	type PromptOutgoingRole,
 	type ReferencedDefinitionBlock,
 } from "../../shared/contract/prompt-preset";
@@ -36,9 +38,8 @@ import type {
 	PromptWarning,
 	PromptLoreEntry,
 } from "./types";
-import { renderMemoryClaim } from "../../shared/memory-text";
-import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { resolvePromptImages } from "./images";
+import { boxDescriptorOf } from "../../shared/contract/box";
 
 // @approved
 //  Everything a Definition-sourced plan block carries apart from its resolved
@@ -168,11 +169,12 @@ const expandInto = (request: {
 	warnings.push(...expanded.warnings);
 };
 
+/** @approved Where a Box item's one expansion is kept in the attempt, so admission reads it instead of recompiling. */
+export const boxItemExpansionKey = (slotIndex: number, itemIndex: number) => `slot:${slotIndex}:item:${itemIndex}`;
+
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
-	for (const [reference, label] of Object.entries(singleUseReferenceLabels)) {
-		if (input.recipe.filter((slot) => slot.reference === reference).length > 1) throw new Error(`A Prompt Preset may contain at most one ${label} block.`);
-	}
-	const memory = input.memory ?? [];
+	const repeated = repeatedSingleUseReference(input.recipe.map((slot) => slot.reference));
+	if (repeated !== undefined) throw new Error(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
@@ -216,28 +218,34 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
-		if (slot.reference === "memory") {
-			const content = memoryText(memory);
-			if (content.length > 0) {
-				blocks.push({ kind: "memory", role: planRoleFor[slot.role], content });
-			}
-			continue;
-		}
-		if (slot.reference === "author-note") {
-			const start = blocks.length;
-			expandInto({
-				blocks,
-				warnings,
-				block: { kind: "author-note" },
-				role: planRoleFor[slot.role],
-				text: input.authorNote,
-				context: { self: input.human.name, other: input.model.name },
-				blockLabel: singleUseReferenceLabels[slot.reference],
-				macroEnvironment,
-				macroAttemptState,
-				cacheKey: `slot:${slotIndex}`,
-			});
-			if (blocks[start]?.content.trim() === "") blocks.splice(start, 1);
+		if (isBoxSlot(slot)) {
+			const kind = slot.reference;
+			// @approved
+			//  A Box block is its instructions, expanded like authored preset
+			// text, then the Box's items. A Box that ran with no items renders
+			// nothing, so its instructions never stand alone, unless it
+			// declares `alwaysRender`; a Box that did not run, or is not
+			// loaded, renders nothing.
+			const items = input.boxes[kind];
+			if (items === undefined) continue;
+			const alwaysRender = boxDescriptorOf(kind).alwaysRender === true;
+			if (items.length === 0 && !alwaysRender) continue;
+			const role = planRoleFor[slot.role];
+			const blockLabel = singleUseReferenceLabel(kind);
+			const context = { self: input.human.name, other: input.model.name };
+			const blockWarnings: PromptWarning[] = [];
+			const expand = (into: PromptBlock[], text: string, cacheKey: string) =>
+				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey });
+			const instructions: PromptBlock[] = [];
+			expand(instructions, slot.content, `slot:${slotIndex}`);
+			const expanded: PromptBlock[] = [];
+			for (const item of items) if (item.literal === true) expanded.push({ kind, role, content: item.text }); else expand(expanded, item.text, boxItemExpansionKey(slotIndex, item.index));
+			const content = expanded.map((block) => block.content).join("\n\n");
+			if (content.trim() === "" && !alwaysRender) continue;
+			const rendered = [...instructions.map((block) => block.content), content].filter((part) => part.trim() !== "").join("\n");
+			if (rendered === "") continue;
+			blocks.push({ kind, role, content: rendered });
+			warnings.push(...blockWarnings);
 			continue;
 		}
 		if (slot.reference === "instruction") {
@@ -280,8 +288,3 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 
 	return resolvePromptImages({ blocks, warnings }, input.images);
 }
-
-const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>
-	entries.filter((entry) => entry.admission === "admitted")
-		.map(renderMemoryClaim)
-		.join("\n\n");

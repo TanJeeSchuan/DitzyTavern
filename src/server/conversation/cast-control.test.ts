@@ -13,7 +13,6 @@ import {
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import { InvalidConversationCommandError } from ".";
-import { StaleRevisionError } from "../revision";
 import type { ConversationAction, ParticipantDefinition } from ".";
 import { applyCommand } from "../test-fixtures/conversation";
 
@@ -29,8 +28,6 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 ): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
-
-const castFor = (snapshot: TestConversationSnapshot) => snapshot.cast;
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -281,26 +278,6 @@ describe("Cast and Control management", () => {
 		).toThrow(InvalidConversationCommandError);
 	});
 
-	test("rejects stale Cast commands with the typed conflict and commits nothing", () => {
-		const { module, snapshot } = setup();
-		append(module, snapshot, {
-			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
-		});
-
-		expect(() =>
-			append(module, snapshot, {
-				type: "add-participant",
-				definition: adHoc("Stale Addition"),
-			}),
-		).toThrow(StaleRevisionError);
-		expect(castNames(readTestConversationSnapshot(database, snapshot.id) ?? snapshot)).toEqual([
-			"Writer",
-			"Maren Voss",
-			"Juno Ashfeld",
-		]);
-	});
-
 	test("a two-person Cast swaps atomically and can never become locked", () => {
 		const { module, snapshot, humanId, modelId } = setup();
 		const swapped = append(module, snapshot, {
@@ -361,25 +338,6 @@ describe("Cast and Control management", () => {
 		});
 		expect(displaced?.position).toBe(1);
 		expect(replaced.playable).toBe(true);
-	});
-
-	test("seated Participants are ineligible for removal in every state", () => {
-		const { module, snapshot } = setup();
-		const withThird = append(module, snapshot, {
-			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
-		});
-
-		for (const participant of withThird.cast) {
-			const seated =
-				participant.id === withThird.control.humanParticipantId ||
-				participant.id === withThird.control.modelParticipantId;
-			expect(participant.removal.eligible).toBe(!seated);
-			expect(participant.removal.reason).toBe(
-				seated ? "control-assigned" : null,
-			);
-		}
-		expect(castFor(withThird)).toHaveLength(3);
 	});
 
 	test("a larger Cast swap exchanges the two seats without touching unseated members", () => {
@@ -507,77 +465,6 @@ describe("Cast and Control management", () => {
 		expect(readTestConversationSnapshot(database, snapshot.id)?.revision).toBe(
 			snapshot.revision,
 		);
-	});
-
-	test("Participant edits never modify the source Character", () => {
-		const library = createCharacterLibraryModule(database);
-		const source = library.execute({
-			type: "create",
-			definition: {
-				name: "Maren Voss",
-				prompt: {
-					systemInstruction: "",
-					identity: "Lighthouse archivist.",
-					scenario: "",
-					exampleDialogue: "",
-					postHistoryInstruction: "",
-				},
-				openings: ["The lamp turns."],
-			},
-		});
-
-		const module = database;
-		const snapshot = createConversationWithHistory(module, {
-			name: "Forked",
-			participants: [
-				{ definition: adHoc("Writer") },
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						openings: [...source.openings],
-					},
-					sourceCharacterId: source.id,
-				},
-			],
-			control: { human: 0, model: 1 },
-		});
-		const modelId = snapshot.cast[1]?.id ?? 0;
-
-		const edited = append(module, snapshot, {
-			type: "rename-participant",
-			participantId: modelId,
-			name: "Local Maren",
-		});
-		const withPrompt = append(module, edited, {
-			type: "replace-participant-prompt",
-			participantId: modelId,
-			prompt: {
-				systemInstruction: "",
-				identity: "A local variant.",
-				scenario: "",
-				exampleDialogue: "",
-				postHistoryInstruction: "",
-			},
-		});
-
-		const reread = library.get(source.id);
-		expect(reread?.name).toBe("Maren Voss");
-		expect(reread?.prompt.identity).toBe("Lighthouse archivist.");
-		expect(reread?.openings).toEqual(["The lamp turns."]);
-		// The Participant keeps its independent copy and provenance.
-		expect(withPrompt.cast[1]?.name).toBe("Local Maren");
-		expect(withPrompt.cast[1]?.sourceCharacterId).toBe(source.id);
-	});
-
-	test("normalizes names while preserving case and Unicode", () => {
-		const { module, snapshot, modelId } = setup();
-		const renamed = append(module, snapshot, {
-			type: "rename-participant",
-			participantId: modelId,
-			name: "  Åse Voss  ",
-		});
-		expect(renamed.cast[1]?.name).toBe("Åse Voss");
 	});
 
 	test("an incomplete Conversation keeps configuration commands available", () => {

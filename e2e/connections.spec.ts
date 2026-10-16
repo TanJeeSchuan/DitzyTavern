@@ -1,4 +1,5 @@
 import { test, expect, enableDecisionModels } from "./fixtures";
+import { firstCall, isChatModelCall, isDecisionModelCall } from "./protocol";
 
 test("a new connection discovers models and passes a connection test with its saved key", async ({ page, llm }) => {
 	await llm.models(["e2e-model"]);
@@ -26,7 +27,7 @@ test("a new connection discovers models and passes a connection test with its sa
 		["chat", "https://local.invalid/v1/chat/completions"],
 	]);
 	expect(calls.map(({ headers }) => headers.authorization)).toEqual(["Bearer sk-e2e-secret", "Bearer sk-e2e-secret"]);
-	expect(calls[1].body.model).toBe("e2e-model");
+	expect(firstCall(calls, isChatModelCall).body.model).toBe("e2e-model");
 });
 
 test("OpenRouter Decisions refreshes its filtered catalog and tests a discovered model", async ({ page, llm }) => {
@@ -49,7 +50,7 @@ test("OpenRouter Decisions refreshes its filtered catalog and tests a discovered
 		["models", "https://openrouter.ai/api/v1/models?output_modalities=decisions"],
 		["decision", "https://openrouter.ai/api/v1/systemone"],
 	]);
-	expect(calls[1].body.model).toBe("e2e-decision");
+	expect(firstCall(calls, isDecisionModelCall).body.model).toBe("e2e-decision");
 });
 
 test.describe("Semantic Trigger settings read failure", () => {
@@ -58,7 +59,7 @@ test.describe("Semantic Trigger settings read failure", () => {
 		await enableDecisionModels(request);
 		await page.goto("/");
 		await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
-		const openSettings = page.getByRole("button", { name: /typesafe\/jev-1.13.*Decision Model/ });
+		const openSettings = page.getByRole("region", { name: "Semantic Triggers" }).getByRole("button", { name: /typesafe\/jev-1.13.*Decision Model/ });
 		await expect(openSettings).toBeVisible();
 		await page.route("**/api/connection-settings", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Connection Settings unavailable" }) }));
 		await openSettings.click();

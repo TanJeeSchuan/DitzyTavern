@@ -16,7 +16,7 @@ import type {
 	GenerationEvent,
 	GenerationImageModel,
 	GenerationStatePayload,
-	GenerationStreamStatus,
+	GenerationStatus,
 } from "../shared/contract/generation-events";
 import type { GenerationStreamResult } from "./conversation-stream";
 
@@ -160,15 +160,13 @@ const unchanged = (state: GenerationSessionsState): GenerationSessionsTransition
 	effects: [],
 });
 
-const terminalFromStatus = (
-	status: GenerationStreamStatus,
-	terminalReason: string | null,
-	imageModel: GenerationImageModel | undefined,
-): GenerationSessionTerminal | null => {
-	if (status === "active") return null;
-	if (status === "complete") return { outcome: "applied" };
-	if (status === "stopped") return { outcome: "stopped" };
-	return { outcome: "failed", reason: terminalReason ?? "Generation failed.", imageModel };
+const terminalFromStatus = (state: GenerationStatus): GenerationSessionTerminal | null => {
+	switch (state.status) {
+		case "active": return null;
+		case "complete": return { outcome: "applied" };
+		case "stopped": return { outcome: "stopped" };
+		case "failed": return { outcome: "failed", reason: state.reason, imageModel: state.imageModel };
+	}
 };
 
 const livePhases: ReadonlySet<GenerationSessionPhase> = new Set(["subscribing", "observing"]);
@@ -398,7 +396,7 @@ const observeState = (
 	) {
 		return unchanged(state);
 	}
-	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason, action.state.imageModel);
+	const terminal = terminalFromStatus(action.state);
 	const effects: GenerationSessionEffect[] = [
 		{
 			kind: "story", type: "generation-observed", mode: "replace",

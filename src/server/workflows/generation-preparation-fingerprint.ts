@@ -1,3 +1,4 @@
+import { fingerprintBoxes } from "../box/registry";
 import type { PreparationSnapshot } from "./generate-capture";
 
 const loreFingerprintOf = (snapshot: PreparationSnapshot) => ({
@@ -19,7 +20,7 @@ export const generationPreparationFingerprint = (
 ): string => JSON.stringify({
 	...snapshot,
 	lore: loreFingerprintOf(snapshot),
-	memory: snapshot.memory.freshnessFingerprint,
+	boxes: fingerprintBoxes(snapshot.boxes),
 	macroState: [...snapshot.macroState.entries()]
 		.sort(([left], [right]) => left.localeCompare(right)),
 });

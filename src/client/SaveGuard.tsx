@@ -1,50 +1,53 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, useCallback, useContext, useEffect, useReducer, useRef, useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export type SaveGuard = { dirty: boolean; saving?: boolean; save: () => Promise<boolean>; discard: () => void };
-export const SaveGuardContext = createContext<(guard: SaveGuard | null) => void>(() => undefined);
+export const SaveGuardContext = createContext<(guard: SaveGuard) => () => void>(() => () => undefined);
 export const SaveNavigationContext = createContext<(action: () => void) => void>((action) => action());
 
 const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.";
 
 // @approved
-// Owns the guard protocol's navigation half: keeps the registered guard, tracks
-// its saving state, and reduces navigation requests to the Unsaved Changes
-// dialog. Guards register through SaveGuardContext; descendants request
-// navigation through SaveNavigationContext.
+// Owns the guard protocol's navigation half: keeps the registered guards,
+// tracks their saving state, and reduces navigation requests to the Unsaved
+// Changes dialog. Floating windows and panels can hold unsaved edits at the
+// same time, so every mounted guard participates.
 export type SaveNavigationController = {
-	registerSaveGuard: (guard: SaveGuard | null) => void;
+	registerSaveGuard: (guard: SaveGuard) => () => void;
 	requestNavigation: (action: () => void) => void;
 	dialogProps: ComponentProps<typeof UnsavedChangesDialog>;
 };
 
 export function useSaveNavigation(): SaveNavigationController {
-	const guard = useRef<SaveGuard | null>(null);
+	const guards = useRef(new Set<SaveGuard>());
+	const [, bumpGuards] = useReducer((count: number) => count + 1, 0);
 	const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
 	const [leaveSaving, setLeaveSaving] = useState(false);
-	const [guardSaving, setGuardSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const registerSaveGuard = useCallback((next: SaveGuard | null) => {
-		guard.current = next;
-		setGuardSaving(next?.saving ?? false);
+	const registerSaveGuard = useCallback((guard: SaveGuard) => {
+		guards.current.add(guard);
+		bumpGuards();
+		return () => { guards.current.delete(guard); bumpGuards(); };
 	}, []);
 
 	const requestNavigation = (action: () => void) => {
-		if (guard.current?.dirty || guard.current?.saving) { setError(null); setLeaveAction(() => action); }
+		if ([...guards.current].some((guard) => guard.dirty || guard.saving)) { setError(null); setLeaveAction(() => action); }
 		else action();
 	};
 
 	const saveAndLeave = async () => {
-		const current = guard.current;
-		if (current === null || leaveAction === null) return;
-		if (!current.dirty) { const action = leaveAction; setLeaveAction(null); action(); return; }
+		if (leaveAction === null) return;
+		const dirty = [...guards.current].filter((guard) => guard.dirty);
+		if (dirty.length === 0) { const action = leaveAction; setLeaveAction(null); action(); return; }
 		setLeaveSaving(true);
 		setError(null);
 		try {
-			if (await current.save()) { const action = leaveAction; setLeaveAction(null); action(); }
-			else setError(SAVE_ERROR);
+			for (const guard of dirty) if (!(await guard.save())) { setError(SAVE_ERROR); return; }
+			const action = leaveAction;
+			setLeaveAction(null);
+			action();
 		} catch {
 			setError(SAVE_ERROR);
 		} finally { setLeaveSaving(false); }
@@ -55,11 +58,11 @@ export function useSaveNavigation(): SaveNavigationController {
 		requestNavigation,
 		dialogProps: {
 			open: leaveAction !== null,
-			saving: leaveSaving || guardSaving,
+			saving: leaveSaving || [...guards.current].some((guard) => guard.saving),
 			error,
 			onSave: () => void saveAndLeave(),
 			onDiscard: () => {
-				guard.current?.discard();
+				for (const guard of guards.current) guard.discard();
 				const action = leaveAction;
 				setLeaveAction(null);
 				action?.();
@@ -79,8 +82,7 @@ export function useSaveGuard(guard: SaveGuard) {
 		save: () => live.current.save(),
 		discard: () => live.current.discard(),
 	});
-	useEffect(() => { register(registered.current); return () => register(null); }, [register]);
-	useEffect(() => { register(registered.current); }, [register, guard.saving]);
+	useEffect(() => register(registered.current), [register, guard.saving]);
 }
 
 export function useNavigationRequest() {

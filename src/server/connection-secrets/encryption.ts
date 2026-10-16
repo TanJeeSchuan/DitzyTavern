@@ -157,7 +157,7 @@ const assertPayload = (payload: ConnectionSecretPayload): void => {
 	}
 };
 
-const isJsonObject = (value: JsonValue): value is JsonObject =>
+const isJsonObject = (value: JsonValue | undefined): value is JsonObject =>
 	Object.prototype.toString.call(value) === "[object Object]";
 
 const isConnectionSecretPayload = (
@@ -169,7 +169,7 @@ const isConnectionSecretPayload = (
 	return Object.values(value.headers).every((header) => isJsonString(header));
 };
 
-const isJsonString = (value: JsonValue): value is string =>
+const isJsonString = (value: JsonValue | undefined): value is string =>
 	Object.prototype.toString.call(value) === "[object String]";
 
 const deriveKeyId = (masterKey: Uint8Array): string => {

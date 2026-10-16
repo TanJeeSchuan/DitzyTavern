@@ -6,10 +6,11 @@ import { loadMessageRows, toDataEntry } from "./message-rows";
 // arbitrary metadata makes those reads scale with discarded history.
 
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, like, max } from "drizzle-orm";
+import { and, asc, eq, isNull, like, max } from "drizzle-orm";
 import {
 	conversationDataTable,
 	messageTable,
+	messageVariantTable,
 	participantTable,
 } from "../database/schema";
 import { findConversation, type ConversationDatabase } from "./internal";
@@ -163,3 +164,13 @@ export const readSelectedHistory = (
 /** @approved Reuses the same read model when a caller already owns a Conversation connection. */
 export { readSelectedHistoryFromConnection };
 export type { SelectedHistoryReadRequest };
+
+/** @approved The selected path's Variant ids in Message order, loading no prose. */
+export const readSelectedVariantIdsFromConnection = (db: ConversationDatabase, conversationId: number): number[] => db
+	.select({ id: messageVariantTable.id })
+	.from(messageTable)
+	.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
+	.where(eq(messageTable.conversation_id, conversationId))
+	.orderBy(asc(messageTable.position))
+	.all()
+	.map(({ id }) => id);

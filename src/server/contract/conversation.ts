@@ -74,7 +74,6 @@ import {
 	previewRecordFor,
 	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
-import { readMemorySourceAvailability } from "../conversation";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
@@ -315,14 +314,12 @@ export const createConversationRoutes = (
 						preparationFetch: options.fetch,
 					};
 					const input = body.kind === "send"
-						? { ...common, kind: body.kind, content: body.content }
+						? { ...common, kind: body.kind, content: body.content, moves: body.moves }
 						: body.kind === "sibling"
-							? { ...common, kind: body.kind, messageId: body.messageId }
+							? { ...common, kind: body.kind, messageId: body.messageId, reroll: body.reroll }
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture;
-					const memoryActivation = capture.plan.memoryActivation;
-					const memorySources = readMemorySourceAvailability(database, params.id, memoryActivation);
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
@@ -336,8 +333,7 @@ export const createConversationRoutes = (
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
 						loreActivation: capture.plan.loreActivation,
-						memoryActivation,
-						memorySources,
+						boxTraces: capture.plan.boxTraces,
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,
@@ -501,7 +497,7 @@ export const createConversationRoutes = (
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
-					target: { kind: body.kind, content: body.content },
+					target: { kind: body.kind, content: body.content, moves: body.moves },
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
 				}),
@@ -539,7 +535,7 @@ export const createConversationRoutes = (
 					params.id,
 					() => generationCoordinator.startGeneration({
 						conversationId: params.id,
-						target: { kind: body.kind, messageId: params.messageId },
+						target: { kind: body.kind, messageId: params.messageId, reroll: body.reroll },
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						preview: body.previewId === undefined
 							? undefined

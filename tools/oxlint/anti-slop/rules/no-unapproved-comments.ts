@@ -11,7 +11,7 @@ interface Options {
 }
 
 const defaultOptions = {
-	ignoreCommentPatterns: ["oxlint-disable", "eslint-disable", "^/\\s*<reference\\b"],
+	ignoreCommentPatterns: ["oxlint-disable", "eslint-disable", "^/\\s*<reference\\b", "^\\s*@vite-ignore\\s*$"],
 	ignoreFilePatterns: [],
 } satisfies Options;
 
@@ -73,29 +73,28 @@ export const noUnapprovedCommentsRule = defineRule({
 				if (options.ignoreFilePatterns.some((pattern) => new RegExp(pattern).test(repositoryPath(context.filename)))) {
 					return;
 				}
-				let index = 0;
-				while (index < comments.length) {
-					const comment = comments[index];
-					index += 1;
+				type Comment = (typeof comments)[number];
+				const standaloneLine = (comment: Comment): boolean => comment.type === "Line" && standalone(comment);
+				const continues = (previous: Comment, next: Comment): boolean =>
+					standaloneLine(previous) && standaloneLine(next) && next.loc.start.line === previous.loc.end.line + 1;
+				for (const [index, comment] of comments.entries()) {
 					if (comment.type === "Shebang") continue;
-					if (comment.type !== "Line" || !standalone(comment)) {
+					if (!standaloneLine(comment)) {
 						if (!approved(comment.value) && !ignored(comment.value)) report(comment, singleLineValue(comment.value));
 						continue;
 					}
-					// Consume the run of standalone line comments on adjacent lines.
+					const previous = comments[index - 1];
+					if (previous !== undefined && continues(previous, comment)) continue;
+					// Each run of standalone line comments on adjacent lines is judged once, from its first comment.
 					const block = [comment];
-					while (
-						index < comments.length &&
-						comments[index].type === "Line" &&
-						standalone(comments[index]) &&
-						comments[index].loc.start.line === block[block.length - 1].loc.end.line + 1
-					) {
-						block.push(comments[index]);
-						index += 1;
+					let last = comment;
+					for (let next = comments[index + 1], at = index + 1; next !== undefined && continues(last, next); next = comments[++at]) {
+						block.push(next);
+						last = next;
 					}
 					// A standalone directive must be exact and first in its run.
-					if (approvedDirective(block[0].value) || block.some((member) => ignored(member.value))) continue;
-					report(block[0], singleLineValue(block.map((member) => member.value).join(" ")));
+					if (approvedDirective(comment.value) || block.some((member) => ignored(member.value))) continue;
+					report(comment, singleLineValue(block.map((member) => member.value).join(" ")));
 				}
 			},
 		};

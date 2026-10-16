@@ -1,16 +1,16 @@
+import { Value } from "@sinclair/typebox/value";
+import type { Static, TSchema } from "@sinclair/typebox";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "./variant-data-codecs";
-// @approved
-//  The generation-owned JSON vocabulary shared by persistence and transport.
-// Generation provenance is deliberately a small positive allow-list: it may
-// carry safe identity, settings, usage, and terminal outcome metadata, but
-// never provider payloads, URLs, headers, credentials, or request overrides.
-
 import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
+import { generationUsage } from "./contract/generation-events";
 import {
-	REPEATED_IMAGE_PLACEMENTS,
-	type CanonicalGenerationSettings,
-	type GenerationSettingsField,
-} from "./contract/generation-settings";
+	generationFinish,
+	generationProvenance,
+	generationProvenanceRecord,
+	generationProvenanceStatus,
+	type GenerationProvenance,
+	type GenerationProvenanceRecord,
+} from "./contract/generation-provenance";
 
 // @approved
 //  The generation-owned JSON vocabulary is declared in the shared leaf module
@@ -18,73 +18,11 @@ import {
 // without an import cycle; it stays part of this module's public vocabulary.
 export type { GenerationJsonObject, GenerationJsonValue };
 
-export type GenerationProvenanceStatus = "complete" | "length-limited" | "interrupted";
-export type GenerationProvenanceFinishReason = "stop" | "length" | "other";
-
-// @approved
-//  The retained provenance settings derive from the canonical Generation
-// Settings declaration (ADR-0032): every canonical field except model
-// identity (captured beside the connection identity at provenance top
-// level) and Request Overrides (never retained — provenance is a positive
-// allow-list) participates, and every participating field is explicitly
-// nullable. A value DitzyTavern did not configure decodes as null, never as
-// an accidental zero or empty string.
-export type ProvenanceSettingsField = Exclude<
-	GenerationSettingsField,
-	"modelId" | "requestOverrides"
->;
-
-export type GenerationProvenanceSettings = {
-	[K in ProvenanceSettingsField]: CanonicalGenerationSettings[K] | null;
-};
-
-export type GenerationContinuationStrategy = NonNullable<
-	GenerationProvenanceSettings["continuationStrategy"]
->;
-export type GenerationContinuationPrefillSuffix = NonNullable<
-	GenerationProvenanceSettings["continuationPrefillSuffix"]
->;
-
-export type GenerationUsage = Record<string, number>;
-
-interface GenerationProvenanceFields {
-	connectionProfileId: number | null;
-	connectionSettingsRevision: number | null;
-	modelBackend: string | null;
-	adapter: string | null;
-	modelId: string | null;
-	generationSettings: GenerationProvenanceSettings;
-	usage: GenerationUsage | null;
-	finishReason: GenerationProvenanceFinishReason | null;
-	interruptionCause: string | null;
-}
-
-// @approved
-//  A start-time provenance record has no terminal status yet. The same record
-// is used by persistence and transport so the two cannot drift in field
-// names, nullability, or allow-list behavior.
-export type GenerationProvenanceRecord = GenerationProvenanceFields & {
-	status: GenerationProvenanceStatus | null;
-};
-
-export type GenerationProvenance = GenerationProvenanceFields & {
-	status: GenerationProvenanceStatus;
-};
-
 export interface GenerationProvenanceDataEntry {
 	namespace: string;
 	key: string;
 	value: string;
 }
-
-export interface GenerationTerminalMetadata {
-	status?: GenerationProvenanceStatus | undefined;
-	usage?: GenerationUsage | null | undefined;
-	finishReason?: GenerationProvenanceFinishReason | null | undefined;
-	interruptionCause?: string | null | undefined;
-}
-
-const emptyGenerationSettings = (): GenerationProvenanceSettings => provenanceSettings(undefined);
 
 export const generationJsonObject = (
 	value: GenerationJsonValue | undefined,
@@ -110,13 +48,6 @@ export const generationJsonInteger = (value: GenerationJsonValue | undefined): n
 export const generationJsonString = (value: GenerationJsonValue | undefined): string | null =>
 	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
 
-export const generationJsonBoolean = (value: GenerationJsonValue | undefined): boolean | null =>
-	Object.prototype.toString.call(value) === "[object Boolean]" ? Boolean(value) : null;
-
-export const generationJsonNullableNumber = (
-	value: GenerationJsonValue | undefined,
-): number | null => value === null ? null : generationJsonNumber(value);
-
 export const parseGenerationJson = (
 	value: string,
 	fallback: GenerationJsonValue,
@@ -131,220 +62,70 @@ export const parseGenerationJson = (
 	}
 };
 
-const provenanceNumber = (value: GenerationJsonValue | undefined): number | null =>
-	generationJsonNumber(value);
-
-const provenanceString = (value: GenerationJsonValue | undefined): string | null =>
-	generationJsonString(value);
-
-const provenanceStatus = (value: GenerationJsonValue | undefined): GenerationProvenanceStatus | null =>
-	value === "complete" || value === "length-limited" || value === "interrupted"
-		? value
-		: null;
-
-const provenanceFinishReason = (
-	value: GenerationJsonValue | undefined,
-): GenerationProvenanceFinishReason | null =>
-	value === "stop" || value === "length" || value === "other" ? value : null;
-
-// @approved
-//  Closed-literal decoding for the Continuation vocabulary: anything else —
-// including an absent value — decodes as null rather than being guessed.
-const closedProvenanceLiteral = <T extends string>(
-	value: GenerationJsonValue | undefined,
-	literals: readonly T[],
-): T | null => {
-	const text = provenanceString(value);
-	// @approved
-	//  SAFETY: membership in the closed literal list is checked before the
-	// string is returned as one of those literals.
-	return text !== null && (literals as readonly string[]).includes(text)
-		? (text as T)
-		: null;
-};
-
-// @approved
-//  The provenance value for each retained settings field, decoded from
-// untrusted JSON. Compile-locked: adding a retained canonical field fails
-// typecheck until the decode states its nullability semantics.
-type ProvenanceSettingsDecoder = {
-	readonly [K in ProvenanceSettingsField]: (
-		source: GenerationJsonObject,
-	) => GenerationProvenanceSettings[K];
-};
-
-const decodeProvenanceSettingsField: ProvenanceSettingsDecoder = {
-	temperature: (source) => provenanceNumber(source.temperature),
-	topP: (source) => provenanceNumber(source.topP),
-	frequencyPenalty: (source) => provenanceNumber(source.frequencyPenalty),
-	presencePenalty: (source) => provenanceNumber(source.presencePenalty),
-	contextLimit: (source) => generationJsonInteger(source.contextLimit),
-	responseBudget: (source) => generationJsonInteger(source.responseBudget),
-	safetyAllowance: (source) => generationJsonInteger(source.safetyAllowance),
-	siblingGenerationLimit: (source) => generationJsonInteger(source.siblingGenerationLimit),
-	continuationStrategy: (source) =>
-		closedProvenanceLiteral(source.continuationStrategy, [
-			"instruction",
-			"assistant-prefill",
-		] as const),
-	continuationInstruction: (source) => provenanceString(source.continuationInstruction),
-	continuationPrefillSuffix: (source) =>
-		closedProvenanceLiteral(source.continuationPrefillSuffix, ["", " ", "\n", "\n\n"] as const),
-	repeatedImagePlacement: (source) =>
-		closedProvenanceLiteral(source.repeatedImagePlacement, REPEATED_IMAGE_PLACEMENTS),
-};
-
-const provenanceSettings = (
-	value: GenerationJsonValue | undefined,
-): GenerationProvenanceSettings => {
-	// @approved
-	//  SAFETY: a non-object source decodes as an empty record, and every field
-	// decoder then resolves its own intentional null. The projection maps the
-	// decoder table itself, so the table's declaration order is the field
-	// order and a new field cannot be forgotten in the projection.
-	const source = generationJsonObject(value) ?? {};
-	// @approved
-	//  SAFETY: the key list is the decoder table's own keys in declared
-	// order and every value is that table's decode of the same field, so the
-	// record is exactly the mapped GenerationProvenanceSettings shape.
-	return Object.fromEntries(
-		(Object.keys(decodeProvenanceSettingsField) as ProvenanceSettingsField[]).map((field) => [
-			field,
-			decodeProvenanceSettingsField[field](source),
-		]),
-	) as GenerationProvenanceSettings;
-};
-
-const generationUsage = (value: GenerationJsonValue | undefined): GenerationUsage | null => {
-	if (value === null || value === undefined) return null;
-	const source = generationJsonObject(value);
-	if (source === null) return null;
-	const usage: GenerationUsage = {};
-	for (const key of ["inputTokens", "outputTokens", "totalTokens"] as const) {
-		const number = generationJsonNumber(source[key]);
-		if (number !== null && number >= 0) usage[key] = number;
+const decodeStored = <T extends TSchema>(schema: T, value: string, what: string, place: string): Static<T> => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch (cause) {
+		throw new Error(`Persisted ${what} at ${place} is malformed JSON.`, { cause });
 	}
-	return Object.keys(usage).length === 0 ? null : usage;
-};
-
-const emptyGenerationProvenance = (): GenerationProvenanceRecord => ({
-	connectionProfileId: null,
-	connectionSettingsRevision: null,
-	modelBackend: null,
-	adapter: null,
-	modelId: null,
-	generationSettings: emptyGenerationSettings(),
-	usage: null,
-	finishReason: null,
-	status: null,
-	interruptionCause: null,
-});
-
-export const decodeGenerationProvenanceRecord = (
-	value: GenerationJsonValue | null | undefined,
-): GenerationProvenanceRecord | null | undefined => {
-	if (value === null) return null;
-	const source = generationJsonObject(value);
-	if (source === null) return undefined;
-	return {
-		connectionProfileId: generationJsonNumber(source.connectionProfileId),
-		connectionSettingsRevision: generationJsonNumber(source.connectionSettingsRevision),
-		modelBackend: provenanceString(source.modelBackend),
-		adapter: provenanceString(source.adapter),
-		modelId: provenanceString(source.modelId),
-		generationSettings: provenanceSettings(source.generationSettings),
-		usage: generationUsage(source.usage),
-		finishReason: provenanceFinishReason(source.finishReason),
-		status: provenanceStatus(source.status),
-		interruptionCause: provenanceString(source.interruptionCause),
-	};
+	// @approved
+	// Provenance is a positive allow-list: a property outside the schema is
+	// dropped rather than retained or displayed.
+	const cleaned = Value.Clean(schema, parsed);
+	if (!Value.Check(schema, cleaned)) throw new Error(`Persisted ${what} at ${place} does not match its schema.`);
+	return cleaned;
 };
 
 // @approved
-//  Strict transport decoder for terminal Variant details. Start-time records
-// intentionally permit a null status, but a terminal response must identify
-// its status and carry a generationSettings object.
-export const decodeGenerationProvenance = (
-	value: GenerationJsonValue | null | undefined,
-): GenerationProvenance | null | undefined => {
-	if (value === null) return null;
-	const source = generationJsonObject(value);
-	if (source === null || generationJsonObject(source.generationSettings) === null) return undefined;
-	const status = provenanceStatus(source.status);
-	if (status === null) return undefined;
-	const record = decodeGenerationProvenanceRecord(value);
-	return record === null || record === undefined ? undefined : { ...record, status };
-};
-
-export const encodeGenerationProvenance = (value: GenerationProvenanceRecord | GenerationProvenance): string =>
-	JSON.stringify(value);
-
-export const readGenerationTerminalMetadata = (
-	data: readonly GenerationProvenanceDataEntry[],
-): GenerationTerminalMetadata => {
-	const outcome = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.outcome)?.value;
-	const usageEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.usage);
-	const finishEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.finish);
-	const interruptionEntry = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.interruptionCause);
-	const usage = usageEntry === undefined
-		? undefined
-		: generationUsage(parseGenerationJson(usageEntry.value, null));
-	const finish = finishEntry === undefined
-		? undefined
-		: generationJsonObject(parseGenerationJson(finishEntry.value, null));
+// The terminal outcome entries written beside a durable Variant. An absent
+// outcome means the Generation completed; the others are absent when the
+// attempt reported nothing.
+const terminalMetadata = (data: readonly GenerationProvenanceDataEntry[], place: string) => {
+	const entry = (key: string) => data.find((item) => item.namespace === GENERATION_DATA_NAMESPACE && item.key === key)?.value;
+	const outcome = entry(GENERATION_DATA_KEYS.outcome);
+	const usage = entry(GENERATION_DATA_KEYS.usage);
+	const finish = entry(GENERATION_DATA_KEYS.finish);
+	if (outcome !== undefined && !Value.Check(generationProvenanceStatus, outcome)) {
+		throw new Error(`Persisted Generation outcome at ${place} is not a terminal status.`);
+	}
 	return {
-		status: outcome === "complete" || outcome === "length-limited" || outcome === "interrupted"
-			? outcome
-			: undefined,
-		usage,
-		finishReason: finish === null || finish === undefined
-			? undefined
-			: provenanceFinishReason(finish.reason) ?? undefined,
-		interruptionCause: interruptionEntry?.value,
+		status: outcome,
+		usage: usage === undefined ? undefined : decodeStored(generationUsage, usage, "Generation usage", place),
+		finishReason: finish === undefined ? undefined : decodeStored(generationFinish, finish, "Generation finish", place).reason,
+		interruptionCause: entry(GENERATION_DATA_KEYS.interruptionCause),
 	};
 };
 
-export const hasGenerationTerminalMetadata = (
-	data: readonly GenerationProvenanceDataEntry[],
-): boolean => data.some((entry) =>
-		entry.namespace === GENERATION_DATA_NAMESPACE &&
-		(entry.key === GENERATION_DATA_KEYS.outcome || entry.key === GENERATION_DATA_KEYS.usage || entry.key === GENERATION_DATA_KEYS.finish),
-);
-
-export const projectGenerationProvenance = (
-	value: GenerationJsonValue | null | undefined,
-	terminal: GenerationTerminalMetadata,
-): GenerationProvenance => {
-	const decoded = decodeGenerationProvenanceRecord(value);
-	const source = decoded === null || decoded === undefined ? emptyGenerationProvenance() : decoded;
-	return {
-		...source,
-		usage: terminal.usage === undefined ? source.usage : terminal.usage,
-		finishReason: terminal.finishReason === undefined ? source.finishReason : terminal.finishReason,
-		status: terminal.status ?? source.status ?? "complete",
-		interruptionCause: terminal.interruptionCause === undefined
-			? source.interruptionCause
-			: terminal.interruptionCause,
-	};
-};
-
-export const decodeStoredGenerationProvenance = (
-	value: GenerationJsonValue | null | undefined,
-	data: readonly GenerationProvenanceDataEntry[],
-): GenerationProvenance | null => {
-	const source = value === null || value === undefined ? null : generationJsonObject(value);
-	if (source === null && !hasGenerationTerminalMetadata(data)) return null;
-	return projectGenerationProvenance(source, readGenerationTerminalMetadata(data));
-};
+const project = (record: GenerationProvenanceRecord, terminal: ReturnType<typeof terminalMetadata>): GenerationProvenance => ({
+	...record,
+	usage: terminal.usage ?? record.usage,
+	finishReason: terminal.finishReason ?? record.finishReason,
+	status: terminal.status ?? record.status ?? "complete",
+	interruptionCause: terminal.interruptionCause ?? record.interruptionCause,
+});
 
 // @approved
 //  Named as a codec so persistence and transport call the same boundary
 // explicitly instead of each growing another local provenance parser.
+// `place` names where the record is stored, so a corrupt one is located.
 export const generationProvenanceCodec = {
-	decode: decodeGenerationProvenance,
-	decodeRecord: decodeGenerationProvenanceRecord,
-	decodeStored: decodeStoredGenerationProvenance,
-	encode: encodeGenerationProvenance,
-	project: projectGenerationProvenance,
-	readTerminalMetadata: readGenerationTerminalMetadata,
+	encode: (value: GenerationProvenanceRecord): string => JSON.stringify(value),
+	// @approved
+	// The terminal record written beside the durable Variant: the start-time
+	// record with the attempt's terminal outcome applied.
+	terminal: (serialized: string, data: readonly GenerationProvenanceDataEntry[], place: string): string => JSON.stringify(project(
+		decodeStored(generationProvenanceRecord, serialized, "Generation provenance", place),
+		terminalMetadata(data, place),
+	)),
+	// @approved
+	// A Variant's displayed provenance: its terminal record, or the
+	// all-unavailable record under terminal metadata written without one.
+	read: (data: readonly GenerationProvenanceDataEntry[], place: string): GenerationProvenance | null => {
+		const record = data.find((entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.provenance);
+		if (record !== undefined) return decodeStored(generationProvenance, record.value, "Generation provenance", place);
+		const terminal = terminalMetadata(data, place);
+		if (terminal.status === undefined && terminal.usage === undefined && terminal.finishReason === undefined) return null;
+		return project(Value.Create(generationProvenanceRecord), terminal);
+	},
 } as const;

@@ -8,8 +8,13 @@ import {
 	activeGenerationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
+	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
+import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
+import { readMessageMoves, writeMessageMoves } from "../../box/moves";
+import { sameMoves } from "../../../shared/contract/box-generation";
+import { hasMoves } from "../../../shared/contract/box-generation";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
@@ -53,8 +58,9 @@ import type {
 } from "../types";
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
-import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import { Value } from "@sinclair/typebox/value";
+import { boxTraces } from "../../../shared/contract/box-generation";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 
 // @approved
 //  Acceptance seams for the server-owned Generation lifecycles. Every accept
@@ -80,8 +86,8 @@ const jsonText = (
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites"
+	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "generationIntent" |
+	"provenance" | "macro" | "seed" | "boxRecords"
 >;
 
 type GenerationAcceptanceContext = Omit<GenerationAcceptanceFields, "generationIntent">;
@@ -100,16 +106,15 @@ const persistActiveGeneration = (
 	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
 ): number => {
+	writeVariantSeed(db, input.variantId, input.seed);
 	const loreActivation = input.loreActivation ?? null;
 	if (loreActivation !== null && !isLoreActivationRecord(loreActivation)) {
 		throw new InvalidConversationCommandError(
 			"The Lore Activation Record does not match the canonical schema.",
 		);
 	}
-	const memoryActivation = input.memoryActivation ?? null;
-	if (memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
-		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
-	}
+	const traces = input.boxTraces ?? {};
+	if (!Value.Check(boxTraces, traces)) throw new InvalidConversationCommandError("The Box traces do not match their schema.");
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -124,19 +129,20 @@ const persistActiveGeneration = (
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
 			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
+			prompt_inspection_json: jsonText(input.promptInspection, "Prompt inspection"),
 			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
-			memory_activation_json: jsonText(memoryActivation, "Memory activation evidence"),
+			box_traces_json: jsonText(traces, "Box traces"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
-			macro_preset_id: input.macroPresetId ?? null,
+			macro_preset_id: input.macro?.presetId ?? null,
+			box_records_json: JSON.stringify(input.boxRecords ?? {}),
 			macro_writes_json: jsonText(
-				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
+				(input.macro?.writes ?? []).map(encodeMacroVariableWrite),
 				"Macro writes",
 			),
 		})
@@ -158,6 +164,9 @@ interface ProvisionalModelTargetInput {
 	/** @approved The next Message position, read once by the lifecycle's validation. */
 	position: number;
 }
+
+const writeVariantSeed = (db: ConversationDatabase, variantId: number, seed: string) =>
+	db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: SEED_NAMESPACE, key: SEED_KEY, value: seed }).run();
 
 interface ProvisionalModelTarget {
 	modelMessageId: number;
@@ -268,7 +277,7 @@ const tailHumanChange = (
 	db: ConversationDatabase,
 	conversationId: number,
 	humanMessageId: number,
-): ConversationMemoryChange => ({
+): ConversationWriteChange => ({
 	conversationId,
 	touchedVariantIds: db
 		.select({ id: messageVariantTable.id })
@@ -380,9 +389,9 @@ export function acceptConversationTailGeneration(
 		lifecycle: "Tail",
 		generationIntent: input.generationIntent ?? { type: "tail" },
 		preflight: () => {
-			if (input.humanContent.trim() === "") {
+			if (input.humanContent.trim() === "" && !hasMoves(input.humanMoves)) {
 				throw new InvalidConversationCommandError(
-					"Send requires non-empty composer content.",
+					"Send requires composer content or Moves.",
 				);
 			}
 		},
@@ -410,7 +419,8 @@ export function acceptConversationTailGeneration(
 					reused.position !== latestPosition ||
 					reused.author_participant_id !== human.id ||
 					reused.author_name !== human.name ||
-					selected?.content !== input.humanContent
+					selected?.content !== input.humanContent ||
+					!sameMoves(readMessageMoves(db, [reused.id]).get(reused.id), input.humanMoves)
 				) {
 					throw new InvalidConversationCommandError(
 						"The unanswered human Message cannot be reused for this Send.",
@@ -432,6 +442,7 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
+			writeMessageMoves(db, humanMessageId, input.humanMoves ?? {});
 			// @approved
 			//  The provisional model target follows the just-inserted Human
 			// Message, so its position is the one this validation created plus one —

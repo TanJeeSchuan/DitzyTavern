@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { sameMoves } from "../../shared/contract/box-generation";
 import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,
@@ -19,14 +20,13 @@ import {
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { promptPlan } from "../../shared/contract/conversation-schema";
 import { InvalidConversationCommandError } from "../conversation";
-import { estimateDynamicBlockTokens } from "../generation-plan";
 import type {
 	GenerationFormattingContext,
 	GenerationTarget,
 	GenerationTargetKind,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
-import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import type { BoxTraces } from "../../shared/contract/box-generation";
 import { processStateFor } from "../application/process-state";
 
 export interface GenerationPreviewRecordFields {
@@ -151,8 +151,8 @@ export const createGenerationPreviewAsync = async (
 	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
 	store.versions.set(input.conversationId, requestVersion);
 	const target: GenerationTarget = input.kind === "send"
-		? { kind: input.kind, content: input.content }
-		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId } : { kind: input.kind };
+		? { kind: input.kind, content: input.content, moves: input.moves }
+		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
 	const capture = await captureGeneration(database, target, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
@@ -192,16 +192,7 @@ const acceptedEditedPlan = (
 	const loreActivation = sourceLore === null
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
-	const sourceMemory = record.capture.plan.memoryActivation;
-	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
-	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
-		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
-		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
-	}
-	const memoryActivation = sourceMemory === null
-		? null
-		: editedMemoryActivation(sourceMemory, editedPlan);
-	return { ...record.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
+	return { ...record.capture.plan, promptPlan: editedPlan, budget, loreActivation, boxTraces: editedBoxTraces(record.capture.plan.boxTraces, editedPlan) };
 };
 
 const editedLoreActivation = (
@@ -216,13 +207,11 @@ const editedLoreActivation = (
 	};
 };
 
-const editedMemoryActivation = (
-	source: MemoryActivationRecord,
-	plan: PromptPlan,
-): MemoryActivationRecord => {
-	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
-	return memoryActivationWithFinalText(source, finalMemoryText);
-};
+// @approved
+//  Each Box's block as sent. A Box's allowance governs only its automatic
+// admission; the writer's edit answers to the plan's context budget alone.
+const editedBoxTraces = (source: BoxTraces, plan: PromptPlan): BoxTraces => Object.fromEntries(Object.entries(source).map(([reference, trace]) =>
+	[reference, { ...trace, finalText: plan.blocks.find((block) => block.kind === reference)?.content ?? "" }]));
 
 interface PreviewAcceptanceContext {
 	readonly database: Database;
@@ -236,6 +225,7 @@ const assertPreviewCurrent = (
 	context: PreviewAcceptanceContext,
 	fingerprint: string,
 	target: GenerationTarget,
+	seed: string,
 ): void => {
 	const input: PrepareGenerationInputs = {
 		database: context.database,
@@ -243,7 +233,7 @@ const assertPreviewCurrent = (
 		connection: context.connection,
 		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
-		target,
+		target, seed,
 	};
 	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
@@ -256,17 +246,21 @@ const assertSubmittedTargetUnchanged = (
 ): void => {
 	switch (recorded.kind) {
 		case "send":
-			if (submitted.kind !== "send" || recorded.content !== submitted.content) {
-				throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
+			if (submitted.kind !== "send" || recorded.content !== submitted.content || !sameMoves(recorded.moves, submitted.moves)) {
+				throw new InvalidConversationCommandError("The submitted Human text or Moves changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
 		case "sibling":
-			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId) {
+			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId || Boolean(recorded.reroll) !== Boolean(submitted.reroll)) {
 				throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 			}
 			return;
 		case "continuation":
 			return;
+		default: {
+			const _exhaustive: never = recorded;
+			throw new InvalidConversationCommandError(`Unhandled Generation target: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 };
 
@@ -282,6 +276,6 @@ export const captureGenerationPreview = (
 	const { record } = preview;
 	ensureRecord(context.database, record.id, context.conversationId);
 	assertSubmittedTargetUnchanged(record.capture.target, target);
-	assertPreviewCurrent(context, record.fingerprint, target);
+	assertPreviewCurrent(context, record.fingerprint, target, record.capture.preparation.seed);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };

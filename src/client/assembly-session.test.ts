@@ -4,7 +4,6 @@ import { QueryClient, onlineManager } from "@tanstack/react-query";
 import type { ConversationSummary, GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
-import type { SetStateAction } from "react";
 
 const { useAssemblyController } = await import("./workspace/useAssemblyController");
 const originalFetch = globalThis.fetch;
@@ -12,7 +11,7 @@ afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true
 const plan = (content: string): PromptPlan => ({ blocks: [{ kind: "instruction", role: "system", content }], warnings: [], images: [] });
 const preview = (conversationId = 7, content = "Expanded"): GenerationPreview => ({
 	outcome: "available", previewId: "preview-1", conversationId, kind: "send", promptPlan: plan(content),
-	participants: { human: null, model: null }, pendingWrites: [], memorySources: { messageIds: [], variantIds: [] },
+	participants: { human: null, model: null }, pendingWrites: [], boxTraces: {},
 	effectiveSettings: {
 		modelId: "model", temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null,
 		contextLimit: 10, responseBudget: 1, safetyAllowance: 1, siblingGenerationLimit: null,
@@ -21,9 +20,9 @@ const preview = (conversationId = 7, content = "Expanded"): GenerationPreview =>
 	},
 	budget: { tokenEstimate: 1, responseBudget: 1, safetyAllowance: 1, contextLimit: 10, totalRequiredTokens: 3, budgetFits: true },
 });
-const conversation = (id = 7) => {
-	// SAFETY: the assembly hook only reads id, revision, and playable; the fixture supplies that boundary.
-	return { id, revision: 2, playable: true } as ConversationSummary;
+const conversation = (id = 7, humanParticipantId = 1) => {
+	// SAFETY: the assembly hook only reads id, revision, playable, and the human seat; the fixture supplies that boundary.
+	return { id, revision: 2, playable: true, control: { humanParticipantId, modelParticipantId: 2 } } as ConversationSummary;
 };
 const accepted = { outcome: "accepted", conversationId: 7, generationId: 10, messageId: 20, variantId: 30 } as const;
 
@@ -49,8 +48,7 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 			accepted: (_id: number, target: GenerationAttemptTarget) => { effects.push("accepted"); targets.push(target); },
 		},
 		dispatchStory: () => {},
-		draft: "Draft",
-		setDraft: (draft: SetStateAction<string>) => { if (draft === "") effects.push("clear"); },
+		takeComposer: () => { effects.push("clear"); return () => { effects.push("restore"); }; },
 	};
 	const hook = await renderHook(() => useAssemblyController(options), cache, strict);
 	const open = async (content = "Draft") => {
@@ -115,6 +113,18 @@ describe("assembly session", () => {
 		await flushHook();
 		expect(h.hook.current.assembly?.preview?.promptPlan).toEqual(plan("Expanded"));
 		expect(h.requests).toHaveLength(2);
+	});
+
+	test("a Send whose seat changed before its turn is not sent with the old seat's seat-bound Moves", async () => {
+		const h = await assemblyHarness(async () => Response.json(preview()));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } }));
+		await flushHook();
+		await flushHook();
+		h.options.conversation = conversation(7, 3);
+		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
+		await flushHook();
+		expect(h.hook.current.assembly?.error).toBe("The writer changed before this Send went out, so it was not sent.");
+		expect(h.requests.filter(({ url }) => !url.endsWith("/preview"))).toHaveLength(0);
 	});
 
 	test("an edited plan survives acceptance failure and is sent again on retry", async () => {

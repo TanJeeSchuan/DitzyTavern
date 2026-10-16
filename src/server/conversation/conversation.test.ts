@@ -1,7 +1,6 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	executeConversationCommand,
-	readConversationGenerationSettings,
 	readChatHistory,
 	readVariantDetails,
 	readConversationData,
@@ -14,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantTable,
 } from "../database/schema";
@@ -109,16 +107,6 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(StaleRevisionError);
 		expect(readTestConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
-	});
-
-	test("keeps generation-settings reads pure when the backing row is absent", () => {
-		const db = drizzle(database);
-		db.delete(conversationGenerationSettingsTable).run();
-
-		const settings = readConversationGenerationSettings(database, conversationId);
-
-		expect(settings).toBeUndefined();
-		expect(db.select().from(conversationGenerationSettingsTable).all()).toHaveLength(0);
 	});
 
 	test("creates Messages with immutable Author Stamps captured server-side", () => {
@@ -233,7 +221,7 @@ describe("Conversation module", () => {
 
 	test("keeps a captured author name without a Participant ID in public reads", () => {
 		const module = database;
-		const conversation = createConversationWithHistory(module, { authorNote: "", name: "Captured Name" });
+		const conversation = createConversationWithHistory(module, { name: "Captured Name" });
 		const db = drizzle(database);
 		const insertedMessage = db
 			.insert(messageTable)
@@ -526,7 +514,7 @@ describe("Conversation module", () => {
 		expect(edited.messages[0]?.variants[0]?.content).toBe("Edited preservation");
 	});
 
-	test("owns scoped data and cascades Message deletion", () => {
+	test("stores Variant-scoped data and deletes its Message", () => {
 		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
@@ -812,6 +800,7 @@ describe("Conversation module", () => {
 				throw new Error("Greeting missing.");
 			}
 			return acceptConversationContinuationGeneration(module, {
+				seed: "test-generation-seed",
 				conversationId,
 				expectedRevision: snapshot.revision,
 				timestamp: "2026-08-20T12:00:00Z",
@@ -822,6 +811,7 @@ describe("Conversation module", () => {
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
 				promptPlan: { blocks: [], warnings: [], images: [] },
+				promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 				promptContext: [],
 				generationSettings: {},
 				connection: {},
@@ -901,8 +891,8 @@ describe("Conversation module", () => {
 		test("rejects a captured pair that is no longer authoritative", () => {
 			const conversation = database;
 			expect(() =>
-				accept(conversation, { modelParticipantId: humanId }),
-			).toThrow(InvalidConversationCommandError);
+				accept(conversation, { humanParticipantId: modelId, modelParticipantId: humanId }),
+			).toThrow("The captured Control pair is no longer authoritative.");
 			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 

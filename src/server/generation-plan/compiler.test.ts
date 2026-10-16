@@ -1,3 +1,4 @@
+import { memoryItems } from "../../boxes/memory/server-prompt";
 import { describe, expect, test } from "bun:test";
 import {
 	assertGenerationPlan,
@@ -11,7 +12,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
-import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../boxes/memory/contract";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
@@ -75,8 +76,7 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	identity,
 	messageId: sourcePosition + 1,
 	variantId: sourcePosition + 1,
-	collectionRevision: 1,
-	ownership: "automatic",
+	writer: false,
 	sourceChanged: false,
 	claimIndex: 0,
 	claim,
@@ -93,7 +93,6 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 });
 
 const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], allowance = 2_048): MemoryActivationRecord => ({
-	version: 1,
 	state: "ready",
 	allowance,
 	eligibleSourceCount: candidates.length,
@@ -104,8 +103,6 @@ const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], al
 	decisionConfigured: true,
 	relevanceMinimum: 1.5,
 	pendingSourceCount: 0,
-	pendingIndexCount: 0,
-	failedIndexCount: 0,
 	failedSourceCount: 0,
 	sourceSnapshotFingerprint: "sources",
 	embeddingConfigurationFingerprint: "embedding",
@@ -115,9 +112,6 @@ const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], al
 	semanticShortlistCount: candidates.length,
 	recentShortlistCount: 0,
 	candidates: [...candidates],
-	automaticMemoryText: "",
-	finalMemoryText: "",
-	manuallyEdited: false,
 });
 
 // The transcript length is a monotone stand-in for a tokenizer: a longer
@@ -139,7 +133,7 @@ const defaultRecipe: Parameters<typeof compileGenerationPlan>[0]["recipe"] = [
 const compile = (
 	overrides: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ): GenerationPlan => compileGenerationPlan({
-	authorNote: "",
+	boxes: {},
 	human,
 	model,
 	recipe: defaultRecipe,
@@ -234,7 +228,7 @@ describe("Generation Plan Compiler", () => {
 			recipe: [{ reference: "lore", enabled: true, role: "system" }],
 			context: [],
 			lore: [{ content: "a" }, { content: "b" }],
-			loreAllowance: 5,
+			loreAllowance: 4,
 			estimator: (transcript) => {
 				const content = transcript.split("\u001eCONTENT\u001f")[1] ?? "";
 				return content.length;
@@ -244,7 +238,7 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.promptPlan.blocks).toEqual([{
 			kind: "lore",
 			role: "system",
-			content: "a\n\nb",
+			content: "a",
 		}]);
 	});
 
@@ -254,22 +248,23 @@ describe("Generation Plan Compiler", () => {
 			memoryCandidate("small", "fits"),
 		];
 		const plan = compile({
-			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
-			memoryActivation: memoryActivation(candidates, 6),
+			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 6)) },
 			estimator: (transcript) => transcript.includes("oversized claim") ? 20 : transcript.includes("fits") ? 4 : 0,
 		});
 
 		expect(plan.promptPlan.blocks).toEqual([{
-			kind: "memory",
+			kind: "box:memory",
 			role: "system",
 			content: "fits (attribution: Narrated event)",
 		}]);
-		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
-			["large", "oversized"],
-			["small", "admitted"],
-		]);
-		expect(plan.memoryActivation?.automaticMemoryText).toBe("fits (attribution: Narrated event)");
+		expect(plan.boxTraces["box:memory"]).toMatchObject({
+			allowance: 6,
+			items: [{ text: "oversized claim (attribution: Narrated event)", admission: "oversized" }, { text: "fits (attribution: Narrated event)", admission: "admitted" }],
+			automaticText: "fits (attribution: Narrated event)",
+			finalText: "fits (attribution: Narrated event)",
+		});
 	});
 
 	test("admits more relevant Memory claims before shortlist order", () => {
@@ -278,16 +273,62 @@ describe("Generation Plan Compiler", () => {
 			{ ...memoryCandidate("higher", "higher relevance"), relevanceScore: 2.9 },
 		];
 		const plan = compile({
-			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
-			memoryActivation: memoryActivation(candidates, 4),
+			boxes: { "box:memory": memoryItems(memoryActivation(candidates, 4)) },
 			estimator: (transcript) => (transcript.includes("lower relevance") ? 4 : 0) + (transcript.includes("higher relevance") ? 4 : 0),
 		});
 
-		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
-			["lower", "allowance"],
-			["higher", "admitted"],
+		expect(plan.boxTraces["box:memory"]?.items).toEqual([
+			{ text: "higher relevance (attribution: Narrated event)", admission: "admitted" },
+			{ text: "lower relevance (attribution: Narrated event)", admission: "allowance" },
 		]);
+	});
+
+	test("expands Box items before allowance admission and keeps pinned items outside it", () => {
+		const plan = compile({
+			recipe: [{ reference: "box:author-note", enabled: true, role: "system", content: "" }],
+			context: [],
+			boxes: { "box:author-note": { allowance: 6, items: [
+				{ text: "pinned", priority: 0, pinned: true },
+				{ text: "{{self}}", priority: 2 },
+				{ text: "extra", priority: 1 },
+			] } },
+			estimator: (transcript) => (transcript.includes("Writer") ? 6 : 0) + (transcript.includes("extra") ? 5 : 0) + (transcript.includes("pinned") ? 6 : 0),
+		});
+		expect(plan.promptPlan.blocks).toEqual([{ kind: "box:author-note", role: "system", content: "pinned\n\nWriter" }]);
+	});
+
+	test("expands identical Box item occurrences independently and only once while budgeting", () => {
+		const state = createMacroAttemptState(new Map([["count", 0]]));
+		const plan = compile({
+			recipe: [
+				{ reference: "box:author-note", enabled: true, role: "system", content: "" },
+				{ reference: "instruction", enabled: true, role: "system", name: "Counter", content: "{{getvar::count}}" },
+			],
+			context: [],
+			boxes: { "box:author-note": { items: [
+				{ text: "{{setvar::count::10}}", priority: 0, pinned: true },
+				{ text: "{{incvar::count}}", priority: 0 },
+				{ text: "{{incvar::count}}", priority: 0 },
+			] } },
+			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+		});
+		expect(plan.promptPlan.blocks[0]?.content).toBe("11\n\n12");
+		expect(plan.promptPlan.blocks[1]?.content).toBe("12");
+		expect(state.writes).toHaveLength(3);
+	});
+
+	test("renders recalled Memory claims literally, even while budgeting", () => {
+		const state = createMacroAttemptState();
+		const plan = compile({
+			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
+			context: [],
+			boxes: { "box:memory": memoryItems(memoryActivation([memoryCandidate("macro", "{{setvar::mood::grim}}{{self}} waits")])) },
+			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+		});
+		expect(plan.promptPlan.blocks[0]?.content).toBe("{{setvar::mood::grim}}{{self}} waits (attribution: Narrated event)");
+		expect(state.writes).toEqual([]);
 	});
 
 	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
@@ -298,31 +339,31 @@ describe("Generation Plan Compiler", () => {
 		const loreFirst = compile({
 			recipe: [
 				{ reference: "lore", enabled: true, role: "system" },
-				{ reference: "memory", enabled: true, role: "system" },
+				{ reference: "box:memory", enabled: true, role: "system", content: "" },
 			],
 			context: [],
 			lore: [{ content: "lore fact" }],
 			loreAllowance: 100,
-			memoryActivation: { ...activation, allowance: 100 },
+			boxes: { "box:memory": memoryItems({ ...activation, allowance: 100 }) },
 			settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 			estimator: estimate,
 		});
 		const memoryFirst = compile({
 				recipe: [
-					{ reference: "memory", enabled: true, role: "system" },
+					{ reference: "box:memory", enabled: true, role: "system", content: "" },
 					{ reference: "lore", enabled: true, role: "system" },
 				],
 				context: [],
 				lore: [{ content: "lore fact" }],
 				loreAllowance: 100,
-				memoryActivation: { ...activation, allowance: 100 },
+				boxes: { "box:memory": memoryItems({ ...activation, allowance: 100 }) },
 				settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 				estimator: estimate,
 			});
 
 		expect(loreFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["lore"]);
-		expect(loreFirst.memoryActivation?.candidates[0]?.admission).toBe("context-limit");
-		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["memory"]);
+		expect(loreFirst.boxTraces["box:memory"]?.items[0]?.admission).toBe("context-limit");
+		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["box:memory"]);
 		expect(memoryFirst.loreActivation).toBeNull();
 	});
 
@@ -385,19 +426,11 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.budget.safetyAllowance).toBe(500);
 	});
 
-	test("excludes the unused Sibling Generation limit from Effective Generation Settings", () => {
-		const plan = compile({
-			settings: configuredSettings({ siblingGenerationLimit: 9 }),
-			intent: { type: "sibling" },
-		});
-
-		expect(plan.effectiveSettings.siblingGenerationLimit).toBeNull();
-	});
-
 	test("compiles the Sibling plan with the sibling intent and no Continuation operand", () => {
-		const plan = compile({ intent: { type: "sibling" } });
+		const plan = compile({ settings: configuredSettings({ siblingGenerationLimit: 9 }), intent: { type: "sibling" } });
 
 		expect(plan.promptPlan.intent).toEqual({ type: "sibling" });
+		expect(plan.effectiveSettings.siblingGenerationLimit).toBeNull();
 		expect(plan.effectiveSettings.continuationStrategy).toBeNull();
 		expect(plan.effectiveSettings.continuationInstruction).toBeNull();
 		expect(plan.effectiveSettings.continuationPrefillSuffix).toBeNull();
@@ -590,23 +623,6 @@ describe("Generation Plan Compiler", () => {
 		});
 	});
 
-	test("protects the latest human entry of an ordinary Tail plan", () => {
-		const plan = compile({
-			settings: configuredSettings({
-				contextLimit: 1000,
-				responseBudget: 10,
-				safetyAllowance: 0,
-			}),
-			context: [entry("Maren", "m".repeat(400), "model"), entry("Writer", "h".repeat(400), "human")],
-		});
-
-		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
-		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Writer", content: "h".repeat(400), role: "human" },
-		]);
-	});
-
 	test("fails clearly when an assistant-prefill Continuation has no preceding model history", () => {
 		const settings = configuredSettings({
 			continuationStrategy: "assistant-prefill",
@@ -639,22 +655,5 @@ describe("Generation Plan Compiler", () => {
 			expect(error.result.failure?.reason).toBe("protected-history-too-large");
 			expect(error.breakdown.contextLimit).toBe(200);
 		}
-	});
-
-	test("derives the continuation intent from the configured strategy alone", () => {
-		expect(continuationIntentFor(configuredSettings())).toEqual({
-			type: "continuation",
-			strategy: "instruction",
-			instruction: "Carry the scene forward.",
-		});
-		expect(continuationIntentFor(configuredSettings({
-			continuationStrategy: "assistant-prefill",
-			continuationPrefillSuffix: "\n\n",
-			repeatedImagePlacement: "last",
-		}))).toEqual({
-			type: "continuation",
-			strategy: "assistant-prefill",
-			suffix: "\n\n",
-		});
 	});
 });

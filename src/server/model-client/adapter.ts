@@ -53,6 +53,10 @@ export function createModelAdapter(options: ModelAdapterOptions) {
 				...providerOptions,
 				name: "ditzytavern-openai-compatible",
 			}).languageModel(options.modelId, { url: () => options.requestUrl });
+		default: {
+			const _exhaustive: never = options.adapter;
+			throw new Error(`Unhandled Model adapter: ${_exhaustive}`);
+		}
 	}
 }
 

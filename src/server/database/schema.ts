@@ -95,9 +95,10 @@ export const promptPresetBlockTable = sqliteTable(
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 		role: text({ enum: ["system", "user", "assistant"] }),
 		// @approved
-		//  The authored instruction block's own metadata and text. Null on
-		// every referenced occurrence: the preset stores references, never
-		// rendered Participant or history content.
+		//  The authored instruction block's own metadata and text, and a Box
+		// block's instructions. Null on every other referenced occurrence:
+		// the preset stores references, never rendered Participant or
+		// history content.
 		name: text(),
 		content: text(),
 	},
@@ -109,10 +110,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
-		uniqueIndex("prompt_preset_single_memory_block")
-			.on(table.preset_id)
-			.where(sql`${table.reference} = 'memory'`),
-		uniqueIndex("prompt_preset_single_author_note_block").on(table.preset_id).where(sql`${table.reference} = 'author-note'`),
+		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(
@@ -146,11 +144,11 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} IN ('memory', 'author-note')
+				${table.reference} LIKE 'box:%'
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
-				AND ${table.content} IS NULL
+				AND ${table.content} IS NOT NULL
 			)`,
 		),
 	],
@@ -248,26 +246,6 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
-export const memorySettingsTable = sqliteTable("memory_settings", {
-	id: int().primaryKey(),
-	revision: int().notNull().default(0),
-	enabled: int({ mode: "boolean" }).notNull().default(true),
-	// @approved
-	//  Preserve deleted Profile identity so settings reads can report the broken choice.
-	extraction_profile_id: int(),
-	extraction_model: text().notNull().default(""),
-	context_limit: int().notNull().default(16384),
-	output_reserve: int().notNull().default(2048),
-	safety_allowance: int().notNull().default(500),
-	retain_probability_minimum: real().notNull().default(0.6),
-	decision_profile_id: int(),
-	decision_model: text().notNull().default(""),
-	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
-	recall_relevance_minimum: real().notNull().default(1.5),
-	embedding_profile_id: int(),
-	embedding_model: text().notNull().default(""),
-});
-
 export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
@@ -277,8 +255,17 @@ export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settin
 	trigger_threshold: real().notNull().default(0.5),
 });
 
+// @approved
+//  Library-scoped Box data, written through host commands. The revision
+// guards each value under ADR-0023.
+export const libraryDataTable = sqliteTable("library_data", {
+	namespace: text().notNull(),
+	key: text().notNull(),
+	value: text().notNull(),
+	revision: int().notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.namespace, table.key] })]);
+
 export const conversationTable = sqliteTable("conversation", {
-	author_note: text().notNull().default(""),
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
 	creation_time: text().notNull(),
@@ -365,56 +352,6 @@ export const messageVariantTable = sqliteTable(
 	],
 );
 
-export const conversationMemorySettingsTable = sqliteTable("conversation_memory_settings", {
-	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
-	allowance: int().notNull().default(2048),
-	memory_note: text().notNull().default(""),
-	revision: int().notNull().default(0),
-	label_revision: int().notNull().default(0),
-	label_merges: text().notNull().default("[]"),
-	identities: text().notNull().default("{}"),
-});
-
-export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
-	id: int().primaryKey({ autoIncrement: true }),
-	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
-	cancelled: int({ mode: "boolean" }).notNull().default(false),
-	created_at: text().notNull(),
-}, (table) => [
-	index("memory_catchup_run_conversation").on(table.conversation_id),
-]);
-
-export const memoryCollectionTable = sqliteTable("memory_collection", {
-	variant_id: int().primaryKey().references(() => messageVariantTable.id, { onDelete: "cascade" }),
-	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
-	message_id: int().notNull().references(() => messageTable.id, { onDelete: "cascade" }),
-	source_hash: text().notNull(),
-	revision: int().notNull().default(0),
-	ownership: text({ enum: ["automatic", "writer"] }).notNull().default("automatic"),
-	work_epoch: int().notNull().default(0),
-	status: text({ enum: ["pending", "running", "complete", "failed"] }).notNull().default("pending"),
-	error: text(),
-	source_snapshot_json: text().notNull(),
-	claims_json: text().notNull().default("[]"),
-	trace_json: text(),
-	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
-	source_changed: int({ mode: "boolean" }).notNull().default(false),
-	index_attempt_json: text(),
-	updated_at: text().notNull(),
-}, (table) => [
-	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
-	index("memory_collection_catchup_run").on(table.catchup_run_id),
-	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
-	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
-]);
-
-export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
-	space_key: text().notNull(),
-	text_hash: text().notNull(),
-	vector: blob({ mode: "buffer" }).notNull(),
-}, (table) => [
-	primaryKey({ columns: [table.space_key, table.text_hash] }),
-]);
 
 // @approved
 //  Character lifecycle base record. Definition content lives in the
@@ -462,6 +399,31 @@ export const characterOpeningTable = sqliteTable(
 		uniqueIndex("character_opening_character_position_unique").on(
 			table.character_id,
 			table.position,
+		),
+	],
+);
+
+// @approved
+//  Character-scoped Box data, written by a Box window through a host command.
+//  Seeding a Participant copies every row into participant_data, so later
+//  Character edits never reach existing Participants.
+export const characterDataTable = sqliteTable(
+	"character_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		character_id: int()
+			.notNull()
+			.references(() => characterTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+		revision: int().notNull().default(0),
+	},
+	(table) => [
+		uniqueIndex("character_data_owner_key_unique").on(
+			table.character_id,
+			table.namespace,
+			table.key,
 		),
 	],
 );
@@ -560,6 +522,29 @@ export const participantOpeningTable = sqliteTable(
 );
 
 // @approved
+//  Participant-scoped Box data, copied from the seeding Character and written
+//  by a Box window afterwards. It grows independently of the source Character.
+export const participantDataTable = sqliteTable(
+	"participant_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		participant_id: int()
+			.notNull()
+			.references(() => participantTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("participant_data_owner_key_unique").on(
+			table.participant_id,
+			table.namespace,
+			table.key,
+		),
+	],
+);
+
+// @approved
 //  Control assignment: at most one human and one model seat per Conversation,
 // each held by a distinct Cast Participant of the same Conversation. The
 // primary key bounds each seat to one row, and the unique Participant
@@ -597,6 +582,10 @@ export const conversationDataTable = sqliteTable(
 		namespace: text().notNull(),
 		key: text().notNull(),
 		value: text().notNull(),
+		// @approved
+		//  Guards a Box's own Chat-scoped value under ADR-0023; values written
+		// without a guard leave it at 0.
+		revision: int().notNull().default(0),
 	},
 	(table) => [
 		uniqueIndex("conversation_data_owner_key_unique").on(
@@ -626,6 +615,17 @@ export const messageDataTable = sqliteTable(
 		),
 	],
 );
+
+// @approved
+//  Vectors the Box `embed` service cached, keyed by the embedding model's
+// space and the text's hash. A cache: clearing it costs only requests.
+export const embeddingCacheTable = sqliteTable("embedding_cache", {
+	space_key: text().notNull(),
+	text_hash: text().notNull(),
+	vector: blob({ mode: "buffer" }).notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.space_key, table.text_hash] }),
+]);
 
 export const messageVariantDataTable = sqliteTable(
 	"message_variant_data",
@@ -733,7 +733,9 @@ export const activeGenerationTable = sqliteTable(
 		//  Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
 		lore_activation_json: text().notNull().default("null"),
-		memory_activation_json: text().notNull().default("null"),
+		// @approved
+		//  Each captured Box's trace and budget evidence, keyed by `box:<id>`.
+		box_traces_json: text().notNull().default("{}"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
@@ -754,6 +756,7 @@ export const activeGenerationTable = sqliteTable(
 		// them to the target. An attempt never derives these from completion order.
 		macro_preset_id: int(),
 		macro_writes_json: text().notNull().default("[]"),
+		box_records_json: text().notNull().default("{}"),
 	},
 );
 
@@ -784,7 +787,7 @@ export const generationReplayTable = sqliteTable(
 		prompt_inspection_json: text().notNull(),
 		prompt_context_json: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
-		memory_activation_json: text().notNull().default("null"),
+		box_traces_json: text().notNull().default("{}"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),
@@ -831,7 +834,7 @@ export const conversationGenerationSettingsTable = sqliteTable(
 			.default("Continue the narrative naturally without repeating the previous text."),
 		continuation_prefill_suffix: text().notNull().default(""),
 		repeated_image_placement: text().notNull().default("last"),
-		request_overrides_json: text().notNull().default("{}"),
+		request_overrides_json: text().notNull(),
 	},
 );
 

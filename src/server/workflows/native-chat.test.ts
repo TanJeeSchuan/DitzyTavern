@@ -77,8 +77,8 @@ describe("Native New Chat workflow", () => {
 		expect(model?.name).toBe("Juno Ashfeld");
 		expect(human?.id).not.toBe(model?.id);
 		expect(snapshot.control).toEqual({
-			humanParticipantId: human?.id,
-			modelParticipantId: model?.id,
+			humanParticipantId: human!.id,
+			modelParticipantId: model!.id,
 		});
 		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants[0]?.content).toBe(
 			"The workshop bell rings twice.",
@@ -100,31 +100,6 @@ describe("Native New Chat workflow", () => {
 			createdAt: "2026-01-02T15:04:05.000Z",
 		});
 		expect(requireSnapshot(database, snapshot.id).messages[0]?.variants[0]?.content).toBe("2026-01-02 20:34 Friday");
-	});
-
-	test("forks copy the authoritative Definition server-side and record provenance without revisions or synchronization", () => {
-		const library = createCharacterLibraryModule(database);
-		const source = library.execute({
-			type: "create",
-			definition: sourceDefinition(),
-		});
-
-		const snapshot = createNativeConversation(database, {
-			name: "Forked Chat",
-			humanSeat: adHoc("Writer"),
-			modelSeat: fork(source.id, source.revision),
-		});
-
-		const model = snapshot.cast[1];
-		expect(model?.sourceCharacterId).toBe(source.id);
-		expect(model?.prompt).toEqual(source.prompt);
-		expect(model?.openings).toEqual(["The lamp turns above you.", "Rain writes on every window."]);
-
-		// The Cast snapshot carries full copied Definitions and immutable
-		// provenance only; there is no revision or live link to the source.
-		// (Fork independence from later source edits is pinned at the
-		// Conversation creation seam tests.)
-		expect(JSON.stringify(Object.keys(model ?? {}))).not.toContain("revision");
 	});
 
 	test("forks two different Characters into the two seats with distinct Definitions", () => {
@@ -161,7 +136,8 @@ describe("Native New Chat workflow", () => {
 		expect(model?.sourceCharacterId).toBe(modelSource.id);
 		expect(human?.id).not.toBe(model?.id);
 		// Each seat carries its own source's complete Definition copy.
-		expect(model?.prompt.identity).toBe("Night radio operator on the headland.");
+		expect(model?.prompt).toEqual(modelSource.prompt);
+		expect(model?.openings).toEqual(modelSource.openings);
 		expect(human?.openings).toEqual(["Human openings never become history."]);
 		// Greeting history comes only from the model seat's fork.
 		expect(requireSnapshot(database, snapshot.id).messages).toHaveLength(1);

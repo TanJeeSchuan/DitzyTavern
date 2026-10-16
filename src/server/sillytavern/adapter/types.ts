@@ -1,5 +1,4 @@
 import type {
-	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationDataEntry,
 } from "../../conversation";
@@ -73,11 +72,6 @@ export interface SillyTavernImportMeta {
 	name: string;
 	filename: string;
 	sha256: string;
-}
-
-export interface ParsedSillyTavernChat {
-	input: ConversationCreationInput;
-	report: SillyTavernImportReport;
 }
 
 // One retained message record's exact raw captured author value in source

@@ -6,8 +6,10 @@ import { syncBuiltinESMExports } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
+import { isChatModelCall } from "./protocol.ts";
 import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
-import type { MemorySettingsCommand } from "../src/shared/contract/memory-settings.ts";
+import type { MemorySettingsCommand } from "../src/boxes/memory/contract.ts";
+import type { BoxDecisionSettingsCommand } from "../src/shared/contract/box.ts";
 
 const spawn = childProcess.spawn;
 
@@ -37,6 +39,27 @@ test("startup timeout kills and joins a child that never reports readiness", asy
 	}
 });
 
+test("the intercepted call log keeps provider request fields the interceptor does not declare", async () => {
+	const server = await startE2eServer();
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | BoxDecisionSettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
+		method: body === undefined ? "GET" : "POST",
+		headers: { "content-type": "application/json" },
+		body: body === undefined ? undefined : JSON.stringify(body),
+	})).json();
+	try {
+		await server.reset();
+		const { profiles } = await call("connection-settings");
+		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
+		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...draft } = chat;
+		await call("connection-settings/test-connection", { profileId: id, profile: draft, modelId: "e2e-model" });
+		const chatCall = (await server.log()).calls.find(isChatModelCall);
+		assert.ok(chatCall, "the Test Connection logged a chat call");
+		assert.match(JSON.stringify(chatCall.body), /"max_tokens"/, "the log keeps provider fields the call schema does not declare");
+	} finally {
+		await server.stop();
+	}
+});
+
 test("stop resolves when the server has already crashed", async (t) => {
 	let child: ChildProcess;
 	t.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
@@ -60,7 +83,7 @@ test("stop resolves when the server has already crashed", async (t) => {
 
 test("unscripted discovery, embeddings and extraction are recorded as failures", async () => {
 	const server = await startE2eServer();
-	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | BoxDecisionSettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
 		method: body === undefined ? "GET" : "POST",
 		headers: { "content-type": "application/json" },
 		body: body === undefined ? undefined : JSON.stringify(body),
@@ -76,14 +99,15 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
 		await call("connection-settings/discovery", { profileId: chat.id });
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
-		const { revision, ...settings } = await call("memory-settings");
-		await call("memory-settings/commands", {
-			...settings, expectedRevision: revision, enabled: true,
-			decisionProfileId: decision.id, decisionModel: "e2e-decision",
+		const { revision, ...settings } = await call("boxes/memory/settings");
+		await call("boxes/memory/settings/commands", {
+			...settings, expectedRevision: revision,
 			extractionProfileId: chat.id, extractionModel: "e2e-model", embeddingProfileId: id, embeddingModel: "e2e-embedding",
 		});
+		const { revision: decisionRevision } = await call("boxes/memory/decision-settings");
+		await call("boxes/memory/decision-settings/commands", { type: "apply", expectedRevision: decisionRevision, decisionProfileId: decision.id, decisionModel: "e2e-decision", decisionStateTokenLimit: 16000 });
 		const { activeChatId } = await call("workspace");
-		await call(`conversations/${activeChatId}/memories/catchup`, {});
+		await call(`conversations/${activeChatId}/boxes/memory/catch-up`, {});
 		let log = await server.log();
 		for (let attempt = 0; attempt < 100 && !log.calls.some(({ kind }) => kind === "extraction"); attempt++) {
 			await delay(20);

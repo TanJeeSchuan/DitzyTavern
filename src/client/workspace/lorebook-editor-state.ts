@@ -9,20 +9,26 @@ export const blankEntry = (): LoreEntryFields => ({
 export const fieldsOf = ({ id: _id, position: _position, ...entry }: LoreEntry): LoreEntryFields => entry;
 export const sameEntry = (left: LoreEntryFields, right: LoreEntryFields) => JSON.stringify(left) === JSON.stringify(right);
 export type LeaveIntent = { type: "library" } | { type: "entry"; id: number | null };
+export interface BookDeleteConfirmation {
+	name: string;
+	detail: string;
+}
+export type LorebookEditorDialog =
+	| { type: "leave"; intent: LeaveIntent }
+	| { type: "book-delete"; confirmation: BookDeleteConfirmation }
+	| { type: "entry-delete" };
 export interface LorebookEditorState {
 	book: Lorebook | null;
 	bookDraft: { name: string; description: string };
 	entryId: number | null;
 	entryDraft: LoreEntryFields;
 	draftVersion: number;
-	leaveIntent: LeaveIntent | null;
-	bookDeleteConfirmation: { name: string; detail: string } | null;
-	entryDeleteConfirmation: boolean;
+	dialog: LorebookEditorDialog | null;
 	notice: string | null;
 }
 export const initialEditorState = (): LorebookEditorState => ({
 	book: null, bookDraft: { name: "", description: "" }, entryId: null, entryDraft: blankEntry(), draftVersion: 0,
-	leaveIntent: null, bookDeleteConfirmation: null, entryDeleteConfirmation: false, notice: null,
+	dialog: null, notice: null,
 });
 export const editedSince = (current: LorebookEditorState, submitted: LorebookEditorState) => current.draftVersion !== submitted.draftVersion;
 export const selectEntry = (state: LorebookEditorState, id: number | null): LorebookEditorState => {
@@ -36,9 +42,8 @@ export type EditorAction =
 	| { type: "book-edited"; draft: LorebookEditorState["bookDraft"] }
 	| { type: "entry-edited"; draft: LoreEntryFields }
 	| { type: "entry-selected"; id: number | null }
-	| { type: "leave-requested"; intent: LeaveIntent | null }
-	| { type: "book-delete-requested"; confirmation: LorebookEditorState["bookDeleteConfirmation"] }
-	| { type: "entry-delete-requested"; open: boolean }
+	| { type: "dialog-opened"; dialog: LorebookEditorDialog }
+	| { type: "dialog-closed" }
 	| { type: "notice"; notice: string | null }
 	| { type: "discard" }
 	| { type: "applied"; book: Lorebook; submitted: LorebookEditorState; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean; notice: string | null };
@@ -58,9 +63,8 @@ export function reduceLorebookEditor(state: LorebookEditorState, action: EditorA
 		case "book-edited": return { ...state, bookDraft: action.draft, draftVersion: state.draftVersion + 1 };
 		case "entry-edited": return { ...state, entryDraft: action.draft, draftVersion: state.draftVersion + 1 };
 		case "entry-selected": return { ...selectEntry(state, action.id), draftVersion: state.draftVersion + 1 };
-		case "leave-requested": return { ...state, leaveIntent: action.intent };
-		case "book-delete-requested": return { ...state, bookDeleteConfirmation: action.confirmation };
-		case "entry-delete-requested": return { ...state, entryDeleteConfirmation: action.open };
+		case "dialog-opened": return { ...state, dialog: action.dialog };
+		case "dialog-closed": return { ...state, dialog: null };
 		case "notice": return { ...state, notice: action.notice };
 		case "discard": return state.book === null ? state : { ...selectEntry({ ...state, bookDraft: state.book, notice: null }, state.entryId), draftVersion: state.draftVersion + 1 };
 		case "applied": {

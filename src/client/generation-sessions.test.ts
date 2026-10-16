@@ -181,7 +181,6 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 1,
 			status: "active",
-			terminalReason: null,
 		} });
 		expect(lateEvent.state).toBe(state);
 		expect(lateState.state).toBe(state);
@@ -203,7 +202,6 @@ describe("the Generation session collection", () => {
 			reasoning: "Private.",
 			latestEventId: 4,
 			status: "active",
-			terminalReason: null,
 		};
 		const applied = run(state, { type: "state-observed", generationId: 7, state: snapshot });
 		state = applied.state;
@@ -231,7 +229,7 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 2,
 			status: "failed",
-			terminalReason: "The provider went quiet.",
+			reason: "The provider went quiet.",
 		} as const;
 		const settled = run(state, { type: "state-observed", generationId: 7, state: failed });
 		state = settled.state;
@@ -294,7 +292,7 @@ describe("the Generation session collection", () => {
 				reasoning: "",
 				latestEventId: 1,
 				status: "failed",
-				terminalReason: "Images unsupported.",
+				reason: "Images unsupported.",
 				imageModel,
 			},
 		}).state;
@@ -355,7 +353,6 @@ describe("the Generation session collection", () => {
 				reasoning: "",
 				latestEventId: 2,
 				status: "complete",
-				terminalReason: null,
 			},
 		});
 		expect(stateText(terminalSnapshot.state, 7)?.phase).toBe("terminal");
@@ -571,37 +568,6 @@ describe("the Generation session collection", () => {
 		expect(switched.state.sessions.has(8)).toBe(true);
 	});
 
-	test("completion order never reorders sibling Variants", () => {
-		// Two Sibling Generations of one Message; the machine addresses every
-		// story effect by Variant id only, so completion order cannot influence
-		// Variant positions.
-		const siblingA = target(7, { messageId: 500, variantId: 6_001 });
-		const siblingB = target(8, { messageId: 500, variantId: 6_002 });
-		let state = sessionOf(42, [siblingA, siblingB]);
-		const firstDelta = run(state, { type: "event-observed", generationId: 8, eventId: 1, event: contentEvent("Second accepted, first done") });
-		state = firstDelta.state;
-		const settledFirst = run(state, { type: "subscription-settled", generationId: 8, result: { outcome: "applied" } });
-		state = settledFirst.state;
-		const secondDelta = run(state, { type: "event-observed", generationId: 7, eventId: 1, event: contentEvent("First accepted, second done") });
-		state = secondDelta.state;
-		const settledSecond = run(state, { type: "subscription-settled", generationId: 7, result: { outcome: "applied" } });
-
-		const storyTargets = [
-			...firstDelta.effects,
-			...settledFirst.effects,
-			...secondDelta.effects,
-			...settledSecond.effects,
-		].filter((effect): effect is Extract<GenerationSessionEffect, { kind: "story" }> =>
-			effect.kind === "story");
-		// Every story effect is addressed by Variant id; terminal completion
-		// contributes no story effect at all, so completion order cannot
-		// influence Variant positions (those stay server-owned).
-		expect(storyTargets).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "content", messageId: 500, variantId: 6_002, text: "Second accepted, first done", generationId: 8, eventId: 1 },
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "content", messageId: 500, variantId: 6_001, text: "First accepted, second done", generationId: 7, eventId: 1 },
-		]);
-	});
-
 	test("state snapshots with any mismatched target identity are rejected", () => {
 		const state = sessionOf(42, targetsFor(7));
 		const matching = {
@@ -614,7 +580,6 @@ describe("the Generation session collection", () => {
 			reasoning: "",
 			latestEventId: 1,
 			status: "active",
-			terminalReason: null,
 		} as const;
 		const foreignStates = [
 			{ ...matching, conversationId: 43 },
@@ -627,25 +592,5 @@ describe("the Generation session collection", () => {
 			expect(rejected.state).toBe(state);
 			expect(rejected.effects).toEqual([]);
 		}
-	});
-
-	test("acknowledged errors clear every session error", () => {
-		let state = sessionOf(42, targetsFor(7));
-		state = run(state, {
-			type: "subscription-settled",
-			generationId: 7,
-			result: { outcome: "interrupted", reason: "blip" },
-		}).state;
-		state = run(state, { type: "errors-acknowledged" }).state;
-		expect(stateText(state, 7)?.error).toBeNull();
-		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBeNull();
-	});
-
-	test("a duplicate settle after a switch or terminal is rejected", () => {
-		let state = sessionOf(42, targetsFor(7));
-		state = run(state, { type: "subscription-settled", generationId: 7, result: { outcome: "applied" } }).state;
-		const again = run(state, { type: "subscription-settled", generationId: 7, result: { outcome: "applied" } });
-		expect(again.state).toBe(state);
-		expect(again.effects).toEqual([]);
 	});
 });

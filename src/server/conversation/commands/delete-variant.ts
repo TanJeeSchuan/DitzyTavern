@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
 import { resequence } from "../../database/resequence";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -15,7 +15,7 @@ export interface DeleteVariantInput {
 export function deleteVariant(
 	db: ConversationDatabase,
 	input: DeleteVariantInput,
-): ConversationMemoryChange | void {
+): ConversationWriteChange | void {
 	const variant = requireVariant(
 		db,
 		input.conversationId,

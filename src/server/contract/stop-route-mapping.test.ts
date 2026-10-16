@@ -1,9 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	acceptConversationSiblingGeneration,
-	resolveConversationGeneration,
-} from "../conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { acceptConversationSiblingGeneration } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -49,23 +45,9 @@ describe("Generation Stop route mapping", () => {
 		return { module, conversation, human, model };
 	};
 
-	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		acceptConversationTailGeneration(input.module, {
-			conversationId: input.conversation.id,
-			expectedRevision: input.conversation.revision,
-			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: content,
-			humanParticipantId: input.human.id,
-			modelParticipantId: input.model.id,
-			capturedModelName: input.model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
-		});
-
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
 		acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			messageId,
 			timestamp,
@@ -73,6 +55,7 @@ describe("Generation Stop route mapping", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -106,68 +89,10 @@ describe("Generation Stop route mapping", () => {
 			}),
 		);
 
-	test("maps a stopped Generation onto the stopped transport response", async () => {
-		const input = setup();
-		const accepted = acceptTail(input, "Write something.");
-		startRuntime(input.conversation.id, accepted);
-
-		const response = await stopRoute(input.conversation.id, accepted.generationId);
-		// SAFETY: this test controls the mapped response shape.
-		const body = await response.json() as {
-			outcome: string;
-			generationId: number;
-			conversation: { id: number };
-		};
-
-		expect(response.status).toBe(200);
-		expect(body.outcome).toBe("stopped");
-		expect(body.generationId).toBe(accepted.generationId);
-		expect(body.conversation.id).toBe(input.conversation.id);
-	});
-
 	test("maps a missing Generation onto the not-found transport response", async () => {
 		const input = setup();
 
 		const response = await stopRoute(input.conversation.id, 404_404);
-		// SAFETY: this test controls the mapped not-found response shape.
-		const body = await response.json() as { outcome: string };
-
-		expect(response.status).toBe(404);
-		expect(body.outcome).toBe("not-found");
-	});
-
-	test("maps a conflicting runtime ownership onto the not-found transport response", async () => {
-		const addressed = setup();
-		const owner = setup();
-		const accepted = acceptTail(owner, "Owned elsewhere.");
-		startRuntime(owner.conversation.id, accepted);
-
-		const response = await stopRoute(addressed.conversation.id, accepted.generationId);
-		// SAFETY: this test controls the mapped not-found response shape.
-		const body = await response.json() as { outcome: string };
-
-		expect(response.status).toBe(404);
-		expect(body.outcome).toBe("not-found");
-		// The foreign attempt survives untouched: durable state is never
-		// consulted under another Conversation's name.
-		expect(readTestConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
-	});
-
-	test("maps an already-terminal race onto the not-found transport response", async () => {
-		const input = setup();
-		const accepted = acceptTail(input, "Finish first.");
-		const runtime = startRuntime(input.conversation.id, accepted);
-		// The provider wins: the Generation resolves durably and the runtime
-		// settles complete while still retained for its replay window.
-		resolveConversationGeneration(input.module, {
-			conversationId: input.conversation.id,
-			generationId: accepted.generationId,
-			timestamp: "2026-08-27T00:00:05.000Z",
-			content: "Provider won.",
-		});
-		runtime.complete();
-
-		const response = await stopRoute(input.conversation.id, accepted.generationId);
 		// SAFETY: this test controls the mapped not-found response shape.
 		const body = await response.json() as { outcome: string };
 

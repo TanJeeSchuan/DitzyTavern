@@ -56,51 +56,30 @@ describe("Conversation Generation Settings", () => {
 		database.close();
 	});
 
-	test("persists the default and configured Safety allowance", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Budget settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const module = database;
-
-		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(500);
-		const updated = executeConversationCommand(module, {
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
-			action: {
-				type: "update-generation-settings",
-				settings: completeSettings({ safetyAllowance: 777 }),
-			},
-		});
-
-		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(777);
-		expect(updated.revision).toBe(1);
+	test("rejects persisted settings outside the sampling, budget and limit domains", () => {
+		const conversation = createConversationWithHistory(database, { name: "Corrupt settings", participants: [] });
+		for (const [column, value] of [
+			["temperature", 3], ["context_limit", 0], ["response_budget", -1],
+			["safety_allowance", -1], ["sibling_generation_limit", 0],
+			["context_limit", 1.5], ["response_budget", 1.5], ["safety_allowance", 1.5], ["sibling_generation_limit", 1.5],
+		] satisfies [string, number][]) {
+			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(value, conversation.id);
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Settings are corrupt`);
+			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(column === "temperature" ? null : 1, conversation.id);
+		}
 	});
 
-	test("persists and validates the parallel Sibling Generation limit", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Sibling limit settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const module = database;
-		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(4);
-		executeConversationCommand(module, {
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
-			action: {
-				type: "update-generation-settings",
-				settings: completeSettings({ siblingGenerationLimit: 2 }),
-			},
-		});
-		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(2);
+	test("rejects stored Request Overrides with missing, unknown or non-object namespaces", () => {
+		const conversation = createConversationWithHistory(database, { name: "Corrupt overrides", participants: [] });
+		for (const overrides of [
+			{ responses: {}, "anthropic-messages": {} },
+			{ "chat-completions": [], responses: {}, "anthropic-messages": {} },
+			{ "chat-completions": {}, responses: {}, "anthropic-messages": {}, unexpected: {} },
+		]) {
+			database.query("UPDATE conversation_generation_settings SET request_overrides_json = ? WHERE conversation_id = ?")
+				.run(JSON.stringify(overrides), conversation.id);
+			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Request Overrides are corrupt`);
+		}
 	});
 
 	test("rejects invalid Safety allowance values through the typed settings error", () => {

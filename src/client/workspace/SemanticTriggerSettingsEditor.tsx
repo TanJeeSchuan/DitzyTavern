@@ -1,134 +1,43 @@
-import { ChevronLeft } from "lucide-react";
-import { useCallback, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { DecisionModelPicker } from "../DecisionModelPicker";
-import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { Slider } from "@/components/ui/slider";
-import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type SemanticTriggerSettings, type SemanticTriggerSettingsResult } from "../semantic-trigger-settings";
-import type { SemanticTriggerSettingsCommand } from "../../shared/contract/semantic-trigger-settings";
-import { useAsyncEffect } from "../lib/use-async";
-import { SaveFooter } from "../SaveFooter";
-import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
-import { NumberGroup, NumberRow } from "./NumberControls";
-import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
+import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type SemanticTriggerSettings } from "../semantic-trigger-settings";
+import { DecisionSettingsEditor, useSettingsDraft, type SettingsDraft } from "./DecisionSettingsEditor";
 
-type Draft = Omit<SemanticTriggerSettings, "revision">;
-type State = { settings: SemanticTriggerSettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null };
+export const useSemanticTriggerSettings = () => useSettingsDraft("Semantic Trigger Settings", loadSemanticTriggerSettings, saveSemanticTriggerSettings);
 
-const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
-const draftOf = ({ revision: _revision, ...draft }: SemanticTriggerSettings): Draft => draft;
-
-/** @approved The Semantic Trigger draft and commands the editor surface reads and writes. */
-type SemanticTriggerDraftEditor = {
-	settings: SemanticTriggerSettings | null;
-	draft: Draft | null;
-	dirty: boolean;
-	pending: boolean;
-	error: string | null;
-	reload: () => void;
-	update: (patch: Partial<Draft>) => void;
-	discard: () => void;
-	save: () => Promise<boolean>;
-};
-
-export function useSemanticTriggerSettings() {
-	const [state, setState] = useState<State>({ settings: null, draft: null, loading: true, pending: false, error: null });
-	const loaded = (settings: SemanticTriggerSettings): State => ({ settings, draft: draftOf(settings), loading: false, pending: false, error: null });
-
-	const load = useCallback((isCancelled: () => boolean = () => false) => loadSemanticTriggerSettings()
-		.then((settings) => { if (!isCancelled()) setState(loaded(settings)); })
-		.catch(() => { if (!isCancelled()) setState((current) => ({ ...current, loading: false, error: "Semantic Trigger Settings could not be loaded." })); }), []);
-	useAsyncEffect((isCancelled) => { void load(isCancelled); }, [load]);
-
-	const settle = (result: SemanticTriggerSettingsResult, keepDraft: (draft: Draft | null) => boolean) => {
-		if (result.outcome === "available") setState((current) => ({ ...loaded(result.value.settings), draft: keepDraft(current.draft) ? current.draft : draftOf(result.value.settings) }));
-		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, error: CONFLICT_ERROR }));
-		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Semantic Trigger Settings could not be saved." }));
-		return result.outcome === "available";
-	};
-
-	const { settings, draft } = state;
-	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
-
-	const save = async () => {
-		if (settings === null || draft === null) return false;
-		setState((current) => ({ ...current, pending: true, error: null }));
-		const command: SemanticTriggerSettingsCommand = { type: "apply", expectedRevision: settings.revision, ...draft };
-		return settle(await saveSemanticTriggerSettings(command), (current) => current !== draft);
-	};
-
-	return {
-		...state,
-		dirty,
-		reload: () => { setState((current) => ({ ...current, loading: true, error: null })); void load(); },
-		update: (patch: Partial<Draft>) => setState((current) => current.draft === null ? current : { ...current, draft: { ...current.draft, ...patch }, error: null }),
-		discard: () => setState((current) => current.settings === null ? current : { ...current, draft: draftOf(current.settings), error: null }),
-		save,
-	};
-}
-
-export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerDraftEditor; onBack: () => void }) {
-	const navigate = useNavigationRequest();
-	const connections = useConnectionSettingsQuery({ refreshOnOpen: true });
-	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
-	const { settings, draft } = semanticTriggers;
+export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SettingsDraft<SemanticTriggerSettings>; onBack: () => void }) {
 	return (
-		<>
-			<div className="panel-body settings-panel-body">
-				<Button type="button" size="sm" variant="ghost" className="-ml-2 mb-3 text-muted-foreground" onClick={() => navigate(onBack)}><ChevronLeft aria-hidden="true" /> Connections</Button>
-				<section aria-labelledby="semantic-trigger-settings-title">
-					<h3 id="semantic-trigger-settings-title" className="text-base! font-semibold">Semantic Triggers</h3>
-					<p>Choose a Decision Model to match Lore Entries by their Semantic Triggers. Clear the selection for keyword-only matching.</p>
-					{settings === null || draft === null ? (
-						<div className="grid justify-items-start gap-2">
-							<p className="text-xs text-destructive" role="alert">{semanticTriggers.error ?? "Semantic Trigger Settings could not be loaded."}</p>
-							<Button type="button" size="sm" variant="outline" onClick={semanticTriggers.reload}>Try again</Button>
-						</div>
-					) : (
-						<div className="grid gap-4">
-							{connections.isError ? <div className="grid justify-items-start gap-2">
-								<p className="text-xs text-destructive" role="alert">Connection Settings could not be loaded.</p>
-								<Button type="button" size="sm" variant="outline" onClick={() => void connections.refetch()}>Try again</Button>
-							</div> : <Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
-								<DecisionModelPicker selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
-							</Field>}
-							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
-								<NumberRow
-									id="semantic-state-limit"
-									label="State token limit"
-									min={MIN_DECISION_STATE_TOKEN_LIMIT}
-									step={1}
-									value={draft.decisionStateTokenLimit}
-									onChange={(decisionStateTokenLimit) => semanticTriggers.update({ decisionStateTokenLimit })}
-								/>
-							</NumberGroup>
-							<div className="grid gap-1.5">
-								<div className="flex items-center justify-between gap-3">
-									<label htmlFor="semanticTriggers-threshold" className="text-[13px] font-medium text-muted-foreground">Trigger threshold</label>
-									<span className="text-[13px] tabular-nums">{draft.triggerThreshold.toFixed(2)}</span>
-								</div>
-								<Slider
-									id="semanticTriggers-threshold"
-									className="py-1.5 [&_[data-slot=slider-track]]:bg-foreground/15"
-									min={0}
-									max={1}
-									step={0.05}
-									disabled={draft.decisionProfileId === null}
-									value={[draft.triggerThreshold]}
-									onValueChange={([triggerThreshold]) => {
-										if (triggerThreshold !== undefined) semanticTriggers.update({ triggerThreshold });
-									}}
-									aria-label="Trigger threshold"
-								/>
-								<small className="text-xs text-muted-foreground">The Decision Model's probability that a trigger's situation happens in the scene. Starts at 0.50.</small>
-							</div>
-						</div>
-					)}
-				</section>
-			</div>
-			<SaveFooter dirty={semanticTriggers.dirty} saving={semanticTriggers.pending} error={semanticTriggers.error} onSave={() => void semanticTriggers.save()} />
-		</>
+		<DecisionSettingsEditor
+			editor={semanticTriggers}
+			id="semantic-trigger-settings"
+			title="Semantic Triggers"
+			description="Choose a Decision Model to match Lore Entries by their Semantic Triggers. Clear the selection for keyword-only matching."
+			pickerLabel="Semantic Trigger Decision Model"
+			pickerHelper="System One connections only. Boxes have their own selections."
+			stateDescription="Long scenes are split so the model reads the whole Lore Scan Window."
+			onBack={onBack}
+		>
+			{(draft) => (
+				<div className="grid gap-1.5">
+					<div className="flex items-center justify-between gap-3">
+						<label htmlFor="semanticTriggers-threshold" className="text-[13px] font-medium text-muted-foreground">Trigger threshold</label>
+						<span className="text-[13px] tabular-nums">{draft.triggerThreshold.toFixed(2)}</span>
+					</div>
+					<Slider
+						id="semanticTriggers-threshold"
+						className="py-1.5 [&_[data-slot=slider-track]]:bg-foreground/15"
+						min={0}
+						max={1}
+						step={0.05}
+						disabled={draft.decisionProfileId === null}
+						value={[draft.triggerThreshold]}
+						onValueChange={([triggerThreshold]) => {
+							if (triggerThreshold !== undefined) semanticTriggers.update({ triggerThreshold });
+						}}
+						aria-label="Trigger threshold"
+					/>
+					<small className="text-xs text-muted-foreground">The Decision Model's probability that a trigger's situation happens in the scene. Starts at 0.50.</small>
+				</div>
+			)}
+		</DecisionSettingsEditor>
 	);
 }
-

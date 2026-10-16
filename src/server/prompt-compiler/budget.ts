@@ -139,7 +139,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		const retainedIndexes = allIndexes.filter((index) => !removed.has(index));
 		const plan = count === 0
 			? input.plan
-			: input.compile(retainedIndexes.map((index) => input.context[index]));
+			: input.compile(input.context.filter((_, index) => !removed.has(index)));
 		return {
 			retainedIndexes,
 			plan,
@@ -342,7 +342,7 @@ function createResult(input: {
 	return {
 		fits: input.measurement.fits,
 		plan: input.plan,
-		retainedContext: input.retainedIndexes.map((index) => input.input.context[index]),
+		retainedContext: input.input.context.filter((_, index) => retainedSet.has(index)),
 		omittedContext: input.input.context.filter((_, index) => !retainedSet.has(index)),
 		tokenEstimate: input.measurement.tokenEstimate,
 		responseBudget: input.input.responseBudget,

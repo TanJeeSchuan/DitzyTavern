@@ -66,7 +66,7 @@ describe("Lorebook library transport", () => {
 		});
 		const secondBook = (await readBody<{ book: Lorebook }>(second)).book;
 		const reordered = await postCommand(app, {
-			type: "reorder-entry", bookId: 1, entryId: secondBook.entries[1].id,
+			type: "reorder-entry", bookId: 1, entryId: secondBook.entries[1]!.id,
 			expectedRevision: 2, toPosition: 1,
 		});
 		expect(reordered.status).toBe(200);
@@ -74,10 +74,10 @@ describe("Lorebook library transport", () => {
 		expect(reorderedBook.entries.map((item) => item.title)).toEqual(["Tower", "Harbor"]);
 
 		const disabled = await postCommand(app, {
-			type: "set-entry-enabled", bookId: 1, entryId: reorderedBook.entries[0].id,
+			type: "set-entry-enabled", bookId: 1, entryId: reorderedBook.entries[0]!.id,
 			expectedRevision: 3, enabled: false,
 		});
-		expect((await readBody<{ book: Lorebook }>(disabled)).book.entries[0].enabled).toBe(false);
+		expect((await readBody<{ book: Lorebook }>(disabled)).book.entries[0]!.enabled).toBe(false);
 	});
 
 	test("rejects stale edits without mutating the authoritative book", async () => {
@@ -115,7 +115,7 @@ describe("Lorebook library transport", () => {
 		expect(duplicated.status).toBe(200);
 		const copy = (await readBody<{ book: Lorebook }>(duplicated)).book;
 		expect(copy.id).not.toBe(original.id);
-		expect(copy.entries[0].id).not.toBe(original.entries[0].id);
+		expect(copy.entries[0]!.id).not.toBe(original.entries[0]!.id);
 	});
 
 	test("imports supported SillyTavern fields and reports unsupported behavior", async () => {

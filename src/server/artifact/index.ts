@@ -15,7 +15,6 @@ export type {
 	ArtifactInspection,
 	ArtifactMetadata,
 	ArtifactModule,
-	ArtifactReadResult,
 	ArtifactUnavailableReason,
 } from "./types";
 export type { ArtifactRow } from "./rows";

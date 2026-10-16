@@ -1,8 +1,8 @@
 import { createConversation } from "../conversation";
+import { insertBox } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { readPromptPresetRecipe } from "../prompt-preset";
@@ -61,9 +61,8 @@ export interface CapturedRequest {
 export const createChat = (
 	database: Database,
 	names: { name?: string; human?: string; model?: string } = {},
-) =>
-	createConversation(database, {
-		authorNote: "",
+) => {
+	const conversation = createConversation(database, {
 		name: names.name ?? "Preset Chat",
 		participants: [
 			{
@@ -83,13 +82,27 @@ export const createChat = (
 		],
 		control: { human: 0, model: 1 },
 	});
+	// @approved
+	// The prompt-preset suites assert the World Clock line, so the
+	// fixture Chat starts with its Clock on.
+	insertBox(database, conversation.id, "world-clock");
+	insertBox(database, conversation.id, "phone");
+	return conversation;
+};
+
+// @approved
+// Each Box turned on lands right after history: the Author Note at creation,
+// then the fixture Chat's World Clock and Phone. Memory sits before history
+// in the Default recipe already.
+export const chatBoxBlocks = ["box:phone", "box:world-clock", "box:author-note"] as const;
 
 export const withProfile = (database: Database) => {
 	const settings = createConnectionSettingsModule(database, { masterKey: key });
 	return settings.createProfile({ expectedRevision: settings.get().revision, profile, credential: "preset-secret" });
 };
 
-export const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
+/** @approved An Embeddings Connection Profile for `endpoint`, by id. */
+export const configureEmbeddings = (database: Database, endpoint: string) => {
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	const displayName = `Embeddings ${new URL(endpoint).host}`;
 	const created = connections.createProfile({
@@ -98,9 +111,7 @@ export const configureMemoryEmbeddings = (database: Database, endpoint: string, 
 		credential: "embedding-secret",
 	}).profiles.find((entry) => entry.displayName === displayName);
 	if (!created) throw new Error("Embeddings Connection Profile fixture failed.");
-	const memory = createMemorySettingsModule(database);
-	const { revision, ...settings } = memory.get();
-	return memory.apply({ ...settings, expectedRevision: revision, embeddingProfileId: created.id, embeddingModel: model });
+	return created.id;
 };
 
 // @approved

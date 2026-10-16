@@ -1,0 +1,48 @@
+# Boxes are discovered from folders
+
+Status: DONE
+
+Blocked By: 25-box-ids-are-checked-at-runtime
+
+Source: GitHub #72, first tier (operator-installed plugins, no sandbox). The user chose one loader: built-in Boxes are plugins that ship pre-installed.
+
+## Goal
+
+The server builds its Box registry at startup by scanning two folders: the built-in `src/boxes/` and the plugin folder `data/boxes/` (inside the Docker data volume `/app/data`). A plugin folder is laid out exactly like a built-in one. There is one loading path for both.
+
+## Decisions
+
+- Each Box folder holds its own descriptor in `shared-descriptor.ts` (shared layer), exporting the descriptor with its `id`. The central `boxDescriptors` object in `src/shared/contract/box.ts` and the hand-written registration files are removed.
+- The descriptor declares `sdk: <major>`. The SDK exports its own major version. A Box built against another major is refused.
+- The server imports each folder's descriptor and `server.ts` with `import()`. Bun runs `.ts` directly, so a plugin's server code needs no build step.
+- Descriptors are validated with a TypeBox schema at load. An invalid descriptor, an SDK mismatch, a duplicate id or a failing import refuses that Box and logs why. The other Boxes still load. A plugin can't override a built-in.
+- Some tables are built from `boxDescriptors` when their modules are imported: `singleUseReferenceLabels`, `defaultOutgoingRoles` (through `withBoxReferences`), `slotLabels`, `defaultBoxIds` and `boxDecisionClients`. These become reads of the loaded registry, so a Box loaded at startup is never missing from them. The client's `boxWindows`/`boxPanels` maps are ticket 27's.
+- Reuse `serverBoxes()`'s `checkedHooks` (descriptor↔hook pairing) to refuse a plugin whose hooks don't match its descriptor. `src/shared/contract/box-value.ts` must stay a leaf module: importing `box.ts` from it creates an import cycle that fails at runtime.
+- Loading happens at startup only. Whether to add hot reload is deferred (open question on #72).
+- `GET /api/boxes` lists the loaded Boxes with their ids and each one's client module URL (ticket 27).
+- `ditzy(no-box-boundary-imports)` drops its allowlist of registration files. Memory's in-tree UI still reaches Memory through those files: the server registry mounts Memory's routes (`boxRoutes`), and the client registry re-exports Memory's contract and helpers. A Box's routes mount through the generic Box route. Memory's client helpers move into `src/boxes/memory/` and are reached through its client module (ticket 27). Moving the UI itself remains GitHub #24.
+- The Dockerfile copies `src/boxes` and `src/box-sdk` (already true) and `docs/docker.md` documents `data/boxes/`.
+
+## Work
+
+- [x] Move every built-in descriptor into its Box folder, and add `id` and `sdk`.
+- [x] Discover, validate and import Boxes from both folders at startup, refusing bad ones as above.
+- [x] Remove `boxDescriptors`, the static registries' imports and the lint allowlist.
+- [x] Add `GET /api/boxes`.
+- [x] Unit-test refusal: invalid descriptor, SDK mismatch, duplicate id and failing import.
+- [x] Update `docs/box-system/README.md` (folder layout, descriptor, SDK version) and `docs/docker.md`.
+- [x] Run `bun run check` and the full `bun run test:e2e`.
+- [x] Set this ticket to DONE and commit.
+
+## Notes
+
+- The client registry `src/client/box-windows/registry.tsx` keeps its static Box imports and its place in the lint's allowlist, as the one file that still lists Boxes; ticket 27 removes both. It also installs the built-in descriptors before its own entries read them.
+- Box files import the SDK as `@/box-sdk/<entry>` (tsconfig paths), and their own folder by relative path, so a folder runs unchanged from `data/boxes/`. The lint enforces it, and the runtime image copies `tsconfig.json`.
+- A Box's `routes` hook mounts under `/api/boxes/<id>`; Memory's routes moved there, and its client helpers into `src/boxes/memory/client.ts`.
+- The registry order is load order (built-ins, then plugins, each by folder name), not the old hand order.
+- A Box that stops loading (removed, or refused after an upgrade) leaves its `box:<id>` preset blocks in place: they stay Box blocks, single-use, and render nothing. Found in review; covered in `src/server/box/registry.test.ts`.
+
+## Acceptance
+
+- No file outside a Box's folder imports it, and no file lists Boxes.
+- Copying a Box folder into `data/boxes/` and restarting loads it on the server.

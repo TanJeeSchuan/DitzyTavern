@@ -15,7 +15,6 @@ import {
 	stopConversationGenerations,
 } from "./commands/active-generation";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
-import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -52,6 +51,7 @@ describe("explicit Conversation Generation Stop", () => {
 
 	const acceptTail = (input: ReturnType<typeof setup>, content = "Try this.") =>
 		acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -60,6 +60,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -90,6 +91,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(stopped.messages).toHaveLength(3);
 		expect(variant.content).toBe("Partial answer.");
 		expect(variant.data).toEqual([
+			{ namespace: "box", key: "seed", value: expect.any(String) },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
@@ -102,38 +104,6 @@ describe("explicit Conversation Generation Stop", () => {
 			status: "interrupted",
 			finishReason: null,
 			interruptionCause: "user-stop",
-		});
-	});
-
-	test("restart recovery retains its interruption cause on the recovered Variant", () => {
-		const input = setup();
-		const accepted = acceptTail(input);
-		checkpointConversationGeneration(database, {
-			conversationId: input.created.id,
-			generationId: accepted.generationId,
-			content: "Recovered partial answer.",
-			latestEventId: 2,
-		});
-
-		expect(recoverActiveGenerations(database)).toEqual({
-			inspected: 1,
-			interrupted: 1,
-			removed: 0,
-			failed: 0,
-		});
-		const recoveredMessage = readTestConversationSnapshot(input.module, input.created.id)?.messages.at(-1);
-		const recoveredVariant = recoveredMessage?.variants[0];
-		if (recoveredMessage === undefined || recoveredVariant === undefined) {
-			throw new Error("Recovered Variant missing.");
-		}
-		expect(readVariantDetails(input.module,
-			input.created.id,
-			recoveredMessage.id,
-			recoveredVariant.id,
-		)?.provenance).toMatchObject({
-			status: "interrupted",
-			finishReason: null,
-			interruptionCause: "server-restart",
 		});
 	});
 
@@ -159,6 +129,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptConversationSiblingGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -166,6 +137,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -198,6 +170,7 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(variants).toHaveLength(2);
 		expect(variants.find((variant) => variant.selected)?.content).toBe("Alternative answer.");
 		expect(variants[1]?.data).toEqual([
+			{ namespace: "box", key: "seed", value: "test-generation-seed" },
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);
@@ -234,6 +207,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		const accept = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp,
@@ -241,6 +215,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

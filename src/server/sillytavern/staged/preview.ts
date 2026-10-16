@@ -24,6 +24,7 @@ import type {
 //  Name-only matching: SillyTavern roles, header fields, avatar data,
 // Message content, and `is_user` never influence a Character candidate.
 const levenshtein = (a: string, b: string): number => {
+	/** @approved Both rows hold b.length + 1 cells, and j never passes b.length. */
 	const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
 	for (let i = 1; i <= a.length; i += 1) {
 		const current = [i];

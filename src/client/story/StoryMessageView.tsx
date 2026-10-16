@@ -1,5 +1,7 @@
+import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { MoveChips } from "./MoveChips";
 import {
-	Brain,
+	Dices,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -20,7 +22,7 @@ import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
-import { Prose } from "./prose";
+import { LensedProse, type StoryLens } from "./LensedProse";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -40,16 +42,17 @@ export function StoryMessageView({
 	portrait,
 	onMoveSwipe,
 	onEdit,
-	canContinue = false,
 	continueLabel = "Continue",
 	onContinue,
-	canRegenerate = false,
 	onRegenerate,
 	onSibling,
+	onReroll,
+	onMovesChange,
 	onInspect,
-	onMemories,
+	boxActions,
 	onDelete,
 	generationControls,
+	lens,
 }: {
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
@@ -73,19 +76,20 @@ export function StoryMessageView({
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => Promise<boolean>;
-	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
-	canRegenerate?: boolean;
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
+	onReroll?: (messageId: number) => void;
+	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
-	onMemories?: (messageId: number) => void;
+	boxActions?: ReactNode;
 	onDelete?: (messageId: number) => void;
 	// @approved
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
 	// takes when it ends, so the story does not jump.
 	generationControls?: ReactNode;
+	lens?: StoryLens | undefined;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
@@ -116,7 +120,7 @@ export function StoryMessageView({
 	};
 	const saveEdit = async () => {
 		const value = editText.trim();
-		if (!value || active === undefined) return;
+		if ((!value && !hasMoves(message.moves)) || active === undefined) return;
 		if (active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);
@@ -213,6 +217,9 @@ export function StoryMessageView({
 							<RefreshCw aria-hidden="true" /> New Swipe
 						</button>
 					)}
+					{onReroll !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}>
+						<Dices aria-hidden="true" /> Re-roll
+					</button>}
 					{onInspect !== undefined && active !== undefined && (
 						<button
 							className="edit-action"
@@ -222,15 +229,7 @@ export function StoryMessageView({
 							<Info aria-hidden="true" /> Details
 						</button>
 					)}
-					{onMemories !== undefined && (
-						<button
-							className="edit-action"
-							type="button"
-							onClick={() => onMemories(message.id)}
-						>
-							<Brain aria-hidden="true" /> Memories
-						</button>
-					)}
+					{boxActions}
 					{onDelete !== undefined && (
 						<button
 							className="edit-action delete-action"
@@ -245,6 +244,8 @@ export function StoryMessageView({
 					)}
 				</div>
 			</header>
+			<MoveChips moves={message.moves} disabled={mutationsDisabled}
+				onChange={onMovesChange === undefined ? undefined : (moves) => onMovesChange(message.id, moves)} />
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<span>Edit Message</span>
@@ -288,15 +289,15 @@ export function StoryMessageView({
 							</Collapsible.Content>
 						</Collapsible.Root>
 					)}
-					<div
+					{!(active?.empty === true && hasMoves(message.moves)) && <div
 						className="prose"
 						data-empty-variant={active?.empty === true && !generationActive}
 						data-generation-active={generationActive}
 					>
 						{active !== undefined && !(generationActive && active.empty)
-							? <Prose text={visibleVariantContent(active)} streaming={generationActive} />
+							? <LensedProse text={visibleVariantContent(active)} streaming={generationActive} lens={lens} />
 							: null}
-					</div>
+					</div>}
 				</div>
 			)}
 
@@ -311,7 +312,7 @@ export function StoryMessageView({
 						<Edit3 aria-hidden="true" /> Edit
 					</button>
 					{generationControls}
-					{canRegenerate && onRegenerate !== undefined && (
+					{onRegenerate !== undefined && (
 						<button
 							className="secondary-button continue-action"
 							type="button"
@@ -321,7 +322,7 @@ export function StoryMessageView({
 							<RefreshCw aria-hidden="true" /> Regenerate response
 						</button>
 					)}
-					{canContinue && onContinue !== undefined && (
+					{onContinue !== undefined && (
 						<button
 							className="secondary-button continue-action"
 							type="button"

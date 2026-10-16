@@ -1,7 +1,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { collectReleasedCharacterTombstones } from "../../character-library";
 import { messageTable, messageVariantTable, participantTable } from "../../database/schema";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import type { ConversationDatabase } from "../internal";
 import { messageReferencesParticipant } from "../internal";
 import { requireMessage } from "../internal";
@@ -78,7 +78,7 @@ const collectReleasedTombstones = (
 export function deleteMessage(
 	db: ConversationDatabase,
 	input: DeleteMessageInput,
-): ConversationMemoryChange {
+): ConversationWriteChange {
 	requireMessage(db, input.conversationId, input.messageId);
 	// @approved
 	//  The Message deletion cascades to its Variants; the ids are

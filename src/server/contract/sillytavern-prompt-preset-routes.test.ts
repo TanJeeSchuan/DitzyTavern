@@ -182,8 +182,6 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const preview = requirePreview(reviewed.body);
 			expect(preview.selectedOrderId).toBe("100001");
 			expect(preview.requiresOrderSelection).toBe(false);
-			expect(preview.native.slots.length).toBeGreaterThan(0);
-			expect(preview.native.slots.some((slot) => slot.reference === "instruction")).toBe(true);
 			expect(preview.native.slots.map((slot) => slot.reference)).toEqual(expectedReferences);
 			expect(preview.diagnostics.some((item) => item.code === "excluded-scripts")).toBe(true);
 

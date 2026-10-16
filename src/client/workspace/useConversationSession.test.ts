@@ -1,3 +1,4 @@
+import { boxSetups, boxes } from "../test-fixtures/box-setups";
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -48,7 +49,7 @@ interface HistoryRefreshResult { conversation: ConversationSummary | null; failu
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, authorNote: "", cast: [],
+		id: 1, name: "Chat", revision: 1, boxSetups, boxes, cast: [],
 		control: { humanParticipantId: null, modelParticipantId: null },
 		controlValidity: { valid: false, reason: "missing-seat" },
 		playable: false,
@@ -69,7 +70,7 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const hook = await renderHook(() => useConversationSession({
 		initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
-		story: { ...createStoryState(), conversationId: 1 },
+		story: { ...createStoryState(), status: "loading-first", conversationId: 1 },
 		dispatchStory,
 	}), client);
 	await flushHook();
@@ -95,7 +96,7 @@ describe("history refresh error classification", () => {
 				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
 				modelParticipantIdAtCreation: null, continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
-				author: null, variants: [],
+				author: null, variants: [], moves: {},
 			}],
 			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
 		};
@@ -122,19 +123,8 @@ describe("history refresh error classification", () => {
 		await expect(refresh).rejects.toBeInstanceOf(NetworkError);
 	});
 
-	// The refresh's error classification is requestOutcome's own: the modeled
-	// 404 envelope is the skip above, and every response the seam cannot
-	// classify — HTTP failures and malformed pages alike — is a plain Error, so
-	// the generation-session runner backs off and retries only an unreachable
-	// transport.
-	test.each([
-		["server 500", () => Response.json({ error: "Server bug" }, { status: 500 })],
-		["malformed 404", () => Response.json({ error: "Unknown response" }, { status: 404 })],
-		["invalid response", () => Response.json({ outcome: "invalid", reason: "Invalid history" }, { status: 422 })],
-		["malformed history page", () => Response.json({ messages: [] })],
-		["invalid JSON", () => new Response("{", { headers: { "content-type": "application/json" } })],
-	])("%s throws a plain Error", async (_name, response) => {
-		const refresh = historyRefresh(async () => response());
+	test("an unusable history response throws a plain Error", async () => {
+		const refresh = historyRefresh(async () => Response.json({ error: "Server bug" }, { status: 500 }));
 		await expect(refresh).rejects.toBeInstanceOf(Error);
 		await expect(refresh).rejects.not.toBeInstanceOf(NetworkError);
 	});

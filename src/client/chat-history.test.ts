@@ -35,6 +35,7 @@ const messagePayload = {
 	continuable: true,
 	swipe: { eligible: true, reason: null },
 	author: { participantId: 20, capturedName: "Model", inCast: true },
+	moves: {},
 	variants: [
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 	],
@@ -65,11 +66,6 @@ const loadFirstPage = () => loadHistoryPage(7, { page: 1 });
 describe("history transport boundary validation", () => {
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
-	});
-
-	test("an unmodeled read outcome is the shared unusable fallback, never a transport failure", async () => {
-		installFetch(async () => json({ error: "Unavailable" }, 503));
-		expect(await loadFirstPage()).toEqual({ outcome: "unusable", reason: SERVER_UNUSABLE_RESPONSE_NOTICE });
 	});
 
 	test("passes cancellation to the history request", async () => {

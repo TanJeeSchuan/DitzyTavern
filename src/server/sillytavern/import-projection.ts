@@ -1,3 +1,5 @@
+import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 // @approved
 //  Canonical Import Projection: the pure source-to-native derivation shared
 // by the developer import and the Staged Import. It owns author ownership,
@@ -12,6 +14,9 @@ import type {
 	ParticipantDefinition,
 } from "../conversation";
 import { emptyPromptChannels } from "../../shared/definition";
+import { boxSetupEntry } from "../box/setup";
+import { serverBoxes } from "../box/registry";
+import { boxDescriptor } from "../../shared/contract/box";
 import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
@@ -145,7 +150,6 @@ const duplicateCopyWarnings = (
 // Profile resolution, and artifact storage never enter this module.
 export interface ProjectedImport {
 	input: {
-		authorNote: string;
 		participants: (ConversationParticipantSeed & {
 			createCharacter?: boolean | undefined;
 		})[];
@@ -212,6 +216,14 @@ export const importProvenanceEntries = (
 	return entries;
 };
 
+/** @approved The setup SillyTavern's Author's Note imports as, for each Box that declares the import, checked against that Box's setup schema. */
+const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatMap(([id, box]) => {
+	if (box.importSillyTavernNote === undefined) return [];
+	const setup = box.importSillyTavernNote(note);
+	Value.Assert(boxDescriptor(id).setup?.schema ?? Type.Never(), setup);
+	return [boxSetupEntry(id, setup)];
+});
+
 // @approved
 //  Maps decoded source and one resolution into native creation data,
 // stamping every retained Message and deriving Control from the count.
@@ -240,7 +252,6 @@ export function projectImport(
 
 	return {
 		input: {
-			authorNote: decoded.authorNote,
 			participants: resolution.participants.map((participant) => ({
 				definition: participant.definition,
 				sourceCharacterId: participant.sourceCharacterId,
@@ -248,7 +259,11 @@ export function projectImport(
 			})),
 			control: deterministicImportControl(resolution.participants.length),
 			messages,
-			data: [...decoded.data, ...importProvenanceEntries(report)],
+			data: [
+				...decoded.data,
+				...noteSetups(decoded.authorNote),
+				...importProvenanceEntries(report),
+			],
 		},
 		report,
 	};

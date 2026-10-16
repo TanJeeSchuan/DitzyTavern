@@ -1,3 +1,5 @@
+import { Value } from "@sinclair/typebox/value";
+import { boxRecords } from "../../shared/contract/box-generation";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
@@ -8,7 +10,7 @@ import { projectModelClientGenerationSettings, type ModelClientConnectionSnapsho
 import {
 	type GenerationProvenanceRecord,
 	type GenerationProvenanceSettings,
-} from "../../shared/generation-provenance";
+} from "../../shared/contract/generation-provenance";
 
 const connectionIdentityOf = (
 	connection: ModelClientConnectionSnapshot | null,
@@ -67,6 +69,9 @@ export function capturedAcceptanceFields(
 	input: { conversationId: number; timestamp: string },
 ) {
 	return {
+		seed: capture.preparation.seed,
+		boxRecords: Value.Parse(boxRecords, Object.fromEntries(Object.entries(capture.preparation.boxes)
+			.flatMap(([reference, result]) => result?.record === undefined ? [] : [[reference.slice(4), { instance: new Map(Object.entries(capture.preparation.boxInstances)).get(reference.slice(4)), record: result.record }]]))),
 		conversationId: input.conversationId,
 		timestamp: input.timestamp,
 		humanParticipantId: capture.control.humanParticipantId,
@@ -79,16 +84,15 @@ export function capturedAcceptanceFields(
 		generationSettings: capture.plan.effectiveSettings,
 		connection: connectionIdentityOf(capture.connection),
 		loreActivation: capture.plan.loreActivation,
-		memoryActivation: capture.plan.memoryActivation,
+		boxTraces: capture.plan.boxTraces,
 		provenance: capture.provenance,
-		macroPresetId: capture.macroPresetId,
-		macroWrites: capture.macroWrites,
+		macro: { presetId: capture.macroPresetId, writes: capture.macroWrites },
 	} satisfies Pick<
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "provenance" |
-		"macroPresetId" | "macroWrites"
+		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "provenance" |
+		"macro" | "seed" | "boxRecords"
 	>;
 }
 

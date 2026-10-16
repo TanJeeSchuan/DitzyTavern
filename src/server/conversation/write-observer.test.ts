@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { ConversationWriteObserverMissingError, deleteConversation, observeConversationWrites } from ".";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -60,8 +60,8 @@ describe("Conversation write observer composition contract", () => {
 
 	test("the registered observer for this database receives the report of its own transaction", () => {
 		const chat = createChatWithVariant(database);
-		const delivered: { database: Database; change: ConversationMemoryChange }[] = [];
-		observeConversationWrites(database, (observedDatabase, change) => {
+		const delivered: { database: Database; change: ConversationWriteChange }[] = [];
+		observeConversationWrites(database, (observedDatabase, change) => () => {
 			delivered.push({ database: observedDatabase, change });
 		});
 
@@ -79,10 +79,10 @@ describe("Conversation write observer composition contract", () => {
 	test("compositions observe exactly their own database", () => {
 		const deliveredForFirst: number[] = [];
 		const deliveredForSecond: number[] = [];
-		observeConversationWrites(database, (_observedDatabase, change) => {
+		observeConversationWrites(database, (_observedDatabase, change) => () => {
 			deliveredForFirst.push(change.conversationId);
 		});
-		observeConversationWrites(second, (_observedDatabase, change) => {
+		observeConversationWrites(second, (_observedDatabase, change) => () => {
 			deliveredForSecond.push(change.conversationId);
 		});
 

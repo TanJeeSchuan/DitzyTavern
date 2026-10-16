@@ -19,7 +19,7 @@ import {
 } from ".";
 
 import { observeConversationWrites } from "./commands/transaction";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 // Regression tests for canonical Generation removal. The Active Generation
 // row is the only authority for which mutation a removal performs: a Sibling
 // Generation loses its provisional Variant, while Tail and Continuation
@@ -55,6 +55,7 @@ describe("canonical Conversation Generation removal", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptConversationSiblingGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -62,6 +63,7 @@ describe("canonical Conversation Generation removal", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -126,6 +128,7 @@ describe("canonical Conversation Generation removal", () => {
 	test("removing a Tail Generation removes its provisional Message and keeps the accepted human input", () => {
 		const input = setup();
 		const accepted = acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -134,6 +137,7 @@ describe("canonical Conversation Generation removal", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -154,11 +158,11 @@ describe("canonical Conversation Generation removal", () => {
 
 	test("removals report their removed Variant ids so Memory can abandon the work the write deleted", () => {
 	const input = setup();
-	const delivered: ConversationMemoryChange[] = [];
+	const delivered: ConversationWriteChange[] = [];
 	// The per-database registration is the same seam the application or the
 	// test composition installs once; a specific case may scope a finer
 	// observer for the write it inspects.
-	observeConversationWrites(database, (_observedDatabase, change: ConversationMemoryChange) => {
+	observeConversationWrites(database, (_observedDatabase, change: ConversationWriteChange) => () => {
 		delivered.push(change);
 	});
 
@@ -176,6 +180,7 @@ describe("canonical Conversation Generation removal", () => {
 	const revision = readConversationRevision(input.module, input.created.id);
 	if (revision === undefined) throw new Error("Conversation missing.");
 	const tail = acceptConversationTailGeneration(database, {
+		seed: "test-generation-seed",
 		conversationId: input.created.id,
 		expectedRevision: revision,
 		timestamp: "2026-08-27T00:00:02.000Z",
@@ -184,6 +189,7 @@ describe("canonical Conversation Generation removal", () => {
 		modelParticipantId: input.modelId,
 		capturedModelName: input.modelName,
 		promptPlan: { blocks: [], warnings: [], images: [] },
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		promptContext: [],
 		generationSettings: {},
 		connection: {},
@@ -201,6 +207,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		const openingVariant = opening?.variants[0];
 		if (opening === undefined || openingVariant === undefined) throw new Error("Opening missing.");
 		const accepted = acceptConversationContinuationGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -210,6 +217,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

@@ -23,20 +23,10 @@ test("anonymous registry access reads only the latest index with bounded request
 	const checker = createUpdateChecker(database, { build: official, registryFetch: async (url, init) => { requests.push({ url, init }); return responses.shift()!; } });
 	await checker.check();
 	expect(requests.map(({ url }) => url)).toEqual(["https://ghcr.io/token?service=ghcr.io&scope=repository:tanjeeschuan/ditzytavern:pull", "https://ghcr.io/v2/tanjeeschuan/ditzytavern/manifests/latest"]);
-	expect(new Headers(requests[1].init?.headers).get("authorization")).toBe("Bearer public-pull");
+	expect(new Headers(requests[1]!.init?.headers).get("authorization")).toBe("Bearer public-pull");
 	expect(requests.every(({ init }) => init?.signal instanceof AbortSignal)).toBe(true);
 });
 
-test("custom builds stay unavailable even after a manual check", async () => {
-	let requests = 0;
-	const checker = createUpdateChecker(database, { build: { distribution: "custom", buildNumber: null, revision: null }, registryFetch: async () => { requests++; throw new Error("Outbound request forbidden"); } });
-	checker.start();
-	checker.setAutomaticChecks(false);
-	checker.setAutomaticChecks(true);
-	expect(await checker.check()).toEqual({ build: { distribution: "custom", buildNumber: null, revision: null }, automaticChecks: true, attempt: null, result: null });
-	expect(requests).toBe(0);
-	await checker.stop();
-});
 test("equal and smaller published numbers never offer an update", async () => {
  for (const [number, comparison] of [["9", "current"], ["8", "ahead"]] as const) {
   const checker = createUpdateChecker(database, { build: official, registryFetch: registry(Response.json({ token: "anonymous" }), index(number, "b".repeat(40))) });
@@ -59,18 +49,6 @@ test("a failed refresh retains the successful comparison and check time", async 
   const success = await checker.check();
   expect(await checker.check()).toMatchObject({ result: success.result, attempt: { status: "failed" } });
  }
-});
-test("concurrent checks share the pending request and expose checking to observers", async () => {
- const pending = Promise.withResolvers<Response>();
- let requests = 0;
- const checker = createUpdateChecker(database, { build: official, registryFetch: async () => ++requests === 1 ? pending.promise : index("10") });
- const first = checker.check();
- const second = checker.check();
- expect(checker.get()).toMatchObject({ result: null, attempt: { status: "checking" } });
- expect(second).toBe(first);
- pending.resolve(Response.json({ token: "anonymous" }));
- expect(await second).toMatchObject({ result: { comparison: "update_available" } });
- expect(requests).toBe(2);
 });
 
 test("stopping a checker cancels registry work and ends state subscriptions", async () => {

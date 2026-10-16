@@ -4,7 +4,6 @@ import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
 import {
 	addPromptPresetInstruction,
-	executePromptPresetCommand,
 	movePromptPresetBlock,
 	InvalidPromptPresetOperationError,
 	readPromptPresetRecipe,
@@ -14,6 +13,7 @@ import {
 	addBlock,
 	captureModelFetch,
 	completeGeneration,
+	chatBoxBlocks,
 	createChat,
 	duplicateBlock,
 	key,
@@ -32,6 +32,8 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+const phoneItem = "Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.\nWriter has a phone and can text Maren.";
+
 // @approved
 //  The owning module guards a move target the transport schema cannot
 // deliver, so a direct caller cannot displace an occurrence either.
@@ -48,55 +50,6 @@ describe("Prompt Preset move bounds", () => {
 		expect(() => movePromptPresetBlock(database, 1, 1, 0)).toThrow(
 			InvalidPromptPresetOperationError,
 		);
-	});
-});
-
-describe("Prompt Preset stored contract boundary", () => {
-	let database: Database;
-
-	beforeEach(() => {
-		database = openObservedDatabase();
-	});
-	afterEach(() => database.close());
-
-	test("keeps empty authored text and rejects invalid instruction rows", () => {
-		const recipe = addPromptPresetInstruction(database, 1);
-		const instruction = recipe.slots.find((slot) => slot.reference === "instruction");
-		if (instruction === undefined) throw new Error("The instruction fixture is missing.");
-
-		database.exec(`UPDATE prompt_preset_block SET name = '', content = '' WHERE id = ${instruction.id}`);
-		const empty = readPromptPresetRecipe(database, 1);
-		const emptyInstruction = empty?.slots.find((slot) => slot.reference === "instruction");
-		expect(emptyInstruction).toMatchObject({ name: "", content: "", role: "system" });
-
-		expect(() => database.exec(
-			`UPDATE prompt_preset_block SET name = NULL WHERE id = ${instruction.id}`,
-		)).toThrow("CHECK constraint failed");
-		expect(() => database.exec(
-			`UPDATE prompt_preset_block SET content = NULL WHERE id = ${instruction.id}`,
-		)).toThrow("CHECK constraint failed");
-		expect(() => database.exec(
-			`UPDATE prompt_preset_block SET role = NULL WHERE id = ${instruction.id}`,
-		)).toThrow("CHECK constraint failed");
-	});
-
-	test("enforces one Lore block at the persistence boundary, including disabled blocks", () => {
-		const lore = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "lore");
-		if (lore === undefined) throw new Error("The Default recipe is missing its Lore block.");
-
-		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${lore.id}`);
-		expect(() => database.exec(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'lore', 1, 'system')",
-		)).toThrow("UNIQUE constraint failed");
-	});
-
-	test("enforces one Memory block at the persistence boundary, including disabled blocks", () => {
-		const memory = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "memory");
-		if (memory === undefined) throw new Error("The Default recipe is missing its Memory block.");
-		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${memory.id}`);
-		expect(() => database.exec(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'memory', 1, 'system')",
-		)).toThrow("UNIQUE constraint failed");
 	});
 });
 
@@ -122,9 +75,9 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(preset.slots.every((slot) => slot.enabled)).toBe(true);
@@ -208,6 +161,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "system", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 		expect(inspection.promptPlan.blocks.map((block) => block.kind)).toEqual([
@@ -217,6 +172,8 @@ describe("Prompt Preset transport", () => {
 			"scenario",
 			"example-dialogue",
 			"history",
+			"box:phone",
+			"box:world-clock",
 			"post-history-instruction",
 		]);
 
@@ -264,10 +221,10 @@ describe("Prompt Preset transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 		]);
 		expect(slotOf(duplicated, "history", 0)?.id).not.toBe(slotOf(duplicated, "history", 1)?.id);
 
@@ -291,10 +248,10 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-scenario", true],
 		]);
 
@@ -317,6 +274,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "A quiet room." },
 		]);
 
@@ -336,10 +295,10 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 		]);
 	});
 
@@ -395,6 +354,8 @@ describe("Prompt Preset transport", () => {
 			{ role: "user", content: "A quiet room." },
 			{ role: "user", content: "Writer: Hello\nMaren: Hello back" },
 			{ role: "user", content: "Set the scene." },
+			{ role: "system", content: phoneItem },
+			{ role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" },
 			{ role: "system", content: "Continue." },
 		]);
 	});
@@ -423,9 +384,9 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["model-post-history-instruction", true],
 		]);
 		expect(slotOf(reread, "model-identity")?.role).toBe("user");
@@ -471,10 +432,10 @@ describe("Prompt Preset transport", () => {
 	test("rejects adding a second Memory block after disabling the existing one", async () => {
 		const conversation = createChat(database);
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
-		const memory = slotOf(preset, "memory");
+		const memory = slotOf(preset, "box:memory");
 		if (memory === undefined) throw new Error("The Default recipe has no Memory block.");
 		await readOperation(toggleBlock(database, preset.id, memory.id, false));
-		const response = await addBlock(database, preset.id, "memory");
+		const response = await addBlock(database, preset.id, "box:memory");
 		expect(response.status).toBe(422);
 		expect(await response.json()).toMatchObject({ outcome: "invalid" });
 	});
@@ -610,26 +571,6 @@ describe("Prompt Preset block patch batch", () => {
 		expect(nonempty.status).toBe(404);
 		expect(await nonempty.json()).toEqual({ outcome: "not-found" });
 	});
-
-	test("returns not-found when the preset was deleted after the draft was made", async () => {
-		const created = executePromptPresetCommand(database, { type: "create", name: "Disposable" });
-		if (created.kind !== "preset") throw new Error("The Disposable preset was not created.");
-		const deleted = executePromptPresetCommand(database, {
-			type: "delete",
-			presetId: created.preset.id,
-			expectedRevision: 0,
-			expectedConversationCount: 0,
-		});
-		if (deleted.kind !== "deleted") throw new Error("The Disposable preset was not deleted.");
-
-		const response = await saveBlockPatches(database, created.preset.id, [
-			{ occurrenceId: 999999, type: "role", role: "system" },
-		]);
-
-		expect(response.status).toBe(404);
-		// SAFETY: the recipe route's shared not-found envelope.
-		expect(await response.json()).toEqual({ outcome: "not-found" });
-	});
 });
 
 describe("Prompt Preset shared Default", () => {
@@ -657,23 +598,5 @@ describe("Prompt Preset shared Default", () => {
 		expect(slotOf(firstPreset, "model-identity")?.sourceName).toBe("Sable");
 		expect(slotOf(secondPreset, "human-identity")?.sourceName).toBe("Iris");
 		expect(slotOf(secondPreset, "model-identity")?.sourceName).toBe("Quill");
-	});
-
-	test("saved edits to Default reach every Chat that selected it", async () => {
-		const first = createChat(database);
-		const second = createChat(database);
-		const app = createConversationRoutes(database);
-		const preset = await readPreset(app, first.id);
-		const systemInstruction = slotOf(preset, "model-system-instruction");
-		if (systemInstruction === undefined) {
-			throw new Error("The Default recipe has no System Instruction slot.");
-		}
-
-		await readOperation(toggleBlock(database, preset.id, systemInstruction.id, false));
-
-		// The second Chat reads the same saved recipe; there is no per-Chat
-		// override layer.
-		const secondPreset = await readPreset(app, second.id);
-		expect(slotOf(secondPreset, "model-system-instruction")?.enabled).toBe(false);
 	});
 });

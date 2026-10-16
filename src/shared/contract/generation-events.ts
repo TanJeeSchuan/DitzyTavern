@@ -69,15 +69,6 @@ export const generationEvent = Type.Union([
 
 export type GenerationEvent = Static<typeof generationEvent>;
 
-export const generationStreamStatus = Type.Union([
-	Type.Literal("active"),
-	Type.Literal("complete"),
-	Type.Literal("stopped"),
-	Type.Literal("failed"),
-]);
-
-export type GenerationStreamStatus = Static<typeof generationStreamStatus>;
-
 // Stable identity of one accepted Generation attempt and its Provisional
 // Variant. Every state or terminal frame carries the complete target so a
 // client observing concurrent attempts can reject a frame from another one.
@@ -99,20 +90,40 @@ export const matchesGenerationAttemptTarget = (
 	expected.messageId === observed.messageId &&
 	expected.variantId === observed.variantId;
 
-// The `state` frame payload: the authoritative accumulated snapshot the
-// server sends whenever a reconnecting client cannot replay from its event
-// position, and on every lifecycle change.
-export const generationStatePayload = Type.Composite([
+// Why a Generation failed, and the model it sent Images to when it did.
+const generationFailure = Type.Object({
+	reason: Type.String(),
+	imageModel: Type.Optional(generationImageModel),
+});
+
+export type GenerationFailure = Static<typeof generationFailure>;
+
+const unfailedGenerationStatus = Type.Object({
+	status: Type.Union([Type.Literal("active"), Type.Literal("complete"), Type.Literal("stopped")]),
+});
+const failedGenerationStatus = Type.Composite([Type.Object({ status: Type.Literal("failed") }), generationFailure]);
+
+// A Generation's lifecycle status. Only a failure carries a reason.
+const generationStatus = Type.Union([unfailedGenerationStatus, failedGenerationStatus]);
+
+export type GenerationStatus = Static<typeof generationStatus>;
+
+const generationSnapshot = Type.Composite([
 	generationAttemptTarget,
 	Type.Object({
 		outcome: Type.Literal("active-state"),
 		content: Type.String(),
 		reasoning: Type.String(),
 		latestEventId: Type.Integer(),
-		status: generationStreamStatus,
-		terminalReason: Type.Union([Type.Null(), Type.String()]),
-		imageModel: Type.Optional(generationImageModel),
 	}),
+]);
+
+// The `state` frame payload: the authoritative accumulated snapshot the
+// server sends whenever a reconnecting client cannot replay from its event
+// position, and on every lifecycle change.
+export const generationStatePayload = Type.Union([
+	Type.Composite([generationSnapshot, unfailedGenerationStatus]),
+	Type.Composite([generationSnapshot, failedGenerationStatus]),
 ]);
 
 export type GenerationStatePayload = Static<typeof generationStatePayload>;
@@ -142,11 +153,7 @@ export type GenerationStoppedPayload = Static<typeof generationStoppedPayload>;
 // reports. `failed` is the only outcome the subscription route emits today;
 // the remaining members are the shared Conversation outcome vocabulary so a
 // stream can report the same typed failures a start request reports.
-const failedGenerationOutcome = Type.Object({
-	outcome: Type.Literal("failed"),
-	reason: Type.String(),
-	imageModel: Type.Optional(generationImageModel),
-});
+const failedGenerationOutcome = Type.Composite([Type.Object({ outcome: Type.Literal("failed") }), generationFailure]);
 
 export const generationSubscriptionFailurePayload = Type.Union([
 	failedGenerationOutcome,

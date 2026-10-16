@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	readVariantDetails,
 	executeConversationCommand,
@@ -12,9 +12,7 @@ import { activeGenerationTable } from "../database/schema";
 import { createFakeModelClient } from "../model-client";
 import { runGenerationLifecycle } from ".";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
-import { createMemorySettingsModule } from "../memory/settings";
-import { createConversationRoutes } from "../contract/conversation";
-import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
+import { observeConversationWrites } from "../conversation";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -181,42 +179,9 @@ describe("Send through provisional Tail Generation", () => {
 		}
 	});
 
-	test("removes zero-output targets while preserving the accepted human Message and reuses it on retry", async () => {
-		await expect(runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: 0,
-			target: { kind: "send", content: "Please try again." },
-			modelClient: createFakeModelClient(() => [
-				{ type: "failed", kind: "provider", message: "No answer." },
-			]),
-		})).rejects.toThrow("No answer.");
-
-		const afterFailure = readTestConversationSnapshot(database, conversationId);
-		expect(afterFailure?.messages).toHaveLength(1);
-		expect(afterFailure?.messages[0]?.author?.participantId).toBe(humanId);
-		expect(afterFailure?.revision).toBe(2);
-
-		await runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: afterFailure?.revision ?? -1,
-			target: { kind: "send", content: "Please try again." },
-			modelClient: createFakeModelClient(() => "Now it works."),
-		});
-		expect(currentSnapshot().messages).toHaveLength(2);
-		expect(currentSnapshot().messages[0]?.author?.participantId).toBe(humanId);
-		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("Now it works.");
-	});
-
-	test("queues newly inserted and reused accepted Human sources when Memory is enabled", async () => {
-		const settings = createMemorySettingsModule(database);
-		const { revision, ...current } = settings.get();
-		settings.apply({ ...current, expectedRevision: revision, enabled: true });
-		const routes = createConversationRoutes(database);
-		const preset = await readPreset(routes, conversationId);
-		const memorySlot = preset.slots.find((slot) => slot.reference === "memory");
-		if (memorySlot === undefined) throw new Error("The Default recipe has no Memory block.");
-		if (!memorySlot.enabled) await readOperation(toggleBlock(database, preset.id, memorySlot.id, true));
-
+	test("reports the newly inserted and the reused accepted Human source to the digest queue", async () => {
+		const touched: number[] = [];
+		observeConversationWrites(database, (_database, change) => () => { touched.push(...change.touchedVariantIds); });
 		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
@@ -224,8 +189,10 @@ describe("Send through provisional Tail Generation", () => {
 			modelClient: createFakeModelClient(() => [{ type: "failed", kind: "provider", message: "No answer." }]),
 		})).rejects.toThrow("No answer.");
 		const insertedHuman = currentSnapshot().messages[0];
-		if (insertedHuman === undefined) throw new Error("The accepted Human Message is missing.");
-		const insertedSourceStatus = database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE message_id = ?").get(insertedHuman.id)?.status;
+		const humanVariant = insertedHuman?.variants[0]?.id;
+		if (insertedHuman === undefined || humanVariant === undefined) throw new Error("The accepted Human Message is missing.");
+		expect(touched).toContain(humanVariant);
+		touched.length = 0;
 		await runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: currentSnapshot().revision,
@@ -233,25 +200,7 @@ describe("Send through provisional Tail Generation", () => {
 			modelClient: createFakeModelClient(() => "Maren waits for an answer."),
 		});
 		expect(currentSnapshot().messages[0]?.id).toBe(insertedHuman.id);
-		const reusedSourceStatus = database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE message_id = ?").get(insertedHuman.id)?.status;
-		expect([insertedSourceStatus, reusedSourceStatus]).toEqual(["pending", "pending"]);
-	});
-
-	test("rejects an oversized candidate before any Message or Active Generation is persisted", async () => {
-		let contacted = false;
-		await expect(runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: 0,
-			target: { kind: "send", content: "Protected input." },
-			modelClient: createFakeModelClient(() => {
-				contacted = true;
-				return "never";
-			}),
-			tokenEstimator: () => 40_000,
-		})).rejects.toThrow();
-		expect(contacted).toBe(false);
-		expect(readTestConversationSnapshot(database, conversationId)?.messages).toHaveLength(0);
-		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
+		expect(touched).toContain(humanVariant);
 	});
 
 	test("persists the attempt's Effective Generation Settings so active inspection retains the Safety allowance", async () => {

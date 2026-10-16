@@ -31,15 +31,9 @@ const generationAttemptTarget = (state: GenerationRuntimeState): GenerationAttem
 	variantId: state.variantId,
 });
 
-const activeGenerationPayload = (state: GenerationRuntimeState): GenerationStatePayload => ({
-	...generationAttemptTarget(state),
+const activeGenerationPayload = ({ startedAt: _startedAt, ...state }: GenerationRuntimeState): GenerationStatePayload => ({
+	...state,
 	outcome: "active-state",
-	content: state.content,
-	reasoning: state.reasoning,
-	latestEventId: state.latestEventId,
-	status: state.status,
-	terminalReason: state.terminalReason,
-	imageModel: state.imageModel,
 });
 
 type GenerationTerminalFrame =
@@ -47,30 +41,20 @@ type GenerationTerminalFrame =
 	| { type: "stopped"; data: GenerationStoppedPayload }
 	| { type: "error"; data: GenerationFailurePayload };
 
-const terminalGenerationFrame = (state: GenerationRuntimeState): GenerationTerminalFrame =>
-	state.status === "complete"
-		? {
+const terminalGenerationFrame = (state: GenerationRuntimeState): GenerationTerminalFrame => {
+	switch (state.status) {
+		case "active": throw new Error(`Generation ${state.generationId} is active and has no terminal frame.`);
+		case "complete": return {
 			type: "complete",
-			data: {
-				...generationAttemptTarget(state),
-				outcome: "applied" as const,
-				latestEventId: state.latestEventId,
-			},
-		}
-		: state.status === "stopped"
-			? {
-				type: "stopped",
-				data: { ...generationAttemptTarget(state), outcome: "stopped" as const },
-			}
-			: {
-				type: "error",
-				data: {
-					...generationAttemptTarget(state),
-					outcome: "failed" as const,
-					reason: state.terminalReason ?? "Generation failed.",
-					imageModel: state.imageModel,
-				},
-			};
+			data: { ...generationAttemptTarget(state), outcome: "applied", latestEventId: state.latestEventId },
+		};
+		case "stopped": return { type: "stopped", data: { ...generationAttemptTarget(state), outcome: "stopped" } };
+		case "failed": return {
+			type: "error",
+			data: { ...generationAttemptTarget(state), outcome: "failed", reason: state.reason, imageModel: state.imageModel },
+		};
+	}
+};
 
 export function createGenerationSubscriptionResponse(
 	runtime: GenerationRuntime,

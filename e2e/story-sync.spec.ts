@@ -3,12 +3,15 @@ import { test, expect, story } from "./fixtures";
 
 test.use({ allowedBrowserErrors: /status of 409/ });
 
-const edit = async (page: Page, messageId: number, text: string) => {
+const edit = async (page: Page, messageId: number, text: string, status = 200) => {
 	const message = story(page).locator(`[data-message-id="${messageId}"]`);
 	await message.hover();
 	await message.getByRole("button", { name: "Edit", exact: true }).click();
 	await message.getByRole("textbox", { name: "Edit Message" }).fill(text);
+	const saved = page.waitForResponse((response) => response.url().endsWith("/commands") && response.request().method() === "POST");
 	await message.getByRole("button", { name: "Save", exact: true }).click();
+	expect((await saved).status()).toBe(status);
+	if (status === 200) await expect(message.getByRole("textbox", { name: "Edit Message" })).toHaveCount(0);
 };
 
 const focus = (page: Page, visibilityState: "hidden" | "visible") => page.evaluate((value) => {
@@ -49,9 +52,7 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	await expect(story(other).getByText("Older page edited in the other tab.", { exact: true })).toBeVisible();
 	await expect(story(page).getByText("Older page edited in the other tab.", { exact: true })).toHaveCount(0);
 	await expect(story(page).getByText("Edited in the other tab.", { exact: true })).toHaveCount(0);
-	const conflict = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.status() === 409);
-	await edit(page, conflictId, "This stale edit must not apply.");
-	await conflict;
+	await edit(page, conflictId, "This stale edit must not apply.", 409);
 	await expect(story(page).getByText("Edited in the other tab.", { exact: true })).toBeVisible();
 	await expect(story(page).getByText("Older page edited in the other tab.", { exact: true })).toBeVisible();
 	await expect(messages).toHaveCount(75);
@@ -86,7 +87,10 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 		return messages.find((message: { id: number }) => message.id === editedId).variants.find((variant: { selected: boolean }) => variant.selected).content;
 	};
 	expect(await stored()).toBe("Changed while this tab was editing.");
+	const overwritten = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.request().method() === "POST");
 	await draft.getByRole("button", { name: "Save", exact: true }).click();
+	expect((await overwritten).status()).toBe(200);
+	await expect(draft.getByRole("textbox", { name: "Edit Message" })).toHaveCount(0);
 	await expect(story(page).getByText("Draft written in this tab.", { exact: true })).toBeVisible();
 	expect(await stored()).toBe("Draft written in this tab.");
 	await other.close();

@@ -1,3 +1,7 @@
+import { Value } from "@sinclair/typebox/value";
+import { boxRecords } from "../../../shared/contract/box-generation";
+import { boxReference } from "../../../shared/contract/box";
+import { recordKey } from "../../box/records";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
@@ -118,6 +122,7 @@ const replayCarriedColumns = (active: ActiveGenerationRow) => {
 		provenance_value: _provenanceValue,
 		macro_preset_id: _macroPresetId,
 		macro_writes_json: _macroWritesJson,
+		box_records_json: _boxRecordsJson,
 		checkpoint_content: _checkpointContent,
 		checkpoint_reasoning: _checkpointReasoning,
 		...carried
@@ -145,11 +150,12 @@ const retainTerminalInspection = (
 };
 
 const terminalProvenance = (
-	active: { provenance_namespace: string | null; provenance_key: string | null; provenance_value: string | null },
+	active: ActiveGenerationRow,
 	data: readonly ConversationDataEntry[],
 ): ConversationDataEntry | undefined => {
 	if (active.provenance_namespace === null || active.provenance_key === null || active.provenance_value === null) return undefined;
-	return { namespace: active.provenance_namespace, key: active.provenance_key, value: variantDataCodecs.provenance.terminal(active.provenance_value, data) };
+	const value = variantDataCodecs.provenance.terminal(active.provenance_value, data, `Active Generation ${active.id}`);
+	return { namespace: active.provenance_namespace, key: active.provenance_key, value };
 };
 
 const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
@@ -160,7 +166,8 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 	} catch (error) {
 		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted macro writes.");
 	}
-	return macroWritesToData(active.macro_preset_id, writes);
+	const data = macroWritesToData(active.macro_preset_id, writes);
+	return data === null ? [] : [data];
 };
 
 const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
@@ -176,15 +183,15 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 	return [toVariantDataEntry(variantDataCodecs.loreActivation, active.lore_activation_json)];
 };
 
-const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+const terminalBoxTracesData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
 	let value;
 	try {
-		value = variantDataCodecs.memoryActivation.decode(active.memory_activation_json);
+		value = variantDataCodecs.boxTraces.decode(active.box_traces_json);
 	} catch (error) {
-		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Memory Activation evidence.");
+		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Box traces.");
 	}
-	if (value === null) return [];
-	return [toVariantDataEntry(variantDataCodecs.memoryActivation, active.memory_activation_json)];
+	if (Object.keys(value).length === 0) return [];
+	return [toVariantDataEntry(variantDataCodecs.boxTraces, active.box_traces_json)];
 };
 
 /** @approved
@@ -203,16 +210,16 @@ export const persistTerminalVariantData = (
 		suppliedData: readonly ConversationDataEntry[];
 		macroData?: readonly ConversationDataEntry[];
 		loreActivationData?: readonly ConversationDataEntry[];
-		memoryActivationData?: readonly ConversationDataEntry[];
+		boxTracesData?: readonly ConversationDataEntry[];
 	},
 ): void => {
 	const suppliedData = input.suppliedData.filter((entry) =>
-		entry.namespace !== variantDataCodecs.loreActivation.namespace && entry.namespace !== variantDataCodecs.memoryActivation.namespace,
+		entry.namespace !== variantDataCodecs.loreActivation.namespace && entry.namespace !== variantDataCodecs.boxTraces.namespace,
 	);
 	const data = [
 		...(input.macroData ?? []),
 		...(input.loreActivationData ?? []),
-		...(input.memoryActivationData ?? []),
+		...(input.boxTracesData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
 			!suppliedData.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key)
@@ -260,10 +267,16 @@ function commitDurableTerminalGenerationInTransaction(
 	persistTerminalVariantData(db, variant.id, {
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
-		suppliedData: input.suppliedData,
+		// @approved
+		//  Each Box record was checked against its Box's schema when it was
+		// captured, so settling writes it as captured, even for a Box that is
+		// no longer loaded: the record stays stored as the Box's other data
+		// does, and settling never depends on the registry.
+		suppliedData: [...input.suppliedData, ...Object.entries(Value.Parse(boxRecords, JSON.parse(active.box_records_json))).map(([id, { instance, record }]) =>
+			({ namespace: boxReference(id), key: recordKey(instance), value: JSON.stringify({ automatic: record }) }))],
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
-		memoryActivationData: terminalMemoryActivationData(active),
+		boxTracesData: terminalBoxTracesData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)

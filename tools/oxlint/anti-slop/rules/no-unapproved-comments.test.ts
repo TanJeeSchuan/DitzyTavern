@@ -14,6 +14,7 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 		"// oxlint-disable-next-line no-explicit-any",
 		"// eslint-disable-next-line no-console",
 		'/// <reference types="vite/client" />',
+		"const module = import(/* @vite-ignore */ url);",
 		"// @approved",
 		"// @approved\n// lead\n// middle\n// tail",
 		"// oxlint-disable-next-line no-console\n// prose follows the directive",

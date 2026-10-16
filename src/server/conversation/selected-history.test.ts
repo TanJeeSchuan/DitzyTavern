@@ -27,26 +27,29 @@ describe("Conversation selected history", () => {
 				{ definition: { name: "Model", prompt, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
-			messages: [1, 2, 3].map((position) => ({
-				timestamp: `2026-01-01T00:0${position}:00.000Z`,
-				variants: [
-					{
-						content: `Selected ${position}`,
-						timestamp: `2026-01-01T00:0${position}:00.000Z`,
-						selected: true,
-						data: [
-							...macroWritesToData(1, [{ name: "turn", operation: "set", value: position }]),
-							{ namespace: "unrelated", key: "large", value: "discarded" },
-						],
-					},
-					{
-						content: `Alternative ${position}`,
-						timestamp: `2026-01-01T00:0${position}:01.000Z`,
-						selected: false,
-						data: [{ namespace: "prompt-macro", key: "write:1", value: JSON.stringify([{ name: "turn", operation: "set", value: "discarded" }]) }],
-					},
-				],
-			})),
+			messages: [1, 2, 3].map((position) => {
+				const macroData = macroWritesToData(1, [{ name: "turn", operation: "set", value: position }]);
+				return {
+					timestamp: `2026-01-01T00:0${position}:00.000Z`,
+					variants: [
+						{
+							content: `Selected ${position}`,
+							timestamp: `2026-01-01T00:0${position}:00.000Z`,
+							selected: true,
+							data: [
+								...(macroData === null ? [] : [macroData]),
+								{ namespace: "unrelated", key: "large", value: "discarded" },
+							],
+						},
+						{
+							content: `Alternative ${position}`,
+							timestamp: `2026-01-01T00:0${position}:01.000Z`,
+							selected: false,
+							data: [{ namespace: "prompt-macro", key: "write:1", value: JSON.stringify([{ name: "turn", operation: "set", value: "discarded" }]) }],
+						},
+					],
+				};
+			}),
 		});
 
 		const read = readSelectedHistory(database, conversation.id, {
