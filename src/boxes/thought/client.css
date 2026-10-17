@@ -4,10 +4,6 @@
 	@apply sr-only;
 }
 
-.thought-mark {
-	@apply mt-1 mb-3 inline-flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground [&_svg]:size-3.5;
-}
-
 .thought-note {
 	@apply text-[0.8rem] text-muted-foreground;
 }

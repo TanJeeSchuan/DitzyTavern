@@ -1,5 +1,5 @@
 import "./client.css";
-import { phoneNames, stripPhoneTexts, type Sms } from "./shared";
+import { describePhoneTexts, phoneNames, stripPhoneTexts } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
@@ -40,13 +40,6 @@ function PhoneDockTab({ conversation, onRestore }: { conversation: ConversationS
 	return <button type="button" className="box-dock-tab" title="Restore Phone" onClick={onRestore}>
 		<Smartphone aria-hidden="true" /><span className="phone-label">Phone: </span>
 		<span>{read.isError ? "Unavailable" : count === 0 ? "No unread texts" : `${count} unread`}</span>
-	</button>;
-}
-
-/** @approved A text the lens lifted out of the prose: the story keeps a mark where it was, which opens the Phone. */
-function PhoneLensView({ text, onOpen }: { text: Sms; onOpen: () => void }) {
-	return <button type="button" className="phone-lens" onClick={onOpen}>
-		<Smartphone aria-hidden="true" />{text.from} texted {text.to}
 	</button>;
 }
 
@@ -106,6 +99,6 @@ function PhonePanel({ visible, conversation, disabled, staging }: { visible: boo
 const phoneLens = createBoxLens("sms", ({ cast, control }) => {
 	const human = cast.find(({ id }) => id === control.humanParticipantId);
 	return human === undefined ? undefined : phoneNames(cast, human);
-}, stripPhoneTexts, PhoneLensView);
+}, stripPhoneTexts, describePhoneTexts);
 
 export default { descriptor, icon: Smartphone, Window: { size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: phoneLens } } satisfies BoxClientDefinition;

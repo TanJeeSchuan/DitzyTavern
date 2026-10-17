@@ -27,7 +27,7 @@ export const raceMoveCatalog = {
 	hold: { icon: "✋", label: "Hold", cost: 0, pace: 0, intent: () => "The race holds for this turn.", effect: () => "The race does not advance this turn." },
 } as const satisfies Record<RaceMoveKind, { icon: string; label: string; cost: number; pace: number; intent(runner: string): string; effect(runner: string): string }>;
 
-export const raceMoveLabel = ({ kind, runner }: RaceMove): string => `${raceMoveCatalog[kind].icon} ${raceMoveCatalog[kind].label} · ${runner}`;
+export const raceMoveLabel = ({ kind, runner }: RaceMove): string => `${raceMoveCatalog[kind].label} · ${runner}`;
 
 /** @approved Energy after a Move resolves; resolution and projection both cap it to [0, 1]. */
 export const spendEnergy = (energy: number, kind: RaceMoveKind): number => Math.min(1, Math.max(0, energy - raceMoveCatalog[kind].cost));

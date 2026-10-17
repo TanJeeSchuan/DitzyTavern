@@ -116,14 +116,14 @@ test("Moves resolve in order against projected energy and per-Runner limits, the
 	const record = advanceRace(input)!;
 	expect(advanceRace(input)).toEqual(record);
 	const lines = record.outcome.split("\n").filter((line) => line.includes(` · ${runner}: `));
-	expect(lines[0]).toBe(`⏳ Conserve · ${runner}: fizzles. ${runner} is already fresh.`);
-	expect(lines[1]).toMatch(/^⚡ Overtake · .*: (succeeds|fizzles)\./);
-	expect(lines[2]).toMatch(/^⏳ Conserve · .*: succeeds\./);
-	expect(lines[3]).toBe(`🔥 Spurt · ${runner}: fizzles. ${runner} already attacks this Stretch.`);
+	expect(lines[0]).toBe(`Conserve · ${runner}: fizzles. ${runner} is already fresh.`);
+	expect(lines[1]).toMatch(/^Overtake · .*: (succeeds|fizzles)\./);
+	expect(lines[2]).toMatch(/^Conserve · .*: succeeds\./);
+	expect(lines[3]).toBe(`Spurt · ${runner}: fizzles. ${runner} already attacks this Stretch.`);
 	const held = advanceRace({ ...input, moves: [{ kind: "hold", runner }, { kind: "overtake", runner }] })!.outcome;
-	expect(held).toContain(`✋ Hold · ${runner}: fizzles. Hold must be the only Move.`);
-	expect(held).toMatch(/⚡ Overtake · .*: (succeeds|fizzles)\. .*(surges|boxed in)/);
-	expect(advanceRace({ ...input, setup })!.outcome).toContain(`⚡ Overtake · ${runner}: fizzles. Moves are off while Auto mode runs.`);
+	expect(held).toContain(`Hold · ${runner}: fizzles. Hold must be the only Move.`);
+	expect(held).toMatch(/Overtake · .*: (succeeds|fizzles)\. .*(surges|boxed in)/);
+	expect(advanceRace({ ...input, setup })!.outcome).toContain(`Overtake · ${runner}: fizzles. Moves are off while Auto mode runs.`);
 });
 
 const runRace = (fields: { setup: typeof setup; moves?: (state: RaceState | null) => RaceMove[] }) => {

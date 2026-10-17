@@ -124,19 +124,19 @@ test("removing the Race after a Stretch keeps the story and its Moves, which rea
 	await sendPlan(page, "Race passage 1.");
 	const human = story(page).locator("article").nth(-2);
 	const chips = human.getByRole("list", { name: "Race Moves" }).getByRole("listitem");
-	await expect(chips).toHaveText([`⚡ Overtake · ${runner}`]);
+	await expect(chips).toHaveText([`Overtake · ${runner}`]);
 
 	const boxes = await manager(page);
 	await boxes.getByRole("button", { name: "Remove Race" }).click();
 	await page.getByRole("dialog", { name: "Remove Race?" }).getByRole("button", { name: "Remove" }).click();
 	await expect(window).toHaveCount(0);
 	await expect(story(page).getByText("Race passage 1.")).toBeVisible();
-	await expect(chips).toHaveText([`⚡ Overtake · ${runner}`]);
+	await expect(chips).toHaveText([`Overtake · ${runner}`]);
 
 	await expect((await generate(page, "Walk home.")).getByText(/^Race ·/)).toHaveCount(0);
 	await sendPlan(page, "The crowd disperses.");
 	const sent = JSON.stringify((await llm.log()).calls.filter((call) => call.kind === "chat").at(-1));
-	expect(sent).toContain(`⚡ Overtake · ${runner}`);
+	expect(sent).toContain(`Overtake · ${runner}`);
 	expect(sent).not.toContain("(Race Move:");
 });
 

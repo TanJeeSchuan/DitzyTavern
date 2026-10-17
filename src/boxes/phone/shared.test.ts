@@ -1,8 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { renderPhoneText, stripPhoneTexts } from "./shared";
+import { describePhoneTexts, renderPhoneText, stripPhoneTexts } from "./shared";
 
 const names = { human: "Kai", contacts: ["Elara", "Bram"] };
 const strip = (text: string) => stripPhoneTexts(text, names);
+
+describe("describePhoneTexts", () => {
+	const text = (from: string, to: string) => ({ from, to, text: "hi" });
+	test("one text names its sender and recipient, a run names its people and count", () => {
+		expect([
+			describePhoneTexts([text("Elara", "Kai")]),
+			describePhoneTexts([text("Elara", "Kai"), text("Elara", "Kai"), text("Elara", "Kai")]),
+			describePhoneTexts([text("Elara", "Kai"), text("Kai", "Elara")]),
+			describePhoneTexts([text("Elara", "Kai"), text("Bram", "Kai")]),
+		]).toEqual(["Elara texted Kai", "3 texts from Elara to Kai", "2 texts between Elara and Kai", "2 texts"]);
+	});
+});
 
 describe("stripPhoneTexts", () => {
 	test("lifts a text between the human and a Cast member out of the prose, in either direction", () => {

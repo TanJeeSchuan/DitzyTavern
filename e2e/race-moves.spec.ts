@@ -35,12 +35,12 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 	await expect(moves.getByRole("button", { name: /Conserve/ })).toHaveCount(0);
 	await moves.getByRole("button", { name: /Overtake/ }).click();
 	await moves.getByRole("button", { name: /Conserve/ }).click();
-	await expect(composer.getByRole("list", { name: "Moves" }).getByRole("listitem")).toHaveText([`⚡ Overtake · ${runner}`, `⏳ Conserve · ${runner}`]);
+	await expect(composer.getByRole("list", { name: "Moves" }).getByRole("listitem")).toHaveText([`Overtake · ${runner}`, `Conserve · ${runner}`]);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	const first = await raceItem(page);
 	expect(first).toContain("Stretch 1: 0–400 m");
-	expect(first).toMatch(new RegExp(`⚡ Overtake · ${runner}: (succeeds|fizzles)`));
-	expect(first).toContain(`⏳ Conserve · ${runner}: succeeds`);
+	expect(first).toMatch(new RegExp(`Overtake · ${runner}: (succeeds|fizzles)`));
+	expect(first).toContain(`Conserve · ${runner}: succeeds`);
 	await accept();
 	const human = story(page).locator("article").nth(-2);
 	await expect(human.getByRole("list", { name: "Moves" }).getByRole("listitem")).toHaveCount(2);
@@ -52,12 +52,12 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	const second = await raceItem(page);
 	expect(second).toContain("Stretch 2: 400–500 m");
-	expect(second).toMatch(new RegExp(`🔥 Spurt · ${runner}: (succeeds|fizzles)`));
+	expect(second).toMatch(new RegExp(`Spurt · ${runner}: (succeeds|fizzles)`));
 	expect(second).not.toContain("Overtake");
 	await accept();
 	const [, sent] = (await llm.log()).calls.filter((call) => call.kind === "chat");
 	expect(JSON.stringify(sent)).toContain(`(Race Move: ${runner} tries to overtake.)`);
-	expect(JSON.stringify(sent)).not.toContain(`⚡ Overtake · ${runner}:`);
+	expect(JSON.stringify(sent)).not.toContain(`Overtake · ${runner}:`);
 
 	// @approved A swipe reuses its Message's Moves and seed, so the Stretch is the same.
 	const reply = story(page).locator("article").last();
@@ -74,6 +74,6 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	const fizzled = await raceItem(page);
 	expect(fizzled).toContain("Stretch 3: 500–600 m");
-	expect(fizzled).toContain(`⏳ Conserve · ${runner}: fizzles. Moves are off while Auto mode runs.`);
+	expect(fizzled).toContain(`Conserve · ${runner}: fizzles. Moves are off while Auto mode runs.`);
 	await accept();
 });

@@ -22,13 +22,6 @@ function ThoughtDockTab({ conversation, onRestore }: { conversation: Conversatio
 	</button>;
 }
 
-/** @approved A thought the lens lifted out of the prose: the story keeps a mark where it was, which opens the Thoughts window. */
-function ThoughtLensView({ onOpen }: { onOpen: () => void }) {
-	return <button type="button" className="thought-mark" onClick={onOpen}>
-		<MessageCircleDashed aria-hidden="true" />A thought
-	</button>;
-}
-
 function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);
 	if (read.isError) return <p className="thought-note">The Thoughts could not be loaded.</p>;
@@ -41,6 +34,6 @@ function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 	</ol>;
 }
 
-const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);
+const thoughtLens = createBoxLens("thought", () => true, stripThoughts, (run) => run.length === 1 ? "A thought" : `${run.length} thoughts`);
 
 export default { descriptor, icon: MessageCircleDashed, Window: { size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;

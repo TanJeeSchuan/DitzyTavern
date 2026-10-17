@@ -246,6 +246,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Touch selection exposes the equivalent partial state.
 - An explicit details action opens full authorship, generation-profile, and provenance information.
 - Do not add UI markers for individual fictional speakers inside prose.
+- A Box's lifted marks show the Box's icon and one muted line on their own line, and consecutive marks from one Box collapse into one.
 
 ### Message actions
 
