@@ -33,14 +33,11 @@ const readSeen = (conversationId: number): Set<string> => {
 const unread = (thread: PhoneRead["threads"][number], seen: Set<string>) =>
 	thread.texts.filter(({ from, key }) => from === thread.contact && !seen.has(key)).length;
 
-function PhoneDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function PhoneStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = usePhone(conversation);
 	const seen = readSeen(conversation.id);
 	const count = read.data?.threads.reduce((total, thread) => total + unread(thread, seen), 0) ?? 0;
-	return <button type="button" className="box-dock-tab" title="Restore Phone" onClick={onRestore}>
-		<Smartphone aria-hidden="true" /><span className="phone-label">Phone: </span>
-		<span>{read.isError ? "Unavailable" : count === 0 ? "No unread texts" : `${count} unread`}</span>
-	</button>;
+	return <span>{read.isError ? "Unavailable" : count === 0 ? "No unread texts" : `${count} unread`}</span>;
 }
 
 /** @approved A text the lens lifted out of the prose: the story keeps a mark where it was, which opens the Phone. */
@@ -108,4 +105,4 @@ const phoneLens = createBoxLens("sms", ({ cast, control }) => {
 	return human === undefined ? undefined : phoneNames(cast, human);
 }, stripPhoneTexts, PhoneLensView);
 
-export default { descriptor, icon: Smartphone, Window: { size: { width: 22, height: 30 }, DockTab: PhoneDockTab, Panel: PhonePanel, lens: phoneLens } } satisfies BoxClientDefinition;
+export default { descriptor, icon: Smartphone, Status: PhoneStatus, Window: { size: { width: 22, height: 30 }, Panel: PhonePanel, lens: phoneLens } } satisfies BoxClientDefinition;

@@ -5,7 +5,7 @@ import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
-import { useBoxWindows } from "../box-windows/useBoxWindows";
+import type { BoxWindowsController } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
 	isModelAuthoredMessage,
@@ -43,6 +43,7 @@ export function StoryStage({
 	session,
 	generation,
 	preview,
+	boxWindows,
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
@@ -58,6 +59,7 @@ export function StoryStage({
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
 	assemblyActive: boolean;
+	boxWindows: BoxWindowsController;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
 	preview: ReturnType<typeof usePreviewController>;
@@ -89,7 +91,6 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
-	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;

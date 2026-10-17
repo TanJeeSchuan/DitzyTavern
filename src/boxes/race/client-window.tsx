@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Flag } from "lucide-react";
 import { useRef, useState } from "react";
 import {
 	Button, Field, imageAccept, Input, Portrait, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, uploadImage, useBoxSetupDraft,
@@ -27,12 +26,9 @@ type StatKey = typeof statKeys[number];
 const statLabels = { speed: "Speed", stamina: "Stamina", power: "Power", guts: "Guts", wit: "Wit" } satisfies Record<StatKey, string>;
 const isValid = (setup: RaceSetup) => Value.Check(raceSetup, setup) && isRaceAutoValid(setup);
 
-export function RaceDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+export function RaceStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = useRace(conversation);
-	return <button type="button" className="box-dock-tab" title="Restore Race" onClick={onRestore}>
-		<Flag aria-hidden="true" /><span className="race-label">Race: </span>
-		<span>{read.isError ? "Unavailable" : read.data?.status ?? "Set up a race"}</span>
-	</button>;
+	return <span>{read.isError ? "Unavailable" : read.data?.status ?? "Set up a race"}</span>;
 }
 
 function SetAvatar({ name, onPick }: { name: string; onPick: (file: File) => void }) {

@@ -43,7 +43,7 @@ test("a disabled Race block stays off until the writer enables it from the notic
 	await attachPreset(page, request, [{ reference: "box:race", enabled: false, role: "system", content: "" }]);
 	await insertBox(page, "Race");
 	await openBoxes(page);
-	await expect(page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Race" })).toContainText("Race block is off in Lean.");
+	await expect(page.getByRole("group", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Race" })).toContainText("Race block is off in Lean.");
 	await closeBoxes(page);
 	const window = await startRace(page);
 	await expect(window).toContainText("Race block is off in Lean.");

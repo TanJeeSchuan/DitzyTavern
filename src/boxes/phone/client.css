@@ -1,9 +1,5 @@
 @reference "@/index.css";
 
-.phone-label {
-	@apply sr-only;
-}
-
 .phone-window {
 	display: grid;
 	gap: 0.75rem;

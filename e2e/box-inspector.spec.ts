@@ -88,10 +88,12 @@ test("removing an inspected Box closes it without reopening on reinsertion", asy
 	await opener.click();
 	await expect(inspector).toBeVisible();
 	await openBoxes(page);
-	await page.getByRole("button", { name: "Remove Memory", exact: true }).click();
+	await page.getByRole("button", { name: "Memory actions", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Remove from Chat…", exact: true }).click();
 	await page.getByRole("dialog", { name: "Remove Memory?" }).getByRole("button", { name: "Remove", exact: true }).click();
 	await expect(inspector).toHaveCount(0);
 	await expect(opener).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Add Memory", exact: true })).toBeVisible();
 	await insertBox(page, "Memory");
 	await expect(opener).toBeVisible();
 	await expect(inspector).toHaveCount(0);

@@ -2,7 +2,7 @@ import type { BoxDescriptor } from "@/box-sdk/shared";
 import { moodRecord } from "./shared";
 
 export default {
-	id: "mood", sdk: 1, label: "Mood", role: "system", startsEnabled: false, instructions: "Scene mood:",
+	id: "mood", sdk: 1, label: "Mood", summary: "Follows the scene's mood from what passages say.", role: "system", startsEnabled: false, instructions: "Scene mood:",
 	record: moodRecord,
 	decision: {
 		summary: "Reads the mood each passage leaves the scene in.",

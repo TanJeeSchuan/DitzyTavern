@@ -139,7 +139,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const [order, setOrder] = useState<BoxId[]>([]);
 	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
 	if (conversation === null) return null;
-	const present = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && boxPresent(conversation, id) ? [[id, { icon, ...Window }] as const] : []);
+	const present = [...boxClients()].flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
 	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
@@ -150,7 +150,11 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const top = visible.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map(([id, { DockTab }]) => <BoxBoundary key={id} box={id}><DockTab conversation={conversation} onRestore={() => controller.open(id)} /></BoxBoundary>)}
+			{minimized.map(([id, { icon, Status }]) => <button key={id} type="button" className="box-dock-tab" title={`Restore ${boxTitle(id)}`} onClick={() => controller.open(id)}>
+				<BoxIcon box={id} icon={icon} />
+				<span className="sr-only">{boxTitle(id)}: </span>
+				{Status === undefined ? <span>{boxTitle(id)}</span> : <BoxBoundary box={id}><Status conversation={conversation} /></BoxBoundary>}
+			</button>)}
 		</div>}
 		{/* @approved
 		  A narrow viewport shows the top window as one full-screen layer over
@@ -159,15 +163,15 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 		  windows usable at once, where trapping focus would be wrong. */}
 		<FocusScope.Root asChild trapped={narrow && visible.length > 0} loop={narrow && visible.length > 0}
 			onMountAutoFocus={(event) => event.preventDefault()} onUnmountAutoFocus={(event) => event.preventDefault()}><div className="box-window-layer">
-		{opened.map(([id, definition]) => {
-			const { Panel } = definition;
+		{opened.map(([id, { icon }, Window]) => {
+			const { Panel } = Window;
 			const layout = controller.layouts[id];
 			if (layout === undefined) return null;
 			return <FloatingWindow
 				key={id}
 				title={boxTitle(id)}
-				icon={<BoxIcon box={id} icon={definition.icon} />}
-				size={definition.size}
+				icon={<BoxIcon box={id} icon={icon} />}
+				size={Window.size}
 				layout={layout}
 				zIndex={zIndex(id)}
 				narrow={narrow}
