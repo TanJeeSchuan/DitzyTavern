@@ -211,7 +211,7 @@ export function ActiveWritingWorkspace({
 				onThemeChange={setPersistedTheme}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
-				onSelectChat={selectChat}
+				onSelectChat={(chatId) => saveNavigation.requestNavigation(() => selectChat(chatId))}
 				onNewChat={onNewChat}
 				onClose={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
 				onImportLaunched={onImportLaunched}

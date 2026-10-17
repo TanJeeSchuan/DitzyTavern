@@ -12,6 +12,7 @@ import { boxDescriptor, boxRecordSchema, type BoxDescriptor, type BoxId, type Bo
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
+import { useSaveGuard } from "../SaveGuard";
 import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
 import type { BoxWindowDefinition } from "./registry";
 
@@ -153,11 +154,20 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 	summarize: (record: RecordValue) => string;
 	busy: boolean;
 	onCancel: () => void;
-	onSave: (record: RecordValue) => void;
+	onSave: (record: RecordValue) => Promise<boolean>;
 }): ReactNode {
-	const [draft, setDraft] = useState(() => draftOf(fields, expected));
+	const [baseline] = useState(() => draftOf(fields, expected));
+	const [draft, setDraft] = useState(baseline);
+	const [saving, setSaving] = useState(false);
 	const record = recordOf(fields, draft);
 	const valid = Value.Check(boxRecordSchema(box), record);
+	const dirty = Object.keys(baseline).some((key) => draft[key] !== baseline[key]);
+	const save = async () => {
+		if (!valid || busy || saving) return false;
+		setSaving(true);
+		try { return await onSave(record); } finally { setSaving(false); }
+	};
+	useSaveGuard({ dirty, saving, save, discard: onCancel });
 	const set = (key: string, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 	return <div className="box-timeline-editor">
 		<p className="box-timeline-note">Replaces: {expected === null ? "Not read yet" : summarize(expected)}</p>
@@ -179,7 +189,7 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 		})}
 		<div className="box-timeline-actions">
 			<Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>Cancel</Button>
-			<Button size="sm" disabled={busy || !valid} onClick={() => { if (valid) onSave(record); }}>Save override</Button>
+			<Button size="sm" disabled={busy || !valid} onClick={() => void save()}>Save override</Button>
 		</div>
 	</div>;
 }
@@ -224,14 +234,15 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	// @approved
 	//  A refused save keeps the draft and moves `expected` to the record now
 	// there, which the editor shows, so saving again overrides it knowingly.
-	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue) => {
-		if (locked) return;
+	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue): Promise<boolean> => {
+		if (locked) return false;
 		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record, expected })) {
 			setEditing(null);
-			return;
+			return true;
 		}
 		const current = (await read.refetch()).data?.passages.find(({ variantId }) => variantId === passage.variantId);
 		if (current !== undefined) setEditing((open) => open?.variantId === passage.variantId ? { ...open, expected: current.record } : open);
+		return false;
 	};
 	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, messageId: passage.messageId, variantId: passage.variantId });
 
@@ -269,7 +280,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 					<span className="box-timeline-text">{passage.content}</span>
 					{editing?.variantId === passage.variantId
 						? <RecordEditor box={box} passage={passage} expected={editing.expected} fields={fields} summarize={summarize} busy={locked}
-							onCancel={() => setEditing(null)} onSave={(record) => void save(passage, editing.expected, record)} />
+							onCancel={() => setEditing(null)} onSave={(record) => save(passage, editing.expected, record)} />
 						: <div className="box-timeline-read">
 							<span className="box-timeline-summary">
 								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}

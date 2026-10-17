@@ -257,3 +257,70 @@ test("catch-up shows its progress and can be cancelled", async ({ page, request,
 	await window.getByRole("button", { name: "Digest missing passages" }).click();
 	await expect(window.getByRole("listitem").filter({ hasText: "The storm breaks" })).toContainText("No time passes");
 });
+
+test("passage override drafts survive guarded close until saved or discarded", async ({ page, request }) => {
+	await page.goto("/");
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	await insertBox(page, "World Clock");
+	let window = await openWorldClock(page);
+	const passage = () => window.getByRole("listitem").filter({ hasText: "You arrive as she pins a third map over the first two." });
+	await passage().hover();
+	await passage().getByRole("button", { name: "Edit" }).click();
+	await passage().getByRole("spinbutton", { name: "Minutes" }).fill("125");
+	await passage().getByRole("combobox", { name: "Weather" }).click();
+	await page.getByRole("option", { name: "☀️ Clear" }).click();
+
+	await window.getByRole("button", { name: "Close World Clock" }).click();
+	let unsaved = page.getByRole("dialog", { name: "Unsaved changes" });
+	await expect(unsaved).toBeVisible();
+	await unsaved.getByRole("button", { name: "Keep editing" }).click();
+	await expect(passage().getByRole("spinbutton", { name: "Minutes" })).toHaveValue("125");
+	await expect(passage().getByRole("combobox", { name: "Weather" })).toContainText("Clear");
+
+	await window.getByRole("button", { name: "Close World Clock" }).click();
+	unsaved = page.getByRole("dialog", { name: "Unsaved changes" });
+	await unsaved.getByRole("button", { name: "Discard" }).click();
+	await expect(window).toHaveCount(0);
+	window = await openWorldClock(page);
+	await passage().hover();
+	await passage().getByRole("button", { name: "Edit" }).click();
+	await expect(passage().getByRole("spinbutton", { name: "Minutes" })).toHaveValue("");
+	await expect(passage().getByRole("combobox", { name: "Weather" })).toContainText("Not mentioned");
+	await passage().getByRole("button", { name: "Cancel" }).click();
+
+	await passage().hover();
+	await passage().getByRole("button", { name: "Edit" }).click();
+	await passage().getByRole("spinbutton", { name: "Minutes" }).fill("125");
+	await passage().getByRole("combobox", { name: "Weather" }).click();
+	await page.getByRole("option", { name: "☀️ Clear" }).click();
+	await window.getByRole("button", { name: "Close World Clock" }).click();
+	unsaved = page.getByRole("dialog", { name: "Unsaved changes" });
+	await unsaved.getByRole("button", { name: "Save and leave" }).click();
+	await expect(window).toHaveCount(0);
+	const read = await (await request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
+	const override = read.passages.find((entry: { content: string }) => entry.content === "You arrive as she pins a third map over the first two.");
+	expect(override.record).toMatchObject({ minutes: 125, weather: "clear" });
+	expect(override.overridden).toBe(true);
+});
+
+test("selecting a Chat from an open panel guards a passage override draft", async ({ page }) => {
+	await page.setViewportSize({ width: 1600, height: 1000 });
+	await page.goto("/");
+	await insertBox(page, "World Clock");
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Chats", exact: true }).click();
+	const otherChat = page.getByRole("button", { name: /^The Lantern House/ });
+	await expect(otherChat).toBeVisible();
+	const window = await openWorldClock(page);
+	const passage = window.getByRole("listitem").filter({ hasText: "You arrive as she pins a third map over the first two." });
+	await passage.getByRole("button", { name: "Edit", exact: true }).click();
+	await passage.getByRole("spinbutton", { name: "Minutes" }).fill("125");
+	await otherChat.click();
+	const unsaved = page.getByRole("dialog", { name: "Unsaved changes" });
+	await expect(unsaved).toBeVisible();
+	await unsaved.getByRole("button", { name: "Keep editing" }).click();
+	await expect(passage.getByRole("spinbutton", { name: "Minutes" })).toHaveValue("125");
+	await otherChat.click();
+	await unsaved.getByRole("button", { name: "Discard", exact: true }).click();
+	await expect(window).toHaveCount(0);
+	await expect(story(page).getByRole("heading", { name: /^The Lantern House/ })).toBeVisible();
+});
