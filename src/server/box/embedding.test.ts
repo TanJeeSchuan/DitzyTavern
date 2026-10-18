@@ -15,6 +15,30 @@ describe("Embedding space", () => {
 	});
 	afterEach(() => database.close());
 
+	test.each([false, true])("captured embeddings keep their credentials after profile changes, cache=%s", async (cache) => {
+		const profileId = configureEmbeddings(database, "http://tenant-a.test/v1/embeddings");
+		const configuration = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const requests: { endpoint: string; authorization: string | null }[] = [];
+		const fetch = async (input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {
+			requests.push({ endpoint: String(input), authorization: new Headers(init?.headers).get("authorization") });
+			if (requests.length === 1) {
+				const connections = createConnectionSettingsModule(database);
+				const profile = connections.get().profiles.find((item) => item.id === profileId)!;
+				connections.applyProfile({ expectedRevision: connections.get().revision, profileId, profile: { ...connectionProfileDraftOf(profile), requestUrl: "http://tenant-b.test/v1/embeddings" } });
+				connections.setCredential({ expectedRevision: connections.get().revision, profileId, credential: "tenant-b-secret" });
+			}
+			return Response.json({ data: [{ embedding: [1, 0] }] });
+		};
+		await embedTexts(database, ["claim"], configuration, { cache, fetch });
+		await embedTexts(database, ["scene"], configuration, { cache, fetch });
+		expect(requests).toEqual([
+			{ endpoint: "http://tenant-a.test/v1/embeddings", authorization: "Bearer embedding-secret" },
+			{ endpoint: "http://tenant-a.test/v1/embeddings", authorization: "Bearer embedding-secret" },
+		]);
+		expect(JSON.stringify(configuration)).not.toContain("embedding-secret");
+		expect(readEmbeddingConfiguration(database, profileId, "memory-v1").spaceKey).not.toBe(configuration.spaceKey);
+	});
+
 	test.each(["profile", "credential", "header"] as const)("a new embedding %s starts a separate vector cache, and a rename does not", async (change) => {
 		let profileId = configureEmbeddings(database, "http://embedding.test/v1/embeddings");
 		const read = () => readEmbeddingConfiguration(database, profileId, "memory-v1");
