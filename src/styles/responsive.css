@@ -421,10 +421,11 @@ body > .details-panel > .panel-body {
 		inset: -0.25rem;
 	}
 
+	/* @approved The hit area grows up and left only, so it stays inside the editor and off the composer's Send. */
 	.prose-editor-add::after {
 		content: "";
 		position: absolute;
-		inset: -0.625rem;
+		inset: -0.9rem -0.35rem -0.3rem -0.9rem;
 	}
 }
 

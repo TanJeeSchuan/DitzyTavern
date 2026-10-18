@@ -123,7 +123,7 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			{launchers.map(({ box, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
+			{launchers.map(({ box, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}

@@ -203,7 +203,7 @@ export function PromptPresetRecipeRow({
 	};
 	return <li
 		ref={ref}
-		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${
+		className={`relative py-2.5 pointer-coarse:py-0.5 transition-[background-color,box-shadow] motion-reduce:transition-none${
 			isDragging
 				? " z-10 bg-background shadow-lg ring-1 ring-border"
 				: isDropTarget

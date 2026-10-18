@@ -114,7 +114,7 @@ export function StoryStage({
 	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
-		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={(event) => { lastFocus.current = event.target; }}>
+		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={(event) => { if (event.currentTarget.contains(event.target)) lastFocus.current = event.target; }}>
 			<StoryHeader
 				chat={session.activeChat}
 				conversation={conversation}
