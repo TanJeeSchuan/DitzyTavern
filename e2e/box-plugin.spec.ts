@@ -15,7 +15,7 @@ test("a plugin Box installed into the plugin folder loads on restart, resolves i
 	await expect(jar.locator(".tip-jar")).toHaveCSS("border-radius", "7px");
 
 	await jar.getByRole("button", { name: "Drop a coin" }).click();
-	await expect(page.locator("form.composer").getByRole("list", { name: "Tip Jar Moves" }).getByRole("listitem")).toHaveText(["🪙 1"]);
+	await expect(page.locator("form.composer").getByRole("list", { name: "Tip Jar Moves" }).getByRole("listitem")).toHaveText(["1"]);
 	await send(page, "A song for the bard.");
 	await expect(story(page).getByText("The bard bows to the room.")).toBeVisible();
 	await expect(coins).toHaveText("1");

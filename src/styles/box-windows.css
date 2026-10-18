@@ -444,3 +444,35 @@
 .details-panel > .box-failure {
 	padding: 1rem;
 }
+
+/* What a Box's lens lifts out of the prose, on its own line in the story. */
+.box-lens-mark {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin: 0.2rem 0 0.75rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.25rem;
+	background: none;
+	color: var(--text-muted);
+	font-family: var(--font-control);
+	font-size: 0.8rem;
+}
+
+.box-lens-mark svg {
+	flex: none;
+	width: 1em;
+	height: 1em;
+	stroke-width: 1.8;
+}
+
+.box-lens-mark:hover {
+	color: var(--foreground);
+	text-decoration: underline;
+}
+
+.box-lens-mark:focus-visible {
+	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
+	outline-offset: 2px;
+}

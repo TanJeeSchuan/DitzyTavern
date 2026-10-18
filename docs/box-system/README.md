@@ -117,7 +117,7 @@ The command accepts a Box that is present in the Chat, enabled or disabled, and 
 
 ### `moves` and `moves.render`
 
-Actions the writer attaches to a Human-authored Message, declared as `describeMoves(schema, max, label)` from the shared SDK. `max` bounds the Moves per Message, and `label(move)` is the chip text. `seatBound: true` ties staged Moves to the human seat ([Move staging](#move-staging)). The server Box must declare `render(move, author)`.
+Actions the writer attaches to a Human-authored Message, declared as `describeMoves(schema, max, label)` from the shared SDK. `max` bounds the Moves per Message, and `label(move)` is the chip text. The host shows the Box's icon before it, so the label carries no icon or emoji of its own. `seatBound: true` ties staged Moves to the human seat ([Move staging](#move-staging)). The server Box must declare `render(move, author)`.
 
 The host stores each Box's Moves in order in `messages_data` under key `moves`. For the Generation prompt, Lore scanning and Generation-time Memory recall, the Message's text becomes each Move's `render`, one per line, then the prose. Digests, Memory's extraction among them, read the raw prose. While the Box is not enabled, the host uses the Move's chip label instead of `render`, so a removed Box never breaks past Messages. [Move staging](#move-staging) covers the composer.
 
@@ -257,14 +257,16 @@ The client SDK exports the surface types, shared controls and dialogs, `PanelHea
 
 ### `lens`
 
-Lifts the Box's markup out of the story view, leaving a mark that opens the window. The prompt keeps the markup. Build it inside the Box client with `createBoxLens(tag, gate, strip, View)` from the client SDK and register it as `Window.lens`:
+Lifts the Box's markup out of the story view, leaving a mark that opens the window. The prompt keeps the markup. Build it inside the Box client with `createBoxLens(tag, gate, strip, describe)` from the client SDK and register it as `Window.lens`:
 
 | Argument | Contract |
 |---|---|
 | `tag` | the markup tag, such as `"thought"` for `<thought>…</thought>` |
 | `gate(conversation)` | a context value, or `undefined` when nothing should be lifted in this Chat |
 | `strip(text, context)` | splits prose into `{ kind: "prose", text }` and `{ kind: tag, text }` segments, in order |
-| `View` | renders one lifted segment from `{ text, onOpen }`; `onOpen` opens the window |
+| `describe(run)` | one line for a run of lifted segments |
+
+A run is a maximal row of lifted segments separated only by whitespace prose, which is dropped, so three texts in a row are one run and one mark. Any other prose between them ends the run, so each side gets its own mark. The host draws every mark the same way: a button on its own line with the Box's icon and the line from `describe`, which opens the window. Keep the line plain, since the host supplies the icon.
 
 `strip` is also the parser the window `read` uses to list what was lifted, so it is one function in `shared.ts`. Malformed markup stays raw text. Unit-test it on malformed and nested input. [The lens pipeline](#lens-pipeline) describes how lenses combine.
 
@@ -303,7 +305,7 @@ Each file in `src/boxes/<id>/` takes its layer from its name. A layer with sever
 | `shared*.ts` | shared | logic the server and client both use | `@/box-sdk/shared` |
 | `server.ts` | server | the server Box, as its default export | `@/box-sdk/server`, `@/box-sdk/shared` |
 | `server*.ts` | server | the server Box's other modules | `@/box-sdk/server`, `@/box-sdk/shared` |
-| `client*.ts(x)` | client | the registered surfaces, their helpers and lens View | `@/box-sdk/client`, `@/box-sdk/shared` |
+| `client*.ts(x)` | client | the registered surfaces and their helpers | `@/box-sdk/client`, `@/box-sdk/shared` |
 
 The layer rules read Box file names too: a `client*` file imports `server*` code only for types, a `shared*` or `contract*` file imports neither, and a `Type.Object` in a `server*` or `client*` file fails `check:contracts`. The SDK entries re-export only what the built-in Boxes use; read them for the list. When a Box needs something else from the host, add it to its layer's entry.
 
@@ -374,7 +376,7 @@ The generic summary joins the fields with ` · `: a choice shows its option's ti
 
 ### Lens pipeline
 
-The story view applies the lens of each Box present in the Chat whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws, or returns pieces that fail their schema, shows its failure and leaves the prose unlifted, and each lifted mark renders in its Box's boundary. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
+The story view applies the lens of each Box present in the Chat whose `gate` returns a value, in registry order, each to the prose the earlier ones left. A lifted piece is never lensed again. A lens that throws, or returns pieces that fail their schema, shows its failure and leaves the prose unlifted, and the host draws each lifted mark in the story. While a Message streams, an unclosed `<tag` is hidden instead of flashing as raw markup.
 
 ### Move staging
 
@@ -462,7 +464,7 @@ Once the field crosses the line, one Results Stretch gives finishing order, marg
 
 `raceBox.advance.run` wraps that for Hold and withdrawal. A lone legal Hold on a respond turn returns a pinned item and no record, so the race stands still. A withdrawal is announced once and persisted as a record even when no Stretch runs, so it does not repeat on every Hold. A field cut below two Runners ends in a walkover. Every item is pinned at priority 100: a Stretch reaches the model whole or not at all.
 
-**Moves.** Overtake, Conserve, Spurt and Hold, each acting on the human seat's Runner, or as an order to a chosen Runner when the human seat is not racing. The window offers each legal Move with its projected cost and odds from `checkRaceMove(setup, state, staged, move)`. Moves are off while Auto advances the race: always under `on`, and until `until` metres before the finish under `{ until }`. `render` gives `(Race Move: Special Week tries to overtake.)`; once the Race is not enabled, history shows the chip `⚡ Overtake · Special Week`.
+**Moves.** Overtake, Conserve, Spurt and Hold, each acting on the human seat's Runner, or as an order to a chosen Runner when the human seat is not racing. The window offers each legal Move with its projected cost and odds from `checkRaceMove(setup, state, staged, move)`. Moves are off while Auto advances the race: always under `on`, and until `until` metres before the finish under `{ until }`. `render` gives `(Race Move: Special Week tries to overtake.)`; once the Race is not enabled, history shows the chip `Overtake · Special Week`.
 
 **Data scopes.** Library: roster avatars, keyed `avatar:<name>`, written through `boxData`. Character and Participant: `stats`. A stat sheet's `stats` ride as `writes` on the `set-box-setup` that adds the gate, so the gate and its stats land together. `readRaceCastStats` decodes Participant stats and fails loudly on a bad row.
 

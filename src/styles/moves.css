@@ -31,6 +31,12 @@
 	text-overflow: ellipsis;
 }
 
+.move-chip > span > svg {
+	display: inline;
+	margin-right: 0.25rem;
+	vertical-align: -0.125em;
+}
+
 .move-chip[data-dragging] {
 	cursor: grabbing;
 	box-shadow: 0 0.3rem 0.8rem color-mix(in oklch, var(--foreground) 18%, transparent);

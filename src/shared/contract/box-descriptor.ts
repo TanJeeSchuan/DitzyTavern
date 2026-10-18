@@ -115,12 +115,11 @@ export const boxServerSchema = Type.Object({
 	routes: Type.Optional(hook),
 });
 
-// @approved
 //  What a lens returns for a stretch of prose, checked each time the story
-// lenses it: the prose it leaves and the marks it lifts, each a React element.
+//  lenses it: the prose it leaves and one line for each mark it lifts.
 const lensPieces = Type.Array(Type.Union([
 	Type.Object({ kind: Type.Literal("prose"), text: Type.String() }),
-	Type.Object({ kind: Type.Literal("lifted"), element: Type.Object({ $$typeof: Type.Symbol() }) }),
+	Type.Object({ kind: Type.Literal("lifted"), line: Type.String() }),
 ]));
 export function assertLensPieces(pieces: unknown): asserts pieces is Static<typeof lensPieces> {
 	assertChecked(lensPieces, pieces, "Its lens output");
