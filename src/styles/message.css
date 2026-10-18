@@ -138,3 +138,26 @@
 	letter-spacing: 0.02em;
 }
 
+/* @approved The actions row collapses through its grid track so revealing it eases the prose down instead of squeezing the author line. */
+@media (max-width: 40rem) {
+	.message-header {
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-rows: auto 0fr;
+		row-gap: 0;
+		transition: grid-template-rows 150ms ease;
+	}
+
+	.story-message:is(:hover, :focus-within, [data-selected="true"]) .message-header {
+		grid-template-rows: auto 1fr;
+	}
+
+	.advanced-actions {
+		grid-column: 1 / -1;
+		flex-wrap: wrap;
+		min-height: 0;
+		overflow: hidden;
+		/* @approved The padding keeps focus rings inside the clip; the margins cancel it and align the first icon with the portrait. */
+		padding: 0.35rem;
+		margin: -0.35rem -0.35rem -0.35rem -0.85rem;
+	}
+}

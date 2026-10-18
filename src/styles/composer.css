@@ -133,3 +133,13 @@
 	stroke-width: 1.8;
 }
 
+/* @approved A landscape phone keeps about a third of its height for prose; the draft scrolls inside a shorter editor. */
+@media (max-height: 30rem) and (max-width: 78rem) {
+	.composer-area {
+		bottom: 0.5rem;
+	}
+
+	.composer > .prose-editor {
+		max-height: 4.5rem;
+	}
+}

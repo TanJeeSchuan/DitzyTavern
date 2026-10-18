@@ -1,20 +1,15 @@
 import { Minus, X } from "lucide-react";
 import { FocusScope } from "radix-ui/internal";
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
+import { useNarrow } from "../lib/use-narrow";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { boxClients, boxPresent, boxTitle, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
-const NARROW = "(max-width: 78rem)";
-const subscribeNarrow = (onChange: () => void) => {
-	const media = window.matchMedia(NARROW);
-	media.addEventListener("change", onChange);
-	return () => media.removeEventListener("change", onChange);
-};
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
 
 function FloatingWindow({ title, icon, size, layout, cascade, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
@@ -143,7 +138,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const requestNavigation = useNavigationRequest();
 	const [order, setOrder] = useState<BoxId[]>([]);
 	const [slots, setSlots] = useState<ReadonlyMap<BoxId, number>>(new Map());
-	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
+	const narrow = useNarrow();
 	if (conversation === null) return null;
 	const present = [...boxClients()].flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);

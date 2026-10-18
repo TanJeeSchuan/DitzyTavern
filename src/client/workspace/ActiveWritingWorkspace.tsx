@@ -36,6 +36,7 @@ import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
 import { usePreviewController } from "./usePreviewController";
+import { useNarrow } from "../lib/use-narrow";
 import { useThemePreference } from "../lib/use-theme";
 import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
@@ -189,6 +190,9 @@ export function ActiveWritingWorkspace({
 	};
 
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
+	// @approved
+	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
+	const covered = useNarrow() && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
 		<Toast.Provider duration={8_000} swipeDirection="right">
@@ -235,6 +239,7 @@ export function ActiveWritingWorkspace({
 				dispatchStory={dispatchStory}
 				conversation={conversation}
 				assemblyActive={assemblyActive}
+				inert={covered}
 				session={session}
 				generation={generation}
 				preview={preview}
