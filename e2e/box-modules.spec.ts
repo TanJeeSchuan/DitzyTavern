@@ -25,6 +25,8 @@ test("a Box client module that fails to import or is malformed loses its surface
 	await expect(page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Phone", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Phone" })).toBeVisible();
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
+	await expect(page.getByRole("region", { name: "Memory", exact: true })).toBeVisible();
 });
 
 test("a Box client module that never finishes loading is refused at its deadline, and the Chat renders and still turns the Box off", async ({ page }) => {
