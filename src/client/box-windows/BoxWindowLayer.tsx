@@ -17,11 +17,12 @@ const subscribeNarrow = (onChange: () => void) => {
 };
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
 
-function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
+function FloatingWindow({ title, icon, size, layout, cascade, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
 	title: string;
 	icon: ReactNode;
 	size: { width: number; height: number };
 	layout: BoxWindowLayout;
+	cascade: number;
 	zIndex: number;
 	narrow: boolean;
 	minimized: boolean;
@@ -83,8 +84,11 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, 
 		if (next !== null) onMove(next.x, next.y);
 	};
 
-	const x = position?.x ?? layout.x;
-	const y = position?.y ?? layout.y;
+	const placed = position ?? (layout.x === undefined || layout.y === undefined ? null : { x: layout.x, y: layout.y });
+	//  An unplaced window opens in the right utility bay, below the story
+	//  header, each one a step down and left of the last so every title bar
+	//  stays in view.
+	const bayTop = `calc(5.25rem + ${cascade * 2.25}rem)`;
 	// @approved
 	//  A saved position can come from a larger viewport, so the browser keeps
 	//  it inside this one, on open and on every resize, with the drag's bounds.
@@ -93,21 +97,22 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, 
 		display: minimized ? "none" : undefined,
 		width: `${size.width}rem`,
 		height: `${size.height}rem`,
-		left: x === undefined ? undefined : `clamp(0px, ${x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`,
-		top: y === undefined ? undefined : `clamp(0px, ${y}px, calc(100dvh - 48px))`,
+		...placed === null
+			? { top: bayTop, right: `${1.25 + cascade * 1.75}rem`, maxHeight: `calc(100dvh - ${bayTop} - 1.25rem)` }
+			: { right: "auto", left: `clamp(0px, ${placed.x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`, top: `clamp(0px, ${placed.y}px, calc(100dvh - 48px))` },
 	};
 	return <section
 		ref={frame}
 		className="box-window"
 		data-covered={narrow && covered ? "" : undefined}
 		style={style}
-		data-positioned={position !== null || (layout.x !== undefined && layout.y !== undefined)}
 		role="dialog"
 		aria-label={title}
 		aria-modal={narrow || undefined}
 		// @approved
 		// On narrow the frame is the layer's first tabbable, so Tab cycling wraps from it before the trap has seen any focus.
 		tabIndex={narrow ? 0 : -1}
+		onFocus={onRaise}
 		onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
 	>
 		<div className="box-window-bar" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
@@ -137,13 +142,26 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 }): ReactNode {
 	const requestNavigation = useNavigationRequest();
 	const [order, setOrder] = useState<BoxId[]>([]);
+	const [slots, setSlots] = useState<ReadonlyMap<BoxId, number>>(new Map());
 	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
 	if (conversation === null) return null;
 	const present = [...boxClients()].flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
 	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
-	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
+	const raise = (id: BoxId) => setOrder((current) => current.at(-1) === id ? current : [...current.filter((entry) => entry !== id), id]);
+	//  Each unplaced window keeps the first free cascade slot it found when it
+	//  opened, so a later window steps past it and closing one frees its slot.
+	const unplaced = opened.flatMap(([id]) => controller.layouts[id]?.x === undefined ? [id] : []);
+	const kept = new Map([...slots].filter(([id]) => unplaced.includes(id)));
+	const taken = new Set(kept.values());
+	for (const id of unplaced.filter((entry) => !kept.has(entry))) {
+		let slot = 0;
+		while (taken.has(slot)) slot++;
+		kept.set(id, slot);
+		taken.add(slot);
+	}
+	if (kept.size !== slots.size || [...kept].some(([id, slot]) => slots.get(id) !== slot)) setSlots(kept);
 	const zIndex = (id: BoxId) => 30 + order.indexOf(id) + 1;
 	// @approved
 	//  The window painted last at the highest z-index is the one on top.
@@ -173,6 +191,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				icon={<BoxIcon box={id} icon={icon} />}
 				size={Window.size}
 				layout={layout}
+				cascade={kept.get(id) ?? 0}
 				zIndex={zIndex(id)}
 				narrow={narrow}
 				minimized={layout.minimized}
@@ -182,7 +201,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
-				<BoxOffNotice conversation={conversation} box={id} className="mb-3" />
+				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<BoxBoundary box={id}>
 					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}

@@ -185,6 +185,8 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 	</div>;
 }
 
+const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim();
+
 const commandNotices = { conflict: "The Chat changed elsewhere. Review the passage before saving again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE };
 
 /** @approved Every digesting Box's window ends with this timeline of the
@@ -268,7 +270,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 			{passages.map((passage) => (
 				<li key={passage.variantId}>
 					<strong>{passage.author ?? "Unknown"}</strong>
-					<span className="box-timeline-text">{passage.content}</span>
+					<span className="box-timeline-text">{excerpt(passage.content)}</span>
 					{editing?.variantId === passage.variantId
 						? <RecordEditor box={box} passage={passage} expected={editing.expected} fields={fields} summarize={summarize} busy={locked}
 							onCancel={() => setEditing(null)} onSave={(record) => save(passage, editing.expected, record)} />
