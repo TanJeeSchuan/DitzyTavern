@@ -62,9 +62,10 @@ describe("Cast Memory identities", () => {
 		const chat = createChat(database);
 		const writer = chat.cast[0]!;
 		source(database, chat.id, 1, writer, ["Writer", "Maren"]);
-		mergeMemoryLabels(database, chat.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
+		const staleLabels = readConversationMemories(database, chat.id).labelRevision;
+		mergeMemoryLabels(database, chat.id, { expectedRevision: staleLabels, labels: ["Maren"], destination: "Mary" });
 		const before = readConversationMemories(database, chat.id);
-		const conflict = await save(database, chat.id, writer.id, { kind: "excluded" }, 0);
+		const conflict = await save(database, chat.id, writer.id, { kind: "excluded" }, staleLabels);
 		expect(conflict.status).toBe(409);
 		expect(Value.Parse(memoryLabelsConflict, await conflict.json()).memories).toEqual(before);
 		expect((await save(database, chat.id, writer.id, { kind: "plays", person: "   " })).status).toBe(422);
@@ -72,6 +73,6 @@ describe("Cast Memory identities", () => {
 		expect((await save(database, chat.id, other.cast[0]!.id, { kind: "excluded" })).status).toBe(422);
 		expect(readConversationMemories(database, chat.id)).toEqual(before);
 		expect((await save(database, chat.id, writer.id, { kind: "excluded" })).status).toBe(200);
-		expect(() => mergeMemoryLabels(database, chat.id, { expectedRevision: 1, labels: ["Mary"], destination: "Maren" })).toThrow();
+		expect(() => mergeMemoryLabels(database, chat.id, { expectedRevision: staleLabels, labels: ["Mary"], destination: "Maren" })).toThrow();
 	});
 });

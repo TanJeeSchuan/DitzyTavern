@@ -1,9 +1,12 @@
 import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import type { BoxValue } from "../../shared/contract/box-value";
+import { boxEntryOf, type BoxValue } from "../../shared/contract/box-value";
+import { generationJsonValue } from "../../shared/contract/json-value";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../hash";
@@ -45,8 +48,13 @@ export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["w
 /** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
 export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
+export const checkedBoxState = <State>(id: BoxId, state: State | undefined): State | undefined => {
+	if (state === undefined || Value.Check(generationJsonValue, state)) return state;
+	throw new Error(`The ${id} Box's state must be JSON or undefined.`);
+};
+
 /** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecords = <Setup, Rec extends BoxValue, State>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
+export const foldRecords = <Setup, Rec extends BoxValue, State extends GenerationJsonValue | undefined>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
 	selectedVariantIds.reduce((state, variantId) => {
 		const record = effectiveRecord(slots.get(variantId));
 		return record === undefined ? state : records.fold(state, record, setup);
@@ -60,8 +68,8 @@ export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]
 export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, instances: BoxInstances): RecordStates =>
 	Object.fromEntries([...boxes].flatMap(([id, { records }]) => {
 		if (records === undefined) return [];
-		const slots = readRecordSlots(db, id, boxRecordSchema(id), instances[id], selectedVariantIds);
-		return [[id, foldRecords<unknown, BoxValue, unknown>(records, setups[id], slots, selectedVariantIds)]];
+		const slots = readRecordSlots(db, id, boxRecordSchema(id), boxEntryOf(instances, id), selectedVariantIds);
+		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, boxEntryOf(setups, id), slots, selectedVariantIds))]];
 	}));
 
 const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, slot: RecordSlot<BoxValue>): void => {

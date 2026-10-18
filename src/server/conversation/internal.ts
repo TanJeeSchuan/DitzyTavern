@@ -24,7 +24,8 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { boxDescriptors, isBoxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxDescriptors, isBoxNamespace, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxEntryOf } from "../../shared/contract/box-value";
 import { readBoxInstances } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
 import {
@@ -407,7 +408,7 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
-	if (namespace === SEED_NAMESPACE || isBoxReference(namespace)) {
+	if (namespace === SEED_NAMESPACE || isBoxNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
 		);
@@ -454,7 +455,7 @@ export const requireBox = (box: BoxId): BoxDescriptor => {
 
 export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
 	requireBox(box);
-	const instance = readBoxInstances(db, conversationId)[box];
+	const instance = boxEntryOf(readBoxInstances(db, conversationId), box);
 	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
 	return instance;
 };

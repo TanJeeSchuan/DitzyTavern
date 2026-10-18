@@ -14,16 +14,19 @@ export type BoxValue = Static<typeof boxValue>;
 /** @approved Whether a Box value passes one of its Box's schemas; the host keeps holding it as a BoxValue. */
 export const fitsBoxSchema = (schema: TSchema, value: BoxValue): boolean => Value.Check(schema, value);
 
+export const boxEntryOf = <Value>(entries: Readonly<Record<string, Value>>, box: string): Value | undefined =>
+	Object.hasOwn(entries, box) ? entries[box] : undefined;
+
 /** @approved A Box's own setup in a Chat, checked against and typed by the Box's own setup schema. */
 export const boxSetupOf = <Schema extends TSchema>({ boxSetups }: { readonly boxSetups: Readonly<Record<string, BoxValue>> }, box: string, schema: Schema): Static<Schema> => {
-	const setup: unknown = boxSetups[box];
+	const setup: unknown = boxEntryOf(boxSetups, box);
 	if (!Value.Check(schema, setup)) throw new Error(`The ${box} Box setup does not match its schema.`);
 	return setup;
 };
 
 /** @approved A Box's own Moves, checked against and typed by the Box's own Move schema. */
 export const boxMovesOf = <Schema extends TSchema>(moves: Readonly<Record<string, readonly BoxValue[]>>, box: string, schema: Schema): readonly Static<Schema>[] => {
-	const list: unknown = moves[box] ?? [];
+	const list: unknown = boxEntryOf(moves, box) ?? [];
 	if (!Value.Check(Type.Array(schema), list)) throw new Error(`The ${box} Moves do not match their schema.`);
 	return list;
 };

@@ -25,7 +25,7 @@ import type { BoxTraces } from "../../shared/contract/box-generation";
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
 import { configureDecisionModels } from "../../server/contract/decision-model-test-fixtures";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
-import { mergeMemoryLabels, setMemoryAllowance } from "./server-memories";
+import { mergeMemoryLabels, readConversationMemories, setMemoryAllowance } from "./server-memories";
 import { readMemoryChatSettings } from "./server-chat";
 import { embedTexts } from "../../server/box/embedding";
 import { captureMemoryRecallSnapshot } from "./server-recall";
@@ -161,7 +161,7 @@ describe("Memory recall in Generation preparation", () => {
 			applyBoxDecisionSettings(database, "memory", { type: "apply", expectedRevision: revision, ...selection, ...(change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
 			setMemoryAllowance(database, conversation.id, { expectedRevision: readMemoryChatSettings(database, conversation.id).revision, allowance: 1024 });
-		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
+		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: readConversationMemories(database, conversation.id).labelRevision, labels: ["Maren"], destination: "Mary" });
 		else if (change === "correction") correct(database, conversation.id, source.variantId, claims);
 		else resetWriterRecord(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId);
 		const accepted = await app.handle(post(`/api/conversations/${conversation.id}/generations`, { kind: "send", expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }));

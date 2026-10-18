@@ -10,6 +10,9 @@ const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
 const INSTANCE_KEY = "instance";
 
+const hostChatKeys: ReadonlySet<string> = new Set([SETUP_KEY, ENABLED_KEY, INSTANCE_KEY]);
+export const isHostChatKey = (key: string): boolean => hostChatKeys.has(key);
+
 const storedBoolean = Type.Boolean();
 
 export const boxStateEntry = (id: BoxId, enabled: boolean) =>
@@ -23,6 +26,12 @@ export const boxInstanceEntry = (id: BoxId) =>
 	({ namespace: boxReference(id), key: INSTANCE_KEY, value: crypto.randomUUID() });
 
 export type BoxInstances = Partial<Record<BoxId, string>>;
+
+export const readBoxInstance = (db: BunSQLiteDatabase, conversationId: number, id: BoxId): string | undefined =>
+	db.select({ value: conversationDataTable.value })
+		.from(conversationDataTable)
+		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, boxReference(id)), eq(conversationDataTable.key, INSTANCE_KEY)))
+		.get()?.value;
 
 /** @approved The instance of every Box present in this Chat; an absent Box has none. */
 export const readBoxInstances = (db: BunSQLiteDatabase, conversationId: number): BoxInstances => Object.fromEntries(db

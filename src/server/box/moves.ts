@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import type { BoxValue } from "../../shared/contract/box-value";
+import { boxEntryOf, type BoxValue } from "../../shared/contract/box-value";
 import { parseStoredBoxJson } from "./stored-json";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
@@ -18,7 +18,7 @@ const MOVES_KEY = "moves";
 //  enter history as their chip labels. Boxes render in registry order.
 const renderMoves = (moves: BoxMoves, author: string, boxes: BoxStates): string[] => boxesWith("moves").flatMap(([id]) => {
 	const rendering = boxes[id] === "enabled" ? serverBox(id)?.moves : undefined;
-	return (moves[id] ?? []).map((move) => rendering?.render(move, author) ?? moveLabel(id, move));
+	return (boxEntryOf(moves, id) ?? []).map((move) => rendering?.render(move, author) ?? moveLabel(id, move));
 });
 const movesNamespaces = () => boxesWith("moves").map(([id]) => boxReference(id));
 
@@ -55,7 +55,7 @@ export const writeMessageMoves = (db: BunSQLiteDatabase, messageId: number, move
 		eq(messageDataTable.key, MOVES_KEY),
 	)).run();
 	for (const [id] of boxesWith("moves")) {
-		const list = moves[id];
+		const list = boxEntryOf(moves, id);
 		if (list !== undefined && list.length > 0) db.insert(messageDataTable).values({ message_id: messageId, namespace: boxReference(id), key: MOVES_KEY, value: JSON.stringify(list) }).run();
 	}
 };

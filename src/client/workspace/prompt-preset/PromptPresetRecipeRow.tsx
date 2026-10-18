@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
 import { isBoxSlot, isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
-import { boxDescriptorOf, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
+import { boxMetadataOf, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -74,7 +74,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
 	if (!isBoxReference(slot.reference)) return { description: `The ${title} Box is not loaded, so this block sends nothing.`, source: "No Box loaded" };
-	return boxDescriptorOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
+	return boxMetadataOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
 type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
@@ -95,7 +95,7 @@ const TextFieldEditor = ({
 	disabled: boolean;
 	onChange: (fields: TextFields) => void;
 }) => {
-	const box = isBoxReference(slot.reference) ? boxDescriptorOf(slot.reference) : null;
+	const box = isBoxReference(slot.reference) ? boxMetadataOf(slot.reference) : null;
 	const fields: TextFields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
 		: { name: "name" in slot ? slot.name : undefined, content: slot.content, role: slot.role };

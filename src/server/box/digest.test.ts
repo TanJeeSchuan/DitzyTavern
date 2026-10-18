@@ -287,11 +287,12 @@ test("a catch-up run reports how many of its passages failed", async () => {
 	await waitFor(() => readBoxCatchUp(database, chat.id, "world-clock") === null);
 });
 
-test("a digest reads its passages' Message ids, the Cast and its own Chat values", async () => {
+test("a digest reads its passages' Message ids, the Cast and its own Chat values but none of the host's", async () => {
 	const chat = createChat();
 	addPassage(chat.id, 1, "The storm breaks over the tower.");
 	const passage = addPassage(chat.id, 2, "Snow drifts against the shutters.");
-	const clock = insertBox(database, chat.id, "world-clock");
+	insertBox(database, chat.id, "world-clock");
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:world-clock', 'tuning', ?)").run(chat.id, JSON.stringify({ kept: true }));
 	enableDecision();
 	const windows: DigestWindow[] = [];
 	const run = spyOn(worldClockBox.records.digest, "run").mockImplementation(async (window) => {
@@ -307,7 +308,7 @@ test("a digest reads its passages' Message ids, the Cast and its own Chat values
 	expect(windows[0]?.passage).toEqual({ messageId: messageIds[1]!, speaker: null, authorId: null, content: "Snow drifts against the shutters." });
 	expect(windows[0]?.preceding.map((entry) => entry.messageId)).toEqual([messageIds[0]!]);
 	expect(windows[0]?.cast.map(({ name, removed }) => ({ name, removed }))).toEqual([{ name: "Writer", removed: false }, { name: "Maren", removed: false }]);
-	expect(windows[0]?.data).toEqual({ enabled: "true", instance: clock });
+	expect(windows[0]?.data).toEqual({ tuning: JSON.stringify({ kept: true }) });
 });
 
 

@@ -12,7 +12,7 @@ import {
 } from "../../prompt-preset-library";
 import { isSingleUseReference, type ConversationPromptPreset, type PromptBlockReference } from "../../../shared/contract/prompt-preset";
 import { slotLabel } from "../../prompt-preset-presentation";
-import { boxDescriptors, boxReference } from "../../../shared/contract/box";
+import { boxMetadatas, boxReference } from "../../../shared/contract/box";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
 
@@ -25,7 +25,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"history",
 	"model-post-history-instruction",
 	"lore",
-	...[...boxDescriptors().keys()].map(boxReference),
+	...[...boxMetadatas().keys()].map(boxReference),
 ];
 
 const AddBlockMenu = ({

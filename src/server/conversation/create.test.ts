@@ -1,4 +1,8 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { builtInBoxes, loadBoxes } from "../box/registry";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -364,5 +368,25 @@ describe("Conversation creation", () => {
 		expect(first?.historicalContext).toEqual(null);
 
 		expect(readTestConversationSnapshot(conversation, snapshot.id)).toEqual(snapshot);
+	});
+	test("creates a Chat with no Box loaded, and one whose Boxes all start off", async () => {
+		const offFolder = mkdtempSync(join(tmpdir(), "ditzy-create-"));
+		mkdirSync(join(offFolder, "lantern"));
+		writeFileSync(join(offFolder, "lantern", "shared-descriptor.ts"), 'export default { id: "lantern", sdk: 1, label: "Lantern", summary: "Hangs a lantern.", role: "system", startsEnabled: false, instructions: "" };');
+		writeFileSync(join(offFolder, "lantern", "server.ts"), "export default {};");
+		const boxRows = (conversationId: number) =>
+			database.query("SELECT namespace, key FROM conversation_data WHERE conversation_id = ? AND namespace LIKE 'box:%' ORDER BY namespace, key").all(conversationId);
+		try {
+			await loadBoxes([offFolder]);
+			const off = createConversationWithHistory(database, inputWith());
+			expect(boxRows(off.id)).toEqual([]);
+			await loadBoxes([]);
+			const none = createConversationWithHistory(database, inputWith());
+			expect(boxRows(none.id)).toEqual([]);
+			expect(none.playable).toBe(true);
+		} finally {
+			rmSync(offFolder, { recursive: true, force: true });
+			await loadBoxes([builtInBoxes]);
+		}
 	});
 });

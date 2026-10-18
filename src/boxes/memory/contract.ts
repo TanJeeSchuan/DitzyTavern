@@ -19,7 +19,7 @@ export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("them
 export type MemoryIdentity = Static<typeof memoryIdentity>;
 export const memoryIdentities = Type.Record(Type.String(), memoryIdentity);
 export type MemoryIdentities = Static<typeof memoryIdentities>;
-export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.Integer(), participantId: Type.Integer(), identity: memoryIdentity });
+export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.String(), participantId: Type.Integer(), identity: memoryIdentity });
 export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
 export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
 export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
@@ -39,25 +39,25 @@ export type MemorySourceView = Static<typeof memorySource>;
 // `embeddingReady` whether an embedding model is, without which no claim is
 // recalled.
 export const conversationMemories = Type.Object({
-	revision: Type.Integer(), labelRevision: Type.Integer(), identities: memoryIdentities,
+	revision: Type.Integer(), labelRevision: Type.String(), identities: memoryIdentities,
 	cast: Type.Array(Type.Object({ id: Type.Integer(), names: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) })),
 	labelMerges: memoryLabelMerges, sources: Type.Array(memorySource),
 	path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]), authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })),
 	digestReady: Type.Boolean(), embeddingReady: Type.Boolean(), catchUp: Type.Union([boxCatchUp, Type.Null()]),
 });
 export type ConversationMemories = Static<typeof conversationMemories>;
-export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
+export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.String(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
 export type MemoryLabelMergeCommand = Static<typeof memoryLabelMergeCommand>;
 export const memoryLabelsMerged = Type.Object({ outcome: Type.Literal("applied"), memories: conversationMemories });
 export const memoryLabelsConflict = Type.Object({ outcome: Type.Literal("conflict"), memories: conversationMemories });
 export const memoryConversationIdParams = Type.Object({ id: numericWire });
 
-export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(), allowance: Type.Integer(), note: Type.String() });
-export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.Integer(), allowance: Type.Integer() });
+export const conversationMemoryAllowance = Type.Object({ revision: Type.String(), allowance: Type.Integer(), note: Type.String() });
+export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.String(), allowance: Type.Integer() });
 export type ConversationMemoryAllowanceCommand = Static<typeof conversationMemoryAllowanceCommand>;
-export const conversationMemoryNoteCommand = Type.Object({ expectedRevision: Type.Integer(), note: Type.String() });
+export const conversationMemoryNoteCommand = Type.Object({ expectedRevision: Type.String(), note: Type.String() });
 export const conversationMemoryAllowanceApplied = Type.Object({ outcome: Type.Literal("applied"), settings: conversationMemoryAllowance });
-export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });
+export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.String(), actualRevision: Type.String(), currentSettings: conversationMemoryAllowance });
 export type ConversationMemoryAllowance = Static<typeof conversationMemoryAllowance>;
 // @approved
 //  Memory's stored per-Chat values in conversation_data under `box:memory`;
