@@ -13,13 +13,10 @@ const useThoughts = (conversation: ConversationSummary) => useQuery({
 	placeholderData: (previous) => previous,
 });
 
-function ThoughtDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function ThoughtStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);
 	const count = read.data?.thoughts.length ?? 0;
-	return <button type="button" className="box-dock-tab" title="Restore Thoughts" onClick={onRestore}>
-		<MessageCircleDashed aria-hidden="true" /><span className="thought-label">Thoughts: </span>
-		<span>{read.isError ? "Unavailable" : count === 0 ? "No thoughts" : count === 1 ? "1 thought" : `${count} thoughts`}</span>
-	</button>;
+	return <span>{read.isError ? "Unavailable" : count === 0 ? "No thoughts" : count === 1 ? "1 thought" : `${count} thoughts`}</span>;
 }
 
 /** @approved A thought the lens lifted out of the prose: the story keeps a mark where it was, which opens the Thoughts window. */
@@ -43,4 +40,4 @@ function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 
 const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);
 
-export default { descriptor, icon: MessageCircleDashed, Window: { size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;
+export default { descriptor, icon: MessageCircleDashed, Status: ThoughtStatus, Window: { size: { width: 22, height: 30 }, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;

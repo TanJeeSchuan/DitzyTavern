@@ -2,7 +2,7 @@ import { KindGuard, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, type LucideIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -30,10 +30,10 @@ function useBoxDigest(conversationId: number, box: BoxId) {
 	});
 }
 
-// @approved
 //  A digesting Box's folded status line, polled; the label stands in for a
-//  null status. The dock tab and top bar items read it. Its key extends the
-//  digest's, so a save that refreshes the timeline refreshes the status too.
+//  null status. The host's dock button, header item and Box manager row read
+//  it. Its key extends the digest's, so a save that refreshes the timeline
+//  refreshes the status too.
 export function useBoxStatus(conversationId: number, box: BoxId): string {
 	const read = useQuery({
 		queryKey: [...boxDigestKey(conversationId, box), "status"],
@@ -42,17 +42,6 @@ export function useBoxStatus(conversationId: number, box: BoxId): string {
 		refetchIntervalInBackground: false,
 	});
 	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptor(box).label : "Reading…");
-}
-
-/** @approved A digesting Box's dock tab: its folded status line. */
-function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: BoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
-	const status = useBoxStatus(conversation.id, box);
-	const { label } = boxDescriptor(box);
-	return <button type="button" className="box-dock-tab" title={`Restore ${label}`} onClick={onRestore}>
-		<Icon aria-hidden="true" />
-		<span className="sr-only">{label}: </span>
-		<span>{status}</span>
-	</button>;
 }
 
 /** @approved A record field holds a scalar: a literal, a number, a string or null. */
@@ -85,10 +74,9 @@ const recordFields = ({ id, record }: BoxDescriptor): readonly RecordField[] => 
 	return Object.entries(record.properties).map(([key, schema]) => recordField(key, schema));
 };
 
-// @approved
-//  A digesting Box's window: its own Panel, if it has one, then the host's
-// passage timeline; its dock tab shows `status`. `describe` summarizes a
-// record on the timeline in place of the generic summary. The override
+//  A digesting Box's window and status: its own Panel, if it has one, then the
+// host's passage timeline, and its folded `status` line. `describe` summarizes
+// a record on the timeline in place of the generic summary. The override
 // editor is built from the record schema here, so a schema the timeline
 // cannot edit fails the Box's client module as it loads, not when it opens.
 export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel, describe }: {
@@ -96,20 +84,23 @@ export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel
 	size: BoxWindowDefinition["size"];
 	Panel?: BoxWindowDefinition["Panel"];
 	describe?(record: Rec): string;
-}): BoxWindowDefinition & { readonly icon: LucideIcon } {
+}) {
 	const { id: box } = descriptor;
 	const fields = recordFields(descriptor);
 	// @approved
 	// SAFETY: the timeline holds this Box's records, which its `describe` takes.
 	const summarize = (describe ?? ((record) => summaryOf(fields, record))) as (record: RecordValue) => string;
+	const Status = ({ conversation }: { conversation: ConversationSummary }) => useBoxStatus(conversation.id, box);
 	return {
 		icon,
-		size,
-		DockTab: ({ conversation, onRestore }) => <DigestDockTab box={box} icon={icon} conversation={conversation} onRestore={onRestore} />,
-		Panel: (props) => <>
-			{Panel !== undefined && <Panel {...props} />}
-			<PassageTimeline box={box} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
-		</>,
+		Status,
+		Window: {
+			size,
+			Panel: (props: ComponentProps<BoxWindowDefinition["Panel"]>) => <>
+				{Panel !== undefined && <Panel {...props} />}
+				<PassageTimeline box={box} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
+			</>,
+		},
 	};
 }
 

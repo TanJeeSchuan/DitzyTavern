@@ -2,7 +2,7 @@ import type { BoxDescriptor } from "@/box-sdk/shared";
 import { memoryRecord } from "./contract";
 
 export default {
-	id: "memory", sdk: 1, label: "Memory", role: "system", startsEnabled: true, instructions: "",
+	id: "memory", sdk: 1, label: "Memory", summary: "Remembers what passages establish and recalls it when a Generation is assembled.", role: "system", startsEnabled: true, instructions: "",
 	block: { description: "Uses Conversation Memories recalled when a Generation is assembled.", source: "Conversation Memories" },
 	record: memoryRecord,
 	decision: {

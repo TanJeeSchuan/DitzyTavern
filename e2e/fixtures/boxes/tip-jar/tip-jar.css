@@ -1,9 +1,5 @@
 @reference "@/index.css";
 
-.tip-jar-label {
-	@apply sr-only;
-}
-
 .tip-jar {
 	@apply grid gap-3 rounded-[7px] p-3;
 }

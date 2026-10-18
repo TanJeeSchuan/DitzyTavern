@@ -2,8 +2,8 @@ import { Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { boxReference, type BoxId, type PromptBoxReference } from "../shared/contract/box";
-import { boxClients, boxPresent, boxTitle } from "./box-windows/registry";
+import type { BoxId, PromptBoxReference } from "../shared/contract/box";
+import { boxClients, boxOpening, boxTitle } from "./box-windows/registry";
 import { BoxIcon } from "./box-windows/BoxBoundary";
 import { controlChangeDescription } from "./cast";
 import {
@@ -52,12 +52,13 @@ export function ComposerControlSelectors({
 		return null;
 	}
 
-	// @approved
-	//  One launcher per Box present in the Chat with a client entry: a panel
-	//  Box opens in the primary panel, any other in its window.
-	const launchers = [...boxClients()].flatMap(([box, { icon, PrimaryPanel, Window }]) => !boxPresent(conversation, box) ? []
-		: PrimaryPanel !== undefined ? [{ box, icon, open: () => onOpenPanel(boxReference(box)) }]
-		: Window !== undefined ? [{ box, icon, open: () => onOpenWindow(box) }] : []);
+	//  One launcher per Box enabled in the Chat with a client entry: it opens
+	//  where that Box lives. An off Box stays reachable from the Box manager,
+	//  the Chat tools and the dock, where its window can be opened.
+	const launchers = [...boxClients()].flatMap(([box, { icon }]) => {
+		const open = conversation.boxes[box] === "enabled" ? boxOpening(box, { panel: onOpenPanel, window: onOpenWindow }) : undefined;
+		return open === undefined ? [] : [{ box, icon, open }];
+	});
 
 	const options = conversation.cast.map((participant) => ({
 		value: participant.id,

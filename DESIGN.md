@@ -208,7 +208,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Application shell
 
 - Slim icon-only desktop rail with immediate hover and keyboard-focus labels.
-- Boxes opens the left panel for adding, disabling, and removing Boxes in the active Chat. Individual Box panels and windows stay reachable from the composer.
+- Boxes opens the left panel for adding, disabling, and removing Boxes in the active Chat, and every row in it opens its Box. The composer's launchers cover only the Boxes enabled in this Chat, so an off Box is reached from the Box manager, its header item or its dock.
 - Labelled navigation drawer, opened from the Story header, on narrow desktop and mobile.
 - Abstract ambient field visible mainly around the fixed story canvas and unused utility bays.
 - No decorative status dots or ornamental navigation treatments.
@@ -218,8 +218,8 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Persistently shows the Chat title.
 - Includes one compact Cast control rather than listing portraits or names.
 - The Cast control opens the primary left participant panel.
-- A Chat tools group sits between the title and the Cast control: a window item for each Box present in the Chat that declares one, disabled ones included, the host's Chat information and Macro Variables icons, then inspector icons for Boxes present in the Chat. The host supplies the Memories icon from Memory's inspector registration. A Box item is a quiet button with the Box's icon and one short line, such as the World Clock's in-story time, and opens the Box's window.
-- On narrow desktop and mobile the Chat tools group is hidden. The title menu carries Chat information, Macro Variables and inspector actions for Boxes present in the Chat, including Memories. Box window items stay in the composer's Box launcher; several status lines would crowd out the title.
+- A Chat tools group sits between the title and the Cast control: a header item for each Box present in the Chat that declares one, disabled ones included, the host's Chat information and Macro Variables icons, then inspector icons for Boxes present in the Chat. The host supplies the Memories icon from Memory's inspector registration. A Box item is a quiet button with the Box's icon and one short line, such as the World Clock's in-story time, and opens the Box's window. While the Box is off, its item is muted and its title says the Box is off.
+- On narrow desktop and mobile the Chat tools group is hidden. The title menu carries Chat information, Macro Variables and inspector actions for Boxes present in the Chat, including Memories. Box windows stay reachable from the Box manager and the dock; several status lines would crowd out the title.
 - Cast membership can change at any time.
 - Generation profile does not appear globally because it belongs to individual Messages.
 

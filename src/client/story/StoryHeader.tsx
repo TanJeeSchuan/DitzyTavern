@@ -1,4 +1,5 @@
-import { ChevronDown, Info, UsersRound, Variable } from "lucide-react";
+import { ChevronDown, Info, UsersRound, Variable, type LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { BoxId } from "../../shared/contract/box";
@@ -7,7 +8,24 @@ import { boxTitle, boxClients, boxPresent } from "../box-windows/registry";
 import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
 
-const topBarItemLook = "max-w-56 rounded-xl text-[0.78rem] font-semibold text-muted-foreground tabular-nums";
+const headerItemLook = "max-w-56 rounded-xl text-[0.78rem] font-semibold text-muted-foreground tabular-nums";
+const offHeaderItemLook = "max-w-56 rounded-xl text-[0.78rem] font-normal text-[var(--text-faint)] tabular-nums opacity-75";
+
+function HeaderItem({ conversation, box, icon: Icon, Status, onOpen }: {
+	conversation: ConversationSummary;
+	box: BoxId;
+	icon: LucideIcon;
+	Status: ComponentType<{ conversation: ConversationSummary }>;
+	onOpen: (box: BoxId) => void;
+}) {
+	const label = boxTitle(box);
+	const off = conversation.boxes[box] === "disabled";
+	return <Button type="button" variant="ghost" size="lg" className={off ? offHeaderItemLook : headerItemLook} title={off ? `${label} is off in this Chat` : `Open ${label}`} onClick={() => onOpen(box)}>
+		<BoxIcon box={box} icon={Icon} />
+		<span className="sr-only">{label}: </span>
+		<span className="truncate"><BoxBoundary box={box}><Status conversation={conversation} /></BoxBoundary></span>
+	</Button>;
+}
 
 export function StoryHeader({
 	chat,
@@ -28,11 +46,8 @@ export function StoryHeader({
 	onOpenInspector: (box: BoxId, focus: { messageId: number } | null) => void;
 	onOpenWindow: (box: BoxId) => void;
 }) {
-	const windowItems = conversation === null ? [] : [...boxClients()].map(([id, { icon, TopBarItem }]) => TopBarItem !== undefined && boxPresent(conversation, id) && <Button key={id} type="button" variant="ghost" size="lg" className={topBarItemLook} title={`Open ${boxTitle(id)}`} onClick={() => onOpenWindow(id)}>
-		<BoxIcon box={id} icon={icon} />
-		<span className="sr-only">{boxTitle(id)}: </span>
-		<span className="truncate"><BoxBoundary box={id}><TopBarItem conversation={conversation} /></BoxBoundary></span>
-	</Button>);
+	const headerItems = conversation === null ? [] : [...boxClients()].flatMap(([id, client]) => client.header !== true || client.Status === undefined || !boxPresent(conversation, id) ? []
+		: [<HeaderItem key={id} conversation={conversation} box={id} icon={client.icon} Status={client.Status} onOpen={onOpenWindow} />]);
 	const inspectorItems = conversation === null ? [] : [...boxClients()].map(([id, { icon, Inspector }]) => Inspector !== undefined && boxPresent(conversation, id) && <button key={id} type="button" className="icon-button" aria-label={Inspector.label} onClick={() => onOpenInspector(id, null)}>
 		<BoxIcon box={id} icon={icon} />
 	</button>);
@@ -60,7 +75,7 @@ export function StoryHeader({
 				</DropdownMenu>
 			</div>
 			<div className="story-header-tools" role="group" aria-label="Chat tools">
-				{windowItems}
+				{headerItems}
 				<button className="icon-button chat-info-button" type="button" onClick={onOpenInfo} aria-label="Chat information"><Info aria-hidden="true" /></button>
 				<button className="icon-button" type="button" onClick={onOpenVariables} aria-label="Macro Variables"><Variable aria-hidden="true" /></button>
 				{inspectorItems}

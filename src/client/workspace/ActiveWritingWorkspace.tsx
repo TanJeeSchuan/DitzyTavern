@@ -10,6 +10,7 @@ import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { boxClients, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
+import { useBoxWindows } from "../box-windows/useBoxWindows";
 import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
@@ -154,6 +155,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const conversation = session.conversation;
+	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
 	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClients().get(inspectorBox)?.Inspector;
@@ -224,6 +226,8 @@ export function ActiveWritingWorkspace({
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
 				mutationsDisabled={story.preview !== null}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
+				onOpenWindow={boxWindows.open}
 			/>
 
 			<StoryStage
@@ -234,6 +238,7 @@ export function ActiveWritingWorkspace({
 				session={session}
 				generation={generation}
 				preview={preview}
+				boxWindows={boxWindows}
 				onEnterPreview={() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();

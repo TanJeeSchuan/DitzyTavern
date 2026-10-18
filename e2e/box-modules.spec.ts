@@ -16,11 +16,11 @@ test("a Box client module that fails to import or is malformed loses its surface
 	const memory = boxes.getByRole("listitem").filter({ hasText: "Memory" });
 	await expect(memory).toContainText("Did not load: The Memory client is broken.");
 	await expect(boxes.getByRole("listitem").filter({ hasText: "Thoughts" })).toContainText("Did not load: Its client module is invalid at /Window/size");
-	await expect(boxes.getByRole("switch", { name: "Thoughts in this Chat" })).not.toBeChecked();
+	await expect(boxes.getByRole("button", { name: "Add Thoughts", exact: true })).toBeVisible();
 	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await expect(memory.getByRole("switch", { name: "Memory in this Chat" })).not.toBeChecked();
-	await expect(memory).toContainText("Off · setup kept");
-	await boxes.getByRole("switch", { name: "Phone in this Chat" }).click();
+	await expect(memory.getByText("Off", { exact: true })).toBeVisible();
+	await boxes.getByRole("button", { name: "Add Phone", exact: true }).click();
 	await closeBoxes(page);
 	await expect(page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Phone", exact: true }).click();
@@ -33,10 +33,10 @@ test("a Box client module that never finishes loading is refused at its deadline
 	await page.goto("/", { waitUntil: "networkidle" });
 	await page.clock.fastForward(10_000);
 	await openBoxes(page);
-	const memory = page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Memory" });
+	const memory = page.getByRole("group", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Memory" });
 	await expect(memory).toContainText("Did not load: Its client module did not load within 10 seconds.");
 	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await expect(memory).toContainText("Off · setup kept");
+	await expect(memory.getByText("Off", { exact: true })).toBeVisible();
 });
 
 test("a Box surface or icon that throws shows its failure in its frame, and the rest of the Chat keeps working", async ({ page, llm }) => {

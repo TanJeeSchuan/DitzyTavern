@@ -16,11 +16,9 @@ const useTipJar = (conversation: ConversationSummary) => useQuery({
 	)),
 });
 
-function TipJarDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function TipJarStatus({ conversation }: { conversation: ConversationSummary }) {
 	const coins = useTipJar(conversation).data?.coins;
-	return <button type="button" className="box-dock-tab" title="Restore Tip Jar" onClick={onRestore}>
-		<Coins aria-hidden="true" /><span className="tip-jar-label">Tip Jar: </span><span>{coins === undefined ? "…" : `${coins} coins`}</span>
-	</button>;
+	return <span>{coins === undefined ? "…" : `${coins} coins`}</span>;
 }
 
 function TipJarPanel({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
@@ -32,4 +30,4 @@ function TipJarPanel({ conversation, disabled, staging }: { conversation: Conver
 	</div>;
 }
 
-export default { descriptor, icon: Coins, Window: { size: { width: 18, height: 12 }, DockTab: TipJarDockTab, Panel: TipJarPanel } } satisfies BoxClientDefinition;
+export default { descriptor, icon: Coins, Status: TipJarStatus, Window: { size: { width: 18, height: 12 }, Panel: TipJarPanel } } satisfies BoxClientDefinition;

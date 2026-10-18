@@ -4,7 +4,7 @@ import { initialRaceSetup } from "./shared-data";
 import { MAX_RACE_MOVES, raceMoveLabel } from "./shared";
 
 export default {
-	id: "race", sdk: 1, label: "Race", role: "system", startsEnabled: false, instructions: "",
+	id: "race", sdk: 1, label: "Race", summary: "Runs a horse race whose Moves and Stretches the writer plays out.", role: "system", startsEnabled: false, instructions: "",
 	setup: describeSetup(raceSetup, initialRaceSetup),
 	record: raceRecord,
 	moves: describeMoves(raceMove, MAX_RACE_MOVES, raceMoveLabel),

@@ -7,7 +7,7 @@ import { boxMovesOf, boxSetupOf } from "@/box-sdk/shared";
 import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
 import { loadRace } from "./client-read";
-import { RaceDockTab, RaceWindow } from "./client-window";
+import { RaceStatus, RaceWindow } from "./client-window";
 import descriptor from "./shared-descriptor";
 
 const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns exactly its keys. */ Object.keys(raceMoveCatalog) as RaceMoveKind[];
@@ -55,4 +55,4 @@ function RacePanel(props: ComponentProps<typeof RaceWindow> & { staging: MoveSta
 	</>;
 }
 
-export default { descriptor, icon: Flag, Window: { size: { width: 27, height: 34 }, DockTab: RaceDockTab, Panel: RacePanel } } satisfies BoxClientDefinition;
+export default { descriptor, icon: Flag, Status: RaceStatus, Window: { size: { width: 27, height: 34 }, Panel: RacePanel } } satisfies BoxClientDefinition;

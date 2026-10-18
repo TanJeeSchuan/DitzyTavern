@@ -146,7 +146,7 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 
 	const toggle = async (action: (boxes: Locator) => Promise<void>) => {
 		await openBoxes(page);
-		await action(page.getByRole("list", { name: "Boxes" }));
+		await action(page.getByRole("group", { name: "Boxes" }));
 		await closeBoxes(page);
 	};
 	const clockSwitch = (boxes: Locator) => boxes.getByRole("switch", { name: "World Clock in this Chat" });
@@ -160,7 +160,8 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 	await cancelPreview();
 
 	await toggle(async (boxes) => {
-		await boxes.getByRole("button", { name: "Remove World Clock" }).click();
+		await boxes.getByRole("button", { name: "World Clock actions" }).click();
+		await page.getByRole("menuitem", { name: "Remove from Chat…" }).click();
 		await page.getByRole("dialog", { name: "Remove World Clock?" }).getByRole("button", { name: "Remove" }).click();
 	});
 	await insertBox(page, "World Clock");

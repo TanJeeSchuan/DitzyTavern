@@ -12,6 +12,7 @@ export default {
   id: "<id>",                                        // the folder's name, the `box:<id>` preset reference and data namespace; lowercase words joined by `-`
   sdk: 1,                                            // the Box SDK major it was built against, written as a number
   label: "…",                                        // display name everywhere the host shows the Box
+  summary: "…",                                      // one plain sentence saying what the Box does, shown in the Box manager
   role: "system",                                    // the preset block's role until an author changes it
   startsEnabled: false,                              // whether a new Chat starts with the Box enabled
   instructions: "…",                                 // the text a new preset block starts with; "" for none
@@ -38,7 +39,7 @@ const exampleBox = {
     trace: schema,                                   // checks the returned trace
     fingerprint(input) { … },                        // replaces dependencies in the preview fingerprint
   },
-  status(setup, state) { … },                        // the dock line; digesting Boxes only
+  status(setup, state) { … },                        // the Status line; digesting Boxes only
   read(database, conversationId) { … },              // the window's JSON; non-digesting Boxes only
   importSillyTavernNote(note) { … },                 // the setup a SillyTavern chat's Author's Note imports as
   routes(database) { … },                            // an Elysia app of the Box's own routes, served under /api/boxes/<id>
@@ -46,11 +47,12 @@ const exampleBox = {
 export default exampleBox;
 
 // 3. Client module: the default export of src/boxes/<id>/client.tsx, built as client.js
-export default { descriptor, icon, Window: { size, Panel, DockTab, lens }, TopBarItem } satisfies BoxClientDefinition;
-export default { descriptor, icon, Window: digestWindow(descriptor, { icon, size, Panel, describe }), TopBarItem };
+export default { descriptor, icon, Window: { size, Panel, lens }, Status } satisfies BoxClientDefinition;
+export default { descriptor, ...digestWindow(descriptor, { icon, size, Panel, describe }), header: true };
 export default { descriptor, icon, PrimaryPanel };     // primary panel, as the Author Note uses
-export default { descriptor, icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView, TopBarItem };
+export default { descriptor, icon, Inspector: { label, Component }, Settings, ParticipantSection, TraceView };
 // `descriptor` is the folder's shared-descriptor.ts default export; every surface is optional.
+// `Status` is one short line; `header: true` puts it in the Chat tools, so it needs both `Status` and `Window`.
 ```
 
 Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined` and `Move = never`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
@@ -72,7 +74,7 @@ The host finds every Box by its folder, so adding a Box edits no host file excep
 1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the loader demands. Done when you can name each one.
 2. **Create the folder.** Make `src/boxes/<id>/` with files named by layer ([Folder and SDK](#folder-and-sdk)). Schemas go in `contract.ts`, or `shared.ts` for a small Box such as Thoughts or Mood. Logic both the server and the client use goes in `shared.ts`. Done when `bun run lint` and `bun run check:contracts` pass.
 3. **Describe it.** Write `shared-descriptor.ts`, default-exporting the descriptor with the folder's name as its `id` and `sdk: 1`, and `server.ts`, default-exporting the Box that `satisfies Box<…>` with the types of your own schemas. The loader checks the Box's hooks against its descriptor's keys and refuses the Box with the reason in the server log, so every server test that reads it fails until they match. Done when `bun run typecheck` and the Box's server tests pass.
-4. **Write the client module.** Every Box has a `client.tsx` that default-exports its descriptor, its icon and its client surfaces, such as its window. A digesting Box needs a window for its passage timeline and dock tab; Memory, which keeps its own inspector, has none. A digesting Box with no setup, whose generic record summary reads well, needs nothing else: its `Window` is `digestWindow(descriptor, { icon, size })`, as Mood's `client.tsx` shows. Done when `bun run typecheck` and `bun run build` pass.
+4. **Write the client module.** Every Box has a `client.tsx` that default-exports its descriptor, its icon and its client surfaces, such as its window. A digesting Box needs a window for its passage timeline and a `Status` line for the dock; Memory, which keeps its own inspector, has none. A digesting Box with no setup, whose generic record summary reads well, needs nothing else: its client module is `{ descriptor, ...digestWindow(descriptor, { icon, size }) }`, as Mood's `client.tsx` shows. Done when `bun run typecheck` and `bun run build` pass.
 5. **Test it.** Write `e2e/<id>.spec.ts` with one test per user flow, asserting through Prompt Plan inspection. Inserting the Box adds its block to the Chat's preset. Insert it with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box also needs `selectBoxDecisionModel(request, "<id>")` and scripted `llm.decisions(…)`. Digests also read the human's Messages, and the first matching rule wins, so end with a catch-all rule after the passage-specific ones (`e2e/world-clock.spec.ts`). Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a seed, or a fold. Write no UI component tests and no tests of the contract's shape. Done when `bun run check` and `bun run test:e2e` pass.
 
 ## Install a plugin Box
@@ -87,11 +89,12 @@ A plugin is a Box folder installed into a running DitzyTavern without rebuilding
 
 ## Hooks
 
-### `label`, `role`, `startsEnabled`, `instructions`, `alwaysRender`, `block`
+### `label`, `summary`, `role`, `startsEnabled`, `instructions`, `alwaysRender`, `block`
 
 | Key | The host uses it for |
 |---|---|
-| `label` | the preset block label, the add-block menu, the Box manager, the window title, the dock tab and the Decision Model setting's name |
+| `label` | the preset block label, the add-block menu, the Box manager, the window title, the dock button and the Decision Model setting's name |
+| `summary` | the Box manager's line for a Box that is not in the Chat yet, and a Box whose client module did not load |
 | `role` | the outgoing role of the Box's preset block (`system`, `user` or `assistant`) until an author changes it |
 | `startsEnabled` | `defaultBoxIds()`: the Boxes a new Chat starts with |
 | `instructions` | the text a new [preset block](#preset-block) starts with, and what its Reset action restores |
@@ -148,7 +151,7 @@ const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
 
 Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
 
-`status(setup, state)` is the dock tab's line, and a top bar item's through `useBoxStatus`, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The dock tab's accessible name is `<label>: <status>`, which is how an e2e test finds it.
+`status(setup, state)` is the Box's `Status` line, which `digestWindow` supplies through `useBoxStatus`, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The host's dock button, header item and Box manager row carry the accessible name `<label>: <status>`, which is how an e2e test finds them.
 
 ### `advance`
 
@@ -203,11 +206,11 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 ### Client surfaces
 
-`boxClients()` holds each loaded Box's client module once, by id, in registry order. Every surface renders inside a `BoxBoundary` in its host frame: a surface that throws shows `<label> failed: <message>` in its place, and the rest of the Chat keeps working. The host draws a Box's icon with `BoxIcon`, which leaves an alert icon if it throws. Settings and participant sections render for every loaded Box. Every Chat surface (window, dock tab, primary panel, top bar item, inspector and lens, with their launchers and the inspector's message action) shows while the Box is present in the Chat, enabled or disabled, and none shows while it is absent; `boxPresent` in `src/client/box-windows/registry.ts` is that one check. A trace view belongs to its Generation, not to the Chat's Box state, so it renders whenever a captured trace exists. What runs needs an enabled Box, and the controls that start it are off otherwise. A disabled Box's window gets `staging: null`, so it shows its Move controls as unavailable; the passage timeline's catch-up is off, as are Memory's Remember, Retry and history catch-up. The host says the Box is off in this Chat in one notice, which it renders at the top of the window, under the primary panel's header and at the foot of the inspector. Setup, Box data and record overrides stay editable. The server is the gate for the rest: a Send with the Box's Moves fails, and its digests and catch-up do nothing.
+`boxClients()` holds each loaded Box's client module once, by id, in registry order. Every surface renders inside a `BoxBoundary` in its host frame: a surface that throws shows `<label> failed: <message>` in its place, and the rest of the Chat keeps working. The host draws a Box's icon with `BoxIcon`, which leaves an alert icon if it throws. Settings and participant sections render for every loaded Box. Every Chat surface (window, dock button, header item, primary panel, inspector and lens, with their launchers and the inspector's message action) shows while the Box is present in the Chat, enabled or disabled, and none shows while it is absent; `boxPresent` in `src/client/box-windows/registry.ts` is that one check. The composer's launcher is the exception: it shows only while the Box is enabled. `boxOpening` in the same file is the one resolution of where a Box opens, used by the launcher and the Box manager alike. A trace view belongs to its Generation, not to the Chat's Box state, so it renders whenever a captured trace exists. What runs needs an enabled Box, and the controls that start it are off otherwise. A disabled Box's window gets `staging: null`, so it shows its Move controls as unavailable; the passage timeline's catch-up is off, as are Memory's Remember, Retry and history catch-up. The host says the Box is off in this Chat in one notice, which it renders at the top of the window, under the primary panel's header and at the foot of the inspector. Setup, Box data and record overrides stay editable. The server is the gate for the rest: a Send with the Box's Moves fails, and its digests and catch-up do nothing.
 
 #### Window and primary panel
 
-`icon` is a `lucide-react` icon for the launcher, the window bar and the generic dock tab. `Window.size` is `{ width, height }` in rem. `Window.Panel` gets:
+`icon` is a `lucide-react` icon for the launcher, the window bar, the dock button, the header item and the Box manager. `Window.size` is `{ width, height }` in rem. `Window.Panel` gets:
 
 | Prop | Use |
 |---|---|
@@ -219,17 +222,17 @@ Routes the Box serves beside the host's, as an Elysia app built from the databas
 
 `PrimaryPanel` registers a workspace primary panel, as the Author Note uses. It receives `conversation`, `disabled` and `onConversationChange`.
 
-`Window.DockTab` gets `conversation` and `onRestore`. Render a `<button type="button" className="box-dock-tab">` with the icon, an `sr-only` label and one short line, as `ThoughtDockTab` does.
+`Status` gets `conversation` and renders one short line, such as the World Clock's in-story time, as `ThoughtStatus` does. The host renders it, inside a `BoxBoundary`, in the dock button of a minimized window, in the header item of a Box that declares `header`, and in a Box manager row. A Box with no `Status` shows its label in the dock and "On" or "Off" in the Box manager. The accessible name is `<label>: <line>` throughout: scope e2e locators to `getByRole("toolbar", { name: "Minimized Boxes" })`, `getByRole("group", { name: "Chat tools" })` or `getByRole("group", { name: "Boxes" })`.
 
-`TopBarItem` is optional and gets `conversation`. For a window it renders one short line, such as the World Clock's in-story time. The host wraps it in a button with the Box's icon and label; clicking opens the window. A digesting Box can show its `status` with `useBoxStatus(conversation.id, "<id>")`, as `WorldClockTopBarItem` does. Its accessible name is `<label>: <line>`, the same as the dock tab's: scope e2e locators to `getByRole("group", { name: "Chat tools" })` or `getByRole("toolbar", { name: "Minimized Boxes" })` respectively.
+`header: true` puts the Box's `Status` in the Chat tools as a button that opens the Box's window, so the host refuses a client module that declares `header` without both `Status` and `Window`. Only the World Clock declares it. While the Box is disabled its item is muted and its title says the Box is off.
 
-Every `Inspector` gets a host icon button named by `Inspector.label`; clicking opens the inspector with no message focus. This button is independent of `TopBarItem`, which opens a window. Below 78rem the Chat tools group is hidden. Inspectors also appear in the Chat title menu; windows remain reachable through the launcher and dock.
+Every `Inspector` gets a host icon button named by `Inspector.label`; clicking opens the inspector with no message focus. This button is independent of the header item, which opens a window. Below 78rem the Chat tools group is hidden. Inspectors also appear in the Chat title menu; windows remain reachable from the Box manager, the dock and the launcher of an enabled Box.
 
-A digesting Box builds its `Window` with `digestWindow(descriptor, …)`, which supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `DockTab` showing `status`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
+A digesting Box builds its `Window` and `Status` with `digestWindow(descriptor, …)`, spread into its default export as `{ descriptor, ...digestWindow(descriptor, …) }`. It supplies the `Panel` (the Box's own `Panel`, if any, then the passage timeline) and a `Status` showing `status` through `useBoxStatus`. `describe(record)` replaces the timeline's generic record summary; it takes the Box's own record type.
 
 #### Inspector
 
-`Inspector: { label, Component }` declares a details inspector. Its label and the Box's icon supply an action on each Message and in the Chat title menu. The message action opens it with `{ messageId }`; the title menu and top bar open it with `null`. Switching inspectors or closing one clears focus. Swipe preview prevents opening an inspector.
+`Inspector: { label, Component }` declares a details inspector. Its label and the Box's icon supply an action on each Message and in the Chat title menu. The message action opens it with `{ messageId }`; the title menu and the Chat tools icon open it with `null`. Switching inspectors or closing one clears focus. Swipe preview prevents opening an inspector.
 
 `Component` receives `BoxInspectorProps` from the client SDK:
 
@@ -281,7 +284,7 @@ At startup the server scans the built-in folder `src/boxes/`, then the plugin fo
 - its server hooks do not match its descriptor's keys;
 - its `routes` throw when the server builds them against its database, return anything but an Elysia app, or fail to mount under `/api/boxes/<id>`.
 
-The registry lists Boxes in load order: built-ins, then plugins, each folder's by name. That order is the Box manager's, the add-block menu's, the Decision Model settings', and the order Moves render in a Message. Loading happens once; adding or removing a plugin takes a restart. A preset block whose Box is not loaded, as after its plugin is removed or refused, stays in the preset as `box:<id>` and renders nothing. `GET /api/boxes` lists the loaded Boxes as `{ id, label, client }`, where `client` is the URL of the Box's [client module](#client-modules). Tests load the built-in Boxes in the `bun test` preload `src/server/test-fixtures/boxes.ts`.
+The registry lists Boxes in load order: built-ins, then plugins, each folder's by name. That order is the Box manager's, the add-block menu's, the Decision Model settings', and the order Moves render in a Message. Loading happens once; adding or removing a plugin takes a restart. A preset block whose Box is not loaded, as after its plugin is removed or refused, stays in the preset as `box:<id>` and renders nothing. `GET /api/boxes` lists the loaded Boxes as `{ id, label, summary, client }`, where `client` is the URL of the Box's [client module](#client-modules) and `summary` its descriptor's sentence, which the Box manager shows for a Box that is not in the Chat or whose client module did not load. Tests load the built-in Boxes in the `bun test` preload `src/server/test-fixtures/boxes.ts`.
 
 ### Client modules
 
@@ -333,7 +336,7 @@ The host stores `enabled: true | false` and an `instance` id in `conversation_da
 
 Removing, after confirmation in the Box manager, deletes the Box's `conversation_data` (its instance included) and this Chat's `participant_data` in its namespace. Each insert creates a new instance; disabling keeps it. The fold reads only the current instance's slots, so a reinserted Box starts from `setup.initial` and `records.initial` while its old records stay stored. A Box writes no filter for this. One Chat holds at most one instance of each Box.
 
-Turning a Box on, at creation or later, adds its [preset block](#preset-block) when the Chat's preset has none. Disabling or removing reports `stoppedBox` on the Conversation change. The digest queue drops that Box's jobs and aborts those in flight. A new Chat starts with the `startsEnabled` Boxes, today the Author Note and Memory. No Box is exempt from removal. The writer manages Boxes in the composer's Box manager.
+Turning a Box on, at creation or later, adds its [preset block](#preset-block) when the Chat's preset has none. Disabling or removing reports `stoppedBox` on the Conversation change. The digest queue drops that Box's jobs and aborts those in flight. A new Chat starts with the `startsEnabled` Boxes, today the Author Note and Memory. No Box is exempt from removal. The writer manages Boxes in the Box manager, which adds a Box, turns it on or off, opens it and removes it.
 
 ### Generation lifecycle
 
@@ -355,7 +358,7 @@ Catch-up queues every selected Variant without a record for its current text, fa
 
 ### Passage timeline
 
-`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, a "Digest failed" mark carrying the error when the last digest of its current text failed, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock tab polls only the status.
+`src/client/box-windows/PassageTimeline.tsx` ends every digesting Box's window. It lists the Selected path's non-empty passages, each with its effective record (or "Not read yet"), an "Overridden" mark, a "Digest failed" mark carrying the error when the last digest of its current text failed, Edit and Reset. "Digest missing passages" starts catch-up. Without a Decision Model selection it tells the writer to pick one in Connection Settings. It polls while open, faster during catch-up; a minimized dock button reads only the status.
 
 The override editor is built from the `record` schema:
 
@@ -367,7 +370,7 @@ The override editor is built from the `record` schema:
 
 Any other field type, and any `Type.Optional` field, throws when `digestWindow` builds the window, so the Box's client module fails to load. A field that may be unset is a union of literals with `Type.Null()`. Each schema's `title` labels its field or option, such as `Type.Literal("rain", { title: "🌧️ Rain" })`; without one the key or value shows, and `null` shows as "None". A new draft starts a nullable choice at `null` and leaves other fields empty. Save stays disabled until the draft passes the schema.
 
-The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline, the dock tab and the top bar item with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
+The generic summary joins the fields with ` · `: a choice shows its option's title, a number or string its value, and a `null` field nothing. A Panel that changes something `status` depends on, such as setup, refreshes the timeline and the `Status` line with `client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "<id>") })`, or passes that as `onSaved` to `useBoxSetupDraft`.
 
 ### Lens pipeline
 
@@ -381,7 +384,7 @@ A Send with Moves for a Box that is not enabled is rejected. The composer drops 
 
 ### Windows and dock
 
-The composer shows a launcher button for each Box present in the Chat with a primary panel, which it opens, or else a window, in registry order. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock tab, at the bottom-right beside the composer. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
+The composer shows a launcher button for each Box enabled in the Chat with a primary panel, which it opens, or else a window, in registry order. An off Box has no launcher: its window is opened from its name in the Box manager, its header item where it declares one, or its dock button. The Box manager also lists and adds every other Box. Windows drag but do not resize, several can be open at once, and Escape closes one. Minimizing turns a window into its dock button, at the bottom-right beside the composer, which the host draws with the Box's icon and `Status`. Open state, minimization and position are client-side, per Chat, in local storage. Below 78rem wide, the top window becomes a full-screen layer with focus trapped inside.
 
 The host styles the frame, the dock and the passage timeline in `src/styles/box-windows.css`. A Box styles everything inside them in its own stylesheet, imported from `client.tsx`. Every selector in it names one of the Box's classes, `<id>` or `<id>-…`; the build fails on one that doesn't, since it could match the host's elements or another Box's. Start the stylesheet with `@reference "@/index.css";` to write Tailwind utilities with `@apply`, as `src/boxes/thought/client.css` does. The host compiles no utility from a Box's folder, so a utility in a `className` works only where the host happens to use it too; don't rely on one. Semantic utilities (`text-muted-foreground`, `bg-muted`, `border-border`) and the host's variables (`var(--text-faint)`) follow the user's light or dark theme; palette colours such as `text-amber-500` don't. A Box's class on an SDK component overrides the component's own styles. Follow `DESIGN.md` for visual decisions.
 
@@ -391,7 +394,7 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 |---|---|---|
 | Author Note | yes | `setup`, `advance` |
 | Memory | yes | `record`, `decision`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`, `routes`; no window, its own side panel |
-| World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe`, and a top bar item |
+| World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe`, and `header` |
 | Race | no | `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; window |
 | Phone | no | `instructions`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |
 | Thoughts | no | `instructions`, `alwaysRender`, `read`; window and lens |
@@ -399,15 +402,15 @@ The host styles the frame, the dock and the passage timeline in `src/styles/box-
 
 **Author Note.** Setup is the note text, Image References included. `advance` returns it as one pinned item, or nothing when blank. It has no instructions. Lore scanning, Semantic Trigger judging and Memory extraction never read it. It edits in the workspace's primary panel, not a Box window.
 
-**Memory.** It has no instructions. It digests like the World Clock and Mood, and its digest also calls an extraction model. Its record is `{ claims }`, each claim an attributed statement with its people, its evidence excerpts and the Decision Model's judgment. A digest reads the passage with up to four preceding Messages, trimmed to the extraction context; asks the extraction model chosen in Memory Settings through `ctx.llm`, with the Chat's identity sentences and Memory note; has `ctx.decide` judge each candidate's support, attribution and usefulness; keeps the supported, correctly attributed ones whose retain probability meets the minimum; and embeds what it kept through `ctx.embed` with `cache`. A passage by an author who is not in the story digests to no claims. Its Decision Model is the host's selection for the Box. Identities and label merges apply when claims are shown and recalled, never to stored records. Editing or removing a claim writes the passage's whole claims list as its Writer record through `set-box-record`; reset drops that record and the automatic claims return. A passage is extracted again only when its text changes. `advance` is recall over the Selected path's effective records, read from `CaptureRead`'s `messages`: it embeds any claim text the cache lacks, such as a Writer's edit, shortlists by embedding similarity and recency, and has the Decision Model score relevance, returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint: Memory's settings, allowance, labels and Writer records mark a preview stale, as its Decision Model selection does through the host, and a digest landing in the background does not. Its side panel lists each passage's claims from the record slots, with the slot's `error`, and starts catch-up through the host. Its `routes`, in `server-routes.ts` under `/api/boxes/memory`, serve that panel, its settings editor and its trace view, which links only to the sources still in the Chat; its `client-api.ts` calls them. Its `client.tsx` registers the Memories inspector, icon-only top bar item, settings editor, Participant identity section and recall trace view. All UI, helpers, tests and styles live in its folder; imports from the host go through the client SDK.
+**Memory.** It has no instructions. It digests like the World Clock and Mood, and its digest also calls an extraction model. Its record is `{ claims }`, each claim an attributed statement with its people, its evidence excerpts and the Decision Model's judgment. A digest reads the passage with up to four preceding Messages, trimmed to the extraction context; asks the extraction model chosen in Memory Settings through `ctx.llm`, with the Chat's identity sentences and Memory note; has `ctx.decide` judge each candidate's support, attribution and usefulness; keeps the supported, correctly attributed ones whose retain probability meets the minimum; and embeds what it kept through `ctx.embed` with `cache`. A passage by an author who is not in the story digests to no claims. Its Decision Model is the host's selection for the Box. Identities and label merges apply when claims are shown and recalled, never to stored records. Editing or removing a claim writes the passage's whole claims list as its Writer record through `set-box-record`; reset drops that record and the automatic claims return. A passage is extracted again only when its text changes. `advance` is recall over the Selected path's effective records, read from `CaptureRead`'s `messages`: it embeds any claim text the cache lacks, such as a Writer's edit, shortlists by embedding similarity and recency, and has the Decision Model score relevance, returning literal claims prioritized by relevance under Memory's allowance, and its activation record as the trace. `fingerprint` is the recall snapshot's freshness fingerprint: Memory's settings, allowance, labels and Writer records mark a preview stale, as its Decision Model selection does through the host, and a digest landing in the background does not. Its side panel lists each passage's claims from the record slots, with the slot's `error`, and starts catch-up through the host. Its `routes`, in `server-routes.ts` under `/api/boxes/memory`, serve that panel, its settings editor and its trace view, which links only to the sources still in the Chat; its `client-api.ts` calls them. Its `client.tsx` registers the Memories inspector, an icon-only Chat tools item, settings editor, Participant identity section and recall trace view. All UI, helpers, tests and styles live in its folder; imports from the host go through the client SDK.
 
 **World Clock.** Setup is a naive Gregorian start (`YYYY-MM-DDTHH:mm`; `setupError` rejects dates such as February 31), an era suffix (default `AD`), a climate (temperate, tropical, arid, cold), a hemisphere and a unit (default °C). A digest reads the passage with one preceding Message and asks two `choice` questions: the elapsed time (`none`, `~5m`, `~15m`, `~30m`, `~1h`, `~2h`, `~4h`, `~8h`, `overnight`, `~1 day`, `several days`), with the exact minutes drawn inside the bin from `seed`; and the weather established (`not mentioned`, `clear`, `cloudy`, `rain`, `storm`, `snow`, `fog`). The record is `{ minutes, weather }`. The fold adds minutes and keeps the latest weather with the minute it was mentioned; the clock stops showing it 24 in-world hours after that. Temperature follows climate, hemisphere, season, hour and weather. It has no instructions: `advance` pins one line, `8:41 AM | 🗓️ Saturday, December 20, 2025 AD | ☀️ Clear, 3°C`, omitting unknown weather; without a Decision Model selection the clock stays where it is. Status is `8:41 AM · ☀️ 3°C`.
 
-**Phone.** Texts live in the prose as `<sms from="…" to="…">…</sms>`. The instructions teach the markup, with `{{other}}` texting `{{self}}` as the example. `advance` pins one line naming the human's contacts (the other Cast members), `Night Desk has a phone and can text Theodora Kline.`, or nothing when there is nobody to text, which also drops the instructions. Outgoing texts are seat-bound Moves rendered as `<sms>` from the Message's author, so a texting-only turn is a Moves-only Message. The lens lifts a text only when one end is the human-controlled Participant and the other a Cast member, matching names case-insensitively. The read groups texts, the human's sent Moves included, into one thread per contact. Unread counts are client-side view state, never in the prompt; the dock tab shows `2 unread`.
+**Phone.** Texts live in the prose as `<sms from="…" to="…">…</sms>`. The instructions teach the markup, with `{{other}}` texting `{{self}}` as the example. `advance` pins one line naming the human's contacts (the other Cast members), `Night Desk has a phone and can text Theodora Kline.`, or nothing when there is nobody to text, which also drops the instructions. Outgoing texts are seat-bound Moves rendered as `<sms>` from the Message's author, so a texting-only turn is a Moves-only Message. The lens lifts a text only when one end is the human-controlled Participant and the other a Cast member, matching names case-insensitively. The read groups texts, the human's sent Moves included, into one thread per contact. Unread counts are client-side view state, never in the prompt; the `Status` line shows `2 unread`.
 
-**Thoughts.** The instructions ask for unspoken thoughts as `<thought>…</thought>`. It has no `advance` and declares `alwaysRender`, so its block is the instructions alone. The lens lifts every thought, and the read lists them along the Selected path. In nested markup only the innermost pair matches. The dock tab counts thoughts.
+**Thoughts.** The instructions ask for unspoken thoughts as `<thought>…</thought>`. It has no `advance` and declares `alwaysRender`, so its block is the instructions alone. The lens lifts every thought, and the read lists them along the Selected path. In nested markup only the innermost pair matches. The `Status` line counts thoughts.
 
-**Mood.** A digest asks one `choice` question over the passage and one preceding Message: `not clear`, `calm`, `warm`, `playful`, `tense`, `sad` or `eerie`. "Not clear" keeps the previous mood. The instructions are `Scene mood:` and `advance` pins the mood, `tense`, so the block reads `Scene mood:` then `tense` on the next line. Status shows the emote and word, `😬 tense`. It has no window file: the generic timeline and dock tab are its whole window.
+**Mood.** A digest asks one `choice` question over the passage and one preceding Message: `not clear`, `calm`, `warm`, `playful`, `tense`, `sad` or `eerie`. "Not clear" keeps the previous mood. The instructions are `Scene mood:` and `advance` pins the mood, `tense`, so the block reads `Scene mood:` then `tense` on the next line. Status shows the emote and word, `😬 tense`. It has no window file: the generic timeline and `Status` are its whole surface.
 
 ### Worked example: the Race
 
@@ -463,6 +466,6 @@ Once the field crosses the line, one Results Stretch gives finishing order, marg
 
 **Data scopes.** Library: roster avatars, keyed `avatar:<name>`, written through `boxData`. Character and Participant: `stats`. A stat sheet's `stats` ride as `writes` on the `set-box-setup` that adds the gate, so the gate and its stats land together. `readRaceCastStats` decodes Participant stats and fails loudly on a bad row.
 
-**Window.** `RacePanel` shows setup and stat sheets before the start, the SVG oval (Portraits for Cast Runners, roster avatars otherwise) and Move controls while running, and a replay of every Runner's decisions per Stretch after the finish. `readRace` sends the spectator state and a status line, `🏇 1500m · 3rd` while running or `🏁 1st · Special Week` when finished, which `RaceDockTab` shows.
+**Window.** `RacePanel` shows setup and stat sheets before the start, the SVG oval (Portraits for Cast Runners, roster avatars otherwise) and Move controls while running, and a replay of every Runner's decisions per Stretch after the finish. `readRace` sends the spectator state and a status line, `🏇 1500m · 3rd` while running or `🏁 1st · Special Week` when finished, which `RaceStatus` shows.
 
 **Tests.** `server-engine.test.ts` checks determinism for equal inputs and the fold across `raceId`s; `server-withdrawal.test.ts` covers withdrawals. `e2e/race*.spec.ts` starts a race, advances it with Moves, swipes for the same outcome and re-rolls for a new one, asserted through Prompt Plan inspection.
