@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Ellipsis } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -76,7 +77,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				: <>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button type="button" variant="ghost" size="icon-sm" className="box-manager-actions" aria-label={`${label} actions`}>⋯</Button>
+							<Button type="button" variant="ghost" size="icon-sm" className="box-manager-actions" aria-label={`${label} actions`}><Ellipsis aria-hidden="true" /></Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-44">
 							{open !== undefined && <DropdownMenuItem onSelect={open}>Open {label}</DropdownMenuItem>}
