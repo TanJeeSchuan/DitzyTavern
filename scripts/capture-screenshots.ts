@@ -22,6 +22,7 @@
  *   node scripts/capture-screenshots.ts                        # builds + starts an isolated fixture server
  *   node scripts/capture-screenshots.ts --depth=3 --max-states=80 --schemes=dark --viewport=1280x800 --scale=2
  *   node scripts/capture-screenshots.ts --replay               # recapture the output manifest's paths without discovery
+ *   node scripts/capture-screenshots.ts --mobile --viewport=390x844   # touch emulation; audits 40px hit areas and iOS field zoom
  *
  * Output: .scratch/screenshots/states/{index.html,manifest.json,light/,dark/}
  */
@@ -49,6 +50,64 @@ const MAX_STATES = Number(arg("max-states", "150"));
 const SCHEMES = (["light", "dark"] as const).filter((s) => arg("schemes", "light,dark").split(",").includes(s));
 if (SCHEMES.length === 0) throw new Error("Choose at least one color scheme: light or dark.");
 const REPLAY = process.argv.includes("--replay");
+const MOBILE = process.argv.includes("--mobile");
+
+// ── Geometry audit ─────────────────────────────────────────────────────
+
+/**
+ * Runs in the page. Reports elements that widen the page past the viewport,
+ * controls whose centre a tap does not reach, hit areas under 24px (40px on
+ * touch), and fields under 16px, which iOS zooms into on focus. Hit areas are
+ * probed with elementFromPoint, so pseudo-element extensions count.
+ */
+const audit = (mobile: boolean) => {
+	const found: string[] = [];
+	const [vw, vh] = [document.documentElement.clientWidth, innerHeight];
+	const label = (el: Element) => {
+		const name = (el.getAttribute("aria-label") ?? (el instanceof HTMLElement ? el.innerText : "")).trim().replace(/\s+/g, " ").slice(0, 40);
+		return `${el.tagName.toLowerCase()}${[...el.classList].slice(0, 2).map((c) => `.${c}`).join("")}${name ? ` "${name}"` : ""}`;
+	};
+	const shown = (el: Element) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest("[inert], [aria-hidden=true]");
+	const outside = (r: DOMRect) => r.right > vw + 1 || r.left < -1;
+	const clipped = (el: Element) => {
+		for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (getComputedStyle(p).overflowX !== "visible") return true;
+		return false;
+	};
+	for (const el of document.body.querySelectorAll("*")) {
+		const r = el.getBoundingClientRect();
+		if (r.width === 0 || !outside(r) || outside(el.parentElement!.getBoundingClientRect()) || clipped(el) || !shown(el)) continue;
+		found.push(`overflow: ${label(el)} spans ${Math.round(r.left)}..${Math.round(r.right)} of ${vw}px`);
+	}
+	const roles = ["button", "link", "tab", "menuitem", "menuitemradio", "menuitemcheckbox", "checkbox", "switch", "radio", "slider", "option"];
+	const targets = ["a[href]", "button", "input:not([type=hidden])", "select", "textarea", "summary", ...roles.map((role) => `[role=${role}]`)];
+	for (const el of document.querySelectorAll(targets.join(", "))) {
+		const r = el.getBoundingClientRect();
+		if (r.width < 2 || r.height < 2 || el.matches(":disabled, [aria-disabled=true]") || getComputedStyle(el).display === "inline" || !shown(el)) continue;
+		const [cx, cy] = [r.left + r.width / 2, r.top + r.height / 2];
+		if (cx < 0 || cy < 0 || cx > vw || cy > vh) continue;
+		const owns = (x: number, y: number) => {
+			const hit = document.elementFromPoint(x, y);
+			return hit !== null && (hit === el || el.contains(hit));
+		};
+		if (!owns(cx, cy)) {
+			const hit = document.elementFromPoint(cx, cy);
+			found.push(`covered: ${label(el)} centre lands on ${hit ? label(hit) : "nothing"}`);
+			continue;
+		}
+		const reach = (dx: number, dy: number) => {
+			let d = 0;
+			while (d < 30 && owns(cx + dx * (d + 1), cy + dy * (d + 1))) d++;
+			return d;
+		};
+		const [w, h] = [reach(-1, 0) + reach(1, 0) + 1, reach(0, -1) + reach(0, 1) + 1];
+		if (Math.min(w, h) < (mobile ? 40 : 24)) found.push(`${Math.min(w, h) < 24 ? "small" : "tight"}: ${label(el)} hit area ${w}x${h}`);
+	}
+	if (mobile) for (const el of document.querySelectorAll("input:not([type=checkbox], [type=radio], [type=range]), textarea, select, [contenteditable=true]")) {
+		const size = parseFloat(getComputedStyle(el).fontSize);
+		if (size < 16 && shown(el)) found.push(`zoom: ${label(el)} font-size ${size}px`);
+	}
+	return found;
+};
 
 // ── Surface model ──────────────────────────────────────────────────────
 
@@ -151,6 +210,8 @@ const openSession = async (browser: Browser) => {
 		timezoneId: "UTC",
 		colorScheme: "light",
 		reducedMotion: "reduce",
+		isMobile: MOBILE,
+		hasTouch: MOBILE,
 	});
 	await context.addInitScript((css: string) => {
 		// Each click path starts with the same preferences, even after exploring Settings.
@@ -219,6 +280,7 @@ const openSession = async (browser: Browser) => {
 					console.log(`✘ ${scheme} ${describe(path)}: ${problems.at(-1)}`);
 				}
 			}
+			problems.push(...(await page.evaluate(audit, MOBILE)));
 		},
 		takeProblems: () => {
 			const taken = problems;
