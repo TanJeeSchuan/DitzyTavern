@@ -53,7 +53,7 @@ export const boxDescriptorSchema = Type.Object({
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 
 /** @approved Throws why `value` fails `schema`, naming what it is and where it fails. */
-function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, what: string): asserts value is Static<Schema> {
+export function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, what: string): asserts value is Static<Schema> {
 	if (Value.Check(schema, value)) return;
 	const error = Value.Errors(schema, value).First();
 	throw new Error(`${what} is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
@@ -111,6 +111,33 @@ export const boxServerSchema = Type.Object({
 	read: Type.Optional(hook),
 	routes: Type.Optional(hook),
 });
+
+// @approved
+//  What the host checks each server hook's output against, by hook. State and
+// dependencies are JSON, or undefined at the root. A record is JSON that
+// passes the Box's record schema, and a Box without one returns none.
+// `advance.run` returns items the compiler can place, a whole-token
+// allowance, and a JSON trace that passes the Box's trace schema.
+export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undefined) => {
+	const state = Type.Union([boxValue, Type.Undefined()]);
+	const record = descriptor.record === undefined ? Type.Never() : Type.Intersect([boxValue, descriptor.record]);
+	return {
+		setupError: Type.Union([Type.String(), Type.Undefined()]),
+		"moves.render": Type.String(),
+		dependencies: state,
+		"records.initial": state,
+		"records.fold": state,
+		"records.digest.run": record,
+		"advance.run": Type.Object({
+			items: Type.Array(Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) })),
+			allowance: Type.Optional(Type.Integer({ minimum: 0 })),
+			trace: Type.Optional(trace === undefined ? boxValue : Type.Intersect([boxValue, trace])),
+			record: Type.Optional(record),
+		}),
+		status: Type.Union([Type.String(), Type.Null()]),
+		importSillyTavernNote: descriptor.setup?.schema ?? Type.Never(),
+	};
+};
 
 //  What a lens returns for a stretch of prose, checked each time the story
 //  lenses it: the prose it leaves and one line for each mark it lifts.

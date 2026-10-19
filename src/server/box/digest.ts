@@ -1,8 +1,7 @@
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxesWith, boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import { boxValue, type BoxValue } from "../../shared/contract/box-value";
+import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { BoxCatchUp } from "../../shared/contract/box-digest";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
@@ -140,8 +139,6 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			cast: readParticipants(database, job.conversationId),
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
 		}, { ...services, database });
-		Value.Assert(boxValue, record);
-		Value.Assert(boxRecordSchema(job.box), record);
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (signal.aborted) return;

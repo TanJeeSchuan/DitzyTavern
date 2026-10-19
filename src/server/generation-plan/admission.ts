@@ -64,7 +64,6 @@ export const admitDynamicBlocks = (input: {
 		const result = input.boxes[reference];
 		if (result === undefined) continue;
 		const allowance = result.allowance ?? Infinity;
-		if (result.allowance !== undefined && (!Number.isInteger(allowance) || allowance < 0)) throw new Error("Box allowance must be a non-negative whole number.");
 		type Item = NonNullable<BoxItems[PromptBoxReference]>[number];
 		const expanded = (item: Item) => item.literal === true ? item.text : input.expansions.get(boxItemExpansionKey(slotIndex, item.index))?.text ?? "";
 		// @approved

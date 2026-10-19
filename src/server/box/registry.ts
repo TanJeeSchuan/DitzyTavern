@@ -2,15 +2,14 @@ import type { Database } from "bun:sqlite";
 import { Elysia, type AnyElysia } from "elysia";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { Value } from "@sinclair/typebox/value";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
-import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
+import { boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import { boxValue, type BoxValue } from "../../shared/contract/box-value";
-import { checkedBoxState, type RecordStates } from "./records";
+import type { BoxValue } from "../../shared/contract/box-value";
+import type { RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
@@ -21,9 +20,12 @@ import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./service
 // `decision`, and a render for `moves`. A digesting Box's window read is the
 // host's passage timeline, so it declares no `read`; only that read calls
 // `status`, so no other Box declares one. Ids are known only at runtime, so
-// the registry checks this when it is built.
+// the registry checks this when it is built. The Box the host holds checks
+// each hook's output against `boxHookOutputs` where the hook returns it, and
+// names the Box, the hook and the failing path when it does not pass.
 const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule): HostBox => {
-	checkedBoxState(id, box.records?.initial);
+	const outputs = boxHookOutputs(descriptor, box.advance?.trace);
+	assertChecked(outputs["records.initial"], box.records?.initial, `The ${id} Box's records.initial`);
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
@@ -34,7 +36,27 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
 	// @approved
 	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
-	return box as HostBox;
+	const host = box as HostBox;
+	const { setupError, moves, dependencies, records, advance, status, importSillyTavernNote } = host;
+	const digest = records?.digest;
+	const checked = <Output>(hook: keyof typeof outputs, output: Output): Output => {
+		assertChecked(outputs[hook], output, `The ${id} Box's ${hook} result`);
+		return output;
+	};
+	return {
+		...host,
+		setupError: setupError && ((setup, previous) => checked("setupError", setupError(setup, previous))),
+		moves: moves && { render: (move, author) => checked("moves.render", moves.render(move, author)) },
+		dependencies: dependencies && advance?.fingerprint === undefined ? (read, setup) => checked("dependencies", dependencies(read, setup)) : dependencies,
+		records: records && {
+			initial: records.initial,
+			fold: (state, record, setup) => checked("records.fold", records.fold(state, record, setup)),
+			digest: digest && { window: digest.window, run: async (window, ctx) => checked("records.digest.run", await digest.run(window, ctx)) },
+		},
+		advance: advance && { ...advance, run: async (input, ctx) => checked("advance.run", await advance.run(input, ctx)) },
+		status: status && ((setup, state) => checked("status", status(setup, state))),
+		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
+	};
 };
 
 // @approved
@@ -143,20 +165,7 @@ const captureBox = (id: BoxId, instance: string, box: HostBox, input: AdvanceInp
 	id, instance,
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies, decision: decisionIdentity(decision) }),
-	run: async (services) => {
-		const result = await box.advance?.run(input, services(id, decision)) ?? { items: [] };
-		if (result.record !== undefined) {
-			const { record } = boxDescriptor(id);
-			if (record === undefined) throw new Error(`${boxReference(id)} returned a record without declaring records.`);
-			Value.Assert(boxValue, result.record);
-			Value.Assert(record, result.record);
-		}
-		if (result.trace !== undefined) {
-			Value.Assert(boxValue, result.trace);
-			if (box.advance?.trace !== undefined) Value.Assert(box.advance.trace, result.trace);
-		}
-		return result;
-	},
+	run: async (services) => await box.advance?.run(input, services(id, decision)) ?? { items: [] },
 });
 
 /** @approved The Boxes enabled in both the Chat and its preset, selected once for record folding and capture. */
@@ -170,7 +179,7 @@ export const captureBoxes = (boxes: ReturnType<typeof participatingBoxes>, setup
 	[...boxes].map(([id, { box, instance }]) => {
 		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return captureBox(id, instance, box, { setup, state: checkedBoxState(id, states[id]), moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
+		return captureBox(id, instance, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, instance, fingerprint }) => [reference, instance, fingerprint]));

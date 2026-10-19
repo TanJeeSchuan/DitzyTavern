@@ -106,7 +106,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
-		["map-initial", "The map-initial Box's state must be JSON or undefined."],
+		["map-initial", "The map-initial Box's records.initial is invalid at /: Expected union value."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
 		["renamed", "Its folder must be named for its id, lantern."],
@@ -238,7 +238,7 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
-		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's state must be JSON or undefined.");
+		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
 		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, read)))
 			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, read)));
@@ -311,7 +311,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
 		if (value.startsWith("{")) expect((await result)["box:lantern"]?.[field]).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
-		else await expect(result).rejects.toThrow();
+		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected union value.`);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -340,11 +340,30 @@ for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested
 		if (value.startsWith("{")) expect(JSON.parse(stored.value).automatic).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
 		else {
 			expect(JSON.parse(stored.value).automatic).toBeUndefined();
-			expect(JSON.parse(stored.value).error.message).toBeString();
+			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected union value.");
 		}
 	} finally {
 		await stop?.();
 		database.close();
 		await loadBoxes([builtInBoxes]);
 	}
+});
+
+for (const [hook, failure, server, fields = ""] of [
+	["advance.run", "/items/0/text: Expected string", "advance: { run: async () => ({ items: [{ text: 1, priority: 0 }] }) }"],
+	["advance.run", "/items/0/priority: Expected number", 'advance: { run: async () => ({ items: [{ text: "lit", priority: NaN }] }) }'],
+	["moves.render", "/: Expected string", "moves: { render: () => 1 }", 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }'],
+	["setupError", "/: Expected union value", "setupError: () => 1"],
+	["dependencies", "/: Expected union value", "dependencies: () => new Map()"],
+] as const) test(`${hook} output is checked: ${server}`, async () => {
+	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `export default { ${server} };` } })]);
+	// SAFETY: each plugin's hook ignores its arguments.
+	const none = undefined as never;
+	const call = async () => {
+		await lantern?.box.advance?.run(none, none);
+		lantern?.box.moves?.render(none, "Ann");
+		lantern?.box.setupError?.(none, none);
+		lantern?.box.dependencies?.(none, none);
+	};
+	await expect(call()).rejects.toThrow(`The lantern Box's ${hook} result is invalid at ${failure}.`);
 });

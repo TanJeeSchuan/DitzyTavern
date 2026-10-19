@@ -1,5 +1,3 @@
-import { Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 // @approved
 //  Canonical Import Projection: the pure source-to-native derivation shared
 // by the developer import and the Staged Import. It owns author ownership,
@@ -16,7 +14,6 @@ import type {
 import { emptyPromptChannels } from "../../shared/definition";
 import { boxSetupEntry } from "../box/setup";
 import { serverBoxes } from "../box/registry";
-import { boxDescriptor } from "../../shared/contract/box";
 import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
@@ -216,13 +213,8 @@ export const importProvenanceEntries = (
 	return entries;
 };
 
-/** @approved The setup SillyTavern's Author's Note imports as, for each Box that declares the import, checked against that Box's setup schema. */
-const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatMap(([id, box]) => {
-	if (box.importSillyTavernNote === undefined) return [];
-	const setup = box.importSillyTavernNote(note);
-	Value.Assert(boxDescriptor(id).setup?.schema ?? Type.Never(), setup);
-	return [boxSetupEntry(id, setup)];
-});
+/** @approved The setup SillyTavern's Author's Note imports as, for each Box that declares the import. */
+const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatMap(([id, box]) => box.importSillyTavernNote === undefined ? [] : [boxSetupEntry(id, box.importSillyTavernNote(note))]);
 
 // @approved
 //  Maps decoded source and one resolution into native creation data,

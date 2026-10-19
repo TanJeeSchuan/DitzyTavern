@@ -55,11 +55,11 @@ export default { descriptor, icon, Inspector: { label, Component }, Settings, Pa
 // `Status` is one short line; `header: true` puts it in the Chat tools, so it needs both `Status` and `Window`.
 ```
 
-Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined` and `Move = never`, and `State` is a JSON value or `undefined`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
+Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. It also wraps each hook, so the host checks what the hook returns against the contract below where it returns it. Output that fails throws an error naming the Box, the hook and the failing path, which fails the Generation capture, digest or command that called the hook. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined` and `Move = never`, and `State` is a JSON value or `undefined`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
 
 ## The rules
 
-- **State is JSON.** A Box's state is the fold of its records, so it must be a JSON value, or `undefined` at the root as Memory's is. The preview fingerprint serializes it, so a `Map` or `Set` would fingerprint as `{}` while still changing the prompt. The host checks a plugin's `records.initial` when it loads it and each folded state before a capture fingerprints it, naming the Box whose hook returned something else.
+- **State is JSON.** A Box's state is the fold of its records, so it must be a JSON value, or `undefined` at the root as Memory's is. The preview fingerprint serializes it, so a `Map` or `Set` would fingerprint as `{}` while still changing the prompt. The loader checks `records.initial`, and the host checks each state `fold` returns. `dependencies` must be JSON too, unless `advance.fingerprint` replaces them in the fingerprint.
 - **Records are resolved values.** State is the fold of each selected Variant's effective record, in Message order, from `records.initial`. Selecting an earlier Variant, editing it or overriding it never re-evaluates, invalidates or drops a later record. A swipe reuses the Moves and seed of the Variant it replaces, and the same setup, state, Moves, seed and other dependencies give the same outcome, so a swipe with nothing else changed rewrites only the prose. A re-roll keeps the Moves and draws a fresh seed, so it can draw a new outcome. See [`records`](#record-and-records).
 - **Each Box is absent, enabled or disabled in each Chat.** Only an enabled Box runs, and every Chat surface shows while the Box is present, enabled or disabled. Each insert starts a new instance, and the fold reads only the current instance's records, so a reinserted Box starts fresh. See [Lifecycle per Chat](#lifecycle-per-chat).
 - **Box data lives in six storage scopes under the `box:<id>` namespace.** Boxes cannot add tables. A Box's own data never reaches another Box's namespace. The host's own per-Box values, such as the Decision Model selection, live outside it under `box-decision`. See [Storage](#storage).
@@ -114,7 +114,7 @@ The command accepts a Box that is present in the Chat, enabled or disabled, and 
 
 `setupError(setup, previous)` rejects a setup the schema accepts but the Box does not. Its message fails the command and shows in the window.
 
-`importSillyTavernNote(note)` returns the setup a SillyTavern chat's Author's Note imports as. The host checks it against the setup schema and writes it to the new Chat. Only the Author Note declares it.
+`importSillyTavernNote(note)` returns the setup, a value of the setup schema, that a SillyTavern chat's Author's Note imports as. The host writes it to the new Chat. Only the Author Note declares it.
 
 ### `moves` and `moves.render`
 
@@ -150,7 +150,7 @@ const answers = await ctx.decide({ passage, preceding }, {
 const answer = answers.get("mood"); // { type: "choice", choice: "tense", … }
 ```
 
-Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host checks a returned record against the `record` schema and writes it as the slot's `automatic` value with the hash of the digested text.
+Throw on an answer outside your options. A thrown error is logged and written to the slot's `error` with the hash of the text it failed on; it leaves the slot's records alone. The host writes the returned record, which must pass the `record` schema, as the slot's `automatic` value with the hash of the digested text.
 
 `status(setup, state)` is the Box's `Status` line, which `digestWindow` supplies through `useBoxStatus`, or `null` to show the label. The host calls it with the state folded over every selected record, the same state Generation capture folds. The host's dock button, header item and Box manager row carry the accessible name `<label>: <status>`, which is how an e2e test finds them.
 
@@ -160,10 +160,10 @@ The Box's turn in a Generation: Send, Continuation, Sibling and Prompt Plan prev
 
 It returns `{ items, allowance?, trace?, record? }`:
 
-- `items` are `{ text, priority, pinned?, literal? }`. [Admission](#generation-lifecycle) places them in the Box's block after its instructions. A `literal` item skips the Prompt Macro pass; Memory marks recalled claims literal so a stored claim never runs a macro. An empty list leaves the whole block out, instructions included, unless the descriptor declares `alwaysRender`. A Box without `advance` returns an empty list.
-- `allowance` caps the unpinned items' tokens.
-- `record` is checked against the descriptor's `record` and written to the new Variant as the slot's `automatic` value when the Variant resolves. The record is stamped with the Box's instance at capture. Returning a record without a `record` descriptor throws.
-- `trace` is checked against `advance.trace` when declared. The host keeps it, unread, in the Generation's Box traces, keyed by `box:<id>`, beside its budget evidence: the allowance, each item's admission (`admitted`, `allowance`, `oversized` or `context-limit`) in the Box's order, and the block's text as budgeted and as sent, which differ once the writer edits the inspected Prompt Plan. The allowance governs only automatic admission: an edited block answers to the plan's context limit alone, since the Writer's explicit choice wins, as with record overrides. Memory's trace view reads Memory's entry.
+- `items` are `{ text, priority, pinned?, literal? }`, with `priority` a finite number. [Admission](#generation-lifecycle) places them in the Box's block after its instructions. A `literal` item skips the Prompt Macro pass; Memory marks recalled claims literal so a stored claim never runs a macro. An empty list leaves the whole block out, instructions included, unless the descriptor declares `alwaysRender`. A Box without `advance` returns an empty list.
+- `allowance`, a whole number of tokens, caps the unpinned items'.
+- `record` passes the descriptor's `record` and is written to the new Variant as the slot's `automatic` value when the Variant resolves. The record is stamped with the Box's instance at capture. Only a Box with a `record` descriptor returns one.
+- `trace` is JSON and passes `advance.trace` when declared. The host keeps it, unread, in the Generation's Box traces, keyed by `box:<id>`, beside its budget evidence: the allowance, each item's admission (`admitted`, `allowance`, `oversized` or `context-limit`) in the Box's order, and the block's text as budgeted and as sent, which differ once the writer edits the inspected Prompt Plan. The allowance governs only automatic admission: an edited block answers to the plan's context limit alone, since the Writer's explicit choice wins, as with record overrides. Memory's trace view reads Memory's entry.
 
 `fingerprint(input)` replaces `dependencies` in the [preview fingerprint](#generation-lifecycle). Declare it only when the dependencies do not serialize to what should mark a preview stale. Only Memory declares it.
 
