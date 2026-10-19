@@ -8,7 +8,7 @@ import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import { boxEntryOf, boxValue, type BoxValue } from "../../shared/contract/box-value";
+import { boxValue, type BoxValue } from "../../shared/contract/box-value";
 import { checkedBoxState, type RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
@@ -161,9 +161,9 @@ export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: Bo
 
 export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
 	[...boxes].map(([id, box]) => {
-		const setup = boxEntryOf(setups, id);
+		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return captureBox(id, box, { setup, state: checkedBoxState(id, boxEntryOf(states, id)), moves: boxEntryOf(moves, id) ?? [], dependencies }, resolveDecisionOf(read.database, id));
+		return captureBox(id, box, { setup, state: checkedBoxState(id, states[id]), moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));

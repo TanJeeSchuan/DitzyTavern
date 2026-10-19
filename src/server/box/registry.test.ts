@@ -6,7 +6,6 @@ import { basename, join } from "node:path";
 import { Type } from "@sinclair/typebox";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors } from "../../shared/contract/box";
-import { boxMovesOf } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { foldRecordStates, writeAutomaticRecord } from "./records";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
@@ -80,6 +79,7 @@ const installPlugins = (plugins: Record<string, { readonly fields?: string; read
 test("a plugin Box that cannot load is refused with its reason, and the rest still load", async () => {
 	const plugins = installPlugins({
 		lantern: {},
+		constructor: {},
 		unlabelled: { fields: "label: 3" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
@@ -102,6 +102,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
 		["broken", "The wick is wet."],
+		["constructor", "Its id, constructor, names an Object.prototype property."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
@@ -246,31 +247,6 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		database.close();
 		await loadBoxes([builtInBoxes]);
 	}
-});
-
-test("a Box whose id is constructor captures absent inputs as undefined and its own inputs as given", async () => {
-	const echo = 'export default { advance: { run: async ({ setup, state, moves }) => ({ items: [{ text: JSON.stringify({ setup: setup ?? null, state: state ?? null, moves }), priority: 0 }] }) } };';
-	const capture = async (setup: boolean) => {
-		const database = openObservedDatabase();
-		try {
-			await loadBoxes([installPlugins({ constructor: setup
-				? { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { lit: { [Symbol.for("TypeBox.Kind")]: "Boolean", type: "boolean" } }, required: ["lit"] }, initial: { lit: false } }, record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }, moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }, max: 2, label: () => "Lantern" }', server: 'export default { records: { initial: {}, fold: (state) => state }, moves: { render: () => "Lantern" }, advance: { run: async ({ setup, state, moves }) => ({ items: [{ text: JSON.stringify({ setup: setup ?? null, state: state ?? null, moves }), priority: 0 }] }) } };' }
-				: { fields: 'setup: undefined', server: echo } })]);
-			const boxes = participatingBoxes([{ reference: "box:constructor", enabled: true, role: "system", content: "" }], { constructor: "enabled" as const });
-			if (boxes.size !== 1) throw new Error("The constructor Box did not take part.");
-			const inputs = captureBoxes(boxes, setup ? { constructor: { lit: true } } : {}, setup ? { constructor: { lit: "folded" } } : {}, setup ? { constructor: [{ kind: "hold" }] } : {}, {
-				database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
-			});
-			const results = await advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
-			return results["box:constructor"]?.items[0]?.text;
-		} finally {
-			database.close();
-			await loadBoxes([builtInBoxes]);
-		}
-	};
-	expect(JSON.parse(await capture(false) ?? "null")).toEqual({ setup: null, state: null, moves: [] });
-	expect(JSON.parse(await capture(true) ?? "null")).toEqual({ setup: { lit: true }, state: { lit: "folded" }, moves: [{ kind: "hold" }] });
-	expect(boxMovesOf({}, "constructor", Type.String())).toEqual([]);
 });
 
 test("a plugin's routes are served as the loader built them, its client module and stylesheet from its dist folder, and nothing else in it", async () => {

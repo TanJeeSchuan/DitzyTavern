@@ -278,6 +278,7 @@ A run is a maximal row of lifted segments separated only by whitespace prose, wh
 At startup the server scans the built-in folder `src/boxes/`, then the plugin folder `data/boxes/` (`/app/data/boxes` in [Docker](../docker.md)). Each child folder is one Box: the loader `import()`s its `shared-descriptor.ts`, checks the default export against the descriptor schema, then `import()`s its `server.ts`. Bun runs `.ts` directly, so a plugin's server code needs no build. An absent plugin folder holds no Boxes; any other error reading a folder stops startup. The loader refuses a Box, logs `[boxes] Refused the Box in <folder>: <reason>` and loads the rest, when:
 
 - its descriptor fails the schema, which checks that its setup and Move schemas are TypeBox schemas and its record schema a `Type.Object`;
+- its `id` names an `Object.prototype` property, such as `constructor`;
 - its setup's `initial` fails its setup schema;
 - its `sdk` is not the host's major, `boxSdkVersion` in the shared SDK;
 - its folder is not named for its `id`;

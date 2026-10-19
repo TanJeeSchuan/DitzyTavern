@@ -4,7 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import { boxEntryOf, type BoxValue } from "../../shared/contract/box-value";
+import { type BoxValue } from "../../shared/contract/box-value";
 import { generationJsonValue } from "../../shared/contract/json-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
@@ -68,8 +68,8 @@ export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]
 export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, instances: BoxInstances): RecordStates =>
 	Object.fromEntries([...boxes].flatMap(([id, { records }]) => {
 		if (records === undefined) return [];
-		const slots = readRecordSlots(db, id, boxRecordSchema(id), boxEntryOf(instances, id), selectedVariantIds);
-		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, boxEntryOf(setups, id), slots, selectedVariantIds))]];
+		const slots = readRecordSlots(db, id, boxRecordSchema(id), instances[id], selectedVariantIds);
+		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setups[id], slots, selectedVariantIds))]];
 	}));
 
 const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, slot: RecordSlot<BoxValue>): void => {

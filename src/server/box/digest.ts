@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxesWith, boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import { boxEntryOf, boxValue, type BoxValue } from "../../shared/contract/box-value";
+import { boxValue, type BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { BoxCatchUp } from "../../shared/contract/box-digest";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
@@ -195,7 +195,7 @@ export function startBoxDigests(database: Database, options: { fetch?: ModelFetc
 // digest: it must be enabled and have its Decision Model selected.
 const digestInstance = (database: Database, conversationId: number, box: BoxId): string | undefined =>
 	isBoxEnabled(drizzle(database), conversationId, box) && resolveBoxDecision(database, box).kind === "ready"
-		? boxEntryOf(readBoxInstances(drizzle(database), conversationId), box)
+		? readBoxInstances(drizzle(database), conversationId)[box]
 		: undefined;
 
 // @approved
@@ -317,9 +317,9 @@ export function cancelBoxCatchUp(database: Database, conversationId: number, box
 // @approved
 //  Status folds every selected record, as Generation capture does.
 const foldDigest = (db: BunSQLiteDatabase, conversationId: number, box: BoxId, setups: BoxSetups, variantIds: readonly number[]) => {
-	const slots = readRecordSlots(db, box, boxRecordSchema(box), boxEntryOf(readBoxInstances(db, conversationId), box), variantIds);
+	const slots = readRecordSlots(db, box, boxRecordSchema(box), readBoxInstances(db, conversationId)[box], variantIds);
 	const { box: { status }, records } = digesting(box);
-	const setup = boxEntryOf(setups, box);
+	const setup = setups[box];
 	return { slots, status: status?.(setup, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setup, slots, variantIds)) ?? null };
 };
 

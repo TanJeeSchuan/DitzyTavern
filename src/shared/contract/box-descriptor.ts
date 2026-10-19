@@ -62,6 +62,7 @@ function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, w
 /** @approved Throws why the host refuses a Box module's descriptor. The server checks each folder's, the client each client module's. */
 export function assertBoxDescriptor(descriptor: unknown): asserts descriptor is BoxDescriptor {
 	assertChecked(boxDescriptorSchema, descriptor, "Its descriptor");
+	if (Object.hasOwn(Object.prototype, descriptor.id)) throw new Error(`Its id, ${descriptor.id}, names an Object.prototype property.`);
 	if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
 	if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
 }
