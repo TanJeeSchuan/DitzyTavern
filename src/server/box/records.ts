@@ -72,8 +72,17 @@ export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: read
 		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setups[id], slots, selectedVariantIds))]];
 	}));
 
-const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, slot: RecordSlot<BoxValue>): void => {
-	const value = JSON.stringify(slot);
+const updateSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, update: (slot: RecordSlot<BoxValue> | undefined) => RecordSlot<BoxValue> | undefined): void => {
+	const current = slotOf(db, id, instance, variantId);
+	const next = update(current);
+	if (next === current) return;
+	if (next === undefined || (next.automatic === undefined && next.writer === undefined && next.error === undefined)) {
+		db.delete(messageVariantDataTable)
+			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
+			.run();
+		return;
+	}
+	const value = JSON.stringify(next);
 	db.insert(messageVariantDataTable)
 		.values({ message_variant_id: variantId, namespace: boxReference(id), key: recordKey(instance), value })
 		.onConflictDoUpdate({ target: [messageVariantDataTable.message_variant_id, messageVariantDataTable.namespace, messageVariantDataTable.key], set: { value } })
@@ -82,31 +91,22 @@ const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId
 
 /** @approved A successful digest clears the slot's error. */
 export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue, source: string): void =>
-	writeSlot(db, id, instance, variantId, { writer: slotOf(db, id, instance, variantId)?.writer, automatic: record, source });
+	updateSlot(db, id, instance, variantId, (slot) => ({ writer: slot?.writer, automatic: record, source }));
 
 /** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
 export const writeDigestError = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, source: string, message: string): void =>
-	writeSlot(db, id, instance, variantId, { ...slotOf(db, id, instance, variantId), error: { source, message } });
+	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
 
 /** @approved Whether a digest already failed on exactly this text. */
 export const hasDigestError = (slot: RecordSlot | undefined, content: string): boolean => slot?.error?.source === sha256(content);
 
 /** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
 export const writeWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue): void =>
-	writeSlot(db, id, instance, variantId, { ...slotOf(db, id, instance, variantId), writer: record });
+	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, writer: record }));
 
 /** @approved Reset removes the Writer override; with no automatic result or error left the slot row goes away entirely. */
-export const resetWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): void => {
-	const current = slotOf(db, id, instance, variantId);
-	if (current === undefined || current.writer === undefined) return;
-	if (current.automatic === undefined && current.error === undefined) {
-		db.delete(messageVariantDataTable)
-			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
-			.run();
-		return;
-	}
-	writeSlot(db, id, instance, variantId, { automatic: current.automatic, source: current.source, error: current.error });
-};
+export const resetWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): void =>
+	updateSlot(db, id, instance, variantId, (slot) => slot?.writer === undefined ? slot : { automatic: slot.automatic, source: slot.source, error: slot.error });
 
 export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>
 	variantIds.length === 0 ? new Map() : new Map(db
