@@ -38,7 +38,14 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	// @approved
 	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
 	const host = box as HostBox;
-	const { setupError, moves, dependencies, records, advance, status, importSillyTavernNote } = host;
+	// @approved
+	//  Every hook runs on the object that declares it: a top-level hook on the
+	// module, a nested one on its `moves`, `records`, digest or `advance`.
+	const setupError = host.setupError?.bind(host);
+	const dependencies = host.dependencies?.bind(host);
+	const status = host.status?.bind(host);
+	const importSillyTavernNote = host.importSillyTavernNote?.bind(host);
+	const { moves, records, advance } = host;
 	const checked = <Output>(hook: keyof typeof outputs, output: Output): Output => {
 		assertChecked(outputs[hook], output, `The ${id} Box's ${hook} result`);
 		return output;
@@ -46,7 +53,6 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	const digest = records?.digest;
 	const checkedDigest = digest && { window: digest.window, run: async (window: DigestWindow, ctx: DigestContext) => checked("records.digest.run", await digest.run(window, ctx)) };
 	return {
-		...host,
 		setupError: setupError && ((setup, previous) => checked("setupError", setupError(setup, previous))),
 		moves: moves && { render: (move, author) => checked("moves.render", moves.render(move, author)) },
 		dependencies: dependencies && advance?.fingerprint === undefined ? (read, setup) => checked("dependencies", dependencies(read, setup)) : dependencies,
@@ -55,9 +61,15 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 			fold: (state, record, setup) => checked("records.fold", records.fold(state, record, setup)),
 			digest: checkedDigest,
 		}),
-		advance: advance && { ...advance, run: async (input, ctx) => checked("advance.run", await advance.run(input, ctx)) },
+		advance: advance && {
+			trace: advance.trace,
+			run: async (input, ctx) => checked("advance.run", await advance.run(input, ctx)),
+			fingerprint: advance.fingerprint?.bind(advance),
+		},
 		status: status && ((setup, state) => checked("status", status(setup, state))),
 		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
+		read: host.read?.bind(host),
+		routes: host.routes?.bind(host),
 	};
 };
 

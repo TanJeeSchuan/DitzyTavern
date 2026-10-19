@@ -14,8 +14,7 @@ const readResponse = { 200: boxValue, 404: notFoundOutcome };
 const readBox = (database: Database, conversationId: number, id: BoxId) => {
 	if (isDigestBox(id)) return readDigest(database, conversationId, id);
 	const box = serverBox(id);
-	const read = box?.read;
-	return box === undefined || read === undefined ? undefined : readBoxWindow(database, conversationId, id, box, ({ slots: _slots, ...window }) => read(window));
+	return box?.read === undefined ? undefined : readBoxWindow(database, conversationId, id, box, ({ slots: _slots, ...window }) => box.read?.(window));
 };
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()

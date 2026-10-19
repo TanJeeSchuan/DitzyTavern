@@ -372,21 +372,48 @@ for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested
 	}
 });
 
-for (const [hook, failure, server, fields = ""] of [
-	["advance.run", "/items/0/text: Expected string", "advance: { run: async () => ({ items: [{ text: 1, priority: 0 }] }) }"],
-	["advance.run", "/items/0/priority: Expected number", 'advance: { run: async () => ({ items: [{ text: "lit", priority: NaN }] }) }'],
-	["moves.render", "/: Expected string", "moves: { render: () => 1 }", 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }'],
-	["setupError", "/: Expected union value", "setupError: () => 1"],
-	["dependencies", "/: Expected union value", "dependencies: () => new Map()"],
-] as const) test(`${hook} output is checked: ${server}`, async () => {
-	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `export default { ${server} };` } })]);
+const recordField = 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }';
+const decisionField = 'decision: { summary: "", description: "", off: "", context: "" }';
+const movesField = 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }';
+// @approved
+//  A receiver row's hook throws naming the object it ran on, which must be
+// the one that declares it, as the module calls it.
+const ranOn = (hook: string, owner: string) => `{ throw new Error("The lantern Box's ${hook} ran on " + (this === ${owner} ? "its own object." : "another object.")); }`;
+for (const [hook, outcome, server, fields = ""] of [
+	["advance.run", "result is invalid at /items/0/text: Expected string.", "advance: { run: async () => ({ items: [{ text: 1, priority: 0 }] }) }"],
+	["advance.run", "result is invalid at /items/0/priority: Expected number.", 'advance: { run: async () => ({ items: [{ text: "lit", priority: NaN }] }) }'],
+	["moves.render", "result is invalid at /: Expected string.", "moves: { render: () => 1 }", movesField],
+	["setupError", "result is invalid at /: Expected union value.", "setupError: () => 1"],
+	["dependencies", "result is invalid at /: Expected union value.", "dependencies: () => new Map()"],
+	["setupError", "ran on its own object.", `setupError() ${ranOn("setupError", "box")}`],
+	["dependencies", "ran on its own object.", `dependencies() ${ranOn("dependencies", "box")}`],
+	["dependencies", "ran on its own object.", `dependencies() ${ranOn("dependencies", "box")}, advance: { run: async () => ({ items: [] }), fingerprint: () => "" }`],
+	["importSillyTavernNote", "ran on its own object.", `importSillyTavernNote() ${ranOn("importSillyTavernNote", "box")}`],
+	["status", "ran on its own object.", `status() ${ranOn("status", "box")}, records: { digest: { window: 0, run: async () => ({}) } }`, `${recordField}, ${decisionField}`],
+	["read", "ran on its own object.", `read() ${ranOn("read", "box")}`],
+	["routes", "ran on its own object.", `routes() ${ranOn("routes", "box")}`],
+	["moves.render", "ran on its own object.", `moves: { render() ${ranOn("moves.render", "box.moves")} }`, movesField],
+	["records.fold", "ran on its own object.", `records: { initial: 0, fold() ${ranOn("records.fold", "box.records")} }`, recordField],
+	["records.digest.run", "ran on its own object.", `records: { digest: { window: 0, async run() ${ranOn("records.digest.run", "box.records.digest")} } }`, `${recordField}, ${decisionField}`],
+	["advance.run", "ran on its own object.", `advance: { async run() ${ranOn("advance.run", "box.advance")} }`],
+	["advance.fingerprint", "ran on its own object.", `advance: { run: async () => ({ items: [] }), fingerprint() ${ranOn("advance.fingerprint", "box.advance")} }`],
+] as const) test(`${hook} runs on its own object and its output is checked: ${server}`, async () => {
+	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `const box = { ${server} }; export default box;` } })]);
 	// SAFETY: each plugin's hook ignores its arguments.
 	const none = undefined as never;
 	const call = async () => {
-		await lantern?.box.advance?.run(none, none);
-		lantern?.box.moves?.render(none, "Ann");
-		lantern?.box.setupError?.(none, none);
-		lantern?.box.dependencies?.(none, none);
+		const box = lantern?.box;
+		await box?.advance?.run(none, none);
+		box?.advance?.fingerprint?.(none);
+		box?.moves?.render(none, "Ann");
+		box?.setupError?.(none, none);
+		box?.dependencies?.(none, none);
+		box?.importSillyTavernNote?.("");
+		box?.status?.(none, none);
+		box?.read?.(none);
+		box?.routes?.(none);
+		box?.records?.fold?.(none, none, none);
+		await box?.records?.digest?.run(none, none);
 	};
-	await expect(call()).rejects.toThrow(`The lantern Box's ${hook} result is invalid at ${failure}.`);
+	await expect(call()).rejects.toThrow(`The lantern Box's ${hook} ${outcome}`);
 });
