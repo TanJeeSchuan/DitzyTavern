@@ -416,8 +416,8 @@ body > .details-panel > .panel-body {
 		min-height: 2.75rem;
 	}
 
-	.field-input,
-	[data-slot="select-trigger"],
+	.field-input:not(textarea),
+	[data-slot="select-trigger"]:not(.control-select-trigger),
 	.segmented-control-item,
 	.primary-button,
 	.secondary-button {
@@ -470,6 +470,9 @@ body > .details-panel > .panel-body {
 	}
 
 	.prose-editor-field .prose-editor-add {
+		position: static;
+		align-self: flex-end;
+		flex-shrink: 0;
 		width: 2.75rem;
 		height: 2.75rem;
 	}
@@ -478,7 +481,7 @@ body > .details-panel > .panel-body {
 		content: none;
 	}
 
-	.prose-editor-field .cm-content {
+	.definition-opening .cm-content {
 		padding-right: 3.1rem;
 	}
 

@@ -130,6 +130,13 @@
 	color: var(--text-muted);
 }
 
+@media (pointer: coarse) {
+	.model-pin-button {
+		width: 2.5rem;
+		height: 2.5rem;
+	}
+}
+
 .model-pin-button:hover,
 .model-pin-button:focus-visible {
 	color: var(--accent);

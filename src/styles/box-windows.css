@@ -399,6 +399,12 @@
 	text-align: left;
 }
 
+@media (pointer: coarse) {
+	.box-manager-name {
+		min-height: 2.5rem;
+	}
+}
+
 .box-manager-name:hover {
 	color: var(--accent);
 }
