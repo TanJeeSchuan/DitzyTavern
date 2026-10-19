@@ -24,7 +24,7 @@ afterEach(() => database.close());
 test.each(["{", '{"score":"wrong"}'])("stored library and Chat values locate invalid JSON %s", (value) => {
 	database.query("INSERT INTO library_data (namespace, key, value, revision) VALUES ('box:race', 'stats', ?, 1)").run(value);
 	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:race', 'stats', ?)").run(conversationId, value);
-	expect(() => readLibraryValue(drizzle(database), "box:race", "stats", record, { score: 0 })).toThrow("box:race stats");
+	expect(() => readLibraryValue(drizzle(database), "race", "stats", record, { score: 0 })).toThrow("box:race stats");
 	expect(() => readChatValue(drizzle(database), conversationId, "race", "stats", record, { score: 0 })).toThrow(`Chat ${conversationId} box:race stats`);
 });
 

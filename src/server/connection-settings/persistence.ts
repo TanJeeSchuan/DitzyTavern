@@ -37,6 +37,10 @@ export function connect(database: Database): ConnectionSettingsDb {
 	return drizzle(database);
 }
 
+/** @approved A Connection Profile's API format, or undefined once the profile is gone. */
+export const readProfileApiFormat = (db: ConnectionSettingsDb, id: number): ConnectionProfileRow["api_format"] | undefined =>
+	db.select({ apiFormat: connectionProfileTable.api_format }).from(connectionProfileTable).where(eq(connectionProfileTable.id, id)).get()?.apiFormat;
+
 /** @approved The singleton row is seeded by migration, so a read never writes; a missing row is a corrupt database. */
 export function readSettingsRow(db: ConnectionSettingsDb): ConnectionSettingsRow {
 	const row = db

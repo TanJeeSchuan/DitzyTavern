@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
-import { and, eq, inArray, like } from "drizzle-orm";
-import { boxReference, characterDataTable, libraryDataTable, type Box, type BoxWindowRead } from "@/box-sdk/server";
+import { readCharacterRevisions, readLibraryValues, type Box, type BoxWindowRead } from "@/box-sdk/server";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
 import { raceMoveCatalog } from "./shared";
@@ -34,13 +33,9 @@ function readRace({ db, conversationId, summary, setup, state: folded }: BoxWind
 		conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
 		replay: state.finished ? { stretches: replay, intents } : null,
 		castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
-		avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value, revision: libraryDataTable.revision }).from(libraryDataTable)
-			.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
-			.map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
-		characterStatsRevisions: Object.fromEntries(db.select({ id: characterDataTable.character_id, revision: characterDataTable.revision }).from(characterDataTable)
-			.where(and(eq(characterDataTable.namespace, boxReference("race")), eq(characterDataTable.key, "stats"),
-				inArray(characterDataTable.character_id, summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? [])))).all()
-			.map(({ id, revision }) => [id, revision])),
+		avatars: Object.fromEntries(readLibraryValues(db, "race", RACE_AVATAR_PREFIX).map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
+		characterStatsRevisions: Object.fromEntries(readCharacterRevisions(db, "race", "stats", summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? []))
+			.map(({ characterId, revision }) => [characterId, revision])),
 	};
 }
 
