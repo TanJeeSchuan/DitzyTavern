@@ -1,8 +1,5 @@
 import { phoneMove, type PhoneMove, type PhoneRead } from "./contract";
-import type { Database } from "bun:sqlite";
-import {
-	readConversationSummaryFromConnection, readMessageMoves, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box,
-} from "@/box-sdk/server";
+import { readMessageMoves, type Box, type BoxWindowRead } from "@/box-sdk/server";
 import { boxMovesOf } from "@/box-sdk/shared";
 import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "./shared";
 
@@ -23,28 +20,22 @@ const phoneBox = {
 export default phoneBox;
 
 /** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */
-function readPhone(database: Database, conversationId: number): PhoneRead | undefined {
-	return runConversationReadTransaction(database, (db) => {
-		const summary = readConversationSummaryFromConnection(db, conversationId);
-		if (summary === undefined) return undefined;
-		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
-		if (history === undefined) return undefined;
-		const human = summary.cast.find(({ id }) => id === summary.control.humanParticipantId);
-		if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
-		const names = phoneNames(summary.cast, human);
-		const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
-		// @approved
-		//  A sent text reads from the Phone's own Moves, rendered as the model
-		//  reads them while the Phone runs, so the window keeps them while it is
-		//  off and history shows only their chip labels. A Message with Moves
-		//  always has its author.
-		const sent = (id: number, author: string | null) => author === null ? [] : boxMovesOf(moves.get(id) ?? {}, "phone", phoneMove).map((move) => phoneBox.moves.render(move, author));
-		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts([...sent(id, author?.capturedName ?? null), variant.content].join("\n"), names)
-			.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
-			.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
-		return {
-			conversationId, revision: summary.revision, human: human.name,
-			threads: names.contacts.map((contact) => ({ contact, texts: texts.filter(({ from, to }) => from === contact || to === contact) })),
-		};
-	});
+function readPhone({ db, conversationId, summary, history }: BoxWindowRead<undefined, undefined>): PhoneRead {
+	const human = summary.cast.find(({ id }) => id === summary.control.humanParticipantId);
+	if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
+	const names = phoneNames(summary.cast, human);
+	const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
+	// @approved
+	//  A sent text reads from the Phone's own Moves, rendered as the model
+	//  reads them while the Phone runs, so the window keeps them while it is
+	//  off and history shows only their chip labels. A Message with Moves
+	//  always has its author.
+	const sent = (id: number, author: string | null) => author === null ? [] : boxMovesOf(moves.get(id) ?? {}, "phone", phoneMove).map((move) => phoneBox.moves.render(move, author));
+	const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts([...sent(id, author?.capturedName ?? null), variant.content].join("\n"), names)
+		.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
+		.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
+	return {
+		conversationId, revision: summary.revision, human: human.name,
+		threads: names.contacts.map((contact) => ({ contact, texts: texts.filter(({ from, to }) => from === contact || to === contact) })),
+	};
 }

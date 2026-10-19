@@ -9,9 +9,9 @@ import { boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescri
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
-import type { RecordStates } from "./records";
+import type { BoxFolds } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
+import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 
 // @approved
@@ -28,6 +28,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	assertChecked(outputs["records.initial"], box.records?.initial, `The ${id} Box's records.initial`);
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
+		[box.records === undefined || ("initial" in box.records) === (box.records.fold !== undefined), "a fold exactly when it declares an initial state"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
 		[(descriptor.moves === undefined) === (box.moves === undefined), "a Move render exactly when it declares Moves"],
 		[descriptor.decision === undefined || box.read === undefined, "no read, since it digests"],
@@ -38,21 +39,22 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
 	const host = box as HostBox;
 	const { setupError, moves, dependencies, records, advance, status, importSillyTavernNote } = host;
-	const digest = records?.digest;
 	const checked = <Output>(hook: keyof typeof outputs, output: Output): Output => {
 		assertChecked(outputs[hook], output, `The ${id} Box's ${hook} result`);
 		return output;
 	};
+	const digest = records?.digest;
+	const checkedDigest = digest && { window: digest.window, run: async (window: DigestWindow, ctx: DigestContext) => checked("records.digest.run", await digest.run(window, ctx)) };
 	return {
 		...host,
 		setupError: setupError && ((setup, previous) => checked("setupError", setupError(setup, previous))),
 		moves: moves && { render: (move, author) => checked("moves.render", moves.render(move, author)) },
 		dependencies: dependencies && advance?.fingerprint === undefined ? (read, setup) => checked("dependencies", dependencies(read, setup)) : dependencies,
-		records: records && {
+		records: records && (records.fold === undefined ? { digest: checkedDigest } : {
 			initial: records.initial,
 			fold: (state, record, setup) => checked("records.fold", records.fold(state, record, setup)),
-			digest: digest && { window: digest.window, run: async (window, ctx) => checked("records.digest.run", await digest.run(window, ctx)) },
-		},
+			digest: checkedDigest,
+		}),
 		advance: advance && { ...advance, run: async (input, ctx) => checked("advance.run", await advance.run(input, ctx)) },
 		status: status && ((setup, state) => checked("status", status(setup, state))),
 		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
@@ -175,11 +177,16 @@ export const participatingBoxes = (slots: readonly PromptPresetSlot[], lifecycle
 		return lifecycle?.state === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id)) ? [[id, { box, instance: lifecycle.instance }]] : [];
 	}));
 
-export const captureBoxes = (boxes: ReturnType<typeof participatingBoxes>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
+/** @approved What the host read for one Generation, before each Box's own record slots join its messages. */
+type HostCaptureRead = Omit<CaptureRead, "messages"> & { readonly messages: readonly Omit<CaptureMessage, "slot">[] };
+
+export const captureBoxes = (boxes: ReturnType<typeof participatingBoxes>, setups: BoxSetups, folds: BoxFolds, moves: BoxMoves, read: HostCaptureRead): BoxInputs =>
 	[...boxes].map(([id, { box, instance }]) => {
 		const setup = setups[id];
-		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return captureBox(id, instance, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
+		const fold = folds[id];
+		const messages = read.messages.map((message) => ({ ...message, slot: fold?.slots.get(message.variantId) }));
+		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id), messages }, setup);
+		return captureBox(id, instance, box, { setup, state: fold?.state, moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, instance, fingerprint }) => [reference, instance, fingerprint]));

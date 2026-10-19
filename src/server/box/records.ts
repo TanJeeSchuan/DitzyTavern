@@ -4,13 +4,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
 import { type BoxValue } from "../../shared/contract/box-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import type { participatingBoxes } from "./registry";
-import type { Box, HostBox } from "./contract";
+import type { HostBox } from "./contract";
 
 // @approved
 //  Record slots live in Variant data under `box:<id>`, key
@@ -46,24 +45,27 @@ export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["w
 /** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
 export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
-/** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecords = <Setup, Rec extends BoxValue, State extends GenerationJsonValue | undefined>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
-	selectedVariantIds.reduce((state, variantId) => {
+// @approved
+//  One Box's record slots on the given Variants, for its instance, and its
+// state: the fold over their effective records, in Message order, from
+// `initial`, or undefined for a Box without a fold. Generation capture, the
+// window reads and the digest status all fold this way.
+export const readBoxFold = (db: BunSQLiteDatabase, id: BoxId, { records }: HostBox, instance: string | undefined, setup: BoxValue | undefined, variantIds: readonly number[]) => {
+	const slots = records === undefined ? new Map<number, RecordSlot<BoxValue>>() : readRecordSlots(db, id, boxRecordSchema(id), instance, variantIds);
+	const state = records?.fold === undefined ? undefined : variantIds.reduce((folded, variantId) => {
 		const record = effectiveRecord(slots.get(variantId));
-		return record === undefined ? state : records.fold(state, record, setup);
+		return record === undefined ? folded : records.fold(folded, record, setup);
 	}, records.initial);
+	return { slots, state };
+};
 
-/** @approved Every enabled record Box's folded state, by Box id, as one Generation captures it; only the Box that folded a state reads it. */
-export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]>["initial"]>>;
+/** @approved Each participating Box's slots on the Selected path and its state, by Box id, as one Generation captures them; only the Box that folded them reads them. */
+export type BoxFolds = Readonly<Record<BoxId, ReturnType<typeof readBoxFold>>>;
 
 // @approved
 //  Only participating Boxes read and fold records for this Generation.
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReturnType<typeof participatingBoxes>): RecordStates =>
-	Object.fromEntries([...boxes].flatMap(([id, { box: { records }, instance }]) => {
-		if (records === undefined) return [];
-		const slots = readRecordSlots(db, id, boxRecordSchema(id), instance, selectedVariantIds);
-		return [[id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setups[id], slots, selectedVariantIds)]];
-	}));
+export const readBoxFolds = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReturnType<typeof participatingBoxes>): BoxFolds =>
+	Object.fromEntries([...boxes].map(([id, { box, instance }]) => [id, readBoxFold(db, id, box, instance, setups[id], selectedVariantIds)]));
 
 const updateSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, update: (slot: RecordSlot<BoxValue> | undefined) => RecordSlot<BoxValue> | undefined): void => {
 	const current = slotOf(db, id, instance, variantId);

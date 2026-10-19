@@ -101,8 +101,8 @@ export const boxServerSchema = Type.Object({
 	moves: Type.Optional(Type.Object({ render: hook })),
 	dependencies: Type.Optional(hook),
 	records: Type.Optional(Type.Object({
-		initial: Type.Unknown(),
-		fold: hook,
+		initial: Type.Optional(Type.Unknown()),
+		fold: Type.Optional(hook),
 		digest: Type.Optional(Type.Object({ window: Type.Integer({ minimum: 0 }), run: hook })),
 	})),
 	advance: Type.Optional(Type.Object({ trace: Type.Optional(schema), run: hook, fingerprint: Type.Optional(hook) })),

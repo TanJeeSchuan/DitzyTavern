@@ -1,12 +1,11 @@
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { sliceByTokens } from "tokenx";
 import {
 	cosineSimilarity, effectiveRecord, hasAutomaticRecord, hasDigestError, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
-	readBoxLifecycles, readRecordSlots, sha256, tokenxEstimator,
+	sha256, tokenxEstimator,
 	type BoxContext, type CaptureRead, type DecisionAnswer, type EmbeddingConfiguration,
 } from "@/box-sdk/server";
 import { projectImageAnchors } from "@/box-sdk/shared";
-import { memoryRecord, type MemoryActivationRecord, type MemoryRecallCandidateRecord } from "./contract";
+import type { MemoryActivationRecord, MemoryRecallCandidateRecord, MemoryRecord } from "./contract";
 import { applyMemoryPeople, renderMemoryClaim } from "./shared";
 import { isExcludedAuthor, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
@@ -40,7 +39,7 @@ const fitToTokenBudget = (text: string, limit: number) => {
 	return "";
 };
 
-const sceneTextFor = (read: CaptureRead, limit: number) => {
+const sceneTextFor = (read: CaptureRead<MemoryRecord>, limit: number) => {
 	const { messages, pending, human } = read;
 	const pendingAlreadySelected = pending !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pending;
 	const scene = messages.slice(-(pending !== undefined && !pendingAlreadySelected ? 3 : 4)).map((message) => ({
@@ -145,18 +144,16 @@ type RecallCandidateBase = Omit<MemoryRecallCandidateRecord, "semanticSimilarity
 //  stays recallable until its new digest lands, as every effective record
 //  does. `writers` are the overrides, the only records whose change marks an
 //  inspected plan stale: a digest landing in the background does not.
-const scanMemorySources = (read: CaptureRead) => {
-	const db = drizzle(read.database);
+const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 	const active = readActiveVariantIds(read.database, read.conversationId);
 	const labels = readMemoryLabelState(read.database, read.conversationId);
 	const messages = read.messages.filter((message) => !active.has(message.variantId) && !isExcludedAuthor(labels, message.authorId) && message.prose.trim() !== "");
-	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, read.conversationId).memory?.instance, messages.map((message) => message.variantId));
 	const sources: { readonly variantId: number; readonly record: string | null; readonly digested: boolean; readonly failed: boolean }[] = [];
 	const writers: { readonly variantId: number; readonly record: string }[] = [];
 	const claimed: ClaimedMemory[] = [];
 	const counts = { pendingSourceCount: 0, failedSourceCount: 0 };
 	for (const message of messages) {
-		const slot = slots.get(message.variantId);
+		const { slot } = message;
 		const record = effectiveRecord(slot);
 		const digested = hasAutomaticRecord(slot, message.prose);
 		const failed = hasDigestError(slot, message.prose);
@@ -186,7 +183,7 @@ const scanMemorySources = (read: CaptureRead) => {
 	return { sources, writers, claimed, counts, labelRevision: labels.revision, eligibleSourceCount: messages.length };
 };
 
-export const captureMemoryRecallSnapshot = (read: CaptureRead): MemoryRecallSnapshot => {
+export const captureMemoryRecallSnapshot = (read: CaptureRead<MemoryRecord>): MemoryRecallSnapshot => {
 	const { allowance, revision: allowanceRevision } = readMemoryChatSettings(read.database, read.conversationId);
 	const { recallRelevanceMinimum } = createMemorySettingsModule(read.database).get();
 	const { status, ...decision } = readBoxDecision(read.database, "memory");

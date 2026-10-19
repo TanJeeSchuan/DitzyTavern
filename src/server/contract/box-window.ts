@@ -6,12 +6,17 @@ import { digestPassageCommand, digestStatusRead } from "../../shared/contract/bo
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, queueBoxDigest, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
 import { serverBox } from "../box/registry";
+import { readBoxWindow } from "../box/window";
 import { notFoundResponse } from "./responses";
 
 const readResponse = { 200: boxValue, 404: notFoundOutcome };
-/** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read`, and an unknown id has none. */
-const readBox = (database: Database, conversationId: number, box: BoxId) =>
-	isDigestBox(box) ? readDigest(database, conversationId, box) : serverBox(box)?.read?.(database, conversationId);
+/** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read` over the host's window read, and an unknown id has none. */
+const readBox = (database: Database, conversationId: number, id: BoxId) => {
+	if (isDigestBox(id)) return readDigest(database, conversationId, id);
+	const box = serverBox(id);
+	const read = box?.read;
+	return box === undefined || read === undefined ? undefined : readBoxWindow(database, conversationId, id, box, ({ slots: _slots, ...window }) => read(window));
+};
 
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/boxes/:box", ({ params }) => readBox(database, params.id, params.box) ?? notFoundResponse(),

@@ -1,12 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRaceAutoValid, raceRecord, raceSetup, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
-import type { Database } from "bun:sqlite";
+import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
 import { and, eq, inArray, like } from "drizzle-orm";
-import {
-	boxReference, characterDataTable, foldRecords, libraryDataTable, readBoxLifecycles, readConversationSummaryFromConnection, readRecordSlots, readSelectedHistoryFromConnection,
-	runConversationReadTransaction, type Box,
-} from "@/box-sdk/server";
-import { boxSetupOf } from "@/box-sdk/shared";
+import { boxReference, characterDataTable, libraryDataTable, type Box, type BoxWindowRead } from "@/box-sdk/server";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
 import { raceMoveCatalog } from "./shared";
@@ -32,29 +27,21 @@ const raceBox = {
 } satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>;
 export default raceBox;
 
-function readRace(database: Database, conversationId: number): RaceRead | undefined {
-	return runConversationReadTransaction(database, (db) => {
-		const summary = readConversationSummaryFromConnection(db, conversationId);
-		if (summary === undefined) return undefined;
-		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
-		if (history === undefined) return undefined;
-		const setup = boxSetupOf(summary, "race", raceSetup);
-		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const { intents, replay, ...state } = foldRecords(raceBox.records, setup, readRecordSlots(db, "race", raceRecord, readBoxLifecycles(db, conversationId).race?.instance, ids), ids) ?? initialRaceState(setup);
-		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
-		return {
-			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
-			replay: state.finished ? { stretches: replay, intents } : null,
-			castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
-			avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value, revision: libraryDataTable.revision }).from(libraryDataTable)
-				.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
-				.map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
-			characterStatsRevisions: Object.fromEntries(db.select({ id: characterDataTable.character_id, revision: characterDataTable.revision }).from(characterDataTable)
-				.where(and(eq(characterDataTable.namespace, boxReference("race")), eq(characterDataTable.key, "stats"),
-					inArray(characterDataTable.character_id, summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? [])))).all()
-				.map(({ id, revision }) => [id, revision])),
-		};
-	});
+function readRace({ db, conversationId, summary, setup, state: folded }: BoxWindowRead<RaceSetup, RaceState | null>): RaceRead {
+	const { intents, replay, ...state } = folded ?? initialRaceState(setup);
+	const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
+	return {
+		conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
+		replay: state.finished ? { stretches: replay, intents } : null,
+		castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
+		avatars: Object.fromEntries(db.select({ key: libraryDataTable.key, value: libraryDataTable.value, revision: libraryDataTable.revision }).from(libraryDataTable)
+			.where(and(eq(libraryDataTable.namespace, boxReference("race")), like(libraryDataTable.key, `${RACE_AVATAR_PREFIX}%`))).all()
+			.map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
+		characterStatsRevisions: Object.fromEntries(db.select({ id: characterDataTable.character_id, revision: characterDataTable.revision }).from(characterDataTable)
+			.where(and(eq(characterDataTable.namespace, boxReference("race")), eq(characterDataTable.key, "stats"),
+				inArray(characterDataTable.character_id, summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? [])))).all()
+			.map(({ id, revision }) => [id, revision])),
+	};
 }
 
 function raceSetupError(setup: RaceSetup, previous: RaceSetup): string | undefined {

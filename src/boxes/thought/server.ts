@@ -1,5 +1,4 @@
-import type { Database } from "bun:sqlite";
-import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box } from "@/box-sdk/server";
+import type { Box, BoxWindowRead } from "@/box-sdk/server";
 import { stripThoughts, type ThoughtRead } from "./shared";
 
 // @approved
@@ -11,15 +10,9 @@ const thoughtBox = {
 } satisfies Box<undefined>;
 export default thoughtBox;
 
-function readThoughts(database: Database, conversationId: number): ThoughtRead | undefined {
-	return runConversationReadTransaction(database, (db) => {
-		const summary = readConversationSummaryFromConnection(db, conversationId);
-		if (summary === undefined) return undefined;
-		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
-		if (history === undefined) return undefined;
-		const thoughts = history.messages.flatMap(({ author, variant }) => variant === null ? [] : stripThoughts(variant.content)
-			.flatMap((segment) => segment.kind === "thought" ? [segment.text] : [])
-			.map((text, index) => ({ key: `${variant.id}:${index}`, author: author?.capturedName ?? null, text })));
-		return { conversationId, revision: summary.revision, thoughts };
-	});
+function readThoughts({ conversationId, summary, history }: BoxWindowRead<undefined, undefined>): ThoughtRead {
+	const thoughts = history.messages.flatMap(({ author, variant }) => variant === null ? [] : stripThoughts(variant.content)
+		.flatMap((segment) => segment.kind === "thought" ? [segment.text] : [])
+		.map((text, index) => ({ key: `${variant.id}:${index}`, author: author?.capturedName ?? null, text })));
+	return { conversationId, revision: summary.revision, thoughts };
 }

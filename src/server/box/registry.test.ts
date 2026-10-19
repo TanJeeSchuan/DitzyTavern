@@ -6,7 +6,7 @@ import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors } from "../../shared/contract/box";
 import { sha256 } from "../hash";
-import { foldRecordStates, writeAutomaticRecord } from "./records";
+import { readBoxFolds, writeAutomaticRecord } from "./records";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
 import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
@@ -90,7 +90,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		unrouted: { server: 'export default { routes: () => { throw new Error("The hook is bent."); } };' },
 		unmounted: { server: `${elysia} export default { routes: () => Object.defineProperty(new Elysia(), "router", { get() { throw new Error("The hook will not hang."); } }) };` },
 		"hollow-moves": { server: "export default { moves: {} };" },
-		"hollow-records": { server: "export default { records: { initial: 0 } };" },
+		"hollow-records": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
 		"hollow-routes": { server: "export default { routes: () => ({}) };" },
 		"map-initial": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: new Map(), fold: (state) => state } };" },
@@ -104,7 +104,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["constructor", "Its id, constructor, names an Object.prototype property."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
-		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
+		["hollow-records", "The hollow-records Box must declare a fold exactly when it declares an initial state."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
 		["map-initial", "The map-initial Box's records.initial is invalid at /: Expected union value."],
 		["mood", "A Box with the id mood is already loaded."],
@@ -238,10 +238,10 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
-		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
+		expect(() => readBoxFolds(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
-		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, read)))
-			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, read)));
+		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 1 } } }, {}, read)))
+			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 2 } } }, {}, read)));
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);

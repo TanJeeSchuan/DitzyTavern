@@ -392,8 +392,8 @@ describe("Memory recall in Generation preparation", () => {
 			cast: [],
 			pending: `Next ${token}`,
 			messages: [
-				{ messageId: 1, variantId: 1, position: 1, authorId: null, speaker: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.` },
-				{ messageId: 2, variantId: 2, position: 2, authorId: null, speaker: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.` },
+				{ messageId: 1, variantId: 1, position: 1, authorId: null, speaker: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.`, slot: undefined },
+				{ messageId: 2, variantId: 2, position: 2, authorId: null, speaker: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.`, slot: undefined },
 			],
 		});
 		expect(snapshot.activation.scene).toBe("Writer: Writer unrolled [Image: the map].\n\nMaren: Maren studied [Image: the map] closely.\n\nWriter: Next [Image: the map]");

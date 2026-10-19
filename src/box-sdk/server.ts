@@ -1,12 +1,12 @@
 // @approved
 //  What a Box's server files may use from the host, beside the shared entry.
-export type { AdvanceResult, Box, BoxContext, CaptureRead, DigestContext, DigestWindow } from "../server/box/contract";
+export type { AdvanceResult, Box, BoxContext, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "../server/box/contract";
 export {
-	readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction, InvalidConversationCommandError,
-	conversationExists, readActiveVariantIds, readChatVariants, readConversationRevision, readExistingSources, readMessageAuthors, readParticipants,
+	InvalidConversationCommandError, conversationExists, readActiveVariantIds, readChatVariants, readConversationRevision, readExistingSources, readMessageAuthors,
+	readParticipants,
 } from "../server/conversation";
-export { humanMessageText, readMessageMoves } from "../server/box/moves";
-export { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots } from "../server/box/records";
+export { readMessageMoves } from "../server/box/moves";
+export { effectiveRecord, hasAutomaticRecord, hasDigestError, readRecordSlots } from "../server/box/records";
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
