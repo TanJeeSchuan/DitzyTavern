@@ -5,11 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { transform, type Rule, type Selector } from "lightningcss";
 import { build } from "vite";
-
-// The modules a Box client shares with the host, as `index.html`'s import
-// map names them: each specifier to the stable host chunk it is built as.
-// index.html declares that import map, and the pattern always captures its body.
-export const hostModules: Record<string, string> = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(readFileSync(new URL("../index.html", import.meta.url), "utf8"))![1]!).imports;
+import { hostModules } from "./host-modules";
 
 const linkStylesheet = `await new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement("link"), {
 	rel: "stylesheet", href: new URL("./client.css", import.meta.url).href, onload: resolve, onerror: () => reject(new Error("Its stylesheet did not load.")),

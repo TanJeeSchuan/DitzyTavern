@@ -4,7 +4,8 @@ import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
-import { buildBoxClient, hostModules } from "./scripts/build-box-client";
+import { buildBoxClient } from "./scripts/build-box-client";
+import { hostModules } from "./scripts/host-modules";
 
 const boxes = fileURLToPath(new URL("./src/boxes", import.meta.url));
 
@@ -30,6 +31,12 @@ const hostChunks: Plugin = {
 	},
 };
 
+/** @approved The page's import map, in the dev server and the build alike; Vite moves it before the first module script. */
+const importMap: Plugin = {
+	name: "import-map",
+	transformIndexHtml: () => [{ tag: "script", attrs: { type: "importmap" }, children: JSON.stringify({ imports: hostModules }), injectTo: "head" }],
+};
+
 /** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host. */
 const builtInBoxClients: Plugin = {
 	name: "built-in-box-clients",
@@ -53,7 +60,7 @@ const devBoxClients: Plugin = {
 };
 
 export default defineConfig({
-	plugins: [react(), tailwindcss(), hostChunks, builtInBoxClients, devBoxClients],
+	plugins: [react(), tailwindcss(), importMap, hostChunks, builtInBoxClients, devBoxClients],
 	resolve: {
 		alias: {
 			"@": fileURLToPath(new URL("./src", import.meta.url)),
