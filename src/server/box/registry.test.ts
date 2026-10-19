@@ -13,10 +13,12 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
+import { acceptConversationTailGeneration, checkpointConversationGeneration, observeConversationWrites } from "../conversation";
+import { openInitializedDatabase } from "../database/database";
 import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
+import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
@@ -268,6 +270,27 @@ test("reinserting a participating Box makes its inspected Prompt Plan stale", as
 		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
 		expect(response.status).toBe(422);
 		expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a capture reads in one transaction while another connection commits", async () => {
+	const folder = mkdtempSync(join(tmpdir(), "ditzy-capture-"));
+	pluginFolders.push(folder);
+	const path = join(folder, "capture.sqlite");
+	const database = openInitializedDatabase({ path });
+	try {
+		observeConversationWrites(database, () => () => {});
+		const conversation = createChat(database);
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			server: `import { Database } from "bun:sqlite"; export default { dependencies: () => { const other = new Database(${JSON.stringify(path)}); other.run("UPDATE conversation SET name = 'Lantern Chat' WHERE id = ${conversation.id}"); other.close(); } };`,
+		} })]);
+		insertBox(database, conversation.id, "lantern");
+		database.run("UPDATE prompt_preset_block SET enabled = 0 WHERE reference = 'lore'");
+		const capture = () => prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, connection: null, target: { kind: "send", content: "Light it." } });
+		expect(capture().conversationId).toBe(conversation.id);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);

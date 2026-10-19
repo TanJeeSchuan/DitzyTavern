@@ -25,7 +25,7 @@ import {
 	advanceRevision,
 	connect,
 	ensureProfileNameAvailable,
-	ensureSettingsRow,
+	readSettingsRow,
 	readProfile,
 	readSecret,
 	requireProfile,
@@ -111,7 +111,7 @@ export function createConnectionSettingsModule(
 
 	const read = (): ConnectionSettingsSnapshot => {
 		const db = connect(database);
-		const settings = ensureSettingsRow(db);
+		const settings = readSettingsRow(db);
 		const profiles = db
 			.select()
 			.from(connectionProfileTable)
@@ -136,7 +136,7 @@ export function createConnectionSettingsModule(
 	};
 
 	// @approved
-	//  One seam owns connect, ensure, revision check, mutate, and the
+	//  One seam owns connect, read, revision check, mutate, and the
 	// revision advance, so every successful write bumps the revision exactly
 	// once by construction rather than by caller discipline.
 	function revisionedWrite(
@@ -147,7 +147,7 @@ export function createConnectionSettingsModule(
 	): ConnectionSettingsSnapshot {
 		const write = database.transaction(() => {
 			const db = connect(database);
-			const settings = ensureSettingsRow(db);
+			const settings = readSettingsRow(db);
 			guardRevision("settings", input.expectedRevision, settings, read);
 			input.mutate({ db, settings });
 			advanceRevision(db, settings.revision);
@@ -302,7 +302,7 @@ export function createConnectionSettingsModule(
 		const catalog = normalizeDiscoveryCatalog(models);
 		const replace = database.transaction(() => {
 			const db = connect(database);
-			const settings = ensureSettingsRow(db);
+			const settings = readSettingsRow(db);
 			const profile = requireProfile(db, profileId);
 			if (
 				settings.revision !== expectedRevision ||

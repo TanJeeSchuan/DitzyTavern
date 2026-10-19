@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
+import { eq, getTableName } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { guardRevision, type CurrentByAggregate } from "./revision";
@@ -21,13 +21,15 @@ export const createRevisionedSettings = <Row extends { id: number; revision: num
 	project: (row: Row) => Payload,
 ) => {
 	const db = drizzle(database);
+	// @approved
+	//  The singleton row is seeded by migration, so a read never writes; a
+	// missing row is a corrupt database.
 	const row = () => {
 		// @approved
-		//  SAFETY: every settings table gives all columns but id a default, so the singleton row inserts from its id alone.
-		db.insert(table).values({ id: SETTINGS_ID } as never).onConflictDoNothing().run();
-		// @approved
 		//  SAFETY: the table's own select shape is Row.
-		return db.select().from(table).where(eq(table.id, SETTINGS_ID)).get() as Row;
+		const found = db.select().from(table).where(eq(table.id, SETTINGS_ID)).get() as Row | undefined;
+		if (found === undefined) throw new Error(`The ${getTableName(table)} row is missing.`);
+		return found;
 	};
 	const get = () => project(row());
 	const commit = (expectedRevision: number, patch: Partial<Row>) => database.transaction(() => {

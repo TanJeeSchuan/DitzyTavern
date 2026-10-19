@@ -37,17 +37,14 @@ export function connect(database: Database): ConnectionSettingsDb {
 	return drizzle(database);
 }
 
-export function ensureSettingsRow(db: ConnectionSettingsDb): ConnectionSettingsRow {
-	db.insert(connectionSettingsTable)
-		.values({ id: SETTINGS_ROW_ID, revision: 0 })
-		.onConflictDoNothing()
-		.run();
+/** @approved The singleton row is seeded by migration, so a read never writes; a missing row is a corrupt database. */
+export function readSettingsRow(db: ConnectionSettingsDb): ConnectionSettingsRow {
 	const row = db
 		.select()
 		.from(connectionSettingsTable)
 		.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
 		.get();
-	if (row === undefined) throw new Error("Connection Settings row is unavailable.");
+	if (row === undefined) throw new Error("The connection_settings row is missing.");
 	return row;
 }
 
