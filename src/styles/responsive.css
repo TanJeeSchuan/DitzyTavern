@@ -405,20 +405,61 @@ body > .details-panel > .panel-body {
 	}
 
 	.navigation-button,
-	.mobile-back {
+	.mobile-back,
+	.icon-button {
 		width: 2.75rem;
 		height: 2.75rem;
 	}
 
-	/* @approved Icon controls keep their look; the pseudo-element widens only the hit area. */
-	.swipe-controls .icon-button {
-		position: relative;
+	.cast-control {
+		min-width: 2.75rem;
+		min-height: 2.75rem;
 	}
 
-	.swipe-controls .icon-button::after {
-		content: "";
-		position: absolute;
-		inset: -0.25rem;
+	.field-input,
+	[data-slot="select-trigger"],
+	.segmented-control-item,
+	.primary-button,
+	.secondary-button {
+		min-height: 2.5rem;
+	}
+
+	[data-slot="input-group"] {
+		min-height: 2.75rem;
+	}
+
+	.search-field input,
+	[data-slot="input-group"] > input {
+		height: 100%;
+		min-height: 2.5rem;
+	}
+
+	summary {
+		min-height: 2.75rem;
+		align-content: center;
+	}
+
+	.story-title-trigger {
+		min-height: 2.75rem;
+	}
+
+	[data-slot="slider"] {
+		min-height: 2.75rem;
+	}
+
+	[data-slot="slider-thumb"] {
+		width: 2.75rem;
+		height: 2.75rem;
+		border: 0;
+		background: transparent;
+	}
+
+	[data-slot="slider-thumb"]::after {
+		inset: 1rem;
+		border: 1px solid var(--ring);
+		border-radius: 50%;
+		background: white;
+		pointer-events: none;
 	}
 
 	/* @approved The hit area grows up and left only, so it stays inside the editor and off the composer's Send. */
@@ -426,6 +467,23 @@ body > .details-panel > .panel-body {
 		content: "";
 		position: absolute;
 		inset: -0.9rem -0.35rem -0.3rem -0.9rem;
+	}
+
+	.prose-editor-field .prose-editor-add {
+		width: 2.75rem;
+		height: 2.75rem;
+	}
+
+	.prose-editor-field .prose-editor-add::after {
+		content: none;
+	}
+
+	.prose-editor-field .cm-content {
+		padding-right: 3.1rem;
+	}
+
+	.definition-opening .prose-editor-field {
+		min-height: 7rem;
 	}
 }
 

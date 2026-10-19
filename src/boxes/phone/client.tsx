@@ -87,7 +87,9 @@ function PhonePanel({ visible, conversation, disabled, staging }: { visible: boo
 		<form className="phone-compose" onSubmit={(event) => { event.preventDefault(); stage(); }}>
 			<Textarea aria-label={`Text ${thread.contact}`} placeholder={`Text ${thread.contact}`} value={draft} maxLength={2000} disabled={locked} rows={2}
 				onChange={(event) => setDraft(event.target.value)}
-				onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); stage(); } }} />
+				onKeyDown={(event) => {
+					if (event.key === "Enter" && !event.nativeEvent.isComposing && !event.shiftKey) { event.preventDefault(); stage(); }
+				}} />
 			<Button type="submit" size="sm" disabled={locked || draft.trim() === "" || staged.length >= MAX_PHONE_MOVES}>Stage text</Button>
 		</form>
 	</div>;

@@ -100,7 +100,7 @@ export function ChatsPanel({
 										onFocus={(event) => event.currentTarget.select()}
 										onBlur={(event) => void rename(chat, event.currentTarget.value)}
 										onKeyDown={(event) => {
-											if (event.key === "Enter") event.currentTarget.blur();
+											if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
 											if (event.key === "Escape") setRenamingId(null);
 										}}
 									/>

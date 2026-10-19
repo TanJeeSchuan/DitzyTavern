@@ -203,7 +203,7 @@ export function PromptPresetRecipeRow({
 	};
 	return <li
 		ref={ref}
-		className={`relative py-2.5 pointer-coarse:py-0.5 transition-[background-color,box-shadow] motion-reduce:transition-none${
+		className={`relative py-2.5 pointer-coarse:py-0 transition-[background-color,box-shadow] motion-reduce:transition-none${
 			isDragging
 				? " z-10 bg-background shadow-lg ring-1 ring-border"
 				: isDropTarget
@@ -212,13 +212,13 @@ export function PromptPresetRecipeRow({
 			}`}
 	>
 		<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-			<div className="flex min-w-0 items-center gap-1">
+			<div className="flex min-w-0 items-center gap-1 pointer-coarse:self-stretch">
 				<button
 					ref={handleRef}
 					type="button"
 					disabled={pending}
 					className={[
-					"grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none",
+					"grid size-7 pointer-coarse:h-auto pointer-coarse:w-11 pointer-coarse:self-stretch shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none",
 					"hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
 				].join(" ")}
 					aria-label={`Reorder ${title}`}

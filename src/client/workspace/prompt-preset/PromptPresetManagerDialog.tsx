@@ -304,7 +304,7 @@ const InlineNameEdit = ({
 				autoFocus
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={(event) => {
-					if (event.key === "Enter" && ready) onSubmit();
+					if (event.key === "Enter" && !event.nativeEvent.isComposing && ready) onSubmit();
 					if (event.key === "Escape") onCancel();
 				}}
 			/>

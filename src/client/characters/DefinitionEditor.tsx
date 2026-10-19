@@ -152,7 +152,7 @@ export function DefinitionEditor({
 					</div>
 					{draft.openings.length === 0 && <p className="text-xs text-muted-foreground">No Openings.</p>}
 					{draft.openings.map((opening, index) => (
-						<div key={index} className="group/opening relative">
+						<div key={index} className="definition-opening group/opening relative">
 							<ProseEditor
 							className="prose-editor-field min-h-20"
 							ariaLabel={`Opening ${index + 1}`}

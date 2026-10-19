@@ -41,7 +41,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, selected
 	};
 	const step = Math.max(1, Math.round(marks.length / 20));
 	const onKeyDown = (event: KeyboardEvent) => {
-		if (event.key === "Enter" || event.key === " ") {
+		if (!event.nativeEvent.isComposing && (event.key === "Enter" || event.key === " ")) {
 			event.preventDefault();
 			const mark = marks[cursor];
 			if (mark !== undefined) onSelect(mark.messageId);

@@ -41,6 +41,7 @@ import { useThemePreference } from "../lib/use-theme";
 import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
 import { StoryStage } from "./StoryStage";
+import { CoveredLayer } from "./CoveredLayer";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -192,7 +193,8 @@ export function ActiveWritingWorkspace({
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
-	const covered = useNarrow() && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
+	const narrow = useNarrow();
+	const covered = narrow && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
 		<Toast.Provider duration={8_000} swipeDirection="right">
@@ -209,6 +211,7 @@ export function ActiveWritingWorkspace({
 
 			<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
 			<SaveNavigationContext.Provider value={saveNavigation.requestNavigation}>
+			<CoveredLayer inert={narrow && (newChatOpen || panelState.inspector !== null)}>
 			<PrimaryPanelView
 				panel={panelState.primaryPanel}
 				workspace={initialWorkspace}
@@ -233,6 +236,7 @@ export function ActiveWritingWorkspace({
 				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
 				onOpenWindow={boxWindows.open}
 			/>
+			</CoveredLayer>
 
 			<StoryStage
 				story={story}
@@ -267,6 +271,7 @@ export function ActiveWritingWorkspace({
 			</SaveNavigationContext.Provider>
 			</SaveGuardContext.Provider>
 
+			<CoveredLayer inert={narrow && (newChatOpen || panelState.primaryPanel !== null)}>
 			{assembly !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
@@ -278,7 +283,9 @@ export function ActiveWritingWorkspace({
 					onOpenSettings={() => saveNavigation.requestNavigation(() => togglePanel("settings"))}
 				/>
 			)}
+			</CoveredLayer>
 
+			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
@@ -326,6 +333,7 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}
+			</CoveredLayer>
 			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast
