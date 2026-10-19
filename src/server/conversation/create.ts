@@ -25,7 +25,7 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import { installBoxBlocks, readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
-import { boxInstanceEntry, boxStateEntry, readBoxLifecycles } from "../box/setup";
+import { boxInstanceEntry, boxStateEntry } from "../box/setup";
 import { defaultBoxIds } from "../../shared/contract/box";
 import { macroWritesToData } from "../prompt-macros";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
@@ -454,7 +454,7 @@ export function createConversation(
 		);
 		const defaultRows = defaultBoxIds().flatMap((id) => [boxStateEntry(id, true), boxInstanceEntry(id)].map((entry) => ({ conversation_id: conversation.id, ...entry })));
 		if (defaultRows.length > 0) db.insert(conversationDataTable).values(defaultRows).onConflictDoNothing().run();
-		installBoxBlocks(db, conversation.id, Object.entries(readBoxLifecycles(db, conversation.id)).flatMap(([id, { state }]) => state === "enabled" ? [id] : []));
+		installBoxBlocks(db, conversation.id, defaultBoxIds());
 
 		// @approved
 		//  Artifact metadata rows are Conversation database state and commit
