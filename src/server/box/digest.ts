@@ -119,12 +119,11 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	// cleared, while the request ran; neither replaces the job.
 	const lands = (): boolean => {
 		const current = readChatVariants(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
-		return queue.current.get(job.key) === job && current !== undefined && sha256(current.content) === job.source
-			&& isBoxEnabled(drizzle(database), job.conversationId, job.box) && resolveBoxDecision(database, job.box).kind === "ready";
+		return queue.current.get(job.key) === job && digestInstance(database, job.conversationId, job.box) === job.instance
+			&& current !== undefined && sha256(current.content) === job.source;
 	};
 	try {
-		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
-		if (resolveBoxDecision(database, job.box).kind !== "ready") return;
+		if (digestInstance(database, job.conversationId, job.box) !== job.instance) return;
 		const path = readSelectedPassages(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
 		const index = path.findIndex((message) => message.variant?.variantId === job.variantId);
 		const variant = path[index]?.variant;
@@ -241,11 +240,11 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 	if (queue === undefined) return () => {};
 	const jobs: DigestJob[] = [];
 	const removedKeys: string[] = [];
+	const variants = change.touchedVariantIds.length === 0 ? [] : readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
 	for (const [box] of boxesWith("decision")) {
 		for (const variantId of change.removedVariantIds) removedKeys.push(keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
-		const variants = readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
 		jobs.push(...prepareLive(database, queue, change.conversationId, box, instance, variants, false));
 	}
 	const { conversationId, stoppedBox } = change;
