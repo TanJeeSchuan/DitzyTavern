@@ -14,7 +14,8 @@ const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns ex
 //  Offers only the Moves legal after the ones already staged, each with its
 //  projected energy cost and odds. The human-seat Runner is the gate whose
 //  Participant is the human-controlled one; otherwise Moves are orders to
-//  the Runner the writer picks.
+//  the Runner the writer picks. While the read of a new revision loads, the
+//  offers come from the previous state, so none of them stages a Move.
 function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const read = useRace(conversation);
 	const setup = boxSetupOf(conversation, "race", raceSetup);
@@ -36,7 +37,7 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 			</Select>
 		</Field>}
 		<div className="race-moves-offer">
-			{offers.map(({ kind, check }) => check.legal && <Button key={kind} variant="outline" size="sm" disabled={disabled || staging === null}
+			{offers.map(({ kind, check }) => check.legal && <Button key={kind} variant="outline" size="sm" disabled={disabled || staging === null || read.isPlaceholderData}
 				onClick={() => staging?.onChange({ ...staging.moves, race: [...staged, { kind, runner }] })}>
 				{raceMoveCatalog[kind].icon} {raceMoveCatalog[kind].label}
 				<small>{check.cost === 0 ? "" : `${check.cost > 0 ? "−" : "+"}${Math.round(Math.abs(check.cost) * 100)}% energy · `}{Math.round(check.odds * 100)}%</small>
