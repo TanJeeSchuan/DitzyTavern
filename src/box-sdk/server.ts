@@ -7,7 +7,7 @@ export {
 } from "../server/conversation";
 export { humanMessageText, readMessageMoves } from "../server/box/moves";
 export { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots } from "../server/box/records";
-export { readBoxInstances } from "../server/box/setup";
+export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
 export { putChatValue, putLibraryValue, readChatValue, readLibraryValue } from "../server/box/stored-value";

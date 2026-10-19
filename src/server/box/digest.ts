@@ -16,7 +16,7 @@ import { resolveBoxDecision } from "./decision-settings";
 import { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
 import { serverBox } from "./registry";
 import { boxServices } from "./services";
-import { isBoxEnabled, isHostChatKey, readBoxInstances } from "./setup";
+import { isHostChatKey, readBoxLifecycles } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
 // @approved
@@ -192,10 +192,10 @@ export function startBoxDigests(database: Database, options: { fetch?: ModelFetc
 // @approved
 //  The instance a Box digests for in this Chat, or undefined when it may not
 // digest: it must be enabled and have its Decision Model selected.
-const digestInstance = (database: Database, conversationId: number, box: BoxId): string | undefined =>
-	isBoxEnabled(drizzle(database), conversationId, box) && resolveBoxDecision(database, box).kind === "ready"
-		? readBoxInstances(drizzle(database), conversationId)[box]
-		: undefined;
+const digestInstance = (database: Database, conversationId: number, box: BoxId): string | undefined => {
+	const lifecycle = readBoxLifecycles(drizzle(database), conversationId)[box];
+	return lifecycle?.state === "enabled" && resolveBoxDecision(database, box).kind === "ready" ? lifecycle.instance : undefined;
+};
 
 // @approved
 //  A Box that stops running abandons its Chat's work: every current job is
@@ -316,7 +316,7 @@ export function cancelBoxCatchUp(database: Database, conversationId: number, box
 // @approved
 //  Status folds every selected record, as Generation capture does.
 const foldDigest = (db: BunSQLiteDatabase, conversationId: number, box: BoxId, setups: BoxSetups, variantIds: readonly number[]) => {
-	const slots = readRecordSlots(db, box, boxRecordSchema(box), readBoxInstances(db, conversationId)[box], variantIds);
+	const slots = readRecordSlots(db, box, boxRecordSchema(box), readBoxLifecycles(db, conversationId)[box]?.instance, variantIds);
 	const { box: { status }, records } = digesting(box);
 	const setup = setups[box];
 	return { slots, status: status?.(setup, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setup, slots, variantIds)) ?? null };

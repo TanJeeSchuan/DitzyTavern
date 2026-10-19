@@ -22,7 +22,7 @@ tester.run("no-layer-dependencies-in-shared", noLayerDependenciesInSharedRule, {
 		},
 		{
 			filename: "src/boxes/race/server.ts",
-			code: "import type { Database } from 'bun:sqlite'; import { readBoxInstances } from '../../box-sdk/server';",
+			code: "import type { Database } from 'bun:sqlite'; import { readBoxLifecycles } from '../../box-sdk/server';",
 		},
 	],
 	invalid: [

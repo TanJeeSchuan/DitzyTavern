@@ -9,7 +9,7 @@ import { memoryRoutes } from "./server-routes";
 import { mergeMemoryLabels, readConversationMemories } from "./server-memories";
 import { sha256 } from "../../server/hash";
 import { writeAutomaticRecord } from "../../server/box/records";
-import { readBoxInstances } from "../../server/box/setup";
+import { readBoxLifecycles } from "../../server/box/setup";
 import { conversationMemories, memoryLabelsConflict, memoryLabelsMerged, type MemoryCandidateJudgment, type MemoryIdentity } from "./contract";
 
 const claim = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Maren promised a key.", attribution: "Narrated event", people, evidence: [{ messageId, excerpt: "I promised a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} } });
@@ -17,7 +17,7 @@ const source = (database: Database, conversationId: number, position: number, au
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-10-07T00:00:00Z", author_participant_id: author.id, author_name: author.name }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised a key.", selected }).returning().get();
-	if (people) writeAutomaticRecord(db, "memory", readBoxInstances(db, conversationId).memory!, variant.id, { claims: [claim(message.id, people)] }, sha256(variant.content));
+	if (people) writeAutomaticRecord(db, "memory", readBoxLifecycles(db, conversationId).memory!.instance, variant.id, { claims: [claim(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
 const save = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity, expectedRevision = readConversationMemories(database, conversationId).labelRevision) => memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/memories/identity`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId, identity, expectedRevision }) }));

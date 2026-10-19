@@ -5,7 +5,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, libraryDataTable } from "../database/schema";
 import { InvalidConversationCommandError } from "../conversation";
 import { boxReference, type BoxId } from "../../shared/contract/box";
-import { isHostChatKey, readBoxInstance } from "./setup";
+import { isHostChatKey, readBoxLifecycles } from "./setup";
 
 // @approved
 //  One JSON value kept in library_data or conversation_data, guarded by its
@@ -61,7 +61,7 @@ export const readChatValue = <T extends TSchema>(db: BunSQLiteDatabase, conversa
 	const namespace = boxReference(box);
 	return db.transaction((tx) => {
 		const row = tx.select().from(conversationDataTable).where(chatRow(conversationId, namespace, key)).get();
-		const instance = readBoxInstance(tx, conversationId, box);
+		const instance = readBoxLifecycles(tx, conversationId)[box]?.instance;
 		return decode(row, schema, initial, `Chat ${conversationId} ${namespace} ${key}`, chatRevision(instance, row?.revision ?? 0));
 	});
 };
@@ -73,7 +73,7 @@ export const putChatValue = (db: BunSQLiteDatabase, conversationId: number, box:
 	requireBoxValueKey(write.key);
 	const namespace = boxReference(box);
 	db.transaction((tx) => {
-		const instance = readBoxInstance(tx, conversationId, box);
+		const instance = readBoxLifecycles(tx, conversationId)[box]?.instance;
 		if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat, so it keeps no data.`);
 		const current = tx.select({ revision: conversationDataTable.revision }).from(conversationDataTable).where(chatRow(conversationId, namespace, write.key)).get() ?? { revision: 0 };
 		guard({ revision: chatRevision(instance, current.revision) });

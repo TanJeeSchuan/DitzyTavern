@@ -29,7 +29,7 @@ test("a Phone contact added after inspection makes the plan stale", () => {
 		{},
 		{},
 		{},
-		{ phone: "instance" },
+		{ phone: { state: "enabled", instance: "instance" } },
 		// SAFETY: Phone reads nothing through the database.
 		{ database: {} as Database, conversationId: 1, seed: "seed", intent: "respond", human, cast, messages: [], pending: undefined },
 	));
@@ -47,7 +47,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 			{},
 			{},
 			{},
-			{ mood: "instance" },
+			{ mood: { state: "enabled", instance: "instance" } },
 			{ database, conversationId: 1, seed: "seed", intent: "respond", human, cast: [human], messages: [], pending: undefined },
 		));
 		const before = capture();
@@ -241,10 +241,10 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
-		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes, { lantern: instance })).toThrow("The lantern Box's state must be JSON or undefined.");
+		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes, { lantern: { state: "enabled", instance } })).toThrow("The lantern Box's state must be JSON or undefined.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
-		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, { lantern: instance }, read)))
-			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, { lantern: instance }, read)));
+		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, { lantern: { state: "enabled", instance } }, read)))
+			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, { lantern: { state: "enabled", instance } }, read)));
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -283,7 +283,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
 			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
-		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" }), {}, {}, {}, { lantern: "instance" }, {
+		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" }), {}, {}, {}, { lantern: { state: "enabled", instance: "instance" } }, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));

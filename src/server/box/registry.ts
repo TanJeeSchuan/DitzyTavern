@@ -3,7 +3,7 @@ import { Elysia, type AnyElysia } from "elysia";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
-import type { BoxInstances } from "./setup";
+import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
@@ -163,9 +163,9 @@ const captureBox = (id: BoxId, instance: string, box: HostBox, input: AdvanceInp
 export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: BoxStates): ReadonlyMap<BoxId, HostBox> =>
 	new Map([...serverBoxes()].filter(([id]) => boxes[id] === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id))));
 
-export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, instances: BoxInstances, read: CaptureRead): BoxInputs =>
+export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, lifecycles: BoxLifecycles, read: CaptureRead): BoxInputs =>
 	[...boxes].map(([id, box]) => {
-		const instance = instances[id];
+		const instance = lifecycles[id]?.instance;
 		if (instance === undefined) throw new Error(`Chat ${read.conversationId} ${boxReference(id)} has no instance.`);
 		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);

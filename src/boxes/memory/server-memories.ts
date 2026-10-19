@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxInstances,
+	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxLifecycles,
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
 } from "@/box-sdk/server";
 import { memoryRecord, type ConversationMemories, type ConversationMemoryAllowanceCommand, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
@@ -16,7 +16,7 @@ import { readMemoryEmbedding } from "./server-settings";
 export function readConversationMemories(database: Database, conversationId: number): ConversationMemories {
 	const state = readMemoryLabelState(database, conversationId);
 	const variants = readChatVariants(database, conversationId);
-	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxInstances(drizzle(database), conversationId).memory, variants.map(({ variantId }) => variantId));
+	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxLifecycles(drizzle(database), conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
 	const sources = variants
 		.filter((variant) => !isExcludedAuthor(state, variant.authorParticipantId)
 			&& (variant.selected ? variant.content.trim() !== "" : effectiveRecord(slots.get(variant.variantId)) !== undefined))

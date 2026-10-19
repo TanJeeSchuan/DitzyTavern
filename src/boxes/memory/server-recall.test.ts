@@ -32,7 +32,7 @@ import { captureMemoryRecallSnapshot } from "./server-recall";
 import { sha256 } from "../../server/hash";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
 import { resetWriterRecord, writeAutomaticRecord, writeDigestError, writeWriterRecord } from "../../server/box/records";
-import { readBoxInstances } from "../../server/box/setup";
+import { readBoxLifecycles } from "../../server/box/setup";
 
 const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
 	const memory = createMemorySettingsModule(database);
@@ -64,7 +64,7 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 	judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } },
 });
 
-const instanceOf = (database: Database, conversationId: number) => readBoxInstances(drizzle(database), conversationId).memory!;
+const instanceOf = (database: Database, conversationId: number) => readBoxLifecycles(drizzle(database), conversationId).memory!.instance;
 const contentOf = (database: Database, variantId: number) => database.query<{ content: string }, [number]>("SELECT content FROM message_variant WHERE id = ?").get(variantId)!.content;
 
 // @approved

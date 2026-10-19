@@ -3,7 +3,7 @@ import { isRaceAutoValid, raceRecord, raceSetup, type RaceInput, type RaceMove, 
 import type { Database } from "bun:sqlite";
 import { and, eq, inArray, like } from "drizzle-orm";
 import {
-	boxReference, characterDataTable, foldRecords, libraryDataTable, readBoxInstances, readConversationSummaryFromConnection, readRecordSlots, readSelectedHistoryFromConnection,
+	boxReference, characterDataTable, foldRecords, libraryDataTable, readBoxLifecycles, readConversationSummaryFromConnection, readRecordSlots, readSelectedHistoryFromConnection,
 	runConversationReadTransaction, type Box,
 } from "@/box-sdk/server";
 import { boxSetupOf } from "@/box-sdk/shared";
@@ -40,7 +40,7 @@ function readRace(database: Database, conversationId: number): RaceRead | undefi
 		if (history === undefined) return undefined;
 		const setup = boxSetupOf(summary, "race", raceSetup);
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const { intents, replay, ...state } = foldRecords(raceBox.records, setup, readRecordSlots(db, "race", raceRecord, readBoxInstances(db, conversationId).race, ids), ids) ?? initialRaceState(setup);
+		const { intents, replay, ...state } = foldRecords(raceBox.records, setup, readRecordSlots(db, "race", raceRecord, readBoxLifecycles(db, conversationId).race?.instance, ids), ids) ?? initialRaceState(setup);
 		const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
 		return {
 			conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,

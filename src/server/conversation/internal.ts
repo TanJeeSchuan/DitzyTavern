@@ -25,7 +25,7 @@ import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
 import { boxDescriptors, boxIdOf, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
-import { readBoxInstances } from "../box/setup";
+import { readBoxLifecycles } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
 import {
 	ConversationNotFoundError,
@@ -454,7 +454,7 @@ export const requireBox = (box: BoxId): BoxDescriptor => {
 
 export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
 	requireBox(box);
-	const instance = readBoxInstances(db, conversationId)[box];
+	const instance = readBoxLifecycles(db, conversationId)[box]?.instance;
 	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
 	return instance;
 };

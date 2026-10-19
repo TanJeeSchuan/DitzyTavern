@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { foldRecords, readBoxInstances, readRecordSlots, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box } from "@/box-sdk/server";
+import { foldRecords, readBoxLifecycles, readRecordSlots, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box } from "@/box-sdk/server";
 import { tipRecord, type TipMove, type TipRecord } from "./shared";
 
 const tipJarBox = {
@@ -20,7 +20,7 @@ function readTipJar(database: Database, conversationId: number): TipRecord | und
 		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
 		if (history === undefined) return undefined;
 		const ids = history.messages.flatMap(({ variant }) => variant === null ? [] : [variant.id]);
-		const slots = readRecordSlots(db, "tip-jar", tipRecord, readBoxInstances(db, conversationId)["tip-jar"], ids);
+		const slots = readRecordSlots(db, "tip-jar", tipRecord, readBoxLifecycles(db, conversationId)["tip-jar"]?.instance, ids);
 		return { coins: foldRecords(tipJarBox.records, undefined, slots, ids) };
 	});
 }

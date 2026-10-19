@@ -332,7 +332,7 @@ Setups, records, Moves and Decision Model selections are decoded against their s
 
 ### Lifecycle per Chat
 
-The host stores `enabled: true | false` and an `instance` id in `conversation_data`. No row means absent. Server code reads it with `isBoxEnabled` or `readBoxStates` in `src/server/box/setup.ts`; client code reads `conversation.boxes[<id>]`.
+The host stores `enabled: true | false` and an `instance` id as two rows in `conversation_data`. Neither row means absent; only one row is corrupt and throws an error naming the Chat and Box. Server code and the server SDK read each present Box's `{ state: "enabled" | "disabled", instance }` with `readBoxLifecycles` in `src/server/box/setup.ts`. `readBoxStates` projects the Chat summary's states; client code reads `conversation.boxes[<id>]`.
 
 | State | Runs | Keeps |
 |---|---|---|

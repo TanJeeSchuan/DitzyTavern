@@ -11,7 +11,7 @@ import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
-import type { BoxInstances } from "./setup";
+import type { BoxLifecycles } from "./setup";
 import type { Box, HostBox } from "./contract";
 
 // @approved
@@ -65,10 +65,10 @@ export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]
 
 // @approved
 //  Only participating Boxes read and fold records for this Generation.
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, instances: BoxInstances): RecordStates =>
+export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, lifecycles: BoxLifecycles): RecordStates =>
 	Object.fromEntries([...boxes].flatMap(([id, { records }]) => {
 		if (records === undefined) return [];
-		const slots = readRecordSlots(db, id, boxRecordSchema(id), instances[id], selectedVariantIds);
+		const slots = readRecordSlots(db, id, boxRecordSchema(id), lifecycles[id]?.instance, selectedVariantIds);
 		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, setups[id], slots, selectedVariantIds))]];
 	}));
 

@@ -70,7 +70,7 @@ import { advanceBoxes, captureBoxes, participatingBoxes, type BoxResults, type B
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
-import { readBoxInstances } from "../box/setup";
+import { readBoxLifecycles } from "../box/setup";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -285,7 +285,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates, boxes, boxInstances, siblingSeed, messageMoves } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates, boxes, boxLifecycles, siblingSeed, messageMoves } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -303,11 +303,11 @@ export function prepareGenerationInputsSnapshot(
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 			const siblingId = selected.target?.variant?.id;
-			const boxInstances = readBoxInstances(db, input.conversationId);
+			const boxLifecycles = readBoxLifecycles(db, input.conversationId);
 			const boxes = participatingBoxes(recipe.slots, summary.boxes);
-			return { boxes, boxInstances, summary, recipe, settings, selected,
+			return { boxes, boxLifecycles, summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxes, boxInstances),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxes, boxLifecycles),
 				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);
@@ -394,7 +394,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, boxInstances, {
+		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, boxLifecycles, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
 			messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
 				messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speaker: speakerName, role, content, prose,

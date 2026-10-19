@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { sliceByTokens } from "tokenx";
 import {
 	cosineSimilarity, effectiveRecord, hasAutomaticRecord, hasDigestError, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
-	readBoxInstances, readRecordSlots, sha256, tokenxEstimator,
+	readBoxLifecycles, readRecordSlots, sha256, tokenxEstimator,
 	type BoxContext, type CaptureRead, type DecisionAnswer, type EmbeddingConfiguration,
 } from "@/box-sdk/server";
 import { projectImageAnchors } from "@/box-sdk/shared";
@@ -150,7 +150,7 @@ const scanMemorySources = (read: CaptureRead) => {
 	const active = readActiveVariantIds(read.database, read.conversationId);
 	const labels = readMemoryLabelState(read.database, read.conversationId);
 	const messages = read.messages.filter((message) => !active.has(message.variantId) && !isExcludedAuthor(labels, message.authorId) && message.prose.trim() !== "");
-	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxInstances(db, read.conversationId).memory, messages.map((message) => message.variantId));
+	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, read.conversationId).memory?.instance, messages.map((message) => message.variantId));
 	const sources: { readonly variantId: number; readonly record: string | null; readonly digested: boolean; readonly failed: boolean }[] = [];
 	const writers: { readonly variantId: number; readonly record: string }[] = [];
 	const claimed: ClaimedMemory[] = [];
