@@ -13,6 +13,11 @@ import { notFoundOutcome } from "./outcomes";
 export type BoxId = string;
 export const promptBoxReference = Type.TemplateLiteral("box:${string}");
 export type PromptBoxReference = Static<typeof promptBoxReference>;
+export function boxIdOf(reference: PromptBoxReference): BoxId;
+export function boxIdOf(reference: string): BoxId | undefined;
+export function boxIdOf(reference: string): BoxId | undefined {
+	return reference.startsWith("box:") ? reference.slice(4) : undefined;
+}
 export const boxReference = (id: BoxId): PromptBoxReference => `box:${id}`;
 
 // @approved
@@ -61,14 +66,15 @@ export const boxRecordSchema = (id: BoxId) => {
 	return Type.Unsafe<BoxRecord>(record);
 };
 /** @approved Whether `reference` names a registered Box. */
-export const isBoxReference = (reference: string): reference is PromptBoxReference =>
-	reference.startsWith("box:") && metadata.has(reference.slice("box:".length));
-export const isBoxNamespace = (namespace: string): boolean => namespace.startsWith("box:");
+export const isBoxReference = (reference: string): reference is PromptBoxReference => {
+	const id = boxIdOf(reference);
+	return id !== undefined && metadata.has(id);
+};
 /** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
-export const isUnknownBoxReference = (reference: string): boolean => reference.startsWith("box:") && !isBoxReference(reference);
+export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
 /** @approved The descriptor behind a Box's preset block reference. */
-export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptor(reference.slice("box:".length));
-export const boxMetadataOf = (reference: PromptBoxReference): BoxMetadata => boxMetadata(reference.slice("box:".length));
+export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptor(boxIdOf(reference));
+export const boxMetadataOf = (reference: PromptBoxReference): BoxMetadata => boxMetadata(boxIdOf(reference));
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.decision !== undefined;
 /** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */

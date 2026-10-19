@@ -1,5 +1,3 @@
-import { Value } from "@sinclair/typebox/value";
-import { boxRecords } from "../../shared/contract/box-generation";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
@@ -70,8 +68,7 @@ export function capturedAcceptanceFields(
 ) {
 	return {
 		seed: capture.preparation.seed,
-		boxRecords: Value.Parse(boxRecords, Object.fromEntries(Object.entries(capture.preparation.boxes)
-			.flatMap(([reference, result]) => result?.record === undefined ? [] : [[reference.slice(4), { instance: new Map(Object.entries(capture.preparation.boxInstances)).get(reference.slice(4)), record: result.record }]]))),
+		boxRecords: capture.preparation.boxRecords,
 		conversationId: input.conversationId,
 		timestamp: input.timestamp,
 		humanParticipantId: capture.control.humanParticipantId,

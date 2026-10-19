@@ -1,3 +1,4 @@
+import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { readVariantSeeds } from "../box/records";
 import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
@@ -69,7 +70,7 @@ import { advanceBoxes, captureBoxes, participatingBoxes, type BoxResults, type B
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
-import { readBoxInstances, type BoxInstances } from "../box/setup";
+import { readBoxInstances } from "../box/setup";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -197,8 +198,6 @@ interface PreparationFields extends GenerationPreparationBase {
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
-	/** @approved Each present Box's instance, which stamps the records this Generation writes. */
-	readonly boxInstances: BoxInstances;
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -207,6 +206,7 @@ export interface PreparationSnapshot extends PreparationFields {
 
 export interface Preparation extends PreparationFields {
 	readonly boxes: BoxResults;
+	readonly boxRecords: BoxRecords;
 	readonly fingerprint: string;
 }
 
@@ -394,7 +394,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, {
+		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, boxInstances, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
 			messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
 				messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speaker: speakerName, role, content, prose,
@@ -414,7 +414,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxInstances };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages };
 }
 
 /** @approved
@@ -450,6 +450,10 @@ export async function prepareGenerationInputsAsync(
 		...preparation,
 		lore,
 		boxes,
+		boxRecords: Object.fromEntries(boxInputs.flatMap(({ id, instance, reference }) => {
+			const record = boxes[reference]?.record;
+			return record === undefined ? [] : [[id, { instance, record }]];
+		})),
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
 	return ready;

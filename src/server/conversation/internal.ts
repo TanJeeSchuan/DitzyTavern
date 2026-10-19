@@ -24,7 +24,7 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { boxDescriptors, isBoxNamespace, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxDescriptors, boxIdOf, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { readBoxInstances } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
 import {
@@ -407,7 +407,7 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
-	if (namespace === SEED_NAMESPACE || isBoxNamespace(namespace)) {
+	if (namespace === SEED_NAMESPACE || boxIdOf(namespace) !== undefined) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
 		);

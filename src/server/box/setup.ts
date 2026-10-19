@@ -2,7 +2,7 @@ import { parseStoredBoxJson } from "./stored-json";
 import { Type } from "@sinclair/typebox";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors, boxesWith, boxReference, isBoxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import { boxIdOf, boxDescriptors, boxesWith, boxReference, isBoxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { conversationDataTable } from "../database/schema";
 
@@ -39,7 +39,7 @@ export const readBoxInstances = (db: BunSQLiteDatabase, conversationId: number):
 	.from(conversationDataTable)
 	.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, INSTANCE_KEY)))
 	.all()
-	.flatMap(({ namespace, value }) => isBoxReference(namespace) ? [[namespace.slice("box:".length), value]] : []));
+	.flatMap(({ namespace, value }) => isBoxReference(namespace) ? [[boxIdOf(namespace), value]] : []));
 
 export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): BoxStates => {
 	const stored = new Map(db

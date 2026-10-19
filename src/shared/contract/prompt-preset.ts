@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { boxDescriptorOf, boxMetadataOf, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
+import { boxIdOf, boxDescriptorOf, boxMetadataOf, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -34,7 +34,7 @@ export type PromptLoreReference = Static<typeof promptLoreReference>;
 
 /** @approved Whether a preset may hold at most one block of `reference`: Lore, and each Box's, loaded or not. */
 export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference =>
-	reference === "lore" || reference.startsWith("box:");
+	reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
 export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference): string =>
 	reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadataOf(reference).label : reference;
@@ -138,7 +138,7 @@ export const promptPresetSlot = Type.Union([
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
 /** @approved A Box's block, among any slot shape that carries a reference, whether or not its Box is loaded: a stored block outlives a plugin that is removed or refused, and renders nothing. */
-export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => slot.reference.startsWith("box:");
+export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => boxIdOf(slot.reference) !== undefined;
 
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);

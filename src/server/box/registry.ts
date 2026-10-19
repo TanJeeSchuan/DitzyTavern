@@ -3,6 +3,7 @@ import { Elysia, type AnyElysia } from "elysia";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
+import type { BoxInstances } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
@@ -123,6 +124,8 @@ export type BoxItems = Record<PromptBoxReference, readonly (BlockItem & { readon
 export type BoxResults = Readonly<Record<PromptBoxReference, AdvanceResult<GenerationJsonValue, GenerationJsonValue> | undefined>>;
 
 interface CapturedBox {
+	readonly id: BoxId;
+	readonly instance: string;
 	readonly reference: PromptBoxReference;
 	readonly fingerprint: string;
 	run(services: BoxContextOf): Promise<AdvanceResult<GenerationJsonValue, GenerationJsonValue>>;
@@ -136,7 +139,8 @@ type BoxContextOf = (id: BoxId, decision: BoxDecision) => BoxContext;
 // kept in `run`'s closure, so its credential never reaches the capture's
 // serialized fields; the fingerprint holds its identity, so a changed
 // selection marks a preview stale.
-const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | undefined, unknown, GenerationJsonValue | undefined, unknown>, decision: BoxDecision): CapturedBox => ({
+const captureBox = (id: BoxId, instance: string, box: HostBox, input: AdvanceInput<BoxValue | undefined, unknown, GenerationJsonValue | undefined, unknown>, decision: BoxDecision): CapturedBox => ({
+	id, instance,
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies, decision: decisionIdentity(decision) }),
 	run: async (services) => {
@@ -159,11 +163,13 @@ const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | unde
 export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: BoxStates): ReadonlyMap<BoxId, HostBox> =>
 	new Map([...serverBoxes()].filter(([id]) => boxes[id] === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id))));
 
-export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
+export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, instances: BoxInstances, read: CaptureRead): BoxInputs =>
 	[...boxes].map(([id, box]) => {
+		const instance = instances[id];
+		if (instance === undefined) throw new Error(`Chat ${read.conversationId} ${boxReference(id)} has no instance.`);
 		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return captureBox(id, box, { setup, state: checkedBoxState(id, states[id]), moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
+		return captureBox(id, instance, box, { setup, state: checkedBoxState(id, states[id]), moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
