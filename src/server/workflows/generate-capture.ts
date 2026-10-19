@@ -285,7 +285,7 @@ export function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates, boxes, boxLifecycles, siblingSeed, messageMoves } = runConversationReadTransaction(
+	const { summary, recipe, settings, selected, variantData, recordStates, boxes, siblingSeed, messageMoves } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -304,10 +304,10 @@ export function prepareGenerationInputsSnapshot(
 			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 			const siblingId = selected.target?.variant?.id;
 			const boxLifecycles = readBoxLifecycles(db, input.conversationId);
-			const boxes = participatingBoxes(recipe.slots, summary.boxes);
-			return { boxes, boxLifecycles, summary, recipe, settings, selected,
+			const boxes = participatingBoxes(recipe.slots, boxLifecycles);
+			return { boxes, summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxes, boxLifecycles),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxes),
 				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);
@@ -394,7 +394,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, boxLifecycles, {
+		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
 			messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
 				messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speaker: speakerName, role, content, prose,

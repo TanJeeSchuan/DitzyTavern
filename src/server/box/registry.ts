@@ -6,7 +6,7 @@ import { Value } from "@sinclair/typebox/value";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { boxValue, type BoxValue } from "../../shared/contract/box-value";
@@ -160,19 +160,20 @@ const captureBox = (id: BoxId, instance: string, box: HostBox, input: AdvanceInp
 });
 
 /** @approved The Boxes enabled in both the Chat and its preset, selected once for record folding and capture. */
-export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: BoxStates): ReadonlyMap<BoxId, HostBox> =>
-	new Map([...serverBoxes()].filter(([id]) => boxes[id] === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id))));
+export const participatingBoxes = (slots: readonly PromptPresetSlot[], lifecycles: BoxLifecycles): ReadonlyMap<BoxId, { readonly box: HostBox; readonly instance: string }> =>
+	new Map([...serverBoxes()].flatMap(([id, box]) => {
+		const lifecycle = lifecycles[id];
+		return lifecycle?.state === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id)) ? [[id, { box, instance: lifecycle.instance }]] : [];
+	}));
 
-export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, lifecycles: BoxLifecycles, read: CaptureRead): BoxInputs =>
-	[...boxes].map(([id, box]) => {
-		const instance = lifecycles[id]?.instance;
-		if (instance === undefined) throw new Error(`Chat ${read.conversationId} ${boxReference(id)} has no instance.`);
+export const captureBoxes = (boxes: ReturnType<typeof participatingBoxes>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
+	[...boxes].map(([id, { box, instance }]) => {
 		const setup = setups[id];
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
 		return captureBox(id, instance, box, { setup, state: checkedBoxState(id, states[id]), moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
-export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));
+export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, instance, fingerprint }) => [reference, instance, fingerprint]));
 
 export const advanceBoxes = async (inputs: BoxInputs, services: BoxContextOf): Promise<BoxResults> =>
 	Object.fromEntries(await Promise.all(inputs.map(async (box) => [box.reference, await box.run(services)])));

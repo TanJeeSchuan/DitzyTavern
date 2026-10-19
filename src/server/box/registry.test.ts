@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { Type } from "@sinclair/typebox";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors } from "../../shared/contract/box";
 import { sha256 } from "../hash";
@@ -25,11 +24,10 @@ import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBox
 test("a Phone contact added after inspection makes the plan stale", () => {
 	const human = { id: 1, name: "Ann" };
 	const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-		participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: "enabled" }),
+		participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: { state: "enabled", instance: "instance" } }),
 		{},
 		{},
 		{},
-		{ phone: { state: "enabled", instance: "instance" } },
 		// SAFETY: Phone reads nothing through the database.
 		{ database: {} as Database, conversationId: 1, seed: "seed", intent: "respond", human, cast, messages: [], pending: undefined },
 	));
@@ -43,11 +41,10 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 		const selection = configureDecisionModels(database, key, "model-a");
 		const human = { id: 1, name: "Ann" };
 		const capture = () => fingerprintBoxes(captureBoxes(
-			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: "enabled" }),
+			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
 			{},
 			{},
 			{},
-			{ mood: { state: "enabled", instance: "instance" } },
 			{ database, conversationId: 1, seed: "seed", intent: "respond", human, cast: [human], messages: [], pending: undefined },
 		));
 		const before = capture();
@@ -235,16 +232,42 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
 			server: 'export default { records: { initial: null, fold: () => new Map([["lit", true]]) } };',
 		} })]);
-		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" });
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
+		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
-		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes, { lantern: { state: "enabled", instance } })).toThrow("The lantern Box's state must be JSON or undefined.");
+		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's state must be JSON or undefined.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
-		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, { lantern: { state: "enabled", instance } }, read)))
-			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, { lantern: { state: "enabled", instance } }, read)));
+		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, read)))
+			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, read)));
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("reinserting a participating Box makes its inspected Prompt Plan stale", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: 'export default { records: { initial: null, fold: (state) => state }, advance: { run: async () => ({ items: [], record: {} }) } };',
+		} })]);
+		const conversation = createChat(database);
+		insertBox(database, conversation.id, "lantern");
+		withProfile(database);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+		}));
+		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		setBoxState(database, conversation.id, "lantern", "absent");
+		insertBox(database, conversation.id, "lantern");
+		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -283,7 +306,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
 			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
-		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" }), {}, {}, {}, { lantern: { state: "enabled", instance: "instance" } }, {
+		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
