@@ -1,13 +1,11 @@
 import "./client.css";
-import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentProps } from "react";
 import { Flag } from "lucide-react";
 import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf, boxSetupOf } from "@/box-sdk/shared";
 import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
-import { loadRace } from "./client-read";
-import { RaceStatus, RaceWindow } from "./client-window";
+import { RaceStatus, RaceWindow, useRace } from "./client-window";
 import descriptor from "./shared-descriptor";
 
 const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns exactly its keys. */ Object.keys(raceMoveCatalog) as RaceMoveKind[];
@@ -18,7 +16,7 @@ const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns ex
 //  Participant is the human-controlled one; otherwise Moves are orders to
 //  the Runner the writer picks.
 function RaceMoves({ conversation, disabled, staging }: { conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
-	const read = useQuery({ queryKey: ["race", conversation.id, conversation.revision], queryFn: ({ signal }) => loadRace(conversation.id, signal) });
+	const read = useRace(conversation);
 	const setup = boxSetupOf(conversation, "race", raceSetup);
 	const humanSeatId = conversation.control.humanParticipantId;
 	const seat = humanSeatId === null ? undefined : setup.slots.find(({ participantId }) => participantId === humanSeatId)?.name;

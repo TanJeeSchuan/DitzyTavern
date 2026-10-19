@@ -195,10 +195,10 @@ Inputs `advance` needs beyond setup, state and Moves. The host calls `dependenci
 
 The window's data for a non-digesting Box, served at `GET /api/conversations/:id/boxes/<id>`. The host opens one read transaction, answers a missing Chat with 404, and calls `read({ db, conversationId, summary, history, setup, state })`: `db` for further reads in that transaction, the Chat's `summary`, its Selected path as `history`, the Box's `setup`, and `state`, its fold over the Selected path's effective records, the same fold Generation capture uses, or `undefined` without a fold. Return JSON. Send only what the writer may see: the Race read holds back its replay and Hidden intents until the finish.
 
-Declare the read schema in `contract.ts` or `shared.ts`, decode it on the client, and key the query by `conversation.revision` so it refetches when the Chat changes:
+Declare the read schema in `contract.ts` or `shared.ts`, and read it on the client with `useBoxRead(conversation, "<id>", schema)` from the client SDK. It keys the query by the Box id, the Chat and its `revision`, so it refetches when the Chat changes and keeps the previous read as placeholder data meanwhile, decodes the read with the schema, and returns `null` for a missing Chat:
 
 ```ts
-foundOrNull(await requestOutcome(api.api.conversations({ id }).boxes({ box: "<id>" }).get({ fetch: { signal } }), <id>Read, notFoundOutcome))
+const useThoughts = (conversation: ConversationSummary) => useBoxRead(conversation, "thought", thoughtRead);
 ```
 
 ### `routes`
@@ -254,7 +254,7 @@ The host wraps `Component` in an `<aside className="details-panel" data-open="tr
 
 `TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists, regardless of the Box's current Chat state. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
 
-The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, conversation commands, and digest/catch-up requests. Box-specific requests stay in the Box and use `boxApi`.
+The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, `useBoxRead`, conversation commands, and digest/catch-up requests. Box-specific requests stay in the Box and use `boxApi`.
 
 ### `lens`
 

@@ -2,20 +2,14 @@ import "./client.css";
 import { describePhoneTexts, phoneNames, stripPhoneTexts } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { useQuery } from "@tanstack/react-query";
 import { Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createBoxLens, Button, SegmentedControl, Textarea, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
+import { createBoxLens, Button, SegmentedControl, Textarea, useBoxRead, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf } from "@/box-sdk/shared";
-import { MAX_PHONE_MOVES, phoneMove, type PhoneRead } from "./contract";
-import { loadPhone } from "./client-read";
+import { MAX_PHONE_MOVES, phoneMove, phoneRead, type PhoneRead } from "./contract";
 import descriptor from "./shared-descriptor";
 
-const usePhone = (conversation: ConversationSummary) => useQuery({
-	queryKey: ["phone", conversation.id, conversation.revision],
-	queryFn: ({ signal }) => loadPhone(conversation.id, signal),
-	placeholderData: (previous) => previous,
-});
+const usePhone = (conversation: ConversationSummary) => useBoxRead(conversation, "phone", phoneRead);
 
 // @approved
 //  Unread counts are client view state, never in the prompt: the keys of the

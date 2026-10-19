@@ -1,25 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
 	Button, Field, imageAccept, Input, Portrait, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, uploadImage, useBoxSetupDraft,
-	type BoxDataAction, type BoxDataWrite, type CastParticipant, type ConversationSummary,
+	useBoxRead, type BoxDataAction, type BoxDataWrite, type CastParticipant, type ConversationSummary,
 } from "@/box-sdk/client";
 import { Value } from "@sinclair/typebox/value";
-import { raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
+import { raceRead, raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
 import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "./shared-data";
-import { loadRace } from "./client-read";
 import { RaceOval } from "./client-oval";
 import { RaceReplay } from "./client-replay";
 
 // @approved
-//  The revision is part of the key so completions refetch, but the previous
-//  read stays mounted as placeholder data: the oval must keep its markers
-//  through a refetch to animate them to the new Stretch.
-const useRace = (conversation: ConversationSummary) => useQuery({
-	queryKey: ["race", conversation.id, conversation.revision],
-	queryFn: ({ signal }) => loadRace(conversation.id, signal),
-	placeholderData: (previous) => previous,
-});
+//  The previous read stays mounted as placeholder data through a refetch: the
+//  oval must keep its markers to animate them to the new Stretch.
+export const useRace = (conversation: ConversationSummary) => useBoxRead(conversation, "race", raceRead);
 
 const statKeys = ["speed", "stamina", "power", "guts", "wit"] as const;
 type StatKey = typeof statKeys[number];
