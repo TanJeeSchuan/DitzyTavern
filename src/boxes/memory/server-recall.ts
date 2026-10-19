@@ -20,7 +20,7 @@ export type MemoryRecallSnapshot = {
 	readonly activation: MemoryActivationRecord;
 	readonly decision: ReturnType<typeof readBoxDecision>["status"];
 	readonly selection: { readonly model: string; readonly stateTokenLimit: number };
-	readonly embedding: EmbeddingConfiguration;
+	readonly embedding: EmbeddingConfiguration | undefined;
 	readonly claimed: readonly ClaimedMemory[];
 	readonly recent: readonly ClaimedMemory[];
 };
@@ -191,22 +191,22 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead<MemoryRecord>): Me
 	const scene = sceneTextFor(read, Math.min(SCENE_TOKEN_LIMIT, decision.decisionStateTokenLimit));
 	const path = read.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
 	const scan = scanMemorySources(read);
-	const unconfigured = embedding.spaceKey === "" && scan.claimed.length > 0;
+	const unconfigured = embedding === undefined && scan.claimed.length > 0;
 	const ready = unconfigured ? 0 : scan.claimed.length;
 	const activation: MemoryActivationRecord = {
 		state: activationState({ allowance, ready, unconfigured, ...scan.counts }),
 		allowance,
 		eligibleSourceCount: scan.eligibleSourceCount,
 		readyRecordCount: ready,
-		embeddingModel: embedding.model,
-		embeddingDeadlineMs: embedding.deadlineMs,
+		embeddingModel: embedding?.model ?? "",
+		embeddingDeadlineMs: embedding?.deadlineMs ?? 0,
 		decisionProfileName: status.kind === "ready" ? status.profileName : null,
 		decisionModel: decision.decisionModel,
 		decisionConfigured: status.kind === "ready",
 		relevanceMinimum: recallRelevanceMinimum,
 		...scan.counts,
 		sourceSnapshotFingerprint: sha256(JSON.stringify({ path, sources: scan.sources })),
-		embeddingConfigurationFingerprint: sha256(JSON.stringify(embedding)),
+		embeddingConfigurationFingerprint: sha256(JSON.stringify(embedding ?? null)),
 		scanMessageIds: scene.messageIds,
 		scanTruncated: scene.truncated,
 		scene: scene.text,
@@ -220,7 +220,7 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead<MemoryRecord>): Me
 		recallRelevanceMinimum,
 		allowanceRevision,
 		labelRevision: scan.labelRevision,
-		embedding,
+		embedding: embedding ?? null,
 		writers: scan.writers,
 	}));
 	return {
@@ -234,7 +234,7 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead<MemoryRecord>): Me
 //  before ranking every claim against the scene.
 export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext): Promise<MemoryActivationRecord> => {
 	const { activation, claimed, recent, embedding } = snapshot;
-	if (activation.allowance === 0 || claimed.length === 0) return activation;
+	if (activation.allowance === 0 || claimed.length === 0 || embedding === undefined) return activation;
 	switch (snapshot.decision.kind) {
 		case "off": throw new Error("Choose a Memory Decision Model in Connection Settings.");
 		case "unavailable": throw new Error(`${snapshot.decision.reason} Check the Memory Decision Model in Connection Settings.`);

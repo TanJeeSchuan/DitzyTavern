@@ -73,7 +73,7 @@ const contentOf = (database: Database, variantId: number) => database.query<{ co
 const remember = async (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) => {
 	writeAutomaticRecord(drizzle(database), "memory", instanceOf(database, conversationId), variantId, { claims }, sha256(contentOf(database, variantId)));
 	const embedding = readMemoryEmbedding(database);
-	if (embedding.spaceKey !== "") await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
+	if (embedding !== undefined) await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
 };
 
 const correct = (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) =>

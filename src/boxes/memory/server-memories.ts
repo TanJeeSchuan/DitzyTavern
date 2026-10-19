@@ -40,7 +40,7 @@ export function readConversationMemories(database: Database, conversationId: num
 		sources,
 		path: readMessageAuthors(database, conversationId),
 		digestReady: readBoxDecision(database, "memory").status.kind === "ready",
-		embeddingReady: readMemoryEmbedding(database).spaceKey !== "",
+		embeddingReady: readMemoryEmbedding(database) !== undefined,
 		catchUp: readBoxCatchUp(database, conversationId, "memory"),
 	};
 }

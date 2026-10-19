@@ -15,10 +15,11 @@ describe("Embedding space", () => {
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 	});
 	afterEach(() => database.close());
+	const configured = (profileId: number) => readEmbeddingConfiguration(database, profileId, "memory-v1")!;
 
 	test.each([false, true])("captured embeddings keep their credentials after profile changes, cache=%s", async (cache) => {
 		const profileId = configureEmbeddings(database, "http://tenant-a.test/v1/embeddings");
-		const configuration = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const configuration = configured(profileId);
 		const requests: { endpoint: string; authorization: string | null }[] = [];
 		const fetch = async (input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {
 			requests.push({ endpoint: String(input), authorization: new Headers(init?.headers).get("authorization") });
@@ -37,7 +38,7 @@ describe("Embedding space", () => {
 			{ endpoint: "http://tenant-a.test/v1/embeddings", authorization: "Bearer embedding-secret" },
 		]);
 		expect(JSON.stringify(configuration)).not.toContain("embedding-secret");
-		const current = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const current = configured(profileId);
 		expect(current.spaceKey).not.toBe(configuration.spaceKey);
 		if (cache) {
 			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", [1, 0]], ["scene", [1, 0]]]));
@@ -53,7 +54,7 @@ describe("Embedding space", () => {
 			{ operation: "replace", name: "Authorization", value: "tenant-a-authorization" },
 			{ operation: "replace", name: "X-Tenant", value: "tenant-a-header-secret" },
 		] });
-		const configuration = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const configuration = configured(profileId);
 		const requests: { authorization: string | null; tenant: string | null }[] = [];
 		const fetch = async (_input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {
 			const headers = new Headers(init?.headers);
@@ -83,7 +84,7 @@ describe("Embedding space", () => {
 		const connections = createConnectionSettingsModule(database);
 		connections.resetCredential({ expectedRevision: connections.get().revision, profileId, confirmed: true });
 		expect(connections.getProfileSecrets(profileId)).toBeNull();
-		const configuration = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const configuration = configured(profileId);
 		const profile = connectionProfileDraftOf(connections.get().profiles.find((item) => item.id === profileId)!);
 		connections.applyProfile({ expectedRevision: connections.get().revision, profileId, profile, credential: "later-secret",
 			headers: [{ operation: "replace", name: "X-Tenant", value: "later-header" }] });
@@ -96,7 +97,7 @@ describe("Embedding space", () => {
 		await embedTexts(database, ["claim"], configuration, { cache, fetch });
 		await embedTexts(database, ["scene"], configuration, { cache, fetch });
 		expect(requests).toEqual([{ authorization: null, tenant: null }, { authorization: null, tenant: null }]);
-		const current = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const current = configured(profileId);
 		expect(current.spaceKey).not.toBe(configuration.spaceKey);
 		if (cache) {
 			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", [1, 0]], ["scene", [1, 0]]]));
@@ -106,7 +107,7 @@ describe("Embedding space", () => {
 
 	test.each([false, true])("a forged configuration cannot request or reuse cached vectors, cache=%s", async (cache) => {
 		const profileId = configureEmbeddings(database, "http://tenant-a.test/v1/embeddings");
-		const configuration = readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const configuration = configured(profileId);
 		let requests = 0;
 		const fetch = async () => {
 			requests += 1;
@@ -117,21 +118,15 @@ describe("Embedding space", () => {
 		expect(requests).toBe(1);
 	});
 
-	test("unconfigured embeddings never request a provider", async () => {
-		const configuration = readEmbeddingConfiguration(database, null, "memory-v1");
-		let requests = 0;
-		const fetch = async () => {
-			requests += 1;
-			return Response.json({ data: [{ embedding: [1, 0] }] });
-		};
-		await expect(embedTexts(database, ["claim"], configuration, { fetch })).rejects.toThrow("not configured");
-		expect(await embedTexts(database, [], configuration, { fetch })).toEqual([]);
-		expect(requests).toBe(0);
+	test("an embedding model without a profile or a model name is not configured", () => {
+		const profileId = configureEmbeddings(database, "http://embedding.test/v1/embeddings");
+		expect(readEmbeddingConfiguration(database, null, "memory-v1")).toBeUndefined();
+		expect(readEmbeddingConfiguration(database, profileId, "")).toBeUndefined();
 	});
 
 	test.each(["profile", "credential", "header"] as const)("a new embedding %s starts a separate vector cache, and a rename does not", async (change) => {
 		let profileId = configureEmbeddings(database, "http://embedding.test/v1/embeddings");
-		const read = () => readEmbeddingConfiguration(database, profileId, "memory-v1");
+		const read = () => configured(profileId);
 		const text = "Maren carries Writer's key. (attribution: Narrated event)";
 		const fetch = async () => Response.json({ data: [{ embedding: [1, 0] }] });
 		await embedTexts(database, [text], read(), { cache: true, fetch });

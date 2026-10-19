@@ -189,7 +189,7 @@ Inputs `advance` needs beyond setup, state and Moves. The host calls `dependenci
 |---|---|
 | `llm(profileId)` | the chat Connection Profile, or `undefined` once it is gone; its `complete({ model, prompt, contextLimit, responseBudget, signal?, onContent? })` streams one completion with `prompt` as the system message and returns `{ content, finishReason }` |
 | `decide(state, questions)` | asks the Box's own [Decision Model selection](#decision-recordsdigest-and-status); it throws without one |
-| `embed(texts, configuration, { cache? })` | one vector per text, in one request, from an `EmbeddingConfiguration` the SDK's `readEmbeddingConfiguration(database, profileId, model)` resolves; with `cache`, texts embedded before under the same model and credentials are read back from the host's `embedding_cache` |
+| `embed(texts, configuration, { cache? })` | one vector per text, in one request, from an `EmbeddingConfiguration` the SDK's `readEmbeddingConfiguration(database, profileId, model)` resolves, which is `undefined` when no embedding model is configured; with `cache`, texts embedded before under the same model and credentials are read back from the host's `embedding_cache` |
 
 ### `read`
 

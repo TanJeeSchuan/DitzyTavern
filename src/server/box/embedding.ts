@@ -11,12 +11,12 @@ import { queryBatches } from "../database/query-batches";
 
 let secretsOf: (configuration: EmbeddingConfiguration) => Parameters<typeof requestEmbeddings>[1]["secrets"];
 
-/** @approved An embedding model on an embeddings Connection Profile. `spaceKey` names its vector space, so cached vectors never mix across profiles, credentials, endpoints or models; it is empty when the model is not configured. */
+/** @approved An embedding model on an embeddings Connection Profile. `spaceKey` names its vector space, so cached vectors never mix across profiles, credentials, endpoints or models. */
 export class EmbeddingConfiguration {
 	readonly #secrets: Parameters<typeof requestEmbeddings>[1]["secrets"];
 	static { secretsOf = (configuration) => configuration.#secrets; }
 	constructor(
-		readonly profileId: number | null,
+		readonly profileId: number,
 		readonly spaceKey: string,
 		readonly endpoint: string,
 		readonly model: string,
@@ -32,11 +32,12 @@ export class EmbeddingConfiguration {
 	}
 }
 
-export const readEmbeddingConfiguration = (database: Database, profileId: number | null, model: string): EmbeddingConfiguration => database.transaction(() => {
+/** @approved The embedding model `model` on the embeddings Connection Profile `profileId`, or undefined when either is not configured. */
+export const readEmbeddingConfiguration = (database: Database, profileId: number | null, model: string): EmbeddingConfiguration | undefined => database.transaction(() => {
 	const db = drizzle(database);
 	const profile = profileId === null ? undefined : db.select().from(connectionProfileTable)
 		.where(and(eq(connectionProfileTable.id, profileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
-	if (profile === undefined || profile.timeout_ms === null || model.length === 0) return new EmbeddingConfiguration(null, "", "", "", 0, null);
+	if (profile === undefined || profile.timeout_ms === null || model.length === 0) return undefined;
 	const secret = db.select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
 	const secrets = createConnectionSettingsModule(database).getProfileSecrets(profile.id);
 	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
@@ -68,7 +69,6 @@ export const embedTexts = async (
 	{ cache = false, fetch, signal }: { readonly cache?: boolean; readonly fetch?: ModelFetch; readonly signal?: AbortSignal },
 ): Promise<readonly (readonly number[])[]> => {
 	const secrets = secretsOf(configuration);
-	if (configuration.profileId === null && texts.length > 0) throw new Error("The embedding model is not configured.");
 	const request = async (missing: readonly string[]) => {
 		const embedded = await requestEmbeddings(missing, { endpoint: configuration.endpoint, model: configuration.model, secrets, timeoutMs: configuration.deadlineMs, fetch, signal });
 		if (embedded.length !== missing.length || embedded.some((vector) => vector.length === 0)) throw new Error("The embedding endpoint returned an incomplete answer.");

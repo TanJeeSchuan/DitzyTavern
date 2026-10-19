@@ -260,6 +260,6 @@ export async function digestMemory(window: DigestWindow, ctx: DigestContext): Pr
 			&& retain !== undefined && retain >= extracted.settings.retainProbabilityMinimum;
 	});
 	const embedding = readMemoryEmbedding(ctx.database);
-	if (embedding.spaceKey !== "" && claims.length > 0) await ctx.embed(claims.map(renderMemoryClaim), embedding, { cache: true });
+	if (embedding !== undefined && claims.length > 0) await ctx.embed(claims.map(renderMemoryClaim), embedding, { cache: true });
 	return { claims };
 }
