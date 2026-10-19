@@ -151,13 +151,31 @@
 		grid-template-rows: auto 1fr;
 	}
 
+	/* Equal tiles, icon over label like the navigation drawer, so a wrapped action never sits alone on its row. */
 	.advanced-actions {
 		grid-column: 1 / -1;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(3.9rem, 1fr));
 		min-height: 0;
 		overflow: hidden;
-		/* @approved The padding keeps focus rings inside the clip; the margins cancel it and align the first icon with the portrait. */
+		/* @approved The padding keeps focus rings inside the clip; the margins cancel it. */
 		padding: 0.35rem;
-		margin: -0.35rem -0.35rem -0.35rem -0.85rem;
+		margin: -0.35rem;
+	}
+
+	.advanced-actions .edit-action {
+		flex-direction: column;
+		justify-content: center;
+		width: auto;
+		gap: 0.25rem;
+		min-height: 3.1rem;
+		padding: 0.35rem 0.2rem;
+		font-size: 0.68rem;
+		white-space: nowrap;
+	}
+
+	.advanced-actions .edit-action svg {
+		width: 1rem;
+		height: 1rem;
 	}
 }

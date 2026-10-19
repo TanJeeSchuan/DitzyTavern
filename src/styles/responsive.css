@@ -123,7 +123,7 @@ body > .details-panel > .panel-body {
 	}
 
 	.desktop-close {
-		visibility: hidden;
+		display: none;
 	}
 
 	.panel-body {
