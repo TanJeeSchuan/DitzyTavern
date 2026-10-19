@@ -19,7 +19,7 @@ export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves):
 export const boxPresent = ({ boxes }: { readonly boxes: BoxStates }, box: BoxId): boolean => boxes[box] === "enabled" || boxes[box] === "disabled";
 
 type PutBoxData = Extract<ConversationAction, { type: "put-box-data" }>;
-/** @approved Builds a `put-box-data` command for the window's own Box, so a window cannot name another Box's namespace. */
+/** @approved Builds a `put-box-data` command for the window's own Box id, so a window names no namespace. */
 export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: string) => PutBoxData;
 
 

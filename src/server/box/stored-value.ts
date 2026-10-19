@@ -12,8 +12,8 @@ import { isHostChatKey, readBoxLifecycles } from "./setup";
 // row's revision under ADR-0023. A value never written reads as `initial` at
 // revision 0. Every write passes the revision it finds to the caller's guard
 // first, so the caller decides which conflict a stale write presents as. A
-// Box's own reads and writes take its id and keep to its `box:<id>`
-// namespace, so no Box names another's.
+// Box-scoped read or write takes the Box's id and fixes the `box:<id>`
+// namespace from it, so a Box names only an id, never a namespace or table.
 type Row = { value: string; revision: number } | undefined;
 type SharedGuard = (current: { readonly revision: number }) => void;
 type ChatGuard = (current: { readonly revision: string }) => void;
