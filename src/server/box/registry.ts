@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
@@ -123,36 +123,38 @@ export const builtInBoxes = join(import.meta.dir, "../../boxes");
 /** @approved The built-in Boxes, then the plugins installed in the data folder. */
 export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
 
-let registered: ReadonlyMap<BoxId, HostBox> = new Map();
-let routes: ReadonlyMap<BoxId, AnyElysia> = new Map();
-let clientFolders: ReadonlyMap<BoxId, string> = new Map();
+/** @approved A loaded Box as the server holds it beside its descriptor: its checked hooks, its mounted routes and the folder its built client module is served from. */
+type LoadedBox = { readonly box: HostBox; readonly routes: AnyElysia | undefined; readonly clientFolder: string };
+let loaded: ReadonlyMap<BoxId, LoadedBox> = new Map();
 // @approved
 //  Builds the registry from `folders` at startup, before anything reads it,
 // logging each refused Box. A server passes the database it serves, and loads
 // again for each database it opens, since a Box's routes are built for one;
-// a caller that mounts no routes passes none.
+// a caller that mounts no routes passes none. The client build writes a
+// built-in's client module into `dist/boxes/<id>`, and `box:build` a plugin's
+// into its own `dist`.
 export const loadBoxes = async (folders: readonly string[] = boxFolders, database?: Database): Promise<void> => {
 	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
-	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
-	installBoxMetadata(boxes.map(({ descriptor }) => descriptor));
-	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));
-	routes = new Map(boxes.flatMap(({ descriptor: { id }, routes: built }) => built === undefined ? [] : [[id, built]]));
-	clientFolders = new Map(boxes.map(({ descriptor: { id }, folder }) => [id, dirname(folder) === builtInBoxes ? join("dist", "boxes", id) : join(folder, "dist")]));
+	loaded = new Map(boxes.map(({ descriptor, box, folder, routes }) => [descriptor.id, {
+		box, routes,
+		clientFolder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist"),
+	}]));
+	installBoxes(boxes.map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
 };
 
-/** @approved Where a loaded Box's built client module is served from: the client build writes a built-in's into `dist/boxes/<id>`, and `box:build` a plugin's into its own `dist`. */
-export const boxClientFolder = (id: BoxId): string | undefined => clientFolders.get(id);
+/** @approved Where a loaded Box's built client module is served from. */
+export const boxClientFolder = (id: BoxId): string | undefined => loaded.get(id)?.clientFolder;
 
 // @approved
-//  The server module of every loaded Box, by id, in registry order. Each Box
-// types its own hooks with `satisfies Box<…>`; the host holds it as a HostBox
-// and checks each value it routes against the Box's descriptor.
-export const serverBoxes = (): ReadonlyMap<BoxId, HostBox> => registered;
-/** @approved The routes each loaded Box serves, built for the database it was loaded with and mounted under its prefix, by id, in registry order. */
-export const boxRoutes = (): ReadonlyMap<BoxId, AnyElysia> => routes;
+//  Every loaded Box, by id, in registry order. Each Box types its own hooks
+// with `satisfies Box<…>`; the host holds them as a HostBox and checks each
+// value it routes against the Box's descriptor.
+export const serverBoxes = (): ReadonlyMap<BoxId, LoadedBox> => loaded;
+/** @approved The routes each loaded Box serves, built for the database it was loaded with and mounted under its prefix, in registry order. */
+export const boxRoutes = (): AnyElysia[] => [...loaded.values()].flatMap(({ routes }) => routes ?? []);
 /** @approved A registered Box's server module; an unknown id has none. */
-export const serverBox = (id: BoxId): HostBox | undefined => serverBoxes().get(id);
+export const serverBox = (id: BoxId): HostBox | undefined => loaded.get(id)?.box;
 
 /** @approved What each Box with an enabled preset block contributes to one Generation. */
 export type BoxItems = Record<PromptBoxReference, readonly (BlockItem & { readonly index: number })[] | undefined>;
@@ -184,7 +186,7 @@ const captureBox = (id: BoxId, instance: string, box: HostBox, input: AdvanceInp
 
 /** @approved The Boxes enabled in both the Chat and its preset, selected once for record folding and capture. */
 export const participatingBoxes = (slots: readonly PromptPresetSlot[], lifecycles: BoxLifecycles): ReadonlyMap<BoxId, { readonly box: HostBox; readonly instance: string }> =>
-	new Map([...serverBoxes()].flatMap(([id, box]) => {
+	new Map([...serverBoxes()].flatMap(([id, { box }]) => {
 		const lifecycle = lifecycles[id];
 		return lifecycle?.state === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id)) ? [[id, { box, instance: lifecycle.instance }]] : [];
 	}));

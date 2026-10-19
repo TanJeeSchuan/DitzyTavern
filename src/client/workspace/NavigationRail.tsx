@@ -1,5 +1,6 @@
 import { BoxIcon } from "../box-windows/BoxBoundary";
-import { boxClients, boxTitle } from "../box-windows/registry";
+import { boxClients } from "../box-windows/registry";
+import { boxMetadata } from "../../shared/contract/box";
 import {
 	BookMarked,
 	Boxes,
@@ -83,8 +84,8 @@ export function NavigationRail({
 				>
 					<Boxes aria-hidden="true" />
 				</RailButton>
-				{[...boxClients()].map(([id, { icon, Settings }]) => Settings && (
-					<RailButton key={id} disabled={inspecting} label={boxTitle(id)} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>
+				{boxClients().map(([id, { icon, Settings }]) => Settings && (
+					<RailButton key={id} disabled={inspecting} label={boxMetadata(id).label} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>
 						<BoxIcon box={id} icon={icon} />
 					</RailButton>
 				))}

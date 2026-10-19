@@ -7,7 +7,7 @@ export function BoxMessageActions({ conversation, messageId, onOpen }: {
 	messageId: number;
 	onOpen: (box: string, focus: { messageId: number }) => void;
 }) {
-	return [...boxClients()].map(([id, { icon, Inspector }]) => Inspector && boxPresent(conversation, id) && (
+	return boxClients().map(([id, { icon, Inspector }]) => Inspector && boxPresent(conversation, id) && (
 		<button key={id} className="edit-action" type="button" onClick={() => onOpen(id, { messageId })}>
 			<BoxIcon box={id} icon={icon} /> {Inspector.label}
 		</button>

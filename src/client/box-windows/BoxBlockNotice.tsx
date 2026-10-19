@@ -3,11 +3,10 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { boxReference, type BoxId, type BoxState } from "../../shared/contract/box";
+import { boxMetadata, boxReference, type BoxId, type BoxState } from "../../shared/contract/box";
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
-import { boxTitle } from "./registry";
 
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
@@ -43,7 +42,7 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
 		enabled: on,
 	});
-	const label = boxTitle(box);
+	const label = boxMetadata(box).label;
 	const slot = preset.data?.slots.find((entry) => entry.reference === boxReference(box));
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {
@@ -87,7 +86,7 @@ export function BoxOffNotice({ conversation, box, disabled, onConversationChange
 			.finally(() => setPending(false));
 	};
 	return <Alert className={cn(oneLine, className)}>
-		<AlertDescription>{boxTitle(box)} is off in this Chat.</AlertDescription>
+		<AlertDescription>{boxMetadata(box).label} is off in this Chat.</AlertDescription>
 		<Button type="button" size="xs" variant="outline" disabled={disabled || pending} onClick={turnOn}>Turn on</Button>
 		{failure !== null && <AlertDescription className="basis-full text-destructive">{failure}</AlertDescription>}
 	</Alert>;

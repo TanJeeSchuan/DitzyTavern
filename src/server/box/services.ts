@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { boxDescriptor, isDigestBox, type BoxId } from "../../shared/contract/box";
+import { boxMetadata, isDigestBox, type BoxId } from "../../shared/contract/box";
 import { connectionSnapshotOf, createConnectionSettingsModule } from "../connection-settings";
 import { decisionRequest, requestDecisions } from "../decision-model";
 import { collectModelClientGeneration, createModelClient } from "../model-client";
@@ -43,7 +43,7 @@ export const boxServices = (database: Database, fetch: ModelFetch | undefined, s
 		};
 	},
 	decide: (state, questions) => {
-		const { label } = boxDescriptor(id);
+		const { label } = boxMetadata(id);
 		if (decision.kind === "off") throw new Error(`Choose a ${label} Decision Model in Connection Settings.`);
 		if (decision.kind === "unavailable") throw new Error(`${decision.reason} Check the ${label} Decision Model in Connection Settings.`);
 		const { request, fits } = decisionRequest(decision.decision, state, questions);

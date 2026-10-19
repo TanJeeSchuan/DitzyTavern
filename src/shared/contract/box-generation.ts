@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { generationJsonValue } from "./json-value";
-import { boxDescriptor, boxDescriptors, type BoxId } from "./box";
+import { boxDescriptor, boxDescriptors, boxMetadata, type BoxId } from "./box";
 import { boxValue, type BoxValue } from "./box-value";
 
 /** @approved The records one Generation writes, by Box id, each stamped with the Box instance captured with it. */
@@ -38,7 +38,7 @@ export type BoxMoves = Static<typeof boxMoves>;
 export const boxMovesError = (moves: BoxMoves): string | undefined => Object.entries(moves).flatMap(([id, list]) => {
 	const declared = boxDescriptors().get(id)?.moves;
 	if (declared === undefined) return [`No ${id} Box takes Moves.`];
-	return list.length > 0 && list.length <= declared.max && list.every((move) => Value.Check(declared.schema, move)) ? [] : [`The ${boxDescriptor(id).label} Moves do not match their schema.`];
+	return list.length > 0 && list.length <= declared.max && list.every((move) => Value.Check(declared.schema, move)) ? [] : [`The ${boxMetadata(id).label} Moves do not match their schema.`];
 })[0];
 
 export const hasMoves = (moves: BoxMoves | undefined): boolean => Object.values(moves ?? {}).some((list) => list.length > 0);

@@ -20,7 +20,7 @@ type StoryPiece =
 //  failure, and the host draws each lifted mark.
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
 	if (lens === undefined) return <Prose text={text} streaming={streaming} />;
-	const lenses = [...boxClients()].flatMap(([id, { Window, icon }]) => {
+	const lenses = boxClients().flatMap(([id, { Window, icon }]) => {
 		const boxLens = Window?.lens;
 		if (boxLens === undefined || !boxPresent(lens.conversation, id)) return [];
 		const failed = (message: string, prose: string): StoryPiece[] => [{ kind: "failed", box: id, message }, { kind: "prose", text: prose }];

@@ -1,7 +1,7 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortableOperation, useSortable } from "@dnd-kit/react/sortable";
 import { X, type LucideIcon } from "lucide-react";
-import { boxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxMetadata, type BoxId } from "../../shared/contract/box";
 import { type BoxValue } from "../../shared/contract/box-value";
 import { hasMoves, moveLabel, replaceMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { BoxBoundary, BoxIcon } from "../box-windows/BoxBoundary";
@@ -46,8 +46,8 @@ function MoveList<Move>({ name, box, icon, list, label, onChange, disabled }: {
 export function MoveChips({ moves, onChange, disabled = false }: { moves: BoxMoves; onChange?: ((moves: BoxMoves) => void) | undefined; disabled?: boolean }) {
 	if (!hasMoves(moves)) return null;
 	return <div className="move-chips">
-		{[...boxClients()].map(([id, { icon }]) => boxDescriptor(id).moves === undefined ? null : <BoxBoundary key={id} box={id}>
-			<MoveList<BoxValue> name={`${boxDescriptor(id).label} Moves`} box={id} icon={icon} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
+		{boxClients().map(([id, { icon, descriptor }]) => descriptor.moves === undefined ? null : <BoxBoundary key={id} box={id}>
+			<MoveList<BoxValue> name={`${boxMetadata(id).label} Moves`} box={id} icon={icon} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
 				onChange={onChange && ((next) => onChange(replaceMoves(moves, id, next)))} />
 		</BoxBoundary>)}
 	</div>;

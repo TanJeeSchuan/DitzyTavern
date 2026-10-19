@@ -2,8 +2,8 @@ import { Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import type { BoxId, PromptBoxReference } from "../shared/contract/box";
-import { boxClients, boxOpening, boxTitle } from "./box-windows/registry";
+import { boxMetadata, type BoxId, type PromptBoxReference } from "../shared/contract/box";
+import { boxClients, boxOpening } from "./box-windows/registry";
 import { BoxIcon } from "./box-windows/BoxBoundary";
 import { controlChangeDescription } from "./cast";
 import {
@@ -55,9 +55,9 @@ export function ComposerControlSelectors({
 	//  One launcher per Box enabled in the Chat with a client entry: it opens
 	//  where that Box lives. An off Box stays reachable from the Box manager,
 	//  the Chat tools and the dock, where its window can be opened.
-	const launchers = [...boxClients()].flatMap(([box, { icon }]) => {
+	const launchers = boxClients().flatMap(([box, { icon }]) => {
 		const open = conversation.boxes[box] === "enabled" ? boxOpening(box, { panel: onOpenPanel, window: onOpenWindow }) : undefined;
-		return open === undefined ? [] : [{ box, icon, open }];
+		return open === undefined ? [] : [{ box, label: boxMetadata(box).label, icon, open }];
 	});
 
 	const options = conversation.cast.map((participant) => ({
@@ -123,7 +123,7 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
-			{launchers.map(({ box, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label={boxTitle(box)} title={boxTitle(box)} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
+			{launchers.map(({ box, label, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label={label} title={label} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}

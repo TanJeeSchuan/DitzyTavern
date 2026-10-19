@@ -39,7 +39,7 @@ import type {
 	PromptLoreEntry,
 } from "./types";
 import { resolvePromptImages } from "./images";
-import { boxDescriptorOf } from "../../shared/contract/box";
+import { boxDescriptor, boxIdOf } from "../../shared/contract/box";
 
 // @approved
 //  Everything a Definition-sourced plan block carries apart from its resolved
@@ -228,7 +228,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			// loaded, renders nothing.
 			const items = input.boxes[kind];
 			if (items === undefined) continue;
-			const alwaysRender = boxDescriptorOf(kind).alwaysRender === true;
+			const alwaysRender = boxDescriptor(boxIdOf(kind)).alwaysRender === true;
 			if (items.length === 0 && !alwaysRender) continue;
 			const role = planRoleFor[slot.role];
 			const blockLabel = singleUseReferenceLabel(kind);

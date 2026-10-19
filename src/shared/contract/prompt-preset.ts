@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
-import { boxIdOf, boxDescriptorOf, boxMetadataOf, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
+import { boxDescriptor, boxIdOf, boxMetadata, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -37,7 +37,7 @@ export const isSingleUseReference = (reference: string): reference is PromptLore
 	reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
 export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference): string =>
-	reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadataOf(reference).label : reference;
+	reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
 /** @approved The first single-use reference `references` repeats, which a preset refuses. */
 export const repeatedSingleUseReference = (references: readonly string[]) => {
 	const singleUse = references.filter(isSingleUseReference);
@@ -71,7 +71,7 @@ const fixedOutgoingRoles = {
 	lore: "system",
 } as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference, PromptOutgoingRole>;
 export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference): PromptOutgoingRole =>
-	isBoxReference(reference) ? boxDescriptorOf(reference).role : fixedOutgoingRoles[reference];
+	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,

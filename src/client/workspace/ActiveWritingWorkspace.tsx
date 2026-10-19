@@ -9,7 +9,7 @@ import {
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
-import { boxClients, boxPresent } from "../box-windows/registry";
+import { boxClient, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { useBoxWindows } from "../box-windows/useBoxWindows";
 import { PanelHeader } from "../PanelHeader";
@@ -161,7 +161,7 @@ export function ActiveWritingWorkspace({
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface === null ? undefined : boxIdOf(panelState.detailsSurface);
-	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClients().get(inspectorBox)?.Inspector;
+	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClient(inspectorBox)?.Inspector;
 	useEffect(() => {
 		if (inspectorBox !== undefined && conversation !== null && !boxPresent(conversation, inspectorBox)) dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);

@@ -214,7 +214,10 @@ export const importProvenanceEntries = (
 };
 
 /** @approved The setup SillyTavern's Author's Note imports as, for each Box that declares the import. */
-const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatMap(([id, box]) => box.importSillyTavernNote === undefined ? [] : [boxSetupEntry(id, box.importSillyTavernNote(note))]);
+const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatMap(([id, { box }]) => {
+	const setup = box.importSillyTavernNote?.(note);
+	return setup === undefined ? [] : [boxSetupEntry(id, setup)];
+});
 
 // @approved
 //  Maps decoded source and one resolution into native creation data,
