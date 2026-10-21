@@ -1,0 +1,21 @@
+# Production upgrade runtime audit: build 103 to HEAD
+
+Compared `cc2baa33b2c0c536084bad37b4f5b8f607037d66` with `751586c880145accccba820396c0d2d4b4307fac`, focusing on image contents, startup, persistent paths, secrets, assets, plugins, proxies and publication. This is a source review; production and Docker were not touched.
+
+## Findings
+
+- **No runtime-image blocker found.** The new loader imports built-in Box TypeScript from `src/boxes` and its SDK, while resolving `@/` through `tsconfig.json`; all three are copied into the final image. The build emits built-in client modules under `dist/boxes/<id>`, which is copied as part of `dist`. These copies close a real packaging dependency introduced by Boxes. See [Dockerfile](../../Dockerfile#L24) and [vite.config.ts](../../vite.config.ts).
+- **Persistent data and secrets keep their existing paths.** The runtime still runs as `bun`, creates writable `/app/data`, and starts from `/app`; the new plugin lookup is `data/boxes`, which resolves to `/app/data/boxes` under the image's working directory. The connection key remains injected at runtime. Keep the existing data volume and `CONNECTION_SECRET_KEY`; no new environment secret is required. See [registry.ts](../../src/server/box/registry.ts#L122), [Dockerfile](../../Dockerfile#L22), and [docker.md](../docker.md#L60).
+- **Box load order and failure behavior are bounded.** Startup loads built-ins first, then data-volume plugins, before constructing the app. A plugin cannot shadow a built-in ID. Invalid plugin folders are logged and refused while other Boxes continue. Adding/removing a plugin takes a container restart; client assets must already be built into that plugin's `dist`. These are documented deployment requirements, not automatic hot reload. See [index.ts](../../src/server/index.ts#L7), [registry.ts](../../src/server/box/registry.ts#L87), and [docker.md](../docker.md#L83).
+- **The reported stale-tab failures are refresh/restart issues, not missing image files.** Dev's need for a restart follows the startup-only Box registry and static asset serving. A tab left open across an upgrade can keep old client code and call the removed Author Note host route; refreshing loads the new Box list and client. The old Author Note surface/API was intentionally moved into the Box system, so adding a compatibility route would preserve an obsolete contract. New host chunks and Box modules use stable URLs with `no-cache`; normal hashed assets still use the existing day cache. Container replacement is still required for the server code and plugin discovery. See [app.ts](../../src/server/app.ts#L33), [boxes.ts](../../src/server/contract/boxes.ts#L6), and [docker.md](../docker.md#L89).
+- **Proxy and publication guidance covers the new runtime.** Existing `/api` and unbuffered SSE proxy requirements remain. The publication workflow waits for E2E, builds and smoke-checks both architectures, verifies metadata, then publishes numbered and `latest` indexes. No runtime change creates an additional secret or deployment step. See [check.yml](../../.github/workflows/check.yml#L19), [publish-docker.ts](../../scripts/publish-docker.ts), and [docker.md](../docker.md#L1).
+
+## Release actions
+
+1. Back up `/app/data` and the encryption key while the old server is stopped. Preserve the same volume, key, and proxy mapping when replacing the container; the existing docs already give this procedure.
+2. After replacement, refresh existing browser tabs. Restart the container after installing or removing a plugin; confirm its client `dist` exists before startup.
+3. Include the working-tree `0029_request_override_namespaces.sql` only if the SQL/data review confirms it is required for this deployment. It is uncommitted and is not part of the compared HEAD revision, so publishing only that revision will not include it.
+
+## Disposition
+
+No Dockerfile, startup, secret, data-path, static-asset, ownership, or proxy code change is indicated by this audit. Add a short upgrade note telling users to refresh old tabs after replacement if the existing release instructions are the operator-facing checklist; the source already makes that behavior expected. The database migration and production copy remain with the separate SQL/data review.
