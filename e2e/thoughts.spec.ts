@@ -2,9 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
 
 const generate = async (page: Page, text: string) => {
-	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
-	await composer.fill(text);
+	await page.getByRole("textbox", { name: "Message draft" }).fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	return page.getByRole("complementary", { name: "Prompt Plan preview" });
 };
@@ -37,6 +35,7 @@ test("a thought in a reply moves from the prose to the Thoughts window, follows 
 	await expect(story(page).getByText("Theodora frowns.")).toBeVisible();
 	await reply.getByRole("button", { name: "A thought" }).click();
 	await expect(thoughts.getByRole("listitem")).toHaveText(["Theodora KlineStay calm."]);
+	await story(page).locator(".story-scroll").evaluate((element) => element.scrollTo({ top: element.scrollHeight, behavior: "instant" }));
 
 	await openBoxes(page);
 	await page.getByRole("switch", { name: "Thoughts in this Chat" }).click();

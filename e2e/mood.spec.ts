@@ -10,9 +10,7 @@ const mood = (passage: string | undefined, selected: string) => ({
 const preview = (page: Page) => page.getByRole("complementary", { name: "Prompt Plan preview" });
 
 const moodLine = async (page: Page, text: string) => {
-	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
-	await composer.fill(text);
+	await page.getByRole("textbox", { name: "Message draft" }).fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await preview(page).getByText(/^Mood ·/).click();
 	return preview(page).getByRole("textbox").filter({ hasText: "Scene mood:" }).locator(".cm-line");

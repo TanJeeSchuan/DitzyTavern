@@ -4,8 +4,8 @@ import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
-import { buildBoxClient } from "./scripts/build-box-client";
-import { hostModules } from "./scripts/host-modules";
+import { buildBoxClient } from "./scripts/build-box-client.ts";
+import { hostModules } from "./scripts/host-modules.ts";
 
 const boxes = fileURLToPath(new URL("./src/boxes", import.meta.url));
 

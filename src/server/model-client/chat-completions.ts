@@ -215,7 +215,7 @@ async function* generateOpenAICompatibleStream(options: {
 				case "error":
 					if (part.error instanceof ModelClientTransportError) throw part.error;
 					throw new ModelClientTransportError(
-						redactProviderDiagnostic(getErrorMessage(part.error), [options.credential, ...Object.values(options.customHeaders)]),
+						redactProviderDiagnostic(part.error instanceof Error ? part.error.message : getErrorMessage(part.error), [options.credential, ...Object.values(options.customHeaders)]),
 						"provider",
 					);
 				default:

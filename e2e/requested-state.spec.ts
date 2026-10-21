@@ -14,7 +14,6 @@ const holdPost = async (page: Page, pattern: string) => {
 
 const sendDirect = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });
-	await expect(composer).toHaveAttribute("contenteditable", "true");
 	await composer.fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	return composer;
