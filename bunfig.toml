@@ -1,0 +1,3 @@
+[install]
+# Refuse versions younger than 3 days: worm releases are pulled within hours.
+minimumReleaseAge = 259200
