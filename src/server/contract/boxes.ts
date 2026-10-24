@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Elysia } from "elysia";
 import { boxClientFolder, boxRoutes } from "../box/registry";
-import { boxList, boxMetadatas } from "../../shared/contract/box";
+import { boxList, installedBoxes } from "../../shared/contract/box";
 
 // @approved
 //  The loaded Boxes, and the routes each Box serves beside the host's,
@@ -11,7 +11,7 @@ import { boxList, boxMetadatas } from "../../shared/contract/box";
 // their names across builds.
 export const createBoxRoutes = () => {
 	const app = new Elysia()
-		.get("/api/boxes", () => [...boxMetadatas().values()].map((metadata) => ({ ...metadata, client: `/boxes/${metadata.id}/client.js` })), { response: boxList })
+		.get("/api/boxes", () => [...installedBoxes().values()].map(({ metadata }) => ({ ...metadata, client: `/boxes/${metadata.id}/client.js` })), { response: boxList })
 		.get("/boxes/:box/:file", async ({ params: { box, file }, set, status }) => {
 			const folder = boxClientFolder(box);
 			const served = folder === undefined || (file !== "client.js" && file !== "client.css") ? undefined : Bun.file(join(folder, file));
@@ -19,6 +19,6 @@ export const createBoxRoutes = () => {
 			set.headers["cache-control"] = "no-cache";
 			return served;
 		});
-	for (const routes of boxRoutes().values()) app.use(routes);
+	for (const routes of boxRoutes()) app.use(routes);
 	return app;
 };

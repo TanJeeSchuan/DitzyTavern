@@ -9,9 +9,8 @@ import { authenticatedHeaders } from "../model-client/authenticated-headers";
 import { fetchWithTimeout, readBoundedResponse, type ModelFetch } from "../model-client/model-fetch";
 import { tokenxEstimator } from "../prompt-compiler";
 import { InvalidSettingsError } from "../revisioned-settings";
-import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { connectionProfileTable } from "../database/schema";
+import { readProfileApiFormat } from "../connection-settings/persistence";
 
 export class DecisionModelError extends Error {
 	constructor(
@@ -39,13 +38,9 @@ export const validateDecisionSelection = (database: Database, selection: Decisio
 		if (model) throw new InvalidSettingsError("Choose a Connection Profile before setting a Decision Model.");
 		return null;
 	}
-	const profile = drizzle(database)
-		.select({ apiFormat: connectionProfileTable.api_format })
-		.from(connectionProfileTable)
-		.where(eq(connectionProfileTable.id, selection.decisionProfileId))
-		.get();
-	if (!profile) throw new InvalidSettingsError("The selected Decision Model Connection Profile no longer exists. Choose an available profile.");
-	if (profile.apiFormat !== "system-one") throw new InvalidSettingsError("Choose a System One connection for the Decision Model.");
+	const apiFormat = readProfileApiFormat(drizzle(database), selection.decisionProfileId);
+	if (apiFormat === undefined) throw new InvalidSettingsError("The selected Decision Model Connection Profile no longer exists. Choose an available profile.");
+	if (apiFormat !== "system-one") throw new InvalidSettingsError("Choose a System One connection for the Decision Model.");
 	if (!model) throw new InvalidSettingsError("Choose a Decision Model for the selected Connection Profile.");
 	return selection.decisionProfileId;
 };

@@ -1,6 +1,5 @@
 import type { ConversationDatabase } from "../internal";
-import { eq } from "drizzle-orm";
-import { connectionProfileTable } from "../../database/schema";
+import { readProfileApiFormat } from "../../connection-settings/persistence";
 import {
 	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
 	readConversationGenerationSettingsFromConnection,
@@ -26,13 +25,10 @@ export function setGenerationModel(
 ) {
 	const modelId = input.modelId.trim();
 	if (modelId.length === 0) throw new InvalidConversationCommandError("A model ID is required.");
-	const profile = db.select({ apiFormat: connectionProfileTable.api_format })
-		.from(connectionProfileTable)
-		.where(eq(connectionProfileTable.id, input.connectionProfileId))
-		.get();
-	if (profile === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
-	if (profile.apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
-	if (profile.apiFormat === "system-one") throw new InvalidConversationCommandError("A System One connection cannot write Messages. Choose a chat model.");
+	const apiFormat = readProfileApiFormat(db, input.connectionProfileId);
+	if (apiFormat === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
+	if (apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
+	if (apiFormat === "system-one") throw new InvalidConversationCommandError("A System One connection cannot write Messages. Choose a chat model.");
 	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
 	return updateConversationModelSelection(db, input.conversationId, {
 		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { boxDescriptorOf, boxReference, isBoxReference, isUnknownBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxIdOf, boxMetadata, boxReference, isBoxReference, isUnknownBoxReference, type BoxId } from "../../shared/contract/box";
 import {
 	defaultOutgoingRole,
 	isSingleUseReference,
@@ -141,7 +141,7 @@ const insertOccurrence = (
 			role,
 			name: reference === "instruction" ? occurrence.name : null,
 			content: reference === "instruction" ? occurrence.content
-				: isBoxReference(reference) ? occurrence.content ?? boxDescriptorOf(reference).instructions
+				: isBoxReference(reference) ? occurrence.content ?? boxMetadata(boxIdOf(reference)).instructions
 				: null,
 		})
 		.returning({ id: promptPresetBlockTable.id })

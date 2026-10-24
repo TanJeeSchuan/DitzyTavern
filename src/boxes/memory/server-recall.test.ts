@@ -32,7 +32,7 @@ import { captureMemoryRecallSnapshot } from "./server-recall";
 import { sha256 } from "../../server/hash";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
 import { resetWriterRecord, writeAutomaticRecord, writeDigestError, writeWriterRecord } from "../../server/box/records";
-import { readBoxInstances } from "../../server/box/setup";
+import { readBoxLifecycles } from "../../server/box/setup";
 
 const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
 	const memory = createMemorySettingsModule(database);
@@ -64,7 +64,7 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 	judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } },
 });
 
-const instanceOf = (database: Database, conversationId: number) => readBoxInstances(drizzle(database), conversationId).memory!;
+const instanceOf = (database: Database, conversationId: number) => readBoxLifecycles(drizzle(database), conversationId).memory!.instance;
 const contentOf = (database: Database, variantId: number) => database.query<{ content: string }, [number]>("SELECT content FROM message_variant WHERE id = ?").get(variantId)!.content;
 
 // @approved
@@ -73,7 +73,7 @@ const contentOf = (database: Database, variantId: number) => database.query<{ co
 const remember = async (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) => {
 	writeAutomaticRecord(drizzle(database), "memory", instanceOf(database, conversationId), variantId, { claims }, sha256(contentOf(database, variantId)));
 	const embedding = readMemoryEmbedding(database);
-	if (embedding.spaceKey !== "") await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
+	if (embedding !== undefined) await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
 };
 
 const correct = (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) =>
@@ -392,8 +392,8 @@ describe("Memory recall in Generation preparation", () => {
 			cast: [],
 			pending: `Next ${token}`,
 			messages: [
-				{ messageId: 1, variantId: 1, position: 1, authorId: null, speaker: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.` },
-				{ messageId: 2, variantId: 2, position: 2, authorId: null, speaker: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.` },
+				{ messageId: 1, variantId: 1, position: 1, authorId: null, speaker: "Writer", role: "human", content: `Writer unrolled ${token}.`, prose: `Writer unrolled ${token}.`, slot: undefined },
+				{ messageId: 2, variantId: 2, position: 2, authorId: null, speaker: "Maren", role: "model", content: `Maren studied ${token} closely.`, prose: `Maren studied ${token} closely.`, slot: undefined },
 			],
 		});
 		expect(snapshot.activation.scene).toBe("Writer: Writer unrolled [Image: the map].\n\nMaren: Maren studied [Image: the map] closely.\n\nWriter: Next [Image: the map]");

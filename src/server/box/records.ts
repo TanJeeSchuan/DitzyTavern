@@ -1,18 +1,15 @@
 import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import { boxEntryOf, type BoxValue } from "../../shared/contract/box-value";
-import { generationJsonValue } from "../../shared/contract/json-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import { type BoxValue } from "../../shared/contract/box-value";
 import { boxRecordSlot } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
-import type { BoxInstances } from "./setup";
-import type { Box, HostBox } from "./contract";
+import type { participatingBoxes } from "./registry";
+import type { HostBox } from "./contract";
 
 // @approved
 //  Record slots live in Variant data under `box:<id>`, key
@@ -48,32 +45,39 @@ export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["w
 /** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
 export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
 
-export const checkedBoxState = <State>(id: BoxId, state: State | undefined): State | undefined => {
-	if (state === undefined || Value.Check(generationJsonValue, state)) return state;
-	throw new Error(`The ${id} Box's state must be JSON or undefined.`);
+// @approved
+//  One Box's record slots on the given Variants, for its instance, and its
+// state: the fold over their effective records, in Message order, from
+// `initial`, or undefined for a Box without a fold. Generation capture, the
+// window reads and the digest status all fold this way.
+export const readBoxFold = (db: BunSQLiteDatabase, id: BoxId, { records }: HostBox, instance: string | undefined, setup: BoxValue | undefined, variantIds: readonly number[]) => {
+	const slots = records === undefined ? new Map<number, RecordSlot<BoxValue>>() : readRecordSlots(db, id, boxRecordSchema(id), instance, variantIds);
+	const state = records?.fold === undefined ? undefined : variantIds.reduce((folded, variantId) => {
+		const record = effectiveRecord(slots.get(variantId));
+		return record === undefined ? folded : records.fold(folded, record, setup);
+	}, records.initial);
+	return { slots, state };
 };
 
-/** @approved State is the fold over effective records of the selected Variants, in Message order. */
-export const foldRecords = <Setup, Rec extends BoxValue, State extends GenerationJsonValue | undefined>(records: NonNullable<Box<Setup, unknown, never, Rec, State>["records"]>, setup: Setup, slots: ReadonlyMap<number, RecordSlot<Rec>>, selectedVariantIds: readonly number[]): State =>
-	selectedVariantIds.reduce((state, variantId) => {
-		const record = effectiveRecord(slots.get(variantId));
-		return record === undefined ? state : records.fold(state, record, setup);
-	}, records.initial);
-
-/** @approved Every enabled record Box's folded state, by Box id, as one Generation captures it; only the Box that folded a state reads it. */
-export type RecordStates = Readonly<Record<BoxId, NonNullable<HostBox["records"]>["initial"]>>;
+/** @approved Each participating Box's slots on the Selected path and its state, by Box id, as one Generation captures them; only the Box that folded them reads them. */
+export type BoxFolds = Readonly<Record<BoxId, ReturnType<typeof readBoxFold>>>;
 
 // @approved
 //  Only participating Boxes read and fold records for this Generation.
-export const foldRecordStates = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReadonlyMap<BoxId, HostBox>, instances: BoxInstances): RecordStates =>
-	Object.fromEntries([...boxes].flatMap(([id, { records }]) => {
-		if (records === undefined) return [];
-		const slots = readRecordSlots(db, id, boxRecordSchema(id), boxEntryOf(instances, id), selectedVariantIds);
-		return [[id, checkedBoxState(id, foldRecords<unknown, BoxValue, GenerationJsonValue | undefined>(records, boxEntryOf(setups, id), slots, selectedVariantIds))]];
-	}));
+export const readBoxFolds = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReturnType<typeof participatingBoxes>): BoxFolds =>
+	Object.fromEntries([...boxes].map(([id, { box, instance }]) => [id, readBoxFold(db, id, box, instance, setups[id], selectedVariantIds)]));
 
-const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, slot: RecordSlot<BoxValue>): void => {
-	const value = JSON.stringify(slot);
+const updateSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, update: (slot: RecordSlot<BoxValue> | undefined) => RecordSlot<BoxValue> | undefined): void => {
+	const current = slotOf(db, id, instance, variantId);
+	const next = update(current);
+	if (next === current) return;
+	if (next === undefined || (next.automatic === undefined && next.writer === undefined && next.error === undefined)) {
+		db.delete(messageVariantDataTable)
+			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
+			.run();
+		return;
+	}
+	const value = JSON.stringify(next);
 	db.insert(messageVariantDataTable)
 		.values({ message_variant_id: variantId, namespace: boxReference(id), key: recordKey(instance), value })
 		.onConflictDoUpdate({ target: [messageVariantDataTable.message_variant_id, messageVariantDataTable.namespace, messageVariantDataTable.key], set: { value } })
@@ -82,31 +86,22 @@ const writeSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId
 
 /** @approved A successful digest clears the slot's error. */
 export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue, source: string): void =>
-	writeSlot(db, id, instance, variantId, { writer: slotOf(db, id, instance, variantId)?.writer, automatic: record, source });
+	updateSlot(db, id, instance, variantId, (slot) => ({ writer: slot?.writer, automatic: record, source }));
 
 /** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
 export const writeDigestError = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, source: string, message: string): void =>
-	writeSlot(db, id, instance, variantId, { ...slotOf(db, id, instance, variantId), error: { source, message } });
+	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
 
 /** @approved Whether a digest already failed on exactly this text. */
 export const hasDigestError = (slot: RecordSlot | undefined, content: string): boolean => slot?.error?.source === sha256(content);
 
 /** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
 export const writeWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue): void =>
-	writeSlot(db, id, instance, variantId, { ...slotOf(db, id, instance, variantId), writer: record });
+	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, writer: record }));
 
 /** @approved Reset removes the Writer override; with no automatic result or error left the slot row goes away entirely. */
-export const resetWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): void => {
-	const current = slotOf(db, id, instance, variantId);
-	if (current === undefined || current.writer === undefined) return;
-	if (current.automatic === undefined && current.error === undefined) {
-		db.delete(messageVariantDataTable)
-			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
-			.run();
-		return;
-	}
-	writeSlot(db, id, instance, variantId, { automatic: current.automatic, source: current.source, error: current.error });
-};
+export const resetWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): void =>
+	updateSlot(db, id, instance, variantId, (slot) => slot?.writer === undefined ? slot : { automatic: slot.automatic, source: slot.source, error: slot.error });
 
 export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>
 	variantIds.length === 0 ? new Map() : new Map(db

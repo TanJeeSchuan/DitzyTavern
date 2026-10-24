@@ -6,10 +6,11 @@ import { memoryRoutes } from "./server-routes";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "./server-recall";
 
 // @approved
-//  Recall reads each passage's record slot itself, so the fold keeps no state.
+//  Recall reads each passage's record slot from what the host captured, so
+//  Memory folds no state.
 const memoryBox = {
 	dependencies: captureMemoryRecallSnapshot,
-	records: { initial: undefined, fold: (state) => state, digest: { window: 4, run: digestMemory } },
+	records: { digest: { window: 4, run: digestMemory } },
 	advance: {
 		trace: memoryActivationRecord,
 		fingerprint: ({ dependencies }) => dependencies.freshnessFingerprint,

@@ -178,7 +178,7 @@ const provision = (directory: string, database: Database) => {
 	const profile = {
 		apiFormat: "chat-completions", adapter: "openai-compatible",
 		requestUrl: "https://e2e.invalid/v1/", modelsUrl: "https://e2e.invalid/v1/models",
-		modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
+		modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 60_000,
 	} as const;
 	connections.createProfile({ expectedRevision: 0, profile: { ...profile, displayName: "E2E provider", pinnedModels: ["e2e-model"] } });
 	connections.createProfile({

@@ -53,7 +53,7 @@ export const boxDescriptorSchema = Type.Object({
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 
 /** @approved Throws why `value` fails `schema`, naming what it is and where it fails. */
-function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, what: string): asserts value is Static<Schema> {
+export function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, what: string): asserts value is Static<Schema> {
 	if (Value.Check(schema, value)) return;
 	const error = Value.Errors(schema, value).First();
 	throw new Error(`${what} is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`);
@@ -62,6 +62,7 @@ function assertChecked<Schema extends TSchema>(schema: Schema, value: unknown, w
 /** @approved Throws why the host refuses a Box module's descriptor. The server checks each folder's, the client each client module's. */
 export function assertBoxDescriptor(descriptor: unknown): asserts descriptor is BoxDescriptor {
 	assertChecked(boxDescriptorSchema, descriptor, "Its descriptor");
+	if (Object.hasOwn(Object.prototype, descriptor.id)) throw new Error(`Its id, ${descriptor.id}, names an Object.prototype property.`);
 	if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
 	if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
 }
@@ -100,8 +101,8 @@ export const boxServerSchema = Type.Object({
 	moves: Type.Optional(Type.Object({ render: hook })),
 	dependencies: Type.Optional(hook),
 	records: Type.Optional(Type.Object({
-		initial: Type.Unknown(),
-		fold: hook,
+		initial: Type.Optional(Type.Unknown()),
+		fold: Type.Optional(hook),
 		digest: Type.Optional(Type.Object({ window: Type.Integer({ minimum: 0 }), run: hook })),
 	})),
 	advance: Type.Optional(Type.Object({ trace: Type.Optional(schema), run: hook, fingerprint: Type.Optional(hook) })),
@@ -110,6 +111,33 @@ export const boxServerSchema = Type.Object({
 	read: Type.Optional(hook),
 	routes: Type.Optional(hook),
 });
+
+// @approved
+//  What the host checks each server hook's output against, by hook. State and
+// dependencies are JSON, or undefined at the root. A record is JSON that
+// passes the Box's record schema, and a Box without one returns none.
+// `advance.run` returns items the compiler can place, a whole-token
+// allowance, and a JSON trace that passes the Box's trace schema.
+export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undefined) => {
+	const state = Type.Union([boxValue, Type.Undefined()]);
+	const record = descriptor.record === undefined ? Type.Never() : Type.Intersect([boxValue, descriptor.record]);
+	return {
+		setupError: Type.Union([Type.String(), Type.Undefined()]),
+		"moves.render": Type.String(),
+		dependencies: state,
+		"records.initial": state,
+		"records.fold": state,
+		"records.digest.run": record,
+		"advance.run": Type.Object({
+			items: Type.Array(Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) })),
+			allowance: Type.Optional(Type.Integer({ minimum: 0 })),
+			trace: Type.Optional(trace === undefined ? boxValue : Type.Intersect([boxValue, trace])),
+			record: Type.Optional(record),
+		}),
+		status: Type.Union([Type.String(), Type.Null()]),
+		importSillyTavernNote: descriptor.setup?.schema ?? Type.Never(),
+	};
+};
 
 //  What a lens returns for a stretch of prose, checked each time the story
 //  lenses it: the prose it leaves and one line for each mark it lifts.

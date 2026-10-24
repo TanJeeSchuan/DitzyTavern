@@ -11,7 +11,7 @@ import { readConversationMemories, setMemoryAllowance } from "./server-memories"
 import { readMemoryChatSettings } from "./server-chat";
 import { sha256 } from "../../server/hash";
 import { writeAutomaticRecord } from "../../server/box/records";
-import { readBoxInstances } from "../../server/box/setup";
+import { readBoxLifecycles } from "../../server/box/setup";
 import { applyMemoryPeople } from "./shared";
 import { memoryLabelsMerged, type ConversationMemories, type MemoryCandidateJudgment } from "./contract";
 
@@ -21,7 +21,7 @@ const addSource = (database: Database, conversationId: number, position: number,
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-29T00:00:00Z", author_name: "Alice" }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised Bob a key.", selected }).returning().get();
-	writeAutomaticRecord(db, "memory", readBoxInstances(db, conversationId).memory!, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
+	writeAutomaticRecord(db, "memory", readBoxLifecycles(db, conversationId).memory!.instance, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
 

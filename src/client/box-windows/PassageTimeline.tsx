@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { boxDescriptor, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
+import { boxMetadata, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
@@ -41,7 +41,7 @@ export function useBoxStatus(conversationId: number, box: BoxId): string {
 		refetchInterval: 2_500,
 		refetchIntervalInBackground: false,
 	});
-	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptor(box).label : "Reading…");
+	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxMetadata(box).label : "Reading…");
 }
 
 /** @approved A record field holds a scalar: a literal, a number, a string or null. */
@@ -206,7 +206,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const locked = disabled || busy;
-	const { label } = boxDescriptor(box);
+	const { label } = boxMetadata(box);
 	const passages = read.data?.passages ?? [];
 	const catchUp = read.data?.catchUp ?? null;
 	const digestReady = read.data?.digestReady ?? false;

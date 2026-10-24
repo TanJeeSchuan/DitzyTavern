@@ -41,7 +41,14 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 	expect(first).toContain("Stretch 1: 0–400 m");
 	expect(first).toMatch(new RegExp(`Overtake · ${runner}: (succeeds|fizzles)`));
 	expect(first).toContain(`Conserve · ${runner}: succeeds`);
+	// @approved While the read of the new revision loads, the offers still read the state before this Stretch, so none of them stages a Move.
+	const read = Promise.withResolvers<void>();
+	await page.route("**/api/conversations/*/boxes/race", async (route) => { await read.promise; await route.fallback(); });
 	await accept();
+	await expect(page.getByRole("textbox", { name: "Message draft" })).toHaveAttribute("contenteditable", "true");
+	await expect(moves.getByRole("button", { name: /Hold/ })).toBeDisabled();
+	read.resolve();
+	await expect(moves.getByRole("button", { name: /Hold/ })).toBeEnabled();
 	const human = story(page).locator("article").nth(-2);
 	await expect(human.getByRole("list", { name: "Moves" }).getByRole("listitem")).toHaveCount(2);
 	await expect(composer.getByRole("list", { name: "Moves" })).toHaveCount(0);

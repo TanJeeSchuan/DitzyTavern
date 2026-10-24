@@ -10,7 +10,7 @@ export function BoxTraceViews({ conversationId, traces, plan, onNavigateSource }
 	plan?: PromptPlan;
 	onNavigateSource?: (messageId: number) => void;
 }) {
-	return [...boxClients()].map(([id, { TraceView }]) => {
+	return boxClients().map(([id, { TraceView }]) => {
 		const reference = boxReference(id);
 		const trace = traces[reference];
 		if (TraceView === undefined || trace === undefined) return null;

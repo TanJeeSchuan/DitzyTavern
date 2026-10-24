@@ -28,6 +28,11 @@ describe("readBoxStates", () => {
 		database.close();
 	});
 
+	test.each(["enabled", "instance"])("rejects a lifecycle missing its %s row", (key) => {
+		database.query("DELETE FROM conversation_data WHERE conversation_id = ? AND namespace = ? AND key = ?").run(conversationId, "box:race", key);
+		expect(() => readBoxStates(drizzle(database), conversationId)).toThrow(`Stored Box lifecycle at Chat ${conversationId} box:race needs both enabled and instance.`);
+	});
+
 	test("rejects a stored enablement that is not a boolean", () => {
 		database.query("UPDATE conversation_data SET value = ? WHERE conversation_id = ? AND namespace = ? AND key = ?")
 			.run(JSON.stringify("true"), conversationId, "box:race", "enabled");

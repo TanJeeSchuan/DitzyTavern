@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
-import type { BoxId, BoxState, PromptBoxReference } from "../../shared/contract/box";
+import { boxMetadata, type BoxId, type BoxState, type PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxClients, boxOpening, boxTitle, listedBoxes, type ListedBox } from "./registry";
+import { boxOpening, loadedBoxes, type LoadedBox } from "./registry";
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
@@ -41,18 +41,18 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
 
-	const stateOf = ({ id: box }: ListedBox) => {
+	const stateOf = (box: BoxId) => {
 		const state = conversation.boxes[box];
 		if (state === undefined) throw new Error(`Chat ${conversation.id} has no state for Box ${box}.`);
 		return state;
 	};
-	const rows = [...listedBoxes().values()].map((box) => ({ box, state: stateOf(box) }));
+	const rows = [...loadedBoxes()].map(([box, loaded]) => ({ box, loaded, state: stateOf(box) }));
 	const inChat = rows.filter(({ state }) => state !== "absent");
 	const toAdd = rows.filter(({ state }) => state === "absent");
 
-	const row = ({ box: listed, state }: { readonly box: ListedBox; readonly state: BoxState }) => {
-		const { id: box, label, summary, failure } = listed;
-		const clientModule = boxClients().get(box);
+	const row = ({ box, loaded, state }: { readonly box: BoxId; readonly loaded: LoadedBox; readonly state: BoxState }) => {
+		const { label, summary } = loaded.metadata;
+		const clientModule = "client" in loaded ? loaded.client : undefined;
 		const Status = clientModule?.Status;
 		const locked = disabled || pending;
 		const open = state === "absent" ? undefined : boxOpening(box, { panel: onOpenPanel, window: onOpenWindow });
@@ -63,7 +63,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 			<div className="box-manager-copy">
 				{open === undefined ? <strong>{label}</strong> : <button type="button" className="box-manager-name" onClick={open}>{label}</button>}
 				<span className="box-manager-status" title={state === "absent" ? undefined : summary}>{statusLine}</span>
-				{failure !== null && <span className="box-manager-status box-failure">Did not load: {failure}</span>}
+				{"failure" in loaded && <span className="box-manager-status box-failure">Did not load: {loaded.failure}</span>}
 				<BoxBlockNotice conversation={conversation} box={box} disabled={locked} className="mt-1" />
 			</div>
 			{state === "absent"
@@ -98,7 +98,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Remove {removing === null ? "" : boxTitle(removing)}?</DialogTitle>
+					<DialogTitle>Remove {removing === null ? "" : boxMetadata(removing).label}?</DialogTitle>
 					<DialogDescription>This deletes its setup and data in this Chat. Past passages and their Moves still read the same.</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>

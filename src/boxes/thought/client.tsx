@@ -1,17 +1,10 @@
 import "./client.css";
-import { useQuery } from "@tanstack/react-query";
 import { MessageCircleDashed } from "lucide-react";
-import { createBoxLens, api, foundOrNull, notFoundOutcome, requestOutcome, type BoxClientDefinition, type ConversationSummary } from "@/box-sdk/client";
+import { createBoxLens, useBoxRead, type BoxClientDefinition, type ConversationSummary } from "@/box-sdk/client";
 import { stripThoughts, thoughtRead } from "./shared";
 import descriptor from "./shared-descriptor";
 
-const useThoughts = (conversation: ConversationSummary) => useQuery({
-	queryKey: ["thought", conversation.id, conversation.revision],
-	queryFn: async ({ signal }) => foundOrNull(await requestOutcome(
-		api.api.conversations({ id: conversation.id }).boxes({ box: "thought" }).get({ fetch: { signal } }), thoughtRead, notFoundOutcome,
-	)),
-	placeholderData: (previous) => previous,
-});
+const useThoughts = (conversation: ConversationSummary) => useBoxRead(conversation, "thought", thoughtRead);
 
 function ThoughtStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);

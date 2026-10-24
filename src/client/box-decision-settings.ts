@@ -1,6 +1,6 @@
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
-import { boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, boxMetadatas, type BoxDecisionSettings, type BoxDecisionSettingsCommand, type BoxId } from "../shared/contract/box";
+import { boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, installedBoxes, type BoxDecisionSettings, type BoxDecisionSettingsCommand, type BoxId } from "../shared/contract/box";
 
 const route = (box: BoxId) => api.api.boxes({ box })["decision-settings"];
 
@@ -10,7 +10,7 @@ const route = (box: BoxId) => api.api.boxes({ box })["decision-settings"];
 // on render.
 let clients: ReturnType<typeof buildClients> | undefined;
 export const boxDecisionClients = () => clients ??= buildClients();
-const buildClients = () => [...boxMetadatas().values()].flatMap(({ id: box, label, decision }) => decision === undefined ? [] : [{
+const buildClients = () => [...installedBoxes().values()].flatMap(({ metadata: { id: box, label, decision } }) => decision === undefined ? [] : [{
 	box,
 	label,
 	decision,

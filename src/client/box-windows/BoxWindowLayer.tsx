@@ -1,13 +1,13 @@
 import { Minus, X } from "lucide-react";
 import { FocusScope } from "radix-ui/internal";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
+import { boxMetadata, type BoxId, type BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNarrow } from "../lib/use-narrow";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxClients, boxPresent, boxTitle, type MoveStaging } from "./registry";
+import { boxClients, boxPresent, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
@@ -140,7 +140,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const [slots, setSlots] = useState<ReadonlyMap<BoxId, number>>(new Map());
 	const narrow = useNarrow();
 	if (conversation === null) return null;
-	const present = [...boxClients()].flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
+	const present = boxClients().flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
 	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
@@ -163,10 +163,10 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const top = visible.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map(([id, { icon, Status }]) => <button key={id} type="button" className="box-dock-tab" title={`Restore ${boxTitle(id)}`} onClick={() => controller.open(id)}>
+			{minimized.map(([id, { icon, Status }]) => <button key={id} type="button" className="box-dock-tab" title={`Restore ${boxMetadata(id).label}`} onClick={() => controller.open(id)}>
 				<BoxIcon box={id} icon={icon} />
-				<span className="sr-only">{boxTitle(id)}: </span>
-				{Status === undefined ? <span>{boxTitle(id)}</span> : <BoxBoundary box={id}><Status conversation={conversation} /></BoxBoundary>}
+				<span className="sr-only">{boxMetadata(id).label}: </span>
+				{Status === undefined ? <span>{boxMetadata(id).label}</span> : <BoxBoundary box={id}><Status conversation={conversation} /></BoxBoundary>}
 			</button>)}
 		</div>}
 		{/* @approved
@@ -182,7 +182,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			if (layout === undefined) return null;
 			return <FloatingWindow
 				key={id}
-				title={boxTitle(id)}
+				title={boxMetadata(id).label}
 				icon={<BoxIcon box={id} icon={icon} />}
 				size={Window.size}
 				layout={layout}

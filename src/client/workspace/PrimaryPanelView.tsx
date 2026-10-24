@@ -1,9 +1,9 @@
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { BoxId, PromptBoxReference } from "../../shared/contract/box";
+import { boxIdOf, boxMetadata, type BoxId, type PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { BoxManager } from "../box-windows/BoxManager";
-import { boxClients, boxPresent, boxTitle } from "../box-windows/registry";
+import { boxClient, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
@@ -37,7 +37,9 @@ const sharedHeaderTitles = {
 	settings: "Settings",
 } satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | `box-settings:${string}` | null>, string>;
 const isBoxSettings = (panel: PrimaryPanel): panel is `box-settings:${string}` => panel?.startsWith("box-settings:") === true;
-const isBoxPanel = (panel: PrimaryPanel): panel is PromptBoxReference => panel?.startsWith("box:") === true;
+const isBoxPanel = (panel: PrimaryPanel): panel is PromptBoxReference => panel !== null && boxIdOf(panel) !== undefined;
+const parsePanel = (panel: PrimaryPanel) => isBoxSettings(panel) ? { kind: "settings", id: panel.slice("box-settings:".length) } as const
+	: isBoxPanel(panel) ? { kind: "box", id: boxIdOf(panel) } as const : { kind: "native", panel } as const;
 
 export function PrimaryPanelView({
 	panel,
@@ -82,13 +84,13 @@ export function PrimaryPanelView({
 	onOpenWindow: (box: BoxId) => void;
 	mutationsDisabled?: boolean;
 }) {
-	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
-	const BoxSettings = settingsBox === undefined ? undefined : boxClients().get(settingsBox)?.Settings;
-	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
-	const BoxPanel = box === undefined || conversation === null || !boxPresent(conversation, box) ? undefined : boxClients().get(box)?.PrimaryPanel;
-	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
-		? undefined
-		: isBoxSettings(panel) ? boxTitle(settingsBox!) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
+	const parsed = parsePanel(panel);
+	const settingsBox = parsed.kind === "settings" ? parsed.id : undefined;
+	const BoxSettings = settingsBox === undefined ? undefined : boxClient(settingsBox)?.Settings;
+	const box = parsed.kind === "box" ? parsed.id : undefined;
+	const BoxPanel = box === undefined || conversation === null || !boxPresent(conversation, box) ? undefined : boxClient(box)?.PrimaryPanel;
+	const headerTitle = parsed.kind !== "native" ? boxMetadata(parsed.id).label
+		: parsed.panel === null || parsed.panel === "chats" || parsed.panel === "prompts" || parsed.panel === "lorebooks" ? undefined : sharedHeaderTitles[parsed.panel];
 	return (
 		<aside
 			className="primary-panel"
