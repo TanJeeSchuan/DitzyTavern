@@ -1,12 +1,13 @@
-import type {
-	ConversationPromptPreset,
-	PromptOutgoingRole,
-	PromptPresetBlockPatch,
-	PromptPresetSummary,
-	ResolvedPromptPresetSlot,
-	SillyTavernImportPreview,
-	SillyTavernImportRequest,
-	SillyTavernJsonValue,
+import {
+	isBoxSlot,
+	type ConversationPromptPreset,
+	type PromptOutgoingRole,
+	type PromptPresetBlockPatch,
+	type PromptPresetSummary,
+	type ResolvedPromptPresetSlot,
+	type SillyTavernImportPreview,
+	type SillyTavernImportRequest,
+	type SillyTavernJsonValue,
 } from "../shared/contract/prompt-preset";
 
 // @approved
@@ -19,13 +20,14 @@ import type {
 export type BlockDraft =
 	| { kind: "enabled"; enabled: boolean }
 	| { kind: "role"; role: PromptOutgoingRole; enabled?: boolean }
-	| { kind: "content"; name: string; content: string; role: PromptOutgoingRole; enabled?: boolean };
+	| { kind: "content"; name?: string; content: string; role: PromptOutgoingRole; enabled?: boolean };
 
 // @approved
 //  One slot-kind-safe draft-to-patch rule. Every block accepts
-// enablement; referenced Definition blocks also accept role drafts, and authored
-// instructions accept name, text and role drafts. The same rule drives dirtiness,
-// batch building and submitted-version retirement.
+// enablement; referenced Definition and Lore blocks also accept role drafts,
+// Box blocks accept instruction and role drafts, and authored instructions
+// accept name, text and role drafts. The same rule drives dirtiness, batch
+// building and submitted-version retirement.
 export function draftToPatch(
 	slot: ResolvedPromptPresetSlot,
 	draft: BlockDraft,
@@ -35,11 +37,14 @@ export function draftToPatch(
 		: { occurrenceId: slot.id, type: "enabled", enabled: draft.enabled };
 	const enabledChanged = draft.enabled !== undefined && draft.enabled !== slot.enabled;
 	if (slot.reference === "history") return null;
-	if (slot.reference === "instruction") {
+	if (slot.reference === "instruction" || isBoxSlot(slot)) {
 		if (draft.kind !== "content") return null;
-		const { name, content, role } = draft;
-		if (name === slot.name && content === slot.content && role === slot.role && !enabledChanged) return null;
-		const patch: PromptPresetBlockPatch = { occurrenceId: slot.id, type: "content", name, content, role };
+		const { content, role } = draft;
+		const name = slot.reference === "instruction" ? draft.name ?? slot.name : undefined;
+		const nameChanged = slot.reference === "instruction" && name !== slot.name;
+		if (!nameChanged && content === slot.content && role === slot.role && !enabledChanged) return null;
+		const patch: PromptPresetBlockPatch = { occurrenceId: slot.id, type: "content", content, role };
+		if (name !== undefined) patch.name = name;
 		if (enabledChanged) patch.enabled = draft.enabled;
 		return patch;
 	}
@@ -310,8 +315,8 @@ function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockD
 	if (submitted.kind === "role") {
 		return slot.reference !== "history" && slot.reference !== "instruction" && slot.role === submitted.role;
 	}
-	return slot.reference === "instruction"
-		&& slot.name === submitted.name
+	if (slot.reference !== "instruction" && !isBoxSlot(slot)) return false;
+	return (slot.reference !== "instruction" || slot.name === submitted.name)
 		&& slot.content === submitted.content
 		&& slot.role === submitted.role;
 }

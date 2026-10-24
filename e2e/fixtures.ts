@@ -1,5 +1,6 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { startE2eServer, type E2eServer } from "./harness";
+import type { DigestBoxId } from "../src/shared/contract/box";
 
 export { expect };
 
@@ -30,6 +31,15 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 
 export const story = (page: Page) => page.getByRole("main", { name: "Active Chat" });
 
+/** @approved A new Chat holds only the Author Note and Memory; a spec inserts any other Box through the Box manager. */
+export const insertBox = async (page: Page, title: string) => {
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	const toggle = page.getByRole("switch", { name: `${title} in this Chat` });
+	await toggle.click();
+	await expect(toggle).toBeChecked();
+	await page.keyboard.press("Escape");
+};
+
 export const send = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });
 	await expect(composer).toHaveAttribute("contenteditable", "true");
@@ -38,13 +48,24 @@ export const send = async (page: Page, text: string) => {
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 };
 
-export const enableDecisionModels = async (request: APIRequestContext) => {
+const createDecisionProfile = async (request: APIRequestContext) => {
 	const { revision: connectionRevision } = await (await request.get("/api/connection-settings")).json();
 	const { presets } = await (await request.get("/api/connection-settings/presets")).json();
 	const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
 	const created = await (await request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: connectionRevision, profile, credential: "e2e-decision-key" } })).json();
 	const decisionProfileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
-	const selection = { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
+	return { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
+};
+
+/** @approved Gives a digesting Box a Decision Model selection, so its digests run against the scripted `/systemone`. */
+export const selectBoxDecisionModel = async (request: APIRequestContext, box: DigestBoxId) => {
+	const selection = await createDecisionProfile(request);
+	const { revision } = await (await request.get(`/api/boxes/${box}/decision-settings`)).json();
+	await request.post(`/api/boxes/${box}/decision-settings/commands`, { data: { type: "apply", expectedRevision: revision, ...selection } });
+};
+
+export const enableDecisionModels = async (request: APIRequestContext) => {
+	const selection = await createDecisionProfile(request);
 	const { revision: semanticRevision } = await (await request.get("/api/semantic-trigger-settings")).json();
 	await request.post("/api/semantic-trigger-settings/commands", { data: { type: "apply", expectedRevision: semanticRevision, ...selection, triggerThreshold: 0.5 } });
 	const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();

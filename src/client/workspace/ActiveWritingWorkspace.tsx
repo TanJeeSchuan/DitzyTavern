@@ -218,8 +218,6 @@ export function ActiveWritingWorkspace({
 				}}
 				mutationsDisabled={story.preview !== null}
 			/>
-			</SaveNavigationContext.Provider>
-			</SaveGuardContext.Provider>
 
 			<StoryStage
 				story={story}
@@ -235,7 +233,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
-				onOpenAuthorNote={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel: "author-note" }))}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					dispatchPanel({ type: "chat-info-opened" });
@@ -253,6 +251,8 @@ export function ActiveWritingWorkspace({
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
+			</SaveNavigationContext.Provider>
+			</SaveGuardContext.Provider>
 
 			{assembly !== null && (
 				<PromptPlanPreviewPanel

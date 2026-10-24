@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
+import { boxDescriptors, boxIds, boxReference, isBoxReference, promptBoxReference, type BoxId, type PromptBoxReference } from "./box";
 
 export type SillyTavernJsonValue =
 	| null
@@ -30,17 +31,16 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
-export const promptAuthorNoteReference = Type.Literal("author-note");
-export type PromptAuthorNoteReference = Static<typeof promptAuthorNoteReference>;
 
-export const promptMemoryReference = Type.Literal("memory");
-export type PromptMemoryReference = Static<typeof promptMemoryReference>;
+const fromBoxDescriptors = <Value>(value: (id: BoxId) => Value) =>
+	// @approved
+	// SAFETY: the entries cover every Box id exactly once, each under its reference.
+	Object.fromEntries(boxIds.map((id) => [boxReference(id), value(id)])) as Record<PromptBoxReference, Value>;
 
 export const singleUseReferenceLabels = {
 	lore: "Lore",
-	memory: "Memory",
-	"author-note": "Author Note",
-} as const satisfies Record<PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, string>;
+	...fromBoxDescriptors((id) => boxDescriptors[id].label),
+} satisfies Record<PromptLoreReference | PromptBoxReference, string>;
 
 export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
 	Object.hasOwn(singleUseReferenceLabels, reference);
@@ -70,16 +70,14 @@ export const defaultOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-	memory: "system",
-	"author-note": "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, PromptOutgoingRole>;
+	...fromBoxDescriptors((id) => boxDescriptors[id].role),
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
-	promptMemoryReference,
-	promptAuthorNoteReference,
+	promptBoxReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
@@ -104,7 +102,8 @@ export type PromptPresetBlockReference = Static<typeof promptPresetBlockReferenc
 //  One ordered recipe slot as the compiler consumes it. A referenced
 // Definition slot carries its required outgoing role; history carries no
 // slot-owned role because its entries keep the roles of their own Messages;
-// and an authored instruction carries its editable name, text, and role.
+// a Box block carries its editable instructions, rendered before the Box's
+// items; and an authored instruction carries its editable name, text, and role.
 // Enablement lives on the slot so a disabled slot keeps its place in the
 // order instead of disappearing from it.
 export const promptPresetSlot = Type.Union([
@@ -114,9 +113,15 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: Type.Union([promptLoreReference, promptMemoryReference, promptAuthorNoteReference]),
+		reference: promptLoreReference,
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
+	}),
+	Type.Object({
+		reference: promptBoxReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		content: Type.String(),
 	}),
 	Type.Object({
 		reference: Type.Literal("history"),
@@ -132,8 +137,11 @@ export const promptPresetSlot = Type.Union([
 ]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
+/** @approved A Box's block, among any slot shape that carries a reference. */
+export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => isBoxReference(slot.reference);
+
 export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
-	slots.some((slot) => slot.reference === "memory" && slot.enabled);
+	slots.some((slot) => slot.reference === "box:memory" && slot.enabled);
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);
 
@@ -211,9 +219,8 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
-	Type.Object({ id: Type.Integer(), reference: promptAuthorNoteReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
+	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
-	Type.Object({ id: Type.Integer(), reference: promptMemoryReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
 		id: Type.Integer(),
 		reference: referencedDefinitionBlock,
@@ -323,7 +330,8 @@ export const promptPresetDeleteCommand = Type.Object({
 
 // @approved
 //  One occurrence-addressed patch saves block fields and enablement
-// without rewriting ordering or another occurrence.
+// without rewriting ordering or another occurrence. A content patch names an
+// authored instruction and never a Box block, which has no name.
 export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
@@ -334,7 +342,7 @@ export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
 		type: Type.Literal("content"),
-		name: Type.String(),
+		name: Type.Optional(Type.String()),
 		content: Type.String(),
 		role: promptOutgoingRole,
 		enabled: Type.Optional(Type.Boolean()),

@@ -4,6 +4,7 @@ import type { Database } from "bun:sqlite";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 import {
+	chatBoxBlocks,
 	createChat,
 	createRoutes,
 	libraryRoutes,
@@ -144,9 +145,9 @@ describe("Prompt Preset library transport", () => {
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
-			"memory",
+			"box:memory",
 			"history",
-			"author-note",
+			...chatBoxBlocks,
 			"model-post-history-instruction",
 		]);
 		expect(resolved?.slots.every((slot) => slot.enabled)).toBe(true);

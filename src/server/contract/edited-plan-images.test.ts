@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -27,12 +27,18 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 	return Value.Decode(generationPreview, await response.json());
 };
 
-const createChat = (database: Database) => createConversationWithHistory(database, {
-	name: "Images", participants: [
-		{ definition: { name: "Writer", prompt, openings: [] } },
-		{ definition: { name: "Maren", prompt, openings: [] } },
-	], control: { human: 0, model: 1 },
-});
+const createChat = (database: Database) => {
+	const chat = createConversationWithHistory(database, {
+		name: "Images", participants: [
+			{ definition: { name: "Writer", prompt, openings: [] } },
+			{ definition: { name: "Maren", prompt, openings: [] } },
+		], control: { human: 0, model: 1 },
+	});
+	// @approved The suite asserts the World Clock line in captured plans.
+	insertBox(database, chat.id, "world-clock");
+	insertBox(database, chat.id, "phone");
+	return chat;
+};
 
 describe("Edited Prompt Plan Images", () => {
 	let database: Database;
@@ -63,6 +69,6 @@ describe("Edited Prompt Plan Images", () => {
 		expect(captured).toMatchObject({ messages: [{ role: "user", content: [
 			{ type: "text", text: "Look [Image: map]" },
 			{ type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(bytes).toString("base64")}` } },
-		] }] });
+		] }, { role: "system", content: expect.stringContaining("Writer has a phone") }, { role: "system", content: "8:00 AM | 🗓️ Sunday, June 1, 2025 AD" }] });
 	});
 });

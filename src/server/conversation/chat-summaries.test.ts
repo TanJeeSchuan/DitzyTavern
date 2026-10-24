@@ -94,7 +94,7 @@ describe("Chat list summaries", () => {
 	});
 
 	test("a Chat without Participants has no Portraits", () => {
-		const chat = createConversationWithHistory(module, { authorNote: "", name: "No Cast" });
+		const chat = createConversationWithHistory(module, { name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

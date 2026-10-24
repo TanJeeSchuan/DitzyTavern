@@ -1,3 +1,4 @@
+import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -303,6 +304,8 @@ export type VariantDetails = SharedVariantDetails;
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
 export interface GenerationAcceptanceCapture {
+	seed: string;
+	boxRecords?: BoxRecords;
 	conversationId: number;
 	timestamp: string;
 	humanParticipantId: number;
@@ -330,6 +333,7 @@ export interface GenerationAcceptanceCapture {
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
 	humanContent: string;
+	humanMoves?: BoxMoves | undefined;
 	// A retry may point at the already accepted trailing human Message. When
 	// omitted, acceptance creates one in the same transaction.
 	reuseHumanMessageId?: number | undefined;
@@ -462,7 +466,6 @@ export interface ConversationControlSeed {
 
 export interface ConversationCreationInput {
 	name: string;
-	authorNote?: string;
 	participants?: readonly ConversationParticipantSeed[];
 	control?: ConversationControlSeed | undefined;
 	messages?: readonly ConversationCreationMessage[];

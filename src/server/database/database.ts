@@ -3,7 +3,6 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { installDefaultPresetAuthorNote } from "../prompt-preset/recipe";
 
 export interface OpenDatabaseOptions {
 	path?: string;
@@ -35,10 +34,8 @@ export function initializeDatabase(
 	database: Database,
 	migrationsDirectory = defaultMigrationsDirectory,
 ): void {
-	const fresh = database.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'prompt_preset'").get() === null;
 	database.exec("PRAGMA journal_mode = WAL");
 	migrate(drizzle(database), { migrationsFolder: migrationsDirectory });
-	if (fresh) installDefaultPresetAuthorNote(database);
 }
 
 export function openInitializedDatabase(

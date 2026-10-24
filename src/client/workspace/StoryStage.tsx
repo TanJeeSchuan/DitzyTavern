@@ -1,11 +1,14 @@
 import { useState, type Dispatch } from "react";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
+import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
+import { useBoxWindows } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	reusesTrailingHumanMessage,
+	shownMessage,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -40,7 +43,7 @@ export function StoryStage({
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
-	onOpenAuthorNote,
+	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
 	onOpenMemories,
@@ -59,7 +62,7 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenAuthorNote: () => void;
+	onOpenPanel: (panel: "author-note") => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenMemories: () => void;
@@ -84,11 +87,13 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
+	const composerWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
+	const lens = conversation === null ? undefined : { conversation, open: composerWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
@@ -140,7 +145,8 @@ export function StoryStage({
 					{story.messages.map((message) => (
 						<StoryMessageView
 							key={message.id}
-							message={message}
+							message={shownMessage(story, message)}
+							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={generation.activeGenerationTargets.some((target) =>
@@ -171,6 +177,7 @@ export function StoryStage({
 									generation.siblingMessage(messageId);
 								}
 								: undefined}
+							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 							onContinue={generation.continueMessage}
 							onRegenerate={(messageId) => {
@@ -189,6 +196,9 @@ export function StoryStage({
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 							onEdit={storyActions.editStoryMessage}
+							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
+								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
+								: undefined}
 							onDelete={!assemblyActive && !generation.isGenerating
 								? (messageId) => void storyActions.deleteStoryMessage(messageId)
 								: undefined}
@@ -197,8 +207,9 @@ export function StoryStage({
 					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
 						<RequestedSendView
 							human={humanParticipant}
-							content={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content) ? requested.content : null}
+							sent={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content, requested.moves) ? requested : null}
 							model={modelParticipant}
+							lens={lens}
 						/>
 					)}
 					{story.page?.hasNewer === true && (
@@ -227,28 +238,41 @@ export function StoryStage({
 					Jump to latest
 				</button>
 			</div>}
-			<Composer
-				draft={generation.draft}
-				isGenerating={generation.isGenerating}
-				canWrite={generation.assemblyAvailable}
-				isReceded={composerIsReceded}
-				onDraftChange={generation.setDraft}
-				onFocusChange={setIsComposerFocused}
-				onSubmit={generation.submitMessage}
-				onCancel={generation.cancelGeneration}
-				stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
-				writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
-				controlSelectors={session.conversation !== null ? (
-					<ComposerControlSelectors
-						onAuthorNote={onOpenAuthorNote}
-						conversation={session.conversation}
-						disabled={story.preview !== null || assemblyActive}
-						disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
-						onConversationChange={session.setConversation}
-						onControlChange={onControlChange}
-					/>
-				) : null}
-			/>
+			<div className="composer-area">
+				<BoxWindowLayer
+					key={conversation?.id ?? "no-chat"}
+					conversation={conversation}
+					controller={composerWindows}
+					disabled={previewMode || assemblyActive}
+					staging={{ moves: generation.moves, onChange: generation.setMoves }}
+					onConversationChange={session.setConversation}
+				/>
+				<Composer
+					draft={generation.draft}
+					moves={generation.moves}
+					onMovesChange={generation.setMoves}
+					isGenerating={generation.isGenerating}
+					canWrite={generation.assemblyAvailable}
+					isReceded={composerIsReceded}
+					onDraftChange={generation.setDraft}
+					onFocusChange={setIsComposerFocused}
+					onSubmit={generation.submitMessage}
+					onCancel={generation.cancelGeneration}
+					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
+					writerName={humanParticipant?.duplicateLabel}
+					controlSelectors={session.conversation !== null ? (
+						<ComposerControlSelectors
+							onOpenPanel={onOpenPanel}
+							onOpenWindow={composerWindows.open}
+							conversation={session.conversation}
+							disabled={story.preview !== null || assemblyActive}
+							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
+							onConversationChange={session.setConversation}
+							onControlChange={onControlChange}
+						/>
+					) : null}
+				/>
+			</div>
 		</main>
 	);
 }

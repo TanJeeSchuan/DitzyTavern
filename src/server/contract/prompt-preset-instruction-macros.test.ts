@@ -13,6 +13,7 @@ import {
 	captureModelFetch,
 	completeGeneration,
 	conversationApp,
+	chatBoxBlocks,
 	createChat,
 	key,
 	moveBlock,
@@ -254,9 +255,9 @@ describe("Prompt Preset authored instruction macros", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
-			["memory", true],
+			["box:memory", true],
 			["history", true],
-			["author-note", true],
+			...chatBoxBlocks.map((reference) => [reference, true]),
 			["instruction", true],
 		]);
 		expect(slotOf(saved, "model-identity")?.role).toBe("user");

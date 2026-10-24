@@ -7,11 +7,13 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
+	isBoxSlot,
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
+import type { PromptBoxReference } from "../../shared/contract/box";
 import { PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
@@ -29,7 +31,8 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference | "memory" | "author-note"; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptBoxReference; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;
@@ -84,24 +87,6 @@ export const selectDefaultPromptPreset = (
 };
 
 // @approved
-//  The Default recipe migration 0000 seeds predates the Author Note slot, and
-//  no later migration may insert it: the intermediate table rebuilds still
-//  reject the reference. A database the migration chain just created therefore
-//  installs the slot here, directly after history, exactly as a new Default
-//  recipe ships. Presets stored by an older database stay untouched; ADR-0048
-//  gives them the explicit Add Author Note Block action instead.
-export function installDefaultPresetAuthorNote(database: Database): void {
-	database.transaction(() => {
-		database.run(
-			"UPDATE prompt_preset_block SET position = position + 1 WHERE preset_id = (SELECT id FROM prompt_preset WHERE is_default = 1) AND reference = 'model-post-history-instruction'",
-		);
-		database.run(
-			"INSERT INTO prompt_preset_block (preset_id, position, reference, role) SELECT h.preset_id, h.position + 1, 'author-note', 'system' FROM prompt_preset_block h JOIN prompt_preset p ON p.id = h.preset_id WHERE p.is_default = 1 AND h.reference = 'history'",
-		);
-	}).immediate();
-}
-
-// @approved
 //  Applies one Conversation's authoritative selection of a shared
 // preset. The selection is a reference to the library entry: validation
 // reads the live library row inside the caller's transaction, so a preset
@@ -153,6 +138,7 @@ const toRecipeSlots = (
 				content: slot.content,
 			};
 		}
+		if (isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
 		return {
 			id: slot.id,
 			reference: slot.reference,

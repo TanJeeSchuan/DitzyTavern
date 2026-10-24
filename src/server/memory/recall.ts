@@ -13,7 +13,6 @@ import { createMemorySettingsModule } from "./settings";
 import {
 	decisionRequest,
 	largestFittingBatch,
-	requestDecisions,
 	tryResolveDecisionSelection,
 	type DecisionSelectionResolution,
 	type ResolvedDecisionModel,
@@ -21,9 +20,8 @@ import {
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import { projectImageAnchors } from "../../shared/image-reference";
-import type { ModelFetch } from "../model-client/types";
+import type { BoxContext } from "../box/contract";
 import {
-	embedMemoryQuery,
 	readCachedMemoryVectors,
 	readMemoryEmbeddingConfiguration,
 	readMemoryIndexReadinessBatch,
@@ -124,13 +122,12 @@ const parseScore = (answer: DecisionAnswer | undefined) => {
 	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
 };
 
-export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, selection, fetch, signal }: {
+export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, selection, decide }: {
 	candidates: readonly MemoryRecallCandidateRecord[];
 	scene: string;
 	relevanceMinimum: number;
 	selection: ResolvedDecisionModel;
-	fetch?: ModelFetch;
-	signal?: AbortSignal;
+	decide: BoxContext<"decide">["decide"];
 }): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
 	const batch = largestFittingBatch(candidates, (values) => {
@@ -138,7 +135,7 @@ export async function judgeMemoryRecallCandidates({ candidates, scene, relevance
 		return decisionRequest(selection, { scene }, questions);
 	});
 	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Decision Model request.");
-	const answers = await requestDecisions({ request: batch.request, questions: batch.questions, selection, fetch, signal });
+	const answers = await decide({ request: batch.request, questions: batch.questions, selection });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of batch.items) {
 		const relevance = parseScore(answers.get(`candidate_${candidate.identity}_relevance`));
@@ -370,11 +367,8 @@ export const captureMemoryRecallSnapshot = (input: {
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
-	database: Database;
 	snapshot: MemoryRecallSnapshot;
-	fetch?: ModelFetch;
-	signal?: AbortSignal;
-}): Promise<MemoryActivationRecord> => {
+} & BoxContext<"decide" | "embed">): Promise<MemoryActivationRecord> => {
 	const { activation, indexed, recent } = input.snapshot;
 	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
 	switch (input.snapshot.kind) {
@@ -385,7 +379,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	const selection = input.snapshot.decision;
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
-		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch, input.signal))[0];
+		const queryVector = (await input.embed(activation.scene, input.snapshot.embedding))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
 		if (indexed.some((record) => record.vector.length !== queryVector.length)) {
 			throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
@@ -410,8 +404,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		scene: activation.scene,
 		relevanceMinimum: activation.relevanceMinimum,
 		selection,
-		fetch: input.fetch,
-		signal: input.signal,
+		decide: input.decide,
 	});
 	return { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates };
 };

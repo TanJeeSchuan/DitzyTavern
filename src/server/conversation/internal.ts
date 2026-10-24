@@ -4,12 +4,14 @@ import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
+	characterDataTable,
 	characterLorebookAttachmentTable,
 	characterTable,
 	conversationControlTable,
 	conversationTable,
 	messageTable,
 	messageVariantTable,
+	participantDataTable,
 	participantOpeningTable,
 	participantPromptTable,
 	participantLorebookAttachmentTable,
@@ -22,6 +24,9 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
+import { isBoxReference, type BoxId } from "../../shared/contract/box";
+import { readBoxInstances } from "../box/setup";
+import { SEED_NAMESPACE } from "../box/seed";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -402,6 +407,11 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
+	if (namespace === SEED_NAMESPACE || isBoxReference(namespace)) {
+		throw new InvalidConversationCommandError(
+			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
+		);
+	}
 	if (isMacroDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is macro-owned state; generic data commands cannot address it.`,
@@ -432,6 +442,13 @@ export const requireMessage = (
 	}
 
 	return message;
+};
+
+/** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
+export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
+	const instance = readBoxInstances(db, conversationId)[box];
+	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
+	return instance;
 };
 
 export const requireVariant = (
@@ -526,6 +543,18 @@ export const insertParticipant = (
 			lorebook_id: row.lorebook_id,
 			scope: row.scope,
 			enabled: row.enabled,
+		}))).run();
+		// @approved
+		//  The seed copy: every Character Box-data row becomes the new
+		//  Participant's own row at this moment. The two are independent
+		//  afterwards, so a later Character edit never reaches this Participant.
+		const data = db.select().from(characterDataTable)
+			.where(eq(characterDataTable.character_id, sourceCharacterId)).all();
+		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
+			participant_id: inserted.id,
+			namespace: row.namespace,
+			key: row.key,
+			value: row.value,
 		}))).run();
 	}
 

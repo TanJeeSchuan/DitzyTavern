@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
-import { repositoryPath } from "../path.ts";
+import { layerOf, repositoryPath } from "../path.ts";
 
 const schemaConstructors = new Set([
 	"Object",
@@ -13,8 +13,8 @@ const schemaConstructors = new Set([
 ]);
 
 const isBoundaryModule = (filename: string): boolean => {
-	const path = repositoryPath(filename);
-	return path.startsWith("src/client/") || path.startsWith("src/server/");
+	const layer = layerOf(repositoryPath(filename));
+	return layer === "client" || layer === "server";
 };
 
 const schemaConstructor = (node: ESTree.CallExpression): boolean => {

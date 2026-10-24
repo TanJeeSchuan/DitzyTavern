@@ -66,7 +66,7 @@ const candidate = (messageId: number, excerpt: string, claim = "Maren carries Wr
 const enableMemory = async (database: Database, conversationId: number) => {
 	const app = createConversationRoutes(database);
 	const preset = await readPreset(app, conversationId);
-	const block = preset.slots.find((slot) => slot.reference === "memory");
+	const block = preset.slots.find((slot) => slot.reference === "box:memory");
 	if (!block) throw new Error("The Default recipe has no Memory block.");
 	if (!block.enabled) await readOperation(toggleBlock(database, preset.id, block.id, true));
 };

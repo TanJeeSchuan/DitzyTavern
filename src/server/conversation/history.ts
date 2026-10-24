@@ -1,3 +1,4 @@
+import { readMessageMoves } from "../box/moves";
 import { readVariantData } from "./variant-data";
 import { loadMessageRows } from "./message-rows";
 import { authorRoleOf, continuationEligibility } from "./continuation";
@@ -182,6 +183,7 @@ export function readChatHistory(
 		castIds,
 	).valid;
 
+	const moves = readMessageMoves(db, messageRows.map(({ id }) => id));
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
@@ -207,6 +209,7 @@ export function readChatHistory(
 				castIds,
 			),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
+			moves: moves.get(message.id) ?? {},
 		};
 	});
 

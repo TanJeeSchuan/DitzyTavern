@@ -276,6 +276,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
 		acceptConversationTailGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -291,6 +292,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
 		acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			messageId,
 			timestamp,
@@ -537,6 +539,7 @@ describe("Generation Coordinator terminal races", () => {
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
 		acceptConversationTailGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -597,6 +600,7 @@ describe("Generation Coordinator terminal races", () => {
 		const target = input.conversation.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		const acceptSibling = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
+			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			messageId: target.id,
 			timestamp,

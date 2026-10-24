@@ -42,6 +42,7 @@ export default defineConfig({
 				ignoreFilePatterns: [
 					"\\.(test|spec)\\.[cm]?[jt]sx?$", // @approved test files
 					"^src/shared/contract/", // @approved wire contract modules
+					"^src/boxes/[^/]+/contract\\.ts$", // @approved Box wire contract modules
 					"(^|/)types\\.ts$", // @approved type-definition modules
 					"^scripts/", // @approved tooling scripts
 				],
@@ -50,6 +51,7 @@ export default defineConfig({
 		"anti-slop/no-overlong-code-lines": "warn",
 		"anti-slop/no-widen-then-assert": "error",
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
+		"ditzy/no-box-boundary-imports": "error",
 		"ditzy/no-contract-definition-outside-contract": "error",
 		"ditzy/no-hand-written-wire-guards": "error",
 		"ditzy/no-layer-dependencies-in-shared": "error",

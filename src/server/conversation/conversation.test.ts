@@ -233,7 +233,7 @@ describe("Conversation module", () => {
 
 	test("keeps a captured author name without a Participant ID in public reads", () => {
 		const module = database;
-		const conversation = createConversationWithHistory(module, { authorNote: "", name: "Captured Name" });
+		const conversation = createConversationWithHistory(module, { name: "Captured Name" });
 		const db = drizzle(database);
 		const insertedMessage = db
 			.insert(messageTable)
@@ -812,6 +812,7 @@ describe("Conversation module", () => {
 				throw new Error("Greeting missing.");
 			}
 			return acceptConversationContinuationGeneration(module, {
+				seed: "test-generation-seed",
 				conversationId,
 				expectedRevision: snapshot.revision,
 				timestamp: "2026-08-20T12:00:00Z",

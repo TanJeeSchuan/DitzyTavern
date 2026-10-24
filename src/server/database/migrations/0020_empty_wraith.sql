@@ -1,0 +1,1 @@
+ALTER TABLE `active_generation` ADD `box_records_json` text DEFAULT '{}' NOT NULL;

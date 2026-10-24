@@ -1,6 +1,7 @@
 import { noConversationInternalImportsRule } from "./rules/no-conversation-internal-imports.ts";
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
+import { noBoxBoundaryImportsRule } from "./rules/no-box-boundary-imports.ts";
 import { noContractDefinitionOutsideContractRule } from "./rules/no-contract-definition-outside-contract.ts";
 import { noHandWrittenWireGuardsRule } from "./rules/no-hand-written-wire-guards.ts";
 import { noLayerDependenciesInSharedRule } from "./rules/no-layer-dependencies-in-shared.ts";
@@ -10,6 +11,7 @@ import { noServerRuntimeImportsInClientRule } from "./rules/no-server-runtime-im
 const ditzyPlugin = eslintCompatPlugin({
 	meta: { name: "ditzy" },
 	rules: {
+		"no-box-boundary-imports": noBoxBoundaryImportsRule,
 		"no-conversation-internal-imports": noConversationInternalImportsRule,
 		"no-contract-definition-outside-contract": noContractDefinitionOutsideContractRule,
 		"no-hand-written-wire-guards": noHandWrittenWireGuardsRule,

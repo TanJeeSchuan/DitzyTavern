@@ -181,11 +181,9 @@ export const importNativePromptPreset = (
 				};
 				// @approved
 				//  An authored instruction is the only slot that stores its
-				// composed name and text.
-				if (slot.reference === "instruction") {
-					row.name = slot.name;
-					row.content = slot.content;
-				}
+				// composed name; it and a Box block store their text.
+				if (slot.reference === "instruction") row.name = slot.name;
+				if ("content" in slot) row.content = slot.content;
 				return row;
 			});
 			db.insert(promptPresetBlockTable)

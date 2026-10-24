@@ -196,7 +196,7 @@ describe("Conversation artifacts", () => {
 		expect(serialized).not.toContain("uuid-source.bin");
 		expect(serialized).not.toContain("opaque artifact payload");
 		// The record is only reachable through the artifact seam.
-		expect(snapshot?.data).toEqual([]);
+		expect(snapshot?.data.map(({ namespace }) => namespace)).toEqual(["box:author-note", "box:author-note", "box:memory", "box:memory"]);
 	});
 
 	test("reads the exact stored bytes back through the public artifact seam", () => {

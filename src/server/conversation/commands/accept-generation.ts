@@ -8,8 +8,13 @@ import {
 	activeGenerationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
+	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
+import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
+import { readMessageMoves, writeMessageMoves } from "../../box/moves";
+import { sameMoves } from "../../../shared/contract/box-generation";
+import { hasMoves } from "../../../shared/contract/box-generation";
 import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
@@ -81,7 +86,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites"
+	"provenance" | "macroPresetId" | "macroWrites" | "seed" | "boxRecords"
 >;
 
 type GenerationAcceptanceContext = Omit<GenerationAcceptanceFields, "generationIntent">;
@@ -100,6 +105,7 @@ const persistActiveGeneration = (
 	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
 ): number => {
+	writeVariantSeed(db, input.variantId, input.seed);
 	const loreActivation = input.loreActivation ?? null;
 	if (loreActivation !== null && !isLoreActivationRecord(loreActivation)) {
 		throw new InvalidConversationCommandError(
@@ -135,6 +141,7 @@ const persistActiveGeneration = (
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
+			box_records_json: JSON.stringify(input.boxRecords ?? {}),
 			macro_writes_json: jsonText(
 				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
 				"Macro writes",
@@ -158,6 +165,9 @@ interface ProvisionalModelTargetInput {
 	/** @approved The next Message position, read once by the lifecycle's validation. */
 	position: number;
 }
+
+const writeVariantSeed = (db: ConversationDatabase, variantId: number, seed: string) =>
+	db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: SEED_NAMESPACE, key: SEED_KEY, value: seed }).run();
 
 interface ProvisionalModelTarget {
 	modelMessageId: number;
@@ -380,9 +390,9 @@ export function acceptConversationTailGeneration(
 		lifecycle: "Tail",
 		generationIntent: input.generationIntent ?? { type: "tail" },
 		preflight: () => {
-			if (input.humanContent.trim() === "") {
+			if (input.humanContent.trim() === "" && !hasMoves(input.humanMoves)) {
 				throw new InvalidConversationCommandError(
-					"Send requires non-empty composer content.",
+					"Send requires composer content or Moves.",
 				);
 			}
 		},
@@ -410,7 +420,8 @@ export function acceptConversationTailGeneration(
 					reused.position !== latestPosition ||
 					reused.author_participant_id !== human.id ||
 					reused.author_name !== human.name ||
-					selected?.content !== input.humanContent
+					selected?.content !== input.humanContent ||
+					!sameMoves(readMessageMoves(db, [reused.id]).get(reused.id), input.humanMoves)
 				) {
 					throw new InvalidConversationCommandError(
 						"The unanswered human Message cannot be reused for this Send.",
@@ -432,6 +443,7 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
+			writeMessageMoves(db, humanMessageId, input.humanMoves ?? {});
 			// @approved
 			//  The provisional model target follows the just-inserted Human
 			// Message, so its position is the one this validation created plus one —

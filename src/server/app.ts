@@ -9,6 +9,7 @@ import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { embedMemoryTexts, extractAndJudgeMemorySource, startMemoryWorker, syncMemorySources } from "./memory";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
+import { queueBoxDigests, startBoxDigests } from "./box/digest";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -20,9 +21,11 @@ export async function createApp(options: AppOptions) {
 	const { database, fetch, artifactDirectory = defaultArtifactDirectory() } = options;
 	// @approved
 	//  The application layer consumes Conversation's reported changes:
-	// Memory sync runs as the last statement of the Conversation transaction
-	// wrapper, so its reads see exactly the committed write.
-	observeConversationWrites(database, syncMemorySources);
+	// Memory sync and Box digest queueing run as the last statement of the
+	// Conversation transaction wrapper, so their reads see exactly the
+	// committed write.
+	observeConversationWrites(database, (db, change) => { syncMemorySources(db, change); queueBoxDigests(db, change); });
+	const stopBoxDigests = startBoxDigests(database, { fetch });
 	sweepOrphanedImages(database);
 	const stopMemoryWorker = startMemoryWorker(database, {
 		process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, fetch, signal, trace),
@@ -44,7 +47,7 @@ export async function createApp(options: AppOptions) {
 	updates.start();
 
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
-		shutdownApplication(database, async () => { await updates.stop(); await stopHttp(); }, stopMemoryWorker);
+		shutdownApplication(database, async () => { await updates.stop(); await stopHttp(); }, async () => { await Promise.all([stopMemoryWorker(), stopBoxDigests()]); });
 	return { app, close };
 }
 

@@ -25,6 +25,8 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY src/server ./src/server
 COPY src/shared ./src/shared
+COPY src/boxes ./src/boxes
+COPY src/box-sdk ./src/box-sdk
 COPY --from=build /app/src/server/build-metadata.json ./src/server/build-metadata.json
 RUN mkdir data && chown bun:bun data
 USER bun

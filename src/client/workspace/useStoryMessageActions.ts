@@ -1,3 +1,4 @@
+import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { Dispatch } from "react";
 import {
 	applyConversationCommand,
@@ -152,6 +153,16 @@ export function useStoryMessageActions({
 		return applied;
 	};
 
+	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
+		if (story.preview !== null || story.conversationId === null) return;
+		dispatchStory({ type: "moves-requested", messageId, moves });
+		const applied = await runConversationCommand({ ...surface, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
+		});
+		if (!applied && !signal.aborted) dispatchStory({ type: "moves-dropped", messageId });
+	};
+
 	const deleteStoryMessage = async (messageId: number) => {
 		if (story.preview !== null) return;
 		const conversationId = story.conversationId;
@@ -165,5 +176,5 @@ export function useStoryMessageActions({
 		});
 	};
 
-	return { changeSwipe, editStoryMessage, deleteStoryMessage };
+	return { changeSwipe, editStoryMessage, setMessageMoves, deleteStoryMessage };
 }

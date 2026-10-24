@@ -1,9 +1,20 @@
-.composer {
+.composer-area {
 	position: absolute;
 	left: clamp(1rem, 4vw, 2rem);
 	right: clamp(1rem, 4vw, 2rem);
 	bottom: 1.35rem;
 	z-index: 10;
+	/* A receded composer keeps its height; the empty area must not cover "Jump to latest". */
+	pointer-events: none;
+}
+
+.composer-area > * {
+	pointer-events: auto;
+}
+
+.composer {
+	position: static;
+	width: 100%;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	grid-template-rows: auto auto;
@@ -28,8 +39,8 @@
 
 .composer-pill {
 	position: absolute;
-	right: clamp(1rem, 4vw, 2rem);
-	bottom: 1.35rem;
+	right: 0;
+	bottom: 0;
 	z-index: 10;
 	display: inline-flex;
 	align-items: center;

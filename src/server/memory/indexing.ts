@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { createMemorySettingsModule } from "./settings";
+import { enabledBoxConversations } from "../box/setup";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -142,7 +143,8 @@ export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefi
 		variantId: memoryCollectionTable.variant_id,
 		workEpoch: memoryCollectionTable.work_epoch,
 		claimsJson: memoryCollectionTable.claims_json,
-	}).from(memoryCollectionTable).where(claimableCollectionConditions(configuration, running)).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
+	}).from(memoryCollectionTable)
+		.where(and(claimableCollectionConditions(configuration, running), inArray(memoryCollectionTable.conversation_id, enabledBoxConversations(db, "memory")))).orderBy(asc(memoryCollectionTable.updated_at)).limit(1).get();
 	if (row === undefined) return undefined;
 	const job = { variantId: row.variantId, workEpoch: row.workEpoch, configuration };
 	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claimsJson)) }; }

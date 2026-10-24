@@ -8,7 +8,10 @@ export type ChatReply =
 	| { chunks: string[]; firstChunkDelayMs?: number; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
 
-export type DecisionRule = { match: string[]; answer: DecisionAnswer } | { match: string[]; status: number };
+// @approved
+// `passage`, when given, must also appear in a World Clock digest's passage.
+// `hold` parks the answer until the test releases the fake.
+export type DecisionRule = ({ match: string[]; answer: DecisionAnswer } | { match: string[]; status: number }) & { passage?: string; hold?: boolean };
 
 export type MemoryClaim = { claim: string; attribution: string; people: string[]; excerpt: string };
 

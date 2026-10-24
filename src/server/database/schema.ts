@@ -95,9 +95,10 @@ export const promptPresetBlockTable = sqliteTable(
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 		role: text({ enum: ["system", "user", "assistant"] }),
 		// @approved
-		//  The authored instruction block's own metadata and text. Null on
-		// every referenced occurrence: the preset stores references, never
-		// rendered Participant or history content.
+		//  The authored instruction block's own metadata and text, and a Box
+		// block's instructions. Null on every other referenced occurrence:
+		// the preset stores references, never rendered Participant or
+		// history content.
 		name: text(),
 		content: text(),
 	},
@@ -109,10 +110,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
-		uniqueIndex("prompt_preset_single_memory_block")
-			.on(table.preset_id)
-			.where(sql`${table.reference} = 'memory'`),
-		uniqueIndex("prompt_preset_single_author_note_block").on(table.preset_id).where(sql`${table.reference} = 'author-note'`),
+		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(
@@ -146,11 +144,11 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} IN ('memory', 'author-note')
+				${table.reference} LIKE 'box:%'
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
-				AND ${table.content} IS NULL
+				AND ${table.content} IS NOT NULL
 			)`,
 		),
 	],
@@ -277,8 +275,17 @@ export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settin
 	trigger_threshold: real().notNull().default(0.5),
 });
 
+// @approved
+//  Library-scoped Box data, written through host commands. The revision
+// guards each value under ADR-0023.
+export const libraryDataTable = sqliteTable("library_data", {
+	namespace: text().notNull(),
+	key: text().notNull(),
+	value: text().notNull(),
+	revision: int().notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.namespace, table.key] })]);
+
 export const conversationTable = sqliteTable("conversation", {
-	author_note: text().notNull().default(""),
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
 	creation_time: text().notNull(),
@@ -467,6 +474,31 @@ export const characterOpeningTable = sqliteTable(
 );
 
 // @approved
+//  Character-scoped Box data, written by a Box window through a host command.
+//  Seeding a Participant copies every row into participant_data, so later
+//  Character edits never reach existing Participants.
+export const characterDataTable = sqliteTable(
+	"character_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		character_id: int()
+			.notNull()
+			.references(() => characterTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+		revision: int().notNull().default(0),
+	},
+	(table) => [
+		uniqueIndex("character_data_owner_key_unique").on(
+			table.character_id,
+			table.namespace,
+			table.key,
+		),
+	],
+);
+
+// @approved
 //  Conversation-local identity. Each Participant owns an independent copied
 // Definition (participant_prompt and participant_opening children) and keeps
 // immutable provenance pointing at the Character it forked, if any. The
@@ -555,6 +587,29 @@ export const participantOpeningTable = sqliteTable(
 		uniqueIndex("participant_opening_participant_position_unique").on(
 			table.participant_id,
 			table.position,
+		),
+	],
+);
+
+// @approved
+//  Participant-scoped Box data, copied from the seeding Character and written
+//  by a Box window afterwards. It grows independently of the source Character.
+export const participantDataTable = sqliteTable(
+	"participant_data",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		participant_id: int()
+			.notNull()
+			.references(() => participantTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		value: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("participant_data_owner_key_unique").on(
+			table.participant_id,
+			table.namespace,
+			table.key,
 		),
 	],
 );
@@ -754,6 +809,7 @@ export const activeGenerationTable = sqliteTable(
 		// them to the target. An attempt never derives these from completion order.
 		macro_preset_id: int(),
 		macro_writes_json: text().notNull().default("[]"),
+		box_records_json: text().notNull().default("{}"),
 	},
 );
 

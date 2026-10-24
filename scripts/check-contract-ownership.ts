@@ -32,8 +32,13 @@ const canonicalDirectory = "src/shared/contract/";
 const slash = (value: string): string => value.replaceAll("\\", "/");
 const relativeFile = (fileName: string): string => slash(path.relative(root, fileName));
 
+// A Box file's layer is its file name: contract, shared, server or client.
+const boxFile = /^src\/boxes\/[^/]+\/(contract|shared|server|client)[^/]*$/;
+
 const layerOf = (file: string): Layer => {
 	if (file.startsWith(canonicalDirectory)) return "contract";
+	const box = boxFile.exec(file)?.[1];
+	if (box === "contract" || box === "shared" || box === "server" || box === "client") return box;
 	if (file.startsWith("src/client/")) return "client";
 	if (file.startsWith("src/server/")) return "server";
 	if (file.startsWith("src/shared/")) return "shared";

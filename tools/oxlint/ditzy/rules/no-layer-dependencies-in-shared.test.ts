@@ -20,8 +20,32 @@ tester.run("no-layer-dependencies-in-shared", noLayerDependenciesInSharedRule, {
 			filename: "src/server/http/settings.ts",
 			code: "import { settings } from '../../shared/contract/settings';",
 		},
+		{
+			filename: "src/boxes/race/server.ts",
+			code: "import type { Database } from 'bun:sqlite'; import { readBoxInstances } from '../../box-sdk/server';",
+		},
 	],
 	invalid: [
+		{
+			filename: "src/boxes/race/contract.ts",
+			code: "import type { Box } from '../../box-sdk/server';",
+			errors: [{ messageId: "layerDependency" }],
+		},
+		{
+			filename: "src/boxes/race/shared-data.ts",
+			code: "import { raceBox } from './server-engine';",
+			errors: [{ messageId: "layerDependency" }],
+		},
+		{
+			filename: "src/boxes/race/shared.ts",
+			code: "export * from './server-engine'; const engine = import('./server-engine');",
+			errors: [{ messageId: "layerDependency" }, { messageId: "layerDependency" }],
+		},
+		{
+			filename: "src/boxes/phone/shared.ts",
+			code: "import { PhonePanel } from './client';",
+			errors: [{ messageId: "layerDependency" }],
+		},
 		{
 			filename: "src/shared/contract/new-route.ts",
 			code: "import { createConversationModule } from '../../server/conversation';",

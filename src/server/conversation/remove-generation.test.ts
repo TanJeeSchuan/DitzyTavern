@@ -55,6 +55,7 @@ describe("canonical Conversation Generation removal", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptConversationSiblingGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -126,6 +127,7 @@ describe("canonical Conversation Generation removal", () => {
 	test("removing a Tail Generation removes its provisional Message and keeps the accepted human input", () => {
 		const input = setup();
 		const accepted = acceptConversationTailGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
@@ -176,6 +178,7 @@ describe("canonical Conversation Generation removal", () => {
 	const revision = readConversationRevision(input.module, input.created.id);
 	if (revision === undefined) throw new Error("Conversation missing.");
 	const tail = acceptConversationTailGeneration(database, {
+		seed: "test-generation-seed",
 		conversationId: input.created.id,
 		expectedRevision: revision,
 		timestamp: "2026-08-27T00:00:02.000Z",
@@ -201,6 +204,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		const openingVariant = opening?.variants[0];
 		if (opening === undefined || openingVariant === undefined) throw new Error("Opening missing.");
 		const accepted = acceptConversationContinuationGeneration(database, {
+			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",

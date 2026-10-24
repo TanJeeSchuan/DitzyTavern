@@ -1,3 +1,4 @@
+import { boxSetups, boxes } from "../test-fixtures/box-setups";
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -48,7 +49,7 @@ interface HistoryRefreshResult { conversation: ConversationSummary | null; failu
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
 	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, authorNote: "", cast: [],
+		id: 1, name: "Chat", revision: 1, boxSetups, boxes, cast: [],
 		control: { humanParticipantId: null, modelParticipantId: null },
 		controlValidity: { valid: false, reason: "missing-seat" },
 		playable: false,
@@ -95,7 +96,7 @@ describe("history refresh error classification", () => {
 				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
 				modelParticipantIdAtCreation: null, continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
-				author: null, variants: [],
+				author: null, variants: [], moves: {},
 			}],
 			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
 		};
