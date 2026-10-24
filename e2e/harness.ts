@@ -75,7 +75,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | string | number | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number[] | string | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -88,7 +88,7 @@ export const startE2eServer = async () => {
 		memories: (...claims: MemoryClaim[]) => call("memories", claims),
 		models: (...catalogs: string[][]) => call("models", catalogs),
 		embeddings: (...matches: string[]) => call("embeddings", matches),
-		checkpointClock: (now: number) => call("checkpoint-clock", now),
+		checkpointClock: (...times: number[]) => call("checkpoint-clock", times),
 		updates: (scenario: UpdateScenario) => call("updates", scenario),
 		release: () => call("release"),
 		installBox: (id: string) => call("install-box", id),

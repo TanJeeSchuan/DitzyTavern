@@ -3,6 +3,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
 	testDir: "e2e",
 	testMatch: "**/*.spec.ts",
+	fullyParallel: true,
+	workers: "60%",
 	globalSetup: "./e2e/global-setup.ts",
 	outputDir: ".scratch/e2e-results",
 	reporter: [["list"], ["html", { outputFolder: ".scratch/e2e-report", open: "never" }]],

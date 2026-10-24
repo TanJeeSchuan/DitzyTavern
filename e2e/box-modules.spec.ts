@@ -28,8 +28,10 @@ test("a Box client module that fails to import or is malformed loses its surface
 });
 
 test("a Box client module that never finishes loading is refused at its deadline, and the Chat renders and still turns the Box off", async ({ page }) => {
+	await page.clock.install();
 	await page.route("**/boxes/memory/client.js", (route) => route.fulfill({ contentType: "text/javascript", body: "await new Promise(() => {});\nexport default {};" }));
-	await page.goto("/");
+	await page.goto("/", { waitUntil: "networkidle" });
+	await page.clock.fastForward(10_000);
 	await openBoxes(page);
 	const memory = page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Memory" });
 	await expect(memory).toContainText("Did not load: Its client module did not load within 10 seconds.");

@@ -6,7 +6,7 @@ export type RegistryReply = { buildNumber: number; revision: string; hold?: bool
 export type UpdateScenario = { build: BuildMetadata; automaticChecks?: boolean; replies: RegistryReply[] };
 
 export type ChatReply =
-	| { chunks: string[]; firstChunkDelayMs?: number; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
+	| { chunks: string[]; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
 
 // @approved
