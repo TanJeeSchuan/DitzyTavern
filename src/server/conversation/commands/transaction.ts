@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, sql } from "drizzle-orm";
 import { conversationTable } from "../../database/schema";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import {
 	ConversationNotFoundError,
 	ConversationWriteObserverMissingError,
@@ -32,16 +32,16 @@ const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 /** @approved
  * The application-installed consumer of Conversation's reported write
  * changes, registered per database. The deep Conversation module never
- * imports Memory: the composition owning each database (app.ts for the
+ * imports the Box host: the composition owning each database (app.ts for the
  * application database, each test composition for its own database) installs
  * the sync here, and every committed write delivers its
- * ConversationMemoryChange through this seam. Registration is keyed by
+ * ConversationWriteChange through this seam. Registration is keyed by
  * database so parallel compositions in one process never observe one
  * another's writes.
  */
 type ConversationWriteObserver = (
 	database: Database,
-	change: ConversationMemoryChange,
+	change: ConversationWriteChange,
 ) => void;
 
 const writeObservers = new WeakMap<Database, ConversationWriteObserver>();
@@ -56,19 +56,19 @@ export function observeConversationWrites(
 /** @approved
  * Run one Conversation write as a single immediate transaction. The
  * work reports the change it made through the transaction-scoped reporter and
- * the observer runs as this wrapper's last statement, so Memory sees exactly
+ * the observer runs as this wrapper's last statement, so it sees exactly
  * the state this transaction commits, with the writes still uncommitted to
  * other transactions — identical ordering to the pre-refactor per-handler
- * calls without the deep module ever calling Memory itself.
+ * calls without the deep module ever calling the Box host itself.
  */
 export function runConversationTransaction<T>(
 	database: Database,
 	work: (
 		db: ConversationDatabase,
-		reportChange: (change: ConversationMemoryChange) => void,
+		reportChange: (change: ConversationWriteChange) => void,
 	) => T,
 ): T {
-	let reported: ConversationMemoryChange | undefined;
+	let reported: ConversationWriteChange | undefined;
 	return database
 		.transaction(() => {
 			const result = work(

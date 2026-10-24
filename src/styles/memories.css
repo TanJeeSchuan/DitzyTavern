@@ -73,12 +73,6 @@
 	background: color-mix(in oklch, var(--foreground) 58%, var(--surface));
 }
 
-.memory-bucket[data-kind="working"] {
-	height: 0.85rem;
-	background: var(--text-faint);
-	animation: memory-pulse 1.4s ease-in-out infinite;
-}
-
 .memory-bucket[data-kind="failed"] {
 	height: 0.85rem;
 	background: var(--destructive);
@@ -315,10 +309,6 @@
 	font-size: 0.7rem;
 }
 
-.memory-source-notes[data-working="true"] {
-	animation: memory-pulse 1.4s ease-in-out infinite;
-}
-
 .memory-source-empty {
 	margin: 0.3rem 0;
 	color: var(--text-muted);
@@ -476,94 +466,6 @@
 	gap: 0.55rem;
 }
 
-/* Pipeline trace */
-
-.memory-trace {
-	display: grid;
-	gap: 0.35rem;
-	margin: 0.3rem 0 0.4rem;
-	padding: 0.5rem 0.7rem 0.6rem;
-	border-radius: 0.75rem;
-	background: var(--surface-muted);
-	font-size: 0.72rem;
-}
-
-.memory-trace > header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	color: var(--text-muted);
-}
-
-.memory-trace ol {
-	display: grid;
-	gap: 0.35rem;
-	margin: 0 0 0 0.3rem;
-	padding: 0 0 0 0.9rem;
-	border-left: 1px solid var(--border-strong);
-	list-style: none;
-}
-
-.memory-trace li {
-	position: relative;
-}
-
-.memory-trace li::before {
-	content: "";
-	position: absolute;
-	top: 0.35rem;
-	left: calc(-0.9rem - 4px);
-	width: 7px;
-	height: 7px;
-	border: 1.5px solid var(--border-strong);
-	border-radius: 999px;
-	background: var(--surface-muted);
-}
-
-.memory-trace li[data-failed="true"]::before {
-	border-color: var(--destructive);
-	background: var(--destructive);
-}
-
-.memory-trace summary {
-	display: flex;
-	justify-content: space-between;
-	gap: 0.6rem;
-	cursor: pointer;
-	list-style: none;
-}
-
-.memory-trace summary::-webkit-details-marker {
-	display: none;
-}
-
-.memory-trace time {
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-}
-
-.memory-trace-field {
-	display: grid;
-	gap: 0.2rem;
-	margin-top: 0.45rem;
-}
-
-.memory-trace-field > span {
-	color: var(--text-muted);
-}
-
-.memory-trace pre {
-	max-height: 18rem;
-	margin: 0;
-	padding: 0.5rem;
-	overflow: auto;
-	border-radius: 0.5rem;
-	background: var(--surface);
-	font-size: 0.7rem;
-	line-height: 1.45;
-	white-space: pre-wrap;
-}
-
 /* Loading */
 
 .memory-loading {
@@ -589,10 +491,6 @@
 
 @keyframes memory-shimmer {
 	to { background-position: -200% 0; }
-}
-
-@keyframes memory-pulse {
-	50% { opacity: 0.45; }
 }
 
 @keyframes memory-arrive {

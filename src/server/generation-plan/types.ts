@@ -11,7 +11,7 @@ import type {
 } from "../../shared/contract/generation-settings";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
-import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { BoxResults } from "../box/registry";
 
 export type { PromptLoreEntry } from "../prompt-compiler";
@@ -47,7 +47,7 @@ export interface GenerationPlan {
 	readonly budget: PromptBudgetResult;
 	readonly effectiveSettings: EffectiveGenerationSettings;
 	readonly loreActivation: LoreActivationRecord | null;
-	readonly memoryActivation: MemoryActivationRecord | null;
+	readonly boxTraces: BoxTraces;
 }
 
 /**

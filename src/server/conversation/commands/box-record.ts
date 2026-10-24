@@ -1,6 +1,7 @@
 import type { RecordBoxId } from "../../../shared/contract/box";
 import type { BoxRecord } from "../../../shared/contract/box-generation";
-import { resetWriterRecord, writeWriterRecord } from "../../box/records";
+import { Value } from "@sinclair/typebox/value";
+import { effectiveRecord, readRecordSlots, resetWriterRecord, writeWriterRecord } from "../../box/records";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireBoxInstance, requireVariant } from "../internal";
@@ -12,14 +13,18 @@ import { activeGenerationTable } from "../../database/schema";
 //  validates it against the Box's record schema before the handler runs, so
 //  storage only ever holds decodable records, and the Variant is checked to
 //  belong to this Conversation before anything lands.
-export function setBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: RecordBoxId; messageId: number; variantId: number; record: BoxRecord<RecordBoxId> }): void {
+export function setBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: RecordBoxId; messageId: number; variantId: number; record: BoxRecord<RecordBoxId>; expected?: BoxRecord<RecordBoxId> | null }): void {
 	requireVariant(db, input.conversationId, input.messageId, input.variantId);
 	// @approved
 	//  A Variant still generating gets its records when it settles, so an
 	//  override would collide with the record its Generation writes then.
 	const active = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, input.variantId)).get();
 	if (active !== undefined) throw new InvalidConversationCommandError("This Variant is still generating. Override its record once it settles.");
-	writeWriterRecord(db, input.box, requireBoxInstance(db, input.conversationId, input.box), input.variantId, input.record);
+	const instance = requireBoxInstance(db, input.conversationId, input.box);
+	if (input.expected !== undefined && !Value.Equal(effectiveRecord(readRecordSlots(db, input.box, instance, [input.variantId]).get(input.variantId)) ?? null, input.expected)) {
+		throw new InvalidConversationCommandError("This record changed since you read it. Review it before changing it again.");
+	}
+	writeWriterRecord(db, input.box, instance, input.variantId, input.record);
 }
 
 /** @approved Reset drops the override and leaves the automatic record, if any, in place. */

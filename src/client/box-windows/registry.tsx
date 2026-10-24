@@ -16,6 +16,12 @@ import { digestWindow } from "./PassageTimeline";
 /** @approved The Author Note edits in the workspace's primary panel rather than a window. */
 export { AuthorNotePanel } from "../../boxes/author-note/client";
 
+// @approved
+//  Memory's contract and shared logic, for its in-tree side panel, settings
+//  editor and trace view, until that UI moves into its Box (GitHub #24).
+export * from "../../boxes/memory/contract";
+export * from "../../boxes/memory/shared";
+
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
 

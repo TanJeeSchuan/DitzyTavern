@@ -8,7 +8,7 @@ import {
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
 import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
-import { boxMoves, type BoxMoves } from "./box-generation";
+import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -28,8 +28,6 @@ import type {
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
-import { memoryActivationRecord } from "./memory-recall";
-export type { MemoryActivationRecord } from "./memory-recall";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -304,11 +302,6 @@ const provenanceSettingsWireSchemas = {
 
 export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
 
-const memorySourceAvailability = Type.Object({
-	messageIds: Type.Array(Type.Integer()),
-	variantIds: Type.Array(Type.Integer()),
-});
-
 const generationProvenance = Type.Union([Type.Null(), Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
@@ -345,8 +338,7 @@ export const activeGenerationDetails = Type.Object({
 	promptPlan,
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
-	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -387,8 +379,7 @@ export const variantDetails = Type.Object({
 	// Captured activation evidence is independent from compact Generation provenance
 	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
-	memoryActivation: Type.Union([memoryActivationRecord, Type.Null()]),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 });
 
 export type GenerationProvenance = SharedGenerationProvenance;
@@ -799,8 +790,7 @@ export const generationPreview = Type.Object({
 	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
-	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: memorySourceAvailability,
+	boxTraces,
 	budget: generationPreviewBudget,
 });
 

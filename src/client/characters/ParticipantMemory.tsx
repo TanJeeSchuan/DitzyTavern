@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ConversationSummary } from "../conversation";
-import { memoryIdentityLabel } from "../../shared/memory-identity";
+import { memoryIdentityLabel } from "../box-windows/registry";
 import { MemoryIdentityDialog } from "../workspace/MemoryIdentityDialog";
 import { useConversationMemories } from "../workspace/useConversationMemories";
 

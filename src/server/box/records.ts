@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, recordBoxIds, type BoxId, type BoxSetups, type RecordBoxId } from "../../shared/contract/box";
 import { messageVariantDataTable } from "../database/schema";
-import { sha256 } from "../memory/hash";
+import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
 import type { BoxInstances } from "./setup";
 import type { Box, HostBox } from "./contract";
@@ -31,7 +31,7 @@ export const readRecordSlots = <Id extends RecordBoxId>(db: BunSQLiteDatabase, i
 		.all()
 		.map((row) => [row.variantId, decodeSlot(id, row.value)]));
 
-type Slot<Rec> = { readonly automatic?: Rec; readonly writer?: Rec; readonly source?: string };
+type Slot<Rec> = { readonly automatic?: Rec; readonly writer?: Rec; readonly source?: string; readonly error?: { readonly source: string; readonly message: string } };
 
 /** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
 export const effectiveRecord = <S extends Slot<unknown>>(slot: S | undefined): S["writer"] | S["automatic"] | undefined => slot?.writer ?? slot?.automatic;
@@ -62,24 +62,34 @@ const writeSlot = (db: BunSQLiteDatabase, id: RecordBoxId, instance: string, var
 		.run();
 };
 
-export const writeAutomaticRecord = <Id extends RecordBoxId>(db: BunSQLiteDatabase, id: Id, instance: string, variantId: number, record: BoxRecord<Id>, source: string): void =>
-	writeSlot(db, id, instance, variantId, { ...readRecordSlots(db, id, instance, [variantId]).get(variantId), automatic: record, source });
+/** @approved A successful digest clears the slot's error. */
+export const writeAutomaticRecord = <Id extends RecordBoxId>(db: BunSQLiteDatabase, id: Id, instance: string, variantId: number, record: BoxRecord<Id>, source: string): void => {
+	const current: Slot<BoxRecord<RecordBoxId>> | undefined = readRecordSlots(db, id, instance, [variantId]).get(variantId);
+	writeSlot(db, id, instance, variantId, { writer: current?.writer, automatic: record, source });
+};
+
+/** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
+export const writeDigestError = (db: BunSQLiteDatabase, id: RecordBoxId, instance: string, variantId: number, source: string, message: string): void =>
+	writeSlot(db, id, instance, variantId, { ...readRecordSlots(db, id, instance, [variantId]).get(variantId), error: { source, message } });
+
+/** @approved Whether a digest already failed on exactly this text. */
+export const hasDigestError = (slot: Slot<unknown> | undefined, content: string): boolean => slot?.error?.source === sha256(content);
 
 /** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
 export const writeWriterRecord = <Id extends RecordBoxId>(db: BunSQLiteDatabase, id: Id, instance: string, variantId: number, record: BoxRecord<Id>): void =>
 	writeSlot(db, id, instance, variantId, { ...readRecordSlots(db, id, instance, [variantId]).get(variantId), writer: record });
 
-/** @approved Reset removes the Writer override; with no automatic result left the slot row goes away entirely. */
+/** @approved Reset removes the Writer override; with no automatic result or error left the slot row goes away entirely. */
 export const resetWriterRecord = (db: BunSQLiteDatabase, id: RecordBoxId, instance: string, variantId: number): void => {
 	const current = readRecordSlots(db, id, instance, [variantId]).get(variantId);
 	if (current === undefined || current.writer === undefined) return;
-	if (current.automatic === undefined) {
+	if (current.automatic === undefined && current.error === undefined) {
 		db.delete(messageVariantDataTable)
 			.where(and(eq(messageVariantDataTable.message_variant_id, variantId), eq(messageVariantDataTable.namespace, boxReference(id)), eq(messageVariantDataTable.key, recordKey(instance))))
 			.run();
 		return;
 	}
-	writeSlot(db, id, instance, variantId, { automatic: current.automatic, source: current.source });
+	writeSlot(db, id, instance, variantId, { automatic: current.automatic, source: current.source, error: current.error });
 };
 
 export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>

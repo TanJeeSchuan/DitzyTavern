@@ -1,0 +1,20 @@
+import type { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import type { DigestBoxId } from "../../shared/contract/box";
+import type { BoxRecordSlot } from "../../shared/contract/box-generation";
+import { queueBoxDigest, startBoxDigests } from "../box/digest";
+import { readRecordSlots } from "../box/records";
+import { readBoxInstances } from "../box/setup";
+import type { ModelFetch } from "../model-client/types";
+
+/** @approved Runs the host digest queue on one passage until the Box's record slot holds a result or an error, and returns the slot. */
+export const digestNow = async <Id extends DigestBoxId>(database: Database, conversationId: number, box: Id, variantId: number, fetch: ModelFetch) => {
+	const slot = () => readRecordSlots(drizzle(database), box, readBoxInstances(drizzle(database), conversationId)[box], [variantId]).get(variantId);
+	const settled = (current: BoxRecordSlot<DigestBoxId> | undefined) => current?.source !== undefined || current?.error !== undefined;
+	const stop = startBoxDigests(database, { fetch });
+	try {
+		queueBoxDigest(database, conversationId, box, variantId);
+		for (let attempt = 0; attempt < 2_000 && !settled(slot()); attempt += 1) await Bun.sleep(1);
+	} finally { await stop(); }
+	return slot();
+};

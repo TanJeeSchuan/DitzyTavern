@@ -1,7 +1,6 @@
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
-import type { MemorySettingsCommand, MemorySettingsPayload } from "../shared/contract/memory-settings";
-import { memorySettingsApplied, memorySettingsCommandErrors, memorySettingsResponse } from "../shared/contract/memory-settings";
+import { memorySettingsApplied, memorySettingsCommandErrors, memorySettingsResponse, type MemorySettingsCommand, type MemorySettingsPayload } from "./box-windows/registry";
 
 export type MemorySettings = MemorySettingsPayload;
 

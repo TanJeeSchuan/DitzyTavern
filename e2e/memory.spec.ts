@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, enableDecisionModels, send, story } from "./fixtures";
+import { test, expect, enableDecisionModels, insertBox, send, story } from "./fixtures";
 import type { DecisionRule } from "./protocol";
 
 const enableMemory = async (request: APIRequestContext) => {
@@ -7,7 +7,7 @@ const enableMemory = async (request: APIRequestContext) => {
 	const profileId = (apiFormat: string) => profiles.find((profile: { apiFormat: string }) => profile.apiFormat === apiFormat).id;
 	const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();
 	await request.post("/api/memory-settings/commands", { data: {
-		...settings, expectedRevision: revision, enabled: true,
+		...settings, expectedRevision: revision,
 		extractionProfileId: profileId("chat-completions"), extractionModel: "e2e-model",
 		embeddingProfileId: profileId("embeddings"), embeddingModel: "e2e-embedding",
 	} });
@@ -65,16 +65,50 @@ test("a Message's Memories action remembers it on demand", async ({ page, reques
 	await llm.chat({ chunks: ["She nods. \"I keep the lantern lit all night.\""] }, { chunks: ["She turns back to the map."] });
 
 	await page.goto("/");
+	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
+	await page.keyboard.press("Escape");
 	await send(page, "Why is the light on?");
 	const reply = story(page).locator("article", { hasText: "She nods." });
 	await expect(reply).toBeVisible();
 	await send(page, "Go on.");
 	await expect(story(page).getByText("She turns back to the map.")).toBeVisible();
 	await enableMemory(request);
+	await insertBox(page, "Memory");
 
 	await reply.hover();
 	await reply.getByRole("button", { name: "Memories" }).click();
 	const memories = page.getByRole("complementary", { name: "Memories" });
 	await memories.getByRole("button", { name: "Remember this Message" }).click();
 	await expect(memories.getByText("Theodora keeps the lantern lit all night.")).toBeVisible({ timeout: 15_000 });
+});
+
+test("a corrected Memory stays the writer's until reset brings back the remembered one", async ({ page, request, llm }) => {
+	await enableDecisionModels(request);
+	await llm.embeddings("brass key");
+	await llm.memories({ claim: "Theodora hid the brass key under the third map.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "I hid the brass key under the third map." });
+	await llm.decisions(...judge("brass key", { support: "supported", attribution: "correct", usefulness: "retain" }));
+	await llm.chat({ chunks: ["She leans close. \"I hid the brass key under the third map.\""] });
+	await enableMemory(request);
+
+	await page.goto("/");
+	await send(page, "Where is the key?");
+	await page.getByRole("button", { name: "Memories" }).click();
+	const memories = page.getByRole("complementary", { name: "Memories" });
+	const remembered = memories.getByText("Theodora hid the brass key under the third map.");
+	await expect(remembered).toBeVisible({ timeout: 15_000 });
+	const claim = memories.locator("article", { hasText: "Theodora hid the brass key under the third map." });
+	await claim.hover();
+	await claim.getByRole("button", { name: "Edit Memory" }).click();
+	await memories.getByRole("textbox", { name: "Memory" }).fill("Theodora moved the brass key to the attic.");
+	await memories.getByRole("button", { name: "Save" }).click();
+	const corrected = memories.locator("article", { hasText: "Theodora moved the brass key to the attic." });
+	await expect(corrected).toContainText("Edited");
+	await expect(remembered).toHaveCount(0);
+
+	await corrected.getByRole("button", { name: / · #\d+$/ }).click();
+	await memories.getByRole("button", { name: "Reset corrections…" }).click();
+	await page.getByRole("dialog").getByRole("button", { name: "Reset corrections" }).click();
+	await expect(remembered).toBeVisible({ timeout: 15_000 });
+	await expect(corrected).toHaveCount(0);
 });

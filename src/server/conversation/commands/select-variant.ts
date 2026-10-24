@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
 
@@ -13,7 +13,7 @@ export interface SelectVariantInput {
 export function selectVariant(
 	db: ConversationDatabase,
 	input: SelectVariantInput,
-): ConversationMemoryChange | void {
+): ConversationWriteChange | void {
 	const selected = requireVariant(db, input.conversationId, input.messageId, input.variantId);
 	if (selected.selected) return;
 	db.update(messageVariantTable)

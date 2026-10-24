@@ -1,19 +1,19 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors, digestBoxIds, type BoxDescriptors, type BoxId, type BoxSetups, type DigestBoxId } from "../../shared/contract/box";
+import { boxDescriptors, boxReference, digestBoxIds, type BoxDescriptors, type BoxId, type BoxSetups, type DigestBoxId } from "../../shared/contract/box";
 import type { BoxCatchUp, DigestRead } from "../../shared/contract/box-digest";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 import {
-	readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPathForMemory,
-	readSelectedVariantIdsFromConnection, readVariantsForMemory, runConversationReadTransaction,
+	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPassages,
+	readSelectedVariantIdsFromConnection, readChatVariants, runConversationReadTransaction,
 } from "../conversation";
-import { decisionRequest, requestDecisions } from "../decision-model";
-import { sha256 } from "../memory/hash";
+import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { effectiveRecord, foldRecords, hasAutomaticRecord, readRecordSlots, readVariantSeeds, writeAutomaticRecord } from "./records";
-import { serverBox } from "./registry";
+import { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
+import { injectServices, serverBox } from "./registry";
+import { boxServices } from "./services";
 import { isBoxEnabled, readBoxInstances } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 
@@ -23,7 +23,9 @@ import { boxSeed, variantSeedOf } from "./seed";
 // Variant and Box has at most one current job, and only the current job's
 // result lands: a newer job replaces it and aborts it. A catch-up run queues
 // one Box's selected Variants without a record behind live work and reports
-// its progress to the Box's window.
+// its progress to the Box's window. A failed digest writes its error to the
+// record slot; live work skips text that already failed, and a catch-up run
+// retries it.
 // Jobs live in memory: work lost on restart is picked up when the passage is
 // next selected, resolved or edited, or by another catch-up run.
 
@@ -32,6 +34,7 @@ interface CatchUpRun {
 	readonly total: number;
 	/** @approved The run's jobs still current and unsettled; leaving twice is harmless. */
 	readonly members: Set<DigestJob>;
+	failed: number;
 }
 
 interface DigestJob {
@@ -98,35 +101,45 @@ const enqueue = (queue: DigestQueue, job: DigestJob): void => {
 
 const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
 	const { signal } = job.controller;
-	const { digest } = serverBox(job.box).records;
+	const box = serverBox(job.box);
+	const { digest } = box.records;
+	// @approved
+	//  A result, or a failure, lands only for the current job while the Box
+	// still runs and the Variant still holds the digested text: it may have
+	// been edited back to an already-digested version, or the selection
+	// cleared, while the request ran; neither replaces the job.
+	const lands = (): boolean => {
+		const current = readChatVariants(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
+		return queue.current.get(job.key) === job && current !== undefined && sha256(current.content) === job.source
+			&& isBoxEnabled(drizzle(database), job.conversationId, job.box) && resolveBoxDecision(database, job.box).kind === "ready";
+	};
 	try {
 		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
-		const decision = resolveBoxDecision(database, job.box);
-		if (decision.kind !== "ready") return;
-		const path = readSelectedPathForMemory(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
+		if (resolveBoxDecision(database, job.box).kind !== "ready") return;
+		const path = readSelectedPassages(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
 		const index = path.findIndex((message) => message.variant?.variantId === job.variantId);
 		const variant = path[index]?.variant;
 		if (variant === undefined || variant === null || variant.active || sha256(variant.content) !== job.source) return;
-		const preceding = path.slice(0, index).flatMap((message) => message.variant === null ? [] : [{ speaker: message.author, content: message.variant.content }]);
+		const preceding = path.slice(0, index).flatMap(({ messageId, author, authorParticipantId, variant }) =>
+			variant === null ? [] : [{ messageId, speaker: author, authorId: authorParticipantId, content: variant.content }]);
 		const seed = boxSeed(variantSeedOf(readVariantSeeds(drizzle(database), [job.variantId]).get(job.variantId), job.variantId), job.box);
-		const record = await digest.run({ passage: { speaker: variant.speaker, content: variant.content }, preceding, seed }, {
-			signal,
-			decide: (state, questions) => {
-				const { request, fits } = decisionRequest(decision.decision, state, questions);
-				if (!fits) throw new Error("The passage exceeds the Decision Model's state token limit.");
-				return requestDecisions({ request, questions, selection: decision.decision, fetch: queue.fetch, signal });
-			},
-		});
+		const services = boxServices(database, queue.fetch, signal)(job.box);
+		const data = readConversationData(database, job.conversationId, { namespace: boxReference(job.box) })?.entries ?? [];
+		const record = await digest.run({
+			passage: { messageId: variant.messageId, speaker: variant.speaker, authorId: variant.authorParticipantId, content: variant.content },
+			preceding,
+			seed,
+			cast: readParticipants(database, job.conversationId),
+			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
+		}, { ...injectServices(box, services), decide: services.decide, database });
 		Value.Assert(boxDescriptors[job.box].record, record);
-		// @approved
-		//  The text may have been edited back to an already-digested version, or
-		// the selection cleared, while the request ran; neither replaces the job.
-		const current = readVariantsForMemory(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
-		const landing = queue.current.get(job.key) === job && current !== undefined && sha256(current.content) === job.source;
-		const enabled = isBoxEnabled(drizzle(database), job.conversationId, job.box);
-		if (landing && enabled && resolveBoxDecision(database, job.box).kind === "ready") writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
+		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
-		if (!signal.aborted) console.error(`[box-digest] The ${job.box} digest of Variant ${job.variantId} failed.`, error);
+		if (signal.aborted) return;
+		console.error(`[box-digest] The ${job.box} digest of Variant ${job.variantId} failed.`, error);
+		if (!lands()) return;
+		writeDigestError(drizzle(database), job.box, job.instance, job.variantId, job.source, error instanceof Error ? error.message : String(error));
+		if (job.catchUp !== null) job.catchUp.failed += 1;
 	} finally {
 		if (queue.current.get(job.key) === job) queue.current.delete(job.key);
 		leaveCatchUp(queue, job);
@@ -184,12 +197,38 @@ const abandon = (queue: DigestQueue, conversationId: number, box: BoxId): void =
 	queue.catchUps.delete(catchUpKey(conversationId, box));
 };
 
+type Passage = ReturnType<typeof readChatVariants>[number];
+const digestible = (variant: Passage): boolean => variant.selected && !variant.active && variant.content.trim() !== "";
+
+// @approved
+//  Queues each passage without a record for its current text as live work;
+//  `retry` also queues one whose digest failed on that text.
+const queueLive = (database: Database, queue: DigestQueue, conversationId: number, box: DigestBoxId, instance: string, variants: readonly Passage[], retry: boolean): void => {
+	const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));
+	for (const variant of variants) {
+		const source = sha256(variant.content);
+		const key = keyOf(variant.variantId, box);
+		// @approved
+		//  A live job counts only live work as already queued: a catch-up job
+		//  for the same text is replaced, so live work keeps its place ahead
+		//  of a catch-up run.
+		const slot = slots.get(variant.variantId);
+		if (hasAutomaticRecord(slot, variant.content) || (!retry && hasDigestError(slot, variant.content)) || queuedFor(queue, key, source, false)) continue;
+		enqueue(queue, {
+			key, conversationId, messageId: variant.messageId, variantId: variant.variantId,
+			box, instance, source, catchUp: null, controller: new AbortController(),
+		});
+	}
+	queueMicrotask(() => pump(database, queue));
+};
+
 // @approved
 //  Queue digests for one Conversation write. A selected, settled passage is
-// digested by each digesting Box when it has no record for its current text:
-// when it resolves, is selected without a record, or is edited. Runs inside
-// the write transaction, so the workers start only after it commits.
-export function queueBoxDigests(database: Database, change: ConversationMemoryChange): void {
+// digested by each digesting Box when it has no record for its current text
+// and no digest failed on it: when it resolves, is selected without a record,
+// or is edited. Runs inside the write transaction, so the workers start only
+// after it commits.
+export function queueBoxDigests(database: Database, change: ConversationWriteChange): void {
 	const queue = queues.get(database);
 	if (queue === undefined) return;
 	if (change.stoppedBox !== undefined) abandon(queue, change.conversationId, change.stoppedBox);
@@ -197,50 +236,43 @@ export function queueBoxDigests(database: Database, change: ConversationMemoryCh
 		for (const variantId of change.removedVariantIds) dropKey(queue, keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
-		const variants = readVariantsForMemory(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true })
-			.filter((variant) => variant.selected && !variant.active && variant.content.trim() !== "");
-		const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));
-		for (const variant of variants) {
-			const source = sha256(variant.content);
-			const key = keyOf(variant.variantId, box);
-			// @approved
-			//  A live job counts only live work as already queued: a catch-up job
-			//  for the same text is replaced, so live work keeps its place ahead
-			//  of a catch-up run.
-			if (hasAutomaticRecord(slots.get(variant.variantId), variant.content) || queuedFor(queue, key, source, false)) continue;
-			enqueue(queue, {
-				key, conversationId: change.conversationId, messageId: variant.messageId, variantId: variant.variantId,
-				box, instance, source, catchUp: null, controller: new AbortController(),
-			});
-		}
-		queueMicrotask(() => pump(database, queue));
+		const variants = readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
+		queueLive(database, queue, change.conversationId, box, instance, variants, false);
 	}
+}
+
+/** @approved Queues one selected passage now as live work, retrying a digest that failed on its text; one already digested for its text is left alone. */
+export function queueBoxDigest(database: Database, conversationId: number, box: DigestBoxId, variantId: number): void {
+	const queue = queues.get(database);
+	const instance = queue === undefined ? undefined : digestInstance(database, conversationId, box);
+	if (queue === undefined || instance === undefined) return;
+	queueLive(database, queue, conversationId, box, instance, readChatVariants(database, conversationId, { variantIds: [variantId] }).filter(digestible), true);
 }
 
 /** @approved A Box window's live view of its catch-up run in one Conversation, or null when none runs. */
 export function readBoxCatchUp(database: Database, conversationId: number, box: DigestBoxId): BoxCatchUp | null {
 	const run = queues.get(database)?.catchUps.get(catchUpKey(conversationId, box));
-	return run === undefined ? null : { total: run.total, remaining: run.members.size };
+	return run === undefined ? null : { total: run.total, remaining: run.members.size, failed: run.failed };
 }
 
 // @approved
 //  Starts one catch-up run of a Box over the Selected path: every selected
-//  Variant without its record for the current text is queued behind live
-//  work. A run already in flight is left alone, so a second request is a
-//  no-op.
+//  Variant without its record for the current text, a failed one included,
+//  is queued behind live work. A run already in flight is left alone, so a
+//  second request is a no-op.
 export function startBoxCatchUp(database: Database, conversationId: number, box: DigestBoxId): void {
 	const queue = queues.get(database);
 	const key = catchUpKey(conversationId, box);
 	if (queue === undefined || queue.stopped || queue.catchUps.has(key)) return;
 	const instance = digestInstance(database, conversationId, box);
-	const path = instance === undefined ? undefined : readSelectedPathForMemory(database, conversationId);
+	const path = instance === undefined ? undefined : readSelectedPassages(database, conversationId);
 	if (path === undefined || instance === undefined) return;
 	const variants = path.flatMap((message) => message.variant === null || message.variant.active || message.variant.content.trim() === "" ? [] : [message.variant]);
 	const slots = readRecordSlots(drizzle(database), box, instance, variants.map((variant) => variant.variantId));
 	const missing = variants.filter((variant) => !hasAutomaticRecord(slots.get(variant.variantId), variant.content)
 		&& !queuedFor(queue, keyOf(variant.variantId, box), sha256(variant.content), true));
 	if (missing.length === 0) return;
-	const run: CatchUpRun = { key, total: missing.length, members: new Set() };
+	const run: CatchUpRun = { key, total: missing.length, members: new Set(), failed: 0 };
 	queue.catchUps.set(key, run);
 	for (const variant of missing) {
 		enqueue(queue, {
@@ -300,7 +332,10 @@ export function readDigest(database: Database, conversationId: number, box: Dige
 		const passages = history.messages.flatMap(({ id, author, variant }) => {
 			if (variant === null || variant.content.trim() === "") return [];
 			const slot = slots.get(variant.id);
-			return [{ messageId: id, variantId: variant.id, author: author?.capturedName ?? null, content: variant.content, record: effectiveRecord(slot) ?? null, overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content) }];
+			return [{
+				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, content: variant.content, record: effectiveRecord(slot) ?? null,
+				overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content), error: hasDigestError(slot, variant.content) ? slot?.error?.message ?? null : null,
+			}];
 		});
 		return {
 			conversationId,

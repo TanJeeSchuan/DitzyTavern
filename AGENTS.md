@@ -6,7 +6,7 @@ There is `playwright-cli` installed
 For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS (component/snapshot tests for UI tweaks; user-flow e2e below is fine)
 
 ## E2E
-- `bun run test:e2e` runs Playwright (`e2e/*.spec.ts`) against `e2e/server.ts`: one Bun server per worker, a fresh seeded SQLite database per test, memory off by default.
+- `bun run test:e2e` runs Playwright (`e2e/*.spec.ts`) against `e2e/server.ts`: one Bun server per worker, a fresh seeded SQLite database per test, Memory models unconfigured by default.
 - Every provider call (chat, Decision Models over /systemone, embeddings, models, memory extraction) hits a scripted fake through the `llm` fixture; an unscripted call fails the test.
 - After each test the fixture also fails if any captured Prompt Plan (from generation inspection) doesn't match a request the fake actually received. `llm.restart("crash" | "graceful")` relaunches the server on the same database; graceful shutdown uses an HTTP command because Windows signals force-kill the process.
 

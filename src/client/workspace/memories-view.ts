@@ -1,9 +1,19 @@
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
+import { applyMemoryPeople, type MemoryCandidateJudgment } from "../box-windows/registry";
 import type { ConversationMemories } from "../memories";
 
 export type MemorySource = ConversationMemories["sources"][number];
-export type MemoryClaim = MemorySource["claims"][number];
+export type MemoryClaim = MemoryCandidateJudgment;
 export type MemoryPathEntry = ConversationMemories["path"][number];
+
+/** @approved The read as the panel shows it: each claim's people under the Chat's identities and label merges, which stored claims never take. */
+export const labelledMemories = (memories: ConversationMemories): ConversationMemories => ({
+	...memories,
+	sources: memories.sources.map((source) => source.claims === null ? source : {
+		...source,
+		claims: source.claims.map((claim) => ({ ...claim, people: applyMemoryPeople(claim.people, memories.cast, memories.identities, memories.labelMerges) })),
+	}),
+});
 
 /** @approved One claim as the Memories panel lists it, with its source and its index among that source's claims. */
 export type MemoryEntry = { claim: MemoryClaim; source: MemorySource; index: number };
@@ -41,7 +51,7 @@ export const memoryEntries = (
 	return sources
 		.filter((source) => focus === null || source.messageId === focus)
 		.sort((a, b) => (position.get(b.messageId) ?? -1) - (position.get(a.messageId) ?? -1))
-		.flatMap((source) => source.claims.flatMap((claim, index) =>
+		.flatMap((source) => (source.claims ?? []).flatMap((claim, index) =>
 			needle === "" || [claim.claim, claim.attribution, ...claim.people].some((text) => text.toLowerCase().includes(needle))
 				? [{ claim, source, index }]
 				: []

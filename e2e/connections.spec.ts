@@ -58,7 +58,7 @@ test.describe("Semantic Trigger settings read failure", () => {
 		await enableDecisionModels(request);
 		await page.goto("/");
 		await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
-		const openSettings = page.getByRole("button", { name: /typesafe\/jev-1.13.*Decision Model/ });
+		const openSettings = page.getByRole("region", { name: "Semantic Triggers" }).getByRole("button", { name: /typesafe\/jev-1.13.*Decision Model/ });
 		await expect(openSettings).toBeVisible();
 		await page.route("**/api/connection-settings", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Connection Settings unavailable" }) }));
 		await openSettings.click();

@@ -9,19 +9,12 @@ import {
 	ParticipantNotFoundError,
 } from "../errors";
 import { type ConversationDatabase, findActiveParticipant } from "../internal";
-import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // @approved
 //  The Conversation-owned Lore attachment commands: Chat Lore settings
 // and Chat/Participant Lorebook attachments are revisioned Conversation
-// mutations executed through the shared command seam. The writes touch only
-// Lore attachment and Lore settings rows, so every command reports the same
-// Variant-free change record to Memory.
-const loreRowsChanged = (conversationId: number): ConversationMemoryChange => ({
-	conversationId,
-	touchedVariantIds: [],
-	removedVariantIds: [],
-});
+// mutations executed through the shared command seam. They touch no Variant,
+// so they report no write change.
 
 // @approved
 //  Re-checks the Participant inside the command transaction. The
@@ -42,7 +35,7 @@ const requireConversationLoreParticipant = (
 export const attachConversationLorebook = (
 	db: ConversationDatabase,
 	input: { conversationId: number; bookId: number; enabled?: boolean | undefined },
-): ConversationMemoryChange => {
+): void => {
 	db.insert(conversationLorebookAttachmentTable)
 		.values({
 			conversation_id: input.conversationId,
@@ -54,13 +47,12 @@ export const attachConversationLorebook = (
 			set: { enabled: input.enabled ?? true },
 		})
 		.run();
-	return loreRowsChanged(input.conversationId);
 };
 
 export const detachConversationLorebook = (
 	db: ConversationDatabase,
 	input: { conversationId: number; bookId: number },
-): ConversationMemoryChange => {
+): void => {
 	db.delete(conversationLorebookAttachmentTable)
 		.where(
 			and(
@@ -69,13 +61,12 @@ export const detachConversationLorebook = (
 			),
 		)
 		.run();
-	return loreRowsChanged(input.conversationId);
 };
 
 export const attachParticipantLorebook = (
 	db: ConversationDatabase,
 	input: { conversationId: number; participantId: number; bookId: number; scope: "controlled-participant" | "cast"; enabled?: boolean | undefined },
-): ConversationMemoryChange => {
+): void => {
 	requireConversationLoreParticipant(db, input.conversationId, input.participantId);
 	db.insert(participantLorebookAttachmentTable)
 		.values({
@@ -89,13 +80,12 @@ export const attachParticipantLorebook = (
 			set: { enabled: input.enabled ?? true },
 		})
 		.run();
-	return loreRowsChanged(input.conversationId);
 };
 
 export const detachParticipantLorebook = (
 	db: ConversationDatabase,
 	input: { conversationId: number; participantId: number; bookId: number; scope: "controlled-participant" | "cast" },
-): ConversationMemoryChange => {
+): void => {
 	requireConversationLoreParticipant(db, input.conversationId, input.participantId);
 	db.delete(participantLorebookAttachmentTable)
 		.where(
@@ -106,13 +96,12 @@ export const detachParticipantLorebook = (
 			),
 		)
 		.run();
-	return loreRowsChanged(input.conversationId);
 };
 
 export const saveConversationLoreSettings = (
 	db: ConversationDatabase,
 	input: { conversationId: number; scanDepth: number; allowance: number },
-): ConversationMemoryChange => {
+): void => {
 	if (!Number.isInteger(input.scanDepth) || input.scanDepth < 0) {
 		throw new InvalidConversationCommandError("Lore scan depth must be a non-negative whole number.");
 	}
@@ -130,5 +119,4 @@ export const saveConversationLoreSettings = (
 			set: { scan_depth: input.scanDepth, allowance: input.allowance },
 		})
 		.run();
-	return loreRowsChanged(input.conversationId);
 };

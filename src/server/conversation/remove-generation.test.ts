@@ -19,7 +19,7 @@ import {
 } from ".";
 
 import { observeConversationWrites } from "./commands/transaction";
-import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
+import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 // Regression tests for canonical Generation removal. The Active Generation
 // row is the only authority for which mutation a removal performs: a Sibling
 // Generation loses its provisional Variant, while Tail and Continuation
@@ -156,11 +156,11 @@ describe("canonical Conversation Generation removal", () => {
 
 	test("removals report their removed Variant ids so Memory can abandon the work the write deleted", () => {
 	const input = setup();
-	const delivered: ConversationMemoryChange[] = [];
+	const delivered: ConversationWriteChange[] = [];
 	// The per-database registration is the same seam the application or the
 	// test composition installs once; a specific case may scope a finer
 	// observer for the write it inspects.
-	observeConversationWrites(database, (_observedDatabase, change: ConversationMemoryChange) => {
+	observeConversationWrites(database, (_observedDatabase, change: ConversationWriteChange) => {
 		delivered.push(change);
 	});
 

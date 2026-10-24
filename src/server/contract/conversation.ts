@@ -74,7 +74,6 @@ import {
 	previewRecordFor,
 	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
-import { readMemorySourceAvailability } from "../conversation";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
@@ -321,8 +320,6 @@ export const createConversationRoutes = (
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture;
-					const memoryActivation = capture.plan.memoryActivation;
-					const memorySources = readMemorySourceAvailability(database, params.id, memoryActivation);
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
@@ -336,8 +333,7 @@ export const createConversationRoutes = (
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
 						loreActivation: capture.plan.loreActivation,
-						memoryActivation,
-						memorySources,
+						boxTraces: capture.plan.boxTraces,
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,

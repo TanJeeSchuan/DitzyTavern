@@ -7,7 +7,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
 import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
-import type { MemorySettingsCommand } from "../src/shared/contract/memory-settings.ts";
+import type { MemorySettingsCommand } from "../src/boxes/memory/contract.ts";
+import type { BoxDecisionSettingsCommand } from "../src/shared/contract/box.ts";
 
 const spawn = childProcess.spawn;
 
@@ -60,7 +61,7 @@ test("stop resolves when the server has already crashed", async (t) => {
 
 test("unscripted discovery, embeddings and extraction are recorded as failures", async () => {
 	const server = await startE2eServer();
-	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | BoxDecisionSettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
 		method: body === undefined ? "GET" : "POST",
 		headers: { "content-type": "application/json" },
 		body: body === undefined ? undefined : JSON.stringify(body),
@@ -78,12 +79,13 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
 		const { revision, ...settings } = await call("memory-settings");
 		await call("memory-settings/commands", {
-			...settings, expectedRevision: revision, enabled: true,
-			decisionProfileId: decision.id, decisionModel: "e2e-decision",
+			...settings, expectedRevision: revision,
 			extractionProfileId: chat.id, extractionModel: "e2e-model", embeddingProfileId: id, embeddingModel: "e2e-embedding",
 		});
+		const { revision: decisionRevision } = await call("boxes/memory/decision-settings");
+		await call("boxes/memory/decision-settings/commands", { type: "apply", expectedRevision: decisionRevision, decisionProfileId: decision.id, decisionModel: "e2e-decision", decisionStateTokenLimit: 16000 });
 		const { activeChatId } = await call("workspace");
-		await call(`conversations/${activeChatId}/memories/catchup`, {});
+		await call(`conversations/${activeChatId}/boxes/memory/catch-up`, {});
 		let log = await server.log();
 		for (let attempt = 0; attempt < 100 && !log.calls.some(({ kind }) => kind === "extraction"); attempt++) {
 			await delay(20);

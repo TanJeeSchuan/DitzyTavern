@@ -1,6 +1,7 @@
 import { isBoxReference, type PromptBoxReference } from "../../shared/contract/box";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import type { BlockItem, BoxAdmission } from "../box/contract";
+import type { BoxAdmission } from "../../shared/contract/box-generation";
+import type { BlockItem } from "../box/contract";
 import type { BoxItems, BoxResults } from "../box/registry";
 import { boxItemExpansionKey, measurePromptPlan, toEstimationTranscript, tokenxEstimator, type MacroAttemptState, type PromptContextEntry, type PromptLoreEntry, type PromptPlan } from "../prompt-compiler";
 
@@ -34,7 +35,7 @@ export const admitDynamicBlocks = (input: {
 	const items: BoxItems = Object.fromEntries(Object.entries(input.boxes).map(([reference, result]) =>
 		[reference, (result?.items ?? []).map((item, index) => ({ ...item, index })).sort(admissionOrder)]));
 	const boxes: BoxItems = Object.fromEntries(Object.entries(items).map(([reference, entries]) => [reference, entries.filter((item) => item.pinned)]));
-	const decisions: Partial<Record<PromptBoxReference, Map<string, BoxAdmission>>> = {};
+	const decisions: Partial<Record<string, BoxAdmission[]>> = {};
 	const trial = (trialLore: readonly PromptLoreEntry[], trialBoxes: BoxItems) => input.compile(input.protectedContext, trialLore, trialBoxes);
 	const fits = (plan: PromptPlan) => measurePromptPlan({ plan, contextLimit: input.contextLimit, responseBudget: input.responseBudget, safetyAllowance: input.safetyAllowance, estimator: input.estimator }).fits;
 	// @approved
@@ -74,7 +75,9 @@ export const admitDynamicBlocks = (input: {
 		};
 		const selected: Item[] = [];
 		const pinned = boxes[reference] ?? [];
-		const blockDecisions = new Map<string, BoxAdmission>();
+		// @approved
+		// Each item's admission, in the Box's order; pinned items are always admitted.
+		const blockDecisions = result.items.map((): BoxAdmission => "admitted");
 		decisions[reference] = blockDecisions;
 		for (const item of (items[reference] ?? []).filter((item) => !item.pinned)) {
 			const next = [...selected, item];
@@ -82,7 +85,7 @@ export const admitDynamicBlocks = (input: {
 			const reason = cost(block([item])) > allowance ? "oversized"
 				: cost(block(next)) > allowance ? "allowance"
 					: fits(trial(lore, nextBoxes)) ? "admitted" : "context-limit";
-			blockDecisions.set(item.text, reason);
+			blockDecisions[item.index] = reason;
 			if (reason === "admitted") { selected.push(item); boxes[reference] = nextBoxes[reference]; }
 		}
 	}

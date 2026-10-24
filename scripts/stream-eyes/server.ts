@@ -4,7 +4,7 @@ import { createContract } from "../../src/server/contract";
 import { openInitializedDatabase } from "../../src/server/database/database";
 import { seed } from "../../src/server/database/seed";
 import { createConnectionSettingsModule } from "../../src/server/connection-settings";
-import { createMemorySettingsModule } from "../../src/server/memory/settings";
+import { createMemorySettingsModule } from "../../src/boxes/memory/server-settings";
 import { initializeConnectionSecretKey } from "../../src/server/connection-secrets";
 import { registerWireFormats } from "../../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../../src/server/model-client";

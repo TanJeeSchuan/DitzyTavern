@@ -30,3 +30,8 @@ export async function startBoxCatchUp(conversationId: number, box: DigestBoxId):
 export async function cancelBoxCatchUp(conversationId: number, box: DigestBoxId): Promise<BoxDigest | null> {
 	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].delete(), readOf(box), notFoundOutcome));
 }
+
+/** @approved Digesting one passage resolves with the read as it stands; the passage's record lands later. */
+export async function digestBoxPassage(conversationId: number, box: DigestBoxId, variantId: number): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).digest.post({ variantId }), readOf(box), notFoundOutcome));
+}

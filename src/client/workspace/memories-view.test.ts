@@ -21,13 +21,10 @@ const source = (messageId: number, claims: MemoryClaim[], selected = true): Memo
 	messageId,
 	variantId: messageId * 10,
 	selected,
-	status: "complete",
-	error: null,
-	revision: 1,
-	ownership: "automatic",
-	sourceChanged: false,
 	claims,
-	indexing: { status: "ready", pendingCount: 0, error: null },
+	overridden: false,
+	digested: true,
+	error: null,
 });
 
 const path = (...messageIds: number[]) =>
@@ -35,13 +32,15 @@ const path = (...messageIds: number[]) =>
 
 const memories = (cast: ConversationMemories["cast"]): ConversationMemories => ({
 	revision: 1,
-	cursor: "0",
 	labelRevision: 1,
 	identities: {},
 	cast,
 	labelMerges: [],
 	sources: [],
 	path: [],
+	digestReady: true,
+	embeddingReady: true,
+	catchUp: null,
 });
 
 const cast = memoryCastMembers(

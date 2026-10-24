@@ -1,153 +1,120 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MemorySourceTarget } from "../../shared/contract/memory";
-import {
-	cancelMemoryCatchup,
-	correctMemory,
-	loadConversationMemories,
-	loadMemoryAllowance,
-	loadMemoryCatchup,
-	loadMemoryChanges,
-	resetAndReextract,
-	retryMemoryIndex,
-	startMemoryCatchup,
-	type ConversationMemories,
-	type ConversationMemoryAllowance,
-	type MemoryCatchup,
-	type MemoryCatchupResult,
-} from "../memories";
+import type { ConversationSummary } from "../conversation";
+import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
+import { cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } from "../box-digest";
+import { loadConversationMemories, loadMemoryAllowance, type ConversationMemories, type ConversationMemoryAllowance } from "../memories";
+import { labelledMemories, type MemoryClaim } from "./memories-view";
 
 type Source = ConversationMemories["sources"][number];
-type MemoryData = { memories: ConversationMemories; catchup: MemoryCatchup | null; settings: ConversationMemoryAllowance };
+type MemoryData = { memories: ConversationMemories; settings: ConversationMemoryAllowance };
 export type ClaimDraft = { claim: string; attribution: string; people: string[] };
-const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
-const targetOf = ({ messageId, variantId, revision }: Source): MemorySourceTarget => ({ messageId, variantId, expectedRevision: revision });
-const inFlight = (status: string) => status === "pending" || status === "running";
-const workInFlight = (data: MemoryData | undefined) =>
-	data !== undefined
-	&& (data.catchup?.state === "running" || data.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)));
 
-export function useConversationMemories(conversationId: number, conversationRevision: number) {
+/** @approved The Chat's Memories, labelled for display. `poll` keeps an open panel current while digests land, faster during catch-up. */
+export function useConversationMemories(conversationId: number, conversationRevision: number, { poll = false } = {}) {
 	const client = useQueryClient();
 	const queryKey = useMemo(() => ["memories", conversationId] as const, [conversationId]);
 	const query = useQuery({
 		queryKey,
-		queryFn: async ({ signal }) => {
-			const [memories, catchup, settings] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryCatchup(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
-			return { memories, catchup, settings };
+		queryFn: async ({ signal }): Promise<MemoryData> => {
+			const [memories, settings] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
+			return { memories, settings };
 		},
+		refetchInterval: (current) => !poll ? false : current.state.data?.memories.catchUp == null ? 2_500 : 750,
+		refetchIntervalInBackground: false,
 	});
 	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
-	useQuery({
-		queryKey: ["memory-changes", conversationId],
-		enabled: workInFlight(query.data),
-		refetchInterval: 5000,
-		queryFn: async ({ signal }) => {
-			const cached = client.getQueryData<MemoryData>(queryKey);
-			if (!cached) return null;
-			const since = cached.memories.cursor;
-			const [changes, catchup] = await Promise.all([
-				loadMemoryChanges(conversationId, since, signal),
-				cached.catchup?.state === "running" ? loadMemoryCatchup(conversationId, signal) : cached.catchup,
-			]);
-			const current = client.getQueryData<MemoryData>(queryKey);
-			if (current?.memories.cursor !== since) return null;
-			if (changes.revision !== current.memories.revision || changes.labelRevision !== current.memories.labelRevision) { await refresh(); return null; }
-			const merged = new Map(current.memories.sources.map((source) => [source.variantId, source]));
-			for (const source of changes.sources) if (source.revision >= (merged.get(source.variantId)?.revision ?? 0)) merged.set(source.variantId, source);
-			const sources = [...merged.values()];
-			client.setQueryData<MemoryData>(queryKey, { ...current, catchup, memories: { ...current.memories, cursor: changes.cursor, sources } });
-			return null;
-		},
-	});
-	const memories = query.data?.memories ?? null;
-	const catchup = query.data?.catchup ?? null;
-	const settings = query.data?.settings ?? null;
-	const status = query.isPending ? "loading" : query.isError ? query.data === undefined ? "failed" : "stale" : "ready";
 	useEffect(() => { void refresh(); }, [conversationRevision, refresh]);
 	const update = useCallback(async (change: (current: MemoryData) => MemoryData) => {
 		await client.cancelQueries({ queryKey });
 		client.setQueryData<MemoryData>(queryKey, (current) => current && change(current));
 	}, [client, queryKey]);
+	const stored = query.data?.memories ?? null;
+	const memories = useMemo(() => stored && labelledMemories(stored), [stored]);
+	return {
+		status: query.isPending ? "loading" : query.isError ? query.data === undefined ? "failed" : "stale" : "ready",
+		memories,
+		stored,
+		settings: query.data?.settings ?? null,
+		refresh,
+		settingsSaved: (saved: ConversationMemoryAllowance) => update((current) => ({ ...current, settings: saved })),
+		identitySaved: async (updated: ConversationMemories) => {
+			await update((current) => ({ ...current, memories: updated }));
+			await refresh();
+		},
+		labelsMerged: (updated: ConversationMemories) => update((current) => ({ ...current, memories: updated })),
+	};
+}
+
+const conflictNotice = "The Chat changed elsewhere. Review the current Memories before changing them again.";
+
+// @approved
+//  The panel's Memory work. A claim edit or removal writes the passage's whole
+//  claims list as its Writer record, and reset drops that record so the
+//  automatic claims return; both are Conversation commands. An edit or
+//  removal changes the stored claims it read, not their labelled display, and
+//  names them as `expected`, so the host refuses it when a digest replaced
+//  them meanwhile. Remembering a passage and catch-up queue host digests,
+//  whose records the polled read picks up.
+export function useMemoryActions({ conversationId, conversation, onConversationChange, stored, refresh }: {
+	conversationId: number;
+	conversation: ConversationSummary;
+	onConversationChange: (conversation: ConversationSummary) => void;
+	stored: ConversationMemories | null;
+	refresh: () => Promise<void>;
+}) {
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
 	const [catchupBusy, setCatchupBusy] = useState(false);
-	const [editing, setEditing] = useState<{ variantId: number; revision: number; index: number } | null>(null);
+	const [editing, setEditing] = useState<{ variantId: number; index: number; claims: MemoryClaim[] } | null>(null);
 	const [resetTarget, setResetTarget] = useState<Source | null>(null);
-	const replace = useCallback((collection: Source) => update((current) => ({
-		...current,
-		memories: { ...current.memories, sources: current.memories.sources.map((item) => item.variantId === collection.variantId && item.revision <= collection.revision ? collection : item) },
-	})), [update]);
-	const act = useCallback(async (source: Source, task: () => Promise<string | null>) => {
+	const act = async (source: Source, task: () => Promise<boolean>) => {
 		setBusy((current) => new Set(current).add(source.variantId)); setNotice(null);
-		try { setNotice(await task()); } finally { setBusy((current) => { const next = new Set(current); next.delete(source.variantId); return next; }); }
-	}, []);
-	const reextract = useCallback((source: Source) => act(source, async () => {
-		const result = await resetAndReextract(conversationId, targetOf(source));
-		if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory work could not be queued.";
-		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
-		await refresh();
-		return result.outcome === "conflict" ? conflictNotice : null;
-	}), [act, conversationId, refresh, replace]);
-	const catchupAction = async (task: () => Promise<MemoryCatchupResult>) => {
-		setCatchupBusy(true); setNotice(null);
-		try {
-			const result = await task();
-			if (result.outcome === "available") { await update((current) => ({ ...current, catchup: result.value.run })); await refresh(); }
-			else setNotice(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "History catch-up could not be changed.");
-		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
+		try { return await task(); }
+		catch { setNotice(CONVERSATION_UNREACHABLE_NOTICE); return false; }
+		finally { setBusy((current) => { const next = new Set(current); next.delete(source.variantId); return next; }); }
 	};
-	const labels = useMemo(() => new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`])), [memories?.path]);
-	const settleCorrection = useCallback(async (
-		result: Awaited<ReturnType<typeof correctMemory>>,
-		afterReplace?: () => void,
-	) => {
-		if (result.outcome !== "conflict" && result.outcome !== "available") {
-			return result.outcome === "invalid" || result.outcome === "unusable"
-				? result.reason
-				: "The Memory correction could not be saved.";
-		}
-		await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
-		afterReplace?.();
-		return result.outcome === "conflict" ? conflictNotice : null;
-	}, [replace]);
-	const actions = useMemo(() => ({
-		label: (messageId: number) => labels.get(messageId) ?? "Earlier Message",
-		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
-		retryIndex: (source: Source) => void act(source, async () => {
-			const result = await retryMemoryIndex(conversationId, targetOf(source));
-			if (result.outcome !== "conflict" && result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory indexing could not be retried.";
-			await replace(result.outcome === "conflict" ? result.collection : result.value.collection);
-			await refresh();
-			return result.outcome === "conflict" ? conflictNotice : null;
-		}),
-		edit: (source: Source, index: number | null) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
-		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => settleCorrection(
-			await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft }),
-			() => setEditing(null),
-		)); },
-		remove: (source: Source, index: number) => void act(source, async () => settleCorrection(
-			await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" }),
-		)),
-	}), [act, conversationId, editing, labels, reextract, refresh, replace, settleCorrection]);
-
+	const surface = { conversationId, revision: () => conversation.revision, onConversationChange, setNotice };
+	const options = { notices: { conflict: conflictNotice }, onApplied: () => void refresh() };
+	const storedClaims = (source: Source) => stored?.sources.find(({ variantId }) => variantId === source.variantId)?.claims ?? [];
+	const writeClaims = (source: Source, read: MemoryClaim[], claims: MemoryClaim[]) => act(source, async () => {
+		const applied = await runConversationCommand(surface, { type: "set-box-record", box: "memory", messageId: source.messageId, variantId: source.variantId, record: { claims }, expected: { claims: read } }, options);
+		if (!applied) void refresh();
+		return applied;
+	});
+	const queued = async (read: Promise<BoxDigest | null>) => {
+		if (await read === null) setNotice(CONVERSATION_UNREACHABLE_NOTICE);
+		await refresh();
+		return true;
+	};
+	const catchUp = async (task: () => Promise<BoxDigest | null>) => {
+		setCatchupBusy(true); setNotice(null);
+		try { await queued(task()); } catch { setNotice(CONVERSATION_UNREACHABLE_NOTICE); } finally { setCatchupBusy(false); }
+	};
 	return {
-		status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,
-		settingsSaved: (saved: ConversationMemoryAllowance) => update((current) => ({ ...current, settings: saved })),
-		startCatchup: () => catchupAction(() => startMemoryCatchup(conversationId)),
-		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
-		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },
+		notice, busy, catchupBusy, editing, resetTarget,
+		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, "memory", source.variantId))),
+		edit: (source: Source, index: number | null) => {
+			const claims = storedClaims(source);
+			setEditing(index === null || claims[index] === undefined ? null : { variantId: source.variantId, index, claims });
+		},
+		save: (source: Source, draft: ClaimDraft) => {
+			if (editing?.variantId !== source.variantId) return;
+			const { index, claims } = editing;
+			void writeClaims(source, claims, claims.map((claim, position) => position === index ? { ...claim, ...draft, writerMaintained: true } : claim)).then((applied) => { if (applied) setEditing(null); });
+		},
+		remove: (source: Source, index: number) => {
+			const claims = storedClaims(source);
+			void writeClaims(source, claims, claims.filter((_, position) => position !== index));
+		},
+		requestReset: (source: Source) => setResetTarget(source),
+		confirmReset: () => {
+			if (resetTarget) void act(resetTarget, () => runConversationCommand(surface, { type: "reset-box-record", box: "memory", messageId: resetTarget.messageId, variantId: resetTarget.variantId }, options));
+			setResetTarget(null);
+		},
 		cancelReset: () => setResetTarget(null),
-		identitySaved: async (updated: ConversationMemories) => {
-			await update((current) => ({ ...current, memories: updated }));
-			setEditing(null);
-			setNotice(null);
-			await refresh();
-		},
-		labelsMerged: async (updated: ConversationMemories, destination: string) => {
-			await update((current) => ({ ...current, memories: updated }));
-			setEditing(null);
-			setNotice(`Labels merged into ${destination}.`);
-		},
+		announce: setNotice,
+		startCatchup: () => catchUp(() => startBoxCatchUp(conversationId, "memory")),
+		cancelCatchup: () => catchUp(() => cancelBoxCatchUp(conversationId, "memory")),
 	};
 }
