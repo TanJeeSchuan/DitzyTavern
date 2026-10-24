@@ -12,7 +12,7 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 			title="Semantic Triggers"
 			description="Choose a Decision Model to match Lore Entries by their Semantic Triggers. Clear the selection for keyword-only matching."
 			pickerLabel="Semantic Trigger Decision Model"
-			pickerHelper="System One connections only. Memory has its own selection."
+			pickerHelper="System One connections only. Boxes have their own selections."
 			stateDescription="Long scenes are split so the model reads the whole Lore Scan Window."
 			onBack={onBack}
 		>

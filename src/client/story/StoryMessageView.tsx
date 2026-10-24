@@ -1,7 +1,6 @@
 import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import {
-	Brain,
 	Dices,
 	ChevronDown,
 	ChevronLeft,
@@ -52,7 +51,7 @@ export function StoryMessageView({
 	onReroll,
 	onMovesChange,
 	onInspect,
-	onMemories,
+	boxActions,
 	onDelete,
 	generationControls,
 	lens,
@@ -88,7 +87,7 @@ export function StoryMessageView({
 	onReroll?: (messageId: number) => void;
 	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
-	onMemories?: (messageId: number) => void;
+	boxActions?: ReactNode;
 	onDelete?: (messageId: number) => void;
 	// @approved
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
@@ -234,15 +233,7 @@ export function StoryMessageView({
 							<Info aria-hidden="true" /> Details
 						</button>
 					)}
-					{onMemories !== undefined && (
-						<button
-							className="edit-action"
-							type="button"
-							onClick={() => onMemories(message.id)}
-						>
-							<Brain aria-hidden="true" /> Memories
-						</button>
-					)}
+					{boxActions}
 					{onDelete !== undefined && (
 						<button
 							className="edit-action delete-action"

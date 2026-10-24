@@ -1,4 +1,7 @@
-import { AuthorNotePanel } from "../box-windows/registry";
+import type { PromptBoxReference } from "../../shared/contract/box";
+import { BoxBoundary } from "../box-windows/BoxBoundary";
+import { boxClients, boxPresent, boxTitle } from "../box-windows/registry";
+import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -13,7 +16,6 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import { GenerationPanel } from "./GenerationPanel";
 import { LorebookPanel } from "./LorebookPanel";
-import { MemorySettingsEditor } from "./MemorySettingsEditor";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import type { GenerationPanelDraft } from "./GenerationPanel";
 import type { SplitInspector } from "./panel-coordination";
@@ -25,13 +27,13 @@ import type { PrimaryPanel } from "./types";
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.
 const sharedHeaderTitles = {
-	"author-note": "Author Note",
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
-	memory: "Memory",
 	settings: "Settings",
-} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | null>, string>;
+} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | PromptBoxReference | `box-settings:${string}` | null>, string>;
+const isBoxSettings = (panel: PrimaryPanel): panel is `box-settings:${string}` => panel?.startsWith("box-settings:") === true;
+const isBoxPanel = (panel: PrimaryPanel): panel is PromptBoxReference => panel?.startsWith("box:") === true;
 
 export function PrimaryPanelView({
 	panel,
@@ -72,9 +74,13 @@ export function PrimaryPanelView({
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
+	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
+	const BoxSettings = settingsBox === undefined ? undefined : boxClients().get(settingsBox)?.Settings;
+	const box = isBoxPanel(panel) ? panel.slice("box:".length) : undefined;
+	const BoxPanel = box === undefined || conversation === null || !boxPresent(conversation, box) ? undefined : boxClients().get(box)?.PrimaryPanel;
 	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
-		: sharedHeaderTitles[panel];
+		: isBoxSettings(panel) ? boxTitle(settingsBox!) : isBoxPanel(panel) ? boxTitle(panel.slice("box:".length)) : sharedHeaderTitles[panel];
 	return (
 		<aside
 			className="primary-panel"
@@ -102,14 +108,16 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{panel === "author-note" && conversation?.boxes["author-note"] === "enabled" && (
-						<AuthorNotePanel
-							key={conversation.id}
-							conversation={conversation}
-							onConversationChange={onConversationChange}
-							disabled={mutationsDisabled}
-						/>
-					)}
+					{BoxPanel !== undefined && box !== undefined && conversation !== null && <>
+						<BoxOffNotice conversation={conversation} box={box} className="mx-5 mt-5 w-auto" />
+						<BoxBoundary key={`${conversation.id}:${box}`} box={box}>
+							<BoxPanel
+								conversation={conversation}
+								onConversationChange={onConversationChange}
+								disabled={mutationsDisabled}
+							/>
+						</BoxBoundary>
+					</>}
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharactersPanel
@@ -132,9 +140,9 @@ export function PrimaryPanelView({
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>
 					)}
-					{panel === "memory" && (
+					{BoxSettings !== undefined && settingsBox !== undefined && (
 						<div className="panel-fill">
-							<MemorySettingsEditor />
+							<BoxBoundary key={settingsBox} box={settingsBox}><BoxSettings /></BoxBoundary>
 						</div>
 					)}
 					{panel === "connections" && (

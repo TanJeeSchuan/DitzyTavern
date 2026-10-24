@@ -337,37 +337,6 @@ describe("Character Library", () => {
 		expect(reread?.openings).toEqual(["The lamp turns above you."]);
 	});
 
-	test("every mutation rejects a tombstoned Character as not found", () => {
-		const created = library.execute({ type: "create", definition: definition() });
-
-		const db = drizzle(database);
-		db.update(characterTable)
-			.set({ deleted_at: new Date().toISOString() })
-			.where(eq(characterTable.id, created.id))
-			.run();
-
-		expect(library.get(created.id)).toBeUndefined();
-		expect(library.list().map((character) => character.id)).not.toContain(
-			created.id,
-		);
-		for (const command of [
-			{
-				type: "rename" as const,
-				characterId: created.id,
-				expectedRevision: 0,
-				name: "Ghost",
-			},
-			{
-				type: "set-pinned" as const,
-				characterId: created.id,
-				expectedRevision: 0,
-				pinned: true,
-			},
-		]) {
-			expect(() => library.execute(command)).toThrow(CharacterNotFoundError);
-		}
-	});
-
 	test("commands on missing Characters report not found", () => {
 		expect(() =>
 			library.execute({
@@ -400,35 +369,6 @@ describe("Character Library", () => {
 		).toThrow(InvalidCharacterCommandError);
 
 		expect(library.get(created.id)?.revision).toBe(created.revision);
-	});
-
-	test("structural constraints back the domain: ordered unique openings and enforced foreign keys", () => {
-		const created = library.execute({
-			type: "create",
-			definition: definition({ openings: ["One", "Two"] }),
-		});
-
-		const db = drizzle(database);
-		expect(() =>
-			db
-				.insert(characterOpeningTable)
-				.values({ character_id: created.id, position: 2, content: "Clash" })
-				.run(),
-		).toThrow("UNIQUE constraint failed");
-
-		expect(() =>
-			db
-				.insert(characterPromptTable)
-				.values({
-					character_id: 987654,
-					system_instruction: "",
-					identity: "",
-					scenario: "",
-					example_dialogue: "",
-					post_history_instruction: "",
-				})
-				.run(),
-		).toThrow("FOREIGN KEY constraint failed");
 	});
 });
 

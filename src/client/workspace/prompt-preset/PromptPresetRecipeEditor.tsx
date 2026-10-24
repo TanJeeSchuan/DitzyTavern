@@ -11,12 +11,12 @@ import {
 	movePromptPresetBlock,
 } from "../../prompt-preset-library";
 import { isSingleUseReference, type ConversationPromptPreset, type PromptBlockReference } from "../../../shared/contract/prompt-preset";
-import { slotLabels } from "../../prompt-preset-presentation";
-import { boxIds, boxReference } from "../../../shared/contract/box";
+import { slotLabel } from "../../prompt-preset-presentation";
+import { boxDescriptors, boxReference } from "../../../shared/contract/box";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
 
-const addableReferences = [
+const addableReferences = (): PromptBlockReference[] => [
 	"model-system-instruction",
 	"human-identity",
 	"model-identity",
@@ -25,8 +25,8 @@ const addableReferences = [
 	"history",
 	"model-post-history-instruction",
 	"lore",
-	...boxIds.map(boxReference),
-] satisfies readonly PromptBlockReference[];
+	...[...boxDescriptors().keys()].map(boxReference),
+];
 
 const AddBlockMenu = ({
 	disabled,
@@ -58,13 +58,13 @@ const AddBlockMenu = ({
 					].join(" ")}
 				>
 					<DropdownMenu.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Reference</DropdownMenu.Label>
-					{addableReferences.filter((reference) => !(isSingleUseReference(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (
+					{addableReferences().filter((reference) => !(isSingleUseReference(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (
 						<DropdownMenu.Item
 							key={reference}
 							className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
 							onSelect={() => onAddReference(reference)}
 						>
-							{slotLabels[reference]}
+							{slotLabel(reference)}
 						</DropdownMenu.Item>
 					))}
 					<DropdownMenu.Separator className="my-1 h-px bg-border" />

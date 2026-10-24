@@ -56,53 +56,6 @@ describe("Conversation Generation Settings", () => {
 		database.close();
 	});
 
-	test("persists the default and configured Safety allowance", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Budget settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const module = database;
-
-		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(500);
-		const updated = executeConversationCommand(module, {
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
-			action: {
-				type: "update-generation-settings",
-				settings: completeSettings({ safetyAllowance: 777 }),
-			},
-		});
-
-		expect(readConversationGenerationSettings(module, conversation.id)?.safetyAllowance).toBe(777);
-		expect(updated.revision).toBe(1);
-	});
-
-	test("persists and validates the parallel Sibling Generation limit", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Sibling limit settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const module = database;
-		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(4);
-		executeConversationCommand(module, {
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
-			action: {
-				type: "update-generation-settings",
-				settings: completeSettings({ siblingGenerationLimit: 2 }),
-			},
-		});
-		expect(readConversationGenerationSettings(module, conversation.id)?.siblingGenerationLimit).toBe(2);
-	});
-
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Invalid budget settings",

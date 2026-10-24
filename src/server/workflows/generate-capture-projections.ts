@@ -71,7 +71,7 @@ export function capturedAcceptanceFields(
 	return {
 		seed: capture.preparation.seed,
 		boxRecords: Value.Parse(boxRecords, Object.fromEntries(Object.entries(capture.preparation.boxes)
-			.flatMap(([reference, result]) => result.record === undefined ? [] : [[reference.slice(4), { instance: new Map(Object.entries(capture.preparation.boxInstances)).get(reference.slice(4)), record: result.record }]]))),
+			.flatMap(([reference, result]) => result?.record === undefined ? [] : [[reference.slice(4), { instance: new Map(Object.entries(capture.preparation.boxInstances)).get(reference.slice(4)), record: result.record }]]))),
 		conversationId: input.conversationId,
 		timestamp: input.timestamp,
 		humanParticipantId: capture.control.humanParticipantId,

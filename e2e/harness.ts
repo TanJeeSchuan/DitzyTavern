@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -9,10 +9,14 @@ import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } 
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+/** @approved Builds the app, then each fixture plugin's client, as its author would with `box:build`. */
 export const buildClient = async () => {
-	const build = spawn("bun", ["run", "build"], { cwd: ROOT, stdio: "inherit" });
-	const [code] = await once(build, "exit");
-	if (code !== 0) throw new Error(`Build exited ${code}`);
+	const fixtures = join(ROOT, "e2e", "fixtures", "boxes");
+	for (const args of [["build"], ...readdirSync(fixtures).map((id) => ["box:build", join(fixtures, id)])]) {
+		const build = spawn("bun", ["run", ...args], { cwd: ROOT, stdio: "inherit" });
+		const [code] = await once(build, "exit");
+		if (code !== 0) throw new Error(`${args.join(" ")} exited ${code}`);
+	}
 };
 
 export type E2eServer = Awaited<ReturnType<typeof startE2eServer>>;
@@ -27,8 +31,17 @@ const stopChild = async (child: ChildProcess, signal: NodeJS.Signals) => {
 export const startE2eServer = async () => {
 	let stderr = "";
 	const directory = mkdtempSync(join(tmpdir(), "ditzy-e2e-"));
+	// @approved
+	//  The plugin folder sits under the repository, where a Box's
+	// `@/box-sdk` imports and packages resolve, as they do from `data/boxes`.
+	mkdirSync(join(ROOT, ".scratch"), { recursive: true });
+	const boxes = mkdtempSync(join(ROOT, ".scratch", "e2e-boxes-"));
+	const remove = () => {
+		rmSync(directory, { recursive: true, force: true });
+		rmSync(boxes, { recursive: true, force: true });
+	};
 	const launch = async (env: Record<string, string> = {}) => {
-		const child = spawn("bun", ["e2e/server.ts"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, E2E_ROOT: directory, ...env } });
+		const child = spawn("bun", ["e2e/server.ts"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, E2E_ROOT: directory, E2E_BOXES: boxes, ...env } });
 		const killOnExit = () => { child.kill("SIGKILL"); };
 		const removeCleanup = () => { process.off("exit", killOnExit); };
 		process.once("exit", killOnExit);
@@ -49,7 +62,7 @@ export const startE2eServer = async () => {
 			return { child, url: await ready.promise };
 		} catch (error) {
 			await stopChild(child, "SIGKILL");
-			rmSync(directory, { recursive: true, force: true });
+			remove();
 			throw error;
 		} finally {
 			clearTimeout(timer);
@@ -62,7 +75,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | string | number | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -78,6 +91,7 @@ export const startE2eServer = async () => {
 		checkpointClock: (now: number) => call("checkpoint-clock", now),
 		updates: (scenario: UpdateScenario) => call("updates", scenario),
 		release: () => call("release"),
+		installBox: (id: string) => call("install-box", id),
 		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (mode: "crash" | "graceful") => {
@@ -93,7 +107,7 @@ export const startE2eServer = async () => {
 		},
 		stop: async () => {
 			await stopChild(child, "SIGTERM");
-			rmSync(directory, { recursive: true, force: true });
+			remove();
 		},
 	};
 };

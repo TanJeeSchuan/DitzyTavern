@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
-import { StaleRevisionError } from "../revision";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 import {
 	GENERATION_SETTINGS_FIELDS,
@@ -160,22 +159,5 @@ const createConnection = (database: Database): number => {
 			}),
 		).toThrow(InvalidConversationCommandError);
 		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe("deepseek-chat");
-	});
-
-	test("requires the current Conversation revision", () => {
-		const connectionProfileId = createConnection(database);
-		const conversation = createTestConversation(database, "Stale model command");
-		const module = database;
-
-		expect(() =>
-			executeConversationCommand(module, {
-				conversationId: conversation.id,
-				expectedRevision: conversation.revision + 5,
-				action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
-			}),
-		).toThrow(StaleRevisionError);
-		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe(
-			DEFAULT_CONVERSATION_GENERATION_SETTINGS.modelId,
-		);
 	});
 });

@@ -2,10 +2,13 @@ import { registerWireFormats } from "../shared/contract/wire-formats";
 import { createApp } from "./app";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
+import { boxFolders, loadBoxes } from "./box/registry";
 
 registerWireFormats();
 initializeConnectionSecretKey();
-const { app, close } = await createApp({ database: openInitializedDatabase() });
+const database = openInitializedDatabase();
+await loadBoxes(boxFolders, database);
+const { app, close } = await createApp({ database });
 app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: 3000 });
 
 const shutdown = () => {

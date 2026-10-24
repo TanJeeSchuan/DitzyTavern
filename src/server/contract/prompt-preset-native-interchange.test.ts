@@ -74,9 +74,6 @@ describe("Native Prompt Preset interchange", () => {
 			"box:memory",
 			"history",
 		]);
-		expect(roundTrip).not.toHaveProperty("id");
-		expect(roundTrip).not.toHaveProperty("sourceName");
-		expect(roundTrip).not.toHaveProperty("content", "I am Maren.");
 		expect(resolved?.slots[1]).toMatchObject({ sourceName: "Maren", content: "I am {{self}}." });
 	});
 
@@ -90,6 +87,14 @@ describe("Native Prompt Preset interchange", () => {
 			],
 		});
 		expect(result.status).toBe(422);
+		expect(await listPresets(routes.library)).toHaveLength(1);
+	});
+
+	test("rejects a reference to a Box that is not registered", async () => {
+		const routes = createRoutes(database);
+		const result = await importPreset(routes.library, { name: "Unknown Box", slots: [{ reference: "box:nope", enabled: true, role: "system", content: "" }] });
+		expect(result.status).toBe(422);
+		expect(result.body).toMatchObject({ reason: "There is no Box for box:nope." });
 		expect(await listPresets(routes.library)).toHaveLength(1);
 	});
 

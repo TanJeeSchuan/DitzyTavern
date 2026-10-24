@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fillRaceField, initialRaceSetup } from "./shared-data";
-import { raceBox } from "./server";
+import raceBox from "./server";
 import { initialRaceState } from "./server-engine";
 
 const setup = {

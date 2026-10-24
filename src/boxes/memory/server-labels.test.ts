@@ -25,7 +25,7 @@ const addSource = (database: Database, conversationId: number, position: number,
 };
 
 const merge = (database: Database, conversationId: number, labels: string[], destination: string, expectedRevision = readConversationMemories(database, conversationId).labelRevision) =>
-	memoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversationId}/memories/merge-labels`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, destination, expectedRevision }) }));
+	memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/memories/merge-labels`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ labels, destination, expectedRevision }) }));
 
 const shown = (memories: ConversationMemories) => memories.sources.map((source) => source.claims?.map((claim) => applyMemoryPeople(claim.people, memories.cast, memories.identities, memories.labelMerges)));
 

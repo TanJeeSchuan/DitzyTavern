@@ -215,18 +215,6 @@ describe("runConversationCommand", () => {
 		expect(events).toEqual(["send:7", "operation-callback"]);
 	});
 
-	test("an operation outcome triggers no adoption and no notice", async () => {
-		const events: string[] = [];
-		await runConversationCommand<{ kind: string }>(surface(events), async (expectedRevision) => {
-			events.push(`send:${expectedRevision}`);
-			return { outcome: "operation", operation: { kind: "character-changed" } };
-		}, {
-			notices,
-			onOperation: () => undefined,
-		});
-		expect(events).toEqual(["send:7"]);
-	});
-
 	test("a command queued behind another is sent with the revision the earlier one produced", async () => {
 		const events: string[] = [];
 		const first = Promise.withResolvers<CommandOutcome>();

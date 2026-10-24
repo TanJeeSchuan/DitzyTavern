@@ -32,9 +32,15 @@ export async function createApp(options: AppOptions) {
 
 	const serveIndex = () => Bun.file("dist/index.html");
 	const updates = createUpdateChecker(database, options.updates);
+	// @approved
+	//  Hashed assets are cached for a day. The host chunks keep their names
+	// across builds, as Box client modules do, so a browser revalidates them
+	// rather than run a stale one against a newer host. The Box routes serve
+	// the Box client modules.
 	const app = createContract(database, options, artifactDirectory, updates)
 		.get("/", serveIndex)
-		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true }))
+		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true, ignorePatterns: [/[\\/]dist[\\/](?:host|boxes)[\\/]/] }))
+		.use(await staticPlugin({ assets: "dist/host", prefix: "/host", alwaysStatic: true, directive: "no-cache", maxAge: null }))
 		.onError(({ code, path }) => {
 			if (code === "NOT_FOUND" && !path.startsWith("/api/")) return serveIndex();
 		});

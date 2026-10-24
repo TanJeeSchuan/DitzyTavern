@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { boxCatchUp, invalidOutcome, numericWire } from "../../box-sdk/shared";
+import { boxCatchUp, invalidOutcome, numericWire } from "@/box-sdk/shared";
 
 // @approved
 //  A Writer override reaches storage through `set-box-record`, so the record

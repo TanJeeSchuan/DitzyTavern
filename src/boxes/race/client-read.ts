@@ -1,5 +1,5 @@
 import { raceRead, type RaceRead } from "./contract";
-import { api, foundOrNull, notFoundOutcome, requestOutcome } from "../../box-sdk/client";
+import { api, foundOrNull, notFoundOutcome, requestOutcome } from "@/box-sdk/client";
 
 export async function loadRace(conversationId: number, signal?: AbortSignal): Promise<RaceRead | null> {
 	return foundOrNull(await requestOutcome(

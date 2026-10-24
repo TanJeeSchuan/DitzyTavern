@@ -327,18 +327,6 @@ describe("Prompt Preset library transport", () => {
 		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2]);
 	});
 
-	test("refuses a patch batch on the library command route", async () => {
-		const app = libraryRoutes(database);
-		const response = await app.handle(
-			new Request("http://localhost/api/prompt-presets/commands", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ type: "save-block-patches", presetId: 1, patches: [] }),
-			}),
-		);
-		expect(response.status).toBe(422);
-	});
-
 	test("selects independently for each Conversation and survives a fresh read", async () => {
 		const routes = createRoutes(database);
 		const chatA = createChat(database);

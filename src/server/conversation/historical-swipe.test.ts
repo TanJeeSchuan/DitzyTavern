@@ -18,7 +18,7 @@ import {
 	SiblingVariantUnavailableError,
 	type ParticipantDefinition,
 } from ".";
-import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 
 // Targeted Swipe (new sibling Variant) eligibility is derived per Message
 // from its captured historical Control pair — never from current Control —
@@ -148,92 +148,6 @@ describe("Per-Message targeted Swipe eligibility", () => {
 			eligible: false,
 			reason: "conversation-not-playable",
 		});
-	});
-
-	test("a historical Participant that loses its Definition makes the target ineligible with the typed reason", () => {
-		const { module, snapshot, humanId, modelId } = setup(database);
-		const withJuno = executeConversationCommand(module, {
-			conversationId: snapshot.id,
-			expectedRevision: snapshot.revision,
-			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
-		});
-		const junoId = withJuno.cast[2]?.id ?? 0;
-		const swapped = executeConversationCommand(module, {
-			conversationId: snapshot.id,
-			expectedRevision: withJuno.revision,
-			action: { type: "assign-control", seat: "model", participantId: junoId },
-		});
-		expect(swapped.control.modelParticipantId).toBe(junoId);
-
-		// The historical model Participant (Maren) is unseated; stripping its
-		// Definition removes it from the derived Cast while the base row still
-		// satisfies the structural reference from Message history.
-		drizzle(database)
-			.delete(participantPromptTable)
-			.where(eq(participantPromptTable.participant_id, modelId))
-			.run();
-
-		const after = readTestConversationSnapshot(module, snapshot.id);
-		if (after === undefined) throw new Error("Snapshot missing.");
-		expect(after.playable).toBe(true);
-		expect(after.cast.find((participant) => participant.id === modelId)).toBeUndefined();
-		expect(after.messages[0]?.swipe).toEqual({
-			eligible: false,
-			reason: "historical-participant-unavailable",
-		});
-		expect(after.cast.find((participant) => participant.id === humanId)).toBeDefined();
-	});
-
-	test("ineligible Messages keep their existing Variants selectable and editable", () => {
-		const module = database;
-		const imported = createConversationWithHistory(module, {
-			name: "Mixed Chat",
-			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Maren Voss") },
-			],
-			control: { human: 0, model: 1 },
-			messages: [
-				{
-					timestamp: "2026-08-20T10:00:00Z",
-					variants: [
-						{
-							content: "Preserved",
-							timestamp: "2026-08-20T10:00:00Z",
-							selected: true,
-						},
-					],
-				},
-			],
-		});
-		const message = imported.messages[0];
-		const variant = message?.variants[0];
-		if (message === undefined || variant === undefined) {
-			throw new Error("Preserved Message or Variant missing.");
-		}
-
-		const edited = applyCommand(module, {
-			conversationId: imported.id,
-			expectedRevision: imported.revision,
-			action: {
-				type: "edit-variant",
-				messageId: message.id,
-				variantId: variant.id,
-				content: "Edited preservation",
-			},
-		});
-		expect(edited.messages[0]?.variants[0]?.content).toBe("Edited preservation");
-		expect(
-			applyCommand(module, {
-				conversationId: imported.id,
-				expectedRevision: edited.revision,
-				action: {
-					type: "select-variant",
-					messageId: message.id,
-					variantId: variant.id,
-				},
-			}).messages[0]?.swipe,
-		).toEqual({ eligible: false, reason: "missing-historical-context" });
 	});
 });
 

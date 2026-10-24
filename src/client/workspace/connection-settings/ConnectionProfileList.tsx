@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
-import { boxDescriptors, type BoxDecisionSettings, type DigestBoxId } from "../../../shared/contract/box";
+import type { BoxDecisionSettings, BoxDescriptor, BoxId } from "../../../shared/contract/box";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 /** @approved The Decision Model settings the Connections list previews. */
@@ -21,10 +21,10 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 	activeProfileId: number | null;
 	semanticTriggers: SettingsPreview<SemanticTriggerSettings>;
 	onOpenSemanticTrigger: () => void;
-	boxDecisions: readonly { box: DigestBoxId; editor: SettingsPreview<BoxDecisionSettings> }[];
-	onOpenBoxDecision: (box: DigestBoxId) => void;
+	boxDecisions: readonly { box: BoxId; label: string; decision: NonNullable<BoxDescriptor["decision"]>; editor: SettingsPreview<BoxDecisionSettings> }[];
+	onOpenBoxDecision: (box: BoxId) => void;
 }) {
-	const boxes = boxDecisions.map(({ box }) => boxDescriptors[box].label);
+	const boxes = boxDecisions.map(({ label }) => label);
 	const roles = ["Semantic Triggers", ...boxes];
 	const pending = controller.pendingDeletionProfile;
 	const feedback = controller.error ?? controller.notice;
@@ -36,7 +36,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					<h3 id="connections-title">Chat models</h3>
 					<PresetMenu controller={controller} apiFormat="chat-completions" label="Add chat connection" />
 				</div>
-				<p>Write Messages and extract Memories.</p>
+				<p>Write Messages and run Box tasks.</p>
 				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "chat-completions")} controller={controller}
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
@@ -52,11 +52,11 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 						</Button>
 					)}
 				</div>
-				<p>Shortlist saved Memories for recall. The Memory tab picks which one recall uses.</p>
+				<p>Find related text. Each Box selects its embedding model in its settings.</p>
 				<ProfileRows label="Embeddings endpoints" profiles={settings.profiles.filter(isEmbeddingsProfile)} controller={controller}
 					describe={(profile) => hostOf(profile.requestUrl)}
 					badge={() => null}
-					empty={<EmptyProfiles title="No endpoints yet">Memory recall stays off until you add one.</EmptyProfiles>} />
+					empty={<EmptyProfiles title="No endpoints yet">Embedding tasks stay off until you add an endpoint.</EmptyProfiles>} />
 				{feedback !== null && <p className={`mt-3 text-xs ${controller.error ? "text-destructive" : "text-muted-foreground"}`} role={controller.error ? "alert" : "status"}>{feedback}</p>}
 			</section>
 
@@ -83,15 +83,12 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				<DecisionSummary preview={semanticTriggers} name="Semantic Trigger" onOpen={onOpenSemanticTrigger}
 					describe={(settings) => settings.decisionProfileId === null ? "Keyword-only matching" : `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`} />
 			</section>
-			{boxDecisions.map(({ box, editor }) => {
-				const { label, decision } = boxDescriptors[box];
-				return <section key={box} aria-labelledby={`${box}-title`}>
-					<h3 id={`${box}-title`}>{label}</h3>
-					<p>{decision.summary}</p>
-					<DecisionSummary preview={editor} name={label} onOpen={() => onOpenBoxDecision(box)}
-						describe={(settings) => settings.decisionProfileId === null ? decision.off : "Decision Model"} />
-				</section>;
-			})}
+			{boxDecisions.map(({ box, label, decision, editor }) => <section key={box} aria-labelledby={`${box}-title`}>
+				<h3 id={`${box}-title`}>{label}</h3>
+				<p>{decision.summary}</p>
+				<DecisionSummary preview={editor} name={label} onOpen={() => onOpenBoxDecision(box)}
+					describe={(settings) => settings.decisionProfileId === null ? decision.off : "Decision Model"} />
+			</section>)}
 
 			<Dialog open={pending !== undefined} onOpenChange={(open) => { if (!open) controller.setPendingDeletionProfileId(null); }}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
@@ -101,7 +98,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 							{pending?.apiFormat === "system-one"
 								? `${listOf(roles, "and")} using it will need another Decision Model.`
 								: pending?.apiFormat === "embeddings"
-									? "Memory recall stops until you choose another embedding model."
+									? "Tasks using this endpoint stop until you choose another embedding model."
 									: "Chats using it will need another connection before they can generate."}
 						</DialogDescription>
 					</DialogHeader>

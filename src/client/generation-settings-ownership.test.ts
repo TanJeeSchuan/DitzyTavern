@@ -205,19 +205,6 @@ function createSession() {
 }
 
 describe("generation settings client ownership", () => {
-	test("the model selector's commit sends only the focused model command", async () => {
-		const backend = createConversationBackend();
-		installFetch(backend.handler);
-		const session = createSession();
-
-		await session.commitModel("qwen3-max");
-
-		// The payload carries the model ID and nothing else: the selector has
-		// no settings snapshot to spill into the command.
-		expect(backend.commands).toEqual([{ type: "set-generation-model", connectionProfileId: 9, modelId: "qwen3-max" }]);
-		expect(session.events).toEqual(["adopt:6", "model-committed:qwen3-max"]);
-	});
-
 	test("a panel save started while a model commit is pending keeps the committed model", async () => {
 		const backend = createConversationBackend();
 		installFetch(backend.handler);

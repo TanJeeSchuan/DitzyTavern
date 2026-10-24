@@ -132,7 +132,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 
 	const override = { minutes: 600, weather: "clear" as const };
-	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override });
+	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override, expected: { minutes: 60, weather: "rain" } });
 	expect(applied.status).toBe(200);
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
 	// @approved
@@ -152,7 +152,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, overridden: false });
 });
 
-test("an override naming the record it replaces is refused once a digest changed that record", async () => {
+test("an override is refused once a digest changed the record it replaces, or wrote one where it read none", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
@@ -161,8 +161,9 @@ test("an override naming the record it replaces is refused once a digest changed
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, read, sha256("The lamp turns."));
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
 	const override = { type: "set-box-record" as const, box: "world-clock" as const, messageId, variantId, record: { minutes: 600, weather: "clear" as const } };
-	const refused = await command(app, chat.id, chat.revision, { ...override, expected: read });
-	expect(await refused.json()).toEqual({ outcome: "invalid", reason: "This record changed since you read it. Review it before changing it again." });
+	const refusal = { outcome: "invalid", reason: "This record changed since you read it. Review it before changing it again." };
+	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: read })).json()).toEqual(refusal);
+	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: null })).json()).toEqual(refusal);
 	expect((await command(app, chat.id, chat.revision, { ...override, expected: { minutes: 120, weather: "storm" } })).status).toBe(200);
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override.record, overridden: true });
 });
@@ -182,7 +183,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] });
 	if (record === undefined) throw new Error("The Stretch produced no record.");
 	const { messageId, provisionalVariantId: variantId, conversation } = accepted;
-	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record });
+	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record, expected: null });
 	expect(await response.json()).toEqual({ outcome: "invalid", reason: "This Variant is still generating. Override its record once it settles." });
 });
 
@@ -193,10 +194,54 @@ test("an override outside the Box record schema is refused", async () => {
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
 		method: "POST", headers: { "content-type": "application/json" },
-		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" } } }),
+		body: JSON.stringify({ expectedRevision: chat.revision, action: { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: -5, weather: "storm" }, expected: null } }),
 	}));
 	expect(response.status).toBe(422);
-	expect(readRecordSlots(drizzle(database), "world-clock", clock, [variantId]).size).toBe(0);
+	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [variantId]).size).toBe(0);
+});
+
+test("an unknown Box id is not found by the Box routes and fails each Box command before anything is written", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	for (const path of [`/api/conversations/${chat.id}/boxes/nope`, `/api/conversations/${chat.id}/boxes/nope/status`, "/api/boxes/nope/decision-settings"]) {
+		expect((await app.handle(new Request(`http://localhost${path}`))).status).toBe(404);
+	}
+	expect((await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/nope/catch-up`, { method: "POST" }))).status).toBe(404);
+	expect((await app.handle(new Request("http://localhost/api/boxes/nope/decision-settings/commands", {
+		method: "POST", headers: { "content-type": "application/json" },
+		body: JSON.stringify({ type: "apply", expectedRevision: 0, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000 }),
+	}))).status).toBe(404);
+	for (const action of [
+		{ type: "set-box-state", box: "nope", state: "enabled" },
+		{ type: "set-box-setup", box: "nope", setup: "" },
+		{ type: "put-box-data", box: "nope", owner: { type: "library", revision: 0 }, key: "note", value: "{}" },
+	] satisfies ConversationAction[]) {
+		const response = await command(app, chat.id, chat.revision, action);
+		expect(response.status).toBe(422);
+		expect(await response.json()).toEqual({ outcome: "invalid", reason: "There is no nope Box." });
+	}
+	expect(database.query("SELECT namespace FROM conversation_data WHERE namespace = 'box:nope' UNION SELECT namespace FROM library_data WHERE namespace = 'box:nope'").all()).toEqual([]);
+});
+
+test("a setup outside its Box's setup schema is refused before anything is written", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	insertBox(database, chat.id, "world-clock");
+	const response = await command(app, chat.id, chat.revision, { type: "set-box-setup", box: "world-clock", setup: { ...initial, climate: "lava" } });
+	expect(response.status).toBe(422);
+	expect(await response.json()).toEqual({ outcome: "invalid", reason: "The World Clock setup does not match its schema." });
+	expect((await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}`))).json()).boxSetups["world-clock"]).toEqual(initial);
+});
+
+test("Moves outside their Box's Move schema, or for a Box that takes none, are refused before a Generation is captured", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	insertBox(database, chat.id, "phone");
+	const send = async (moves: Readonly<Record<string, readonly object[]>>) => (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/preview`, {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Hello.", moves }),
+	}))).json();
+	expect(await send({ phone: [{ to: "Maren" }] })).toEqual({ outcome: "invalid", reason: "The Phone Moves do not match their schema." });
+	expect(await send({ "world-clock": [{}] })).toEqual({ outcome: "invalid", reason: "No world-clock Box takes Moves." });
 });
 
 test("setup is refused while the Box is absent and kept while it is disabled", async () => {

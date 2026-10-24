@@ -11,7 +11,7 @@ interface Options {
 }
 
 const defaultOptions = {
-	ignoreCommentPatterns: ["oxlint-disable", "eslint-disable", "^/\\s*<reference\\b"],
+	ignoreCommentPatterns: ["oxlint-disable", "eslint-disable", "^/\\s*<reference\\b", "^\\s*@vite-ignore\\s*$"],
 	ignoreFilePatterns: [],
 } satisfies Options;
 

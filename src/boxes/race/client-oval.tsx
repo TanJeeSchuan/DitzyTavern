@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { focalPosition, imageSrc, Portrait, type PortraitImage } from "../../box-sdk/client";
+import { focalPosition, imageSrc, Portrait, type PortraitImage } from "@/box-sdk/client";
 import type { RaceCourse, RaceSpectatorState } from "./contract";
 
 /** @approved

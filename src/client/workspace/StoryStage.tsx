@@ -1,4 +1,6 @@
+import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
+import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
@@ -46,9 +48,8 @@ export function StoryStage({
 	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
-	onOpenMemories,
+	onOpenInspector,
 	onInspectVariant,
-	onOpenMessageMemories,
 	onOpenGenerationDetails,
 	onControlChange,
 }: {
@@ -62,12 +63,11 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
-	onOpenPanel: (panel: "author-note") => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
-	onOpenMemories: () => void;
+	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onInspectVariant: (messageId: number, variantId: number) => void;
-	onOpenMessageMemories: (messageId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 }) {
@@ -87,13 +87,13 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
-	const composerWindows = useBoxWindows(conversation?.id ?? null);
+	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = story.page?.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
-	const lens = conversation === null ? undefined : { conversation, open: composerWindows.open };
+	const lens = conversation === null ? undefined : { conversation, open: boxWindows.open };
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
@@ -104,11 +104,13 @@ export function StoryStage({
 		<main className="story-stage" aria-label="Active Chat">
 			<StoryHeader
 				chat={session.activeChat}
+				conversation={conversation}
 				onOpenNavigation={onOpenNavigation}
 				onOpenCast={onOpenCast}
 				onOpenInfo={onOpenInfo}
 				onOpenVariables={onOpenVariables}
-				onOpenMemories={onOpenMemories}
+				onOpenInspector={onOpenInspector}
+				onOpenWindow={boxWindows.open}
 			/>
 
 			{story.preview !== null && previewedMessage !== undefined && (
@@ -185,7 +187,7 @@ export function StoryStage({
 								generation.regenerateResponse(messageId);
 							}}
 							onInspect={onInspectVariant}
-							onMemories={onOpenMessageMemories}
+							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
 									showStopAll={generation.activeGenerationTargets.length > 1}
@@ -242,7 +244,7 @@ export function StoryStage({
 				<BoxWindowLayer
 					key={conversation?.id ?? "no-chat"}
 					conversation={conversation}
-					controller={composerWindows}
+					controller={boxWindows}
 					disabled={previewMode || assemblyActive}
 					staging={{ moves: generation.moves, onChange: generation.setMoves }}
 					onConversationChange={session.setConversation}
@@ -263,7 +265,7 @@ export function StoryStage({
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							onOpenPanel={onOpenPanel}
-							onOpenWindow={composerWindows.open}
+							onOpenWindow={boxWindows.open}
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}

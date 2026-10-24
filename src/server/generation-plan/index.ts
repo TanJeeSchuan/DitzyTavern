@@ -8,7 +8,6 @@ export {
 	assertGenerationPlan,
 	compileGenerationPlan,
 	continuationIntentFor,
-	estimateDynamicBlockTokens,
 	effectiveGenerationSettingsFor,
 } from "./compiler";
 export type {

@@ -1,13 +1,13 @@
-import { InvalidConversationCommandError, type Box } from "../../box-sdk/server";
+import { InvalidConversationCommandError, type Box } from "@/box-sdk/server";
 import { memoryActivationRecord, type MemoryActivationRecord, type MemoryRecord } from "./contract";
 import { digestMemory } from "./server-extraction";
 import { memoryItems } from "./server-prompt";
+import { memoryRoutes } from "./server-routes";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "./server-recall";
 
 // @approved
 //  Recall reads each passage's record slot itself, so the fold keeps no state.
-export const memoryBox = {
-	inject: ["llm", "decide", "embed"],
+const memoryBox = {
 	dependencies: captureMemoryRecallSnapshot,
 	records: { initial: undefined, fold: (state) => state, digest: { window: 4, run: digestMemory } },
 	advance: {
@@ -21,4 +21,6 @@ export const memoryBox = {
 			}
 		},
 	},
-} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, "llm" | "decide" | "embed", MemoryRecord>;
+	routes: memoryRoutes,
+} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, MemoryRecord>;
+export default memoryBox;

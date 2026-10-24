@@ -1,7 +1,8 @@
 import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors, boxIds, boxReference, setupBoxIds, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import { boxDescriptors, boxesWith, boxReference, isBoxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { conversationDataTable } from "../database/schema";
 
 const SETUP_KEY = "setup";
@@ -26,7 +27,7 @@ export const readBoxInstances = (db: BunSQLiteDatabase, conversationId: number):
 	.from(conversationDataTable)
 	.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, INSTANCE_KEY)))
 	.all()
-	.flatMap(({ namespace, value }) => boxIds.filter((id) => boxReference(id) === namespace).map((id) => [id, value])));
+	.flatMap(({ namespace, value }) => isBoxReference(namespace) ? [[namespace.slice("box:".length), value]] : []));
 
 export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): BoxStates => {
 	const stored = new Map(db
@@ -35,18 +36,16 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, ENABLED_KEY)))
 		.all()
 		.map((row) => [row.namespace, row.value]));
-	// @approved
-	// SAFETY: the entries cover every Box id exactly once.
-	return Object.fromEntries(boxIds.map((id) => {
+	return Object.fromEntries([...boxDescriptors().keys()].map((id) => {
 		const value = stored.get(boxReference(id));
 		return [id, value === undefined ? "absent" : JSON.parse(value) === true ? "enabled" : "disabled"];
-	})) as BoxStates;
+	}));
 };
 
 /** @approved The Boxes On in this Chat. */
 export const enabledBoxIds = (db: BunSQLiteDatabase, conversationId: number): BoxId[] => {
 	const states = readBoxStates(db, conversationId);
-	return boxIds.filter((id) => states[id] === "enabled");
+	return [...boxDescriptors().keys()].filter((id) => states[id] === "enabled");
 };
 
 /** @approved The Chats where the Box is enabled, as a subquery for background work that spans Chats. */
@@ -60,7 +59,7 @@ export const isBoxEnabled = (db: BunSQLiteDatabase, conversationId: number, id: 
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, boxReference(id)), eq(conversationDataTable.key, ENABLED_KEY)))
 		.get()?.value === "true";
 
-export const boxSetupEntry = <Id extends keyof BoxSetups>(id: Id, setup: BoxSetups[Id]) =>
+export const boxSetupEntry = (id: BoxId, setup: BoxValue) =>
 	({ namespace: boxReference(id), key: SETUP_KEY, value: JSON.stringify(setup) });
 
 export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): BoxSetups => {
@@ -70,14 +69,11 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, SETUP_KEY)))
 		.all()
 		.map((row) => [row.namespace, row.value]));
-	// @approved
-	// SAFETY: the entries are exactly the setup Boxes, each decoded with its own setup schema.
-	return Object.fromEntries(setupBoxIds.map((id) => {
-		const { schema, initial } = boxDescriptors[id].setup;
+	return Object.fromEntries(boxesWith("setup").map(([id, { schema, initial }]) => {
 		const value = stored.get(boxReference(id));
 		if (value === undefined) return [id, initial];
-		const decoded: unknown = JSON.parse(value);
+		const decoded: BoxValue = JSON.parse(value);
 		if (!Value.Check(schema, decoded)) throw new Error(`The stored ${id} Box setup does not match its schema. Clear the ${boxReference(id)} namespace.`);
 		return [id, decoded];
-	})) as BoxSetups;
+	}));
 };

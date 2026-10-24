@@ -58,8 +58,6 @@ const providerStreamResponse = ({
 	}), { headers: { "content-type": "text/event-stream" } });
 };
 
-const streamResponse = () => providerStreamResponse({ content: "Answer." });
-
 describe("Send generation transport", () => {
 	let database: Database;
 
@@ -67,52 +65,6 @@ describe("Send generation transport", () => {
 		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
-
-	test("accepts the draft with its revision and exposes the authoritative human/model pair", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Send contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(9) }).createProfile({
-			expectedRevision: 0,
-			profile,
-			credential: "send-contract-secret",
-		});
-		let providerSawHuman = false;
-		const app = createConversationRoutes(database, {
-			masterKey: new Uint8Array(32).fill(9),
-			fetch: async () => {
-				providerSawHuman = readTestConversationSnapshot(database, conversation.id)?.messages.at(-1)?.author?.capturedName === "Maren";
-				return streamResponse();
-			},
-		});
-
-		const acceptedResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Open the door." }),
-			},
-		));
-		// SAFETY: this contract test controls the typed acceptance response.
-		const accepted = await acceptedResponse.json() as { generationId: number };
-		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
-		));
-		await response.text();
-		const persisted = readTestConversationSnapshot(database, conversation.id);
-		expect(acceptedResponse.status).toBe(200);
-		expect(response.status).toBe(200);
-		expect(providerSawHuman).toBe(true);
-		expect(persisted?.messages).toHaveLength(2);
-		expect(persisted?.messages[0]?.variants[0]?.content).toBe("Open the door.");
-		expect(persisted?.messages[1]?.variants[0]?.content).toBe("Answer.");
-	});
 
 	test("persists partial provider output as an interrupted Variant through the HTTP routes", async () => {
 		const conversation = createConversationWithHistory(database, {

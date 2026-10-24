@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	controlChangeDescription,
 	libraryPickerEntries,
-	usedCharacterCount,
 } from "./cast";
 import type { CharacterSummary } from "./character-library";
 
@@ -63,22 +62,6 @@ describe("libraryPickerEntries", () => {
 		const characters = [summary({ id: 7, name: "Fresh" })];
 		const entries = libraryPickerEntries(characters, cast([]));
 		expect(entries[0]?.usedCount).toBe(0);
-	});
-});
-
-describe("usedCharacterCount", () => {
-	test("counts only Participants carrying that provenance", () => {
-		expect(
-			usedCharacterCount(
-				cast([
-					{ id: 1, sourceCharacterId: 9 },
-					{ id: 2, sourceCharacterId: 9 },
-					{ id: 3, sourceCharacterId: null },
-				]),
-				9,
-			),
-		).toBe(2);
-		expect(usedCharacterCount(cast([]), 9)).toBe(0);
 	});
 });
 

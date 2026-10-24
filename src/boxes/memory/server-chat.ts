@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { putChatValue, readChatValue, readMessageAuthors, readParticipants } from "../../box-sdk/server";
+import { putChatValue, readChatValue, readMessageAuthors, readParticipants } from "@/box-sdk/server";
 import { memoryChatSettings, memoryLabels, type MemoryIdentities, type MemoryLabelMerge } from "./contract";
 
 // @approved

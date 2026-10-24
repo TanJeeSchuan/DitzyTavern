@@ -1,7 +1,7 @@
 import { moodNames, moods, NOT_CLEAR, type Mood, type MoodRecord } from "./shared";
-import type { Box } from "../../box-sdk/server";
+import type { Box } from "@/box-sdk/server";
 
-export const moodBox = {
+const moodBox = {
 	records: {
 		initial: null,
 		fold: (state, { mood }) => mood === NOT_CLEAR ? state : mood,
@@ -24,4 +24,5 @@ export const moodBox = {
 	},
 	advance: { run: async ({ state }) => ({ items: state === null ? [] : [{ text: state, priority: 100, pinned: true }] }) },
 	status: (_setup, state) => state === null ? null : `${moods[state].emote} ${state}`,
-} satisfies Box<undefined, undefined, never, never, MoodRecord, Mood | null>;
+} satisfies Box<undefined, undefined, never, MoodRecord, Mood | null>;
+export default moodBox;

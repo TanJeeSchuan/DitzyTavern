@@ -23,14 +23,9 @@ import type { ConversationDataEntry } from "../conversation";
 import { translateCommentsAndMacros } from "../prompt-preset/sillytavern";
 import { SillyTavernImportError } from "./errors";
 import {
-	defaultImportResolution,
-	projectImport,
-} from "./import-projection";
-import {
 	ARCHIVE_KEY,
 	ARCHIVE_NAMESPACE,
 	IMPORTER_VERSION,
-	type ParsedSillyTavernChat,
 	type SillyTavernChatInspection,
 	type SillyTavernDecodedImportSource,
 	type SillyTavernImportMeta,
@@ -195,30 +190,6 @@ export function decodeSillyTavernImportSource(
 	};
 
 	return { authorNote, messages, authors, data, report };
-}
-
-// @approved
-//  The sealed adapter parse surface: decode plus the Default Import Policy
-// through the shared Import Projection, with no prior-import evidence (the
-// developer import composes duplicate evidence before projecting; this
-// convenience wrapper stays for adapter-level tests and simple callers).
-export function parseSillyTavernChatJsonl(
-	sourceText: string,
-	meta: SillyTavernImportMeta,
-): ParsedSillyTavernChat {
-	const decoded = decodeSillyTavernImportSource(sourceText, meta);
-	const projected = projectImport(
-		decoded,
-		defaultImportResolution(decoded),
-		{ exact: [], related: [] },
-	);
-	return {
-		input: {
-			name: meta.name,
-			...projected.input,
-		},
-		report: projected.report,
-	};
 }
 
 // @approved

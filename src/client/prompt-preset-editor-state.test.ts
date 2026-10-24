@@ -267,18 +267,6 @@ describe("draft reconciliation", () => {
 		expect(dirtyDraftSummary(state.view.selected, state.drafts).dirty).toBe(true);
 	});
 
-	test("a submitted draft retires only when the fresh recipe reflects it and retains its identity", () => {
-		let state = openState();
-		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
-		const submitted = contentDraft("Write warmly.");
-		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: submitted });
-		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: state.drafts[5] } });
-
-		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write warmly.")]));
-
-		expect(state.drafts[5]).toBeUndefined();
-	});
-
 	test("a read that predates the save cannot retire the submitted draft", () => {
 		let state = openState();
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));

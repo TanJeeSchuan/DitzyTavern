@@ -1,0 +1,164 @@
+import { Button, Field, Popover, PopoverContent, PopoverTrigger, useConnectionSettingsQuery, useAsyncEffect, ProfileModelPicker, SaveFooter, useSaveGuard, NumberGroup, NumberRow } from "@/box-sdk/client";
+import { CircleHelp } from "lucide-react";
+import { useCallback, useState } from "react";
+import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "./client-api";
+
+type Draft = Omit<MemorySettings, "revision">;
+type State = { settings: MemorySettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };
+const initial: State = { settings: null, draft: null, loading: true, pending: false, error: null, notice: null };
+const draftOf = ({ revision: _revision, ...draft }: MemorySettings): Draft => draft;
+
+export function MemorySettingsEditor() {
+	const [state, setState] = useState<State>(initial);
+	const connectionsQuery = useConnectionSettingsQuery({ refreshOnOpen: true });
+	const connections = connectionsQuery.data ?? null;
+	const applyLoaded = useCallback((settings: MemorySettings) => setState({
+		settings, draft: draftOf(settings), loading: false, pending: false, error: null, notice: null,
+	}), []);
+	const load = useCallback(() => loadMemorySettings(), []);
+	const refresh = useCallback(async () => {
+		setState((current) => ({ ...current, loading: true, error: null }));
+		try { const settings = await load(); applyLoaded(settings); }
+		catch { setState((current) => ({ ...current, loading: false, error: "Memory Settings could not be loaded." })); }
+	}, [applyLoaded, load]);
+	useAsyncEffect((cancelled) => {
+		void load()
+		.then((settings) => {
+			if (!cancelled()) applyLoaded(settings);
+		})
+		.catch(() => {
+			if (!cancelled()) setState((current) => ({ ...current, loading: false, error: "Memory Settings could not be loaded." }));
+		});
+	}, [applyLoaded, load]);
+	const update = (patch: Partial<Draft>) => setState((current) => current.draft === null ? current : ({ ...current, draft: { ...current.draft, ...patch }, error: null, notice: null }));
+	const { settings, draft } = state;
+	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
+	const submit = async () => {
+		if (settings === null || draft === null) return false;
+		setState((current) => ({ ...current, pending: true, error: null, notice: null }));
+		const result = await saveMemorySettings({ expectedRevision: settings.revision, ...draft });
+		if (result.outcome === "available") {
+			const saved = result.value.settings;
+			setState((current) => ({ ...current, settings: saved, draft: current.draft === draft ? draftOf(saved) : current.draft, pending: false, error: null, notice: null }));
+		}
+		else if (result.outcome === "conflict") {
+			setState((current) => ({
+				...current,
+				settings: result.currentSettings,
+				pending: false,
+				notice: "Memory Settings changed elsewhere. Review the current values before saving again.",
+			}));
+		}
+		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Memory Settings could not be saved." }));
+		return result.outcome === "available";
+	};
+	useSaveGuard({
+		dirty,
+		saving: state.pending,
+		save: submit,
+		discard: () =>
+			setState((current) =>
+				current.settings === null
+					? current
+					: { ...current, draft: draftOf(current.settings), error: null, notice: null },
+			),
+	});
+	if (state.loading || connectionsQuery.isPending) return (
+		<div className="panel-body settings-panel-body"><section aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section></div>
+	);
+	if (settings === null || draft === null) {
+		return (
+			<div className="panel-body settings-panel-body">
+				<section>
+					<h3>Conversation Memory</h3>
+					<div className="settings-feedback-error" role="alert">
+						<p>{state.error}</p>
+						<Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
+					</div>
+				</section>
+			</div>
+		);
+	}
+	const profileOf = (id: number | null) => connections?.profiles.find((profile) => profile.id === id);
+	const extractionProfile = profileOf(draft.extractionProfileId);
+	const embeddingProfile = profileOf(draft.embeddingProfileId);
+	const missingProfile = [settings.extractionProfileId, settings.embeddingProfileId].some((id) => id !== null && profileOf(id) === undefined);
+	return (
+		<><div className="panel-body settings-panel-body">
+			<section aria-labelledby="memory-settings-title">
+				<h3 id="memory-settings-title">Conversation Memory</h3>
+				<p>Memory runs in each Chat where its Box is on. Extraction runs separately from writing generations. Its Decision Model is chosen in Connections.</p>
+				{connectionsQuery.isError && <p className="settings-feedback-error" role="alert">Connection Settings could not be loaded.</p>}
+				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
+				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && (
+					<p className="settings-feedback" role="status">
+						Memory extraction is not ready. Choose an extraction model whose connection has an API key.
+					</p>
+				)}
+				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && (
+					<p className="settings-feedback" role="status">Memory recall is not ready. Choose an embedding model so saved Memories can be recalled.</p>
+				)}
+				<div className="memory-settings-fields">
+					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
+						<ProfileModelPicker
+							selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }}
+							onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })}
+							emptyLabel="Add a chat connection in Connections to choose a model."
+							label="Extraction model"
+							/>
+					</Field>
+					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it embeds them again the next time they are recalled.">
+						<ProfileModelPicker
+							apiFormat="embeddings"
+							selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }}
+							onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })}
+							emptyLabel="Add an Embeddings connection in Connections to choose a model."
+							label="Embedding model"
+							/>
+					</Field>
+				</div>
+				<NumberGroup title={<>Extraction budget <Popover>
+					<PopoverTrigger asChild>
+						<Button type="button" variant="ghost" size="icon-xs" className="memory-help" aria-label="How Decision Models handle Memory">
+							<CircleHelp className="memory-help-icon" aria-hidden="true" />
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent align="start" aria-label="How Decision Models handle Memory" className="memory-help-text">
+						<p>Your extraction model proposes Memories using this token budget.</p>
+						<p>
+						The Decision Model then checks whether the source supports each claim, whether it is attributed to the right
+						person, and whether it will matter beyond the current scene. Only claims that pass these checks and the retain
+						probability minimum are kept.
+					</p>
+						<p>During recall, the Decision Model scores saved Memories for relevance to the current scene. Choose its System One connection and model in Connections.</p>
+					</PopoverContent>
+				</Popover></>} description="Estimated tokens for each extraction request.">
+					<NumberRow id="memory-context-limit" label="Context limit" min={1} step={1} value={draft.contextLimit} onChange={(contextLimit) => update({ contextLimit })} />
+					<NumberRow id="memory-output-reserve" label="Output reserve" min={1} step={1} value={draft.outputReserve} onChange={(outputReserve) => update({ outputReserve })} />
+					<NumberRow id="memory-safety-allowance" label="Safety allowance" min={0} step={1} value={draft.safetyAllowance} onChange={(safetyAllowance) => update({ safetyAllowance })} />
+				</NumberGroup>
+				<NumberGroup title="Decision thresholds" description="Retain probability controls admission. Relevance score controls recall.">
+					<NumberRow
+						id="memory-retain-probability-minimum"
+						label="Retain probability minimum (0–1)"
+						min={0}
+						max={1}
+						step={0.05}
+						value={draft.retainProbabilityMinimum}
+						onChange={(retainProbabilityMinimum) => update({ retainProbabilityMinimum })}
+					/>
+					<NumberRow
+						id="memory-relevance-minimum"
+						label="Relevance (0–3)"
+						min={0}
+						max={3}
+						step={0.25}
+						value={draft.recallRelevanceMinimum}
+						onChange={(recallRelevanceMinimum) => update({ recallRelevanceMinimum })}
+					/>
+				</NumberGroup>
+				{state.notice && <p className="settings-feedback" role="status">{state.notice}</p>}
+			</section>
+		</div><SaveFooter dirty={dirty} saving={state.pending} error={state.error} onSave={() => void submit()} /></>
+	);
+}

@@ -20,6 +20,7 @@ import type {
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
 import { processStateFor } from "../application/process-state";
+import { GENERATION_PREVIEW_SESSION_TTL_MS } from "../workflows/generation-preview";
 
 const prompt = {
 	systemInstruction: "",
@@ -399,7 +400,7 @@ describe("Prompt Plan inspection", () => {
 		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
 	});
 
-	test("keeps an inspected plan past the old quarter-hour window", async () => {
+	test("expires an inspected plan after the preview session lifetime", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
 		const app = createConversationRoutes(database, {
@@ -407,7 +408,7 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		setSystemTime(Date.now() + 15 * 60 * 1000 + 1);
+		setSystemTime(Date.now() + GENERATION_PREVIEW_SESSION_TTL_MS);
 		const started = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
@@ -420,7 +421,7 @@ describe("Prompt Plan inspection", () => {
 				}),
 			},
 		));
-		expect(started.status).toBe(200);
+		expect(started.status).toBe(422);
 	});
 
 	test("requires a refresh after the process-local preview registry is cleared", async () => {

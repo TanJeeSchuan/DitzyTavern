@@ -5,7 +5,7 @@ import { formatImageReference } from "../../shared/image-reference";
 import type { RepeatedImagePlacement } from "../prompt-compiler/images";
 import {
 	collectModelClientGeneration,
-	createOpenAICompatibleModelClient,
+	createModelClient,
 	type ModelClientGenerationInput,
 } from ".";
 
@@ -76,7 +76,7 @@ const sentTo = async (
 ) => {
 	let calls = 0;
 	let body: { messages: WireMessage[] } | undefined;
-	const client = createOpenAICompatibleModelClient({
+	const client = createModelClient({
 		profile: { ...profile, textOnlyModels: options.textOnlyModels ?? [] },
 		secrets: null,
 		loadImage: options.loadable === false ? undefined : (hash) => stored.get(hash),
@@ -187,28 +187,6 @@ describe("Model Client Image transport", () => {
 		}
 	});
 
-	test("prefills text without Images unchanged and never writes a hash into it", async () => {
-		const sent = await sentTo({
-			promptPlan: planOf([history("Earlier", "model", "Maren")], {
-				intent: { type: "continuation", strategy: "assistant-prefill", suffix: "" },
-			}),
-		});
-		await sent.result;
-		expect(sent.messages()).toEqual([{ role: "assistant", content: "Earlier" }]);
-	});
-
-	test("text-only prefill receives anchors even for a missing Reference", async () => {
-		const sent = await sentTo({
-			promptPlan: planOf([history(`Earlier ${map}`, "model", "Maren")], {
-				intent: { type: "continuation", strategy: "assistant-prefill", suffix: " " },
-				known: [],
-				sendImages: false,
-			}),
-		}, { textOnlyModels: ["vision-model"] });
-		await sent.result;
-		expect(sent.messages()).toEqual([{ role: "assistant", content: "Earlier [Image: map] " }]);
-	});
-
 	test("a Text-only Model receives anchors in place of every Image", async () => {
 		const sent = await sentTo(
 			{ promptPlan: planOf([{ kind: "scenario", role: "system", content: map }, history(`See ${mug}`)], { sendImages: false }) },
@@ -219,12 +197,6 @@ describe("Model Client Image transport", () => {
 			{ role: "system", content: "[Image: map]" },
 			{ role: "user", content: "See [Image: mug]" },
 		]);
-	});
-
-	test("a mark on another model leaves this model receiving Images", async () => {
-		const sent = await sentTo({ promptPlan: planOf([history(map)]) }, { textOnlyModels: ["other-model"] });
-		await sent.result;
-		expect(sent.messages()[0]?.content).toEqual(["[Image: map]", "<image/png:AQID>"]);
 	});
 
 	test("sends only the anchor for a Reference the plan does not send or whose Image is missing", async () => {

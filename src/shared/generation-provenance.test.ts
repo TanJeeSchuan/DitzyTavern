@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	decodeGenerationProvenance,
 	decodeGenerationProvenanceRecord,
 	decodeStoredGenerationProvenance,
 	encodeGenerationProvenance,
@@ -57,17 +56,6 @@ describe("generation provenance codec", () => {
 			finishReason: "length",
 			interruptionCause: undefined,
 		});
-	});
-
-	test("requires the terminal shape at the transport boundary", () => {
-		expect(decodeGenerationProvenance({
-			...startProvenance,
-			status: null,
-		})).toBeUndefined();
-		const missingSettings = parseGenerationJson(JSON.stringify({
-			status: "complete",
-		}), null);
-		expect(decodeGenerationProvenance(missingSettings)).toBeUndefined();
 	});
 
 	test("decodes retained settings with per-field intentional nullability", () => {

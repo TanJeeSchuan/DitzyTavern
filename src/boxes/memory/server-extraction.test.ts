@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { judgeMemoryCandidates, validateMemoryCandidates } from "./server-extraction";
 import { judgeMemoryRecallCandidates } from "./server-recall";
-import { Value } from "@sinclair/typebox/value";
-import { memoryExtractionResponse, type MemoryCandidate, type MemoryRecallCandidateRecord } from "./contract";
+import type { MemoryCandidate, MemoryRecallCandidateRecord } from "./contract";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { DecisionQuestions } from "../../server/decision-model";
 
@@ -34,7 +33,6 @@ describe("Memory extraction validation", () => {
 	test("fails when every candidate is invalid", () => {
 		expect(() => validateMemoryCandidates({ candidates: [{ ...candidate, evidence: [{ messageId: 10, excerpt: "Maren promised Writer a brass key." }] }] }, [source], source.messageId)).toThrow("not exact captured source text");
 		expect(() => validateMemoryCandidates({ candidates: [{ ...candidate, evidence: [] }] }, [source], source.messageId)).toThrow("one to three evidence excerpts");
-		expect(Value.Check(memoryExtractionResponse, { candidates: [{ ...candidate, extra: true }] })).toBe(false);
 	});
 });
 

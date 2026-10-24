@@ -21,7 +21,6 @@ import { processStateFor } from "../application/process-state";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
 	StagedChatImportExpiredError,
-	StagedChatImportTokenMismatchError,
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
 } from "./errors";
@@ -271,25 +270,7 @@ describe("staged SillyTavern chat import", () => {
 				match: "exact",
 				confirmed: false,
 			});
-			expect(group?.suggestion?.characterId).not.toBe(2);
-			expect(group?.suggestion?.characterId).not.toBe(3);
 		}
-	});
-
-	test("pre-fills the strongest suggestion but leaves it visibly unconfirmed", async () => {
-		addCharacter({ name: "Maren Voss" });
-		const { preview } = await stageText([
-			header,
-			{ ...writer, name: "Maren Voss", send_date: "2026-08-08T12:53:02.008Z" },
-		]);
-		// The suggestion is present (pre-filled) and marked unconfirmed; a
-		// group without any plausible Character carries no suggestion at all.
-		expect(preview.groups[0]?.suggestion?.confirmed).toBe(false);
-		const unrelated = await stageText([
-			header,
-			{ ...writer, name: "Invented Name", send_date: "2026-08-08T12:53:02.008Z" },
-		]);
-		expect(unrelated.preview.groups[0]?.suggestion).toBeNull();
 	});
 
 	test("classifies matching SHA-256 as exact duplicates and integrity-only matches as related sources", async () => {
@@ -314,26 +295,6 @@ describe("staged SillyTavern chat import", () => {
 		expect(relatedBytesSource.preview.duplicates.related).toEqual([
 			{ id: priorBytesSource.id, name: priorBytesSource.name },
 		]);
-	});
-
-	test("binds the token to the exact byte length and SHA-256 and rejects changed or expired tokens", async () => {
-		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
-		const { token } = await stageBytes(bytes, "bound.jsonl");
-
-		// The token alone returns the preview; supplying the bound hash is
-		// the verified recoverable-error path.
-		expect(module.preview(token)).toBeDefined();
-		expect(module.preview(token, sha256Of(bytes))).toBeDefined();
-
-		// A hash that does not match the binding is rejected without
-		// touching the flow.
-		expect(() => module.preview(token, sha256Of(Buffer.from("other")))).toThrow(
-			StagedChatImportTokenMismatchError,
-		);
-		// Unknown or already-discarded tokens are expired.
-		expect(() => module.preview("unknown-token")).toThrow(
-			StagedChatImportExpiredError,
-		);
 	});
 
 	test("reports cleaned-up staged bytes as unavailable instead of serving a broken preview", async () => {

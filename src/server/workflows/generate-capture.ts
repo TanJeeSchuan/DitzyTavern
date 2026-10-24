@@ -68,9 +68,7 @@ import { boxServices } from "../box/services";
 import { advanceBoxes, captureBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { foldRecordStates } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
-import { sameMoves } from "../../shared/contract/box-generation";
-import type { BoxMoves } from "../../shared/contract/box-generation";
-import { moveBoxIds } from "../../shared/contract/box";
+import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { readBoxInstances, type BoxInstances } from "../box/setup";
 
 // @approved
@@ -308,7 +306,7 @@ export function prepareGenerationInputsSnapshot(
 			const boxInstances = readBoxInstances(db, input.conversationId);
 			return { boxInstances, summary, recipe, settings, selected,
 				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxInstances),
+				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, summary.boxes, boxInstances),
 				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
 		},
 	);
@@ -357,8 +355,10 @@ export function prepareGenerationInputsSnapshot(
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
 	const staged = target.kind === "send" ? target.moves : undefined;
+	const invalid = staged === undefined ? undefined : boxMovesError(staged);
+	if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
 	const closed = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined
-		? moveBoxIds.find((id) => staged?.[id] !== undefined && summary.boxes[id] !== "enabled") : undefined;
+		? Object.keys(staged ?? {}).find((id) => summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
 	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
 	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;

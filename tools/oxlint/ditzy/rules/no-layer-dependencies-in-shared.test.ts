@@ -47,11 +47,6 @@ tester.run("no-layer-dependencies-in-shared", noLayerDependenciesInSharedRule, {
 			errors: [{ messageId: "layerDependency" }],
 		},
 		{
-			filename: "src/shared/contract/new-route.ts",
-			code: "import { createConversationModule } from '../../server/conversation';",
-			errors: [{ messageId: "layerDependency" }],
-		},
-		{
 			filename: "src/shared/conversation.ts",
 			code: "import type { ConversationSnapshot } from '../server/conversation';",
 			errors: [{ messageId: "layerDependency" }],

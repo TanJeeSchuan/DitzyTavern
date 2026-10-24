@@ -12,7 +12,6 @@
 @import "./styles/theme.css";
 @import "./styles/workspace.css";
 @import "./styles/workspace-settings.css";
-@import "./styles/memories.css";
 @import "./styles/connection-settings.css";
 @import "./styles/story.css";
 @import "./styles/box-windows.css";
@@ -21,3 +20,7 @@
 @import "./styles/cast.css";
 @import "./styles/import-chat.css";
 @import "./styles/prose-editor.css";
+
+/* Box styles build with each Box, so the host compiles no utility a Box or the e2e fixtures name. */
+@source not "./boxes";
+@source not "../e2e";

@@ -1,7 +1,6 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
 	executeConversationCommand,
-	readConversationGenerationSettings,
 	readChatHistory,
 	readVariantDetails,
 	readConversationData,
@@ -14,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantTable,
 } from "../database/schema";
@@ -109,16 +107,6 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(StaleRevisionError);
 		expect(readTestConversationSnapshot(secondBrowser, conversationId)).toEqual(updated);
-	});
-
-	test("keeps generation-settings reads pure when the backing row is absent", () => {
-		const db = drizzle(database);
-		db.delete(conversationGenerationSettingsTable).run();
-
-		const settings = readConversationGenerationSettings(database, conversationId);
-
-		expect(settings).toBeUndefined();
-		expect(db.select().from(conversationGenerationSettingsTable).all()).toHaveLength(0);
 	});
 
 	test("creates Messages with immutable Author Stamps captured server-side", () => {
@@ -526,7 +514,7 @@ describe("Conversation module", () => {
 		expect(edited.messages[0]?.variants[0]?.content).toBe("Edited preservation");
 	});
 
-	test("owns scoped data and cascades Message deletion", () => {
+	test("stores Variant-scoped data and deletes its Message", () => {
 		const conversation = database;
 		const created = applyCommand(conversation, {
 			conversationId,
@@ -902,8 +890,8 @@ describe("Conversation module", () => {
 		test("rejects a captured pair that is no longer authoritative", () => {
 			const conversation = database;
 			expect(() =>
-				accept(conversation, { modelParticipantId: humanId }),
-			).toThrow(InvalidConversationCommandError);
+				accept(conversation, { humanParticipantId: modelId, modelParticipantId: humanId }),
+			).toThrow("The captured Control pair is no longer authoritative.");
 			expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(0);
 		});
 

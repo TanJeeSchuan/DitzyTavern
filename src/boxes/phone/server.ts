@@ -1,8 +1,9 @@
-import type { PhoneMove, PhoneRead } from "./contract";
+import { phoneMove, type PhoneMove, type PhoneRead } from "./contract";
 import type { Database } from "bun:sqlite";
 import {
-	humanMessageText, readConversationSummaryFromConnection, readMessageMoves, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box,
-} from "../../box-sdk/server";
+	readConversationSummaryFromConnection, readMessageMoves, readSelectedHistoryFromConnection, runConversationReadTransaction, type Box,
+} from "@/box-sdk/server";
+import { boxMovesOf } from "@/box-sdk/shared";
 import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from "./shared";
 
 // @approved
@@ -10,7 +11,7 @@ import { phoneNames, renderPhoneText, stripPhoneTexts, type PhoneNames } from ".
 //  story's lens lifts into the Phone. The block's instructions teach the
 //  markup; the Box adds who the human can text. Without another Cast member
 //  there is nobody to text, so the block says nothing.
-export const phoneBox = {
+const phoneBox = {
 	moves: { render: ({ to, text }, author) => renderPhoneText({ from: author, to, text }) },
 	dependencies: ({ cast, human }) => phoneNames(cast, human),
 	read: readPhone,
@@ -18,7 +19,8 @@ export const phoneBox = {
 		run: async ({ dependencies: { human, contacts } }) =>
 			({ items: contacts.length === 0 ? [] : [{ text: `${human} has a phone and can text ${contacts.join(", ")}.`, priority: 0, pinned: true }] }),
 	},
-} satisfies Box<undefined, PhoneNames, never, never, never, undefined, PhoneMove>;
+} satisfies Box<undefined, PhoneNames, never, never, undefined, PhoneMove>;
+export default phoneBox;
 
 /** @approved Threads hold the texts the story's lens lifts from each selected Variant, the human's staged-and-sent Moves included. */
 function readPhone(database: Database, conversationId: number): PhoneRead | undefined {
@@ -31,7 +33,13 @@ function readPhone(database: Database, conversationId: number): PhoneRead | unde
 		if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
 		const names = phoneNames(summary.cast, human);
 		const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
-		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts(humanMessageText(moves.get(id) ?? {}, variant.content, author?.capturedName ?? null, summary.boxes), names)
+		// @approved
+		//  A sent text reads from the Phone's own Moves, rendered as the model
+		//  reads them while the Phone runs, so the window keeps them while it is
+		//  off and history shows only their chip labels. A Message with Moves
+		//  always has its author.
+		const sent = (id: number, author: string | null) => author === null ? [] : boxMovesOf(moves.get(id) ?? {}, "phone", phoneMove).map((move) => phoneBox.moves.render(move, author));
+		const texts = history.messages.flatMap(({ id, author, variant }) => variant === null ? [] : stripPhoneTexts([...sent(id, author?.capturedName ?? null), variant.content].join("\n"), names)
 			.flatMap((segment) => segment.kind === "sms" ? [segment.text] : [])
 			.map((text, index) => ({ key: `${variant.id}:${index}`, ...text })));
 		return {

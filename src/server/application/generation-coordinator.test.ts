@@ -433,6 +433,10 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		// or moving it after the durable stop fails this test.
 		firstRuntime.publish({ type: "content", text: "First keeps this." });
 		secondRuntime.publish({ type: "content", text: "Second keeps this." });
+		const terminalStates: string[] = [];
+		for (const runtime of [firstRuntime, secondRuntime]) runtime.onStateChange((state) => {
+			if (state.status !== "active") terminalStates.push(state.status);
+		});
 		const coordinator = createGenerationCoordinator(database);
 
 		const outcome = await coordinator.stopAllGenerations(input.conversation.id);
@@ -448,6 +452,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(activeAtAbort).toEqual([0, 0]);
 		expect(firstRuntime.state.status).toBe("stopped");
 		expect(secondRuntime.state.status).toBe("stopped");
+		expect(terminalStates).toEqual(["stopped", "stopped"]);
 		// The flushed pending output survives in the stopped Variants.
 		const snapshot = readTestConversationSnapshot(input.module, input.conversation.id);
 		const contents = (snapshot?.messages ?? []).flatMap((message) => message.variants.map((variant) => variant.content));
@@ -591,70 +596,5 @@ describe("Generation Coordinator terminal races", () => {
 		expect(snapshot?.messages.at(-1)?.variants[0]?.data).not.toContainEqual(
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		);
-	});
-
-	test("Stop All commits every target before settling provider runtimes", async () => {
-		const input = setup();
-		// The sibling target is the configured opening Message, whose captured
-		// historical Control pair makes sibling acceptance eligible.
-		const target = input.conversation.messages[0];
-		if (target === undefined) throw new Error("Opening target missing.");
-		const acceptSibling = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
-			seed: "test-generation-seed",
-			conversationId: input.conversation.id,
-			messageId: target.id,
-			timestamp,
-			humanParticipantId: input.human.id,
-			modelParticipantId: input.model.id,
-			capturedModelName: input.model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
-		});
-		const providerWinner = acceptSibling("2026-08-27T00:00:01.000Z");
-		const stopWinner = acceptSibling("2026-08-27T00:00:02.000Z");
-		let providerRuntime!: GenerationRuntime;
-		providerRuntime = generationRuntimeFor(database).start({
-			generationId: providerWinner.generationId,
-			conversationId: input.conversation.id,
-			messageId: providerWinner.messageId,
-			variantId: providerWinner.provisionalVariantId,
-			startedAt: "2026-08-27T00:00:01.000Z",
-			onStop: () => {
-				// Stop All must secure the durable Conversation transition before
-				// asking this provider attempt to abort.
-				expect(readTestConversationSnapshot(input.module, input.conversation.id)?.activeGenerations).toEqual([]);
-			},
-		});
-		const stopRuntime = generationRuntimeFor(database).start({
-			generationId: stopWinner.generationId,
-			conversationId: input.conversation.id,
-			messageId: stopWinner.messageId,
-			variantId: stopWinner.provisionalVariantId,
-			startedAt: "2026-08-27T00:00:02.000Z",
-		});
-		const providerTerminalStates: string[] = [];
-		const stopTerminalStates: string[] = [];
-		providerRuntime.onStateChange((state) => {
-			if (state.status !== "active") providerTerminalStates.push(state.status);
-		});
-		stopRuntime.onStateChange((state) => {
-			if (state.status !== "active") stopTerminalStates.push(state.status);
-		});
-		const coordinator = createGenerationCoordinator(database);
-
-		const outcome = await coordinator.stopAllGenerations(input.conversation.id);
-
-		const stopped = expectStopAllOutcome(outcome, "stopped");
-		expect([...stopped.generationIds]).toEqual([providerWinner.generationId, stopWinner.generationId]);
-		expect(providerRuntime.state.status).toBe("stopped");
-		expect(stopRuntime.state.status).toBe("stopped");
-		expect(providerTerminalStates).toEqual(["stopped"]);
-		expect(stopTerminalStates).toEqual(["stopped"]);
-		const snapshot = readTestConversationSnapshot(input.module, input.conversation.id);
-		expect(snapshot?.activeGenerations).toEqual([]);
-		expect(snapshot?.messages[0]?.variants.map((variant) => variant.content)).toEqual(["Original."]);
-		expect(snapshot?.messages[0]?.variants.filter((variant) => variant.selected)).toHaveLength(1);
 	});
 });

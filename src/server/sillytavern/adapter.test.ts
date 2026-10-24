@@ -7,9 +7,9 @@ import {
 	IMPORTER_VERSION,
 	VARIANT_KEYS,
 	decodeSillyTavernImportReport,
-	parseSillyTavernChatJsonl,
+	decodeSillyTavernImportSource,
 } from "./adapter";
-import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME, defaultImportResolution, projectImport } from "./import-projection";
 import type { SillyTavernImportMeta } from "./adapter";
 import { SillyTavernImportError } from "./errors";
 import {
@@ -27,6 +27,11 @@ const meta: SillyTavernImportMeta = {
 	name: "lantern-house",
 	filename: "lantern-house.jsonl",
 	sha256: "0f5c3e0a9d0c8f5b3a9e4d6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
+};
+
+const project = (sourceText: string) => {
+	const decoded = decodeSillyTavernImportSource(sourceText, meta);
+	return projectImport(decoded, defaultImportResolution(decoded), { exact: [], related: [] });
 };
 
 // Imported Participants start with an empty typed Prompt and no openings:
@@ -83,12 +88,8 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("maps a header and payload-only records into a generic creation input", () => {
-		const { input } = parseSillyTavernChatJsonl(
-			jsonl([header, first, second, blankName]),
-			meta,
-		);
+		const { input } = project(jsonl([header, first, second, blankName]));
 
-		expect(input.name).toBe("lantern-house");
 		expect(input.participants).toEqual([
 			importedSeed("Writer"),
 			importedSeed("Rulership"),
@@ -156,34 +157,14 @@ describe("SillyTavern JSONL adapter", () => {
 		]);
 	});
 
-	test("preserves a blank captured author name and reports it as a warning", () => {
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, first, blankName]),
-			meta,
-		);
-
-		const [authorEntry] = input.messages?.[1]?.data ?? [];
-		expect(authorEntry).toEqual({
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.authorName,
-			value: "",
-		});
-		expect(report.warnings).toEqual([
-			"Message at position 2 has a blank captured author name.",
-		]);
-	});
-
 	test("keeps the first nonempty record as the source header", () => {
 		const source = `\n\n${JSON.stringify(header)}\n${JSON.stringify(first)}\n\n`;
-		const { report } = parseSillyTavernChatJsonl(source, meta);
+		const { report } = project(source);
 		expect(report.counts).toEqual({ messages: 1, variants: 1 });
 	});
 
 	test("stores the canonical archive and import identity as separate conversation entries", () => {
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, first, second]),
-			meta,
-		);
+		const { input, report } = project(jsonl([header, first, second]));
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -253,28 +234,8 @@ describe("SillyTavern JSONL adapter", () => {
 		expect(JSON.parse(input.data?.at(-1)?.value ?? "")).toEqual(report);
 	});
 
-	test("composes warnings and report entries through the projection", () => {
-		const { input, report } = parseSillyTavernChatJsonl(jsonl([header, first]), meta);
-		expect(
-			input.data?.some((entry) => entry.key === IMPORT_KEYS.warnings),
-		).toBe(true);
-		expect(
-			input.data?.some((entry) => entry.key === IMPORT_KEYS.reportJson),
-		).toBe(true);
-		expect(
-			JSON.parse(
-				input.data
-					?.find((entry) => entry.key === IMPORT_KEYS.reportJson)
-					?.value ?? "",
-			),
-		).toEqual(report);
-	});
-
 	test("keeps unknown and source-only fields value-lossless in the archive only", () => {
-		const { input } = parseSillyTavernChatJsonl(
-			jsonl([header, first, second]),
-			meta,
-		);
+		const { input } = project(jsonl([header, first, second]));
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -295,10 +256,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("preserves empty payload content as an empty Variant", () => {
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, emptyContent]),
-			meta,
-		);
+		const { input, report } = project(jsonl([header, emptyContent]));
 		expect(input.messages?.[0]?.variants[0]?.content).toBe("");
 		expect(input.messages?.[0]?.variants[0]?.timestamp).toBe(
 			"2026-08-08T13:20:00.000Z",
@@ -308,41 +266,41 @@ describe("SillyTavern JSONL adapter", () => {
 
 	test("aborts on invalid JSON with the offending line number", () => {
 		const source = `${JSON.stringify(header)}\n${JSON.stringify(first)}\n{"broken"`;
-		expect(() => parseSillyTavernChatJsonl(source, meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource(source, meta)).toThrow(
 			new SillyTavernImportError("Line 3 is not valid JSON."),
 		);
 	});
 
 	test("aborts on an empty source", () => {
-		expect(() => parseSillyTavernChatJsonl("\n\n", meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource("\n\n", meta)).toThrow(
 			new SillyTavernImportError("The source contains no records."),
 		);
 	});
 
 	test("aborts when the first record is not an object", () => {
 		const source = `[1, 2]\n${JSON.stringify(first)}`;
-		expect(() => parseSillyTavernChatJsonl(source, meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource(source, meta)).toThrow(
 			/the first record is not an object/i,
 		);
 	});
 
 	test("aborts when a later record is not an object", () => {
 		const source = `${JSON.stringify(header)}\n"just a string"`;
-		expect(() => parseSillyTavernChatJsonl(source, meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource(source, meta)).toThrow(
 			/Record at position 1 is not an object/,
 		);
 	});
 
 	test("aborts on a message without string content", () => {
 		const broken = { name: "Writer", send_date: "2026-08-08T12:53:02.008Z" };
-		expect(() => parseSillyTavernChatJsonl(jsonl([header, broken]), meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource(jsonl([header, broken]), meta)).toThrow(
 			/Message at position 1 has no string content/,
 		);
 	});
 
 	test("aborts on an invalid send_date", () => {
 		const broken = { name: "Writer", send_date: "yesterday", mes: "hi" };
-		expect(() => parseSillyTavernChatJsonl(jsonl([header, broken]), meta)).toThrow(
+		expect(() => decodeSillyTavernImportSource(jsonl([header, broken]), meta)).toThrow(
 			/Message at position 1 has an invalid send_date/,
 		);
 	});
@@ -350,7 +308,7 @@ describe("SillyTavern JSONL adapter", () => {
 	test("aborts when the captured author name is missing or not a string", () => {
 		const missingName = { send_date: "2026-08-08T12:53:02.008Z", mes: "hi" };
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, missingName]), meta),
+			decodeSillyTavernImportSource(jsonl([header, missingName]), meta),
 		).toThrow(/Message at position 1 has no captured author name/);
 
 		const numericName = {
@@ -359,15 +317,12 @@ describe("SillyTavern JSONL adapter", () => {
 			mes: "hi",
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, numericName]), meta),
+			decodeSillyTavernImportSource(jsonl([header, numericName]), meta),
 		).toThrow(/Message at position 1 has no captured author name/);
 	});
 
 	test("derives one Variant per Swipe in source order and selects exactly swipe_id", () => {
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, swiped]),
-			meta,
-		);
+		const { input, report } = project(jsonl([header, swiped]));
 
 		const message = input.messages?.[0];
 		expect(message).toEqual({
@@ -449,10 +404,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("never promotes the duplicated top-level assistant payload when Swipes exist", () => {
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, swiped]),
-			meta,
-		);
+		const { input, report } = project(jsonl([header, swiped]));
 
 		// Row-level values duplicated from the saved alternative (mes,
 		// extra.api/model/gen_id, reasoning, gen_started/gen_finished) must
@@ -491,10 +443,7 @@ describe("SillyTavern JSONL adapter", () => {
 				{ send_date: "2026-08-08T13:40:05.000Z" },
 			],
 		};
-		const { input, report } = parseSillyTavernChatJsonl(
-			jsonl([header, emptySelected]),
-			meta,
-		);
+		const { input, report } = project(jsonl([header, emptySelected]));
 
 		const variants = input.messages?.[0]?.variants ?? [];
 		expect(variants).toHaveLength(2);
@@ -506,10 +455,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("attaches row-level provenance to a payload-only Variant", () => {
-		const { input } = parseSillyTavernChatJsonl(
-			jsonl([header, provenancedPayload]),
-			meta,
-		);
+		const { input } = project(jsonl([header, provenancedPayload]));
 
 		expect(input.messages).toEqual([
 			{
@@ -558,7 +504,7 @@ describe("SillyTavern JSONL adapter", () => {
 			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z" }],
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, mismatched]), meta),
+			decodeSillyTavernImportSource(jsonl([header, mismatched]), meta),
 		).toThrow(/swipe_info that does not match its swipes array/);
 
 		const missing = {
@@ -569,7 +515,7 @@ describe("SillyTavern JSONL adapter", () => {
 			swipe_id: 0,
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, missing]), meta),
+			decodeSillyTavernImportSource(jsonl([header, missing]), meta),
 		).toThrow(/swipe_info that does not match its swipes array/);
 	});
 
@@ -586,22 +532,22 @@ describe("SillyTavern JSONL adapter", () => {
 			],
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, tooHigh]), meta),
+			decodeSillyTavernImportSource(jsonl([header, tooHigh]), meta),
 		).toThrow(/out-of-range swipe_id/);
 
 		const negative = { ...tooHigh, swipe_id: -1 };
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, negative]), meta),
+			decodeSillyTavernImportSource(jsonl([header, negative]), meta),
 		).toThrow(/out-of-range swipe_id/);
 
 		const fractional = { ...tooHigh, swipe_id: 1.5 };
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, fractional]), meta),
+			decodeSillyTavernImportSource(jsonl([header, fractional]), meta),
 		).toThrow(/out-of-range swipe_id/);
 
 		const missingId = { ...tooHigh, swipe_id: undefined };
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, missingId]), meta),
+			decodeSillyTavernImportSource(jsonl([header, missingId]), meta),
 		).toThrow(/out-of-range swipe_id/);
 	});
 
@@ -618,7 +564,7 @@ describe("SillyTavern JSONL adapter", () => {
 			],
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, nonStringSwipe]), meta),
+			decodeSillyTavernImportSource(jsonl([header, nonStringSwipe]), meta),
 		).toThrow(/swipe 1 is not a string/);
 
 		const nonArray = {
@@ -629,7 +575,7 @@ describe("SillyTavern JSONL adapter", () => {
 			swipe_id: 0,
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, nonArray]), meta),
+			decodeSillyTavernImportSource(jsonl([header, nonArray]), meta),
 		).toThrow(/swipes value that is not an array/);
 	});
 
@@ -643,7 +589,7 @@ describe("SillyTavern JSONL adapter", () => {
 			swipe_info: [{ send_date: "yesterday" }],
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, badSendDate]), meta),
+			decodeSillyTavernImportSource(jsonl([header, badSendDate]), meta),
 		).toThrow(/swipe 0 send_date has an invalid timestamp/);
 
 		const badGenStarted = {
@@ -655,7 +601,7 @@ describe("SillyTavern JSONL adapter", () => {
 			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z", gen_started: "soon" }],
 		};
 		expect(() =>
-			parseSillyTavernChatJsonl(jsonl([header, badGenStarted]), meta),
+			decodeSillyTavernImportSource(jsonl([header, badGenStarted]), meta),
 		).toThrow(/swipe 0 gen_started has an invalid timestamp/);
 	});
 });

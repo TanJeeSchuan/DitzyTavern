@@ -7,7 +7,7 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 	headers: { "content-type": "application/json", ...init?.headers },
 	...init,
 });
-const apply = (fields: Record<string, boolean | number | string | null>) => request("/api/memory-settings/commands", {
+const apply = (fields: Record<string, boolean | number | string | null>) => request("/settings/commands", {
 	method: "POST",
 	body: JSON.stringify({ expectedRevision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
 });
@@ -20,11 +20,6 @@ describe("Memory Settings public contract", () => {
 		app = memoryRoutes(database);
 	});
 	afterEach(() => database.close());
-
-	test("uses independent extraction defaults", async () => {
-		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
-	});
 
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {
 		const stale = await app.handle(apply({ expectedRevision: 8 }));
@@ -39,7 +34,7 @@ describe("Memory Settings public contract", () => {
 		const configured = await app.handle(apply({ extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100 }));
 		expect(configured.status).toBe(200);
 		database.query("DELETE FROM connection_profile WHERE id = ?").run(profile.id);
-		const read = await app.handle(request("/api/memory-settings"));
+		const read = await app.handle(request("/settings"));
 		expect(await read.json()).toMatchObject({ extractionProfileId: profile.id });
 		const missing = await app.handle(apply({ expectedRevision: 1, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100 }));
 		expect(missing.status).toBe(422);

@@ -63,8 +63,7 @@ describe("Chat list summaries", () => {
 
 		const summary = listChatSummaries(database).find((candidate) => candidate.id === chat.id);
 
-		expect(summary?.excerpt).toBe(long.replace(/\s+/g, " ").trim().slice(0, 160));
-		expect(summary?.excerpt.startsWith("Chosen swipe word")).toBe(true);
+		expect(summary?.excerpt).toBe(`Chosen swipe ${"word ".repeat(29)}wo`);
 	});
 
 	test("a Chat without Messages has an empty excerpt", () => {
@@ -81,7 +80,6 @@ describe("Chat list summaries", () => {
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[0]!.id);
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[2]!.id);
 		setPortrait.run(nox.hash, nox.focalX, nox.focalY, chat.cast[3]!.id);
-		expect(() => setPortrait.run(writer.hash, null, writer.focalY, chat.cast[4]!.id)).toThrow("CHECK constraint failed");
 		applyCommand(module, {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,

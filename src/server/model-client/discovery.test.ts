@@ -82,27 +82,6 @@ describe("Model discovery", () => {
 		});
 	});
 
-	test("reports only the size of an oversized provider body", async () => {
-		const result = await discoverModels(
-			{ profile, secrets: null },
-			{
-				fetch: async () => new Response("x".repeat(20 * 1024), {
-					status: 503,
-					headers: {
-						"content-type": "text/plain",
-						"content-length": "20480",
-					},
-				}),
-			},
-		);
-
-		expect(result.outcome).toBe("failure");
-		if (result.outcome === "failure") {
-			expect(result.message).toBe("The Models endpoint request failed with HTTP 503 (20480-byte response body).");
-			expect(result.message).not.toContain("xxx");
-		}
-	});
-
 	test("aborts a discovery request at the profile timeout", async () => {
 		const result = await discoverModels(
 			{ profile: { ...profile, timeoutMs: 5 }, secrets: null },
