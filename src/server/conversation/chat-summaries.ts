@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { Portrait } from "../../shared/contract/image";
+import { Value } from "@sinclair/typebox/value";
+import { chatSummaryCast } from "../../shared/contract/workspace";
 
 // @approved
 //  The Workspace Chat list read model: one row per Conversation in recency
@@ -21,8 +22,6 @@ export const listChatSummaries = (database: Database) =>
 				name: chat.name,
 				creationTime: chat.creation_time,
 				lastMessageTime: chat.last_message_time,
-				// @approved
-				//  SAFETY: SQLite builds each name/Portrait pair; CHECK constraints require complete Portraits.
-				cast: JSON.parse(chat.cast) as { name: string; portrait: Portrait | null }[],
+				cast: Value.Parse(chatSummaryCast, JSON.parse(chat.cast)),
 				excerpt: (chat.excerpt ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
 			}));

@@ -33,8 +33,8 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 	tester: LorebookEditorTester;
 }) {
 	const editor = useLorebookEditor(bookId);
-	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, pending, notice, leaveIntent,
-		bookDeleteConfirmation, entryDeleteConfirmation, setName, setDescription, updateEntryDraft, updateList,
+	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, pending, notice, dialog,
+		setName, setDescription, updateEntryDraft, updateList,
 		setLeaveIntent, setBookDeleteConfirmation, setEntryDeleteConfirmation, confirmDeleteBook, exportBook, saveDirty } = editor;
 	const { attachmentState, attachmentPending, updateAttachment } = attachments;
 	const { testWriting, setTestWriting, testResult, testError, testPending, runMatchTest } = tester;
@@ -44,9 +44,12 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 		else editor.selectEntry(intent.id);
 	};
 	const requestLeave = (intent: LeaveIntent) => { if (dirty) setLeaveIntent(intent); else performLeave(intent); };
-	const discardAndLeave = () => { editor.discard(); const intent = leaveIntent; setLeaveIntent(null); if (intent) performLeave(intent); };
-	const currentLeaveIntent = useEffectEvent(() => leaveIntent);
-	const saveAndLeave = async () => { if (leaveIntent && await saveDirty() && currentLeaveIntent() === leaveIntent) { setLeaveIntent(null); performLeave(leaveIntent); } };
+	const discardAndLeave = () => { editor.discard(); const intent = dialog?.type === "leave" ? dialog.intent : null; setLeaveIntent(null); if (intent) performLeave(intent); };
+	const currentLeaveIntent = useEffectEvent(() => dialog?.type === "leave" ? dialog.intent : null);
+	const saveAndLeave = async () => {
+		const intent = dialog?.type === "leave" ? dialog.intent : null;
+		if (intent && await saveDirty() && currentLeaveIntent() === intent) { setLeaveIntent(null); performLeave(intent); }
+	};
 	const saveAll = () => saveDirty();
 	const execute = (command: LorebookCommand, success?: string) => editor.executeLorebookCommand(command, success, onOpenBook);
 	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });
@@ -176,17 +179,17 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 			</DialogContent>
 		</Dialog>}
 		<UnsavedLorebookDialog
-			open={leaveIntent !== null}
+			open={dialog?.type === "leave"}
 			pending={pending}
 			onKeepEditing={() => setLeaveIntent(null)}
 			onDiscard={discardAndLeave}
 			onSave={() => void saveAndLeave()}
 		/>
-		<Dialog open={bookDeleteConfirmation !== null} onOpenChange={(open) => { if (!open) setBookDeleteConfirmation(null); }}>
+		<Dialog open={dialog?.type === "book-delete"} onOpenChange={(open) => { if (!open) setBookDeleteConfirmation(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Delete {bookDeleteConfirmation?.name}?</DialogTitle>
-					<DialogDescription>{bookDeleteConfirmation?.detail}</DialogDescription>
+					<DialogTitle>Delete {dialog?.type === "book-delete" ? dialog.confirmation.name : ""}?</DialogTitle>
+					<DialogDescription>{dialog?.type === "book-delete" ? dialog.confirmation.detail : ""}</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
 					<Button type="button" variant="ghost" disabled={pending} onClick={() => setBookDeleteConfirmation(null)}>Keep Lorebook</Button>
@@ -203,7 +206,7 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 				</div>
 			</DialogContent>
 		</Dialog>
-		<Dialog open={entryDeleteConfirmation} onOpenChange={(open) => { if (!open) setEntryDeleteConfirmation(false); }}>
+		<Dialog open={dialog?.type === "entry-delete"} onOpenChange={(open) => { if (!open) setEntryDeleteConfirmation(false); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
 					<DialogTitle>Delete {entryDraft.title || "this entry"}?</DialogTitle>

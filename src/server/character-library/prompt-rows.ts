@@ -11,7 +11,7 @@ import type { PortraitColumnRow, PromptChannelRow } from "../database/schema";
 export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
 	row?.portrait_hash == null
 		? undefined
-		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! };
+		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! }; // @approved A CHECK keeps the portrait columns all set or all null.
 
 export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => ({
 	system_instruction: prompt.systemInstruction,

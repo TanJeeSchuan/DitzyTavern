@@ -1,7 +1,7 @@
 import { and, eq, inArray, like, or } from "drizzle-orm";
 import { messageVariantDataTable } from "../database/schema";
 import { variantDataCodecs, type VariantDataName } from "../../shared/variant-data-codecs";
-import type { GenerationProvenance } from "../../shared/generation-provenance";
+import type { GenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variable-write";
@@ -32,7 +32,7 @@ export function readVariantData(db: ConversationDatabase, variantIds: readonly n
 			return entries.find((entry) => entry.namespace === codec.namespace && entry.key === codec.key);
 		};
 		if (names.includes("reasoning")) { const entry = find("reasoning"); if (entry) record.reasoning = variantDataCodecs.reasoning.decode(entry.value); }
-		if (names.includes("provenance")) record.provenance = variantDataCodecs.provenance.read(entries);
+		if (names.includes("provenance")) record.provenance = variantDataCodecs.provenance.read(entries, `Variant ${id}`);
 		if (names.includes("loreActivation")) { const entry = find("loreActivation"); if (entry) record.loreActivation = variantDataCodecs.loreActivation.decode(entry.value); }
 		if (names.includes("boxTraces")) { const entry = find("boxTraces"); if (entry) record.boxTraces = variantDataCodecs.boxTraces.decode(entry.value); }
 		if (names.includes("macroWrites")) record.macroWrites = entries.filter((entry) => entry.namespace === variantDataCodecs.macroWrites.namespace)

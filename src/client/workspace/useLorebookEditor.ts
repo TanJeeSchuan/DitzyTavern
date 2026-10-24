@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand, type LorebookCommandResult } from "../lorebook-library";
 import { splitList, type EntryListKey } from "./lorebook-entry-fields";
-import { editedSince, fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
+import { editedSince, fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type BookDeleteConfirmation, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
 
 interface SettleFlags { notice?: string; notFoundNotice?: string; newEntry?: boolean; enabled?: boolean; preserveBookDraft?: boolean }
 
@@ -120,9 +120,9 @@ export function useLorebookEditor(bookId: number) {
 			onSuccess: (value) => {
 				if (signal.aborted) return;
 				const attachments = value?.attachments.map((attachment) => attachment.ownerName).join("\n") ?? "";
-				dispatch({ type: "book-delete-requested", confirmation: {
+				dispatch({ type: "dialog-opened", dialog: { type: "book-delete", confirmation: {
 					name: book?.name ?? "", detail: attachments === "" ? "It has no attachments." : `Deleting it also removes these attachments:\n${attachments}`,
-				} });
+				} } });
 			},
 			onError: (error) => { if (!signal.aborted) setNotice(error.message); },
 		});
@@ -148,11 +148,11 @@ export function useLorebookEditor(bookId: number) {
 		setDescription: (description: string) => dispatch({ type: "book-edited", draft: { ...current().bookDraft, description } }),
 		updateEntryDraft: (draft: LorebookEditorState["entryDraft"]) => dispatch({ type: "entry-edited", draft }),
 		updateList: (key: EntryListKey, value: string) => dispatch({ type: "entry-edited", draft: { ...current().entryDraft, [key]: splitList(value) } }),
-		setLeaveIntent: (intent: LeaveIntent | null) => dispatch({ type: "leave-requested", intent }),
+		setLeaveIntent: (intent: LeaveIntent | null) => dispatch(intent === null ? { type: "dialog-closed" } : { type: "dialog-opened", dialog: { type: "leave", intent } }),
 		selectEntry: (id: number | null) => dispatch({ type: "entry-selected", id }),
 		discard: () => dispatch({ type: "discard" }),
-		setBookDeleteConfirmation: (confirmation: LorebookEditorState["bookDeleteConfirmation"]) => dispatch({ type: "book-delete-requested", confirmation }),
-		setEntryDeleteConfirmation: (open: boolean) => dispatch({ type: "entry-delete-requested", open }),
+		setBookDeleteConfirmation: (confirmation: BookDeleteConfirmation | null) => dispatch(confirmation === null ? { type: "dialog-closed" } : { type: "dialog-opened", dialog: { type: "book-delete", confirmation } }),
+		setEntryDeleteConfirmation: (open: boolean) => dispatch(open ? { type: "dialog-opened", dialog: { type: "entry-delete" } } : { type: "dialog-closed" }),
 		saveDirty: () => save.mutateAsync({ submitted: current(), signal: session.current.signal }), executeLorebookCommand, confirmDeleteBook, exportBook,
 	};
 }

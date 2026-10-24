@@ -254,8 +254,11 @@ export async function digestMemory(window: DigestWindow, ctx: DigestContext): Pr
 	const extracted = await extractCandidates(ctx, window, source, context, (retained) => tokenxEstimator(JSON.stringify({ source, context: retained })) <= selection.stateTokenLimit);
 	ctx.signal.throwIfAborted();
 	const judgments = await judgeMemoryCandidates({ source, context: extracted.context, candidates: extracted.candidates, selection, decide: ctx.decide });
-	const claims = judgments.filter(({ judgment }) =>
-		judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.probabilities["usefulness:retain"]! >= extracted.settings.retainProbabilityMinimum);
+	const claims = judgments.filter(({ judgment }) => {
+		const retain = judgment.probabilities["usefulness:retain"];
+		return judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain"
+			&& retain !== undefined && retain >= extracted.settings.retainProbabilityMinimum;
+	});
 	const embedding = readMemoryEmbedding(ctx.database);
 	if (embedding.spaceKey !== "" && claims.length > 0) await ctx.embed(claims.map(renderMemoryClaim), embedding, { cache: true });
 	return { claims };

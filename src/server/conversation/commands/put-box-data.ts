@@ -28,7 +28,7 @@ export function putBoxData(db: ConversationDatabase, input: { conversationId: nu
 	switch (input.owner.type) {
 		case "library": {
 			const expected = input.owner.revision;
-			putLibraryValue(db, namespace, input.key, input.value, (current) => guardShared(current, expected));
+			putLibraryValue(db, { namespace, key: input.key, value: input.value }, (current) => guardShared(current, expected));
 			return;
 		}
 		case "character": {

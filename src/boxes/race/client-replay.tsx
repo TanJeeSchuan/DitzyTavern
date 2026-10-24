@@ -9,9 +9,9 @@ import { raceMoveCatalog } from "./shared";
 //  Hidden intent it was carrying.
 export function RaceReplay({ replay, avatars }: { replay: NonNullable<RaceRead["replay"]>; avatars: ReadonlyMap<string, PortraitImage> }) {
 	const [index, setIndex] = useState(0);
-	const stretch = replay.stretches[index];
-	if (stretch === undefined) return null;
-	const last = replay.stretches.at(-1)!.stretch;
+	const [stretch, final] = [replay.stretches[index], replay.stretches.at(-1)];
+	if (stretch === undefined || final === undefined) return null;
+	const last = final.stretch;
 	return <section className="race-replay" aria-label="Replay">
 		<div className="race-replay-heading">
 			<h3>Replay</h3>

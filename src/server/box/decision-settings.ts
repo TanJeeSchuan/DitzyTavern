@@ -20,7 +20,7 @@ export const applyBoxDecisionSettings = (database: Database, id: BoxId, { expect
 	database.transaction(() => {
 		validateDecisionSelection(database, { decisionProfileId, decisionModel, decisionStateTokenLimit });
 		const value = JSON.stringify({ decisionProfileId, decisionModel: decisionModel.trim(), decisionStateTokenLimit });
-		putLibraryValue(drizzle(database), NAMESPACE, id, value, (current) => guardRevision("settings", expectedRevision, current, () => readBoxDecisionSettings(database, id)));
+		putLibraryValue(drizzle(database), { namespace: NAMESPACE, key: id, value }, (current) => guardRevision("settings", expectedRevision, current, () => readBoxDecisionSettings(database, id)));
 		return readBoxDecisionSettings(database, id);
 	}).immediate();
 

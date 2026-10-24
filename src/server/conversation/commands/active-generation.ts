@@ -150,11 +150,12 @@ const retainTerminalInspection = (
 };
 
 const terminalProvenance = (
-	active: { provenance_namespace: string | null; provenance_key: string | null; provenance_value: string | null },
+	active: ActiveGenerationRow,
 	data: readonly ConversationDataEntry[],
 ): ConversationDataEntry | undefined => {
 	if (active.provenance_namespace === null || active.provenance_key === null || active.provenance_value === null) return undefined;
-	return { namespace: active.provenance_namespace, key: active.provenance_key, value: variantDataCodecs.provenance.terminal(active.provenance_value, data) };
+	const value = variantDataCodecs.provenance.terminal(active.provenance_value, data, `Active Generation ${active.id}`);
+	return { namespace: active.provenance_namespace, key: active.provenance_key, value };
 };
 
 const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
@@ -165,7 +166,8 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 	} catch (error) {
 		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted macro writes.");
 	}
-	return macroWritesToData(active.macro_preset_id, writes);
+	const data = macroWritesToData(active.macro_preset_id, writes);
+	return data === null ? [] : [data];
 };
 
 const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {

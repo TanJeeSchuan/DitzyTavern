@@ -4,7 +4,7 @@ export const imageSrc = (hash: string) => `/api/images/${hash}`;
 export const uploadImage = async (file: File) => {
 	const encoded = await new Promise<string>((resolve, reject) => {
 		const reader = new FileReader();
-		reader.onload = () => resolve(String(reader.result).split(",")[1]!);
+		reader.onload = () => resolve(String(reader.result).split(",")[1]!); // @approved A data URL always has a comma.
 		reader.onerror = () => reject(reader.error);
 		reader.readAsDataURL(file);
 	});

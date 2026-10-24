@@ -29,7 +29,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, selected
 	const bucketCount = Math.min(marks.length, 120);
 	const buckets = Array.from({ length: bucketCount }, (_, bucket) => {
 		const members = marks.slice(Math.floor(bucket * marks.length / bucketCount), Math.floor((bucket + 1) * marks.length / bucketCount));
-		return { kind: severity.find((kind) => members.some(({ mark }) => mark.kind === kind))!, claims: members.reduce((total, { source }) => total + (source?.claims?.length ?? 0), 0) };
+		return { kind: severity.find((kind) => members.some(({ mark }) => mark.kind === kind)), claims: members.reduce((total, { source }) => total + (source?.claims?.length ?? 0), 0) };
 	});
 	const densest = Math.max(1, ...buckets.map(({ claims }) => claims));
 	const at = (event: MouseEvent<HTMLDivElement>) => {
@@ -41,7 +41,12 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, selected
 	};
 	const step = Math.max(1, Math.round(marks.length / 20));
 	const onKeyDown = (event: KeyboardEvent) => {
-		if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(marks[cursor]!.messageId); return; }
+		if (event.key === "Enter" || event.key === " ") {
+			event.preventDefault();
+			const mark = marks[cursor];
+			if (mark !== undefined) onSelect(mark.messageId);
+			return;
+		}
 		const next = { ArrowRight: cursor + 1, ArrowLeft: cursor - 1, PageUp: cursor - step, PageDown: cursor + step, Home: 0, End: marks.length - 1 }[event.key];
 		if (next === undefined) return;
 		event.preventDefault();
@@ -77,7 +82,14 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, selected
 			onBlur={() => setActive(null)}
 			onPointerMove={(event) => setActive(at(event))}
 			onPointerLeave={() => setActive(null)}
-			onClick={(event) => { const index = at(event); setCursor(index); setActive(index); onSelect(marks[index]!.messageId); }}
+			onClick={(event) => {
+				const index = at(event);
+				const mark = marks[index];
+				if (mark === undefined) return;
+				setCursor(index);
+				setActive(index);
+				onSelect(mark.messageId);
+			}}
 		>
 			{buckets.map(({ kind, claims }, index) => (
 				<span

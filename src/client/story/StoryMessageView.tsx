@@ -42,10 +42,8 @@ export function StoryMessageView({
 	portrait,
 	onMoveSwipe,
 	onEdit,
-	canContinue = false,
 	continueLabel = "Continue",
 	onContinue,
-	canRegenerate = false,
 	onRegenerate,
 	onSibling,
 	onReroll,
@@ -78,10 +76,8 @@ export function StoryMessageView({
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => Promise<boolean>;
-	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
-	canRegenerate?: boolean;
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onReroll?: (messageId: number) => void;
@@ -316,7 +312,7 @@ export function StoryMessageView({
 						<Edit3 aria-hidden="true" /> Edit
 					</button>
 					{generationControls}
-					{canRegenerate && onRegenerate !== undefined && (
+					{onRegenerate !== undefined && (
 						<button
 							className="secondary-button continue-action"
 							type="button"
@@ -326,7 +322,7 @@ export function StoryMessageView({
 							<RefreshCw aria-hidden="true" /> Regenerate response
 						</button>
 					)}
-					{canContinue && onContinue !== undefined && (
+					{onContinue !== undefined && (
 						<button
 							className="secondary-button continue-action"
 							type="button"

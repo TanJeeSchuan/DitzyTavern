@@ -321,7 +321,7 @@ describe("staged SillyTavern chat import commit", () => {
 		// The Participant takes the Profile's current name and full copied
 		// Definition with immutable provenance, but no live link.
 		expect(conversation.cast).toHaveLength(1);
-		const participant = conversation.cast[0];
+		const participant = conversation.cast[0]!;
 		expect(participant?.name).toBe("Maren Voss");
 		expect(participant?.sourceCharacterId).toBe(character.id);
 		expect(participant?.prompt.identity).toBe(
@@ -379,7 +379,7 @@ describe("staged SillyTavern chat import commit", () => {
 		expect(receipt.participants[0]).toEqual({
 			name: "Vesper",
 			outcome: "new-character",
-			sourceCharacterId: profiles[1]?.id,
+			sourceCharacterId: profiles[1]!.id,
 		});
 		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.capturedName).toBe("Vesper");
 	});
@@ -540,7 +540,7 @@ describe("staged SillyTavern chat import commit", () => {
 		}
 		expect(rowCounts().chats).toBe(1);
 		expect(first.receipt.conversationId).toBe(
-			drizzle(database).select().from(conversationTable).all()[0]?.id,
+			drizzle(database).select().from(conversationTable).all()[0]!.id,
 		);
 	});
 

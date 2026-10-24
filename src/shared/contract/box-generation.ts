@@ -1,6 +1,6 @@
-import { Kind, Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { GenerationJsonValue } from "../generation-json";
+import { generationJsonValue } from "./json-value";
 import { boxDescriptor, boxDescriptors, type BoxId } from "./box";
 import { boxValue, type BoxValue } from "./box-value";
 
@@ -16,7 +16,7 @@ export type BoxAdmission = Static<typeof boxAdmission>;
 // each item it returned, in its order; and its block's text as budgeted and
 // as sent, which differ once the writer edits the inspected Prompt Plan.
 export const boxTrace = Type.Object({
-	trace: Type.Optional(Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" })),
+	trace: Type.Optional(generationJsonValue),
 	allowance: Type.Optional(Type.Integer()),
 	items: Type.Array(Type.Object({ text: Type.String(), admission: boxAdmission })),
 	automaticText: Type.String(),

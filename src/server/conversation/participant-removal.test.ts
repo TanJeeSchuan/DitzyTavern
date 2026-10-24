@@ -433,13 +433,13 @@ describe("Participant removal", () => {
 		// The greeting authored by Maren keeps its pair pointing at the
 		// tombstone, displaying no-longer-in-Cast for both participants.
 		expect(removed.messages[0]?.author).toEqual({
-			participantId: snapshot.cast[1]?.id,
+			participantId: snapshot.cast[1]!.id,
 			capturedName: "Maren Voss",
 			inCast: true,
 		});
 		expect(removed.messages[0]?.historicalContext).toEqual({
 			humanParticipantId: humanId,
-			modelParticipantId: snapshot.cast[1]?.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
 	});
 

@@ -6,12 +6,15 @@ import { portrait } from "./image";
 
 export const healthResponse = Type.Object({ ok: Type.Boolean() });
 
+const chatSummaryCastMember = Type.Object({ name: Type.String(), portrait: Type.Union([Type.Null(), portrait]) });
+export const chatSummaryCast = Type.Array(chatSummaryCastMember);
+
 export const chatSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	creationTime: Type.String(),
 	lastMessageTime: Type.String(),
-	cast: Type.Array(Type.Object({ name: Type.String(), portrait: Type.Union([Type.Null(), portrait]) })),
+	cast: chatSummaryCast,
 	excerpt: Type.String(),
 });
 

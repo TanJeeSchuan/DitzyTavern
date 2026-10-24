@@ -11,7 +11,7 @@ export interface ImageReference {
 
 const toReference = (match: RegExpMatchArray): ImageReference => {
 	const start = match.index ?? 0;
-	return { name: match[1]!, hash: match[2]!, start, end: start + match[0].length };
+	return { name: match[1]!, hash: match[2]!, start, end: start + match[0].length }; // @approved The pattern captures both groups.
 };
 
 export const parseImageReferences = (text: string): ImageReference[] => [...text.matchAll(REFERENCE)].map(toReference);

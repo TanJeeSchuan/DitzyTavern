@@ -75,8 +75,8 @@ describe("Prompt Plan budget", () => {
 		});
 
 		expect(result.fits).toBe(true);
-		expect(result.omittedContext).toEqual([history[0]]);
-		expect(result.retainedContext).toEqual([history[1]]);
+		expect(result.omittedContext).toEqual([history[0]!]);
+		expect(result.retainedContext).toEqual([history[1]!]);
 		expect(result.plan.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Writer", content: "latest human input", role: "human" },
 		]);

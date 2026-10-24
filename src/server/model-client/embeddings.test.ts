@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { cosineSimilarity, requestEmbeddings } from "./embeddings";
 
 describe("embedding client", () => {
+	test.each([{ embedding: ["1", 0] }, { embedding: [] }, { embedding: [null, 0] }])("rejects unusable vector elements %j", async ({ embedding }) => {
+		await expect(requestEmbeddings(["one"], {
+			endpoint: "http://localhost/v1/embeddings", model: "test-model", secrets: null, timeoutMs: 1000,
+			fetch: async () => Response.json({ data: [{ embedding }] }),
+		})).rejects.toMatchObject({ name: "EmbeddingServiceError", kind: "malformed-response" });
+	});
 	test("requests OpenAI-compatible vectors", async () => {
 		let body: string | undefined;
 		const vectors = await requestEmbeddings(["one", "two"], {

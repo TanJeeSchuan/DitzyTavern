@@ -182,8 +182,9 @@ describe("Text-only Models", () => {
 		started.runtime.releaseStopRequest();
 		response.resolve(stream());
 		await expect(started.result).rejects.toMatchObject({ kind: "cancelled" });
-		expect(started.runtime.state.status).toBe("failed");
-		expect(started.runtime.state.imageModel).toBeUndefined();
+		const state = started.runtime.state;
+		if (state.status !== "failed") throw new Error(`Expected a failed Generation, got ${state.status}.`);
+		expect(state.imageModel).toBeUndefined();
 	});
 
 	test("a prefill refused for its Image offers no model, since no request was sent", async () => {
@@ -217,7 +218,9 @@ describe("Text-only Models", () => {
 		}).startGeneration({target: { kind: "continuation" }, conversationId, expectedRevision: configured.revision });
 		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
 		expect(requests).toBe(0);
-		expect(started.runtime.state.imageModel).toBeUndefined();
+		const state = started.runtime.state;
+		if (state.status !== "failed") throw new Error(`Expected a failed Generation, got ${state.status}.`);
+		expect(state.imageModel).toBeUndefined();
 	});
 
 	test("a mark never advances the settings revision and survives Profile edits", async () => {

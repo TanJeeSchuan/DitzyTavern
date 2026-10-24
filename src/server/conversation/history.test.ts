@@ -176,7 +176,7 @@ describe("Conversation paginated history", () => {
 		// The Author Stamp carries the stable Participant identity and the
 		// captured name; no source role flag is involved.
 		expect(message?.author).toEqual({
-			participantId: chat.cast[0]?.id,
+			participantId: chat.cast[0]!.id,
 			capturedName: "Writer",
 			inCast: true,
 		});

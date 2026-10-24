@@ -32,7 +32,7 @@ export const sweepOrphanedImages = (database: Database, now = Date.now()) => dat
 	for (const { table, column } of textColumns) {
 		for (const { value } of database.query<{ value: string }, []>(`SELECT "${column}" AS value FROM "${table}" WHERE "${column}" LIKE '%image:%' OR "${column}" ${bareHash}`).all()) {
 			if (value.length === 64) referenced.add(value);
-			else for (const match of value.matchAll(reference)) referenced.add(match[1]!);
+			else for (const match of value.matchAll(reference)) referenced.add(match[1]!); // @approved `reference` always captures the hash.
 		}
 	}
 	const update = database.query("UPDATE image SET orphaned_at = ? WHERE hash = ?");

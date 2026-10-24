@@ -177,7 +177,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const accepted = acceptConversationTailGeneration(database, {
 		seed: "override-seed", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-08-27T00:00:00.000Z",
 		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] }, promptContext: [], generationSettings: {}, connection: {},
+		promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, omittedContext: [] }, promptContext: [], generationSettings: {}, connection: {},
 	});
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] });

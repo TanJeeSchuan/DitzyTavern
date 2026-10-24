@@ -244,10 +244,8 @@ const fieldSimilarity = (left: Representation, right: Representation): number =>
 
 for (const group of exactGroups.values()) {
 	if (group.length < 2) continue;
-	for (let index = 0; index < group.length; index += 1) {
-		for (let other = index + 1; other < group.length; other += 1) {
-			const left = group[index];
-			const right = group[other];
+	for (const [index, left] of group.entries()) {
+		for (const right of group.slice(index + 1)) {
 			if (left.layer === right.layer) continue;
 			candidatePairs.set(`${left.file}:${left.name}|${right.file}:${right.name}`, [left, right]);
 		}

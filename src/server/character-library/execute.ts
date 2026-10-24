@@ -117,6 +117,10 @@ export function executeCharacterCommand(
 					.run();
 				break;
 			}
+			default: {
+				const _exhaustive: never = command;
+				throw new Error(`Unhandled Character command: ${JSON.stringify(_exhaustive)}`);
+			}
 		}
 
 		const advanced = db

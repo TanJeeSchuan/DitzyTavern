@@ -91,6 +91,13 @@ describe("Chat list summaries", () => {
 		expect(summary?.cast).toEqual([{ name: "Nox", portrait: nox }, { name: "Writer", portrait: writer }, { name: "Maren", portrait: null }, { name: "Iris", portrait: null }]);
 	});
 
+	test("rejects a stored Portrait whose focal point is outside the schema", () => {
+		const chat = createChat("Corrupt Portrait", ["Writer", "Maren"]);
+		database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = ?, portrait_focal_y = ? WHERE participant_id = ?")
+			.run("a".repeat(64), 2, 0.5, chat.cast[0]?.id ?? 0);
+		expect(() => listChatSummaries(database)).toThrow();
+	});
+
 	test("a Chat without Participants has no Portraits", () => {
 		const chat = createConversationWithHistory(module, { name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);

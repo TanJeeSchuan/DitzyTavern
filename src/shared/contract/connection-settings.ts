@@ -41,7 +41,7 @@ const profileDraft = Type.Object({
 	pinnedModels: Type.Array(Type.String()),
 }, { additionalProperties: false });
 
-const profile = Type.Object({
+export const connectionProfile = Type.Object({
 	id: Type.Integer(),
 	displayName: Type.String(),
 	apiFormat,
@@ -60,7 +60,7 @@ const profile = Type.Object({
 
 const settings = Type.Object({
 	revision: Type.Integer(),
-	profiles: Type.Array(profile),
+	profiles: Type.Array(connectionProfile),
 });
 
 const preset = Type.Object({
@@ -149,7 +149,7 @@ const discoveryFailureKind = Type.Union([
 const discoveryResult = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
-		profile,
+		profile: connectionProfile,
 		settingsRevision: Type.Integer(),
 	}),
 	Type.Object({
@@ -233,7 +233,7 @@ export const connectionCommandErrors = Type.Union([
 ]);
 
 export type ConnectionProfileDraftPayload = Static<typeof profileDraft>;
-export type ConnectionProfilePayload = Static<typeof profile>;
+export type ConnectionProfilePayload = Static<typeof connectionProfile>;
 export type ConnectionSettingsPayload = Static<typeof settings>;
 export type ConnectionPresetPayload = Static<typeof preset>;
 export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;

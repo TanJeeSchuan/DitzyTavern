@@ -48,7 +48,7 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Rec = never
 	/** @approved A digesting Box's one-line dock status, or null when it has nothing to say; the passage timeline read reports it. */
 	status?(setup: Setup, state: State): string | null;
 	/** @approved The setup a SillyTavern chat's Author's Note imports as; a Box without it ignores the note. */
-	importSillyTavernNote?(note: string): Setup;
+	importSillyTavernNote?(note: string): NonNullable<Setup>;
 	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
 	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
@@ -57,8 +57,8 @@ export interface Box<Setup, Dependencies = undefined, Trace = never, Rec = never
 
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
-// produced it and never interprets it.
-export type HostBox = Box<BoxValue, unknown, GenerationJsonValue, GenerationJsonValue, unknown, unknown>;
+// produced it and never interprets it. A Box without a setup gets undefined.
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, unknown, unknown>;
 
 /** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
 export type CaptureMessage = {

@@ -87,7 +87,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites" | "seed" | "boxRecords"
+	"provenance" | "macro" | "seed" | "boxRecords"
 >;
 
 type GenerationAcceptanceContext = Omit<GenerationAcceptanceFields, "generationIntent">;
@@ -129,7 +129,7 @@ const persistActiveGeneration = (
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
 			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
+			prompt_inspection_json: jsonText(input.promptInspection, "Prompt inspection"),
 			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
@@ -139,10 +139,10 @@ const persistActiveGeneration = (
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
-			macro_preset_id: input.macroPresetId ?? null,
+			macro_preset_id: input.macro?.presetId ?? null,
 			box_records_json: JSON.stringify(input.boxRecords ?? {}),
 			macro_writes_json: jsonText(
-				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
+				(input.macro?.writes ?? []).map(encodeMacroVariableWrite),
 				"Macro writes",
 			),
 		})

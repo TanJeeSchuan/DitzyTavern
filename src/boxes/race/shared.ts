@@ -1,4 +1,4 @@
-import type { RaceMove, RaceMoveKind, RaceSetup, RaceSpectatorState } from "./contract";
+import type { RaceMove, RaceMoveKind, RaceRunner, RaceSetup, RaceSpectatorState } from "./contract";
 
 /** @approved Below this energy a Runner tires and loses pace, so no attack may spend into it. */
 export const FATIGUE_ENERGY = 0.35;
@@ -36,6 +36,7 @@ export type RunnerMoveKind = Exclude<RaceMoveKind, "hold">;
 export type RaceMoveCheck = { readonly legal: true; readonly cost: number; readonly odds: number } | { readonly legal: false; readonly reason: string };
 
 const clampOdds = (odds: number) => Math.round(Math.min(0.95, Math.max(0.05, odds)) * 100) / 100;
+const notRacing = (name: string): RaceMoveCheck => ({ legal: false, reason: `${name} is not racing.` });
 const isAttack = (kind: RaceMoveKind) => kind === "overtake" || kind === "spurt";
 
 /** @approved One rule for the window's offer and the Stretch's resolution: `earlier` are the Moves staged or resolved before this one, whose costs it projects. */
@@ -44,23 +45,26 @@ export function checkRaceMove(setup: RaceSetup, state: RaceSpectatorState, earli
 	if (setup.phase !== "running" || state.finished) return { legal: false, reason: "The race is not running." };
 	if (state.metres >= distance) return { legal: false, reason: "The field has crossed the line." };
 	if (setup.auto === "on" || (setup.auto !== "off" && state.metres < distance - setup.auto.until)) return { legal: false, reason: "Moves are off while Auto mode runs." };
-	if (!state.standings.some(({ name }) => name === move.runner) || !setup.slots.some(({ name }) => name === move.runner)) return { legal: false, reason: `${move.runner} is not racing.` };
+	const runner = setup.slots.find(({ name }) => name === move.runner);
+	if (runner === undefined || !state.standings.some(({ name }) => name === move.runner)) return notRacing(move.runner);
 	if (earlier.length >= MAX_RACE_MOVES) return { legal: false, reason: `A turn holds at most ${MAX_RACE_MOVES} Moves.` };
 	if (earlier.some(({ kind }) => kind === "hold")) return { legal: false, reason: "Hold skips this Stretch." };
 	if (move.kind === "hold") return earlier.length === 0 ? { legal: true, cost: 0, odds: 1 } : { legal: false, reason: "Hold must be the only Move." };
-	return checkRunnerMove(setup, state, earlier, move.runner, move.kind);
+	return checkRunnerMove(setup, state, earlier, runner, move.kind);
 }
 
 /** @approved The rule for one Runner's attack or easing, shared by the writer's Moves and the engine's own decisions. */
-export function checkRunnerMove(setup: RaceSetup, state: RaceSpectatorState, earlier: readonly RaceMove[], name: string, kind: RunnerMoveKind): RaceMoveCheck {
+export function checkRunnerMove(setup: RaceSetup, state: RaceSpectatorState, earlier: readonly RaceMove[], runner: RaceRunner, kind: RunnerMoveKind): RaceMoveCheck {
 	const { distance } = setup.course;
+	const { name } = runner;
 	const index = state.standings.findIndex((standing) => standing.name === name);
-	const runner = setup.slots.find((slot) => slot.name === name)!;
+	const standing = state.standings[index];
+	if (standing === undefined) return notRacing(name);
 	const own = earlier.filter((move) => move.runner === name);
 	if (own.some((move) => isAttack(kind) ? isAttack(move.kind) : move.kind === kind)) {
 		return { legal: false, reason: `${name} already ${isAttack(kind) ? "attacks" : "eases off"} this Stretch.` };
 	}
-	const energy = own.reduce((left, move) => spendEnergy(left, move.kind), state.standings[index]!.energy);
+	const energy = own.reduce((left, move) => spendEnergy(left, move.kind), standing.energy);
 	const { cost } = raceMoveCatalog[kind];
 	switch (kind) {
 		case "conserve":
@@ -70,7 +74,7 @@ export function checkRunnerMove(setup: RaceSetup, state: RaceSpectatorState, ear
 			const ahead = state.standings[index - 1];
 			if (ahead === undefined) return { legal: false, reason: `${name} already leads.` };
 			// @approved The odds reach their floor near the ground one surge gains, so a Runner far behind cannot pass.
-			const gap = ahead.distance - state.standings[index]!.distance;
+			const gap = ahead.distance - standing.distance;
 			return { legal: true, cost, odds: clampOdds(0.75 - gap / 15 + (runner.power + runner.wit - 1200) / 4000) };
 		}
 		case "spurt":

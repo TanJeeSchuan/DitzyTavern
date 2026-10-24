@@ -26,6 +26,7 @@ export const phoneMoveLabel = ({ to, text }: PhoneMove): string => `📱 ${to}: 
 //  read as one of these entities. Everything else stays as written.
 const ENTITIES = new Map([["&amp;", "&"], ["&quot;", "\""], ["&lt;", "<"], ["&gt;", ">"]]);
 const CHARACTERS = new Map([...ENTITIES].map(([entity, character]) => [character, entity]));
+/** @approved Each pattern below matches only characters or entities these maps hold. */
 const escape = (pattern: RegExp) => (text: string) => text.replace(pattern, (character) => CHARACTERS.get(character)!);
 const escapeName = escape(/&(?=(?:amp|quot|lt|gt);)|["<>]/g);
 const escapeBody = escape(/&(?=(?:amp|quot|lt|gt);)|<(?=\/?sms\b)/g);
@@ -39,6 +40,7 @@ export function stripPhoneTexts(text: string, { human, contacts }: PhoneNames): 
 	const segments: PhoneSegment[] = [];
 	let at = 0;
 	for (const match of text.matchAll(SMS)) {
+		/** @approved SMS always captures its three groups. */
 		const from = known(decode(match[1]!));
 		const to = known(decode(match[2]!));
 		const body = decode(match[3]!).trim();

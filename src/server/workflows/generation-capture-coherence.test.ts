@@ -125,9 +125,9 @@ describe("generation capture coherence", () => {
 				type: "save-entry",
 				bookId: state.book.id,
 				expectedRevision: state.book.revision,
-				entryId: state.book.entries[0]?.id,
+				entryId: state.book.entries[0]!.id,
 				entry: {
-					...state.book.entries[0],
+					...state.book.entries[0]!,
 					content: "Edited while Jev was pending.",
 				},
 			});

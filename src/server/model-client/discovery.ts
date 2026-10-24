@@ -1,3 +1,5 @@
+import { catalogBody, modelCatalogEntry, type ModelCatalogEntry } from "../../shared/contract/provider-response";
+import { Value } from "@sinclair/typebox/value";
 import type {
 	ConnectionProfileDraft,
 	ConnectionProfileSecretSnapshot,
@@ -85,21 +87,16 @@ export async function discoverModels(
 				return failure("malformed-response", "The Models response is too large to read safely.");
 			}
 			const bytes = bounded.bytes;
-			let parsed: JsonValue;
+			let parsed: unknown;
 			try {
-				// @approved
-				//  SAFETY: the JSON parser establishes the only boundary at which the
-				// untrusted response enters this module; parseCatalogBody validates the
-				// concrete object shape before any field is consumed.
-				parsed = JSON.parse(new TextDecoder().decode(bytes)) as JsonValue;
+				parsed = JSON.parse(new TextDecoder().decode(bytes));
 			} catch {
 				return failure("malformed-response", "The Models endpoint returned invalid JSON.");
 			}
-			const catalog = parseCatalogBody(parsed);
-			if (catalog === null) {
+			if (!Value.Check(catalogBody, parsed)) {
 				return failure("malformed-response", "The Models endpoint did not return a data array.");
 			}
-			return { outcome: "success", catalog: normalizeDiscoveryCatalog(catalog.data) };
+			return { outcome: "success", catalog: normalizeDiscoveryCatalog(parsed.data.filter((entry): entry is ModelCatalogEntry => Value.Check(modelCatalogEntry, entry))) };
 		});
 	} catch (error) {
 		if (error instanceof ModelFetchTimeoutError) {
@@ -122,32 +119,6 @@ export function normalizeDiscoveryCatalog(models: readonly ModelCatalogEntry[]):
 		if (normalized.length > 0) unique.add(normalized);
 	}
 	return [...unique].sort(compareModelIds);
-}
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { readonly [key: string]: JsonValue };
-
-interface ModelCatalogEntry {
-	readonly id: string;
-}
-
-function parseCatalogBody(value: JsonValue): { data: ModelCatalogEntry[] } | null {
-	const root = jsonObject(value);
-	if (root === null || !Array.isArray(root.data)) return null;
-	const data = root.data.flatMap((entry) => {
-		const object = jsonObject(entry);
-		const id = object?.id;
-		if (id === undefined || Object.prototype.toString.call(id) !== "[object String]") return [];
-		return [{ id: String(id) }];
-	});
-	return { data };
-}
-
-function jsonObject(value: JsonValue): { readonly [key: string]: JsonValue } | null {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// @approved
-	//  SAFETY: the object tag check above establishes a JSON object before this
-	// assertion is used to inspect its named fields.
-	return value as { readonly [key: string]: JsonValue };
 }
 
 function failure(kind: DiscoveryFailureKind, message: string): DiscoveryResult {

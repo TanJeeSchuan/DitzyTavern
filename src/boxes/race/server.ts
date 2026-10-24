@@ -70,7 +70,8 @@ const raceBox = {
 			if (record === undefined && withdrawalLines.length > 0 && setup.phase === "running" && !before.finished) {
 				if (captured.setup.slots.length < 2) {
 					const { standings } = remaining;
-					const result = standings.length === 0 ? ["The race is called off."] : [`${standings[0]!.name} wins by default.`];
+					const [walkover] = standings;
+					const result = walkover === undefined ? ["The race is called off."] : [`${walkover.name} wins by default.`];
 					const outcome = [setup.course.name, ...withdrawalLines, ...result, "Narrate the finish."].join("\n");
 					const stretch = before.stretch + 1;
 					const intents = remaining.intents.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);

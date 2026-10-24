@@ -4,7 +4,7 @@ import {
 	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxInstances,
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
 } from "@/box-sdk/server";
-import { memoryRecord, type ConversationMemories, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
+import { memoryRecord, type ConversationMemories, type ConversationMemoryAllowanceCommand, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
 import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
 import { InvalidMemoryCommandError, memoryGuard } from "./server-errors";
 import { readMemoryEmbedding } from "./server-settings";
@@ -54,11 +54,11 @@ const updateChatSettings = (database: Database, conversationId: number, expected
 		return readMemoryChatSettings(database, conversationId);
 	}).immediate();
 
-export function setMemoryAllowance(database: Database, conversationId: number, expectedRevision: number, allowance: number) {
-	if (!Number.isSafeInteger(allowance) || allowance < 0) {
+export function setMemoryAllowance(database: Database, conversationId: number, command: ConversationMemoryAllowanceCommand) {
+	if (!Number.isSafeInteger(command.allowance) || command.allowance < 0) {
 		throw new InvalidMemoryCommandError("Memory Allowance must be a non-negative whole number of estimated tokens.");
 	}
-	return updateChatSettings(database, conversationId, expectedRevision, { allowance });
+	return updateChatSettings(database, conversationId, command.expectedRevision, { allowance: command.allowance });
 }
 
 export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {

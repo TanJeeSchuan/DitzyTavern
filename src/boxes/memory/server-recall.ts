@@ -87,9 +87,13 @@ const parseScore = (answer: DecisionAnswer | undefined) => {
 	if (answer?.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) {
 		throw new Error("Decision Model returned a missing or malformed Memory relevance score.");
 	}
-	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) {
+	if (scoreLabels.some((_, index) => {
+		const probability = answer.probabilities[String(index)];
+		return probability === undefined || !(probability >= 0 && probability <= 1);
+	})) {
 		throw new Error("Decision Model returned incomplete Memory relevance probabilities.");
 	}
+	/** @approved The score was checked within the labels' range above, so its rounding names a label. */
 	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
 };
 
@@ -238,6 +242,10 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 		case "off": throw new Error("Choose a Memory Decision Model in Connection Settings.");
 		case "unavailable": throw new Error(`${snapshot.decision.reason} Check the Memory Decision Model in Connection Settings.`);
 		case "ready": break;
+		default: {
+			const _exhaustive: never = snapshot.decision;
+			throw new Error(`Unhandled Memory Decision state: ${JSON.stringify(_exhaustive)}`);
+		}
 	}
 	let semantic: { candidate: ClaimedMemory; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
@@ -247,6 +255,7 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 		if (vectors.some((vector) => vector.length !== queryVector.length)) {
 			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");
 		}
+		/** @approved `embed` returns one vector per text, in order. */
 		semantic = claimed.map((candidate, index) => ({ candidate, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
 			.slice(0, 48);

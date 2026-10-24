@@ -95,8 +95,8 @@ describe("Conversation creation", () => {
 		expect(snapshot.cast.every((participant) => participant.sourceCharacterId === null)).toBe(true);
 
 		expect(snapshot.control).toEqual({
-			humanParticipantId: snapshot.cast[0]?.id,
-			modelParticipantId: snapshot.cast[1]?.id,
+			humanParticipantId: snapshot.cast[0]!.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
 
 		// Human openings never become history; only the model seat's do.
@@ -135,8 +135,8 @@ describe("Conversation creation", () => {
 			inCast: true,
 		});
 		expect(greeting?.historicalContext).toEqual({
-			humanParticipantId: snapshot.cast[0]?.id,
-			modelParticipantId: snapshot.cast[1]?.id,
+			humanParticipantId: snapshot.cast[0]!.id,
+			modelParticipantId: snapshot.cast[1]!.id,
 		});
 	});
 

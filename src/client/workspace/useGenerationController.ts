@@ -1,3 +1,4 @@
+import { isStoryReady } from "../story";
 import { useMutation } from "@tanstack/react-query";
 import {
 	useEffect,
@@ -287,7 +288,7 @@ export function useGenerationController({
 
 	const continueMessage = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const latest = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
@@ -298,7 +299,7 @@ export function useGenerationController({
 
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const persisted = story.page?.hasNewer ? undefined : story.messages.at(-1);
+		const persisted = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
 		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
 		if (

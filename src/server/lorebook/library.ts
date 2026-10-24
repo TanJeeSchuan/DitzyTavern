@@ -332,12 +332,10 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, book.entries.filter((entry) => entry.id !== command.entryId).map((entry) => entry.id));
 				break;
 			case "reorder-entry": {
-				const index = book.entries.findIndex((entry) => entry.id === command.entryId);
-				if (index < 0) throw new LorebookEntryNotFoundError(command.entryId);
+				if (!book.entries.some((entry) => entry.id === command.entryId)) throw new LorebookEntryNotFoundError(command.entryId);
 				if (command.toPosition < 1 || command.toPosition > book.entries.length) throw new InvalidLorebookCommandError("Lorebook entry position is out of range.");
-				const ordered = book.entries.map((entry) => entry.id);
-				const [entry] = ordered.splice(index, 1);
-				ordered.splice(command.toPosition - 1, 0, entry);
+				const ordered = book.entries.flatMap((entry) => entry.id === command.entryId ? [] : [entry.id]);
+				ordered.splice(command.toPosition - 1, 0, command.entryId);
 				resequence(db, lorebookEntryTable, lorebookEntryTable.lorebook_id, command.bookId, ordered);
 				break;
 			}
@@ -345,6 +343,10 @@ export const executeLorebookCommand = (database: Database, command: LorebookComm
 				if (db.select({ id: lorebookEntryTable.id }).from(lorebookEntryTable).where(and(eq(lorebookEntryTable.id, command.entryId), eq(lorebookEntryTable.lorebook_id, command.bookId))).get() === undefined) throw new LorebookEntryNotFoundError(command.entryId);
 				db.update(lorebookEntryTable).set({ enabled: command.enabled }).where(eq(lorebookEntryTable.id, command.entryId)).run();
 				break;
+			default: {
+				const _exhaustive: never = command;
+				throw new Error(`Unhandled Lorebook command: ${JSON.stringify(_exhaustive)}`);
+			}
 		}
 		incrementRevision(db, command.bookId);
 		return requireBook(db, command.bookId);

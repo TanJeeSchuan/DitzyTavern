@@ -175,7 +175,7 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		const accepted = acceptConversationTailGeneration(database, {
 			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
 			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] }, promptContext: [], generationSettings: {}, connection: {},
+			promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, omittedContext: [] }, promptContext: [], generationSettings: {}, connection: {},
 			boxRecords: { lantern: { instance, record: { lit: true } } },
 		});
 		checkpointConversationGeneration(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });

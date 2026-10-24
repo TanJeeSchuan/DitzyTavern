@@ -50,6 +50,7 @@ describe("generation recovery diagnostics", () => {
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

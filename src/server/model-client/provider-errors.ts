@@ -1,9 +1,18 @@
-export interface ProviderErrorLike extends Error {
-	readonly cause?: Error;
-	readonly statusCode?: number;
-	readonly status?: number;
-	readonly responseBody?: string;
-	readonly responseHeaders?: Readonly<Record<string, string>>;
+import { Value } from "@sinclair/typebox/value";
+import { providerDiagnosticError, providerErrorCause, type ProviderErrorLike } from "../../shared/contract/provider-response";
+
+export function providerErrorFields(error: Error): ProviderErrorLike {
+	const fields = providerDiagnosticError.properties;
+	const { cause } = error;
+	return {
+		name: error.name,
+		message: error.message,
+		causeName: Value.Check(providerErrorCause, cause) ? cause.name : undefined,
+		statusCode: "statusCode" in error && Value.Check(fields.statusCode, error.statusCode) ? error.statusCode : undefined,
+		status: "status" in error && Value.Check(fields.status, error.status) ? error.status : undefined,
+		responseBody: "responseBody" in error && Value.Check(fields.responseBody, error.responseBody) ? error.responseBody : undefined,
+		responseHeaders: "responseHeaders" in error && Value.Check(fields.responseHeaders, error.responseHeaders) ? error.responseHeaders : undefined,
+	};
 }
 
 export interface ProviderErrorSnapshot {

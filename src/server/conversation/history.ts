@@ -95,7 +95,7 @@ export function readChatHistory(
 			.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, request.aroundMessageId))).get();
 		if (target === undefined) return undefined;
 		const newer = db.select({ count: sql<number>`count(*)` }).from(messageTable)
-			.where(and(eq(messageTable.conversation_id, conversationId), gt(messageTable.position, target.position))).get()!.count;
+			.where(and(eq(messageTable.conversation_id, conversationId), gt(messageTable.position, target.position))).get()!.count; // @approved count(*) always returns a row.
 		requested = Math.floor(newer / pageSize) + 1;
 	}
 	const pageIndex = Math.min(

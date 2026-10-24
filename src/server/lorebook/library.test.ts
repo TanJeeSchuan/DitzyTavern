@@ -81,7 +81,7 @@ describe("Lorebook entry resequencing", () => {
 		const reordered = asBook(executeLorebookCommand(database, {
 			type: "reorder-entry",
 			bookId: book.id,
-			entryId: book.entries[2].id,
+			entryId: book.entries[2]!.id,
 			expectedRevision: 0,
 			toPosition: 1,
 		}));
@@ -94,7 +94,7 @@ describe("Lorebook entry resequencing", () => {
 		const compacted = asBook(executeLorebookCommand(database, {
 			type: "delete-entry",
 			bookId: book.id,
-			entryId: reordered.entries[1].id,
+			entryId: reordered.entries[1]!.id,
 			expectedRevision: reordered.revision,
 		}));
 		expect(compacted.entries.map(({ title, position }) => [title, position])).toEqual([

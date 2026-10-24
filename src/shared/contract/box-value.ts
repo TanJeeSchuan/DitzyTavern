@@ -1,4 +1,5 @@
-import { Kind, Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { generationJsonValue } from "./json-value";
 import { Value } from "@sinclair/typebox/value";
 
 // @approved
@@ -7,8 +8,8 @@ import { Value } from "@sinclair/typebox/value";
 // host checks it against that Box's schema, and the Box reads it with the
 // same one, through `boxSetupOf` and `boxMovesOf`. This module imports no
 // Box, so every Box layer can reach it through the SDK.
-export type BoxValue = null | undefined | boolean | number | string | readonly BoxValue[] | { readonly [key: string]: BoxValue };
-export const boxValue = Type.Unsafe<BoxValue>({ [Kind]: "Unknown" });
+export const boxValue = generationJsonValue;
+export type BoxValue = Static<typeof boxValue>;
 
 /** @approved Whether a Box value passes one of its Box's schemas; the host keeps holding it as a BoxValue. */
 export const fitsBoxSchema = (schema: TSchema, value: BoxValue): boolean => Value.Check(schema, value);

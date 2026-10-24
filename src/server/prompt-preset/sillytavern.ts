@@ -185,7 +185,8 @@ const orderChoices = (orders: readonly SourceOrderList[]): SillyTavernOrderChoic
 
 const chooseOrder = (orders: readonly SourceOrderList[], requested: string | undefined): SourceOrderList | null => {
 	if (requested !== undefined) return orders.find((order) => order.id === requested) ?? null;
-	return orders.find((order) => order.id === "100001") ?? (orders.length === 1 ? orders[0] : null);
+	const [only, ...others] = orders;
+	return orders.find((order) => order.id === "100001") ?? (others.length === 0 ? only ?? null : null);
 };
 
 const diagnostic = (code: string, message: string, identifier?: string): SillyTavernImportDiagnostic => {

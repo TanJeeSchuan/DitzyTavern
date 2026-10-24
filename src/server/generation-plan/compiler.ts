@@ -176,12 +176,10 @@ export const compileGenerationPlan = (
 			"An assistant-prefill Continuation requires preceding model history to prefill from.",
 		);
 	}
-	const loreProtectedIndex = protectedHistoryIndex ?? [...input.context.keys()]
-		.reverse()
-		.find((index) => input.context[index]?.role === "human");
-	const protectedContext = loreProtectedIndex === undefined
-		? []
-		: [input.context[loreProtectedIndex]];
+	const loreProtected = protectedHistoryIndex === undefined
+		? input.context.findLast(({ role }) => role === "human")
+		: input.context[protectedHistoryIndex];
+	const protectedContext = loreProtected === undefined ? [] : [loreProtected];
 	const admissions = admitDynamicBlocks({
 		recipe: input.recipe,
 		lore: candidates,
@@ -253,6 +251,7 @@ const boxBudgetEvidence = (boxes: BoxResults, decisions: ReturnType<typeof admit
 		const admissions = decisions[reference];
 		if (result === undefined || admissions === undefined) return [];
 		const text = plan.blocks.find((block) => block.kind === reference)?.content ?? "";
+		/** @approved Admission decides each of a Box's items, so it holds one decision per item, in order. */
 		const trace: BoxTrace = { items: result.items.map((item, index) => ({ text: item.text, admission: admissions[index]! })), automaticText: text, finalText: text };
 		if (result.trace !== undefined) trace.trace = result.trace;
 		if (result.allowance !== undefined) trace.allowance = result.allowance;
