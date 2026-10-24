@@ -25,10 +25,13 @@
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",
 		"test": "bun test --parallel=3 --no-isolate --preload ./src/client/test-fixtures/window.ts --preload ./src/server/test-fixtures/boxes.ts src",
 		"test:publication": "bun test scripts/publish-docker.test.ts scripts/write-build-metadata.test.ts",
-		"check": "bun run lint && bun run lint:rules && bun run check:contracts && bun run typecheck && bun run typecheck:tools && bun run test && bun run test:e2e:harness",
+		"check": "bun scripts/run-check.ts check",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
-		"test:e2e": "playwright test",
+		"test:e2e": "bun scripts/run-check.ts e2e",
 		"test:e2e:harness": "node --test e2e/harness.test.ts"
+	},
+	"engines": {
+		"node": "26.12.0"
 	},
 	"dependencies": {
 		"@ai-sdk/deepseek": "^3.0.32",

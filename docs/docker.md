@@ -86,6 +86,20 @@ Provider URLs are resolved from inside the container. `127.0.0.1` in a connectio
 
 ## Updates and backups
 
+### Upgrade from the pre-Box release
+
+Use a release containing the data-preserving versions of migrations `0024`, `0025`, `0026`, and `0029` for the first upgrade from the pre-Box release. They move Memory settings and saved claims into Box storage, enable Author Note in existing Chats, preserve Memory's previous enabled state per Chat, and retain embedding vectors. Missing API Format namespaces in Request Overrides become empty objects without replacing authored overrides. Do not deploy intermediate stack builds that lack these preservation changes. Pin the reviewed final `build-N` tag or digest instead of pulling a moving `latest` during the cutover.
+
+These migrations replace unreleased migration bodies that discarded Memory data. If an instance already applied those destructive versions, restore its pre-upgrade backup before upgrading. Changing an already-applied migration does not rerun it or recover deleted rows.
+
+Work in progress is disposable for this cutover: active streams, unsaved drafts, staged imports, and unfinished jobs can be lost. Stop the old server before taking the backup. Preserve the old image digest, the complete data directory, and `CONNECTION_SECRET_KEY` together. Replace the container using the same mount, key, and port mapping. Confirm that existing Chats show their Author Notes and Memories, that Memory's configured models and allowances survived, and that the Box loader logs no refused built-in Boxes. A healthy `/api/health` response alone does not check those values.
+
+Refresh open browser tabs after replacement. The Box release changes the client modules and API routes. A tab running the earlier bundle can show missing Box errors until it reloads.
+
+The upgrade retires old Memory extraction traces, catch-up jobs, and historical recall snapshots. Saved claims and Writer overrides survive. A Writer override keeps its corrected claims; resetting it follows the new Box behavior, which removes the override and shows an available automatic record. A migrated Writer-only collection has no earlier automatic record to restore, so digest the passage again after resetting it. Pending or running extraction work needs another catch-up run.
+
+To roll back, restore the pre-upgrade data directory and run the preserved old image with the same encryption key. Running the old image against the upgraded database is not a rollback.
+
 Official builds check for updates after server startup and every 24 hours. Settings offers Check now and an installation-wide automatic-check toggle; the toggle survives container replacement through the data volume. Disabling it leaves manual checks available. A failed refresh retains the last successful result with a failure notice, while restarting clears cached results. Custom builds do not contact the registry.
 
 Settings only reports update availability and links here. DitzyTavern does not pull images or restart itself. Pull the desired `build-N` tag or `latest`, stop the old container with a 10-second grace period, remove that stopped container, and recreate it using the reference run command with the same data volume, port mapping, and encryption key. Starting the new image migrates the database automatically. Back up before upgrading; returning to an older image does not undo database migrations.
