@@ -74,7 +74,9 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	await draft.getByRole("button", { name: "Edit", exact: true }).click();
 	await draft.getByRole("textbox", { name: "Edit Message" }).fill("Draft written in this tab.");
 	await focus(page, "hidden");
+	const saved = other.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await edit(other, editedId, "Changed while this tab was editing.");
+	await saved;
 	const refreshed = page.waitForResponse((response) => response.url().includes(`${url}/history`));
 	await focus(page, "visible");
 	await refreshed;
