@@ -319,9 +319,27 @@
 	}
 }
 
+.box-manager section {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.box-manager section + section {
+	margin-top: 1.5rem;
+}
+
+.box-manager h3 {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	font-weight: 640;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
 .box-manager ul {
 	display: grid;
-	gap: 1.25rem;
+	gap: 0.15rem;
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -330,18 +348,90 @@
 .box-manager li {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.55rem;
+	padding: 0.35rem 0.25rem;
+	border-radius: 0.7rem;
 }
 
-.box-manager li > div {
+.box-manager li:hover,
+.box-manager li:focus-within {
+	background: var(--surface-muted);
+}
+
+.box-manager-icon {
+	display: grid;
+	flex: none;
+	place-items: center;
+	width: 1.85rem;
+	height: 1.85rem;
+	border: 1px solid var(--border);
+	border-radius: 0.55rem;
+	background: var(--surface-raised);
+	color: var(--accent);
+}
+
+.box-manager-icon svg {
+	width: 0.95rem;
+	height: 0.95rem;
+}
+
+.box-manager li[data-off] .box-manager-icon {
+	color: var(--text-muted);
+}
+
+.box-manager-copy {
 	display: grid;
 	flex: 1;
 	min-width: 0;
+	gap: 0.1rem;
 }
 
-.box-manager li span {
+.box-manager-copy strong {
+	font-weight: 600;
+}
+
+.box-manager-name {
+	justify-self: start;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--foreground);
+	font: inherit;
+	font-weight: 600;
+	text-align: left;
+}
+
+.box-manager-name:hover {
+	color: var(--accent);
+}
+
+.box-manager-name:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+
+.box-manager-status {
+	overflow: hidden;
 	color: var(--text-muted);
 	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+/* A row's actions stay reachable by keyboard: focus within the row reveals them. */
+.box-manager-actions {
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.box-manager li:hover .box-manager-actions,
+.box-manager li:focus-within .box-manager-actions {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.box-manager-actions {
+		opacity: 1;
+	}
 }
 
 /* A Box surface that threw, in its host frame. */
@@ -353,4 +443,36 @@
 
 .details-panel > .box-failure {
 	padding: 1rem;
+}
+
+/* What a Box's lens lifts out of the prose, on its own line in the story. */
+.box-lens-mark {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin: 0.2rem 0 0.75rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.25rem;
+	background: none;
+	color: var(--text-muted);
+	font-family: var(--font-control);
+	font-size: 0.8rem;
+}
+
+.box-lens-mark svg {
+	flex: none;
+	width: 1em;
+	height: 1em;
+	stroke-width: 1.8;
+}
+
+.box-lens-mark:hover {
+	color: var(--foreground);
+	text-decoration: underline;
+}
+
+.box-lens-mark:focus-visible {
+	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
+	outline-offset: 2px;
 }

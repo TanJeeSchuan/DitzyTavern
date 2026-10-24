@@ -1,4 +1,4 @@
-import type { PromptBoxReference } from "../../shared/contract/box";
+import type { BoxId, PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { BoxManager } from "../box-windows/BoxManager";
 import { boxClients, boxPresent, boxTitle } from "../box-windows/registry";
@@ -55,6 +55,8 @@ export function PrimaryPanelView({
 	connectionSettings,
 	generationSettings,
 	onOpenInspector,
+	onOpenPanel,
+	onOpenWindow,
 	mutationsDisabled = false,
 }: {
 	panel: PrimaryPanel;
@@ -74,6 +76,8 @@ export function PrimaryPanelView({
 	connectionSettings: ConnectionSettingsController;
 	generationSettings: GenerationPanelDraft;
 	onOpenInspector: (inspector: SplitInspector) => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
+	onOpenWindow: (box: BoxId) => void;
 	mutationsDisabled?: boolean;
 }) {
 	const settingsBox = isBoxSettings(panel) ? panel.slice("box-settings:".length) : undefined;
@@ -130,7 +134,8 @@ export function PrimaryPanelView({
 						</div>
 					)}
 					{panel === "boxes" && conversation !== null && (
-						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange} />
+						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange}
+							onOpenPanel={onOpenPanel} onOpenWindow={onOpenWindow} />
 					)}
 					{panel === "lorebooks" && (
 						<div className="panel-fill">

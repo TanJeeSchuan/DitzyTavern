@@ -11,7 +11,7 @@ import { boxClientFolder, boxRoutes, serverBoxes } from "../box/registry";
 // their names across builds.
 export const createBoxRoutes = () => {
 	const app = new Elysia()
-		.get("/api/boxes", () => [...serverBoxes().keys()].map((id) => ({ id, label: boxDescriptor(id).label, client: `/boxes/${id}/client.js` })), { response: boxList })
+		.get("/api/boxes", () => [...serverBoxes().keys()].map((id) => ({ id, label: boxDescriptor(id).label, summary: boxDescriptor(id).summary, client: `/boxes/${id}/client.js` })), { response: boxList })
 		.get("/boxes/:box/:file", async ({ params: { box, file }, set, status }) => {
 			const folder = boxClientFolder(box);
 			const served = folder === undefined || (file !== "client.js" && file !== "client.css") ? undefined : Bun.file(join(folder, file));

@@ -13,20 +13,10 @@ const useThoughts = (conversation: ConversationSummary) => useQuery({
 	placeholderData: (previous) => previous,
 });
 
-function ThoughtDockTab({ conversation, onRestore }: { conversation: ConversationSummary; onRestore: () => void }) {
+function ThoughtStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = useThoughts(conversation);
 	const count = read.data?.thoughts.length ?? 0;
-	return <button type="button" className="box-dock-tab" title="Restore Thoughts" onClick={onRestore}>
-		<MessageCircleDashed aria-hidden="true" /><span className="thought-label">Thoughts: </span>
-		<span>{read.isError ? "Unavailable" : count === 0 ? "No thoughts" : count === 1 ? "1 thought" : `${count} thoughts`}</span>
-	</button>;
-}
-
-/** @approved A thought the lens lifted out of the prose: the story keeps a mark where it was, which opens the Thoughts window. */
-function ThoughtLensView({ onOpen }: { onOpen: () => void }) {
-	return <button type="button" className="thought-mark" onClick={onOpen}>
-		<MessageCircleDashed aria-hidden="true" />A thought
-	</button>;
+	return <span>{read.isError ? "Unavailable" : count === 0 ? "No thoughts" : count === 1 ? "1 thought" : `${count} thoughts`}</span>;
 }
 
 function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
@@ -41,6 +31,6 @@ function ThoughtPanel({ conversation }: { conversation: ConversationSummary }) {
 	</ol>;
 }
 
-const thoughtLens = createBoxLens("thought", () => true, stripThoughts, ThoughtLensView);
+const thoughtLens = createBoxLens("thought", () => true, stripThoughts, (run) => run.length === 1 ? "A thought" : `${run.length} thoughts`);
 
-export default { descriptor, icon: MessageCircleDashed, Window: { size: { width: 22, height: 30 }, DockTab: ThoughtDockTab, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;
+export default { descriptor, icon: MessageCircleDashed, Status: ThoughtStatus, Window: { size: { width: 22, height: 30 }, Panel: ThoughtPanel, lens: thoughtLens } } satisfies BoxClientDefinition;

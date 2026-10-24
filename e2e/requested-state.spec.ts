@@ -70,18 +70,18 @@ test.describe(() => {
 		await phone.getByRole("button", { name: "Stage text" }).click();
 		await phone.getByRole("button", { name: "Minimize Phone" }).click();
 		const staged = page.locator("form.composer").getByRole("list", { name: "Phone Moves" });
-		await expect(staged.getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+		await expect(staged.getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 		const accepting = holdPost(page, "**/api/conversations/*/generations");
 		const composer = await sendDirect(page, 'I wait.\n<sms from="Night Desk" to="Theodora Kline">still here</sms>');
 		const route = await accepting;
 		const requested = story(page).locator("article[data-requested]").first();
-		await expect(requested.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+		await expect(requested.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 		await expect(requested.getByRole("button", { name: "Night Desk texted Theodora Kline" })).toBeVisible();
 		await expect(requested).not.toContainText("still here");
 		await expect(staged).toHaveCount(0);
 		await route.abort();
 		await expect(story(page).locator("article[data-requested]")).toHaveCount(0);
-		await expect(staged.getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+		await expect(staged.getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 		await expect(composer).toContainText("I wait.");
 	});
 });
@@ -100,20 +100,20 @@ test("a second Move removal builds on the first while the first is still unanswe
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await expect(story(page).getByText("Theodora reads them.")).toBeVisible();
 	const moves = story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" });
-	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: A", "📱 Theodora Kline: B", "📱 Theodora Kline: C"]);
+	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: A", "To Theodora Kline: B", "To Theodora Kline: C"]);
 	let applied = 0;
 	page.on("response", (response) => { if (response.url().endsWith("/commands") && response.ok()) applied += 1; });
 	const applying = holdPost(page, "**/api/conversations/*/commands");
-	await moves.getByRole("button", { name: "Remove 📱 Theodora Kline: A" }).click();
+	await moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click();
 	const route = await applying;
-	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: B", "📱 Theodora Kline: C"]);
-	await moves.getByRole("button", { name: "Remove 📱 Theodora Kline: B" }).click();
-	await expect(moves.getByRole("listitem")).toHaveText(["📱 Theodora Kline: C"]);
+	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: B", "To Theodora Kline: C"]);
+	await moves.getByRole("button", { name: "Remove To Theodora Kline: B" }).click();
+	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: C"]);
 	await route.continue();
 	await expect.poll(() => applied).toBe(2);
 	await page.reload();
 	await expect(story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" }).getByRole("listitem"))
-		.toHaveText(["📱 Theodora Kline: C"]);
+		.toHaveText(["To Theodora Kline: C"]);
 });
 
 test("a Swipe on the final Message shows its Variant before the server applies it", async ({ page, request }) => {

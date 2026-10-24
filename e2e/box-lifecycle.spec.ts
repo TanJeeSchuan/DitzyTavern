@@ -30,8 +30,13 @@ test("a disabled Phone has no prompt item and keeps its dock tab and window, wit
 
 	const boxes = await manager(page);
 	await boxes.getByRole("switch", { name: "Phone in this Chat" }).click();
-	await expect(boxes.getByRole("listitem").filter({ hasText: "Phone" })).toContainText("Off · setup kept");
+	await expect(boxes.getByRole("listitem").filter({ hasText: "Phone" })).toContainText("Off · No unread texts");
+	await boxes.getByRole("button", { name: "Phone", exact: true }).click();
+	await expect(window).toBeVisible();
+	await window.getByRole("button", { name: "Minimize Phone" }).click();
+	await expect(dock).toBeVisible();
 	await closeBoxes(page);
+	await expect(page.getByRole("button", { name: "Phone", exact: true })).toHaveCount(0);
 	await expect((await generate(page, "Leave it.")).getByText(/^Phone ·/)).toHaveCount(0);
 	await sendPlan(page, "Two.");
 	await dock.click();
@@ -56,7 +61,7 @@ test("a disabled World Clock keeps its window and saved setup, which stays edita
 	let boxes = await manager(page);
 	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
 	await boxes.getByRole("switch", { name: "World Clock in this Chat" }).click();
-	await expect(boxes.getByRole("listitem").filter({ hasText: "World Clock" })).toContainText("Off · setup kept");
+	await expect(boxes.getByRole("listitem").filter({ hasText: "World Clock" })).toContainText("Off · 8:00 AM");
 	await closeBoxes(page);
 	await expect(window).toContainText("World Clock is off in this Chat.");
 	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
@@ -70,7 +75,8 @@ test("a disabled World Clock keeps its window and saved setup, which stays edita
 	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("CE");
 
 	boxes = await manager(page);
-	await boxes.getByRole("button", { name: "Remove World Clock" }).click();
+	await boxes.getByRole("button", { name: "World Clock actions" }).click();
+	await page.getByRole("menuitem", { name: "Remove from Chat…" }).click();
 	await page.getByRole("dialog", { name: "Remove World Clock?" }).getByRole("button", { name: "Remove" }).click();
 	await expect(window).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "World Clock", exact: true })).toHaveCount(0);
@@ -87,7 +93,8 @@ test.describe("a Box lifecycle change from a stale read", () => {
 		await page.goto("/");
 		await insertBox(page, "World Clock");
 		const boxes = await manager(page);
-		await boxes.getByRole("button", { name: "Remove World Clock" }).click();
+		await boxes.getByRole("button", { name: "World Clock actions" }).click();
+		await page.getByRole("menuitem", { name: "Remove from Chat…" }).click();
 
 		const { activeChatId } = await (await request.get("/api/workspace")).json();
 		const { revision, boxSetups } = await (await request.get(`/api/conversations/${activeChatId}`)).json();
@@ -98,7 +105,7 @@ test.describe("a Box lifecycle change from a stale read", () => {
 
 		await page.getByRole("dialog", { name: "Remove World Clock?" }).getByRole("button", { name: "Remove" }).click();
 		await expect(page.getByRole("alert")).toHaveText("The Chat changed elsewhere; its Boxes were reloaded.");
-		await expect(boxes.getByRole("listitem").filter({ hasText: "World Clock" })).toContainText("On");
+		await expect(boxes.getByRole("switch", { name: "World Clock in this Chat" })).toBeChecked();
 		const after = await (await request.get(`/api/conversations/${activeChatId}`)).json();
 		expect(after.boxes["world-clock"]).toBe("enabled");
 		expect(after.boxSetups["world-clock"].era).toBe("BE");
@@ -124,19 +131,20 @@ test("removing the Race after a Stretch keeps the story and its Moves, which rea
 	await sendPlan(page, "Race passage 1.");
 	const human = story(page).locator("article").nth(-2);
 	const chips = human.getByRole("list", { name: "Race Moves" }).getByRole("listitem");
-	await expect(chips).toHaveText([`⚡ Overtake · ${runner}`]);
+	await expect(chips).toHaveText([`Overtake · ${runner}`]);
 
 	const boxes = await manager(page);
-	await boxes.getByRole("button", { name: "Remove Race" }).click();
+	await boxes.getByRole("button", { name: "Race actions" }).click();
+	await page.getByRole("menuitem", { name: "Remove from Chat…" }).click();
 	await page.getByRole("dialog", { name: "Remove Race?" }).getByRole("button", { name: "Remove" }).click();
 	await expect(window).toHaveCount(0);
 	await expect(story(page).getByText("Race passage 1.")).toBeVisible();
-	await expect(chips).toHaveText([`⚡ Overtake · ${runner}`]);
+	await expect(chips).toHaveText([`Overtake · ${runner}`]);
 
 	await expect((await generate(page, "Walk home.")).getByText(/^Race ·/)).toHaveCount(0);
 	await sendPlan(page, "The crowd disperses.");
 	const sent = JSON.stringify((await llm.log()).calls.filter((call) => call.kind === "chat").at(-1));
-	expect(sent).toContain(`⚡ Overtake · ${runner}`);
+	expect(sent).toContain(`Overtake · ${runner}`);
 	expect(sent).not.toContain("(Race Move:");
 });
 
@@ -152,9 +160,10 @@ test("a new Chat starts with only the Author Note and Memory enabled", async ({ 
 	const boxes = await manager(page);
 	for (const title of ["Author Note", "Memory"]) await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
 	for (const title of ["World Clock", "Race", "Phone"]) {
-		await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).not.toBeChecked();
-		await expect(boxes.getByRole("listitem").filter({ hasText: title })).toContainText("Not in this Chat");
+		await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toHaveCount(0);
+		await expect(boxes.getByRole("button", { name: `Add ${title}`, exact: true })).toBeVisible();
 	}
+	await expect(boxes.getByRole("listitem").filter({ hasText: "World Clock" })).toContainText("Keeps the in-story time and weather that passages establish.");
 });
 
 test("on a narrow screen, closing the last Box window releases keyboard focus", async ({ page }) => {

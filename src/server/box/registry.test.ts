@@ -53,7 +53,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 	}
 });
 
-const lantern = { sdk: boxSdkVersion, label: "Lantern", role: "system", startsEnabled: false, instructions: "" };
+const lantern = { sdk: boxSdkVersion, label: "Lantern", summary: "Hangs a lit lantern in the scene.", role: "system", startsEnabled: false, instructions: "" };
 const pluginFolders: string[] = [];
 afterEach(() => { for (const folder of pluginFolders.splice(0)) rmSync(folder, { recursive: true, force: true }); });
 // @approved
