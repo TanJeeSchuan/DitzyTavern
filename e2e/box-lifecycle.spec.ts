@@ -1,10 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, insertBox, story } from "./fixtures";
-
-const manager = async (page: Page) => {
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
-	return page.getByRole("list", { name: "Boxes" });
-};
+import { test, expect, insertBox, story, openBoxes as manager, closeBoxes } from "./fixtures";
 
 const generate = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });
@@ -36,7 +31,7 @@ test("a disabled Phone has no prompt item and keeps its dock tab and window, wit
 	const boxes = await manager(page);
 	await boxes.getByRole("switch", { name: "Phone in this Chat" }).click();
 	await expect(boxes.getByRole("listitem").filter({ hasText: "Phone" })).toContainText("Off · setup kept");
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await expect((await generate(page, "Leave it.")).getByText(/^Phone ·/)).toHaveCount(0);
 	await sendPlan(page, "Two.");
 	await dock.click();
@@ -51,7 +46,7 @@ test("a disabled Phone has no prompt item and keeps its dock tab and window, wit
 	await sendPlan(page, "Three.");
 });
 
-test("a disabled World Clock keeps its window and unsaved setup, which stays editable, and removing resets it", async ({ page }) => {
+test("a disabled World Clock keeps its window and saved setup, which stays editable, and removing resets it", async ({ page }) => {
 	await page.goto("/");
 	await insertBox(page, "World Clock");
 	await page.getByRole("button", { name: "World Clock", exact: true }).click();
@@ -59,18 +54,20 @@ test("a disabled World Clock keeps its window and unsaved setup, which stays edi
 	await window.getByRole("textbox", { name: "Era" }).fill("BE");
 
 	let boxes = await manager(page);
+	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Save and leave" }).click();
 	await boxes.getByRole("switch", { name: "World Clock in this Chat" }).click();
 	await expect(boxes.getByRole("listitem").filter({ hasText: "World Clock" })).toContainText("Off · setup kept");
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await expect(window).toContainText("World Clock is off in this Chat.");
 	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
+	await window.getByRole("textbox", { name: "Era" }).fill("CE");
 	await window.getByRole("button", { name: "Save World Clock" }).click();
 	await expect(window.getByRole("button", { name: "Save World Clock" })).toBeDisabled();
 	boxes = await manager(page);
 	await boxes.getByRole("switch", { name: "World Clock in this Chat" }).click();
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	await expect(window).not.toContainText("World Clock is off in this Chat.");
-	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
+	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("CE");
 
 	boxes = await manager(page);
 	await boxes.getByRole("button", { name: "Remove World Clock" }).click();

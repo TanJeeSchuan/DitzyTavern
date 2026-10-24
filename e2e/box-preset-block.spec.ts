@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page } from "@playwright/test";
-import { test, expect, insertBox, story } from "./fixtures";
+import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
 
 const attachPreset = async (page: Page, request: APIRequestContext, slots: unknown[]) => {
 	await page.goto("/");
@@ -42,9 +42,9 @@ test("a disabled Race block stays off until the writer enables it from the notic
 	await llm.chat({ chunks: ["Off they go."] });
 	await attachPreset(page, request, [{ reference: "box:race", enabled: false, role: "system", content: "" }]);
 	await insertBox(page, "Race");
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
+	await openBoxes(page);
 	await expect(page.getByRole("list", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Race" })).toContainText("Race block is off in Lean.");
-	await page.keyboard.press("Escape");
+	await closeBoxes(page);
 	const window = await startRace(page);
 	await expect(window).toContainText("Race block is off in Lean.");
 	await window.getByRole("button", { name: "Enable", exact: true }).click();

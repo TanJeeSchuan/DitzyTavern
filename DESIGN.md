@@ -208,6 +208,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Application shell
 
 - Slim icon-only desktop rail with immediate hover and keyboard-focus labels.
+- Boxes opens the left panel for adding, disabling, and removing Boxes in the active Chat. Individual Box panels and windows stay reachable from the composer.
 - Labelled navigation drawer, opened from the Story header, on narrow desktop and mobile.
 - Abstract ambient field visible mainly around the fixed story canvas and unused utility bays.
 - No decorative status dots or ornamental navigation treatments.

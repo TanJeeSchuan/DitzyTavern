@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "./fixtures";
+import { test, expect, selectBoxDecisionModel, insertBox, send, story, openBoxes, closeBoxes } from "./fixtures";
 import type { E2eServer } from "./harness";
 import { hasDecisionPassage, isDecisionModelCall } from "./protocol";
 
@@ -145,9 +145,9 @@ test("a reinserted clock starts from its initial time while a re-enabled one kee
 	await expect(dockTab(page)).toHaveText(/^World Clock: \d{1,2}:\d\d PM/, { timeout: 15_000 });
 
 	const toggle = async (action: (boxes: Locator) => Promise<void>) => {
-		await page.getByRole("button", { name: "Boxes", exact: true }).click();
+		await openBoxes(page);
 		await action(page.getByRole("list", { name: "Boxes" }));
-		await page.keyboard.press("Escape");
+		await closeBoxes(page);
 	};
 	const clockSwitch = (boxes: Locator) => boxes.getByRole("switch", { name: "World Clock in this Chat" });
 	const cancelPreview = () => page.getByRole("complementary", { name: "Prompt Plan preview" }).getByRole("button", { name: "Cancel" }).click();
