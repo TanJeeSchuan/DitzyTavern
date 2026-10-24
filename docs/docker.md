@@ -1,6 +1,6 @@
 # Docker and GHCR
 
-The image runs Bun 1.3.14 as the unprivileged `bun` user, serves the built frontend and API on port 3000, and stores the database and imported files under `/app/data`. Both `linux/amd64` and `linux/arm64` are built. No model runs inside this container; connection profiles point to your providers.
+The image runs Bun 1.4.3 as the unprivileged `bun` user, serves the built frontend and API on port 3000, and stores the database and imported files under `/app/data`. Both `linux/amd64` and `linux/arm64` are built. No model runs inside this container; connection profiles point to your providers.
 
 ## Publishing from GitHub
 
