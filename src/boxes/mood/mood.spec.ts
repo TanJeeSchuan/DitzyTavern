@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "./fixtures";
+import { test, expect, selectBoxDecisionModel, insertBox, send, story } from "../../../e2e/fixtures";
 
 const moods = ["not clear", "calm", "warm", "playful", "tense", "sad", "eerie"];
 const mood = (passage: string | undefined, selected: string) => ({

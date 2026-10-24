@@ -1,4 +1,4 @@
-import { test, expect, story, insertBox } from "./fixtures";
+import { test, expect, story, insertBox } from "../../../e2e/fixtures";
 
 const sms = (from: string, to: string, text: string) => `<sms from="${from}" to="${to}">${text}</sms>`;
 

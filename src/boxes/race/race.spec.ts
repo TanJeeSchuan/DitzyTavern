@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, story, insertBox } from "./fixtures";
+import { test, expect, story, insertBox } from "../../../e2e/fixtures";
 
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });

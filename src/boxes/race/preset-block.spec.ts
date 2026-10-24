@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page } from "@playwright/test";
-import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
+import { test, expect, insertBox, story, openBoxes, closeBoxes } from "../../../e2e/fixtures";
 
 const attachPreset = async (page: Page, request: APIRequestContext, slots: unknown[]) => {
 	await page.goto("/");

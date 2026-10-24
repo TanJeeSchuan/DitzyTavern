@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, selectBoxDecisionModel, insertBox, send, story, openBoxes, closeBoxes } from "./fixtures";
-import type { E2eServer } from "./harness";
-import { hasDecisionPassage, isDecisionModelCall } from "./protocol";
+import { test, expect, selectBoxDecisionModel, insertBox, send, story, openBoxes, closeBoxes } from "../../../e2e/fixtures";
+import type { E2eServer } from "../../../e2e/harness";
+import { hasDecisionPassage, isDecisionModelCall } from "../../../e2e/protocol";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
 const weather = ["not mentioned", "clear", "cloudy", "rain", "storm", "snow", "fog"];
