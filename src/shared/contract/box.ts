@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { boxValue, type BoxValue } from "./box-value";
 import type { BoxDescriptor } from "./box-descriptor";
+import { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
 import { notFoundOutcome } from "./outcomes";
@@ -12,6 +13,11 @@ import { notFoundOutcome } from "./outcomes";
 export type BoxId = string;
 export const promptBoxReference = Type.TemplateLiteral("box:${string}");
 export type PromptBoxReference = Static<typeof promptBoxReference>;
+export function boxIdOf(reference: PromptBoxReference): BoxId;
+export function boxIdOf(reference: string): BoxId | undefined;
+export function boxIdOf(reference: string): BoxId | undefined {
+	return reference.startsWith("box:") ? reference.slice(4) : undefined;
+}
 export const boxReference = (id: BoxId): PromptBoxReference => `box:${id}`;
 
 // @approved
@@ -22,23 +28,41 @@ export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
 export type { BoxDescriptor } from "./box-descriptor";
+export { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
 
-let installed: ReadonlyMap<BoxId, BoxDescriptor> = new Map();
 // @approved
-//  The loaded Boxes' descriptors, by id, in the order the host lists and runs
-// Boxes. Startup installs them once, before anything reads them, so every
-// table built from them is a read rather than a table built at import.
-export const boxDescriptors = (): ReadonlyMap<BoxId, BoxDescriptor> => installed;
-export const installBoxDescriptors = (descriptors: readonly BoxDescriptor[]): void => {
-	installed = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+//  A loaded Box: the metadata the server lists, and its descriptor, which the
+// client holds only once the Box's client module loaded.
+export type InstalledBox = { readonly metadata: BoxMetadata; readonly descriptor: BoxDescriptor | undefined };
+let installed: ReadonlyMap<BoxId, InstalledBox> = new Map();
+// @approved
+//  The loaded Boxes, by id, in the order the host lists and runs Boxes.
+// Startup installs them once, before anything reads them, so every table
+// built from them is a read rather than a table built at import.
+export const installedBoxes = (): ReadonlyMap<BoxId, InstalledBox> => installed;
+export const installBoxes = (boxes: readonly InstalledBox[]): void => {
+	installed = new Map(boxes.map((box) => [box.metadata.id, box]));
 };
+/** @approved The metadata the server lists for a Box, projected from its descriptor or from the list itself. */
+export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision }: BoxMetadata): BoxMetadata => ({ id, label, summary, instructions, block, decision });
 
-/** @approved The registered Box `id`'s descriptor. An unknown id throws, so a boundary checks ids before the host looks one up. */
+const installedBox = (id: BoxId): InstalledBox => {
+	const box = installed.get(id);
+	if (box === undefined) throw new Error(`There is no ${id} Box.`);
+	return box;
+};
+/** @approved A loaded Box's metadata: its label, summary, instructions, block copy and decision copy. An unknown id throws, so a boundary checks ids first. */
+export const boxMetadata = (id: BoxId): BoxMetadata => installedBox(id).metadata;
+/** @approved A loaded Box's descriptor. An unknown id throws, and so does a Box whose client module did not load, so a boundary checks ids first. */
 export const boxDescriptor = (id: BoxId): BoxDescriptor => {
-	const descriptor = installed.get(id);
-	if (descriptor === undefined) throw new Error(`There is no ${id} Box.`);
+	const { descriptor } = installedBox(id);
+	if (descriptor === undefined) throw new Error(`The ${id} Box's client module did not load.`);
 	return descriptor;
 };
+/** @approved The descriptor of each loaded Box that has one, by id, in registry order. */
+export const boxDescriptors = (): ReadonlyMap<BoxId, BoxDescriptor> =>
+	new Map([...installed].flatMap(([id, { descriptor }]) => descriptor === undefined ? [] : [[id, descriptor]]));
+
 /** @approved A Box record as the host holds it: an object of the Box's own values. */
 export type BoxRecord = { readonly [key: string]: BoxValue };
 /** @approved Box `id`'s record schema, typed as the record the host holds; a Box that keeps no records has none. */
@@ -48,22 +72,22 @@ export const boxRecordSchema = (id: BoxId) => {
 	return Type.Unsafe<BoxRecord>(record);
 };
 /** @approved Whether `reference` names a registered Box. */
-export const isBoxReference = (reference: string): reference is PromptBoxReference =>
-	reference.startsWith("box:") && installed.has(reference.slice("box:".length));
+export const isBoxReference = (reference: string): reference is PromptBoxReference => {
+	const id = boxIdOf(reference);
+	return id !== undefined && installed.has(id);
+};
 /** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
-export const isUnknownBoxReference = (reference: string): boolean => reference.startsWith("box:") && !isBoxReference(reference);
-/** @approved The descriptor behind a Box's preset block reference. */
-export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptor(reference.slice("box:".length));
+export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
-export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.decision !== undefined;
+export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.metadata.decision !== undefined;
 /** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
 export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
-	[...installed].flatMap(([id, descriptor]) => {
+	[...boxDescriptors()].flatMap(([id, descriptor]) => {
 		const value = descriptor[key];
 		return value === undefined ? [] : [[id, value]];
 	});
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
-export const defaultBoxIds = (): BoxId[] => [...installed].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
+export const defaultBoxIds = (): BoxId[] => [...boxDescriptors()].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
@@ -84,8 +108,8 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-/** @approved The loaded Boxes, in registry order, each with its label and the URL its client module loads from. */
-export const boxList = Type.Array(Type.Object({ id: Type.String(), label: Type.String(), client: Type.String() }));
+/** The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and the URL its client module loads from. */
+export const boxList = Type.Array(Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]));
 
 export const boxParams = Type.Object({ box: Type.String() });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });

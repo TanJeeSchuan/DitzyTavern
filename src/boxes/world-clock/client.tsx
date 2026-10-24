@@ -2,7 +2,7 @@ import "./client.css";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Clock } from "lucide-react";
-import { Alert, AlertDescription, boxDigestKey, Button, digestWindow, Field, Input, SegmentedControl, useBoxSetupDraft, useBoxStatus } from "@/box-sdk/client";
+import { Alert, AlertDescription, boxDigestKey, Button, digestWindow, Field, Input, SegmentedControl, useBoxSetupDraft } from "@/box-sdk/client";
 import type { BoxClientDefinition, ConversationSummary } from "@/box-sdk/client";
 import { isWorldClockStart, weatherLabels, worldClockSetup, type WorldClockRecord, type WorldClockSetup } from "./contract";
 import descriptor from "./shared-descriptor";
@@ -18,9 +18,6 @@ const elapsedLabel = (minutes: number): string => {
 /** @approved A passage's record on the timeline, such as `+5m · ☀️ Clear`. */
 const describeWorldClock = ({ minutes, weather }: WorldClockRecord): string =>
 	`${elapsedLabel(minutes)}${weather === null ? "" : ` · ${weatherLabels[weather]}`}`;
-
-/** @approved The top bar item: the in-story time, as the dock tab shows it. */
-const WorldClockTopBarItem = ({ conversation }: { conversation: ConversationSummary }): ReactNode => useBoxStatus(conversation.id, "world-clock");
 
 /** @approved The World Clock's setup form; the host's passage timeline follows it in the window. */
 function WorldClockPanel({ conversation, disabled, onConversationChange }: {
@@ -66,4 +63,4 @@ function WorldClockPanel({ conversation, disabled, onConversationChange }: {
 }
 
 const clockWindow = digestWindow(descriptor, { icon: Clock, size: { width: 25, height: 30 }, Panel: WorldClockPanel, describe: describeWorldClock });
-export default { descriptor, icon: clockWindow.icon, Window: clockWindow, TopBarItem: WorldClockTopBarItem } satisfies BoxClientDefinition;
+export default { descriptor, ...clockWindow, header: true } satisfies BoxClientDefinition;

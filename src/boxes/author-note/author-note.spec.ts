@@ -1,5 +1,5 @@
-import { test, expect, send, story } from "./fixtures";
-import { firstCall, isChatModelCall } from "./protocol";
+import { test, expect, send, story } from "../../../e2e/fixtures";
+import { firstCall, isChatModelCall } from "../../../e2e/protocol";
 
 test("writer saves an Author Note and sends it after history", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["Maren closes the door."] });

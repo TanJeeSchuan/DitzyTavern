@@ -18,7 +18,18 @@ export const phoneInstructions =
 //  only the innermost pair matches and the outer tags stay raw text.
 const SMS = /<sms\s+from="([^"<>]*)"\s+to="([^"<>]*)"\s*>((?:(?!<\/?sms\b)[\s\S])*)<\/sms>/g;
 
-export const phoneMoveLabel = ({ to, text }: PhoneMove): string => `📱 ${to}: ${text}`;
+export const phoneMoveLabel = ({ to, text }: PhoneMove): string => `To ${to}: ${text}`;
+
+export function describePhoneTexts(texts: readonly Sms[]): string {
+	const [first] = texts;
+	if (first === undefined) return "";
+	if (texts.length === 1) return `${first.from} texted ${first.to}`;
+	const senders = new Set(texts.map(({ from }) => from));
+	const recipients = new Set(texts.map(({ to }) => to));
+	if (senders.size === 1 && recipients.size === 1) return `${texts.length} texts from ${first.from} to ${first.to}`;
+	if (senders.size === 2 && recipients.size === 2 && [...senders].every((name) => recipients.has(name))) return `${texts.length} texts between ${first.from} and ${first.to}`;
+	return `${texts.length} texts`;
+}
 
 // @approved
 //  Rendering escapes only what would break the markup: a quote or angle

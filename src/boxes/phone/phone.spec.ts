@@ -1,4 +1,4 @@
-import { test, expect, story, insertBox } from "./fixtures";
+import { test, expect, story, insertBox } from "../../../e2e/fixtures";
 
 const sms = (from: string, to: string, text: string) => `<sms from="${from}" to="${to}">${text}</sms>`;
 
@@ -50,13 +50,13 @@ test("a text staged from the Phone is a turn on its own, sent to the model as ma
 	await phone.getByRole("button", { name: "Stage text" }).click();
 	await expect(thread.getByRole("listitem")).toHaveText(["u up?Staged"]);
 	const composer = page.locator("form.composer");
-	await expect(composer.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+	await expect(composer.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("Theodora reads it and smiles.")).toBeVisible();
 	const human = story(page).locator("article").nth(-2);
-	await expect(human.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+	await expect(human.getByRole("list", { name: "Phone Moves" }).getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 	await expect(composer.getByRole("list", { name: "Phone Moves" })).toHaveCount(0);
 	await expect(thread.getByRole("listitem")).toHaveText(["u up?"]);
 	const [sent] = (await llm.log()).calls.filter((call) => call.kind === "chat");
@@ -71,7 +71,7 @@ test("a seat change drops staged texts for good", async ({ page }) => {
 	await phone.getByRole("textbox", { name: "Text Theodora Kline" }).fill("u up?");
 	await phone.getByRole("button", { name: "Stage text" }).click();
 	const staged = page.locator("form.composer").getByRole("list", { name: "Phone Moves" });
-	await expect(staged.getByRole("listitem")).toHaveText(["📱 Theodora Kline: u up?"]);
+	await expect(staged.getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 	const writeAs = async (name: string) => {
 		await page.getByRole("combobox", { name: "Writing as" }).click();
 		await page.getByRole("option", { name: new RegExp(`^${name}`) }).click();

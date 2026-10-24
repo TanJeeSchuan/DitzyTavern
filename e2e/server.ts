@@ -37,7 +37,8 @@ let decisionRules: DecisionRule[] = [];
 let memoryClaims: MemoryClaim[] | undefined;
 let modelCatalogs: string[][] = [];
 let embeddingMatches: string[] = [];
-let checkpointTime: number | undefined;
+let checkpointTimes: number[] = [];
+const checkpointNow = () => checkpointTimes.length > 1 ? checkpointTimes.shift()! : checkpointTimes[0] ?? Date.now();
 let calls: ModelCall[] = [];
 let unscripted: string[] = [];
 let held = Promise.withResolvers<void>();
@@ -68,14 +69,11 @@ const refuse = (call: ModelCall) => {
 	return Response.json({ error: { message: `Unscripted e2e ${call.kind} call.` } }, { status: 500 });
 };
 
-const sse = (chunks: readonly string[], hold: boolean, chunkDelayMs: number, truncate: boolean) => new Response(new ReadableStream({
+const sse = (chunks: readonly string[], hold: boolean, truncate: boolean) => new Response(new ReadableStream({
 	async pull(controller) {
 		const encoder = new TextEncoder();
 		const send = (delta: { content?: string }, finish: string | null) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: "e2e", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
-		for (const [index, content] of chunks.entries()) {
-			if (index > 0) await Bun.sleep(chunkDelayMs);
-			send({ content }, null);
-		}
+		for (const content of chunks) send({ content }, null);
 		if (hold) await held.promise;
 		try {
 			if (!truncate) {
@@ -87,7 +85,7 @@ const sse = (chunks: readonly string[], hold: boolean, chunkDelayMs: number, tru
 	},
 }), { headers: { "content-type": "text/event-stream" } });
 
-const completion = (chunks: readonly string[], stream: boolean, hold = false, chunkDelayMs = 0, truncate = false) => stream ? sse(chunks, hold, chunkDelayMs, truncate) : Response.json({
+const completion = (chunks: readonly string[], stream: boolean, hold = false, truncate = false) => stream ? sse(chunks, hold, truncate) : Response.json({
 	id: "e2e", object: "chat.completion", created: 0, model: "e2e-model",
 	choices: [{ index: 0, message: { role: "assistant", content: chunks.join("") }, finish_reason: "stop" }],
 });
@@ -105,10 +103,9 @@ const chat = async (call: ChatModelCall) => {
 	const reply = chatReplies[0];
 	if (!reply) return refuse(call);
 	if (!reply.repeat) chatReplies.shift();
-	if ("chunks" in reply && reply.firstChunkDelayMs) await Bun.sleep(reply.firstChunkDelayMs);
 	if ("status" in reply && reply.hold) await held.promise;
 	if ("status" in reply) return Response.json({ error: { message: reply.error } }, { status: reply.status });
-	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.chunkDelayMs, reply.truncate);
+	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.truncate);
 };
 
 const decisions = async (call: DecisionModelCall) => {
@@ -181,17 +178,17 @@ const provision = (directory: string, database: Database) => {
 	const profile = {
 		apiFormat: "chat-completions", adapter: "openai-compatible",
 		requestUrl: "https://e2e.invalid/v1/", modelsUrl: "https://e2e.invalid/v1/models",
-		modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
+		modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 60_000,
 	} as const;
 	connections.createProfile({ expectedRevision: 0, profile: { ...profile, displayName: "E2E provider", pinnedModels: ["e2e-model"] } });
 	connections.createProfile({
 		expectedRevision: connections.get().revision,
 		profile: { ...profile, displayName: "E2E embeddings", apiFormat: "embeddings", requestUrl: "https://e2e.invalid/v1/embeddings", pinnedModels: ["e2e-embedding"] },
 	});
-	return database;
 };
 
 let current: { directory: string; database: Database; app: Awaited<ReturnType<typeof createApp>>["app"]; close: () => Promise<void> } | undefined;
+let seedImage: Uint8Array | undefined;
 
 const reset = async () => {
 	held.resolve();
@@ -204,7 +201,7 @@ const reset = async () => {
 	memoryClaims = undefined;
 	modelCatalogs = [];
 	embeddingMatches = [];
-	checkpointTime = undefined;
+	checkpointTimes = [];
 	calls = [];
 	unscripted = [];
 	updateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
@@ -212,12 +209,18 @@ const reset = async () => {
 	held = Promise.withResolvers();
 	rmSync(pluginFolder, { recursive: true, force: true });
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
-	await open(directory, provision(directory, await openDatabase(directory)));
+	if (seedImage) writeFileSync(join(directory, "e2e.sqlite"), seedImage);
+	const database = await openDatabase(directory);
+	if (!seedImage) {
+		provision(directory, database);
+		seedImage = database.serialize();
+	}
+	await open(directory, database);
 };
 
 const open = async (directory: string, database: Database) => {
 	updateDirectory = directory;
-	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
+	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: checkpointNow }, artifactDirectory: join(directory, "artifacts") }) };
 };
 
 const resumed = process.env.E2E_RESUME;
@@ -251,10 +254,15 @@ const server = Bun.serve({
 			case "/__e2e/memories": memoryClaims = [...memoryClaims ?? [], ...await request.json()]; break;
 			case "/__e2e/models": modelCatalogs.push(...await request.json()); break;
 			case "/__e2e/embeddings": embeddingMatches.push(...await request.json()); break;
-			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
+			case "/__e2e/checkpoint-clock": checkpointTimes = await request.json(); break;
 			case "/__e2e/updates": {
 				updateScenario = await request.json();
-				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
+				if (updateScenario.automaticChecks !== undefined) {
+					const response = await current!.app.handle(new Request("http://localhost/api/updates/automatic", {
+						method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }),
+					}));
+					if (!response.ok) throw new Error(`Setting automatic update checks failed: ${response.status} ${await response.text()}`);
+				}
 				const directory = current!.directory;
 				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
 				await current!.close();

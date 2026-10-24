@@ -102,3 +102,8 @@
 	gap: 0.8rem;
 }
 
+@media (max-height: 30rem) and (max-width: 78rem) {
+	.story-header {
+		min-height: 3rem;
+	}
+}

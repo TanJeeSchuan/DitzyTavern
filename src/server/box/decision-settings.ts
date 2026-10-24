@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { BoxDecisionSettings, BoxDecisionSettingsCommand, BoxId } from "../../shared/contract/box";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT, decisionSelection, type DecisionSelection } from "../../shared/contract/decision-model";
-import { putLibraryValue, readLibraryValue } from "./stored-value";
+import { putNamespacedLibraryValue, readNamespacedLibraryValue } from "./stored-value";
 import { tryResolveDecisionSelection, validateDecisionSelection } from "../decision-model";
 import { guardRevision } from "../revision";
 
@@ -14,13 +14,13 @@ const NAMESPACE = "box-decision";
 const unselected: DecisionSelection = { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: DEFAULT_DECISION_STATE_TOKEN_LIMIT };
 
 export const readBoxDecisionSettings = (database: Database, id: BoxId): BoxDecisionSettings =>
-	readLibraryValue(drizzle(database), NAMESPACE, id, decisionSelection, unselected);
+	readNamespacedLibraryValue(drizzle(database), NAMESPACE, id, decisionSelection, unselected);
 
 export const applyBoxDecisionSettings = (database: Database, id: BoxId, { expectedRevision, decisionProfileId, decisionModel, decisionStateTokenLimit }: BoxDecisionSettingsCommand): BoxDecisionSettings =>
 	database.transaction(() => {
 		validateDecisionSelection(database, { decisionProfileId, decisionModel, decisionStateTokenLimit });
 		const value = JSON.stringify({ decisionProfileId, decisionModel: decisionModel.trim(), decisionStateTokenLimit });
-		putLibraryValue(drizzle(database), { namespace: NAMESPACE, key: id, value }, (current) => guardRevision("settings", expectedRevision, current, () => readBoxDecisionSettings(database, id)));
+		putNamespacedLibraryValue(drizzle(database), NAMESPACE, { key: id, value }, (current) => guardRevision("settings", expectedRevision, current, () => readBoxDecisionSettings(database, id)));
 		return readBoxDecisionSettings(database, id);
 	}).immediate();
 

@@ -11,7 +11,8 @@ import { readCachedVectors } from "../../server/box/embedding";
 import type { ModelFetch } from "../../server/model-client";
 import { formatImageReference } from "../../shared/image-reference";
 import { memoryRecord } from "./contract";
-import { setMemoryIdentity, setMemoryNote } from "./server-memories";
+import { readConversationMemories, setMemoryIdentity, setMemoryNote } from "./server-memories";
+import { readMemoryChatSettings } from "./server-chat";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
 
 type Calls = { extraction: string[]; decisions: string[]; embeddings: { url: string; model: string; input: string[]; authorization: string | null }[] };
@@ -120,7 +121,7 @@ describe("Memory's digest", () => {
 	test("a passage by an author who is not in the story holds no Memories and costs no request, yet stays context", async () => {
 		const writer = chat.cast[0]!;
 		const guidance = passage(1, "Make Maren promise the key.", writer);
-		setMemoryIdentity(database, chat.id, { expectedRevision: 0, participantId: writer.id, identity: { kind: "excluded" } });
+		setMemoryIdentity(database, chat.id, { expectedRevision: readConversationMemories(database, chat.id).labelRevision, participantId: writer.id, identity: { kind: "excluded" } });
 		expect((await digest(guidance.variantId, provider(calls)))?.automatic).toEqual({ claims: [] });
 		expect(calls).toEqual({ extraction: [], decisions: [], embeddings: [] });
 		const story = passage(2, "Maren promised a key.");
@@ -134,7 +135,7 @@ describe("Memory's digest", () => {
 		if (renamed) database.run("UPDATE participant SET name = 'Director' WHERE id = ?", [writer.id]);
 		passage(2, "Writer's second word.", { ...writer, name: renamed ? "Director" : "Writer" });
 		const story = passage(3, "Maren promised a key.");
-		setMemoryIdentity(database, chat.id, { expectedRevision: 0, participantId: writer.id, identity: kind === "plays" ? { kind, person: "Tanjs" } : { kind } });
+		setMemoryIdentity(database, chat.id, { expectedRevision: readConversationMemories(database, chat.id).labelRevision, participantId: writer.id, identity: kind === "plays" ? { kind, person: "Tanjs" } : { kind } });
 		await digest(story.variantId, provider(calls));
 		const sentence = renamed
 			? kind === "excluded" ? "Director (also Writer) directs the story and is not a character in it. Never use Director or Writer as a person." : "First person in Director's (also Writer's) Messages refers to Tanjs."
@@ -148,8 +149,8 @@ describe("Memory's digest", () => {
 		const guidance = "\"Trainer\" in narration means Tanjs. Track injuries and promises closely.";
 		const first = passage(1, "Maren promised a key.");
 		await digest(first.variantId, provider(calls));
-		setMemoryIdentity(database, chat.id, { expectedRevision: 0, participantId: chat.cast[1]!.id, identity: { kind: "plays", person: "Tanjs" } });
-		setMemoryNote(database, chat.id, 0, guidance);
+		setMemoryIdentity(database, chat.id, { expectedRevision: readConversationMemories(database, chat.id).labelRevision, participantId: chat.cast[1]!.id, identity: { kind: "plays", person: "Tanjs" } });
+		setMemoryNote(database, chat.id, readMemoryChatSettings(database, chat.id).revision, guidance);
 		const second = passage(2, "Maren kept the key.");
 		await digest(second.variantId, provider(calls));
 		expect(promptOf(calls.extraction[0]!)).not.toContain("Chat note (guidance only");
@@ -166,7 +167,7 @@ describe("Memory's digest", () => {
 		await digest(second.variantId, provider(calls, { claim: "Maren carries Writer's key." }));
 		const text = "Maren carries Writer's key. (attribution: Narrated event)";
 		expect(calls.embeddings).toEqual([{ url: "http://embedding.test/v1/embeddings", model: "memory-v1", input: [text], authorization: "Bearer embedding-secret" }]);
-		expect(readCachedVectors(database, readMemoryEmbedding(database).spaceKey, [text]).get(text)).toEqual([1, 0]);
+		expect(readCachedVectors(database, readMemoryEmbedding(database)!.spaceKey, [text]).get(text)).toEqual([1, 0]);
 	});
 
 	test("extraction reads Images only as Image Anchors, never their hash", async () => {

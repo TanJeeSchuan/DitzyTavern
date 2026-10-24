@@ -1,3 +1,4 @@
+import { boxIdOf } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
@@ -8,8 +9,9 @@ import {
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
-import { boxClients, boxPresent } from "../box-windows/registry";
+import { boxClient, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
+import { useBoxWindows } from "../box-windows/useBoxWindows";
 import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
@@ -35,10 +37,12 @@ import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
 import { usePreviewController } from "./usePreviewController";
+import { useNarrow } from "../lib/use-narrow";
 import { useThemePreference } from "../lib/use-theme";
 import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
 import { StoryStage } from "./StoryStage";
+import { CoveredLayer } from "./CoveredLayer";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -154,9 +158,10 @@ export function ActiveWritingWorkspace({
 	};
 
 	const conversation = session.conversation;
+	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
-	const inspectorBox = panelState.detailsSurface?.startsWith("box:") ? panelState.detailsSurface.slice("box:".length) : undefined;
-	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClients().get(inspectorBox)?.Inspector;
+	const inspectorBox = panelState.detailsSurface === null ? undefined : boxIdOf(panelState.detailsSurface);
+	const inspector = inspectorBox === undefined || conversation === null || !boxPresent(conversation, inspectorBox) ? undefined : boxClient(inspectorBox)?.Inspector;
 	useEffect(() => {
 		if (inspectorBox !== undefined && conversation !== null && !boxPresent(conversation, inspectorBox)) dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);
@@ -187,6 +192,10 @@ export function ActiveWritingWorkspace({
 	};
 
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
+	// @approved
+	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
+	const narrow = useNarrow();
+	const covered = narrow && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
 		<Toast.Provider duration={8_000} swipeDirection="right">
@@ -203,6 +212,7 @@ export function ActiveWritingWorkspace({
 
 			<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
 			<SaveNavigationContext.Provider value={saveNavigation.requestNavigation}>
+			<CoveredLayer inert={narrow && (newChatOpen || panelState.inspector !== null)}>
 			<PrimaryPanelView
 				panel={panelState.primaryPanel}
 				workspace={initialWorkspace}
@@ -211,7 +221,7 @@ export function ActiveWritingWorkspace({
 				onThemeChange={setPersistedTheme}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
-				onSelectChat={selectChat}
+				onSelectChat={(chatId) => saveNavigation.requestNavigation(() => selectChat(chatId))}
 				onNewChat={onNewChat}
 				onClose={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
 				onImportLaunched={onImportLaunched}
@@ -224,16 +234,21 @@ export function ActiveWritingWorkspace({
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
 				mutationsDisabled={story.preview !== null}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
+				onOpenWindow={boxWindows.open}
 			/>
+			</CoveredLayer>
 
 			<StoryStage
 				story={story}
 				dispatchStory={dispatchStory}
 				conversation={conversation}
 				assemblyActive={assemblyActive}
+				inert={covered}
 				session={session}
 				generation={generation}
 				preview={preview}
+				boxWindows={boxWindows}
 				onEnterPreview={() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();
@@ -257,6 +272,7 @@ export function ActiveWritingWorkspace({
 			</SaveNavigationContext.Provider>
 			</SaveGuardContext.Provider>
 
+			<CoveredLayer inert={narrow && (newChatOpen || panelState.primaryPanel !== null)}>
 			{assembly !== null && (
 				<PromptPlanPreviewPanel
 					assembly={assembly}
@@ -268,7 +284,9 @@ export function ActiveWritingWorkspace({
 					onOpenSettings={() => saveNavigation.requestNavigation(() => togglePanel("settings"))}
 				/>
 			)}
+			</CoveredLayer>
 
+			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
@@ -290,7 +308,7 @@ export function ActiveWritingWorkspace({
 							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
 						/>
 					</BoxBoundary>
-					<BoxOffNotice conversation={session.conversation} box={inspectorBox} className="m-4 w-auto" />
+					<BoxOffNotice conversation={session.conversation} box={inspectorBox} disabled={story.preview !== null} onConversationChange={session.setConversation} className="m-4 w-auto" />
 				</aside>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
@@ -316,6 +334,7 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}
+			</CoveredLayer>
 			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast

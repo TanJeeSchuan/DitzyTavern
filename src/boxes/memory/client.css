@@ -588,6 +588,37 @@
 	@apply size-2 rounded-full bg-primary;
 }
 
+@media (pointer: coarse) {
+	.memory-identity-radio {
+		position: relative;
+		width: 2.75rem;
+		height: 2.75rem;
+		border: 0;
+	}
+
+	.memory-identity-radio::before {
+		content: "";
+		position: absolute;
+		width: 1rem;
+		height: 1rem;
+		border: 1px solid var(--input);
+		border-radius: 50%;
+	}
+
+	.memory-identity-radio[data-state="checked"]::before {
+		border-color: var(--primary);
+	}
+
+	.memory-source-link {
+		min-width: 2.75rem;
+		min-height: 2.75rem;
+	}
+
+	.memory-coverage-strip {
+		height: 2.75rem;
+	}
+}
+
 .memory-trace-error {
 	@apply text-xs text-destructive;
 }

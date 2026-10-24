@@ -1,11 +1,12 @@
 import { isStoryReady } from "../story";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
+import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
-import { useBoxWindows } from "../box-windows/useBoxWindows";
+import type { BoxWindowsController } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
 	isModelAuthoredMessage,
@@ -40,9 +41,11 @@ export function StoryStage({
 	dispatchStory,
 	conversation,
 	assemblyActive,
+	inert,
 	session,
 	generation,
 	preview,
+	boxWindows,
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
@@ -58,6 +61,8 @@ export function StoryStage({
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
 	assemblyActive: boolean;
+	inert: boolean;
+	boxWindows: BoxWindowsController;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
 	preview: ReturnType<typeof usePreviewController>;
@@ -89,7 +94,7 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
-	const boxWindows = useBoxWindows(conversation?.id ?? null);
+	const onLayerFocus = useLayerFocus(inert);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
@@ -103,7 +108,7 @@ export function StoryStage({
 	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
-		<main className="story-stage" aria-label="Active Chat">
+		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
 			<StoryHeader
 				chat={session.activeChat}
 				conversation={conversation}

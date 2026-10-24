@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
 import { isBoxSlot, isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
-import { boxDescriptorOf, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
+import { boxIdOf, boxMetadata, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -74,7 +74,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
 	if (!isBoxReference(slot.reference)) return { description: `The ${title} Box is not loaded, so this block sends nothing.`, source: "No Box loaded" };
-	return boxDescriptorOf(slot.reference).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
+	return boxMetadata(boxIdOf(slot.reference)).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
 type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
@@ -95,7 +95,7 @@ const TextFieldEditor = ({
 	disabled: boolean;
 	onChange: (fields: TextFields) => void;
 }) => {
-	const box = isBoxReference(slot.reference) ? boxDescriptorOf(slot.reference) : null;
+	const box = isBoxReference(slot.reference) ? boxMetadata(boxIdOf(slot.reference)) : null;
 	const fields: TextFields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
 		: { name: "name" in slot ? slot.name : undefined, content: slot.content, role: slot.role };
@@ -203,7 +203,7 @@ export function PromptPresetRecipeRow({
 	};
 	return <li
 		ref={ref}
-		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${
+		className={`relative py-2.5 pointer-coarse:py-0 transition-[background-color,box-shadow] motion-reduce:transition-none${
 			isDragging
 				? " z-10 bg-background shadow-lg ring-1 ring-border"
 				: isDropTarget
@@ -212,13 +212,13 @@ export function PromptPresetRecipeRow({
 			}`}
 	>
 		<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-			<div className="flex min-w-0 items-center gap-1">
+			<div className="flex min-w-0 items-center gap-1 pointer-coarse:self-stretch">
 				<button
 					ref={handleRef}
 					type="button"
 					disabled={pending}
 					className={[
-					"grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none",
+					"grid size-7 pointer-coarse:h-auto pointer-coarse:w-11 pointer-coarse:self-stretch shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none",
 					"hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing",
 				].join(" ")}
 					aria-label={`Reorder ${title}`}

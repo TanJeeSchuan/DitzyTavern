@@ -2,16 +2,17 @@ import { KindGuard, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, type LucideIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { boxDescriptor, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
+import { boxMetadata, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
+import { useSaveGuard } from "../SaveGuard";
 import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
 import type { BoxWindowDefinition } from "./registry";
 
@@ -29,10 +30,10 @@ function useBoxDigest(conversationId: number, box: BoxId) {
 	});
 }
 
-// @approved
 //  A digesting Box's folded status line, polled; the label stands in for a
-//  null status. The dock tab and top bar items read it. Its key extends the
-//  digest's, so a save that refreshes the timeline refreshes the status too.
+//  null status. The host's dock button, header item and Box manager row read
+//  it. Its key extends the digest's, so a save that refreshes the timeline
+//  refreshes the status too.
 export function useBoxStatus(conversationId: number, box: BoxId): string {
 	const read = useQuery({
 		queryKey: [...boxDigestKey(conversationId, box), "status"],
@@ -40,18 +41,7 @@ export function useBoxStatus(conversationId: number, box: BoxId): string {
 		refetchInterval: 2_500,
 		refetchIntervalInBackground: false,
 	});
-	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxDescriptor(box).label : "Reading…");
-}
-
-/** @approved A digesting Box's dock tab: its folded status line. */
-function DigestDockTab({ box, icon: Icon, conversation, onRestore }: { box: BoxId; icon: LucideIcon; conversation: ConversationSummary; onRestore: () => void }): ReactNode {
-	const status = useBoxStatus(conversation.id, box);
-	const { label } = boxDescriptor(box);
-	return <button type="button" className="box-dock-tab" title={`Restore ${label}`} onClick={onRestore}>
-		<Icon aria-hidden="true" />
-		<span className="sr-only">{label}: </span>
-		<span>{status}</span>
-	</button>;
+	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxMetadata(box).label : "Reading…");
 }
 
 /** @approved A record field holds a scalar: a literal, a number, a string or null. */
@@ -84,10 +74,9 @@ const recordFields = ({ id, record }: BoxDescriptor): readonly RecordField[] => 
 	return Object.entries(record.properties).map(([key, schema]) => recordField(key, schema));
 };
 
-// @approved
-//  A digesting Box's window: its own Panel, if it has one, then the host's
-// passage timeline; its dock tab shows `status`. `describe` summarizes a
-// record on the timeline in place of the generic summary. The override
+//  A digesting Box's window and status: its own Panel, if it has one, then the
+// host's passage timeline, and its folded `status` line. `describe` summarizes
+// a record on the timeline in place of the generic summary. The override
 // editor is built from the record schema here, so a schema the timeline
 // cannot edit fails the Box's client module as it loads, not when it opens.
 export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel, describe }: {
@@ -95,20 +84,23 @@ export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel
 	size: BoxWindowDefinition["size"];
 	Panel?: BoxWindowDefinition["Panel"];
 	describe?(record: Rec): string;
-}): BoxWindowDefinition & { readonly icon: LucideIcon } {
+}) {
 	const { id: box } = descriptor;
 	const fields = recordFields(descriptor);
 	// @approved
 	// SAFETY: the timeline holds this Box's records, which its `describe` takes.
 	const summarize = (describe ?? ((record) => summaryOf(fields, record))) as (record: RecordValue) => string;
+	const Status = ({ conversation }: { conversation: ConversationSummary }) => useBoxStatus(conversation.id, box);
 	return {
 		icon,
-		size,
-		DockTab: ({ conversation, onRestore }) => <DigestDockTab box={box} icon={icon} conversation={conversation} onRestore={onRestore} />,
-		Panel: (props) => <>
-			{Panel !== undefined && <Panel {...props} />}
-			<PassageTimeline box={box} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
-		</>,
+		Status,
+		Window: {
+			size,
+			Panel: (props: ComponentProps<BoxWindowDefinition["Panel"]>) => <>
+				{Panel !== undefined && <Panel {...props} />}
+				<PassageTimeline box={box} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
+			</>,
+		},
 	};
 }
 
@@ -153,11 +145,20 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 	summarize: (record: RecordValue) => string;
 	busy: boolean;
 	onCancel: () => void;
-	onSave: (record: RecordValue) => void;
+	onSave: (record: RecordValue) => Promise<boolean>;
 }): ReactNode {
-	const [draft, setDraft] = useState(() => draftOf(fields, expected));
+	const [baseline] = useState(() => draftOf(fields, expected));
+	const [draft, setDraft] = useState(baseline);
+	const [saving, setSaving] = useState(false);
 	const record = recordOf(fields, draft);
 	const valid = Value.Check(boxRecordSchema(box), record);
+	const dirty = Object.keys(baseline).some((key) => draft[key] !== baseline[key]);
+	const save = async () => {
+		if (!valid || busy || saving) return false;
+		setSaving(true);
+		try { return await onSave(record); } finally { setSaving(false); }
+	};
+	useSaveGuard({ dirty, saving, save, discard: onCancel });
 	const set = (key: string, value: string) => setDraft((current) => ({ ...current, [key]: value }));
 	return <div className="box-timeline-editor">
 		<p className="box-timeline-note">Replaces: {expected === null ? "Not read yet" : summarize(expected)}</p>
@@ -179,10 +180,12 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 		})}
 		<div className="box-timeline-actions">
 			<Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>Cancel</Button>
-			<Button size="sm" disabled={busy || !valid} onClick={() => { if (valid) onSave(record); }}>Save override</Button>
+			<Button size="sm" disabled={busy || !valid} onClick={() => void save()}>Save override</Button>
 		</div>
 	</div>;
 }
+
+const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim();
 
 const commandNotices = { conflict: "The Chat changed elsewhere. Review the passage before saving again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE };
 
@@ -203,7 +206,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const locked = disabled || busy;
-	const { label } = boxDescriptor(box);
+	const { label } = boxMetadata(box);
 	const passages = read.data?.passages ?? [];
 	const catchUp = read.data?.catchUp ?? null;
 	const digestReady = read.data?.digestReady ?? false;
@@ -224,14 +227,15 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 	// @approved
 	//  A refused save keeps the draft and moves `expected` to the record now
 	// there, which the editor shows, so saving again overrides it knowingly.
-	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue) => {
-		if (locked) return;
+	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue): Promise<boolean> => {
+		if (locked) return false;
 		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record, expected })) {
 			setEditing(null);
-			return;
+			return true;
 		}
 		const current = (await read.refetch()).data?.passages.find(({ variantId }) => variantId === passage.variantId);
 		if (current !== undefined) setEditing((open) => open?.variantId === passage.variantId ? { ...open, expected: current.record } : open);
+		return false;
 	};
 	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, messageId: passage.messageId, variantId: passage.variantId });
 
@@ -266,10 +270,10 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 			{passages.map((passage) => (
 				<li key={passage.variantId}>
 					<strong>{passage.author ?? "Unknown"}</strong>
-					<span className="box-timeline-text">{passage.content}</span>
+					<span className="box-timeline-text">{excerpt(passage.content)}</span>
 					{editing?.variantId === passage.variantId
 						? <RecordEditor box={box} passage={passage} expected={editing.expected} fields={fields} summarize={summarize} busy={locked}
-							onCancel={() => setEditing(null)} onSave={(record) => void save(passage, editing.expected, record)} />
+							onCancel={() => setEditing(null)} onSave={(record) => save(passage, editing.expected, record)} />
 						: <div className="box-timeline-read">
 							<span className="box-timeline-summary">
 								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}

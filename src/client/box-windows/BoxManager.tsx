@@ -1,26 +1,25 @@
-import { Boxes } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Ellipsis } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
-import type { BoxId, BoxState } from "../../shared/contract/box";
+import { boxMetadata, type BoxId, type BoxState, type PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
-import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useNavigationRequest } from "../SaveGuard";
-import { BoxBlockNotice, refreshPresetReads } from "./BoxBlockNotice";
-import { boxTitle, listedBoxes } from "./registry";
+import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
+import { BoxBoundary, BoxIcon } from "./BoxBoundary";
+import { boxOpening, loadedBoxes, type LoadedBox } from "./registry";
 
-const stateLabels = { enabled: "On", disabled: "Off · setup kept", absent: "Not in this Chat" } satisfies Record<BoxState, string>;
-
-/** @approved The composer's Box manager: insert, disable or remove any Box in this Chat. */
-export function BoxManager({ conversation, disabled, onConversationChange }: {
+/** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
+export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
 	conversation: ConversationSummary;
 	disabled: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onOpenPanel: (panel: PromptBoxReference) => void;
+	onOpenWindow: (box: BoxId) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
@@ -30,55 +29,85 @@ export function BoxManager({ conversation, disabled, onConversationChange }: {
 	// @approved
 	//  A change is sent once, from the first render after the save guard ran,
 	//  so it carries the revision any Save and leave produced. A conflict from
-	//  elsewhere reloads the Boxes and reopens this list for the writer to
+	//  elsewhere reloads the Boxes in this list for the writer to
 	//  review; the change is never re-applied over the newer state.
 	useEffect(() => {
 		if (requested === null) return;
 		setRequested(null);
 		setPending(true);
 		setNotice(null);
-		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice: (next: string) => { setNotice(next); setOpen(true); } };
-		void runConversationCommand(surface, { type: "set-box-state", ...requested }, {
-			onApplied: () => { if (requested.state === "enabled") refreshPresetReads(client); },
-			notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
-		}).finally(() => setPending(false));
+		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice };
+		void sendBoxState(surface, client, requested.box, requested.state).finally(() => setPending(false));
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
+
+	const stateOf = (box: BoxId) => {
+		const state = conversation.boxes[box];
+		if (state === undefined) throw new Error(`Chat ${conversation.id} has no state for Box ${box}.`);
+		return state;
+	};
+	const rows = [...loadedBoxes()].map(([box, loaded]) => ({ box, loaded, state: stateOf(box) }));
+	const inChat = rows.filter(({ state }) => state !== "absent");
+	const toAdd = rows.filter(({ state }) => state === "absent");
+
+	const row = ({ box, loaded, state }: { readonly box: BoxId; readonly loaded: LoadedBox; readonly state: BoxState }) => {
+		const { label, summary } = loaded.metadata;
+		const clientModule = "client" in loaded ? loaded.client : undefined;
+		const Status = clientModule?.Status;
+		const locked = disabled || pending;
+		const open = state === "absent" ? undefined : boxOpening(box, { panel: onOpenPanel, window: onOpenWindow });
+		const status = Status === undefined ? undefined : <BoxBoundary box={box}><Status conversation={conversation} /></BoxBoundary>;
+		const statusLine = state === "absent" ? summary : status ?? summary;
+		return <li key={box} data-state={state}>
+			<span className="box-manager-icon" aria-hidden="true">{clientModule !== undefined && <BoxIcon box={box} icon={clientModule.icon} />}</span>
+			<div className="box-manager-copy">
+				{open === undefined ? <strong>{label}</strong> : <button type="button" className="box-manager-name" onClick={open}>{label}</button>}
+				<span className="box-manager-status" title={state === "absent" ? undefined : summary}>{statusLine}</span>
+				{"failure" in loaded && <span className="box-manager-status box-failure">Did not load: {loaded.failure}</span>}
+				<BoxBlockNotice conversation={conversation} box={box} disabled={locked} className="mt-1" />
+			</div>
+			{state === "absent"
+				? <Button type="button" variant="outline" size="xs" aria-label={`Add ${label}`} disabled={locked} onClick={() => setState(box, "enabled")}>Add</Button>
+				: <>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button type="button" variant="ghost" size="icon-sm" className="box-manager-actions" aria-label={`${label} actions`}><Ellipsis aria-hidden="true" /></Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-44">
+							{open !== undefined && <DropdownMenuItem onSelect={open}>Open {label}</DropdownMenuItem>}
+							<DropdownMenuItem variant="destructive" onSelect={() => setRemoving(box)}>Remove from Chat…</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+					<Switch checked={state === "enabled"} disabled={locked} aria-label={`${label} in this Chat`} onCheckedChange={(on) => setState(box, on ? "enabled" : "disabled")} />
+				</>}
+		</li>;
+	};
+
 	return <>
-		<Popover open={open} onOpenChange={(next) => { setOpen(next); setNotice(null); }}>
-			<PopoverTrigger asChild>
-				<Button type="button" variant="ghost" size="icon-sm" aria-label="Boxes" title="Boxes" disabled={disabled}><Boxes aria-hidden="true" /></Button>
-			</PopoverTrigger>
-			<PopoverContent side="top" align="start" className="box-manager">
-				<PopoverHeader><PopoverTitle>Boxes in this Chat</PopoverTitle></PopoverHeader>
-				<ul aria-label="Boxes">
-					{[...listedBoxes().values()].map(({ id: box, label, failure }) => {
-						const state = conversation.boxes[box];
-						if (state === undefined) throw new Error(`Chat ${conversation.id} has no state for Box ${box}.`);
-						return <li key={box}>
-							<div>
-								<strong>{label}</strong>
-								<span>{stateLabels[state]}</span>
-								{failure !== null && <span>Did not load: {failure}</span>}
-								<BoxBlockNotice conversation={conversation} box={box} disabled={pending} className="mt-1" />
-							</div>
-							{state !== "absent" && <Button type="button" variant="ghost" size="xs" aria-label={`Remove ${label}`} disabled={pending} onClick={() => setRemoving(box)}>Remove</Button>}
-							<Switch checked={state === "enabled"} disabled={pending} aria-label={`${label} in this Chat`} onCheckedChange={(on) => setState(box, on ? "enabled" : "disabled")} />
-						</li>;
-					})}
-				</ul>
-				{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
-			</PopoverContent>
-		</Popover>
+		<div className="panel-body box-manager" role="group" aria-label="Boxes">
+			{inChat.length > 0 && <section aria-labelledby="box-manager-in-chat">
+				<h3 id="box-manager-in-chat">In this Chat</h3>
+				<ul>{inChat.map(row)}</ul>
+			</section>}
+			{toAdd.length > 0 && <section aria-labelledby="box-manager-add">
+				<h3 id="box-manager-add">Add to this Chat</h3>
+				<ul>{toAdd.map(row)}</ul>
+			</section>}
+			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
+		</div>
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Remove {removing === null ? "" : boxTitle(removing)}?</DialogTitle>
+					<DialogTitle>Remove {removing === null ? "" : boxMetadata(removing).label}?</DialogTitle>
 					<DialogDescription>This deletes its setup and data in this Chat. Past passages and their Moves still read the same.</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
 					<Button type="button" variant="ghost" disabled={pending} onClick={() => setRemoving(null)}>Keep it</Button>
-					<Button type="button" variant="destructive" disabled={pending} onClick={() => { const box = removing; setRemoving(null); if (box !== null) requestNavigation(() => setState(box, "absent")); }}>Remove</Button>
+					<Button type="button" variant="destructive" disabled={pending} onClick={() => {
+						const box = removing;
+						setRemoving(null);
+						if (box !== null) requestNavigation(() => setState(box, "absent"));
+					}}>Remove</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

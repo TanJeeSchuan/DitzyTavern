@@ -3,7 +3,8 @@ import type { ConversationMemories, ConversationMemoryAllowance, MemorySettingsP
 /** @approved The current value a Memory route's conflict envelope carries. */
 type MemoryConflict =
 	| { readonly memories: ConversationMemories }
-	| { readonly expectedRevision: number; readonly actualRevision: number; readonly currentSettings: ConversationMemoryAllowance | MemorySettingsPayload };
+	| { readonly expectedRevision: number; readonly actualRevision: number; readonly currentSettings: MemorySettingsPayload }
+	| { readonly expectedRevision: string; readonly actualRevision: string; readonly currentSettings: ConversationMemoryAllowance };
 
 /** @approved A Memory command the writer must change; the route answers 422 with its message as the reason. */
 export class InvalidMemoryCommandError extends Error {
@@ -21,6 +22,6 @@ class StaleMemoryError extends Error {
 }
 
 /** @approved A stored-value guard: the write lands only on `expectedRevision`. */
-export const memoryGuard = (expectedRevision: number, details: (actualRevision: number) => MemoryConflict) => (current: { readonly revision: number }) => {
+export const memoryGuard = <Revision extends number | string>(expectedRevision: Revision, details: (actualRevision: Revision) => MemoryConflict) => (current: { readonly revision: Revision }) => {
 	if (current.revision !== expectedRevision) throw new StaleMemoryError(details(current.revision));
 };

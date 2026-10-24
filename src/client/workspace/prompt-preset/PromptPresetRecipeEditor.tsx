@@ -12,7 +12,7 @@ import {
 } from "../../prompt-preset-library";
 import { isSingleUseReference, type ConversationPromptPreset, type PromptBlockReference } from "../../../shared/contract/prompt-preset";
 import { slotLabel } from "../../prompt-preset-presentation";
-import { boxDescriptors, boxReference } from "../../../shared/contract/box";
+import { boxReference, installedBoxes } from "../../../shared/contract/box";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
 
@@ -25,7 +25,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"history",
 	"model-post-history-instruction",
 	"lore",
-	...[...boxDescriptors().keys()].map(boxReference),
+	...[...installedBoxes().keys()].map(boxReference),
 ];
 
 const AddBlockMenu = ({
@@ -61,7 +61,7 @@ const AddBlockMenu = ({
 					{addableReferences().filter((reference) => !(isSingleUseReference(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (
 						<DropdownMenu.Item
 							key={reference}
-							className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
+							className="cursor-default pointer-coarse:min-h-10 rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
 							onSelect={() => onAddReference(reference)}
 						>
 							{slotLabel(reference)}
@@ -69,7 +69,7 @@ const AddBlockMenu = ({
 					))}
 					<DropdownMenu.Separator className="my-1 h-px bg-border" />
 					<DropdownMenu.Item
-						className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
+						className="cursor-default pointer-coarse:min-h-10 rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
 						onSelect={onAddInstruction}
 					>
 						New custom instruction

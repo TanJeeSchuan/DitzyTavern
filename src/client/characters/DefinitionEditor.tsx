@@ -123,7 +123,7 @@ export function DefinitionEditor({
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 					<input
 						className={[
-							"-mx-2 rounded-md bg-transparent px-2 py-1 text-xl font-semibold tracking-[-0.02em] outline-none",
+							"-mx-2 pointer-coarse:min-h-10 rounded-md bg-transparent px-2 py-1 text-xl font-semibold tracking-[-0.02em] outline-none",
 							"hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50",
 						].join(" ")}
 						value={draft.name}
@@ -152,7 +152,7 @@ export function DefinitionEditor({
 					</div>
 					{draft.openings.length === 0 && <p className="text-xs text-muted-foreground">No Openings.</p>}
 					{draft.openings.map((opening, index) => (
-						<div key={index} className="group/opening relative">
+						<div key={index} className="definition-opening group/opening relative">
 							<ProseEditor
 							className="prose-editor-field min-h-20"
 							ariaLabel={`Opening ${index + 1}`}

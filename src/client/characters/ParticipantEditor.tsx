@@ -88,7 +88,7 @@ export function ParticipantEditor({
 			onSave={() => void apply()}
 			onBack={onBack}
 		>
-			{[...boxClients()].map(([id, { ParticipantSection }]) => ParticipantSection && <BoxBoundary key={id} box={id}>
+			{boxClients().map(([id, { ParticipantSection }]) => ParticipantSection && <BoxBoundary key={id} box={id}>
 				<ParticipantSection conversation={conversation} participant={participant} />
 			</BoxBoundary>)}
 			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />

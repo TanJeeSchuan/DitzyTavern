@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../../server/database/database";
+import { insertBox, openObservedDatabase, setBoxState } from "../../server/test-fixtures/conversation";
 import { messageTable, messageVariantTable } from "../../server/database/schema";
 import { createChat } from "../../server/contract/prompt-preset-test-fixtures";
 import { memoryRoutes } from "./server-routes";
@@ -10,7 +11,7 @@ import { readConversationMemories, setMemoryAllowance } from "./server-memories"
 import { readMemoryChatSettings } from "./server-chat";
 import { sha256 } from "../../server/hash";
 import { writeAutomaticRecord } from "../../server/box/records";
-import { readBoxInstances } from "../../server/box/setup";
+import { readBoxLifecycles } from "../../server/box/setup";
 import { applyMemoryPeople } from "./shared";
 import { memoryLabelsMerged, type ConversationMemories, type MemoryCandidateJudgment } from "./contract";
 
@@ -20,7 +21,7 @@ const addSource = (database: Database, conversationId: number, position: number,
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-29T00:00:00Z", author_name: "Alice" }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised Bob a key.", selected }).returning().get();
-	writeAutomaticRecord(db, "memory", readBoxInstances(db, conversationId).memory!, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
+	writeAutomaticRecord(db, "memory", readBoxLifecycles(db, conversationId).memory!.instance, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
 
@@ -60,21 +61,45 @@ describe("Memory label merging", () => {
 	test("advances the label revision only on merges and the allowance revision only on allowance saves", async () => {
 		const chat = createChat(database);
 		addSource(database, chat.id, 1, ["assistant"]);
-		setMemoryAllowance(database, chat.id, { expectedRevision: 0, allowance: 500 });
-		expect(readConversationMemories(database, chat.id).labelRevision).toBe(0);
-		expect((await merge(database, chat.id, ["assistant"], "Alice", 0)).status).toBe(200);
-		expect(readMemoryChatSettings(database, chat.id).revision).toBe(1);
-		expect(readConversationMemories(database, chat.id).labelRevision).toBe(1);
+		const labelsBefore = readConversationMemories(database, chat.id).labelRevision;
+		const settingsBefore = readMemoryChatSettings(database, chat.id).revision;
+		setMemoryAllowance(database, chat.id, { expectedRevision: settingsBefore, allowance: 500 });
+		const allowanceSaved = readMemoryChatSettings(database, chat.id).revision;
+		expect(allowanceSaved).not.toBe(settingsBefore);
+		expect(readConversationMemories(database, chat.id).labelRevision).toBe(labelsBefore);
+		expect((await merge(database, chat.id, ["assistant"], "Alice", labelsBefore)).status).toBe(200);
+		expect(readMemoryChatSettings(database, chat.id).revision).toBe(allowanceSaved);
+		expect(readConversationMemories(database, chat.id).labelRevision).not.toBe(labelsBefore);
 	});
 
 	test("rejects stale or invalid merges without changing the labels", async () => {
 		const chat = createChat(database);
 		addSource(database, chat.id, 1, ["assistant", "Assistant"]);
+		const stale = readConversationMemories(database, chat.id).labelRevision;
 		expect((await merge(database, chat.id, ["assistant"], "Assistant")).status).toBe(200);
 		const before = readConversationMemories(database, chat.id);
-		expect((await merge(database, chat.id, ["Assistant"], "Alice", 0)).status).toBe(409);
+		expect((await merge(database, chat.id, ["Assistant"], "Alice", stale)).status).toBe(409);
 		expect((await merge(database, chat.id, ["Assistant"], "   ")).status).toBe(422);
 		expect((await merge(database, chat.id, ["Assistant"], "Assistant")).status).toBe(422);
 		expect(readConversationMemories(database, chat.id)).toEqual(before);
+	});
+	test("a label revision read before Memory was removed cannot merge into the reinserted Box", async () => {
+		const observed = openObservedDatabase();
+		try {
+			const chat = createChat(observed);
+			addSource(observed, chat.id, 1, ["assistant"]);
+			expect((await merge(observed, chat.id, ["assistant"], "Alice", readConversationMemories(observed, chat.id).labelRevision)).status).toBe(200);
+			expect(readConversationMemories(observed, chat.id).labelMerges).toEqual([{ from: "assistant", to: "Alice" }]);
+			const stale = readConversationMemories(observed, chat.id).labelRevision;
+
+			setBoxState(observed, chat.id, "memory", "absent");
+			insertBox(observed, chat.id, "memory");
+			expect((await merge(observed, chat.id, ["Assistant"], "Bob", readConversationMemories(observed, chat.id).labelRevision)).status).toBe(200);
+			const current = readConversationMemories(observed, chat.id).labelMerges;
+			expect(current).toEqual([{ from: "Assistant", to: "Bob" }]);
+
+			expect((await merge(observed, chat.id, ["Helper"], "Carol", stale)).status).toBe(409);
+			expect(readConversationMemories(observed, chat.id).labelMerges).toEqual(current);
+		} finally { observed.close(); }
 	});
 });

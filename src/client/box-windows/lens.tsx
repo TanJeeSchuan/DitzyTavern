@@ -1,4 +1,3 @@
-import type { ComponentType, ReactElement } from "react";
 import type { ConversationSummary } from "../conversation";
 
 // @approved
@@ -8,25 +7,40 @@ import type { ConversationSummary } from "../conversation";
 //  stays hidden rather than flash as markup.
 export interface BoxLens {
 	readonly tag: string;
-	gate(conversation: ConversationSummary): ((text: string, onOpen: () => void) => readonly LensPiece[]) | undefined;
+	gate(conversation: ConversationSummary): ((text: string) => readonly LensPiece[]) | undefined;
 }
-export type LensPiece = { readonly kind: "prose"; readonly text: string } | { readonly kind: "lifted"; readonly element: ReactElement };
+export type LensPiece = { readonly kind: "prose"; readonly text: string } | { readonly kind: "lifted"; readonly line: string };
 
 type Segment<Kind extends string, Text> = { readonly kind: "prose"; readonly text: string } | { readonly kind: Kind; readonly text: Text };
 export const createBoxLens = <Context, Kind extends string, Text>(
 	tag: Kind,
 	gate: (conversation: ConversationSummary) => Context | undefined,
 	strip: (text: string, context: Context) => readonly Segment<Kind, Text>[],
-	View: ComponentType<{ text: Text; onOpen: () => void }>,
+	describe: (run: readonly Text[]) => string,
 ): BoxLens => {
 	const lifted = (segment: Segment<Kind, Text>): segment is { readonly kind: Kind; readonly text: Text } => segment.kind === tag;
+	const pieces = (segments: readonly Segment<Kind, Text>[]): LensPiece[] => {
+		const result: LensPiece[] = [];
+		let run: Text[] = [];
+		const flush = () => {
+			if (run.length === 0) return;
+			result.push({ kind: "lifted", line: describe(run) });
+			run = [];
+		};
+		for (const segment of segments) {
+			if (lifted(segment)) { run.push(segment.text); continue; }
+			if (segment.text.trim() === "") continue;
+			flush();
+			result.push(segment);
+		}
+		flush();
+		return result;
+	};
 	return {
 		tag,
 		gate: (conversation) => {
 			const context = gate(conversation);
-			return context === undefined ? undefined : (text, onOpen) => strip(text, context).map((segment) => lifted(segment)
-				? { kind: "lifted", element: <View text={segment.text} onOpen={onOpen} /> }
-				: { kind: "prose", text: segment.text });
+			return context === undefined ? undefined : (text) => pieces(strip(text, context));
 		},
 	};
 };

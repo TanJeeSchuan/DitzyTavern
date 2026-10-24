@@ -1,22 +1,25 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortableOperation, useSortable } from "@dnd-kit/react/sortable";
-import { X } from "lucide-react";
-import { boxesWith, boxDescriptor } from "../../shared/contract/box";
-import type { BoxValue } from "../../shared/contract/box-value";
+import { X, type LucideIcon } from "lucide-react";
+import { boxMetadata, type BoxId } from "../../shared/contract/box";
+import { type BoxValue } from "../../shared/contract/box-value";
 import { hasMoves, moveLabel, replaceMoves, type BoxMoves } from "../../shared/contract/box-generation";
-import { BoxBoundary } from "../box-windows/BoxBoundary";
+import { BoxBoundary, BoxIcon } from "../box-windows/BoxBoundary";
+import { boxClients } from "../box-windows/registry";
 
-function MoveChip({ id, index, label, disabled, onRemove }: { id: string; index: number; label: string; disabled: boolean; onRemove?: (() => void) | undefined }) {
+function MoveChip({ id, index, box, icon, label, disabled, onRemove }: {
+	id: string; index: number; box: BoxId; icon: LucideIcon; label: string; disabled: boolean; onRemove?: (() => void) | undefined;
+}) {
 	const { ref, handleRef, isDragging } = useSortable({ id, index, disabled: disabled || onRemove === undefined });
 	return <li ref={ref} className="move-chip" data-dragging={isDragging || undefined}>
-		<span ref={handleRef}>{label}</span>
+		<span ref={handleRef}><BoxIcon box={box} icon={icon} />{label}</span>
 		{onRemove !== undefined && <button type="button" disabled={disabled} aria-label={`Remove ${label}`} onClick={onRemove}><X aria-hidden="true" /></button>}
 	</li>;
 }
 
 /** @approved One Box's Moves in resolution order. Order only matters within a Box, so each Box sorts on its own. */
-function MoveList<Move>({ name, list, label, onChange, disabled }: {
-	name: string; list: readonly Move[]; label: (move: Move) => string; onChange?: ((moves: Move[]) => void) | undefined; disabled: boolean;
+function MoveList<Move>({ name, box, icon, list, label, onChange, disabled }: {
+	name: string; box: BoxId; icon: LucideIcon; list: readonly Move[]; label: (move: Move) => string; onChange?: ((moves: Move[]) => void) | undefined; disabled: boolean;
 }) {
 	if (list.length === 0) return null;
 	const labels = list.map(label);
@@ -33,7 +36,7 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 		onChange?.(next);
 	}}>
 		<ol aria-label={name}>
-			{chips.map(({ id, label: text }, index) => <MoveChip key={id} id={id} index={index} label={text} disabled={disabled}
+			{chips.map(({ id, label: text }, index) => <MoveChip key={id} id={id} index={index} box={box} icon={icon} label={text} disabled={disabled}
 				onRemove={onChange === undefined ? undefined : () => onChange(list.filter((__, position) => position !== index))} />)}
 		</ol>
 	</DragDropProvider>;
@@ -43,8 +46,8 @@ function MoveList<Move>({ name, list, label, onChange, disabled }: {
 export function MoveChips({ moves, onChange, disabled = false }: { moves: BoxMoves; onChange?: ((moves: BoxMoves) => void) | undefined; disabled?: boolean }) {
 	if (!hasMoves(moves)) return null;
 	return <div className="move-chips">
-		{boxesWith("moves").map(([id]) => <BoxBoundary key={id} box={id}>
-			<MoveList<BoxValue> name={`${boxDescriptor(id).label} Moves`} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
+		{boxClients().map(([id, { icon, descriptor }]) => descriptor.moves === undefined ? null : <BoxBoundary key={id} box={id}>
+			<MoveList<BoxValue> name={`${boxMetadata(id).label} Moves`} box={id} icon={icon} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
 				onChange={onChange && ((next) => onChange(replaceMoves(moves, id, next)))} />
 		</BoxBoundary>)}
 	</div>;

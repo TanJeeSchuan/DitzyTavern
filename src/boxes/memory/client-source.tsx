@@ -186,7 +186,7 @@ function MemoryClaimEditor({ claim, busy, onCancel, onSave }: { claim: Claim; bu
 	};
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.key === "Escape") { event.stopPropagation(); onCancel(); }
-		if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submit();
+		if (event.key === "Enter" && !event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey)) submit();
 	};
 	return <form className="memory-editor" onSubmit={submit} onKeyDown={onKeyDown}>
 		<textarea autoFocus aria-label="Memory" className="field-input memory-editor-claim" value={draft.claim} onChange={(event) => setDraft({ ...draft, claim: event.target.value })} />

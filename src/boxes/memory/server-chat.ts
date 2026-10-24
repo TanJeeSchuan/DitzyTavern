@@ -8,7 +8,7 @@ import { memoryChatSettings, memoryLabels, type MemoryIdentities, type MemoryLab
 //  Memory's per-Chat values in conversation_data under `box:memory`, so
 // removing the Box clears them with the rest of its namespace. Each key keeps
 // its own revision: the allowance and note share one, the Cast labels another.
-type Guard = (current: { revision: number }) => void;
+type Guard = (current: { readonly revision: string }) => void;
 
 export const readMemoryChatSettings = (database: Database, conversationId: number) =>
 	readChatValue(drizzle(database), conversationId, "memory", "settings", memoryChatSettings, { allowance: 2048, note: "" });
@@ -20,7 +20,7 @@ export const putMemoryLabels = (database: Database, conversationId: number, valu
 	putChatValue(drizzle(database), conversationId, "memory", { key: "labels", value: JSON.stringify(value) }, guard);
 
 export interface MemoryLabelState {
-	revision: number;
+	revision: string;
 	merges: MemoryLabelMerge[];
 	identities: MemoryIdentities;
 	cast: { id: number; names: string[] }[];

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxInstances,
+	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxLifecycles,
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
 } from "@/box-sdk/server";
 import { memoryRecord, type ConversationMemories, type ConversationMemoryAllowanceCommand, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
@@ -16,7 +16,7 @@ import { readMemoryEmbedding } from "./server-settings";
 export function readConversationMemories(database: Database, conversationId: number): ConversationMemories {
 	const state = readMemoryLabelState(database, conversationId);
 	const variants = readChatVariants(database, conversationId);
-	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxInstances(drizzle(database), conversationId).memory, variants.map(({ variantId }) => variantId));
+	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxLifecycles(drizzle(database), conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
 	const sources = variants
 		.filter((variant) => !isExcludedAuthor(state, variant.authorParticipantId)
 			&& (variant.selected ? variant.content.trim() !== "" : effectiveRecord(slots.get(variant.variantId)) !== undefined))
@@ -40,12 +40,12 @@ export function readConversationMemories(database: Database, conversationId: num
 		sources,
 		path: readMessageAuthors(database, conversationId),
 		digestReady: readBoxDecision(database, "memory").status.kind === "ready",
-		embeddingReady: readMemoryEmbedding(database).spaceKey !== "",
+		embeddingReady: readMemoryEmbedding(database) !== undefined,
 		catchUp: readBoxCatchUp(database, conversationId, "memory"),
 	};
 }
 
-const updateChatSettings = (database: Database, conversationId: number, expectedRevision: number, patch: { allowance: number } | { note: string }) =>
+const updateChatSettings = (database: Database, conversationId: number, expectedRevision: string, patch: { allowance: number } | { note: string }) =>
 	database.transaction(() => {
 		if (!conversationExists(database, conversationId)) throw new InvalidMemoryCommandError("This Chat no longer exists.");
 		const current = readMemoryChatSettings(database, conversationId);
@@ -61,7 +61,7 @@ export function setMemoryAllowance(database: Database, conversationId: number, c
 	return updateChatSettings(database, conversationId, command.expectedRevision, { allowance: command.allowance });
 }
 
-export function setMemoryNote(database: Database, conversationId: number, expectedRevision: number, note: string) {
+export function setMemoryNote(database: Database, conversationId: number, expectedRevision: string, note: string) {
 	const memoryNote = note.trim();
 	if (memoryNote.length > 2_000) throw new InvalidMemoryCommandError("The Memory note is limited to 2,000 characters.");
 	return updateChatSettings(database, conversationId, expectedRevision, { note: memoryNote });
@@ -71,7 +71,7 @@ export function setMemoryNote(database: Database, conversationId: number, expect
 //  The Cast-label commands write only the labels: identities and merges apply
 //  when claims are shown and recalled, so no stored record changes. Their
 //  stale conflicts carry the authoritative `readConversationMemories` read.
-const labelsGuard = (database: Database, conversationId: number, expectedRevision: number) =>
+const labelsGuard = (database: Database, conversationId: number, expectedRevision: string) =>
 	memoryGuard(expectedRevision, () => ({ memories: readConversationMemories(database, conversationId) }));
 
 export function setMemoryIdentity(database: Database, conversationId: number, command: MemoryIdentityCommand): void {

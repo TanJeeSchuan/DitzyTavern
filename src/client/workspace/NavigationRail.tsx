@@ -1,7 +1,9 @@
 import { BoxIcon } from "../box-windows/BoxBoundary";
-import { boxClients, boxTitle } from "../box-windows/registry";
+import { boxClients } from "../box-windows/registry";
+import { boxMetadata } from "../../shared/contract/box";
 import {
 	BookMarked,
+	Boxes,
 	Cable,
 	ListOrdered,
 	MessageSquare,
@@ -74,8 +76,16 @@ export function NavigationRail({
 				>
 					<SlidersHorizontal aria-hidden="true" />
 				</RailButton>
-				{[...boxClients()].map(([id, { icon, Settings }]) => Settings && (
-					<RailButton key={id} disabled={inspecting} label={boxTitle(id)} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>
+				<RailButton
+					disabled={inspecting}
+					label="Boxes"
+					active={activePanel === "boxes"}
+					onClick={() => onOpenPanel("boxes")}
+				>
+					<Boxes aria-hidden="true" />
+				</RailButton>
+				{boxClients().map(([id, { icon, Settings }]) => Settings && (
+					<RailButton key={id} disabled={inspecting} label={boxMetadata(id).label} active={activePanel === `box-settings:${id}`} onClick={() => onOpenPanel(`box-settings:${id}`)}>
 						<BoxIcon box={id} icon={icon} />
 					</RailButton>
 				))}
@@ -92,7 +102,7 @@ export function NavigationRail({
 }
 
 // @approved
-// Below the desktop breakpoint the rail leaves the frame and drops down as a row under the Story header.
+// Below the desktop breakpoint the rail leaves the frame and drops down under the Story header as a grid of labelled tiles.
 export function NavigationDrawer({
 	open,
 	onOpenChange,

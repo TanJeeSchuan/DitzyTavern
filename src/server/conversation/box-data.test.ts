@@ -181,4 +181,29 @@ describe("put-box-data and the Character seed copy", () => {
 		revision = write({ box: "race", owner: { type: "character", characterId: source.id, revision: 1 }, key: "stats", value: "{\"speed\":12}" }).revision;
 		expect(storedParticipantData().find(({ participant_id }) => participant_id === participantId)?.value).toBe("{\"speed\":800}");
 	});
+	test("generic data commands cannot address a Box namespace, loaded or not, at any scope", () => {
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversationId)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, '', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		const row = (namespace: string) => ({
+			conversation: database.query("SELECT key, value FROM conversation_data WHERE conversation_id = ? AND namespace = ? ORDER BY key").all(conversationId, namespace),
+			message: database.query("SELECT key, value FROM messages_data WHERE message_id = ? AND namespace = ? ORDER BY key").all(message.id, namespace),
+			variant: database.query("SELECT key, value FROM message_variant_data WHERE message_variant_id = ? AND namespace = ? ORDER BY key").all(variant.id, namespace),
+		});
+		const scopes = [
+			{ type: "conversation" },
+			{ type: "message", messageId: message.id },
+			{ type: "variant", messageId: message.id, variantId: variant.id },
+		] as const;
+		for (const namespace of ["box:lantern", "box:race"]) {
+			database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, ?, 'instance', 'insertion-a') ON CONFLICT DO NOTHING").run(conversationId, namespace);
+			database.query("INSERT INTO messages_data (message_id, namespace, key, value) VALUES (?, ?, 'moves', '[]') ON CONFLICT DO NOTHING").run(message.id, namespace);
+			database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, ?, 'record:insertion-a', '{}') ON CONFLICT DO NOTHING").run(variant.id, namespace);
+			const before = row(namespace);
+			for (const scope of scopes) {
+				expect(() => executeConversationCommand(database, { conversationId, expectedRevision: revision, action: { type: "put-data", scope, namespace, key: "instance", value: "corrupted" } })).toThrow(InvalidConversationCommandError);
+				expect(() => executeConversationCommand(database, { conversationId, expectedRevision: revision, action: { type: "delete-data", scope, namespace, key: "instance" } })).toThrow(InvalidConversationCommandError);
+			}
+			expect(row(namespace)).toEqual(before);
+		}
+	});
 });

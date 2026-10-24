@@ -30,13 +30,32 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 
 export const story = (page: Page) => page.getByRole("main", { name: "Active Chat" });
 
-/** @approved A new Chat holds only the Author Note and Memory; a spec inserts any other Box through the Box manager. */
+export const openBoxes = async (page: Page) => {
+	await expect(story(page)).toBeVisible({ timeout: 15_000 });
+	const boxes = page.getByRole("group", { name: "Boxes", exact: true });
+	if (await page.locator(".box-manager").isVisible()) {
+		// Waiting for a row also waits out a dialog that closed a moment ago, which can leave the panel hidden.
+		await expect(boxes.getByRole("listitem").first()).toBeVisible();
+		return boxes;
+	}
+	const navigation = page.getByRole("button", { name: "Open navigation", exact: true });
+	if (await navigation.isVisible()) await navigation.click();
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Boxes", exact: true }).click();
+	return boxes;
+};
+
+export const closeBoxes = async (page: Page) => {
+	await page.locator(".primary-panel").getByRole("button", { name: /^(Close Boxes|Back to Chat)$/ }).filter({ visible: true }).click();
+};
+
+/** A new Chat holds only the Author Note and Memory; a spec inserts any other Box through the Box manager, which adds an absent Box and turns a disabled one back on. */
 export const insertBox = async (page: Page, title: string) => {
-	await page.getByRole("button", { name: "Boxes", exact: true }).click();
-	const toggle = page.getByRole("switch", { name: `${title} in this Chat` });
-	await toggle.click();
-	await expect(toggle).toBeChecked();
-	await page.keyboard.press("Escape");
+	const boxes = await openBoxes(page);
+	const add = boxes.getByRole("button", { name: `Add ${title}`, exact: true });
+	if (await add.count() > 0) await add.click();
+	else await boxes.getByRole("switch", { name: `${title} in this Chat` }).click();
+	await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
+	await closeBoxes(page);
 };
 
 export const send = async (page: Page, text: string) => {

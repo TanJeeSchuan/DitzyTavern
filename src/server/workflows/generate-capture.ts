@@ -1,3 +1,4 @@
+import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { readVariantSeeds } from "../box/records";
 import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
@@ -63,13 +64,13 @@ import type {
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
-import type { SelectedHistoryRead } from "../conversation";
+import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
 import { boxServices } from "../box/services";
 import { advanceBoxes, captureBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
-import { foldRecordStates } from "../box/records";
+import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
-import { readBoxInstances, type BoxInstances } from "../box/setup";
+import { readBoxLifecycles } from "../box/setup";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -197,8 +198,6 @@ interface PreparationFields extends GenerationPreparationBase {
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
-	/** @approved Each present Box's instance, which stamps the records this Generation writes. */
-	readonly boxInstances: BoxInstances;
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -207,6 +206,7 @@ export interface PreparationSnapshot extends PreparationFields {
 
 export interface Preparation extends PreparationFields {
 	readonly boxes: BoxResults;
+	readonly boxRecords: BoxRecords;
 	readonly fingerprint: string;
 }
 
@@ -277,40 +277,36 @@ export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 }
 
 /** @approved
- * Read the deterministic inputs for one attempt through the focused Conversation seams. The
- * returned snapshot is safe to retain while the canonical async preparation completes semantic
- * evaluation: compilation and preview validation never reread mutable history or execute macros.
+ * Read the deterministic inputs for one attempt through the focused Conversation seams, in one
+ * read transaction that also covers each Box's capture. The returned snapshot is safe to retain
+ * while the canonical async preparation completes semantic evaluation: compilation and preview
+ * validation never reread mutable history or execute macros.
  */
-export function prepareGenerationInputsSnapshot(
-	input: PrepareGenerationInputs,
-): PreparationSnapshot {
+export const prepareGenerationInputsSnapshot = (input: PrepareGenerationInputs): PreparationSnapshot =>
+	runConversationReadTransaction(input.database, (db) => snapshotGenerationInputs(db, input));
+
+function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenerationInputs): PreparationSnapshot {
 	const { target, connection } = input;
-	const { summary, recipe, settings, selected, variantData, recordStates, boxes, boxInstances, siblingSeed, messageMoves } = runConversationReadTransaction(
-		input.database,
-		(db) => {
-			const summary = readConversationSummaryFromConnection(db, input.conversationId);
-			if (summary === undefined) throw new ConversationNotFoundError(input.conversationId);
-			const recipe = readConversationPromptPresetRecipeFromConnection(db, input.conversationId);
-			const settings = readConversationGenerationSettingsFromConnection(db, input.conversationId);
-			if (recipe === undefined || settings === undefined) {
-				throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
-			}
-			const selected = readSelectedHistoryFromConnection(db, input.conversationId, {
-				targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
-				conversationDataNamespace: MACRO_DATA_NAMESPACE,
-				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
-			});
-			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
-			const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
-			const siblingId = selected.target?.variant?.id;
-			const boxInstances = readBoxInstances(db, input.conversationId);
-			const boxes = participatingBoxes(recipe.slots, summary.boxes);
-			return { boxes, boxInstances, summary, recipe, settings, selected,
-				siblingSeed: siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId),
-				variantData: readVariantData(db, variantIds, ["reasoning", "macroWrites"]), recordStates: foldRecordStates(db, variantIds, summary.boxSetups, boxes, boxInstances),
-				messageMoves: readMessageMoves(db, selected.messages.map(({ id }) => id)) };
-		},
-	);
+	const summary = readConversationSummaryFromConnection(db, input.conversationId);
+	if (summary === undefined) throw new ConversationNotFoundError(input.conversationId);
+	const recipe = readConversationPromptPresetRecipeFromConnection(db, input.conversationId);
+	const settings = readConversationGenerationSettingsFromConnection(db, input.conversationId);
+	if (recipe === undefined || settings === undefined) {
+		throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
+	}
+	const selected = readSelectedHistoryFromConnection(db, input.conversationId, {
+		targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
+		conversationDataNamespace: MACRO_DATA_NAMESPACE,
+		conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
+	});
+	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
+	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
+	const siblingId = selected.target?.variant?.id;
+	const boxes = participatingBoxes(recipe.slots, readBoxLifecycles(db, input.conversationId));
+	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
+	const variantData = readVariantData(db, variantIds, ["reasoning", "macroWrites"]);
+	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
+	const messageMoves = readMessageMoves(db, selected.messages.map(({ id }) => id));
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
 	if (target.kind === "sibling") {
 		const eligibility = deriveMessageSwipeEligibility(summary.playable, selected.target?.historicalContext ?? null, summary.cast.map((participant) => participant.id));
@@ -394,7 +390,7 @@ export function prepareGenerationInputsSnapshot(
 	const preparation = {
 		seed,
 		conversationId: input.conversationId,
-		boxes: captureBoxes(boxes, summary.boxSetups, recordStates, moves, {
+		boxes: captureBoxes(boxes, summary.boxSetups, folds, moves, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
 			messages: rendered.map(({ message, variantId, prose, speakerName, role, content }) => ({
 				messageId: message.id, variantId, position: message.position, authorId: message.author?.participantId ?? null, speaker: speakerName, role, content, prose,
@@ -414,7 +410,7 @@ export function prepareGenerationInputsSnapshot(
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages, boxInstances };
+	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages };
 }
 
 /** @approved
@@ -450,6 +446,10 @@ export async function prepareGenerationInputsAsync(
 		...preparation,
 		lore,
 		boxes,
+		boxRecords: Object.fromEntries(boxInputs.flatMap(({ id, instance, reference }) => {
+			const record = boxes[reference]?.record;
+			return record === undefined ? [] : [[id, { instance, record }]];
+		})),
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
 	return ready;

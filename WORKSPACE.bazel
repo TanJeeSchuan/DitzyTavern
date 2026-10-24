@@ -1,0 +1,1 @@
+# Workspace root required by `bb remote --script`. Checks use Bun, with no Bazel targets.

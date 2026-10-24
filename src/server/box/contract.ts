@@ -1,9 +1,12 @@
 import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
+import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { AnyElysia } from "elysia";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { ConversationSummary, SelectedHistoryRead } from "../conversation";
 import type { DecisionJson, DecisionQuestions, requestDecisions } from "../decision-model";
+import type { RecordSlot } from "./records";
 import type { EmbeddingConfiguration } from "./embedding";
 
 /** @approved One completion from a chat Connection Profile: `prompt` is the system message, `signal` adds a limit to the Box's own, and `onContent` sees each streamed chunk and may throw to stop it. */
@@ -27,17 +30,15 @@ export interface BoxContext {
 	readonly signal: AbortSignal;
 }
 
-export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State = undefined, Move = never> {
+export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State extends GenerationJsonValue | undefined = undefined, Move = never> {
 	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
 	setupError?(setup: Setup, previous: Setup): string | undefined;
 	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
 	readonly moves?: { render(move: Move, author: string): string };
-	/** @approved What the Box needs beyond its setup, state and Moves, taken from what the host read for this Generation. */
-	dependencies?(read: CaptureRead, setup: Setup): Dependencies;
-	/** @approved How the records the descriptor's `record` schema describes fold into state, in Message order, from `initial`. */
-	readonly records?: {
-		readonly initial: State;
-		fold(state: State, record: Rec, setup: Setup): State;
+	/** @approved What the Box needs beyond its setup, state and Moves, taken from what the host read for this Generation, its own record slots included. */
+	dependencies?(read: CaptureRead<Rec>, setup: Setup): Dependencies;
+	/** @approved How the records the descriptor's `record` schema describes fold into state, in Message order, from `initial`. A Box without a fold has undefined state. */
+	readonly records?: ({ readonly initial: State; fold(state: State, record: Rec, setup: Setup): State } | { readonly initial?: undefined; readonly fold?: undefined }) & {
 		readonly digest?: { readonly window: number; run(window: DigestWindow, ctx: DigestContext): Promise<Rec> };
 	};
 	readonly advance?: {
@@ -49,8 +50,8 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 	status?(setup: Setup, state: State): string | null;
 	/** @approved The setup a SillyTavern chat's Author's Note imports as; a Box without it ignores the note. */
 	importSillyTavernNote?(note: string): NonNullable<Setup>;
-	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`, or undefined for a missing Chat. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
-	read?(database: Database, conversationId: number): GenerationJsonValue | undefined;
+	/** @approved The window's data, served at `GET /api/conversations/:id/boxes/:box`; the host answers a missing Chat with 404. The client decodes it with the Box's shared read schema. A digesting Box declares none: the host serves its passage timeline. */
+	read?(read: BoxWindowRead<Setup, State>): GenerationJsonValue;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
 	routes?(database: Database): AnyElysia;
 }
@@ -58,10 +59,20 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it. A Box without a setup gets undefined.
-export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, unknown, unknown>;
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown>;
 
-/** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
-export type CaptureMessage = {
+/** @approved What a Box's window `read` gets, read in one host transaction: `db` for further reads, the Chat's summary and Selected path, the Box's setup, and its fold over the Selected path's effective records, as Generation capture folds it. */
+export type BoxWindowRead<Setup, State> = {
+	readonly db: BunSQLiteDatabase;
+	readonly conversationId: number;
+	readonly summary: ConversationSummary;
+	readonly history: SelectedHistoryRead;
+	readonly setup: Setup;
+	readonly state: State;
+};
+
+/** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. `slot` is the Box's own record slot on the Variant. */
+export type CaptureMessage<Rec = never> = {
 	readonly messageId: number;
 	readonly variantId: number;
 	readonly position: number;
@@ -70,22 +81,23 @@ export type CaptureMessage = {
 	readonly role: "human" | "model" | null;
 	readonly content: string;
 	readonly prose: string;
+	readonly slot: RecordSlot<Rec> | undefined;
 };
 
-/** @approved What the host read for one Generation, from which a Box takes its `dependencies`. A Box's `seed` is its own stream of the Variant's seed. `messages` is the Selected path; `pending` is the text a Send submits, Moves rendered, before it becomes a Message. `database` serves further reads, as `read` gets it. */
-export type CaptureRead = {
+/** @approved What the host read for one Generation, from which a Box takes its `dependencies`. A Box's `seed` is its own stream of the Variant's seed. `messages` is the Selected path; `pending` is the text a Send submits, Moves rendered, before it becomes a Message. `database` serves further reads inside the capture's read transaction. */
+export type CaptureRead<Rec = never> = {
 	readonly database: Database;
 	readonly conversationId: number;
 	readonly seed: string;
 	readonly intent: "respond" | "continue";
 	readonly human: { readonly id: number; readonly name: string };
 	readonly cast: readonly { readonly id: number; readonly name: string }[];
-	readonly messages: readonly CaptureMessage[];
+	readonly messages: readonly CaptureMessage<Rec>[];
 	readonly pending: string | undefined;
 };
 
 /** @approved `moves` are the ones on the triggering Human-authored Message, in order; a Continuation has none. */
-export type AdvanceInput<Setup, Dependencies = undefined, State = undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
+export type AdvanceInput<Setup, Dependencies = undefined, State extends GenerationJsonValue | undefined = GenerationJsonValue | undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
 export type AdvanceResult<Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never> = {
 	readonly items: readonly BlockItem[];
 	readonly allowance?: number;
@@ -106,5 +118,5 @@ export type DigestWindow = {
 	readonly cast: readonly { readonly id: number; readonly name: string; readonly removed: boolean }[];
 	readonly data: Readonly<Record<string, string>>;
 };
-/** @approved A digest gets the context `advance` gets, and `database` for the reads its window does not carry, as `read` gets it. */
+/** @approved A digest gets the context `advance` gets, and `database` for the reads its window does not carry. */
 export type DigestContext = BoxContext & { readonly database: Database };

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
-import { test, expect, story, insertBox } from "./fixtures";
-import type { ConversationAction } from "../src/shared/contract/conversation-schema";
+import { test, expect, story, insertBox } from "../../../e2e/fixtures";
+import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
 const raceItem = async (page: Page) => {
 	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });

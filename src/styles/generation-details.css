@@ -96,6 +96,30 @@
 	height: 0.9rem;
 }
 
+/* One row on phones: Cancel and Refresh shrink to icons, Send takes the rest. */
+@media (max-width: 40rem) {
+	.prompt-plan-preview-actions {
+		flex-wrap: nowrap;
+	}
+
+	.prompt-plan-preview-actions .secondary-button {
+		justify-content: center;
+		min-width: 2.75rem;
+		padding-inline: 0;
+	}
+
+	.prompt-plan-preview-actions .primary-button {
+		flex: 1;
+		justify-content: center;
+	}
+}
+
+.generation-detail-section summary {
+	font-size: 0.78rem;
+	font-weight: 670;
+	cursor: pointer;
+}
+
 .generation-detail-status {
 	margin: 0;
 	color: var(--accent-foreground);

@@ -32,7 +32,7 @@ const path = (...messageIds: number[]) =>
 
 const memories = (cast: ConversationMemories["cast"]): ConversationMemories => ({
 	revision: 1,
-	labelRevision: 1,
+	labelRevision: "insertion-1:1",
 	identities: {},
 	cast,
 	labelMerges: [],

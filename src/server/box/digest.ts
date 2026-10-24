@@ -1,22 +1,21 @@
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxesWith, boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
-import { boxValue, type BoxValue } from "../../shared/contract/box-value";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { boxesWith, boxRecordSchema, boxReference, type BoxId } from "../../shared/contract/box";
 import type { BoxCatchUp } from "../../shared/contract/box-digest";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 import {
-	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedHistoryFromConnection, readSelectedPassages,
+	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedPassages,
 	readSelectedVariantIdsFromConnection, readChatVariants, runConversationReadTransaction,
 } from "../conversation";
 import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { effectiveRecord, foldRecords, hasAutomaticRecord, hasDigestError, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
+import { effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxFold, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
 import { serverBox } from "./registry";
 import { boxServices } from "./services";
-import { isBoxEnabled, readBoxInstances } from "./setup";
+import { isHostChatKey, readBoxLifecycles } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
+import { readBoxWindow } from "./window";
 
 // @approved
 //  The host digest queue (ADR-0050). Selected passages are digested in the
@@ -100,12 +99,12 @@ const enqueue = (queue: DigestQueue, job: DigestJob): void => {
 	(job.catchUp === null ? queue.live : queue.catchUp).push(job);
 };
 
-/** @approved A digesting Box's server module and records hooks; the routes refuse any other id before they reach the queue. */
+/** @approved A digesting Box's server module and digest; the routes refuse any other id before they reach the queue. */
 const digesting = (id: BoxId) => {
 	const box = serverBox(id);
-	const records = box?.records;
-	if (box === undefined || records?.digest === undefined) throw new Error(`The ${id} Box does not digest.`);
-	return { box, records, digest: records.digest };
+	const digest = box?.records?.digest;
+	if (box === undefined || digest === undefined) throw new Error(`The ${id} Box does not digest.`);
+	return { box, digest };
 };
 
 const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
@@ -118,12 +117,11 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 	// cleared, while the request ran; neither replaces the job.
 	const lands = (): boolean => {
 		const current = readChatVariants(database, job.conversationId, { variantIds: [job.variantId], includeActive: true })[0];
-		return queue.current.get(job.key) === job && current !== undefined && sha256(current.content) === job.source
-			&& isBoxEnabled(drizzle(database), job.conversationId, job.box) && resolveBoxDecision(database, job.box).kind === "ready";
+		return queue.current.get(job.key) === job && digestInstance(database, job.conversationId, job.box) === job.instance
+			&& current !== undefined && sha256(current.content) === job.source;
 	};
 	try {
-		if (!isBoxEnabled(drizzle(database), job.conversationId, job.box)) return;
-		if (resolveBoxDecision(database, job.box).kind !== "ready") return;
+		if (digestInstance(database, job.conversationId, job.box) !== job.instance) return;
 		const path = readSelectedPassages(database, job.conversationId, { messageId: job.messageId, preceding: digest.window }) ?? [];
 		const index = path.findIndex((message) => message.variant?.variantId === job.variantId);
 		const variant = path[index]?.variant;
@@ -132,7 +130,7 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			variant === null ? [] : [{ messageId, speaker: author, authorId: authorParticipantId, content: variant.content }]);
 		const seed = boxSeed(variantSeedOf(readVariantSeeds(drizzle(database), [job.variantId]).get(job.variantId), job.variantId), job.box);
 		const services = boxServices(database, queue.fetch, signal)(job.box);
-		const data = readConversationData(database, job.conversationId, { namespace: boxReference(job.box) })?.entries ?? [];
+		const data = (readConversationData(database, job.conversationId, { namespace: boxReference(job.box) })?.entries ?? []).filter(({ key }) => !isHostChatKey(key));
 		const record = await digest.run({
 			passage: { messageId: variant.messageId, speaker: variant.speaker, authorId: variant.authorParticipantId, content: variant.content },
 			preceding,
@@ -140,8 +138,6 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 			cast: readParticipants(database, job.conversationId),
 			data: Object.fromEntries(data.map(({ key, value }) => [key, value])),
 		}, { ...services, database });
-		Value.Assert(boxValue, record);
-		Value.Assert(boxRecordSchema(job.box), record);
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (signal.aborted) return;
@@ -192,10 +188,10 @@ export function startBoxDigests(database: Database, options: { fetch?: ModelFetc
 // @approved
 //  The instance a Box digests for in this Chat, or undefined when it may not
 // digest: it must be enabled and have its Decision Model selected.
-const digestInstance = (database: Database, conversationId: number, box: BoxId): string | undefined =>
-	isBoxEnabled(drizzle(database), conversationId, box) && resolveBoxDecision(database, box).kind === "ready"
-		? readBoxInstances(drizzle(database), conversationId)[box]
-		: undefined;
+const digestInstance = (database: Database, conversationId: number, box: BoxId): string | undefined => {
+	const lifecycle = readBoxLifecycles(drizzle(database), conversationId)[box];
+	return lifecycle?.state === "enabled" && resolveBoxDecision(database, box).kind === "ready" ? lifecycle.instance : undefined;
+};
 
 // @approved
 //  A Box that stops running abandons its Chat's work: every current job is
@@ -240,11 +236,11 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 	if (queue === undefined) return () => {};
 	const jobs: DigestJob[] = [];
 	const removedKeys: string[] = [];
+	const variants = change.touchedVariantIds.length === 0 ? [] : readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
 	for (const [box] of boxesWith("decision")) {
 		for (const variantId of change.removedVariantIds) removedKeys.push(keyOf(variantId, box));
 		const instance = change.touchedVariantIds.length === 0 ? undefined : digestInstance(database, change.conversationId, box);
 		if (instance === undefined) continue;
-		const variants = readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
 		jobs.push(...prepareLive(database, queue, change.conversationId, box, instance, variants, false));
 	}
 	const { conversationId, stoppedBox } = change;
@@ -313,34 +309,23 @@ export function cancelBoxCatchUp(database: Database, conversationId: number, box
 	for (const job of run.members) drop(queue, job);
 }
 
-// @approved
-//  Status folds every selected record, as Generation capture does.
-const foldDigest = (db: BunSQLiteDatabase, conversationId: number, box: BoxId, setups: BoxSetups, variantIds: readonly number[]) => {
-	const slots = readRecordSlots(db, box, boxRecordSchema(box), readBoxInstances(db, conversationId)[box], variantIds);
-	const { box: { status }, records } = digesting(box);
-	const setup = setups[box];
-	return { slots, status: status?.(setup, foldRecords<unknown, BoxValue, unknown>(records, setup, slots, variantIds)) ?? null };
-};
-
 /** @approved A minimized digesting Box's dock read: the folded status from the selected Variant ids, loading no prose. */
 export function readDigestStatus(database: Database, conversationId: number, box: BoxId) {
+	const { box: host } = digesting(box);
 	return runConversationReadTransaction(database, (db) => {
 		const summary = readConversationSummaryFromConnection(db, conversationId);
 		if (summary === undefined) return undefined;
-		return { status: foldDigest(db, conversationId, box, summary.boxSetups, readSelectedVariantIdsFromConnection(db, conversationId)).status };
+		const setup = summary.boxSetups[box];
+		const { state } = readBoxFold(db, box, host, readBoxLifecycles(db, conversationId)[box]?.instance, setup, readSelectedVariantIdsFromConnection(db, conversationId));
+		return { status: host.status?.(setup, state) ?? null };
 	});
 }
 
 /** @approved A digesting Box's window reads one folded Selected path state
  *  without loading discarded Variants or arbitrary Variant data. */
 export function readDigest(database: Database, conversationId: number, box: BoxId) {
-	return runConversationReadTransaction(database, (db) => {
-		const summary = readConversationSummaryFromConnection(db, conversationId);
-		if (summary === undefined) return undefined;
-		const history = readSelectedHistoryFromConnection(db, conversationId, { conversationData: false });
-		if (history === undefined) return undefined;
-		const variantIds = history.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
-		const { slots, status } = foldDigest(db, conversationId, box, summary.boxSetups, variantIds);
+	const { box: host } = digesting(box);
+	return readBoxWindow(database, conversationId, box, host, ({ summary, history, setup, state, slots }) => {
 		// @approved
 		//  An empty Variant, such as an Active Generation's provisional one, has
 		//  no settled prose to digest, so it is not listed as a passage.
@@ -355,7 +340,7 @@ export function readDigest(database: Database, conversationId: number, box: BoxI
 		return {
 			conversationId,
 			revision: summary.revision,
-			status,
+			status: host.status?.(setup, state) ?? null,
 			digestReady: resolveBoxDecision(database, box).kind === "ready",
 			catchUp: readBoxCatchUp(database, conversationId, box),
 			passages,

@@ -1,27 +1,23 @@
 import { Minus, X } from "lucide-react";
 import { FocusScope } from "radix-ui/internal";
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import type { BoxId, BoxWindowLayout } from "../../shared/contract/box";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { boxMetadata, type BoxId, type BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
+import { useNarrow } from "../lib/use-narrow";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxClients, boxPresent, boxTitle, type MoveStaging } from "./registry";
+import { boxClients, boxPresent, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
-const NARROW = "(max-width: 78rem)";
-const subscribeNarrow = (onChange: () => void) => {
-	const media = window.matchMedia(NARROW);
-	media.addEventListener("change", onChange);
-	return () => media.removeEventListener("change", onChange);
-};
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
 
-function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
+function FloatingWindow({ title, icon, size, layout, cascade, zIndex, narrow, minimized, covered, onRaise, onMove, onMinimize, onClose, children }: {
 	title: string;
 	icon: ReactNode;
 	size: { width: number; height: number };
 	layout: BoxWindowLayout;
+	cascade: number;
 	zIndex: number;
 	narrow: boolean;
 	minimized: boolean;
@@ -83,8 +79,11 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, 
 		if (next !== null) onMove(next.x, next.y);
 	};
 
-	const x = position?.x ?? layout.x;
-	const y = position?.y ?? layout.y;
+	const placed = position ?? (layout.x === undefined || layout.y === undefined ? null : { x: layout.x, y: layout.y });
+	//  An unplaced window opens in the right utility bay, below the story
+	//  header, each one a step down and left of the last so every title bar
+	//  stays in view.
+	const bayTop = `calc(5.25rem + ${cascade * 2.25}rem)`;
 	// @approved
 	//  A saved position can come from a larger viewport, so the browser keeps
 	//  it inside this one, on open and on every resize, with the drag's bounds.
@@ -93,21 +92,22 @@ function FloatingWindow({ title, icon, size, layout, zIndex, narrow, minimized, 
 		display: minimized ? "none" : undefined,
 		width: `${size.width}rem`,
 		height: `${size.height}rem`,
-		left: x === undefined ? undefined : `clamp(0px, ${x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`,
-		top: y === undefined ? undefined : `clamp(0px, ${y}px, calc(100dvh - 48px))`,
+		...placed === null
+			? { top: bayTop, right: `${1.25 + cascade * 1.75}rem`, maxHeight: `calc(100dvh - ${bayTop} - 1.25rem)` }
+			: { right: "auto", left: `clamp(0px, ${placed.x}px, calc(100vw - min(${size.width}rem, 100vw - 2rem)))`, top: `clamp(0px, ${placed.y}px, calc(100dvh - 48px))` },
 	};
 	return <section
 		ref={frame}
 		className="box-window"
 		data-covered={narrow && covered ? "" : undefined}
 		style={style}
-		data-positioned={position !== null || (layout.x !== undefined && layout.y !== undefined)}
 		role="dialog"
 		aria-label={title}
 		aria-modal={narrow || undefined}
 		// @approved
 		// On narrow the frame is the layer's first tabbable, so Tab cycling wraps from it before the trap has seen any focus.
 		tabIndex={narrow ? 0 : -1}
+		onFocus={onRaise}
 		onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
 	>
 		<div className="box-window-bar" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
@@ -137,20 +137,37 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 }): ReactNode {
 	const requestNavigation = useNavigationRequest();
 	const [order, setOrder] = useState<BoxId[]>([]);
-	const narrow = useSyncExternalStore(subscribeNarrow, () => window.matchMedia(NARROW).matches);
+	const [slots, setSlots] = useState<ReadonlyMap<BoxId, number>>(new Map());
+	const narrow = useNarrow();
 	if (conversation === null) return null;
-	const present = [...boxClients()].flatMap(([id, { icon, Window }]) => Window !== undefined && boxPresent(conversation, id) ? [[id, { icon, ...Window }] as const] : []);
+	const present = boxClients().flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
 	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
-	const raise = (id: BoxId) => setOrder((current) => [...current.filter((entry) => entry !== id), id]);
+	const raise = (id: BoxId) => setOrder((current) => current.at(-1) === id ? current : [...current.filter((entry) => entry !== id), id]);
+	//  Each unplaced window keeps the first free cascade slot it found when it
+	//  opened, so a later window steps past it and closing one frees its slot.
+	const unplaced = opened.flatMap(([id]) => controller.layouts[id]?.x === undefined ? [id] : []);
+	const kept = new Map([...slots].filter(([id]) => unplaced.includes(id)));
+	const taken = new Set(kept.values());
+	for (const id of unplaced.filter((entry) => !kept.has(entry))) {
+		let slot = 0;
+		while (taken.has(slot)) slot++;
+		kept.set(id, slot);
+		taken.add(slot);
+	}
+	if (kept.size !== slots.size || [...kept].some(([id, slot]) => slots.get(id) !== slot)) setSlots(kept);
 	const zIndex = (id: BoxId) => 30 + order.indexOf(id) + 1;
 	// @approved
 	//  The window painted last at the highest z-index is the one on top.
 	const top = visible.reduce<BoxId | undefined>((best, [id]) => best === undefined || zIndex(id) >= zIndex(best) ? id : best, undefined);
 	return <>
 		{minimized.length > 0 && <div className="box-dock" role="toolbar" aria-label="Minimized Boxes">
-			{minimized.map(([id, { DockTab }]) => <BoxBoundary key={id} box={id}><DockTab conversation={conversation} onRestore={() => controller.open(id)} /></BoxBoundary>)}
+			{minimized.map(([id, { icon, Status }]) => <button key={id} type="button" className="box-dock-tab" title={`Restore ${boxMetadata(id).label}`} onClick={() => controller.open(id)}>
+				<BoxIcon box={id} icon={icon} />
+				<span className="sr-only">{boxMetadata(id).label}: </span>
+				{Status === undefined ? <span>{boxMetadata(id).label}</span> : <BoxBoundary box={id}><Status conversation={conversation} /></BoxBoundary>}
+			</button>)}
 		</div>}
 		{/* @approved
 		  A narrow viewport shows the top window as one full-screen layer over
@@ -159,16 +176,17 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 		  windows usable at once, where trapping focus would be wrong. */}
 		<FocusScope.Root asChild trapped={narrow && visible.length > 0} loop={narrow && visible.length > 0}
 			onMountAutoFocus={(event) => event.preventDefault()} onUnmountAutoFocus={(event) => event.preventDefault()}><div className="box-window-layer">
-		{opened.map(([id, definition]) => {
-			const { Panel } = definition;
+		{opened.map(([id, { icon }, Window]) => {
+			const { Panel } = Window;
 			const layout = controller.layouts[id];
 			if (layout === undefined) return null;
 			return <FloatingWindow
 				key={id}
-				title={boxTitle(id)}
-				icon={<BoxIcon box={id} icon={definition.icon} />}
-				size={definition.size}
+				title={boxMetadata(id).label}
+				icon={<BoxIcon box={id} icon={icon} />}
+				size={Window.size}
 				layout={layout}
+				cascade={kept.get(id) ?? 0}
 				zIndex={zIndex(id)}
 				narrow={narrow}
 				minimized={layout.minimized}
@@ -178,7 +196,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onMinimize={() => controller.minimize(id)}
 				onClose={() => requestNavigation(() => controller.close(id))}
 			>
-				<BoxOffNotice conversation={conversation} box={id} className="mb-3" />
+				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<BoxBoundary box={id}>
 					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}

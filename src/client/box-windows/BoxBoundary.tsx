@@ -1,11 +1,11 @@
 import { TriangleAlert, type LucideIcon } from "lucide-react";
 import { Component, type ReactNode } from "react";
-import type { BoxId } from "../../shared/contract/box";
-import { boxTitle, errorMessage } from "./registry";
+import { boxMetadata, type BoxId } from "../../shared/contract/box";
+import { errorMessage } from "./registry";
 
 /** @approved A failed Box surface's message, naming the Box. */
 export const BoxFailure = ({ box, message }: { box: BoxId; message: string }) =>
-	<span className="box-failure" role="alert">{boxTitle(box)} failed: {message}</span>;
+	<span className="box-failure" role="alert">{boxMetadata(box).label} failed: {message}</span>;
 
 type BoxBoundaryState = { readonly message: string | null };
 

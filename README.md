@@ -120,6 +120,24 @@ bun run db:seed      # sample data; db:teardown removes exactly what it added
 bun run check        # lint, contract checks, types and tests
 ```
 
+`bun run check` and `bun run test:e2e` run on [BuildBuddy's remote runners](https://www.buildbuddy.io/docs/remote-bazel/)
+once this clone is logged in. Install the [BuildBuddy CLI](https://www.buildbuddy.io/cli/) and run `bb login`
+from this checkout. It saves the API key in `.git/config`, which every worktree of the clone shares.
+For a private repository, also link it in BuildBuddy's Workflows page.
+
+The CLI syncs committed, modified, and untracked source files, excluding ignored
+files such as `.env`. The runner installs the Node and Bun versions from `package.json`,
+then dependencies. Remote checks build the app for the harness tests.
+E2E installs Chromium and uploads the HTML
+report, including failure screenshots, as `playwright-report.tar.gz` in the run UI.
+Each run requests 4 CPU cores and 16 GB of memory, with a 30-minute timeout.
+Logs stream to your terminal, and a remote failure fails the local command.
+`WORKSPACE.bazel` only marks the root for the CLI's Bash runner.
+
+Use `LOCAL=1 bun run check` or `LOCAL=1 bun run test:e2e` to run locally.
+E2E arguments still work, for example `bun run test:e2e --grep "chat"`.
+Without a BuildBuddy login, as in GitHub Actions, both commands run locally.
+
 [`GLOSSARY.md`](GLOSSARY.md) defines the domain terms, [`DESIGN.md`](DESIGN.md) holds the visual direction, and [`docs/adr`](docs/adr) records the architectural decisions.
 
 ---

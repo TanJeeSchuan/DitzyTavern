@@ -1,9 +1,5 @@
 @reference "@/index.css";
 
-.race-label {
-	@apply sr-only;
-}
-
 .race-window, .race-setup {
 	display: grid;
 	gap: 0.8rem;

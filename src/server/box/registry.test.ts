@@ -1,35 +1,26 @@
 import { afterEach, expect, test } from "bun:test";
-import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors } from "../../shared/contract/box";
+import { sha256 } from "../hash";
+import { readBoxFolds, writeAutomaticRecord } from "./records";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
 import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
+import { acceptConversationTailGeneration, checkpointConversationGeneration, observeConversationWrites } from "../conversation";
+import { openInitializedDatabase } from "../database/database";
 import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
+import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
-
-test("a Phone contact added after inspection makes the plan stale", () => {
-	const human = { id: 1, name: "Ann" };
-	const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-		participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: "enabled" }),
-		{},
-		{},
-		{},
-		// SAFETY: Phone reads nothing through the database.
-		{ database: {} as Database, conversationId: 1, seed: "seed", intent: "respond", human, cast, messages: [], pending: undefined },
-	));
-	expect(capture([human, { id: 2, name: "Bo" }])).not.toBe(capture([human, { id: 2, name: "Bo" }, { id: 3, name: "Cy" }]));
-});
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -38,7 +29,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 		const selection = configureDecisionModels(database, key, "model-a");
 		const human = { id: 1, name: "Ann" };
 		const capture = () => fingerprintBoxes(captureBoxes(
-			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: "enabled" }),
+			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
 			{},
 			{},
 			{},
@@ -53,7 +44,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 	}
 });
 
-const lantern = { sdk: boxSdkVersion, label: "Lantern", role: "system", startsEnabled: false, instructions: "" };
+const lantern = { sdk: boxSdkVersion, label: "Lantern", summary: "Hangs a lit lantern in the scene.", role: "system", startsEnabled: false, instructions: "" };
 const pluginFolders: string[] = [];
 afterEach(() => { for (const folder of pluginFolders.splice(0)) rmSync(folder, { recursive: true, force: true }); });
 // @approved
@@ -75,6 +66,7 @@ const installPlugins = (plugins: Record<string, { readonly fields?: string; read
 test("a plugin Box that cannot load is refused with its reason, and the rest still load", async () => {
 	const plugins = installPlugins({
 		lantern: {},
+		constructor: {},
 		unlabelled: { fields: "label: 3" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
@@ -86,9 +78,10 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		unrouted: { server: 'export default { routes: () => { throw new Error("The hook is bent."); } };' },
 		unmounted: { server: `${elysia} export default { routes: () => Object.defineProperty(new Elysia(), "router", { get() { throw new Error("The hook will not hang."); } }) };` },
 		"hollow-moves": { server: "export default { moves: {} };" },
-		"hollow-records": { server: "export default { records: { initial: 0 } };" },
+		"hollow-records": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
 		"hollow-routes": { server: "export default { routes: () => ({}) };" },
+		"map-initial": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: new Map(), fold: (state) => state } };" },
 	});
 	const database = openObservedDatabase();
 	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins], database).finally(() => database.close());
@@ -96,10 +89,12 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
 		["broken", "The wick is wet."],
+		["constructor", "Its id, constructor, names an Object.prototype property."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
-		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
+		["hollow-records", "The hollow-records Box must declare a fold exactly when it declares an initial state."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
+		["map-initial", "The map-initial Box's records.initial is invalid at /: Expected union value."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
 		["renamed", "Its folder must be named for its id, lantern."],
@@ -218,6 +213,76 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 	}
 });
 
+test("a non-JSON Box state is refused with the Box's id, and a changed JSON state marks a preview stale", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: 'export default { records: { initial: null, fold: () => new Map([["lit", true]]) } };',
+		} })]);
+		const conversation = createChat(database);
+		const instance = insertBox(database, conversation.id, "lantern");
+		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
+		expect(() => readBoxFolds(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
+		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
+		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 1 } } }, {}, read)))
+			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 2 } } }, {}, read)));
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("reinserting a participating Box makes its inspected Prompt Plan stale", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: 'export default { records: { initial: null, fold: (state) => state }, advance: { run: async () => ({ items: [], record: {} }) } };',
+		} })]);
+		const conversation = createChat(database);
+		insertBox(database, conversation.id, "lantern");
+		withProfile(database);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+		}));
+		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		setBoxState(database, conversation.id, "lantern", "absent");
+		insertBox(database, conversation.id, "lantern");
+		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a capture reads in one transaction while another connection commits", async () => {
+	const folder = mkdtempSync(join(tmpdir(), "ditzy-capture-"));
+	pluginFolders.push(folder);
+	const path = join(folder, "capture.sqlite");
+	const database = openInitializedDatabase({ path });
+	try {
+		observeConversationWrites(database, () => () => {});
+		const conversation = createChat(database);
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			server: `import { Database } from "bun:sqlite"; export default { dependencies: () => { const other = new Database(${JSON.stringify(path)}); other.run("UPDATE conversation SET name = 'Lantern Chat' WHERE id = ${conversation.id}"); other.close(); } };`,
+		} })]);
+		insertBox(database, conversation.id, "lantern");
+		database.run("UPDATE prompt_preset_block SET enabled = 0 WHERE reference = 'lore'");
+		const capture = () => prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, connection: null, target: { kind: "send", content: "Light it." } });
+		expect(capture().conversationId).toBe(conversation.id);
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
 test("a plugin's routes are served as the loader built them, its client module and stylesheet from its dist folder, and nothing else in it", async () => {
 	const plugins = installPlugins({ lantern: {
 		server: `${elysia} let built = false; export default { routes: () => { if (built) throw new Error("Built twice."); built = true; return new Elysia().get("/lit", () => "The lantern is lit."); } };`,
@@ -250,12 +315,12 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
 			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
-		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" }), {}, {}, {}, {
+		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
 		if (value.startsWith("{")) expect((await result)["box:lantern"]?.[field]).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
-		else await expect(result).rejects.toThrow();
+		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected union value.`);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -284,11 +349,57 @@ for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested
 		if (value.startsWith("{")) expect(JSON.parse(stored.value).automatic).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
 		else {
 			expect(JSON.parse(stored.value).automatic).toBeUndefined();
-			expect(JSON.parse(stored.value).error.message).toBeString();
+			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected union value.");
 		}
 	} finally {
 		await stop?.();
 		database.close();
 		await loadBoxes([builtInBoxes]);
 	}
+});
+
+const recordField = 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }';
+const decisionField = 'decision: { summary: "", description: "", off: "", context: "" }';
+const movesField = 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }';
+// @approved
+//  A receiver row's hook throws naming the object it ran on, which must be
+// the one that declares it, as the module calls it.
+const ranOn = (hook: string, owner: string) => `{ throw new Error("The lantern Box's ${hook} ran on " + (this === ${owner} ? "its own object." : "another object.")); }`;
+for (const [hook, outcome, server, fields = ""] of [
+	["advance.run", "result is invalid at /items/0/text: Expected string.", "advance: { run: async () => ({ items: [{ text: 1, priority: 0 }] }) }"],
+	["advance.run", "result is invalid at /items/0/priority: Expected number.", 'advance: { run: async () => ({ items: [{ text: "lit", priority: NaN }] }) }'],
+	["moves.render", "result is invalid at /: Expected string.", "moves: { render: () => 1 }", movesField],
+	["setupError", "result is invalid at /: Expected union value.", "setupError: () => 1"],
+	["dependencies", "result is invalid at /: Expected union value.", "dependencies: () => new Map()"],
+	["setupError", "ran on its own object.", `setupError() ${ranOn("setupError", "box")}`],
+	["dependencies", "ran on its own object.", `dependencies() ${ranOn("dependencies", "box")}`],
+	["dependencies", "ran on its own object.", `dependencies() ${ranOn("dependencies", "box")}, advance: { run: async () => ({ items: [] }), fingerprint: () => "" }`],
+	["importSillyTavernNote", "ran on its own object.", `importSillyTavernNote() ${ranOn("importSillyTavernNote", "box")}`],
+	["status", "ran on its own object.", `status() ${ranOn("status", "box")}, records: { digest: { window: 0, run: async () => ({}) } }`, `${recordField}, ${decisionField}`],
+	["read", "ran on its own object.", `read() ${ranOn("read", "box")}`],
+	["routes", "ran on its own object.", `routes() ${ranOn("routes", "box")}`],
+	["moves.render", "ran on its own object.", `moves: { render() ${ranOn("moves.render", "box.moves")} }`, movesField],
+	["records.fold", "ran on its own object.", `records: { initial: 0, fold() ${ranOn("records.fold", "box.records")} }`, recordField],
+	["records.digest.run", "ran on its own object.", `records: { digest: { window: 0, async run() ${ranOn("records.digest.run", "box.records.digest")} } }`, `${recordField}, ${decisionField}`],
+	["advance.run", "ran on its own object.", `advance: { async run() ${ranOn("advance.run", "box.advance")} }`],
+	["advance.fingerprint", "ran on its own object.", `advance: { run: async () => ({ items: [] }), fingerprint() ${ranOn("advance.fingerprint", "box.advance")} }`],
+] as const) test(`${hook} runs on its own object and its output is checked: ${server}`, async () => {
+	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `const box = { ${server} }; export default box;` } })]);
+	// SAFETY: each plugin's hook ignores its arguments.
+	const none = undefined as never;
+	const call = async () => {
+		const box = lantern?.box;
+		await box?.advance?.run(none, none);
+		box?.advance?.fingerprint?.(none);
+		box?.moves?.render(none, "Ann");
+		box?.setupError?.(none, none);
+		box?.dependencies?.(none, none);
+		box?.importSillyTavernNote?.("");
+		box?.status?.(none, none);
+		box?.read?.(none);
+		box?.routes?.(none);
+		box?.records?.fold?.(none, none, none);
+		await box?.records?.digest?.run(none, none);
+	};
+	await expect(call()).rejects.toThrow(`The lantern Box's ${hook} ${outcome}`);
 });

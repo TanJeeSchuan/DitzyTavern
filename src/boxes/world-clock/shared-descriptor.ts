@@ -2,7 +2,7 @@ import { describeSetup, type BoxDescriptor } from "@/box-sdk/shared";
 import { initialWorldClockSetup, worldClockRecord, worldClockSetup } from "./contract";
 
 export default {
-	id: "world-clock", sdk: 1, label: "World Clock", role: "system", startsEnabled: false, instructions: "",
+	id: "world-clock", sdk: 1, label: "World Clock", summary: "Keeps the in-story time and weather that passages establish.", role: "system", startsEnabled: false, instructions: "",
 	setup: describeSetup(worldClockSetup, initialWorldClockSetup),
 	record: worldClockRecord,
 	decision: {

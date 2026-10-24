@@ -130,6 +130,13 @@
 	color: var(--text-muted);
 }
 
+@media (pointer: coarse) {
+	.model-pin-button {
+		width: 2.5rem;
+		height: 2.5rem;
+	}
+}
+
 .model-pin-button:hover,
 .model-pin-button:focus-visible {
 	color: var(--accent);
@@ -182,6 +189,39 @@
 @media (max-width: 720px) {
 	.control-select-trigger.control-select-trigger {
 		max-width: 10rem;
+	}
+}
+
+/* On phones the two seats share the top row as a pair; Box launchers and the model chip sit on the row with Send. */
+@media (max-width: 40rem) {
+	/* @approved The controls span Send's column too, so the pair fits; Send overlays the short bottom row's free end. */
+	.composer-controls-row {
+		grid-column: 1 / -1;
+	}
+
+	.composer-controls {
+		row-gap: 0;
+	}
+
+	.composer-controls > * {
+		order: 2;
+	}
+
+	.composer-controls > .control-select-trigger {
+		order: 0;
+	}
+
+	.composer-controls::after {
+		content: "";
+		order: 1;
+		flex-basis: 100%;
+	}
+}
+
+@media (pointer: coarse) {
+	.control-select-trigger.control-select-trigger,
+	.model-selector-trigger {
+		height: 2.5rem;
 	}
 }
 
