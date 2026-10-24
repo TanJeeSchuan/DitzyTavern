@@ -61,7 +61,7 @@ const AddBlockMenu = ({
 					{addableReferences().filter((reference) => !(isSingleUseReference(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (
 						<DropdownMenu.Item
 							key={reference}
-							className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
+							className="cursor-default pointer-coarse:min-h-10 rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
 							onSelect={() => onAddReference(reference)}
 						>
 							{slotLabel(reference)}
@@ -69,7 +69,7 @@ const AddBlockMenu = ({
 					))}
 					<DropdownMenu.Separator className="my-1 h-px bg-border" />
 					<DropdownMenu.Item
-						className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
+						className="cursor-default pointer-coarse:min-h-10 rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
 						onSelect={onAddInstruction}
 					>
 						New custom instruction

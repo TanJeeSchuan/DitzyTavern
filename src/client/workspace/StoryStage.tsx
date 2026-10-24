@@ -1,6 +1,7 @@
 import { isStoryReady } from "../story";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import { useState, type Dispatch } from "react";
+import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { ComposerControlSelectors } from "../ComposerControls";
@@ -40,6 +41,7 @@ export function StoryStage({
 	dispatchStory,
 	conversation,
 	assemblyActive,
+	inert,
 	session,
 	generation,
 	preview,
@@ -59,6 +61,7 @@ export function StoryStage({
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
 	assemblyActive: boolean;
+	inert: boolean;
 	boxWindows: BoxWindowsController;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
@@ -91,6 +94,7 @@ export function StoryStage({
 		onEnterPreview,
 	});
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
+	const onLayerFocus = useLayerFocus(inert);
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
@@ -104,7 +108,7 @@ export function StoryStage({
 	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
-		<main className="story-stage" aria-label="Active Chat">
+		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
 			<StoryHeader
 				chat={session.activeChat}
 				conversation={conversation}

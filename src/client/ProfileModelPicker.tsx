@@ -129,7 +129,7 @@ export function ProfileModelPicker({ apiFormat = "chat-completions", selected, o
 			</PopoverTrigger>
 			<PopoverContent side={side} align="start" className="w-[min(24rem,calc(100vw-2rem))] p-0" onOpenAutoFocus={(event) => event.preventDefault()}>
 				<Command shouldFilter={false}>
-					<CommandInput aria-label="Search models" value={query} disabled={busy} autoFocus placeholder="Search or enter a model ID" onValueChange={setQuery} />
+					<CommandInput aria-label="Search models" value={query} disabled={busy} autoFocus={matchMedia("(pointer: fine)").matches} placeholder="Search or enter a model ID" onValueChange={setQuery} />
 					<CommandList aria-label="Model choices">
 						{groups.map(({ profile, models }) => <CommandGroup heading={profile.displayName} key={profile.id}>
 							{models.map((modelId) => {

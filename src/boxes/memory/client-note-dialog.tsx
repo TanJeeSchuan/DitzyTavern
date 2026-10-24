@@ -37,7 +37,9 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 		} catch { setError("The Memory note could not be saved. Try again."); }
 		finally { setPending(false); }
 	};
-	const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void save(); } };
+	const onKeyDown = (event: KeyboardEvent) => {
+		if (event.key === "Enter" && !event.nativeEvent.isComposing && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void save(); }
+	};
 	return <Dialog open onOpenChange={(open) => { if (!open && !pending) onClose(); }}>
 		<DialogContent className="memory-dialog" showCloseButton={!pending}>
 			<DialogHeader>
