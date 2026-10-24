@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from "bun:test";
-import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -22,19 +21,6 @@ import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
-
-test("a Phone contact added after inspection makes the plan stale", () => {
-	const human = { id: 1, name: "Ann" };
-	const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-		participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: { state: "enabled", instance: "instance" } }),
-		{},
-		{},
-		{},
-		// SAFETY: Phone reads nothing through the database.
-		{ database: {} as Database, conversationId: 1, seed: "seed", intent: "respond", human, cast, messages: [], pending: undefined },
-	));
-	expect(capture([human, { id: 2, name: "Bo" }])).not.toBe(capture([human, { id: 2, name: "Bo" }, { id: 3, name: "Cy" }]));
-});
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();

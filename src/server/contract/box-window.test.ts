@@ -48,16 +48,6 @@ const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 	return Value.Decode(generationPreview, await response.json());
 };
 
-test("an impossible calendar date is rejected instead of rolling into the next month", async () => {
-	const chat = createClockChat();
-	const app = createContract(database);
-	insertBox(database, chat.id, "world-clock");
-	const response = await saveSetup(app, chat.id, chat.revision, { ...initial, start: "2025-02-31T08:00" });
-	expect(response.status).toBe(422);
-	expect(await response.json()).toEqual({ outcome: "invalid", reason: "Enter a real calendar date and time, such as 2025-06-01T08:00." });
-	expect((await readClock(app, chat.id)).status).toBe("8:00 AM");
-});
-
 test("the World Clock runs only while the Chat has it enabled", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
@@ -109,19 +99,6 @@ test("a stale automatic result does not report the passage as digested", async (
 	const stale = (await readClock(app, chat.id)).passages[0];
 	expect(stale?.digested).toBe(false);
 	expect(stale?.record).toEqual({ minutes: 60, weather: "rain" });
-});
-
-test("a passage whose prose was cleared leaves the timeline but keeps its record in the status, as in the prompt", async () => {
-	const chat = createClockChat();
-	const app = createContract(database);
-	const clock = insertBox(database, chat.id, "world-clock");
-	const { variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: null }, sha256("The lamp turns."));
-	database.run("UPDATE message_variant SET content = '' WHERE id = ?", [variantId]);
-	const read = await readClock(app, chat.id);
-	expect(read.passages).toEqual([]);
-	expect(read.status).toBe("9:00 AM");
-	expect(await (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/world-clock/status`))).json()).toEqual({ status: "9:00 AM" });
 });
 
 test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {

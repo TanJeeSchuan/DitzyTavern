@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, insertBox, story, openBoxes, closeBoxes } from "./fixtures";
+import { test, expect, insertBox, story, openBoxes, closeBoxes } from "../../../e2e/fixtures";
 
 const generate = async (page: Page, text: string) => {
 	const composer = page.getByRole("textbox", { name: "Message draft" });

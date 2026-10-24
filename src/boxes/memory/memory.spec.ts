@@ -1,7 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, enableDecisionModels, insertBox, send, story, openBoxes, closeBoxes } from "./fixtures";
-import type { DecisionRule } from "./protocol";
-import { isChatModelCall } from "./protocol";
+import { test, expect, enableDecisionModels, insertBox, send, story, openBoxes, closeBoxes } from "../../../e2e/fixtures";
+import type { DecisionRule } from "../../../e2e/protocol";
+import { isChatModelCall } from "../../../e2e/protocol";
 
 const enableMemory = async (request: APIRequestContext) => {
 	const { profiles } = await (await request.get("/api/connection-settings")).json();
