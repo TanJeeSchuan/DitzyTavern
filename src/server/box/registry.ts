@@ -5,11 +5,11 @@ import { dirname, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptor, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxSetups, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
-import { boxValue, type BoxValue } from "../../shared/contract/box-value";
-import type { RecordStates } from "./records";
+import { boxEntryOf, boxValue, type BoxValue } from "../../shared/contract/box-value";
+import { checkedBoxState, type RecordStates } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureRead, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
@@ -22,6 +22,7 @@ import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./service
 // `status`, so no other Box declares one. Ids are known only at runtime, so
 // the registry checks this when it is built.
 const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule): HostBox => {
+	checkedBoxState(id, box.records?.initial);
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
@@ -97,6 +98,7 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders, databas
 	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
 	installBoxDescriptors(boxes.map(({ descriptor }) => descriptor));
+	installBoxMetadata(boxes.map(({ descriptor }) => descriptor));
 	registered = new Map(boxes.map(({ descriptor, box }) => [descriptor.id, box]));
 	routes = new Map(boxes.flatMap(({ descriptor: { id }, routes: built }) => built === undefined ? [] : [[id, built]]));
 	clientFolders = new Map(boxes.map(({ descriptor: { id }, folder }) => [id, dirname(folder) === builtInBoxes ? join("dist", "boxes", id) : join(folder, "dist")]));
@@ -134,7 +136,7 @@ type BoxContextOf = (id: BoxId, decision: BoxDecision) => BoxContext;
 // kept in `run`'s closure, so its credential never reaches the capture's
 // serialized fields; the fingerprint holds its identity, so a changed
 // selection marks a preview stale.
-const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | undefined, unknown, unknown, unknown>, decision: BoxDecision): CapturedBox => ({
+const captureBox = (id: BoxId, box: HostBox, input: AdvanceInput<BoxValue | undefined, unknown, GenerationJsonValue | undefined, unknown>, decision: BoxDecision): CapturedBox => ({
 	reference: boxReference(id),
 	fingerprint: JSON.stringify({ setup: input.setup, state: input.state, moves: input.moves, dependencies: box.advance?.fingerprint?.(input) ?? input.dependencies, decision: decisionIdentity(decision) }),
 	run: async (services) => {
@@ -159,9 +161,9 @@ export const participatingBoxes = (slots: readonly PromptPresetSlot[], boxes: Bo
 
 export const captureBoxes = (boxes: ReadonlyMap<BoxId, HostBox>, setups: BoxSetups, states: RecordStates, moves: BoxMoves, read: CaptureRead): BoxInputs =>
 	[...boxes].map(([id, box]) => {
-		const setup = setups[id];
+		const setup = boxEntryOf(setups, id);
 		const dependencies = box.dependencies?.({ ...read, seed: boxSeed(read.seed, id) }, setup);
-		return captureBox(id, box, { setup, state: states[id], moves: moves[id] ?? [], dependencies }, resolveDecisionOf(read.database, id));
+		return captureBox(id, box, { setup, state: checkedBoxState(id, boxEntryOf(states, id)), moves: boxEntryOf(moves, id) ?? [], dependencies }, resolveDecisionOf(read.database, id));
 	});
 
 export const fingerprintBoxes = (inputs: BoxInputs): string => JSON.stringify(inputs.map(({ reference, fingerprint }) => [reference, fingerprint]));

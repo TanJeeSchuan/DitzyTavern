@@ -452,7 +452,8 @@ export function createConversation(
 			(entry) => ({ ...entry, conversation_id: conversation.id }),
 			(rows) => db.insert(conversationDataTable).values(rows).run(),
 		);
-		db.insert(conversationDataTable).values(defaultBoxIds().flatMap((id) => [boxStateEntry(id, true), boxInstanceEntry(id)].map((entry) => ({ conversation_id: conversation.id, ...entry })))).onConflictDoNothing().run();
+		const defaultRows = defaultBoxIds().flatMap((id) => [boxStateEntry(id, true), boxInstanceEntry(id)].map((entry) => ({ conversation_id: conversation.id, ...entry })));
+		if (defaultRows.length > 0) db.insert(conversationDataTable).values(defaultRows).onConflictDoNothing().run();
 		installBoxBlocks(db, conversation.id, enabledBoxIds(db, conversation.id));
 
 		// @approved

@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { boxValue, type BoxValue } from "./box-value";
 import type { BoxDescriptor } from "./box-descriptor";
+import { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
 import { notFoundOutcome } from "./outcomes";
@@ -22,6 +23,7 @@ export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
 export type { BoxDescriptor } from "./box-descriptor";
+export { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
 
 let installed: ReadonlyMap<BoxId, BoxDescriptor> = new Map();
 // @approved
@@ -39,6 +41,17 @@ export const boxDescriptor = (id: BoxId): BoxDescriptor => {
 	if (descriptor === undefined) throw new Error(`There is no ${id} Box.`);
 	return descriptor;
 };
+
+let metadata: ReadonlyMap<BoxId, BoxMetadata> = new Map();
+export const boxMetadatas = (): ReadonlyMap<BoxId, BoxMetadata> => metadata;
+export const installBoxMetadata = (entries: readonly BoxMetadata[]): void => {
+	metadata = new Map(entries.map(({ id, label, summary, instructions, block, decision }) => [id, { id, label, summary, instructions, block, decision }]));
+};
+export const boxMetadata = (id: BoxId): BoxMetadata => {
+	const entry = metadata.get(id);
+	if (entry === undefined) throw new Error(`There is no ${id} Box.`);
+	return entry;
+};
 /** @approved A Box record as the host holds it: an object of the Box's own values. */
 export type BoxRecord = { readonly [key: string]: BoxValue };
 /** @approved Box `id`'s record schema, typed as the record the host holds; a Box that keeps no records has none. */
@@ -49,11 +62,13 @@ export const boxRecordSchema = (id: BoxId) => {
 };
 /** @approved Whether `reference` names a registered Box. */
 export const isBoxReference = (reference: string): reference is PromptBoxReference =>
-	reference.startsWith("box:") && installed.has(reference.slice("box:".length));
+	reference.startsWith("box:") && metadata.has(reference.slice("box:".length));
+export const isBoxNamespace = (namespace: string): boolean => namespace.startsWith("box:");
 /** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
 export const isUnknownBoxReference = (reference: string): boolean => reference.startsWith("box:") && !isBoxReference(reference);
 /** @approved The descriptor behind a Box's preset block reference. */
 export const boxDescriptorOf = (reference: PromptBoxReference): BoxDescriptor => boxDescriptor(reference.slice("box:".length));
+export const boxMetadataOf = (reference: PromptBoxReference): BoxMetadata => boxMetadata(reference.slice("box:".length));
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.decision !== undefined;
 /** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
@@ -84,8 +99,8 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-/** The loaded Boxes, in registry order, each with its label, its one-sentence summary and the URL its client module loads from. */
-export const boxList = Type.Array(Type.Object({ id: Type.String(), label: Type.String(), summary: Type.String(), client: Type.String() }));
+/** The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and the URL its client module loads from. */
+export const boxList = Type.Array(Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]));
 
 export const boxParams = Type.Object({ box: Type.String() });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });

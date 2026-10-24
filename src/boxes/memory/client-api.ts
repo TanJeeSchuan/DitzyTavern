@@ -54,7 +54,7 @@ export async function saveMemoryAllowance(conversationId: number, command: Conve
 	return requestOutcome(conversation(conversationId).allowance.post(command), conversationMemoryAllowanceApplied, memoryAllowanceCommandErrors);
 }
 
-export async function saveMemoryNote(conversationId: number, expectedRevision: number, note: string) {
+export async function saveMemoryNote(conversationId: number, expectedRevision: string, note: string) {
 	return requestOutcome(conversation(conversationId).note.post({ expectedRevision, note }), conversationMemoryAllowanceApplied, memoryAllowanceCommandErrors);
 }
 

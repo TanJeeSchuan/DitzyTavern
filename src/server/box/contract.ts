@@ -27,7 +27,7 @@ export interface BoxContext {
 	readonly signal: AbortSignal;
 }
 
-export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State = undefined, Move = never> {
+export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State extends GenerationJsonValue | undefined = undefined, Move = never> {
 	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
 	setupError?(setup: Setup, previous: Setup): string | undefined;
 	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
@@ -58,7 +58,7 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it. A Box without a setup gets undefined.
-export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, unknown, unknown>;
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown>;
 
 /** @approved One selected Message as the model reads it: `content` renders its Moves before the prose, `prose` is the Variant's stored text. `role` is null for an author in neither seat. */
 export type CaptureMessage = {
@@ -85,7 +85,7 @@ export type CaptureRead = {
 };
 
 /** @approved `moves` are the ones on the triggering Human-authored Message, in order; a Continuation has none. */
-export type AdvanceInput<Setup, Dependencies = undefined, State = undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
+export type AdvanceInput<Setup, Dependencies = undefined, State extends GenerationJsonValue | undefined = GenerationJsonValue | undefined, Move = never> = { readonly setup: Setup; readonly dependencies: Dependencies; readonly state: State; readonly moves: readonly Move[] };
 export type AdvanceResult<Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never> = {
 	readonly items: readonly BlockItem[];
 	readonly allowance?: number;

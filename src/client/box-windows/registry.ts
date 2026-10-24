@@ -5,7 +5,7 @@ import type { CastParticipant, ConversationSummary } from "../conversation";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
-import { boxList, boxReference, installBoxDescriptors, type BoxDescriptor, type BoxId, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxList, boxReference, installBoxDescriptors, installBoxMetadata, type BoxDescriptor, type BoxId, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxClient } from "../../shared/contract/box-descriptor";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
@@ -126,6 +126,7 @@ const withinDeadline = async <T>(load: Promise<T>): Promise<T> => {
 // its client loads.
 export const loadBoxClients = async (): Promise<void> => {
 	const boxes = await requestData(api.api.boxes.get(), boxList);
+	installBoxMetadata(boxes);
 	const loaded = await Promise.allSettled(boxes.map(({ id, client }) => withinDeadline(loadBoxClient(id, client))));
 	const modules = loaded.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 	installBoxDescriptors(modules.map(({ descriptor }) => descriptor));

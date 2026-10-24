@@ -1,6 +1,7 @@
 import { Kind, Type, TypeGuard, TypeRegistry, type Static, type TObject, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { boxValue, type BoxValue } from "./box-value";
+import { boxMetadataSchema } from "./box-metadata";
 import { promptOutgoingRole } from "./prompt-preset";
 
 /** @approved The Box SDK's major version. The host refuses a Box whose descriptor declares another. */
@@ -35,15 +36,11 @@ const schema = Type.Unsafe<TSchema>({ [Kind]: "BoxSchema" });
 // the Box a global Decision Model selection, which its digests ask, and the
 // settings copy that selection shows.
 export const boxDescriptorSchema = Type.Object({
-	id: Type.String({ pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }),
+	...boxMetadataSchema.properties,
 	sdk: Type.Integer(),
-	label: Type.String(),
-	summary: Type.String(),
 	role: promptOutgoingRole,
 	startsEnabled: Type.Boolean(),
-	instructions: Type.String(),
 	alwaysRender: Type.Optional(Type.Literal(true)),
-	block: Type.Optional(Type.Object({ description: Type.String(), source: Type.String() })),
 	setup: Type.Optional(Type.Object({ schema, initial: boxValue })),
 	record: Type.Optional(Type.Unsafe<TObject>({ [Kind]: "BoxRecordSchema" })),
 	moves: Type.Optional(Type.Object({
@@ -52,7 +49,6 @@ export const boxDescriptorSchema = Type.Object({
 		label: Type.Unsafe<(move: never) => string>(Type.Function([], Type.String())),
 		seatBound: Type.Optional(Type.Literal(true)),
 	})),
-	decision: Type.Optional(Type.Object({ summary: Type.String(), description: Type.String(), off: Type.String(), context: Type.String() })),
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 

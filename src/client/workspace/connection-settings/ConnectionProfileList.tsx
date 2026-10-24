@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
-import type { BoxDecisionSettings, BoxDescriptor, BoxId } from "../../../shared/contract/box";
+import type { BoxDecisionSettings, BoxId, BoxMetadata } from "../../../shared/contract/box";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 /** @approved The Decision Model settings the Connections list previews. */
@@ -21,7 +21,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 	activeProfileId: number | null;
 	semanticTriggers: SettingsPreview<SemanticTriggerSettings>;
 	onOpenSemanticTrigger: () => void;
-	boxDecisions: readonly { box: BoxId; label: string; decision: NonNullable<BoxDescriptor["decision"]>; editor: SettingsPreview<BoxDecisionSettings> }[];
+	boxDecisions: readonly { box: BoxId; label: string; decision: NonNullable<BoxMetadata["decision"]>; editor: SettingsPreview<BoxDecisionSettings> }[];
 	onOpenBoxDecision: (box: BoxId) => void;
 }) {
 	const boxes = boxDecisions.map(({ label }) => label);

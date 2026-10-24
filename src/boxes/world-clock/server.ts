@@ -40,10 +40,10 @@ export const drawMinutes = (bin: ElapsedBin, seed: string): number => {
 // @approved
 //  Minutes since the setup's start, and the latest weather established with
 // the minute it was last mentioned.
-export interface WorldClockState {
+export type WorldClockState = {
 	readonly minutes: number;
 	readonly weather: { readonly kind: Weather; readonly at: number } | null;
-}
+};
 
 const climateCurves = {
 	temperate: { mean: 11, seasonal: 9, diurnal: 5 },

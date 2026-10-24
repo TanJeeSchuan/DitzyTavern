@@ -3,7 +3,12 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { Type } from "@sinclair/typebox";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors } from "../../shared/contract/box";
+import { boxMovesOf } from "../../shared/contract/box-value";
+import { sha256 } from "../hash";
+import { foldRecordStates, writeAutomaticRecord } from "./records";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
 import { createBoxRoutes } from "../contract/boxes";
 import { createConversationRoutes } from "../contract/conversation";
@@ -89,6 +94,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		"hollow-records": { server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
 		"hollow-routes": { server: "export default { routes: () => ({}) };" },
+		"map-initial": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: new Map(), fold: (state) => state } };" },
 	});
 	const database = openObservedDatabase();
 	const { boxes, refused } = await discoverBoxes([builtInBoxes, plugins], database).finally(() => database.close());
@@ -100,6 +106,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "Its server module is invalid at /records/fold: Expected required property."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
+		["map-initial", "The map-initial Box's state must be JSON or undefined."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
 		["renamed", "Its folder must be named for its id, lantern."],
@@ -216,6 +223,54 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 		database.close();
 		await loadBoxes([builtInBoxes]);
 	}
+});
+
+test("a non-JSON Box state is refused with the Box's id, and a changed JSON state marks a preview stale", async () => {
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
+			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }',
+			server: 'export default { records: { initial: null, fold: () => new Map([["lit", true]]) } };',
+		} })]);
+		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: "enabled" });
+		const conversation = createChat(database);
+		const instance = insertBox(database, conversation.id, "lantern");
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
+		expect(() => foldRecordStates(drizzle(database), [variant.id], {}, boxes, { lantern: instance })).toThrow("The lantern Box's state must be JSON or undefined.");
+		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
+		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 1 } }, {}, read)))
+			.not.toBe(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { lit: 2 } }, {}, read)));
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a Box whose id is constructor captures absent inputs as undefined and its own inputs as given", async () => {
+	const echo = 'export default { advance: { run: async ({ setup, state, moves }) => ({ items: [{ text: JSON.stringify({ setup: setup ?? null, state: state ?? null, moves }), priority: 0 }] }) } };';
+	const capture = async (setup: boolean) => {
+		const database = openObservedDatabase();
+		try {
+			await loadBoxes([installPlugins({ constructor: setup
+				? { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { lit: { [Symbol.for("TypeBox.Kind")]: "Boolean", type: "boolean" } }, required: ["lit"] }, initial: { lit: false } }, record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }, moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }, max: 2, label: () => "Lantern" }', server: 'export default { records: { initial: {}, fold: (state) => state }, moves: { render: () => "Lantern" }, advance: { run: async ({ setup, state, moves }) => ({ items: [{ text: JSON.stringify({ setup: setup ?? null, state: state ?? null, moves }), priority: 0 }] }) } };' }
+				: { fields: 'setup: undefined', server: echo } })]);
+			const boxes = participatingBoxes([{ reference: "box:constructor", enabled: true, role: "system", content: "" }], { constructor: "enabled" as const });
+			if (boxes.size !== 1) throw new Error("The constructor Box did not take part.");
+			const inputs = captureBoxes(boxes, setup ? { constructor: { lit: true } } : {}, setup ? { constructor: { lit: "folded" } } : {}, setup ? { constructor: [{ kind: "hold" }] } : {}, {
+				database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
+			});
+			const results = await advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
+			return results["box:constructor"]?.items[0]?.text;
+		} finally {
+			database.close();
+			await loadBoxes([builtInBoxes]);
+		}
+	};
+	expect(JSON.parse(await capture(false) ?? "null")).toEqual({ setup: null, state: null, moves: [] });
+	expect(JSON.parse(await capture(true) ?? "null")).toEqual({ setup: { lit: true }, state: { lit: "folded" }, moves: [{ kind: "hold" }] });
+	expect(boxMovesOf({}, "constructor", Type.String())).toEqual([]);
 });
 
 test("a plugin's routes are served as the loader built them, its client module and stylesheet from its dist folder, and nothing else in it", async () => {

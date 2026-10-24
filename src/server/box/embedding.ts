@@ -9,23 +9,39 @@ import type { ModelFetch } from "../model-client/types";
 import { sha256 } from "../hash";
 import { queryBatches } from "../database/query-batches";
 
+let secretsOf: (configuration: EmbeddingConfiguration) => Parameters<typeof requestEmbeddings>[1]["secrets"];
+
 /** @approved An embedding model on an embeddings Connection Profile. `spaceKey` names its vector space, so cached vectors never mix across profiles, credentials, endpoints or models; it is empty when the model is not configured. */
-export interface EmbeddingConfiguration {
-	readonly profileId: number | null;
-	readonly spaceKey: string;
-	readonly endpoint: string;
-	readonly model: string;
-	readonly deadlineMs: number;
+export class EmbeddingConfiguration {
+	readonly #secrets: Parameters<typeof requestEmbeddings>[1]["secrets"];
+	static { secretsOf = (configuration) => configuration.#secrets; }
+	constructor(
+		readonly profileId: number | null,
+		readonly spaceKey: string,
+		readonly endpoint: string,
+		readonly model: string,
+		readonly deadlineMs: number,
+		secrets: Parameters<typeof requestEmbeddings>[1]["secrets"],
+	) {
+		if (secrets !== null) {
+			Object.freeze(secrets.headers);
+			Object.freeze(secrets);
+		}
+		this.#secrets = secrets;
+		Object.freeze(this);
+	}
 }
 
-export const readEmbeddingConfiguration = (database: Database, profileId: number | null, model: string): EmbeddingConfiguration => {
+export const readEmbeddingConfiguration = (database: Database, profileId: number | null, model: string): EmbeddingConfiguration => database.transaction(() => {
 	const db = drizzle(database);
-	const profile = profileId === null ? undefined : db.select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, profileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
-	if (profile === undefined || profile.timeout_ms === null || model.length === 0) return { profileId: null, spaceKey: "", endpoint: "", model: "", deadlineMs: 0 };
+	const profile = profileId === null ? undefined : db.select().from(connectionProfileTable)
+		.where(and(eq(connectionProfileTable.id, profileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
+	if (profile === undefined || profile.timeout_ms === null || model.length === 0) return new EmbeddingConfiguration(null, "", "", "", 0, null);
 	const secret = db.select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
+	const secrets = createConnectionSettingsModule(database).getProfileSecrets(profile.id);
 	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
-	return { profileId: profile.id, spaceKey: sha256(JSON.stringify([profile.id, secret?.nonce ?? null, endpoint, model])), endpoint, model, deadlineMs: profile.timeout_ms };
-};
+	return new EmbeddingConfiguration(profile.id, sha256(JSON.stringify([profile.id, secret?.nonce ?? null, endpoint, model])), endpoint, model, profile.timeout_ms, secrets);
+})();
 
 const encodeVector = (vector: readonly number[]) => Buffer.from(new Float32Array(vector).buffer);
 const decodeVector = (bytes: Uint8Array): number[] => [...new Float32Array(new Uint8Array(bytes).buffer)];
@@ -51,8 +67,9 @@ export const embedTexts = async (
 	configuration: EmbeddingConfiguration,
 	{ cache = false, fetch, signal }: { readonly cache?: boolean; readonly fetch?: ModelFetch; readonly signal?: AbortSignal },
 ): Promise<readonly (readonly number[])[]> => {
+	const secrets = secretsOf(configuration);
+	if (configuration.profileId === null && texts.length > 0) throw new Error("The embedding model is not configured.");
 	const request = async (missing: readonly string[]) => {
-		const secrets = configuration.profileId === null ? null : createConnectionSettingsModule(database).getProfileSecrets(configuration.profileId);
 		const embedded = await requestEmbeddings(missing, { endpoint: configuration.endpoint, model: configuration.model, secrets, timeoutMs: configuration.deadlineMs, fetch, signal });
 		if (embedded.length !== missing.length || embedded.some((vector) => vector.length === 0)) throw new Error("The embedding endpoint returned an incomplete answer.");
 		return embedded;

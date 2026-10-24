@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Elysia } from "elysia";
-import { boxDescriptor, boxList } from "../../shared/contract/box";
-import { boxClientFolder, boxRoutes, serverBoxes } from "../box/registry";
+import { boxClientFolder, boxRoutes } from "../box/registry";
+import { boxList, boxMetadatas } from "../../shared/contract/box";
 
 // @approved
 //  The loaded Boxes, and the routes each Box serves beside the host's,
@@ -11,7 +11,7 @@ import { boxClientFolder, boxRoutes, serverBoxes } from "../box/registry";
 // their names across builds.
 export const createBoxRoutes = () => {
 	const app = new Elysia()
-		.get("/api/boxes", () => [...serverBoxes().keys()].map((id) => ({ id, label: boxDescriptor(id).label, summary: boxDescriptor(id).summary, client: `/boxes/${id}/client.js` })), { response: boxList })
+		.get("/api/boxes", () => [...boxMetadatas().values()].map((metadata) => ({ ...metadata, client: `/boxes/${metadata.id}/client.js` })), { response: boxList })
 		.get("/boxes/:box/:file", async ({ params: { box, file }, set, status }) => {
 			const folder = boxClientFolder(box);
 			const served = folder === undefined || (file !== "client.js" && file !== "client.css") ? undefined : Bun.file(join(folder, file));
