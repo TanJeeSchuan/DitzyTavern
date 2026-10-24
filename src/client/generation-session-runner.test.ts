@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { GenerationEvent, GenerationStatePayload } from "../shared/contract/generation-events";
 import type {
 	GenerationStreamAdapter,
@@ -79,8 +79,18 @@ const host = (): Host => ({
 	refreshes: [],
 });
 
-// Lets the runner's promise reactions settle before assertions.
-const flushSubscriptions = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+// Lets the runner's promise reactions settle before assertions; setImmediate stays real under fake timers.
+const flushSubscriptions = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+// Fires each retry timer as soon as the previous attempt has failed, until `done` settles.
+const retryUntil = async (done: Promise<void>): Promise<void> => {
+	let settled = false;
+	void done.then(() => { settled = true; });
+	while (!settled) {
+		await flushSubscriptions();
+		jest.advanceTimersToNextTimer();
+	}
+};
 
 const runnerWith = (stream: FakeStream, spy: Host) =>
 	createGenerationSessionRunner({
@@ -93,6 +103,9 @@ const observeTargets = (generationIds: readonly number[]) =>
 	({ type: "targets-observed", conversationId: 42, targets: generationIds.map(target) }) as const;
 
 describe("the Generation session runner", () => {
+	beforeEach(() => { jest.useFakeTimers(); });
+	afterEach(() => { jest.useRealTimers(); });
+
 	test("retries transport failures until an authoritative snapshot settles the detached Generation", async () => {
 		const stream = fakeStream();
 		let attempts = 0;
@@ -108,7 +121,7 @@ describe("the Generation session runner", () => {
 		});
 		runner.dispatch(observeTargets([7]));
 		stream.settle(0, { outcome: "interrupted", reason: "Server restarted" });
-		await recovered.promise;
+		await retryUntil(recovered.promise);
 		expect(attempts).toBe(3);
 		expect(runner.getSnapshot().sessions.has(7)).toBe(false);
 		expect(stream.requests).toHaveLength(1);
@@ -131,7 +144,7 @@ describe("the Generation session runner", () => {
 		runner.dispatch(observeTargets([7]));
 		stream.requests[0]!.onEvent({ eventId: 12, event: contentEvent("Saved") });
 		stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
-		await recovered.promise;
+		await retryUntil(recovered.promise);
 		expect(stream.requests).toHaveLength(2);
 		expect(stream.requests[1]!.afterEventId).toBe(12);
 		runner.dispose();
@@ -157,7 +170,7 @@ describe("the Generation session runner", () => {
 			if (action === "dispose") runner.dispose();
 			else if (action === "switch") runner.dispatch({ type: "conversation-switched" });
 			else runner.dispatch({ type: "targets-observed", conversationId: 43, targets: [] });
-			await new Promise((resolve) => setTimeout(resolve, 350));
+			jest.advanceTimersByTime(2_000);
 			expect(refreshSignal?.aborted).toBe(true);
 			expect(attempts).toBe(1);
 			runner.dispose();
@@ -174,7 +187,8 @@ describe("the Generation session runner", () => {
 		});
 		runner.dispatch(observeTargets([7]));
 		stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
-		await new Promise((resolve) => setTimeout(resolve, 350));
+		await flushSubscriptions();
+		jest.advanceTimersByTime(2_000);
 		expect(attempts).toBe(1);
 		runner.dispose();
 	});

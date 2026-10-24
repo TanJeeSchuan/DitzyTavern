@@ -52,11 +52,15 @@ test("shutdown starts worker cancellation while joining HTTP handlers and closes
 });
 
 test("one process deadline bounds unfinished HTTP, worker, and generation work without closing their database", async () => {
+	// @approved
+	//  The child shortens the five-second shutdown deadline so the test waits for it in milliseconds.
 	const child = Bun.spawn([process.execPath, "--eval", `
 		import { Elysia } from "elysia";
 		import { openInitializedDatabase } from ${JSON.stringify(new URL("../database/database.ts", import.meta.url).href)};
 		import { generationRuntimeFor } from ${JSON.stringify(new URL("../workflows/generation-runtime.ts", import.meta.url).href)};
 		import { shutdownApplication } from ${JSON.stringify(new URL("./shutdown.ts", import.meta.url).href)};
+		const setRealTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = (callback, delay, ...rest) => setRealTimeout(callback, delay === 5_000 ? 50 : delay, ...rest);
 		const database = openInitializedDatabase({ path: ":memory:" });
 		database.close = () => { throw new Error("Closed while work was still running"); };
 		const pending = new Promise(() => {});
