@@ -180,7 +180,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 		promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, omittedContext: [] }, promptContext: [], generationSettings: {}, connection: {},
 	});
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
-	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] });
+	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })?.record;
 	if (record === undefined) throw new Error("The Stretch produced no record.");
 	const { messageId, provisionalVariantId: variantId, conversation } = accepted;
 	const response = await command(app, chat.id, conversation.revision, { type: "set-box-record", box: "race", messageId, variantId, record, expected: null });

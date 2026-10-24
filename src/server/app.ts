@@ -8,7 +8,7 @@ import { shutdownApplication } from "./application/shutdown";
 import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
-import { queueBoxDigests, startBoxDigests } from "./box/digest";
+import { prepareBoxDigests, startBoxDigests } from "./box/digest";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -20,9 +20,9 @@ export async function createApp(options: AppOptions) {
 	const { database, fetch, artifactDirectory = defaultArtifactDirectory() } = options;
 	// @approved
 	//  The application layer consumes Conversation's reported changes: Box
-	// digest queueing runs as the last statement of the Conversation
-	// transaction wrapper, so its reads see exactly the committed write.
-	observeConversationWrites(database, queueBoxDigests);
+	// digest changes are prepared inside the Conversation transaction
+	// and published synchronously after it commits.
+	observeConversationWrites(database, prepareBoxDigests);
 	const stopBoxDigests = startBoxDigests(database, { fetch });
 	sweepOrphanedImages(database);
 	// @approved

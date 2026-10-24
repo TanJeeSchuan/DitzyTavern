@@ -61,7 +61,7 @@ describe("Conversation write observer composition contract", () => {
 	test("the registered observer for this database receives the report of its own transaction", () => {
 		const chat = createChatWithVariant(database);
 		const delivered: { database: Database; change: ConversationWriteChange }[] = [];
-		observeConversationWrites(database, (observedDatabase, change) => {
+		observeConversationWrites(database, (observedDatabase, change) => () => {
 			delivered.push({ database: observedDatabase, change });
 		});
 
@@ -79,10 +79,10 @@ describe("Conversation write observer composition contract", () => {
 	test("compositions observe exactly their own database", () => {
 		const deliveredForFirst: number[] = [];
 		const deliveredForSecond: number[] = [];
-		observeConversationWrites(database, (_observedDatabase, change) => {
+		observeConversationWrites(database, (_observedDatabase, change) => () => {
 			deliveredForFirst.push(change.conversationId);
 		});
-		observeConversationWrites(second, (_observedDatabase, change) => {
+		observeConversationWrites(second, (_observedDatabase, change) => () => {
 			deliveredForSecond.push(change.conversationId);
 		});
 

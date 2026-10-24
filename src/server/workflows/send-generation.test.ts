@@ -181,7 +181,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	test("reports the newly inserted and the reused accepted Human source to the digest queue", async () => {
 		const touched: number[] = [];
-		observeConversationWrites(database, (_database, change) => { touched.push(...change.touchedVariantIds); });
+		observeConversationWrites(database, (_database, change) => () => { touched.push(...change.touchedVariantIds); });
 		await expect(runGenerationLifecycle(database, {connection: null,
 			conversationId,
 			expectedRevision: 0,
