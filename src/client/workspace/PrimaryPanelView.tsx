@@ -1,3 +1,5 @@
+import { ChevronLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { BoxId, PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { BoxManager } from "../box-windows/BoxManager";
@@ -20,7 +22,7 @@ import { LorebookPanel } from "./LorebookPanel";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import type { GenerationPanelDraft } from "./GenerationPanel";
 import type { SplitInspector } from "./panel-coordination";
-import type { PrimaryPanel } from "./types";
+import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 // @approved
 //  Panels that share the parent-rendered header state their title here. Chats,
@@ -76,7 +78,7 @@ export function PrimaryPanelView({
 	connectionSettings: ConnectionSettingsController;
 	generationSettings: GenerationPanelDraft;
 	onOpenInspector: (inspector: SplitInspector) => void;
-	onOpenPanel: (panel: PromptBoxReference) => void;
+	onOpenPanel: (panel: PrimaryPanelName) => void;
 	onOpenWindow: (box: BoxId) => void;
 	mutationsDisabled?: boolean;
 }) {
@@ -115,7 +117,8 @@ export function PrimaryPanelView({
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
 					{BoxPanel !== undefined && box !== undefined && conversation !== null && <>
-						<BoxOffNotice conversation={conversation} box={box} className="mx-5 mt-5 w-auto" />
+						<Button type="button" size="sm" variant="ghost" className="mx-3 mt-3 w-fit text-muted-foreground" onClick={() => onOpenPanel("boxes")}><ChevronLeft aria-hidden="true" /> Boxes</Button>
+						<BoxOffNotice conversation={conversation} box={box} disabled={mutationsDisabled} onConversationChange={onConversationChange} className="mx-5 mt-2 w-auto" />
 						<BoxBoundary key={`${conversation.id}:${box}`} box={box}>
 							<BoxPanel
 								conversation={conversation}

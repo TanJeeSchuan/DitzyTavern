@@ -7,9 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Switch } from "@/components/ui/switch";
 import type { BoxId, BoxState, PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
-import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useNavigationRequest } from "../SaveGuard";
-import { BoxBlockNotice, refreshPresetReads } from "./BoxBlockNotice";
+import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { boxClients, boxOpening, boxTitle, listedBoxes, type ListedBox } from "./registry";
 
@@ -38,10 +37,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		setPending(true);
 		setNotice(null);
 		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice };
-		void runConversationCommand(surface, { type: "set-box-state", ...requested }, {
-			onApplied: () => { if (requested.state === "enabled") refreshPresetReads(client); },
-			notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
-		}).finally(() => setPending(false));
+		void sendBoxState(surface, client, requested.box, requested.state).finally(() => setPending(false));
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
 
@@ -61,15 +57,13 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		const locked = disabled || pending;
 		const open = state === "absent" ? undefined : boxOpening(box, { panel: onOpenPanel, window: onOpenWindow });
 		const status = Status === undefined ? undefined : <BoxBoundary box={box}><Status conversation={conversation} /></BoxBoundary>;
-		const statusLine = state === "absent" ? summary
-			: status === undefined ? (state === "enabled" ? "On" : "Off")
-			: state === "enabled" ? status : <>Off · {status}</>;
-		return <li key={box} data-off={state !== "enabled" || undefined}>
+		const statusLine = state === "absent" ? summary : status ?? summary;
+		return <li key={box} data-state={state}>
 			<span className="box-manager-icon" aria-hidden="true">{clientModule !== undefined && <BoxIcon box={box} icon={clientModule.icon} />}</span>
 			<div className="box-manager-copy">
 				{open === undefined ? <strong>{label}</strong> : <button type="button" className="box-manager-name" onClick={open}>{label}</button>}
-				<span className="box-manager-status">{statusLine}</span>
-				{failure !== null && <span className="box-manager-status">Did not load: {failure}</span>}
+				<span className="box-manager-status" title={state === "absent" ? undefined : summary}>{statusLine}</span>
+				{failure !== null && <span className="box-manager-status box-failure">Did not load: {failure}</span>}
 				<BoxBlockNotice conversation={conversation} box={box} disabled={locked} className="mt-1" />
 			</div>
 			{state === "absent"

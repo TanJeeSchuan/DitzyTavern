@@ -295,7 +295,7 @@ export function ActiveWritingWorkspace({
 							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
 						/>
 					</BoxBoundary>
-					<BoxOffNotice conversation={session.conversation} box={inspectorBox} className="m-4 w-auto" />
+					<BoxOffNotice conversation={session.conversation} box={inspectorBox} disabled={story.preview !== null} onConversationChange={session.setConversation} className="m-4 w-auto" />
 				</aside>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (

@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { boxReference, type BoxId } from "../../shared/contract/box";
+import { cn } from "@/lib/utils";
+import { boxReference, type BoxId, type BoxState } from "../../shared/contract/box";
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
+import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 import { boxTitle } from "./registry";
 
@@ -13,6 +16,14 @@ export const refreshPresetReads = (client: QueryClient) => Promise.all([
 	client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	client.invalidateQueries({ queryKey: ["prompt-preset-editor"] }),
 ]);
+
+const oneLine = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
+
+export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState) =>
+	runConversationCommand(surface, { type: "set-box-state", box, state }, {
+		onApplied: () => { if (state === "enabled") void refreshPresetReads(client); },
+		notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
+	});
 
 // @approved
 //  A Box On in this Chat whose preset block is missing or off runs every turn
@@ -45,12 +56,12 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 	});
 	if (!on || !preset.data || slot?.enabled) return null;
 	const { id, name } = preset.data;
-	return <Alert className={className}>
+	return <Alert className={cn(oneLine, className)}>
 		<AlertDescription>{slot === undefined ? `${name} has no ${label} block.` : `${label} block is off in ${name}.`}</AlertDescription>
-		{fix.isError && <AlertDescription className="text-destructive">{fix.error.message}</AlertDescription>}
-		<Button type="button" size="xs" variant="outline" className="mt-1 w-fit" disabled={disabled || fix.isPending || preset.isFetching} onClick={() => fix.mutate(id)}>
+		<Button type="button" size="xs" variant="outline" disabled={disabled || fix.isPending || preset.isFetching} onClick={() => fix.mutate(id)}>
 			{slot === undefined ? "Add block" : "Enable"}
 		</Button>
+		{fix.isError && <AlertDescription className="basis-full text-destructive">{fix.error.message}</AlertDescription>}
 	</Alert>;
 }
 
@@ -58,9 +69,26 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 //  A disabled Box keeps its surfaces so the writer can read and configure it;
 //  the host's frame for each one says, the same way for every Box, that it
 //  does not run.
-export function BoxOffNotice({ conversation, box, className }: { conversation: ConversationSummary; box: BoxId; className?: string }) {
+export function BoxOffNotice({ conversation, box, disabled, onConversationChange, className }: {
+	conversation: ConversationSummary;
+	box: BoxId;
+	disabled: boolean;
+	onConversationChange: (conversation: ConversationSummary) => void;
+	className?: string;
+}) {
+	const client = useQueryClient();
+	const [pending, setPending] = useState(false);
+	const [failure, setFailure] = useState<string | null>(null);
 	if (conversation.boxes[box] !== "disabled") return null;
-	return <Alert className={className}>
-		<AlertDescription>{boxTitle(box)} is off in this Chat. Turn it on in Boxes to run it again.</AlertDescription>
+	const turnOn = () => {
+		setPending(true);
+		setFailure(null);
+		void sendBoxState({ conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice: setFailure }, client, box, "enabled")
+			.finally(() => setPending(false));
+	};
+	return <Alert className={cn(oneLine, className)}>
+		<AlertDescription>{boxTitle(box)} is off in this Chat.</AlertDescription>
+		<Button type="button" size="xs" variant="outline" disabled={disabled || pending} onClick={turnOn}>Turn on</Button>
+		{failure !== null && <AlertDescription className="basis-full text-destructive">{failure}</AlertDescription>}
 	</Alert>;
 }

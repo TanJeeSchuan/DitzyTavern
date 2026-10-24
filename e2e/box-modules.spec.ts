@@ -32,7 +32,6 @@ test("a Box client module that fails to import or is malformed loses its surface
 	await expect(boxes.getByRole("switch", { name: "Thoughts in this Chat" })).toBeChecked();
 	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await expect(memory.getByRole("switch", { name: "Memory in this Chat" })).not.toBeChecked();
-	await expect(memory.getByText("Off", { exact: true })).toBeVisible();
 	await boxes.getByRole("button", { name: "Add Phone", exact: true }).click();
 	await closeBoxes(page);
 	await expect(page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
@@ -82,7 +81,7 @@ test("a Box client module that never finishes loading is refused at its deadline
 	const memory = page.getByRole("group", { name: "Boxes" }).getByRole("listitem").filter({ hasText: "Memory" });
 	await expect(memory).toContainText("Did not load: Its client module did not load within 10 seconds.");
 	await memory.getByRole("switch", { name: "Memory in this Chat" }).click();
-	await expect(memory.getByText("Off", { exact: true })).toBeVisible();
+	await expect(memory.getByRole("switch", { name: "Memory in this Chat" })).not.toBeChecked();
 	await closeBoxes(page);
 	const contents = await openPromptPresets(page);
 	await contents.getByRole("button", { name: "Edit Memory", exact: true }).click();
