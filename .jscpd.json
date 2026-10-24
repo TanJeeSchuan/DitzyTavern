@@ -17,6 +17,7 @@
 		"**/*.css",
 		"**/*.test.ts",
 		"**/*.test.tsx",
+		"**/*.spec.ts",
 		"**/*.snap",
 		"**/fixtures/**"
 	]
