@@ -206,6 +206,7 @@ export function StoryStage({
 								/>
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
+							onSelectVariant={(messageId, variantId) => void storyActions.selectSwipe(messageId, variantId)}
 							onEdit={storyActions.editStoryMessage}
 							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
 								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)

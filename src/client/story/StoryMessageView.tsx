@@ -23,6 +23,7 @@ import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
+import { VariantFan } from "./VariantFan";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -40,6 +41,7 @@ export function StoryMessageView({
 	previewTarget = false,
 	portrait,
 	onMoveSwipe,
+	onSelectVariant,
 	onEdit,
 	continueLabel = "Continue",
 	onContinue,
@@ -72,6 +74,7 @@ export function StoryMessageView({
 	// other mutation remains locked.
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
+	onSelectVariant: (messageId: number, variantId: number) => void;
 	onEdit: (messageId: number, content: string) => Promise<boolean>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -137,17 +140,54 @@ export function StoryMessageView({
 		if (atLastSwipe) onSibling?.(message.id);
 		else onMoveSwipe(message.id, 1);
 	};
-	const touchStart = useRef<{ x: number; y: number } | null>(null);
+	const [fanOpen, setFanOpen] = useState(false);
+	const fanDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
+	const openFan = (open: boolean) => {
+		setFanOpen(open);
+		// @approved Closing keeps the Message selected, so its Swipe controls are visible for focus to return to.
+		if (!open) setAdvancedActionsSelected(true);
+	};
+	const selectVariant = (index: number) => {
+		openFan(false);
+		const variant = message.swipes[index];
+		if (variant === undefined || index === activeIndex) return;
+		setSwipeDirection(index > activeIndex ? "next" : "previous");
+		onSelectVariant(message.id, variant.id);
+	};
+	// @approved "fan" marks a touch whose long press opened the fan: its release is not a tap or a swipe.
+	const touchStart = useRef<{ x: number; y: number } | "fan" | null>(null);
+	// @approved A still touch held this long opens the fan; any movement past the tap slop leaves it to swipes and scrolling.
+	const longPress = useRef<number | undefined>(undefined);
+	const cancelLongPress = () => {
+		window.clearTimeout(longPress.current);
+		longPress.current = undefined;
+	};
+	const pressOpensFan = () => {
+		cancelLongPress();
+		touchStart.current = "fan";
+		openFan(true);
+	};
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
 		const touch = event.touches[0];
-		const onControl = event.target instanceof Element && event.target.closest("button, textarea, input") !== null;
+		// @approved The fan is portalled out of the article, but its touches still bubble here through React.
+		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
+		cancelLongPress();
+		if (touchStart.current !== null && !fanDisabled && !isEditing) longPress.current = window.setTimeout(pressOpensFan, 450);
+	};
+	const moveTouch = (event: TouchEvent<HTMLElement>) => {
+		const start = touchStart.current;
+		const touch = event.touches[0];
+		if (start !== null && start !== "fan" && touch !== undefined && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) >= 10) cancelLongPress();
 	};
 	const endTouch = (event: TouchEvent<HTMLElement>) => {
+		cancelLongPress();
 		const start = touchStart.current;
 		const touch = event.changedTouches[0];
 		touchStart.current = null;
-		if (start === null || touch === undefined) return;
+		// @approved Cancelling the release keeps the browser from sending its mouse events and click into the open fan.
+		if (start === "fan") event.preventDefault();
+		if (start === null || start === "fan" || touch === undefined) return;
 		const dx = touch.clientX - start.x;
 		const dy = touch.clientY - start.y;
 		if (Math.hypot(dx, dy) < 10) {
@@ -184,8 +224,18 @@ export function StoryMessageView({
 				}
 			}}
 			onTouchStart={startTouch}
+			onTouchMove={moveTouch}
 			onTouchEnd={endTouch}
-			onTouchCancel={() => { touchStart.current = null; }}
+			onTouchCancel={() => {
+				cancelLongPress();
+				touchStart.current = null;
+			}}
+			// @approved Android announces its own long press as a context menu first; that press opens the fan instead of selecting text.
+			onContextMenu={(event) => {
+				if (longPress.current === undefined) return;
+				event.preventDefault();
+				pressOpensFan();
+			}}
 			onBlur={(event) => {
 				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
 					setAdvancedActionsSelected(false);
@@ -340,9 +390,11 @@ export function StoryMessageView({
 					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
-					<span>
-						{activeIndex + 1} of {message.swipes.length}
-					</span>
+					<VariantFan variants={message.swipes} shownIndex={activeIndex} open={fanOpen} onOpenChange={openFan} onSelect={selectVariant}>
+						<button className="swipe-count" type="button" disabled={fanDisabled} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
+							{activeIndex + 1} of {message.swipes.length}
+						</button>
+					</VariantFan>
 					<button
 						className="icon-button"
 						type="button"
