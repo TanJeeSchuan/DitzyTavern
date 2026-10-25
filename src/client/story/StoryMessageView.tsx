@@ -144,7 +144,8 @@ export function StoryMessageView({
 	const fanDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
 	const openFan = (open: boolean) => {
 		setFanOpen(open);
-		// @approved Closing keeps the Message selected, so its Swipe controls are visible for focus to return to.
+		// @approved
+		//  Closing keeps the Message selected, so its Swipe controls are visible for focus to return to.
 		if (!open) setAdvancedActionsSelected(true);
 	};
 	const selectVariant = (index: number) => {
@@ -154,9 +155,11 @@ export function StoryMessageView({
 		setSwipeDirection(index > activeIndex ? "next" : "previous");
 		onSelectVariant(message.id, variant.id);
 	};
-	// @approved "fan" marks a touch whose long press opened the fan: its release is not a tap or a swipe.
+	// @approved
+	//  "fan" marks a touch whose long press opened the fan: its release is not a tap or a swipe.
 	const touchStart = useRef<{ x: number; y: number } | "fan" | null>(null);
-	// @approved A still touch held this long opens the fan; any movement past the tap slop leaves it to swipes and scrolling.
+	// @approved
+	//  A still touch held this long opens the fan; any movement past the tap slop leaves it to swipes and scrolling.
 	const longPress = useRef<number | undefined>(undefined);
 	const cancelLongPress = () => {
 		window.clearTimeout(longPress.current);
@@ -169,7 +172,8 @@ export function StoryMessageView({
 	};
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
 		const touch = event.touches[0];
-		// @approved The fan is portalled out of the article, but its touches still bubble here through React.
+		// @approved
+		//  The fan is portalled out of the article, but its touches still bubble here through React.
 		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
 		cancelLongPress();
@@ -185,7 +189,8 @@ export function StoryMessageView({
 		const start = touchStart.current;
 		const touch = event.changedTouches[0];
 		touchStart.current = null;
-		// @approved Cancelling the release keeps the browser from sending its mouse events and click into the open fan.
+		// @approved
+		//  Cancelling the release keeps the browser from sending its mouse events and click into the open fan.
 		if (start === "fan") event.preventDefault();
 		if (start === null || start === "fan" || touch === undefined) return;
 		const dx = touch.clientX - start.x;
@@ -230,7 +235,8 @@ export function StoryMessageView({
 				cancelLongPress();
 				touchStart.current = null;
 			}}
-			// @approved Android announces its own long press as a context menu first; that press opens the fan instead of selecting text.
+			// @approved
+			//  Android announces its own long press as a context menu first; that press opens the fan instead of selecting text.
 			onContextMenu={(event) => {
 				if (longPress.current === undefined) return;
 				event.preventDefault();

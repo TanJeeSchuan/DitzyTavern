@@ -3,7 +3,8 @@ import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState 
 import { type StoryVariant, visibleVariantContent } from "../story";
 import { Prose } from "./prose";
 
-// @approved Pixels of drag that move the fan by one card, and how many milliseconds of a flick's speed carry on after release.
+// @approved
+//  Pixels of drag that move the fan by one card, and how many milliseconds of a flick's speed carry on after release.
 const CARD_STEP = 88;
 const FLICK_MS = 140;
 
@@ -40,30 +41,33 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 	const last = variants.length - 1;
 	const clamp = (position: number) => Math.min(last, Math.max(0, position));
 	const [position, setPosition] = useState(shownIndex);
-	const [drag, setDrag] = useState<{ x: number; from: number } | null>(null);
-	// @approved Recent pointer samples for the release speed.
+	const [drag, setDrag] = useState<{ pointer: number; x: number; from: number } | null>(null);
+	// @approved
+	//  Recent pointer samples for the release speed.
 	const samples = useRef<{ x: number; t: number }[]>([]);
-	// @approved Only a tap that went down inside the fan clicks: not the end of a drag,
+	// @approved
+	//  Only a tap that went down inside the fan clicks: not the end of a drag,
 	// nor the release of the long press that opened the fan.
 	const press = useRef<"tap" | "drag" | null>(null);
 	const cards = useRef<(HTMLElement | null)[]>([]);
 	const front = clamp(Math.round(position));
-	useEffect(() => cards.current[front]?.focus({ preventScroll: true }), [front]);
+	useEffect(() => cards.current[front]?.focus({ preventScroll: true }), [front, variants[front]?.id]);
 
 	return (
 		<div
 			className="variant-fan-surface"
 			data-dragging={drag !== null}
 			onPointerDown={(event) => {
-				if (event.button !== 0) return;
+				if (event.button !== 0 || drag !== null) return;
 				press.current = "tap";
 				samples.current = [{ x: event.clientX, t: event.timeStamp }];
-				setDrag({ x: event.clientX, from: position });
+				setDrag({ pointer: event.pointerId, x: event.clientX, from: position });
 			}}
 			onPointerMove={(event) => {
-				if (drag === null) return;
+				if (drag?.pointer !== event.pointerId) return;
 				const dx = event.clientX - drag.x;
-				// @approved Capture only once it is a drag, so a tap keeps its card as the click target.
+				// @approved
+				//  Capture only once it is a drag, so a tap keeps its card as the click target.
 				if (press.current === "tap" && Math.abs(dx) > 6) {
 					press.current = "drag";
 					event.currentTarget.setPointerCapture(event.pointerId);
@@ -74,13 +78,15 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 				setPosition(next < 0 ? next / 3 : next > last ? last + (next - last) / 3 : next);
 			}}
 			onPointerUp={(event) => {
+				if (drag?.pointer !== event.pointerId) return;
 				setDrag(null);
-				const first = samples.current[0];
-				if (press.current !== "drag" || first === undefined) return;
-				const speed = (event.clientX - first.x) / Math.max(1, event.timeStamp - first.t);
+				if (press.current !== "drag") return;
+				const first = samples.current.find((sample) => event.timeStamp - sample.t < 100);
+				const speed = first === undefined ? 0 : (event.clientX - first.x) / Math.max(1, event.timeStamp - first.t);
 				setPosition(clamp(Math.round(position - speed * FLICK_MS / CARD_STEP)));
 			}}
-			onPointerCancel={() => {
+			onPointerCancel={(event) => {
+				if (drag?.pointer !== event.pointerId) return;
 				press.current = null;
 				setDrag(null);
 				setPosition(front);
@@ -113,12 +119,16 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 							aria-describedby={`${id}-${index}`}
 							aria-current={index === shownIndex || undefined}
 							data-front={index === front}
+							// @approved
 							// SAFETY: React passes custom properties through to the style; CSSProperties only lacks their names.
 							style={{
 								"--offset": offset,
 								"--distance": Math.abs(offset),
 								"--deal": Math.min(Math.abs(index - shownIndex), 4),
 								zIndex: variants.length - Math.round(Math.abs(offset)),
+								// @approved
+								//  The CSS fades a card out by this distance; past it, it must not catch taps meant to dismiss.
+								pointerEvents: Math.abs(offset) >= 3.2 ? "none" : undefined,
 							} as CSSProperties}
 							onClick={() => (index === front ? onSelect(index) : setPosition(index))}
 							onKeyDown={(event) => {
