@@ -26,7 +26,7 @@ export interface BoxContext {
 	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. */
 	readonly decide: (state: DecisionJson, questions: DecisionQuestions) => ReturnType<typeof requestDecisions>;
 	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. */
-	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean }) => Promise<readonly (readonly number[])[]>;
+	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean }) => Promise<readonly Float32Array[]>;
 	readonly signal: AbortSignal;
 }
 

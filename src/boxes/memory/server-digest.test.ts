@@ -167,7 +167,7 @@ describe("Memory's digest", () => {
 		await digest(second.variantId, provider(calls, { claim: "Maren carries Writer's key." }));
 		const text = "Maren carries Writer's key. (attribution: Narrated event)";
 		expect(calls.embeddings).toEqual([{ url: "http://embedding.test/v1/embeddings", model: "memory-v1", input: [text], authorization: "Bearer embedding-secret" }]);
-		expect(readCachedVectors(database, readMemoryEmbedding(database)!.spaceKey, [text]).get(text)).toEqual([1, 0]);
+		expect(readCachedVectors(database, readMemoryEmbedding(database)!.spaceKey, [text]).get(text)).toEqual(Float32Array.from([1, 0]));
 	});
 
 	test("extraction reads Images only as Image Anchors, never their hash", async () => {

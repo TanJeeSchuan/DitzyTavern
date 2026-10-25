@@ -6,6 +6,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { connectionProfileDraftOf } from "../../shared/contract/connection-settings";
 import { configureEmbeddings, key } from "../contract/prompt-preset-test-fixtures";
+import { sha256 } from "../hash";
 import { embedTexts, readCachedVectors, readEmbeddingConfiguration } from "./embedding";
 
 describe("Embedding space", () => {
@@ -16,6 +17,21 @@ describe("Embedding space", () => {
 	});
 	afterEach(() => database.close());
 	const configured = (profileId: number) => readEmbeddingConfiguration(database, profileId, "memory-v1")!;
+
+	test("cached vectors read back as the stored float32 values, one view per row", () => {
+		const stored = [[0.5, -1.25, 3.5, -0.1], [2, 0.25, -4, 8]];
+		const insert = database.prepare("INSERT INTO embedding_cache (space_key, text_hash, vector) VALUES (?, ?, ?)");
+		for (const [index, values] of stored.entries()) {
+			insert.run("space", sha256(`text ${index}`), Buffer.from(Float32Array.from(values).buffer));
+		}
+		const cached = readCachedVectors(database, "space", ["text 0", "text 1"]);
+		for (const [index, values] of stored.entries()) {
+			const vector = cached.get(`text ${index}`)!;
+			expect(vector).toBeInstanceOf(Float32Array);
+			expect(vector).toEqual(Float32Array.from(values));
+			expect(vector.byteLength).toBe(values.length * 4);
+		}
+	});
 
 	test.each([false, true])("captured embeddings keep their credentials after profile changes, cache=%s", async (cache) => {
 		const profileId = configureEmbeddings(database, "http://tenant-a.test/v1/embeddings");
@@ -41,7 +57,7 @@ describe("Embedding space", () => {
 		const current = configured(profileId);
 		expect(current.spaceKey).not.toBe(configuration.spaceKey);
 		if (cache) {
-			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", [1, 0]], ["scene", [1, 0]]]));
+			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", Float32Array.from([1, 0])], ["scene", Float32Array.from([1, 0])]]));
 			expect(readCachedVectors(database, current.spaceKey, ["claim", "scene"]).size).toBe(0);
 		}
 	});
@@ -100,7 +116,7 @@ describe("Embedding space", () => {
 		const current = configured(profileId);
 		expect(current.spaceKey).not.toBe(configuration.spaceKey);
 		if (cache) {
-			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", [1, 0]], ["scene", [1, 0]]]));
+			expect(readCachedVectors(database, configuration.spaceKey, ["claim", "scene"])).toEqual(new Map([["claim", Float32Array.from([1, 0])], ["scene", Float32Array.from([1, 0])]]));
 			expect(readCachedVectors(database, current.spaceKey, ["claim", "scene"]).size).toBe(0);
 		}
 	});
@@ -144,7 +160,7 @@ describe("Embedding space", () => {
 		}
 		const current = read();
 		expect(current.spaceKey).not.toBe(before.spaceKey);
-		expect(readCachedVectors(database, before.spaceKey, [text]).get(text)).toEqual([1, 0]);
+		expect(readCachedVectors(database, before.spaceKey, [text]).get(text)).toEqual(Float32Array.from([1, 0]));
 		expect(readCachedVectors(database, current.spaceKey, [text]).has(text)).toBe(false);
 		const renamed = connections.get().profiles.find((item) => item.id === profileId)!;
 		connections.applyProfile({ expectedRevision: connections.get().revision, profileId, profile: { ...connectionProfileDraftOf(renamed), displayName: "Renamed" } });

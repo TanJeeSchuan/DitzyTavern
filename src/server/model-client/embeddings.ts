@@ -67,7 +67,10 @@ function parseEmbeddingResponse(value: EmbeddingResponse): number[][] | null {
 	return dimensions !== undefined && rows.every((row) => row.length === dimensions) ? rows : null;
 }
 
-export const cosineSimilarity = (left: readonly number[], right: readonly number[]): number => {
+// @approved
+//  Rank-only dot product over any indexable number source, so a cached vector
+//  stays the Float32Array the driver handed us instead of a boxed JS array.
+export const cosineSimilarity = (left: ArrayLike<number>, right: ArrayLike<number>): number => {
 	if (left.length === 0 || left.length !== right.length) return 0;
 	let dot = 0;
 	let leftMagnitude = 0;
