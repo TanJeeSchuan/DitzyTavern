@@ -6,11 +6,13 @@ import type { Database } from "bun:sqlite";
 import { and, eq, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
+	generationCaptureTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
+import { encodeGenerationCapture } from "../generation-capture";
 import { SEED_KEY, SEED_NAMESPACE } from "../../box/seed";
 import { readMessageMoves, writeMessageMoves } from "../../box/moves";
 import { sameMoves } from "../../../shared/contract/box-generation";
@@ -128,9 +130,6 @@ const persistActiveGeneration = (
 			captured_human_name: input.capturedHumanName,
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
-			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-			prompt_inspection_json: jsonText(input.promptInspection, "Prompt inspection"),
-			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
@@ -153,6 +152,10 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
+	const capture = `{"promptPlan":${jsonText(input.promptPlan, "Prompt Plan")},"promptInspection":${jsonText(input.promptInspection, "Prompt inspection")},"promptContext":${jsonText(input.promptContext, "Prompt context")}}`;
+	db.insert(generationCaptureTable)
+		.values({ generation_id: active.id, ...encodeGenerationCapture(capture) })
+		.run();
 	return active.id;
 };
 

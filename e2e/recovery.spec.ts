@@ -35,6 +35,23 @@ test("a crash keeps the last checkpoint and never retries the provider", async (
 	expect(await chatCalls(llm)).toHaveLength(1);
 });
 
+test("a crash after several checkpoints keeps all of them in order", async ({ page, llm }) => {
+	// The second and fourth content events each cross the deadline, so the reply is stored as two deltas.
+	await llm.checkpointClock(0, 0, 1_100, 1_100, 1_100, 2_200);
+	await llm.chat({ chunks: ["The tide turns against the pier.\n\n", "Gulls scatter from the rail.\n\n", "The harbor lights flicker.\n\n", "A bell rings twice.\n\n", "Then the"], hold: true });
+	await page.goto("/");
+	await send(page, "Wait.");
+	await expect(story(page).getByText("A bell rings twice.")).toBeVisible();
+	await llm.restart("crash");
+	await page.reload();
+	const reply = story(page).locator("article").last();
+	for (const paragraph of ["The tide turns against the pier.", "Gulls scatter from the rail.", "The harbor lights flicker.", "A bell rings twice."]) {
+		await expect(reply.getByText(paragraph)).toBeVisible();
+	}
+	await expect(reply.getByText("Then the", { exact: true })).toHaveCount(0);
+	expect(await chatCalls(llm)).toHaveLength(1);
+});
+
 test("a crash before any checkpoint removes the provisional reply but keeps the sent message", async ({ page, llm }) => {
 	await llm.checkpointClock(0);
 	await llm.chat({ chunks: ["The tide turns against the pier.\n\n", "Then the"], hold: true });

@@ -1,6 +1,7 @@
 import { readMessageMoves } from "../box/moves";
 import { readVariantData } from "./variant-data";
 import { loadMessageRows } from "./message-rows";
+import { checkpointColumns } from "./generation-checkpoint";
 import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
 //  Paginated history read model: the normal Chat read seam for reading
@@ -131,9 +132,9 @@ export function readChatHistory(
 					.select({
 						generationId: activeGenerationTable.id,
 						variantId: activeGenerationTable.variant_id,
-						eventId: activeGenerationTable.checkpoint_event_id,
-						content: activeGenerationTable.checkpoint_content,
-						reasoning: activeGenerationTable.checkpoint_reasoning,
+						eventId: checkpointColumns.checkpoint_event_id,
+						content: checkpointColumns.checkpoint_content,
+						reasoning: checkpointColumns.checkpoint_reasoning,
 					})
 					.from(activeGenerationTable)
 					.where(inArray(

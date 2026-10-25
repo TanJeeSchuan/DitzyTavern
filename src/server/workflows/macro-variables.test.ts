@@ -1,9 +1,9 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { acceptConversationTailGeneration } from "../conversation";
-import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation";
+import { resolveConversationGeneration } from "../conversation";
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -149,7 +149,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			expectedRevision: conversation.revision,
 			humanContent: "Hello",
 		});
-		checkpointConversationGeneration(database, {
+		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
 			content: "Partial",

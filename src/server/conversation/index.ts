@@ -23,6 +23,7 @@ export {
 } from "./commands/accept-generation";
 export {
 	checkpointConversationGeneration,
+	checkpointUnstreamedOutcome,
 	removeConversationGeneration,
 	resolveConversationGeneration,
 } from "./commands/active-generation";

@@ -5,6 +5,7 @@ import { gracefullyShutdownGenerations } from "./generation-recovery";
 import {
 	generationRuntimeFor,
 	GenerationRuntimeRegistry,
+	type CheckpointOutput,
 } from "./generation-runtime";
 
 describe("Generation runtime", () => {
@@ -34,7 +35,7 @@ describe("Generation runtime", () => {
 			startedAt: "2026-09-05T00:00:00Z",
 			onCheckpoint: (output) => {
 				if (unavailable) throw new Error("Checkpoint unavailable.");
-				persisted = output.content;
+				persisted = output.contentDelta;
 			},
 		});
 		runtime.publish({ type: "content", text: "Keep this." });
@@ -126,7 +127,7 @@ describe("Generation runtime", () => {
 	});
 
 	test("checkpoints visible streams at a bounded cadence and can be flushed deterministically", () => {
-		const checkpoints: Array<{ content: string; reasoning: string; latestEventId: number }> = [];
+		const checkpoints: CheckpointOutput[] = [];
 		const runtime = new GenerationRuntimeRegistry().start({
 			generationId: 10,
 			conversationId: 3,
@@ -138,10 +139,25 @@ describe("Generation runtime", () => {
 		});
 		runtime.publish({ type: "content", text: "one" });
 		runtime.publish({ type: "reasoning", text: "think" });
-		expect(checkpoints).toEqual([{ content: "one", reasoning: "think", latestEventId: 2 }]);
+		expect(checkpoints).toEqual([{ contentOffset: 0, contentDelta: "one", reasoningOffset: 0, reasoningDelta: "think", latestEventId: 2 }]);
 		runtime.publish({ type: "content", text: "two" });
 		runtime.flushCheckpoint();
-		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
+		expect(checkpoints.at(-1)).toEqual({ contentOffset: 3, contentDelta: "two", reasoningOffset: 5, reasoningDelta: "", latestEventId: 3 });
+	});
+
+	test("a cadence checkpoint waits for the other half of a surrogate pair", () => {
+		const checkpoints: CheckpointOutput[] = [];
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 15, conversationId: 3, messageId: 12, variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { eventInterval: 1, intervalMs: 0 },
+			onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
+		});
+		const emoji = "\u{1F600}";
+		runtime.publish({ type: "content", text: `a${emoji[0]}` });
+		expect(checkpoints).toEqual([]);
+		runtime.publish({ type: "content", text: `${emoji[1]}b` });
+		expect(checkpoints).toEqual([{ contentOffset: 0, contentDelta: `a${emoji}b`, reasoningOffset: 0, reasoningDelta: "", latestEventId: 2 }]);
 	});
 
 	test("the default cadence checkpoints a long stream once per 64 deltas, not per delta", () => {
@@ -221,7 +237,7 @@ describe("Generation runtime", () => {
 				variantId: 18,
 				startedAt: "2026-08-27T00:00:00.000Z",
 				checkpoint: { eventInterval: 99, intervalMs: 0 },
-				onCheckpoint: ({ reasoning, latestEventId }) => checkpoints.push({ reasoning, latestEventId }),
+				onCheckpoint: ({ reasoningDelta, latestEventId }) => checkpoints.push({ reasoning: reasoningDelta, latestEventId }),
 			});
 			runtime.publish({ type: "reasoning", text: "final thought" });
 			if (terminal === "complete") runtime.complete();
@@ -235,7 +251,7 @@ describe("Generation runtime", () => {
 	});
 
 	test("stop flushes the latest output, aborts the provider, and wins a terminal race", () => {
-		const checkpoints: Array<{ content: string; reasoning: string; latestEventId: number }> = [];
+		const checkpoints: CheckpointOutput[] = [];
 		const runtime = new GenerationRuntimeRegistry().start({
 			generationId: 11,
 			conversationId: 3,
@@ -251,7 +267,7 @@ describe("Generation runtime", () => {
 
 		expect(runtime.signal.aborted).toBe(true);
 		expect(runtime.isStopRequested).toBe(true);
-		expect(checkpoints).toEqual([{ content: "partial", reasoning: "", latestEventId: 1 }]);
+		expect(checkpoints).toEqual([{ contentOffset: 0, contentDelta: "partial", reasoningOffset: 0, reasoningDelta: "", latestEventId: 1 }]);
 		expect(runtime.state.status).toBe("active");
 
 		// Provider frames and terminal callbacks can arrive after AbortSignal is
@@ -282,7 +298,7 @@ describe("Generation runtime", () => {
 				variantId: 18,
 				startedAt: "2026-08-27T00:00:00.000Z",
 				checkpoint: { eventInterval: 99, intervalMs: 0 },
-				onCheckpoint: ({ content }) => checkpoints.push(content),
+				onCheckpoint: ({ contentDelta }) => checkpoints.push(contentDelta),
 				onStop: () => { stopped = true; },
 			});
 			runtime.publish({ type: "content", text: "production partial" });

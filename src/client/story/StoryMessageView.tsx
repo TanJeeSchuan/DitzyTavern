@@ -306,7 +306,7 @@ export function StoryMessageView({
 					<button
 						className="edit-action"
 						type="button"
-						disabled={mutationsDisabled}
+						disabled={mutationsDisabled || generationActive}
 						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit

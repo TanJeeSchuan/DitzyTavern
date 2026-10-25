@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { activeGenerationTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
+import { liveVariantContent } from "./generation-checkpoint";
 
 export interface ChatVariant {
 	messageId: number;
@@ -31,7 +32,7 @@ export function readChatVariants(
 		variantId: messageVariantTable.id,
 		variantPosition: messageVariantTable.position,
 		selected: messageVariantTable.selected,
-		content: messageVariantTable.content,
+		content: liveVariantContent,
 		generationId: activeGenerationTable.id,
 	}).from(messageTable)
 		.innerJoin(messageVariantTable, eq(messageVariantTable.message_id, messageTable.id))
