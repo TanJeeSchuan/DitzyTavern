@@ -1,33 +1,14 @@
-import { Elysia } from "elysia";
+import { Elysia, sse } from "elysia";
 import { automaticUpdateChecksCommand, updateStatus } from "../../shared/contract/updates";
 import type { UpdateChecker } from "../updates";
-
-function subscribe(checker: UpdateChecker, request: Request) {
-	const encoder = new TextEncoder();
-	let unsubscribe: (() => void) | undefined;
-	let removeAbort: (() => void) | undefined;
-	let heartbeat: ReturnType<typeof setInterval> | undefined;
-	let closed = false;
-	const cleanup = () => { clearInterval(heartbeat); unsubscribe?.(); removeAbort?.(); };
-	const stream = new ReadableStream<Uint8Array>({
-		start(controller) {
-			const abort = () => { if (closed) return; closed = true; cleanup(); controller.close(); };
-			unsubscribe = checker.subscribe((state) => controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify(state)}\n\n`)), abort);
-			removeAbort = () => request.signal.removeEventListener("abort", abort);
-			if (closed) cleanup();
-			else if (request.signal.aborted) abort();
-			else {
-				request.signal.addEventListener("abort", abort, { once: true });
-				heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), 5_000);
-			}
-		},
-		cancel: () => { closed = true; cleanup(); },
-	});
-	return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", connection: "keep-alive" } });
-}
+import { subscriptionEvents } from "./subscription-events";
 
 export const createUpdateRoutes = (checker: UpdateChecker) => new Elysia()
 	.get("/api/updates", () => checker.get(), { response: updateStatus })
 	.post("/api/updates/check", () => checker.check(), { response: updateStatus })
 	.post("/api/updates/automatic", ({ body }) => checker.setAutomaticChecks(body.enabled), { body: automaticUpdateChecksCommand, response: updateStatus })
-	.get("/api/updates/events", ({ request }) => subscribe(checker, request));
+	.get("/api/updates/events", (context) => subscriptionEvents(context, (emit, close) => {
+		const unsubscribe = checker.subscribe((state) => emit(sse({ event: "status", data: state })), close);
+		const heartbeat = setInterval(() => emit(new TextEncoder().encode(": keep-alive\n\n")), 5_000);
+		return () => { clearInterval(heartbeat); unsubscribe(); };
+	}));

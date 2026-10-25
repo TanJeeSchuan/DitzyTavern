@@ -16,7 +16,7 @@ test("HTTP commands and subscribers observe one server-wide update result", asyn
 	const subscription = await app.handle(new Request("http://localhost/api/updates/events", { signal: abort.signal }));
 	expect(subscription.headers.get("content-type")).toContain("text/event-stream");
 	const reader = subscription.body!.getReader();
-	const read = async () => new TextDecoder().decode((await reader.read()).value);
+	const read = async () => new Response((await reader.read()).value).text();
 	expect(await read()).toContain('"result":null,"attempt":null');
 	expect(requests).toBe(0);
 	const first = app.handle(new Request("http://localhost/api/updates/check", { method: "POST" }));
@@ -37,7 +37,7 @@ test("automatic-check commands publish the installation preference to every clie
 	const app = createUpdateRoutes(checker);
 	const subscription = await app.handle(new Request("http://localhost/api/updates/events"));
 	const reader = subscription.body!.getReader();
-	const read = async () => new TextDecoder().decode((await reader.read()).value);
+	const read = async () => new Response((await reader.read()).value).text();
 	expect(await read()).toContain('"automaticChecks":true');
 	const changed = await app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: false }) }));
 	expect(changed.status).toBe(200);
@@ -55,9 +55,9 @@ test("idle update subscriptions send SSE comments before the server timeout with
 	checker.setAutomaticChecks(false);
 	const subscription = await createUpdateRoutes(checker).handle(new Request("http://localhost/api/updates/events"));
 	const reader = subscription.body!.getReader();
-	expect(new TextDecoder().decode((await reader.read()).value)).toContain('"automaticChecks":false');
+	expect(await new Response((await reader.read()).value).text()).toContain('"automaticChecks":false');
 	const frames: string[] = [];
-	const next = reader.read().then(({ value }) => frames.push(new TextDecoder().decode(value)));
+	const next = reader.read().then(async ({ value }) => frames.push(await new Response(value).text()));
 	try {
 		jest.advanceTimersByTime(5_000);
 		await Promise.resolve();

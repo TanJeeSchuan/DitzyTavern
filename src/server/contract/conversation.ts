@@ -80,7 +80,7 @@ import {
 	macroVariablesEditBody,
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
-import { createGenerationSubscriptionResponse } from "./generation-sse";
+import { generationSubscriptionEvents } from "./generation-sse";
 import {
 	invalidOutcome,
 	notFoundOutcome,
@@ -511,12 +511,13 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/generations/:generationId/events",
-			({ params, query, request }) => {
+			(context) => {
+				const { params, query } = context;
 				const runtime = generationRuntimeFor(database).get(params.generationId);
 				if (runtime === undefined || runtime.state.conversationId !== params.id) {
 					return notFoundResponse();
 				}
-				return createGenerationSubscriptionResponse(runtime, query.after ?? 0, request);
+				return generationSubscriptionEvents(runtime, query.after ?? 0, context);
 			},
 			{
 				params: generationIdParams,
