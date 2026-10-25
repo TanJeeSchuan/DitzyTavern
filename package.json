@@ -7,7 +7,7 @@
 		"prepare": "git config core.hooksPath .githooks",
 		"dev:server": "bun --watch src/server/index.ts",
 		"dev:client": "vite",
-		"dev:stop": "fuser -k 3000/tcp 5173/tcp",
+		"dev:stop": "bun -e \"process.exit(Bun.spawnSync(process.platform === 'win32' ? ['powershell', '-c', 'Stop-Process -Force -Id (Get-NetTCPConnection -State Listen -LocalPort 3000,5173).OwningProcess'] : ['fuser', '-k', '3000/tcp', '5173/tcp'], { stdio: ['inherit', 'inherit', 'inherit'] }).exitCode)\"",
 		"build": "vite build",
 		"box:build": "bun scripts/build-box-client.ts",
 		"start": "bun src/server/index.ts",
