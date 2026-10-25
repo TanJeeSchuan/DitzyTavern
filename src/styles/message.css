@@ -47,6 +47,8 @@
 
 .story-message[data-latest="true"] { margin-bottom: 0; }
 
+.story-message[data-latest="true"]:has(+ [data-requested="true"]) { margin-bottom: 3.6rem; }
+
 .message-header {
 	display: grid;
 	grid-template-columns: auto 1fr auto;
