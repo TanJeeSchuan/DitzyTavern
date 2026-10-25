@@ -1,14 +1,17 @@
 import { ImagePlus, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ConversationSummary } from "./conversation";
+import { conversationKey } from "./conversation-query";
 import { runConversationCommand } from "./conversation-command-runner";
 import { imageAccept, imageSrc, uploadImage } from "./lib/image";
 import { useReducedMotion } from "./lib/use-media";
 
 // @approved
 // A canvas draws an image's first frame, so reduced motion holds a GIF still.
-export function StoryBackground({ hash }: { hash: string }) {
+// Without a label the image is decorative.
+export function BackgroundImage({ hash, className, label }: { hash: string; className: string; label?: string }) {
 	const still = useReducedMotion();
 	const drawFirstFrame = useCallback((canvas: HTMLCanvasElement | null) => {
 		if (canvas === null) return;
@@ -21,22 +24,26 @@ export function StoryBackground({ hash }: { hash: string }) {
 		image.src = imageSrc(hash);
 	}, [hash]);
 	return still
-		? <canvas ref={drawFirstFrame} className="story-background" aria-hidden="true" />
-		: <img src={imageSrc(hash)} alt="" className="story-background" />;
+		? <canvas ref={drawFirstFrame} className={className} role={label === undefined ? undefined : "img"} aria-label={label} aria-hidden={label === undefined} />
+		: <img src={imageSrc(hash)} alt={label ?? ""} className={className} />;
 }
 
 export function ChatBackgroundSetting({ conversation, onConversationChange }: {
 	conversation: ConversationSummary;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
+	const client = useQueryClient();
 	const picker = useRef<HTMLInputElement>(null);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
+	// @approved
+	// Read at send time: the Chat can advance while an upload is in flight.
+	const revision = () => client.getQueryData<ConversationSummary | null>(conversationKey(conversation.id))?.revision ?? null;
 	const apply = async (hash: () => Promise<string | null>) => {
 		setPending(true);
 		setNotice(null);
 		try {
-			await runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice }, { type: "set-background", hash: await hash() });
+			await runConversationCommand({ conversationId: conversation.id, revision, onConversationChange, setNotice }, { type: "set-background", hash: await hash() });
 		} catch (cause) {
 			setNotice(cause instanceof Error ? cause.message : "That file could not be read as an image.");
 		} finally {
@@ -47,7 +54,7 @@ export function ChatBackgroundSetting({ conversation, onConversationChange }: {
 	return (
 		<section className="chat-background-section" aria-label="Background">
 			<h3>Background</h3>
-			{background !== null && <img src={imageSrc(background)} alt="Current background" className="chat-background-preview" />}
+			{background !== null && <BackgroundImage key={background} hash={background} className="chat-background-preview" label="Current background" />}
 			<p className="panel-note">Shown faded behind the story. PNG, JPEG, WebP, or GIF up to 20 MB.</p>
 			<div className="chat-background-actions">
 				<Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => picker.current?.click()}>
