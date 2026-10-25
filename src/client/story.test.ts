@@ -810,6 +810,25 @@ describe("Requested Send", () => {
 		expect(ended.requestedGeneration).toBeNull();
 	});
 
+	test("a Requested Swipe shows an empty Variant in place of the Requested selection until a page places its Variant", () => {
+		const twoTakes = reduceStory(opened(), { type: "window-received", page: page({ messages: [message({ variants: [
+			{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+			{ id: 101, position: 2, content: "Twice", timestamp: "2026-01-01T00:00:00.000Z", selected: false },
+		] })] }) });
+		const selected = reduceStory(twoTakes, { type: "selection-requested", messageId: 10, variantId: 101 });
+		const requested = reduceStory(selected, { type: "generation-requested", request: { kind: "sibling", messageId: 10 } });
+		const shown = shownMessage(requested, requested.messages[0]!);
+		expect(shown.swipes).toHaveLength(3);
+		expect(shown.swipes.at(-1)).toMatchObject({ id: displayedVariantId(shown, null, requested.requestedSelections), content: "", empty: true });
+		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 102, sentRevision: 3 });
+		const placed = reduceStory(accepted, { type: "window-received", page: page({ revision: 4, messages: [message({ variants: [
+			{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: false },
+			{ id: 101, position: 2, content: "Twice", timestamp: "2026-01-01T00:00:00.000Z", selected: false },
+			{ id: 102, position: 3, content: "", timestamp: "2026-01-01T00:00:01.000Z", selected: true },
+		] })] }) });
+		expect(shownMessage(placed, placed.messages[0]!).swipes.map(({ id }) => id)).toEqual([100, 101, 102]);
+	});
+
 	test("disappears when the server does not accept it", () => {
 		const requested = reduceStory(opened(), { type: "generation-requested", request: { kind: "continuation" } });
 		expect(reduceStory(requested, { type: "generation-request-failed" }).requestedGeneration).toBeNull();

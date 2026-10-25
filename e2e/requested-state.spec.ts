@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page, Route } from "@playwright/test";
 import { test, expect, insertBox, story } from "./fixtures";
+import type { E2eServer } from "./harness";
 
 test.beforeEach(async ({ page }) => {
 	await page.addInitScript(() => window.localStorage.setItem("ditzytavern.inspect-prompt-plan-before-generating", "false"));
@@ -132,7 +133,7 @@ test("a Swipe on the final Message shows its Variant before the server applies i
 	await expect(story(page).locator("article[data-message-id]").last().getByText("Second take.")).toBeVisible();
 });
 
-test("a New Swipe shows the reply in progress on its Message before the server accepts it", async ({ page, llm }) => {
+const swipePastLast = async (page: Page, llm: E2eServer) => {
 	await llm.chat({ chunks: ["First take."] }, { chunks: ["Second take."] });
 	await page.goto("/");
 	await sendDirect(page, "Again.");
@@ -142,9 +143,27 @@ test("a New Swipe shows the reply in progress on its Message before the server a
 	const accepting = holdPost(page, "**/sibling/generations");
 	await reply.getByRole("button", { name: "New Swipe" }).click();
 	const route = await accepting;
+	await expect(reply.getByText("2 of 2")).toBeVisible();
+	await expect(reply.getByText("First take.")).toHaveCount(0);
 	await expect(reply.getByRole("status", { name: /is writing/ })).toBeVisible();
-	await expect(reply.getByText("1 of 1")).toBeVisible();
+	return { reply, route };
+};
+
+test("swiping past the last Variant shows the new Variant in progress before the server accepts it", async ({ page, llm }) => {
+	const { reply, route } = await swipePastLast(page, llm);
 	await route.continue();
 	await expect(reply.getByText("Second take.")).toBeVisible();
 	await expect(reply.getByText("2 of 2")).toBeVisible();
+});
+
+test.describe(() => {
+	test.use({ allowedBrowserErrors: /ERR_FAILED/ });
+
+	test("a swipe the server never accepts returns to the Variant it was swiped from", async ({ page, llm }) => {
+		const { reply, route } = await swipePastLast(page, llm);
+		await route.abort();
+		await expect(page.getByText("Generation could not be started.", { exact: true })).toBeVisible();
+		await expect(reply.getByText("First take.")).toBeVisible();
+		await expect(reply.getByText("1 of 1")).toBeVisible();
+	});
 });

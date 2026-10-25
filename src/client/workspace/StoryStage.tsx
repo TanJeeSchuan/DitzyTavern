@@ -11,6 +11,7 @@ import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
+	requestsSibling,
 	reusesTrailingHumanMessage,
 	shownMessage,
 	type StoryAction,
@@ -151,20 +152,19 @@ export function StoryStage({
 						</div>
 					)}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
-					{story.messages.map((message) => (
+					{story.messages.map((persisted) => shownMessage(story, persisted)).map((message) => (
 						<StoryMessageView
 							key={message.id}
-							message={shownMessage(story, message)}
+							message={message}
 							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
-							generationActive={generation.activeGenerationTargets.some((target) =>
+							generationActive={requestsSibling(story, message.id) || generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
 								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
 							)}
-							generationRequested={requested?.kind === "sibling" && requested.messageId === message.id}
 							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
-							mutationsDisabled={story.preview !== null}
+							mutationsDisabled={story.preview !== null || requestsSibling(story, message.id)}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={

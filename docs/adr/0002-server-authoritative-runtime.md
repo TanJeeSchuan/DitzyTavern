@@ -4,7 +4,7 @@ The server will own conversation state, prompt assembly, generation lifecycles, 
 
 The browser is a thin reactive SPA whose local state is limited to ephemeral presentation concerns. Refreshing a client reconstructs every authoritative Conversation, Revision, Variant, and Generation view from the server.
 
-The client may show a Requested selection or Requested Send before the server acknowledges it, so slow acceptance never freezes the writer. Conversation commands from one client run one at a time per Conversation; a failed command drops the ones queued behind it and the view returns to authoritative state. Requested state is never sent to the server as anything other than the command that created it.
+The client may show a Requested selection, Requested Send or Requested Swipe before the server acknowledges it, so slow acceptance never freezes the writer. Conversation commands from one client run one at a time per Conversation; a failed command drops the ones queued behind it and the view returns to authoritative state. Requested state is never sent to the server as anything other than the command that created it.
 
 When multiple clients open the same Conversation, they are synchronized views of one live server-owned state, including any generation in progress and its final result. Conversation and generation state must survive individual client refreshes and disconnects.
 
