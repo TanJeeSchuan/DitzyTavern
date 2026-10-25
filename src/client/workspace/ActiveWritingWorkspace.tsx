@@ -37,7 +37,7 @@ import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
 import { usePreviewController } from "./usePreviewController";
-import { useNarrow } from "../lib/use-narrow";
+import { useNarrow } from "../lib/use-media";
 import { useThemePreference } from "../lib/use-theme";
 import { useSwipeBrowsing } from "../lib/use-swipe-browsing";
 import { GenerationErrorToast } from "./GenerationErrorToast";
@@ -296,6 +296,8 @@ export function ActiveWritingWorkspace({
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
 					chatTitle={session.activeChat.title}
+					conversation={session.conversation}
+					onConversationChange={session.setConversation}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}

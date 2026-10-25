@@ -21,6 +21,7 @@ import { setBoxSetup } from "./commands/set-box-setup";
 import { setBoxState } from "./commands/set-box-state";
 import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
+import { setBackground } from "./commands/set-background";
 import {
 	attachConversationLorebook,
 	attachParticipantLorebook,
@@ -90,6 +91,7 @@ const handlers = {
 	"set-box-record": setBoxRecord,
 	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,
+	"set-background": setBackground,
 	"attach-chat": attachConversationLorebook,
 	"detach-chat": detachConversationLorebook,
 	"attach-participant": attachParticipantLorebook,

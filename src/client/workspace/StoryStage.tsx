@@ -18,6 +18,7 @@ import {
 	type StoryAction,
 	type StoryState,
 } from "../story";
+import { StoryBackground } from "../ChatBackground";
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
 import { RequestedSendView } from "../story/RequestedSendView";
@@ -113,6 +114,7 @@ export function StoryStage({
 
 	return (
 		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
+			{conversation !== null && conversation.background !== null && <StoryBackground key={conversation.background} hash={conversation.background} />}
 			<StoryHeader
 				chat={session.activeChat}
 				conversation={conversation}

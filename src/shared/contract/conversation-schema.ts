@@ -9,7 +9,7 @@ import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
 import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
 import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
-import { portrait } from "./image";
+import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -212,6 +212,7 @@ export const conversationSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
+	background: Type.Union([imageHash, Type.Null()]),
 	cast: Type.Array(castParticipant),
 	control: conversationControl,
 	controlValidity: conversationControlValidity,
@@ -568,6 +569,11 @@ const renameConversationAction = Type.Object({
 	name: Type.String(),
 });
 
+const setBackgroundAction = Type.Object({
+	type: Type.Literal("set-background"),
+	hash: Type.Union([imageHash, Type.Null()]),
+});
+
 const assignControlAction = Type.Object({
 	type: Type.Literal("assign-control"),
 	seat: Type.Union([Type.Literal("human"), Type.Literal("model")]),
@@ -614,6 +620,7 @@ const conversationCommandAction = Type.Union([
 	removeParticipantAction,
 	selectPromptPresetAction,
 	renameConversationAction,
+	setBackgroundAction,
 	setBoxSetupAction,
 	setBoxStateAction,
 	setBoxRecordAction,

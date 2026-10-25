@@ -3,7 +3,7 @@ import { FocusScope } from "radix-ui/internal";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { boxMetadata, type BoxId, type BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
-import { useNarrow } from "../lib/use-narrow";
+import { useNarrow } from "../lib/use-media";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
