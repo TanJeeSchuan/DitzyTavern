@@ -253,7 +253,7 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 }
 
 /** @approved Queues one selected passage now as live work, retrying a digest that failed on its text; one already digested for its text is left alone. */
-export function queueBoxDigest(database: Database, conversationId: number, box: BoxId, variantId: number): void {
+export function queueBoxDigest(database: Database, conversationId: number, box: BoxId, { variantId }: { variantId: number }): void {
 	const queue = queues.get(database);
 	const instance = queue === undefined ? undefined : digestInstance(database, conversationId, box);
 	if (queue === undefined || instance === undefined) return;

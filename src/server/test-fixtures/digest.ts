@@ -13,7 +13,7 @@ export const digestNow = async <Rec extends TObject>(database: Database, convers
 	const settled = (current: RecordSlot | undefined) => current?.source !== undefined || current?.error !== undefined;
 	const stop = startBoxDigests(database, { fetch });
 	try {
-		queueBoxDigest(database, conversationId, box, variantId);
+		queueBoxDigest(database, conversationId, box, { variantId });
 		for (let attempt = 0; attempt < 2_000 && !settled(slot()); attempt += 1) await Bun.sleep(1);
 	} finally { await stop(); }
 	return slot();

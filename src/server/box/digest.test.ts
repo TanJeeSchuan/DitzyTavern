@@ -260,11 +260,11 @@ test("digesting one passage retries text whose digest failed and leaves digested
 	await waitFor(() => stub.pending() === 1);
 	stub.release(true);
 	await waitFor(() => slot()?.error !== undefined);
-	queueBoxDigest(database, chat.id, "world-clock", passage);
+	queueBoxDigest(database, chat.id, "world-clock", { variantId: passage });
 	await waitFor(() => stub.pending() === 1);
 	stub.release();
 	await waitFor(() => slot()?.automatic !== undefined);
-	queueBoxDigest(database, chat.id, "world-clock", passage);
+	queueBoxDigest(database, chat.id, "world-clock", { variantId: passage });
 	await Bun.sleep(5);
 	expect(stub.contents()).toHaveLength(2);
 });

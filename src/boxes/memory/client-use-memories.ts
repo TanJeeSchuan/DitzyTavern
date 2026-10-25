@@ -92,7 +92,7 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 	};
 	return {
 		notice, busy, catchupBusy, editing, resetTarget,
-		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, "memory", source.variantId))),
+		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, "memory", { variantId: source.variantId }))),
 		edit: (source: Source, index: number | null) => {
 			const claims = storedClaims(source);
 			setEditing(index === null || claims[index] === undefined ? null : { variantId: source.variantId, index, claims });

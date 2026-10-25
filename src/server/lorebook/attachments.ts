@@ -64,11 +64,14 @@ export const attachLorebookToCharacter = (
 	}).run();
 };
 
-export const detachLorebookFromCharacter = (database: Database, characterId: number, bookId: number, scope: Exclude<LoreAttachmentScope, "chat">) =>
+export const detachLorebookFromCharacter = (
+	database: Database,
+	input: { characterId: number; bookId: number; scope: Exclude<LoreAttachmentScope, "chat"> },
+) =>
 	connect(database).delete(characterLorebookAttachmentTable).where(and(
-		eq(characterLorebookAttachmentTable.character_id, characterId),
-		eq(characterLorebookAttachmentTable.lorebook_id, bookId),
-		eq(characterLorebookAttachmentTable.scope, scope),
+		eq(characterLorebookAttachmentTable.character_id, input.characterId),
+		eq(characterLorebookAttachmentTable.lorebook_id, input.bookId),
+		eq(characterLorebookAttachmentTable.scope, input.scope),
 	)).run();
 
 /** @approved Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
@@ -285,7 +288,7 @@ export const executeLorebookAttachmentCommand = (
 			return current;
 		});
 		if (command.type === "attach-character") attachLorebookToCharacter(database, command);
-		else detachLorebookFromCharacter(database, command.characterId, command.bookId, command.scope);
+		else detachLorebookFromCharacter(database, command);
 		advanceCharacterRevision(database, db, command.characterId, command.expectedRevision);
 	}).immediate();
 };
