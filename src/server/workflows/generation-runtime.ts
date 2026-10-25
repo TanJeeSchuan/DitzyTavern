@@ -63,12 +63,13 @@ export interface CheckpointOutput {
 }
 
 // @approved
-//  A checkpoint never ends between the two halves of a surrogate pair: a lone
-// half stored on its own decodes to U+FFFD, so the assembled text would lose
-// the character. The held-back half goes out with the next checkpoint.
-const checkpointEnd = (text: string): number => {
+//  A cadence checkpoint waits while a stream ends between the two halves of a
+// surrogate pair: a lone half is stored as U+FFFD, and a checkpoint's text
+// must hold everything through the event position it records, because a
+// reconnecting client resumes the stream after that position.
+const endsInsidePair = (text: string): boolean => {
 	const last = text.charCodeAt(text.length - 1);
-	return last >= 0xd800 && last <= 0xdbff ? text.length - 1 : text.length;
+	return last >= 0xd800 && last <= 0xdbff;
 };
 
 export interface StartGenerationRuntimeInput {
@@ -296,8 +297,9 @@ export class GenerationRuntime {
 			this.checkpointPending = true;
 			const elapsed = this.checkpointNow() - this.lastCheckpointAt;
 			if (
-				envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
-				(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)
+				(envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
+					(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)) &&
+				!endsInsidePair(this.progress.content) && !endsInsidePair(this.progress.reasoning)
 			) {
 				try { this.flushCheckpoint(); } catch { /* @approved Retry at the next cadence or forced flush. */ }
 			}
@@ -343,17 +345,15 @@ export class GenerationRuntime {
 	flushCheckpoint(): void {
 		if (!this.checkpointPending && this.lastCheckpointEventId === this.progress.latestEventId) return;
 		const { content, reasoning, latestEventId } = this.progress;
-		const contentEnd = checkpointEnd(content);
-		const reasoningEnd = checkpointEnd(reasoning);
 		this.onCheckpoint?.({
 			contentOffset: this.checkpointedContent,
-			contentDelta: content.slice(this.checkpointedContent, contentEnd),
+			contentDelta: content.slice(this.checkpointedContent),
 			reasoningOffset: this.checkpointedReasoning,
-			reasoningDelta: reasoning.slice(this.checkpointedReasoning, reasoningEnd),
+			reasoningDelta: reasoning.slice(this.checkpointedReasoning),
 			latestEventId,
 		});
-		this.checkpointedContent = contentEnd;
-		this.checkpointedReasoning = reasoningEnd;
+		this.checkpointedContent = content.length;
+		this.checkpointedReasoning = reasoning.length;
 		this.checkpointPending = false;
 		this.lastCheckpointEventId = this.progress.latestEventId;
 		this.lastCheckpointAt = this.checkpointNow();

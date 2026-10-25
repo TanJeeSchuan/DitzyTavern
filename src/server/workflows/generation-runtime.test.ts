@@ -145,20 +145,19 @@ describe("Generation runtime", () => {
 		expect(checkpoints.at(-1)).toEqual({ contentOffset: 3, contentDelta: "two", reasoningOffset: 5, reasoningDelta: "", latestEventId: 3 });
 	});
 
-	test("a checkpoint holds back half a surrogate pair until its other half arrives", () => {
-		const deltas: string[] = [];
+	test("a cadence checkpoint waits for the other half of a surrogate pair", () => {
+		const checkpoints: CheckpointOutput[] = [];
 		const runtime = new GenerationRuntimeRegistry().start({
 			generationId: 15, conversationId: 3, messageId: 12, variantId: 18,
 			startedAt: "2026-08-27T00:00:00.000Z",
-			checkpoint: { eventInterval: 99, intervalMs: 0 },
-			onCheckpoint: ({ contentDelta }) => deltas.push(contentDelta),
+			checkpoint: { eventInterval: 1, intervalMs: 0 },
+			onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
 		});
 		const emoji = "\u{1F600}";
 		runtime.publish({ type: "content", text: `a${emoji[0]}` });
-		runtime.flushCheckpoint();
+		expect(checkpoints).toEqual([]);
 		runtime.publish({ type: "content", text: `${emoji[1]}b` });
-		runtime.flushCheckpoint();
-		expect(deltas).toEqual(["a", `${emoji}b`]);
+		expect(checkpoints).toEqual([{ contentOffset: 0, contentDelta: `a${emoji}b`, reasoningOffset: 0, reasoningDelta: "", latestEventId: 2 }]);
 	});
 
 	test("the default cadence checkpoints a long stream once per 64 deltas, not per delta", () => {

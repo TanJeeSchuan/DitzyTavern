@@ -29,4 +29,6 @@ export const selectActiveGenerations = (db: ConversationDatabase) =>
 // holds its acceptance content until termination, so its text is the
 // assembled checkpoints. The subquery scans only the handful of Active
 // Generation rows, so an ordinary Variant pays almost nothing for it.
-export const liveVariantContent = sql<string>`coalesce((select group_concat(c.content, '' order by c.event_id) from generation_checkpoint c join active_generation a on a.id = c.generation_id where a.variant_id = "message_variant"."id"), "message_variant"."content")`;
+export const liveContentOf = (variant: string) =>
+	`coalesce((select group_concat(c.content, '' order by c.event_id) from generation_checkpoint c join active_generation a on a.id = c.generation_id where a.variant_id = ${variant}.id), ${variant}.content)`;
+export const liveVariantContent = sql<string>`${sql.raw(liveContentOf(`"message_variant"`))}`;

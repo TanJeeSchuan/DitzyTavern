@@ -6,6 +6,7 @@ import {
 	checkpointConversationGeneration,
 	cleanupRetainedGenerationInspections,
 	executeConversationCommand,
+	listChatSummaries,
 	readActiveGenerationDetails,
 	readConversationRevision,
 	readSelectedHistory,
@@ -105,5 +106,16 @@ describe("Generation checkpoints", () => {
 		expect(readSelectedHistory(database, generation.conversationId)?.messages.map((message) => message.variant?.content)).toEqual(["Partial reply."]);
 		expect(generation.rows("generation_checkpoint")).toBe(0);
 		expect(generation.rows("generation_capture")).toBe(0);
+	});
+
+	test("a streaming Variant cannot be edited, and the Chat list shows its checkpointed text", () => {
+		const generation = accept();
+		generation.checkpoint(0, "Partial reply.", 0, "", 1);
+		expect(() => executeConversationCommand(database, {
+			conversationId: generation.conversationId,
+			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
+			action: { type: "edit-variant", messageId: generation.messageId, variantId: generation.provisionalVariantId, content: "Writer edit" },
+		})).toThrow("while its Generation is running");
+		expect(listChatSummaries(database).find((chat) => chat.id === generation.conversationId)?.excerpt).toBe("Partial reply.");
 	});
 });
