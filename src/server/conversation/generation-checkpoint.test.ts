@@ -5,7 +5,10 @@ import {
 	acceptConversationTailGeneration,
 	checkpointConversationGeneration,
 	cleanupRetainedGenerationInspections,
+	executeConversationCommand,
 	readActiveGenerationDetails,
+	readConversationRevision,
+	readSelectedHistory,
 	resolveConversationGeneration,
 	stopConversationGeneration,
 } from ".";
@@ -37,7 +40,7 @@ describe("Generation checkpoints", () => {
 			});
 		const details = () => readActiveGenerationDetails(database, created.id, accepted.generationId);
 		const rows = (table: string) => database.query<{ n: number }, [number]>(`SELECT count(*) n FROM ${table} WHERE generation_id = ?`).get(accepted.generationId)!.n;
-		return { conversationId: created.id, generationId: accepted.generationId, checkpoint, details, rows };
+		return { conversationId: created.id, ...accepted, checkpoint, details, rows };
 	};
 
 	test("deltas assemble into both streams and the latest event position", () => {
@@ -81,5 +84,26 @@ describe("Generation checkpoints", () => {
 			conversationId: generation.conversationId, generationId: generation.generationId, timestamp: "2026-10-25T00:00:01.000Z", content: "Final answer.", reasoning: "Thought.",
 		});
 		expect(generation.details()?.checkpoint).toMatchObject({ content: "Final answer.", reasoning: "Thought.", latestEventId: 1 });
+	});
+
+	test("Selected history reads an Active Generation's Variant as its checkpointed text", () => {
+		const generation = accept();
+		generation.checkpoint(0, "<thought>Hold the line.</thought>", 0, "", 1);
+		generation.checkpoint(33, " They wait.", 0, "", 2);
+		const variant = readSelectedHistory(database, generation.conversationId)?.messages.at(-1)?.variant;
+		expect(variant?.content).toBe("<thought>Hold the line.</thought> They wait.");
+	});
+
+	test("deleting the human Message of an Active Generation leaves its output in the Variant", () => {
+		const generation = accept();
+		generation.checkpoint(0, "Partial reply.", 0, "Thinking", 1);
+		executeConversationCommand(database, {
+			conversationId: generation.conversationId,
+			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
+			action: { type: "delete-message", messageId: generation.humanMessageId },
+		});
+		expect(readSelectedHistory(database, generation.conversationId)?.messages.map((message) => message.variant?.content)).toEqual(["Partial reply."]);
+		expect(generation.rows("generation_checkpoint")).toBe(0);
+		expect(generation.rows("generation_capture")).toBe(0);
 	});
 });

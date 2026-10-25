@@ -8,7 +8,7 @@ import { variantDataCodecs } from "../../shared/variant-data-codecs";
 
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq } from "drizzle-orm";
+import { and, eq, getTableColumns } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	generationCaptureTable,
@@ -23,9 +23,8 @@ import {
 	readActiveCast,
 	type ConversationDatabase,
 } from "./internal";
-import { checkpointColumns, selectActiveGenerations } from "./generation-checkpoint";
+import { checkpointColumns, liveVariantContent, selectActiveGenerations } from "./generation-checkpoint";
 import { decodeGenerationCapture } from "./generation-capture";
-import { removeRetainedGenerationInspection } from "./generation-retention";
 import {
 	toAuthorStamp,
 	toHistoricalContext,
@@ -182,7 +181,9 @@ export function readActiveGenerationDetailsFromConnection(
 		)).get()
 		: undefined;
 	if (retained !== undefined && retained.expires_at <= new Date().toISOString()) {
-		removeRetainedGenerationInspection(db.$client, retained.id);
+		db.delete(generationReplayTable)
+			.where(eq(generationReplayTable.id, retained.id))
+			.run();
 		return undefined;
 	}
 	const row = active ?? retained;
@@ -194,7 +195,9 @@ export function readActiveGenerationDetailsFromConnection(
 			.where(eq(participantTable.id, row.human_participant_id)).get()?.name ?? "";
 	const captured = db.select({ capture: generationCaptureTable.capture }).from(generationCaptureTable)
 		.where(eq(generationCaptureTable.generation_id, row.id)).get();
-	if (captured === undefined) throw new Error(`Generation ${row.id} has no persisted capture.`);
+	// @approved
+	//  A Generation accepted before migration 0030 has no capture to inspect.
+	if (captured === undefined) return undefined;
 	const capture = decodeGenerationCapture(captured.capture);
 	const inspection = capture.promptInspection;
 	const inspectionRecord = generationJsonObject(inspection);
@@ -261,7 +264,7 @@ export function readVariantDetailsFromConnection(
 		eq(messageTable.conversation_id, conversationId),
 	)).get();
 	if (message === undefined) return undefined;
-	const variant = db.select().from(messageVariantTable).where(and(
+	const variant = db.select({ ...getTableColumns(messageVariantTable), content: liveVariantContent }).from(messageVariantTable).where(and(
 		eq(messageVariantTable.id, variantId),
 		eq(messageVariantTable.message_id, messageId),
 	)).get();

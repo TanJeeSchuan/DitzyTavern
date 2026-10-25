@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7f195e0e-fac2-4995-8398-fcf1c38dc4f9",
+  "id": "cd3b9418-79ed-4c1b-929c-82866ab0aa70",
   "prevId": "a3866856-59ee-4143-af30-cbeb885a6883",
   "tables": {
     "active_generation": {
@@ -1653,13 +1653,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "capture": {
           "name": "capture",
           "type": "blob",
@@ -1676,21 +1669,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "generation_capture_variant_id_message_variant_id_fk": {
-          "name": "generation_capture_variant_id_message_variant_id_fk",
-          "tableFrom": "generation_capture",
-          "tableTo": "message_variant",
-          "columnsFrom": [
-            "variant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

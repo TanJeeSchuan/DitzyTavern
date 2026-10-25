@@ -154,7 +154,7 @@ const persistActiveGeneration = (
 	}
 	const capture = `{"promptPlan":${jsonText(input.promptPlan, "Prompt Plan")},"promptInspection":${jsonText(input.promptInspection, "Prompt inspection")},"promptContext":${jsonText(input.promptContext, "Prompt context")}}`;
 	db.insert(generationCaptureTable)
-		.values({ generation_id: active.id, variant_id: input.variantId, ...encodeGenerationCapture(capture) })
+		.values({ generation_id: active.id, ...encodeGenerationCapture(capture) })
 		.run();
 	return active.id;
 };

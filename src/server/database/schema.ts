@@ -751,8 +751,10 @@ export const activeGenerationTable = sqliteTable(
 // matter how long the reply is. Each row records where both streams end so a
 // delta that does not start where the last one ended is rejected instead of
 // silently corrupting the assembled text. The rows die with the Active
-// Generation; terminal resolution writes the whole text once. The migration
-// declares the table WITHOUT ROWID, which drizzle cannot express.
+// Generation; terminal resolution writes the whole text once, and an Active
+// Generation deleted without one (its human Message was deleted) leaves the
+// assembled text in its Variant through a trigger in migration 0030. The
+// migration also declares the table WITHOUT ROWID, which drizzle cannot express.
 export const generationCheckpointTable = sqliteTable(
 	"generation_checkpoint",
 	{
@@ -773,16 +775,13 @@ export const generationCheckpointTable = sqliteTable(
 //  The prompt a Generation was sent with (plan, budget inspection, and
 // writing context), zstd-compressed JSON written once at acceptance. Only
 // inspection reads it. It is keyed by the Generation id that the active row
-// and then its replay copy share, so neither ever rewrites it: the Variant
-// cascade removes it with a discarded target, and the replay deletions in
-// generation-retention.ts remove it with an expired inspection.
+// and then its replay copy share, so neither ever rewrites it. Triggers in
+// migration 0030 delete it with the last of the two rows, whatever deleted
+// them: the replay row, or an active row that ends without one.
 export const generationCaptureTable = sqliteTable(
 	"generation_capture",
 	{
 		generation_id: int().primaryKey(),
-		variant_id: int()
-			.notNull()
-			.references(() => messageVariantTable.id, { onDelete: "cascade" }),
 		capture: blob({ mode: "buffer" }).notNull(),
 		// @approved
 		//  The capture's Image References, as text: the orphan sweep finds

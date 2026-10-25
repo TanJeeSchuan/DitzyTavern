@@ -24,11 +24,13 @@ export async function createApp(options: AppOptions) {
 	// and published synchronously after it commits.
 	observeConversationWrites(database, prepareBoxDigests);
 	const stopBoxDigests = startBoxDigests(database, { fetch });
-	sweepOrphanedImages(database);
 	// @approved
 	//  One process-start sweep resolves only abandoned local Active Generations;
-	// it never resumes or retries a provider request.
+	// it never resumes or retries a provider request. It runs before the Image
+	// sweep so recovered output is whole Variant text when the sweep reads it:
+	// a Reference can straddle two checkpoint deltas.
 	reportRecovery("Startup", recoverActiveGenerations(database));
+	sweepOrphanedImages(database);
 
 	const serveIndex = () => Bun.file("dist/index.html");
 	const updates = createUpdateChecker(database, options.updates);
