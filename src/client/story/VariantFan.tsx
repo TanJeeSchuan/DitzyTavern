@@ -46,8 +46,7 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 	//  Recent pointer samples for the release speed.
 	const samples = useRef<{ x: number; t: number }[]>([]);
 	// @approved
-	//  Only a tap that went down inside the fan clicks: not the end of a drag,
-	// nor the release of the long press that opened the fan.
+	//  The click that ends a drag is dropped. A tap, a keyboard or screen-reader activation clicks.
 	const press = useRef<"tap" | "drag" | null>(null);
 	const cards = useRef<(HTMLElement | null)[]>([]);
 	const front = clamp(Math.round(position));
@@ -92,7 +91,7 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 				setPosition(front);
 			}}
 			onClickCapture={(event) => {
-				if (press.current !== "tap") event.stopPropagation();
+				if (press.current === "drag") event.stopPropagation();
 				press.current = null;
 			}}
 			onClick={(event) => {

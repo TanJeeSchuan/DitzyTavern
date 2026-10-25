@@ -44,7 +44,15 @@ test("the Swipe fan browses with arrow keys, dismisses without changes, and sele
 	await expect(reply.getByText("First take.")).toBeVisible();
 	await expect(reply.getByText("1 of 3")).toBeVisible();
 	await page.reload();
-	await expect(story(page).locator("article").last().getByText("1 of 3")).toBeVisible();
+	const reloaded = story(page).locator("article").last();
+	await expect(reloaded.getByText("1 of 3")).toBeVisible();
+
+	// A screen reader activates a card with a bare click and no pointer events.
+	await reloaded.getByRole("button", { name: "1 of 3, browse Swipes" }).click();
+	await page.keyboard.press("ArrowRight");
+	await fan.getByRole("button", { name: "Swipe 2 of 3" }).dispatchEvent("click");
+	await expect(fan).toBeHidden();
+	await expect(reloaded.getByText("2 of 3")).toBeVisible();
 });
 
 test.describe("touch", () => {
