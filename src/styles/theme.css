@@ -62,6 +62,7 @@
 	--accent-foreground: light-dark(oklch(0.24 0.025 30), oklch(0.93 0.018 31));
 	--accent-soft: light-dark(oklch(0.92 0.035 31), oklch(0.31 0.045 31));
 	--accent-softer: light-dark(oklch(0.96 0.018 31), oklch(0.245 0.025 31));
+	--accent-action: light-dark(oklch(0.48 0.065 300), oklch(0.79 0.05 300));
 	--focus: light-dark(oklch(0.6 0.14 30), oklch(0.74 0.13 31));
 	--ring: var(--focus);
 	--destructive: light-dark(oklch(0.56 0.18 25), oklch(0.7 0.16 25));

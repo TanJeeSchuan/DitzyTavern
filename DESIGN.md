@@ -113,7 +113,7 @@ The brand mark (the wine and amber tavern sign in `public/favicon.svg`) keeps it
 
 Muted coral carries focus, selection, active authorship, and important actions. It should be calm enough for long sessions, with stronger values reserved for focus and primary action states.
 
-Quoted dialogue in story prose uses a muted teal. It is the only hue inside prose, is never character-derived, and stays clear of coral so it never reads as interactive.
+Quoted dialogue in story prose uses a muted teal, and italic actions outside quotes use a dusty violet (`--accent-action`). They are the only hues inside prose, are never character-derived, and stay clear of coral so they never read as interactive. Italics inside a quote are emphasis and keep the dialogue teal.
 
 Character-derived color is allowed only in the decorative ambient field. It must be low-saturation, nonsemantic, and isolated from text, controls, focus states, status colors, and the central story canvas.
 
