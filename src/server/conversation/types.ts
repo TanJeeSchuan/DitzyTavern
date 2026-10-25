@@ -404,12 +404,15 @@ export interface AcceptedSiblingGeneration {
 // Checkpointing is mutable execution state, not a Conversation edit. The
 // latest event position is monotonic so a delayed write cannot regress a
 // crash-recovery boundary.
+/** @approved Each stream's text since the previous checkpoint, and the stream length it starts at. */
 export interface CheckpointGenerationInput {
 	conversationId: number;
 	generationId: number;
-	content: string;
-	reasoning?: string | undefined;
-	latestEventId?: number | undefined;
+	contentOffset: number;
+	contentDelta: string;
+	reasoningOffset: number;
+	reasoningDelta: string;
+	latestEventId: number;
 	timestamp?: string | undefined;
 }
 

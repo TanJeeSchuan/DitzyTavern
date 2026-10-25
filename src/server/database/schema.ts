@@ -722,13 +722,6 @@ export const activeGenerationTable = sqliteTable(
 		captured_human_name: text().notNull().default(""),
 		captured_model_name: text().notNull(),
 		started_at: text().notNull(),
-		prompt_plan_json: text().notNull(),
-		// @approved
-		//  Budget diagnostics are active-only inspection data. Keeping this
-		// separate from the plan makes the lifecycle able to discard the
-		// complete prompt while retaining only compact Variant provenance.
-		prompt_inspection_json: text().notNull().default("{}"),
-	prompt_context_json: text().notNull(),
 		// @approved
 		//  Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
@@ -739,14 +732,6 @@ export const activeGenerationTable = sqliteTable(
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
-		// @approved
-		//  Mutable execution state. Checkpoints deliberately live on the active
-		// record rather than Conversation revision history: they are a bounded
-		// crash-recovery aid and never represent a new authored edit.
-		checkpoint_content: text().notNull().default(""),
-		checkpoint_reasoning: text().notNull().default(""),
-		checkpoint_event_id: int().notNull().default(0),
-		checkpointed_at: text(),
 		provenance_namespace: text(),
 		provenance_key: text(),
 		provenance_value: text(),
@@ -757,6 +742,52 @@ export const activeGenerationTable = sqliteTable(
 		macro_preset_id: int(),
 		macro_writes_json: text().notNull().default("[]"),
 		box_records_json: text().notNull().default("{}"),
+	},
+);
+
+// @approved
+//  The Active Generation's streamed output, one row per checkpoint holding
+// only the text since the previous one, so a checkpoint costs one page no
+// matter how long the reply is. Each row records where both streams end so a
+// delta that does not start where the last one ended is rejected instead of
+// silently corrupting the assembled text. The rows die with the Active
+// Generation; terminal resolution writes the whole text once. The migration
+// declares the table WITHOUT ROWID, which drizzle cannot express.
+export const generationCheckpointTable = sqliteTable(
+	"generation_checkpoint",
+	{
+		generation_id: int()
+			.notNull()
+			.references(() => activeGenerationTable.id, { onDelete: "cascade" }),
+		event_id: int().notNull(),
+		content_end: int().notNull(),
+		reasoning_end: int().notNull(),
+		content: text().notNull(),
+		reasoning: text().notNull(),
+		checkpointed_at: text().notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.generation_id, table.event_id] })],
+);
+
+// @approved
+//  The prompt a Generation was sent with (plan, budget inspection, and
+// writing context), zstd-compressed JSON written once at acceptance. Only
+// inspection reads it. It is keyed by the Generation id that the active row
+// and then its replay copy share, so neither ever rewrites it: the Variant
+// cascade removes it with a discarded target, and the replay deletions in
+// generation-retention.ts remove it with an expired inspection.
+export const generationCaptureTable = sqliteTable(
+	"generation_capture",
+	{
+		generation_id: int().primaryKey(),
+		variant_id: int()
+			.notNull()
+			.references(() => messageVariantTable.id, { onDelete: "cascade" }),
+		capture: blob({ mode: "buffer" }).notNull(),
+		// @approved
+		//  The capture's Image References, as text: the orphan sweep finds
+		// References in TEXT columns and cannot read the compressed capture.
+		image_references: text().notNull(),
 	},
 );
 
@@ -783,9 +814,6 @@ export const generationReplayTable = sqliteTable(
 		captured_human_name: text().notNull(),
 		captured_model_name: text().notNull(),
 		started_at: text().notNull(),
-		prompt_plan_json: text().notNull(),
-		prompt_inspection_json: text().notNull(),
-		prompt_context_json: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
 		box_traces_json: text().notNull().default("{}"),
 		generation_settings_json: text().notNull(),

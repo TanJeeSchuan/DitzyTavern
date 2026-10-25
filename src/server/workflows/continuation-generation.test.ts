@@ -1,5 +1,6 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import {
+	readActiveGenerationDetails,
 	stopConversationGeneration,
 	executeConversationCommand,
 	readVariantDetails,
@@ -73,10 +74,10 @@ describe("Continuation Generation", () => {
 		})).rejects.toThrow("terminal unavailable");
 		const after = readTestConversationSnapshot(module, conversationId);
 		expect(after?.activeGenerations).toHaveLength(1);
-		expect(after?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
 		database.exec("DROP TRIGGER fail_terminal");
 		const generationId = after?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Missing Generation.");
+		expect(readActiveGenerationDetails(module, conversationId, generationId)?.checkpoint.content).toBe("Keep the generated output.");
 		stopConversationGeneration(module, { conversationId, generationId });
 		expect(readTestConversationSnapshot(module, conversationId)?.activeGenerations).toHaveLength(0);
 		expect(readTestConversationSnapshot(module, conversationId)?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");

@@ -2,8 +2,8 @@ import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data
 import {
 	readConversationRevision,
 	removeConversationGeneration,
-	checkpointConversationGeneration,
 	resolveConversationGeneration,
+	checkpointUnstreamedOutcome,
 	acceptConversationTailGeneration,
 	acceptConversationContinuationGeneration,
 	acceptConversationSiblingGeneration,
@@ -63,12 +63,13 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	return runAcceptedGeneration(input, modelRequestFor(capture, input), {
 		remove: () => { removeConversationGeneration(database, { conversationId: input.conversationId, generationId: accepted.generationId }); },
 		resolve: (outcome) => {
-			checkpointConversationGeneration(database, { conversationId: input.conversationId, generationId: accepted.generationId, content: outcome.content, reasoning: outcome.reasoning });
+			checkpointUnstreamedOutcome(database, { conversationId: input.conversationId, generationId: accepted.generationId, content: outcome.content, reasoning: outcome.reasoning });
 			const resolved = resolveConversationGeneration(database, {
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
 				content: outcome.content,
+				reasoning: outcome.reasoning,
 				data: [
 					...(capture.facts.kind === "continuation" ? [toVariantDataEntry(variantDataCodecs.intent, variantDataCodecs.intent.encode(capture.facts.intent))] : []),
 					...generationOutcomeData(outcome),

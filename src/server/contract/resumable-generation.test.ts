@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import { readActiveGenerationDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -396,7 +396,7 @@ describe("Resumable generation transport", () => {
 			generationSettings: {},
 			connection: {},
 		});
-		checkpointConversationGeneration(database, {
+		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
 			content: "Recovered checkpoint.",

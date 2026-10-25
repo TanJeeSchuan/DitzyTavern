@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import type { ConversationAction } from "../conversation";
 import {
 	executeConversationCommand,
@@ -27,7 +27,7 @@ import {
 import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import { acceptConversationTailGeneration } from "../conversation";
-import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation";
+import { resolveConversationGeneration } from "../conversation";
 import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
 import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
@@ -480,7 +480,7 @@ describe("Image Reference lifetime", () => {
 		expect(orphanedAt(held.hash)).toBeNull();
 	});
 
-	test("a checkpointed Variant adopts References and releases them when checkpoint text changes", async () => {
+	test("a checkpointed Generation holds the References in its streamed output", async () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
@@ -488,12 +488,9 @@ describe("Image Reference lifetime", () => {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision, humanContent: "Hello",
 		});
-		checkpointConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token, latestEventId: 1 });
-		expect(orphanedAt(art.hash)).toBeNull();
-		expect(lastMessage(target).variants[0]?.content).toBe(art.token);
-		checkpointConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, content: "Plain", latestEventId: 2 });
 		expect(orphanedAt(art.hash)).toBeNumber();
-		expect(stored()).toEqual([art.hash]);
+		checkpointFromStart(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token });
+		expect(orphanedAt(art.hash)).toBeNull();
 	});
 
 	for (const owner of ["Character", "Participant"] as const) {

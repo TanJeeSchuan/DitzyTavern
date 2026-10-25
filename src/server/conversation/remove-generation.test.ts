@@ -1,7 +1,7 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import {
 	removeConversationGeneration,
-	checkpointConversationGeneration,
+	readActiveGenerationDetails,
 	readConversationRevision,
 	executeConversationCommand,
 } from "./index";
@@ -85,7 +85,7 @@ describe("canonical Conversation Generation removal", () => {
 	test("removal refuses a checkpointed target so cleanup cannot erase durable output", () => {
 		const input = setup();
 		const accepted = acceptSibling(input);
-		checkpointConversationGeneration(input.module, {
+		checkpointFromStart(input.module, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Keep this output.",
@@ -96,7 +96,7 @@ describe("canonical Conversation Generation removal", () => {
 		})).toThrow("A Generation with durable output must be resolved or stopped.");
 		const after = readTestConversationSnapshot(input.module, input.created.id);
 		expect(after?.activeGenerations).toHaveLength(1);
-		expect(after?.messages[0]?.variants.at(-1)?.content).toBe("Keep this output.");
+		expect(readActiveGenerationDetails(input.module, input.created.id, accepted.generationId)?.checkpoint.content).toBe("Keep this output.");
 	});
 
 	test("removing a Sibling Generation keeps its owning Message and every surviving Variant", () => {

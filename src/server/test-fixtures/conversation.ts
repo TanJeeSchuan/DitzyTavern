@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
+	checkpointConversationGeneration,
 	executeConversationCommand,
 	createConversation,
 	readConversationSummary,
@@ -126,3 +127,17 @@ export function insertBox(database: Database, conversationId: number, box: BoxId
 export function setBoxState(database: Database, conversationId: number, box: BoxId, state: BoxState): void {
 	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action: { type: "set-box-state", box, state } });
 }
+
+/** @approved A Generation's first checkpoint: both streams from their start. */
+export const checkpointFromStart = (
+	database: Database,
+	input: { conversationId: number; generationId: number; content: string; reasoning?: string; latestEventId?: number },
+): void => checkpointConversationGeneration(database, {
+	conversationId: input.conversationId,
+	generationId: input.generationId,
+	contentOffset: 0,
+	contentDelta: input.content,
+	reasoningOffset: 0,
+	reasoningDelta: input.reasoning ?? "",
+	latestEventId: input.latestEventId ?? 1,
+});

@@ -211,6 +211,13 @@
       "when": 1792510902679,
       "tag": "0029_request_override_namespaces",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1792917536874,
+      "tag": "0030_generation_checkpoint_deltas",
+      "breakpoints": true
     }
   ]
 }

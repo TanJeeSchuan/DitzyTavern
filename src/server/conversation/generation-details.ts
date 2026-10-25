@@ -11,6 +11,7 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
+	generationCaptureTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantTable,
@@ -22,6 +23,9 @@ import {
 	readActiveCast,
 	type ConversationDatabase,
 } from "./internal";
+import { checkpointColumns, selectActiveGenerations } from "./generation-checkpoint";
+import { decodeGenerationCapture } from "./generation-capture";
+import { removeRetainedGenerationInspection } from "./generation-retention";
 import {
 	toAuthorStamp,
 	toHistoricalContext,
@@ -143,12 +147,11 @@ const deriveGenerationStatus = (
 			? terminalStatus
 			: "complete";
 
-const persistedPromptPlan = (value: string): PromptPlan => {
-	const parsed = parseGenerationJson(value, null);
-	if (!Value.Check(promptPlan, parsed)) {
+const persistedPromptPlan = (value: ConversationJsonValue): PromptPlan => {
+	if (!Value.Check(promptPlan, value)) {
 		throw new Error("Persisted generation prompt plan is invalid.");
 	}
-	return parsed;
+	return value;
 };
 
 export function readActiveGenerationDetails(
@@ -168,7 +171,7 @@ export function readActiveGenerationDetailsFromConnection(
 	conversationId: number,
 	generationId: number,
 ): ActiveGenerationDetails | undefined {
-	const active = db.select().from(activeGenerationTable).where(and(
+	const active = selectActiveGenerations(db).where(and(
 		eq(activeGenerationTable.id, generationId),
 		eq(activeGenerationTable.conversation_id, conversationId),
 	)).get();
@@ -179,9 +182,7 @@ export function readActiveGenerationDetailsFromConnection(
 		)).get()
 		: undefined;
 	if (retained !== undefined && retained.expires_at <= new Date().toISOString()) {
-		db.delete(generationReplayTable)
-			.where(eq(generationReplayTable.id, retained.id))
-			.run();
+		removeRetainedGenerationInspection(db.$client, retained.id);
 		return undefined;
 	}
 	const row = active ?? retained;
@@ -191,7 +192,11 @@ export function readActiveGenerationDetailsFromConnection(
 		? row.captured_human_name
 		: db.select({ name: participantTable.name }).from(participantTable)
 			.where(eq(participantTable.id, row.human_participant_id)).get()?.name ?? "";
-	const inspection = parseGenerationJson(row.prompt_inspection_json, {});
+	const captured = db.select({ capture: generationCaptureTable.capture }).from(generationCaptureTable)
+		.where(eq(generationCaptureTable.generation_id, row.id)).get();
+	if (captured === undefined) throw new Error(`Generation ${row.id} has no persisted capture.`);
+	const capture = decodeGenerationCapture(captured.capture);
+	const inspection = capture.promptInspection;
 	const inspectionRecord = generationJsonObject(inspection);
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
@@ -208,8 +213,8 @@ export function readActiveGenerationDetailsFromConnection(
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
-		promptPlan: persistedPromptPlan(row.prompt_plan_json),
-		promptContext: parseGenerationJson(row.prompt_context_json, []),
+		promptPlan: persistedPromptPlan(capture.promptPlan),
+		promptContext: capture.promptContext,
 		loreActivation,
 		boxTraces: variantDataCodecs.boxTraces.decode(row.box_traces_json),
 		generationSettings: settings,
@@ -284,7 +289,7 @@ export function readActiveGenerationsForRecovery(database: Database) {
  return connectConversationDatabase(database).select({
   id: activeGenerationTable.id,
   conversationId: activeGenerationTable.conversation_id,
-  checkpointContent: activeGenerationTable.checkpoint_content,
-  checkpointReasoning: activeGenerationTable.checkpoint_reasoning,
+  checkpointContent: checkpointColumns.checkpoint_content,
+  checkpointReasoning: checkpointColumns.checkpoint_reasoning,
  }).from(activeGenerationTable).all();
 }

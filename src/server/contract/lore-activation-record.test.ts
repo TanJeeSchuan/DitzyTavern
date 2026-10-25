@@ -1,10 +1,9 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import {
 	acceptConversationTailGeneration,
 	resolveConversationGeneration,
 	readVariantDetails,
 	executeConversationCommand,
-	checkpointConversationGeneration,
 	stopConversationGeneration,
 } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -198,7 +197,7 @@ describe("permanent Lore Activation Records", () => {
 			connection: null,
 			loreActivation: evidence,
 		});
-		checkpointConversationGeneration(module, {
+		checkpointFromStart(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
 			content: "The tower appeared.",
