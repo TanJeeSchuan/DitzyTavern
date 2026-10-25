@@ -1,9 +1,15 @@
 # AGENTS.md
 Follow YAGNI principles, and prefer one-liner solutions.
 
+Read `CODING_STANDARDS.md` before writing or reviewing code.
+
+Box work (`src/boxes`, `src/box-sdk`, `src/server/box`, `src/client/box-windows`): read `docs/box-system/README.md` first.
+
 There is `playwright-cli` installed
 
-For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS (component/snapshot tests for UI tweaks; user-flow e2e below is fine)
+For UI work, follow DESIGN.md. UI tweaks get no component or snapshot tests; the user-flow e2e below is fine.
+
+When the user asks for rapid UI iteration, keep the playwright-cli session running so screenshots stay fast.
 
 ## E2E
 - `bun run test:e2e` runs Playwright (`e2e/*.spec.ts` for core flows; `src/boxes/<id>/*.spec.ts` for Box flows) against `e2e/server.ts`: one Bun server per worker, a fresh seeded SQLite database per test, Memory models unconfigured by default.
@@ -11,25 +17,11 @@ For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS (component/snapshot
 - After each test the fixture also fails if any captured Prompt Plan (from generation inspection) doesn't match a request the fake actually received. `llm.restart("crash" | "graceful")` relaunches the server on the same database; graceful shutdown uses an HTTP command because Windows signals force-kill the process.
 - `llm.installBox(id)` copies `e2e/fixtures/boxes/<id>/`, built by the global setup with `box:build`, into the worker's plugin folder; a `llm.restart` loads it, and the next test's reset empties the folder.
 
-When user asks for UI iterration / rapid iterration, keep the playwright-cli session running to keep the screenshots fast
-
-Use Radix / Shadcn components when possible, handroll as last resort
-
-Do not preserve backward compatibility. Remove obsolete paths. Do not create compatibility layers, fallbacks, or mitigations.
-
-Exhaustive declarations should encode information. An exhaustive object whose values are all identical and that has no consumer is just a compiler-enforced attendance sheet. That is usually worth removing.
-
-a structural proposal must identify the machinery removed, machinery introduced, and behavior changed. Pass previous rejected approaches into subsequent reviews. **“I can imagine another architecture” is too cheap an approval blocker.**
-
-## Code Standards
-- Tautological tests considered harmful.
-- During refactors, tests for **architectural** regressions are not needed, e.g. a set of hand-writen identical declarations being unified into a single declaration doesn't need a test to detect if it regressed into it's initial state
-
 ## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
 - Remember to edit the tickets to tick the TODOs on the way and update statuses during implementing
 
-## Database persistance
-- Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
+## Database persistence
+- Clearing database tables is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to migrate manually
 
 ## Database seeding and teardown
 - `bun run db:seed` inserts test data. It is idempotent: it skips when the `character` table already contains rows.

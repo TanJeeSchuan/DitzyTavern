@@ -320,7 +320,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
 		if (value.startsWith("{")) expect((await result)["box:lantern"]?.[field]).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
-		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected union value.`);
+		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected kind 'GenerationJsonValue'.`);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -349,7 +349,7 @@ for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested
 		if (value.startsWith("{")) expect(JSON.parse(stored.value).automatic).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
 		else {
 			expect(JSON.parse(stored.value).automatic).toBeUndefined();
-			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected union value.");
+			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected kind 'GenerationJsonValue'.");
 		}
 	} finally {
 		await stop?.();
