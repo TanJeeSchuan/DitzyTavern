@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 COPY . .
 ARG DISTRIBUTION=custom
 ARG BUILD_NUMBER
@@ -12,7 +12,7 @@ RUN bun run build
 FROM oven/bun:1.4.4 AS dependencies
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production --ignore-scripts
 
 FROM oven/bun:1.4.4 AS runtime
 ARG DISTRIBUTION=custom
