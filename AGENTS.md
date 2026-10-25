@@ -7,6 +7,8 @@ Box work (`src/boxes`, `src/box-sdk`, `src/server/box`, `src/client/box-windows`
 
 There is `playwright-cli` installed
 
+When you finish with the dev or e2e servers, free ports 3000 and 5173 with `bun run dev:stop`.
+
 For UI work, follow DESIGN.md. UI tweaks get no component or snapshot tests; the user-flow e2e below is fine.
 
 When the user asks for rapid UI iteration, keep the playwright-cli session running so screenshots stay fast.

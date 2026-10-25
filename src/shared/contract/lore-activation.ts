@@ -1,7 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { GenerationJsonValue } from "../generation-json";
-import { generationJsonValue } from "./json-value";
+import { generationJsonValue, type GenerationJsonValue } from "./json-value";
 
 export const loreActivationRecord = Type.Object({
 	version: Type.Literal(1),
