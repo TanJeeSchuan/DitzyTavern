@@ -56,6 +56,11 @@ const reclaimDeadPages = (database: Database): void => {
 	const freePages = database.query<{ freelist_count: number }, []>("PRAGMA freelist_count").get()?.freelist_count ?? 0;
 	if (pageSize * freePages < DEAD_PAGE_BYTES) return;
 	database.exec("VACUUM");
+	// @approved
+	//  VACUUM writes its output through the WAL, which keeps that high-water
+	//  mark until the process exits, so the reclaim would otherwise just move the
+	//  bytes from the database file into the write-ahead log.
+	database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
 };
 
 export function initializeDatabase(

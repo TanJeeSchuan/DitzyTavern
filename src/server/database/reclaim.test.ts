@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "./database";
+
+/** Everything the database occupies on disk, database file and write-ahead log together. */
+const diskBytes = async (path: string): Promise<number> =>
+	(await stat(path).catch(() => ({ size: 0 }))).size + (await stat(`${path}-wal`).catch(() => ({ size: 0 }))).size;
 
 const pageSize = (database: ReturnType<typeof openInitializedDatabase>): number =>
 	database.query<{ page_size: number }, []>("PRAGMA page_size").get()?.page_size ?? 0;
@@ -25,11 +29,13 @@ test("reclaims the dead pages a previous open left behind, and only those", asyn
 		const pagesBefore = pageCount(seeded);
 		expect(deadPages * pageSize(seeded)).toBeGreaterThanOrEqual(32 * 1024 * 1024);
 		seeded.close();
+		const bytesBefore = await diskBytes(path);
 
 		const reclaimed = openInitializedDatabase({ path });
 		expect(freePages(reclaimed)).toBe(0);
 		expect(pageCount(reclaimed)).toBeLessThan(pagesBefore);
 		expect(pageCount(reclaimed)).toBeGreaterThan(0);
+		expect(await diskBytes(path)).toBeLessThan(bytesBefore * 0.6);
 		reclaimed.exec("INSERT INTO churn (payload) VALUES (zeroblob(4096))");
 		reclaimed.exec("DELETE FROM churn");
 		const pagesWithSmallDebt = pageCount(reclaimed);
