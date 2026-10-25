@@ -52,8 +52,9 @@ test("a crash before any checkpoint removes the provisional reply but keeps the 
 
 for (const mode of ["graceful", "crash"] as const) {
 	test(`an open page settles an interrupted Generation once the server is back after ${mode} restart`, async ({ page, llm }) => {
-		await llm.checkpointClock(0);
-		// Eight content events checkpoint the paragraphs; the ninth leaves an uncheckpointed fragment.
+		// The eighth content event crosses the one-second deadline, so the paragraphs before it are
+		// the durable checkpoint and the ninth leaves an uncheckpointed fragment.
+		await llm.checkpointClock(0, 0, 0, 0, 0, 0, 0, 0, 1_100);
 		await llm.chat({ chunks: ["The tide ", "turns ", "against ", "the pier.\n\n", "Gulls ", "scatter ", "from ", "the rail.\n\n", "Then the"], hold: true });
 		await page.goto("/");
 		await send(page, "Wait.");

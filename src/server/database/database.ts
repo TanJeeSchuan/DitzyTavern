@@ -11,6 +11,23 @@ export interface OpenDatabaseOptions {
 const defaultDatabasePath = join(process.cwd(), "data", "ditzytavern.sqlite");
 const defaultMigrationsDirectory = join(import.meta.dir, "migrations");
 
+/** @approved Dead space below this floor never pays for the full-file rewrite VACUUM performs. */
+const DEAD_PAGE_BYTES = 32 * 1024 * 1024;
+
+// @approved
+//  One connection profile for every database this process opens. WAL with
+//  synchronous=NORMAL keeps commits crash-safe without an fsync each, and a
+//  64 MiB page cache covers the live set of a Chat database whose scattered
+//  free pages would otherwise be re-read on every transaction.
+const configureConnection = (database: Database): void => {
+	database.exec("PRAGMA foreign_keys = ON");
+	database.exec("PRAGMA busy_timeout = 5000");
+	database.exec("PRAGMA synchronous = NORMAL");
+	database.exec("PRAGMA cache_size = -65536");
+	database.exec("PRAGMA mmap_size = 268435456");
+	database.exec("PRAGMA temp_store = MEMORY");
+};
+
 export function openDatabase(options: OpenDatabaseOptions = {}): Database {
 	const path = options.path ?? defaultDatabasePath;
 
@@ -21,8 +38,7 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Database {
 	const database = new Database(path, { create: true });
 
 	try {
-		database.exec("PRAGMA foreign_keys = ON");
-		database.exec("PRAGMA busy_timeout = 5000");
+		configureConnection(database);
 		return database;
 	} catch (error) {
 		database.close();
@@ -30,12 +46,25 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Database {
 	}
 }
 
+// @approved
+//  A migration that drops a table or a column leaves its pages on the
+//  freelist, and nothing else ever shrinks the file, so a schema change used to
+//  leave half of it dead space. Reclaim it once, while the process is still
+//  starting and owns the only connection.
+const reclaimDeadPages = (database: Database): void => {
+	const pageSize = database.query<{ page_size: number }, []>("PRAGMA page_size").get()?.page_size ?? 0;
+	const freePages = database.query<{ freelist_count: number }, []>("PRAGMA freelist_count").get()?.freelist_count ?? 0;
+	if (pageSize * freePages < DEAD_PAGE_BYTES) return;
+	database.exec("VACUUM");
+};
+
 export function initializeDatabase(
 	database: Database,
 	migrationsDirectory = defaultMigrationsDirectory,
 ): void {
 	database.exec("PRAGMA journal_mode = WAL");
 	migrate(drizzle(database), { migrationsFolder: migrationsDirectory });
+	reclaimDeadPages(database);
 }
 
 // @approved
@@ -56,7 +85,7 @@ export function openInitializedDatabase(
 			template.close();
 		}
 		const database = Database.deserialize(image);
-		database.exec("PRAGMA foreign_keys = ON");
+		configureConnection(database);
 		return database;
 	}
 	const database = openDatabase(options);

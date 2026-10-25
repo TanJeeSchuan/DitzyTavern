@@ -39,7 +39,12 @@ export interface GenerationRuntimeSubscription {
 }
 
 export interface GenerationCheckpointOptions {
-	/** @approved Checkpoint after this many visible deltas (the normal bounded cadence). */
+	/**
+	 * @approved Checkpoint after this many visible deltas (the normal bounded
+	 * cadence). Every checkpoint rewrites the whole accumulated stream, so the
+	 * count prices a reply in full-text rewrites: 64 keeps a 4,000-token reply at
+	 * 62 of them instead of 500, and `intervalMs` bounds crash loss either way.
+	 */
 	readonly eventInterval?: number;
 	/** @approved Also checkpoint when this amount of time elapsed between visible deltas. */
 	readonly intervalMs?: number;
@@ -209,7 +214,7 @@ export class GenerationRuntime {
 		this.onCheckpoint = input.onCheckpoint;
 		this.onStop = input.onStop;
 		this.onRetentionExpired = input.onRetentionExpired;
-		this.checkpointEventInterval = Math.max(1, Math.floor(input.checkpoint?.eventInterval ?? 8));
+		this.checkpointEventInterval = Math.max(1, Math.floor(input.checkpoint?.eventInterval ?? 64));
 		this.checkpointIntervalMs = Math.max(0, input.checkpoint?.intervalMs ?? 1_000);
 		this.checkpointNow = input.checkpoint?.now ?? Date.now;
 		this.lastCheckpointAt = this.checkpointNow();
