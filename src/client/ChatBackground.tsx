@@ -17,9 +17,12 @@ export function BackgroundImage({ hash, className, label }: { hash: string; clas
 		if (canvas === null) return;
 		const image = new Image();
 		image.onload = () => {
-			canvas.width = image.naturalWidth;
-			canvas.height = image.naturalHeight;
-			canvas.getContext("2d")?.drawImage(image, 0, 0);
+			// @approved
+			// Drawn at the size it covers, so a large photo does not hold a full-resolution bitmap.
+			const scale = Math.min(1, devicePixelRatio * Math.max(canvas.clientWidth / image.naturalWidth, canvas.clientHeight / image.naturalHeight));
+			canvas.width = Math.round(image.naturalWidth * scale);
+			canvas.height = Math.round(image.naturalHeight * scale);
+			canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
 		};
 		image.src = imageSrc(hash);
 	}, [hash]);
