@@ -144,6 +144,46 @@ describe("Generation runtime", () => {
 		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
 	});
 
+	test("the default cadence checkpoints a long stream once per 64 deltas, not per delta", () => {
+		const checkpoints: number[] = [];
+		let now = 0;
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 15,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { now: () => now },
+			onCheckpoint: ({ latestEventId }) => checkpoints.push(latestEventId),
+		});
+		for (let index = 1; index <= 4000; index += 1) {
+			now += 10;
+			runtime.publish({ type: "content", text: "x" });
+		}
+		expect(checkpoints.length).toBe(62);
+		expect(checkpoints.at(-1)).toBe(3968);
+	});
+
+	test("a slow stream checkpoints on the interval instead, so at most one second stays unpersisted", () => {
+		const checkpoints: number[] = [];
+		let now = 0;
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 16,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { now: () => now },
+			onCheckpoint: ({ latestEventId }) => checkpoints.push(latestEventId),
+		});
+		for (let index = 1; index <= 400; index += 1) {
+			now += 200;
+			runtime.publish({ type: "content", text: "x" });
+		}
+		expect(checkpoints.length).toBeLessThanOrEqual(81);
+		expect(400 - (checkpoints.at(-1) ?? 0)).toBeLessThanOrEqual(5);
+	});
+
 	test("expires terminal replay state while the process is idle", () => {
 		let now = Date.now();
 		let expired = 0;
