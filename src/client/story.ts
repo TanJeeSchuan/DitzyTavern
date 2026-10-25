@@ -559,12 +559,12 @@ const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number
 export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
 	const moves = state.requestedMoves.get(message.id);
 	const shown = moves === undefined ? message : { ...message, moves };
-	if (!requestsSibling(state, message.id)) return shown;
+	if (!hasRequestedSwipe(state, message.id)) return shown;
 	const requested = { id: -1, position: message.swipes.length + 1, content: "", empty: true };
 	return { ...shown, activeSwipe: message.swipes.length, swipes: [...message.swipes, requested] };
 };
 
-export const requestsSibling = (state: StoryState, messageId: number): boolean =>
+export const hasRequestedSwipe = (state: StoryState, messageId: number): boolean =>
 	state.requestedGeneration?.request.kind === "sibling" && state.requestedGeneration.request.messageId === messageId;
 
 // @approved

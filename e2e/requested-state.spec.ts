@@ -31,6 +31,22 @@ const appendModelMessage = async (request: APIRequestContext, variantContents: s
 	expect(response.ok()).toBe(true);
 };
 
+const swipePastLast = async (page: Page, llm: E2eServer) => {
+	await llm.chat({ chunks: ["First take."] }, { chunks: ["Second take."] });
+	await page.goto("/");
+	await sendDirect(page, "Again.");
+	const reply = story(page).locator("article[data-message-id]").last();
+	await expect(reply.getByText("First take.")).toBeVisible();
+	await expect(page.getByRole("button", { name: "Generate Variant" })).toBeVisible();
+	const accepting = holdPost(page, "**/sibling/generations");
+	await reply.getByRole("button", { name: "New Swipe" }).click();
+	const route = await accepting;
+	await expect(reply.getByText("2 of 2")).toBeVisible();
+	await expect(reply.getByText("First take.")).toHaveCount(0);
+	await expect(reply.getByRole("status", { name: /is writing/ })).toBeVisible();
+	return { reply, route };
+};
+
 test("a Send shows the Message and its reply in progress before the server accepts it", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["The lamp flickers twice."] });
 	await page.goto("/");
@@ -85,6 +101,14 @@ test.describe(() => {
 		await expect(staged.getByRole("listitem")).toHaveText(["To Theodora Kline: u up?"]);
 		await expect(composer).toContainText("I wait.");
 	});
+
+	test("a swipe the server never accepts returns to the Variant it was swiped from", async ({ page, llm }) => {
+		const { reply, route } = await swipePastLast(page, llm);
+		await route.abort();
+		await expect(page.getByText("Generation could not be started.", { exact: true })).toBeVisible();
+		await expect(reply.getByText("First take.")).toBeVisible();
+		await expect(reply.getByText("1 of 1")).toBeVisible();
+	});
 });
 
 test("a second Move removal builds on the first while the first is still unanswered", async ({ page, llm }) => {
@@ -133,37 +157,9 @@ test("a Swipe on the final Message shows its Variant before the server applies i
 	await expect(story(page).locator("article[data-message-id]").last().getByText("Second take.")).toBeVisible();
 });
 
-const swipePastLast = async (page: Page, llm: E2eServer) => {
-	await llm.chat({ chunks: ["First take."] }, { chunks: ["Second take."] });
-	await page.goto("/");
-	await sendDirect(page, "Again.");
-	const reply = story(page).locator("article[data-message-id]").last();
-	await expect(reply.getByText("First take.")).toBeVisible();
-	await expect(page.getByRole("button", { name: "Generate Variant" })).toBeVisible();
-	const accepting = holdPost(page, "**/sibling/generations");
-	await reply.getByRole("button", { name: "New Swipe" }).click();
-	const route = await accepting;
-	await expect(reply.getByText("2 of 2")).toBeVisible();
-	await expect(reply.getByText("First take.")).toHaveCount(0);
-	await expect(reply.getByRole("status", { name: /is writing/ })).toBeVisible();
-	return { reply, route };
-};
-
 test("swiping past the last Variant shows the new Variant in progress before the server accepts it", async ({ page, llm }) => {
 	const { reply, route } = await swipePastLast(page, llm);
 	await route.continue();
 	await expect(reply.getByText("Second take.")).toBeVisible();
 	await expect(reply.getByText("2 of 2")).toBeVisible();
-});
-
-test.describe(() => {
-	test.use({ allowedBrowserErrors: /ERR_FAILED/ });
-
-	test("a swipe the server never accepts returns to the Variant it was swiped from", async ({ page, llm }) => {
-		const { reply, route } = await swipePastLast(page, llm);
-		await route.abort();
-		await expect(page.getByText("Generation could not be started.", { exact: true })).toBeVisible();
-		await expect(reply.getByText("First take.")).toBeVisible();
-		await expect(reply.getByText("1 of 1")).toBeVisible();
-	});
 });

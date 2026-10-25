@@ -166,7 +166,7 @@ A Send the writer has submitted that the server has not yet accepted, shown as t
 _Avoid_: optimistic message, pending message, unsent message
 
 **Requested Swipe**:
-A New Swipe the writer has started that the server has not yet accepted, shown as an empty Variant in progress at the end of its Message. If the server does not accept it, the Message returns to the Variant it showed before.
+A Sibling Generation the writer has started that the server has not yet accepted, shown as an empty Variant in progress at the end of its Message. If the server does not accept it, the Message returns to the Variant it showed before.
 _Avoid_: optimistic Variant, pending Variant, placeholder Variant
 
 **Confirm Change**:

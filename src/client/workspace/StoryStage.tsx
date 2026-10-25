@@ -11,7 +11,7 @@ import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
-	requestsSibling,
+	hasRequestedSwipe,
 	reusesTrailingHumanMessage,
 	shownMessage,
 	type StoryAction,
@@ -152,19 +152,19 @@ export function StoryStage({
 						</div>
 					)}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
-					{story.messages.map((persisted) => shownMessage(story, persisted)).map((message) => (
+					{story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
 						<StoryMessageView
 							key={message.id}
 							message={message}
 							lens={lens}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
-							generationActive={requestsSibling(story, message.id) || generation.activeGenerationTargets.some((target) =>
+							generationActive={swiping || generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
 								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
 							)}
 							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
-							mutationsDisabled={story.preview !== null || requestsSibling(story, message.id)}
+							mutationsDisabled={story.preview !== null || swiping}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={
@@ -195,7 +195,7 @@ export function StoryStage({
 								: undefined}
 							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-							onInspect={onInspectVariant}
+							onInspect={swiping ? undefined : onInspectVariant}
 							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
