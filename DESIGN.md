@@ -192,7 +192,7 @@ The central story canvas, floating composer, and panels remain opaque and readab
 
 A writer may give a Chat one background image, static or an animated GIF, chosen and removed in Chat information. It is the one exception to keeping pictures out from under prose, because the writer chose it:
 
-- It fills the story canvas below the header, cropped to cover, at 14% opacity and 60% saturation over the canvas surface, so prose, quoted dialogue, and controls keep their contrast in both themes. The header and composer stay opaque above it.
+- It fills the story canvas below the header, cropped to cover, at 12% opacity over the canvas surface, with no CSS filter (a filter re-runs on every frame of an animated background), so prose, quoted dialogue, and controls keep their contrast in both themes. The header and composer stay opaque above it.
 - With reduced motion, a GIF shows its first frame.
 - It is never character-derived and never recolors semantic UI.
 
