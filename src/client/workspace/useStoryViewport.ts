@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { StoryMessage } from "../story";
 
+export type AtLatest = { get: () => boolean; subscribe: (listener: () => void) => () => void };
+
 type StoryViewportOptions = {
 	messages: readonly StoryMessage[];
 	conversationId: number | null;
@@ -27,14 +29,32 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	const detachedRef = useRef(hasNewer);
 	detachedRef.current = hasNewer;
 	if (hasNewer) followingRef.current = false;
-	const [isAtLatest, setIsAtLatest] = useState(true);
+	// @approved
+	// A store rather than state: crossing the bottom while scrolling re-renders
+	// only the composer that recedes, not every Message on the stage.
+	const [atLatest] = useState(() => {
+		let value = !hasNewer;
+		const listeners = new Set<() => void>();
+		return {
+			get: () => value,
+			set: (next: boolean) => {
+				if (next === value) return;
+				value = next;
+				for (const listener of listeners) listener();
+			},
+			subscribe: (listener: () => void) => {
+				listeners.add(listener);
+				return () => void listeners.delete(listener);
+			},
+		};
+	});
 	const lastScrollTopRef = useRef(0);
 	const anchoredRef = useRef<{ firstId: number; lastId: number; scrollHeight: number } | null>(null);
 	const swipeScrollTargetRef = useRef<number | null>(null);
 
 	const follow = (following: boolean) => {
 		followingRef.current = following && !hasNewer;
-		setIsAtLatest(following && !hasNewer);
+		atLatest.set(following && !hasNewer);
 	};
 
 	// @approved
@@ -46,6 +66,10 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		else if (root.scrollTop < lastScrollTopRef.current - 1) follow(false);
 		lastScrollTopRef.current = root.scrollTop;
 	};
+
+	useLayoutEffect(() => {
+		if (hasNewer) atLatest.set(false);
+	}, [atLatest, hasNewer]);
 
 	useEffect(() => {
 		const root = storyScrollRef.current;
@@ -102,7 +126,7 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	return {
 		storyScrollRef,
 		onStoryScroll,
-		isAtLatest: isAtLatest && !hasNewer,
+		atLatest,
 		queueSwipeScroll,
 		followLatest,
 	};

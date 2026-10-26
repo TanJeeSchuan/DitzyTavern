@@ -1,6 +1,6 @@
 import { isStoryReady } from "../story";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
-import { useState, type Dispatch } from "react";
+import type { Dispatch } from "react";
 import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
@@ -98,9 +98,7 @@ export function StoryStage({
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
 	});
-	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const onLayerFocus = useLayerFocus(inert);
-	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
@@ -271,9 +269,8 @@ export function StoryStage({
 					onMovesChange={generation.setMoves}
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
-					isReceded={composerIsReceded}
+					atLatest={viewport.atLatest}
 					onDraftChange={generation.setDraft}
-					onFocusChange={setIsComposerFocused}
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
