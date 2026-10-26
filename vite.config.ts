@@ -71,7 +71,7 @@ export default defineConfig({
 		allowedHosts: ["tan-server.taild926e3.ts.net"],
 		port: 5173,
 		proxy: {
-			"/api": "http://127.0.0.1:3000",
+			"/api": `http://127.0.0.1:${process.env.PORT ?? 3000}`,
 		},
 	},
 	build: {

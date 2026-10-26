@@ -9,7 +9,7 @@ initializeConnectionSecretKey();
 const database = openInitializedDatabase();
 await loadBoxes(boxFolders, database);
 const { app, close } = await createApp({ database });
-app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: 3000 });
+app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: Number(process.env.PORT ?? 3000) });
 
 const shutdown = () => {
 	process.off("SIGINT", shutdown);
