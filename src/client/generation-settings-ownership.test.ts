@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes,
+	boxSetups, boxes, background: null,
 	id: 1,
 	name: "Seaside Letters",
 	revision,

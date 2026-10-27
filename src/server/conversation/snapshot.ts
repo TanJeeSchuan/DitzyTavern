@@ -289,6 +289,7 @@ export function readConversationSummaryFromConnection(
 		boxes: readBoxStates(db, conversationId),
 		name: conversation.name,
 		revision: conversation.revision,
+		background: conversation.background_hash,
 		cast: cast.map((participant) => ({
 			...participant,
 			duplicateLabel: labelsById.get(participant.id) ?? participant.name,

@@ -271,6 +271,7 @@ export const conversationTable = sqliteTable("conversation", {
 	creation_time: text().notNull(),
 	last_message_time: text().notNull(),
 	revision: int().notNull().default(0),
+	background_hash: text(),
 });
 
 // @approved

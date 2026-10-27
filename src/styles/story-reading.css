@@ -38,3 +38,14 @@
 	line-height: 1.65;
 }
 
+/* Under the stage's stacking context: above its opaque surface, below everything it holds. */
+.story-background {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	opacity: 0.12;
+	pointer-events: none;
+}
