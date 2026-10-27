@@ -30,7 +30,7 @@ export function SwipeBrowser({ mode, returnFocus, onClose, ...browse }: Browse &
 					aria-describedby={undefined}
 					onCloseAutoFocus={(event) => {
 						event.preventDefault();
-						returnFocus.current?.focus();
+						returnFocus.current?.focus({ preventScroll: true });
 					}}
 				>
 					{mode === "fan" ? <>

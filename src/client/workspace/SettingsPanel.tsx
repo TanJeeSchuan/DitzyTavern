@@ -39,7 +39,7 @@ export function SettingsPanel({
 			</section>
 			<section className="settings-section">
 				<h3>Swipes</h3>
-				<p>Choose how a Message's Swipes open from their counter or a long press.</p>
+				<p>Choose how a Message's Swipes open from their counter.</p>
 				<SegmentedControl value={swipeBrowsing} onValueChange={onSwipeBrowsingChange} label="Swipes" options={[
 					{ value: "fan", label: <><GalleryHorizontal aria-hidden="true" />Fan</> },
 					{ value: "modal", label: <><List aria-hidden="true" />Modal</> },

@@ -113,3 +113,24 @@ test.describe("touch", () => {
 		await expect(reply.getByText("1 of 3")).toBeVisible();
 	});
 });
+
+test("selecting a Swipe taller than the screen keeps its start in view", async ({ page, llm }) => {
+	const long = Array.from({ length: 40 }, (_, line) => `Long take, line ${line}.`).join("\n\n");
+	await llm.chat({ chunks: [long] }, { chunks: ["Short take."] });
+	await page.goto("/");
+	await send(page, "Again.");
+	const reply = story(page).locator("article").last();
+	await expect(reply.getByText("Long take, line 39.")).toBeVisible();
+	await reply.getByLabel("New Swipe").click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(reply.getByText("Short take.")).toBeVisible();
+
+	await reply.getByRole("button", { name: "2 of 2, browse Swipes" }).click();
+	await page.keyboard.press("ArrowLeft");
+	await page.keyboard.press("Enter");
+	await expect(page.getByRole("dialog", { name: "Swipes" })).toBeHidden();
+	await expect(reply.getByRole("button", { name: "1 of 2, browse Swipes" })).toBeFocused();
+	// Focus returns to the counter at the foot of the long Swipe; it must not scroll the reader there.
+	await page.waitForTimeout(300);
+	await expect(reply.getByText("Long take, line 0.")).toBeInViewport();
+});
