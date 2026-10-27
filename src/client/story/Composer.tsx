@@ -1,8 +1,9 @@
 import { PenLine, Send, Square } from "lucide-react";
-import { useRef, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
+import type { AtLatest } from "../workspace/useStoryViewport";
 
 export function Composer({
 	draft,
@@ -10,10 +11,9 @@ export function Composer({
 	onMovesChange,
 	isGenerating,
 	canWrite,
-	isReceded,
+	atLatest,
 	controlSelectors,
 	onDraftChange,
-	onFocusChange,
 	onSubmit,
 	onCancel,
 	stopPending = false,
@@ -24,16 +24,21 @@ export function Composer({
 	onMovesChange: (moves: BoxMoves) => void;
 	isGenerating: boolean;
 	canWrite: boolean;
-	isReceded: boolean;
+	atLatest: AtLatest;
 	controlSelectors?: ReactNode;
 	onDraftChange: (value: string) => void;
-	onFocusChange: (focused: boolean) => void;
 	onSubmit: (event: FormEvent) => void;
 	onCancel?: () => void;
 	stopPending?: boolean;
 	writerName?: string;
 }) {
 	const editorRef = useRef<ProseEditorHandle>(null);
+	const formRef = useRef<HTMLFormElement>(null);
+	const [focused, setFocused] = useState(false);
+	// @approved
+	// Disabling or swapping the focused control drops focus without a blur event, so read focus again when they change.
+	useEffect(() => setFocused(formRef.current?.contains(document.activeElement) ?? false), [isGenerating, canWrite, stopPending]);
+	const isReceded = !useSyncExternalStore(atLatest.subscribe, atLatest.get) && !focused && !isGenerating;
 
 	return (
 		<>
@@ -44,7 +49,7 @@ export function Composer({
 			tabIndex={isReceded ? 0 : -1}
 			aria-hidden={!isReceded}
 			onClick={() => {
-				onFocusChange(true);
+				setFocused(true);
 				requestAnimationFrame(() => editorRef.current?.focus());
 			}}
 		>
@@ -53,14 +58,15 @@ export function Composer({
 			{writerName !== undefined && <small>as {writerName}</small>}
 		</button>
 		<form
+			ref={formRef}
 			className="composer"
 			data-disabled={!canWrite}
 			data-receded={isReceded}
 			onSubmit={onSubmit}
-			onFocus={() => onFocusChange(true)}
+			onFocus={() => setFocused(true)}
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget)) {
-					onFocusChange(false);
+					setFocused(false);
 				}
 			}}
 		>
