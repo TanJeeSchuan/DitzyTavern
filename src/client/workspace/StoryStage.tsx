@@ -4,6 +4,7 @@ import { useState, type Dispatch } from "react";
 import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
+import type { SwipeBrowsing } from "../workspace";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
 import type { BoxWindowsController } from "../box-windows/useBoxWindows";
@@ -47,6 +48,7 @@ export function StoryStage({
 	generation,
 	preview,
 	boxWindows,
+	swipeBrowsing,
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
@@ -64,6 +66,7 @@ export function StoryStage({
 	assemblyActive: boolean;
 	inert: boolean;
 	boxWindows: BoxWindowsController;
+	swipeBrowsing: SwipeBrowsing;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
 	preview: ReturnType<typeof usePreviewController>;
@@ -157,6 +160,7 @@ export function StoryStage({
 							key={message.id}
 							message={message}
 							lens={lens}
+							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={swiping || generation.activeGenerationTargets.some((target) =>

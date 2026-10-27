@@ -12,6 +12,7 @@ import { PromptPresetPanel } from "./PromptPresetPanel";
 import type { ConversationSummary } from "../conversation";
 import type {
 	ChatSummary,
+	SwipeBrowsing,
 	ThemePreference,
 	Workspace,
 } from "../workspace";
@@ -47,6 +48,8 @@ export function PrimaryPanelView({
 	activeChat,
 	theme,
 	onThemeChange,
+	swipeBrowsing,
+	onSwipeBrowsingChange,
 	inspectPromptPlanBeforeGenerating,
 	onInspectPromptPlanBeforeGeneratingChange,
 	onSelectChat,
@@ -68,6 +71,8 @@ export function PrimaryPanelView({
 	activeChat: ChatSummary;
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
+	swipeBrowsing: SwipeBrowsing;
+	onSwipeBrowsingChange: (mode: SwipeBrowsing) => void;
 	inspectPromptPlanBeforeGenerating: boolean;
 	onInspectPromptPlanBeforeGeneratingChange: (enabled: boolean) => void;
 	onSelectChat: (chatId: string) => void;
@@ -151,6 +156,8 @@ export function PrimaryPanelView({
 						<SettingsPanel
 							theme={theme}
 							onThemeChange={onThemeChange}
+							swipeBrowsing={swipeBrowsing}
+							onSwipeBrowsingChange={onSwipeBrowsingChange}
 							inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>

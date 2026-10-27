@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
+import type { SwipeBrowsing } from "../workspace";
 import { type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
 import {
 	type StoryMessage,
@@ -23,7 +24,7 @@ import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
-import { VariantFan } from "./VariantFan";
+import { SwipeBrowser } from "./SwipeBrowser";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -42,6 +43,7 @@ export function StoryMessageView({
 	portrait,
 	onMoveSwipe,
 	onSelectVariant,
+	swipeBrowsing,
 	onEdit,
 	continueLabel = "Continue",
 	onContinue,
@@ -75,6 +77,7 @@ export function StoryMessageView({
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onSelectVariant: (messageId: number, variantId: number) => void;
+	swipeBrowsing: SwipeBrowsing;
 	onEdit: (messageId: number, content: string) => Promise<boolean>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -140,49 +143,50 @@ export function StoryMessageView({
 		if (atLastSwipe) onSibling?.(message.id);
 		else onMoveSwipe(message.id, 1);
 	};
-	const [fanOpen, setFanOpen] = useState(false);
-	const fanDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
-	const openFan = (open: boolean) => {
-		setFanOpen(open);
+	const [browsing, setBrowsing] = useState(false);
+	const browsingDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
+	const swipeCount = useRef<HTMLButtonElement>(null);
+	const browse = (open: boolean) => {
+		setBrowsing(open);
 		// @approved
 		//  Closing keeps the Message selected, so its Swipe controls are visible for focus to return to.
 		if (!open) setAdvancedActionsSelected(true);
 	};
 	const selectVariant = (index: number) => {
-		openFan(false);
+		browse(false);
 		const variant = message.swipes[index];
 		if (variant === undefined || index === activeIndex) return;
 		setSwipeDirection(index > activeIndex ? "next" : "previous");
 		onSelectVariant(message.id, variant.id);
 	};
 	// @approved
-	//  "fan" marks a touch whose long press opened the fan: its release is not a tap or a swipe.
-	const touchStart = useRef<{ x: number; y: number } | "fan" | null>(null);
+	//  "browse" marks a touch whose long press opened the Swipes: its release is not a tap or a swipe.
+	const touchStart = useRef<{ x: number; y: number } | "browse" | null>(null);
 	// @approved
-	//  A still touch held this long opens the fan; any movement past the tap slop leaves it to swipes and scrolling.
+	//  A still touch held this long opens the Swipes; any movement past the tap slop leaves it to swipes and scrolling.
 	const longPress = useRef<number | undefined>(undefined);
 	const cancelLongPress = () => {
 		window.clearTimeout(longPress.current);
 		longPress.current = undefined;
 	};
-	const pressOpensFan = () => {
+	const pressBrowses = () => {
 		cancelLongPress();
-		touchStart.current = "fan";
-		openFan(true);
+		touchStart.current = "browse";
+		browse(true);
 	};
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
 		const touch = event.touches[0];
 		// @approved
-		//  The fan is portalled out of the article, but its touches still bubble here through React.
+		//  The Swipes dialog is portalled out of the article, but its touches still bubble here through React.
 		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
 		cancelLongPress();
-		if (touchStart.current !== null && !fanDisabled && !isEditing) longPress.current = window.setTimeout(pressOpensFan, 450);
+		if (touchStart.current !== null && !browsingDisabled && !isEditing) longPress.current = window.setTimeout(pressBrowses, 450);
 	};
 	const moveTouch = (event: TouchEvent<HTMLElement>) => {
 		const start = touchStart.current;
 		const touch = event.touches[0];
-		if (start !== null && start !== "fan" && touch !== undefined && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) >= 10) cancelLongPress();
+		if (start !== null && start !== "browse" && touch !== undefined && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) >= 10) cancelLongPress();
 	};
 	const endTouch = (event: TouchEvent<HTMLElement>) => {
 		cancelLongPress();
@@ -190,9 +194,9 @@ export function StoryMessageView({
 		const touch = event.changedTouches[0];
 		touchStart.current = null;
 		// @approved
-		//  Cancelling the release keeps the browser from sending its mouse events and click into the open fan.
-		if (start === "fan") event.preventDefault();
-		if (start === null || start === "fan" || touch === undefined) return;
+		//  Cancelling the release keeps the browser from sending its mouse events and click into the open Swipes.
+		if (start === "browse") event.preventDefault();
+		if (start === null || start === "browse" || touch === undefined) return;
 		const dx = touch.clientX - start.x;
 		const dy = touch.clientY - start.y;
 		if (Math.hypot(dx, dy) < 10) {
@@ -236,11 +240,11 @@ export function StoryMessageView({
 				touchStart.current = null;
 			}}
 			// @approved
-			//  Android announces its own long press as a context menu first; that press opens the fan instead of selecting text.
+			//  Android announces its own long press as a context menu first; that press opens the Swipes instead of selecting text.
 			onContextMenu={(event) => {
 				if (longPress.current === undefined) return;
 				event.preventDefault();
-				pressOpensFan();
+				pressBrowses();
 			}}
 			onBlur={(event) => {
 				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
@@ -396,11 +400,10 @@ export function StoryMessageView({
 					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
-					<VariantFan variants={message.swipes} shownIndex={activeIndex} open={fanOpen} onOpenChange={openFan} onSelect={selectVariant}>
-						<button className="swipe-count" type="button" disabled={fanDisabled} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
-							{activeIndex + 1} of {message.swipes.length}
-						</button>
-					</VariantFan>
+					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
+						{activeIndex + 1} of {message.swipes.length}
+					</button>
+					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={message.swipes} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
 					<button
 						className="icon-button"
 						type="button"

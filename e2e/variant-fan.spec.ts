@@ -55,6 +55,26 @@ test("the Swipe fan browses with arrow keys, dismisses without changes, and sele
 	await expect(reloaded.getByText("2 of 3")).toBeVisible();
 });
 
+test("the Modal choice lists the Swipes, selects one, and stays chosen after a reload", async ({ page, llm }) => {
+	const reply = await threeTakes(page, llm);
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	await page.getByRole("radiogroup", { name: "Swipes" }).getByRole("radio", { name: "Modal" }).click();
+
+	await reply.getByRole("button", { name: "3 of 3, browse Swipes" }).click();
+	const list = page.getByRole("dialog", { name: "Swipes" });
+	await expect(list.getByRole("button", { name: /^Swipe \d of 3$/ })).toHaveCount(3);
+	await expect(list.getByRole("button", { name: "Swipe 3 of 3" })).toBeFocused();
+	await list.getByRole("button", { name: "Swipe 2 of 3" }).click();
+	await expect(list).toBeHidden();
+	await expect(reply.getByText("Second take.")).toBeVisible();
+	await expect(reply.getByText("2 of 3")).toBeVisible();
+
+	await page.reload();
+	const reloaded = story(page).locator("article").last();
+	await reloaded.getByRole("button", { name: "2 of 3, browse Swipes" }).click();
+	await expect(page.getByRole("dialog", { name: "Swipes" }).getByRole("button", { name: "Close" })).toBeVisible();
+});
+
 test.describe("touch", () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 

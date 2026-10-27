@@ -5,6 +5,7 @@ import type { Portrait } from "../shared/contract/image";
 import { workspaceResponse } from "../shared/contract/workspace";
 
 export type ThemePreference = "system" | "daylight" | "evening";
+export type SwipeBrowsing = "fan" | "modal";
 
 export type ChatSummary = {
 	id: string;

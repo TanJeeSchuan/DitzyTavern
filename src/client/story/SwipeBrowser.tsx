@@ -1,5 +1,7 @@
+import { X } from "lucide-react";
 import { Dialog } from "radix-ui";
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type CSSProperties, type RefObject, useEffect, useId, useRef, useState } from "react";
+import type { SwipeBrowsing } from "../workspace";
 import { type StoryVariant, visibleVariantContent } from "../story";
 import { Prose } from "./prose";
 
@@ -8,36 +10,120 @@ import { Prose } from "./prose";
 const CARD_STEP = 88;
 const FLICK_MS = 140;
 
-/** @approved A Message's Swipes laid out as a held fan of cards: browse by drag, flick or arrow keys, pick one with a tap or Enter. */
-export function VariantFan({ variants, shownIndex, open, onOpenChange, onSelect, children }: {
-	variants: StoryVariant[];
-	shownIndex: number;
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	onSelect: (index: number) => void;
-	children: ReactNode;
+type Browse = { variants: StoryVariant[]; shownIndex: number; onSelect: (index: number) => void };
+
+/**
+ * @approved A Message's Swipes in a dialog, as a held fan of cards or as a plain list. The Message mounts it only
+ * while it is open; closing it by Escape or an outside tap changes nothing and returns focus to the counter.
+ */
+export function SwipeBrowser({ mode, returnFocus, onClose, ...browse }: Browse & {
+	mode: SwipeBrowsing;
+	returnFocus: RefObject<HTMLElement | null>;
+	onClose: () => void;
 }) {
 	return (
-		<Dialog.Root open={open} onOpenChange={onOpenChange}>
-			<Dialog.Trigger asChild>{children}</Dialog.Trigger>
+		<Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
 			<Dialog.Portal>
-				<Dialog.Overlay className="variant-fan-overlay" />
-				<Dialog.Content className="variant-fan" aria-describedby={undefined} onContextMenu={(event) => event.preventDefault()}>
-					<Dialog.Title className="sr-only">Swipes</Dialog.Title>
-					<Deck variants={variants} shownIndex={shownIndex} onSelect={onSelect} onDismiss={() => onOpenChange(false)} />
+				<Dialog.Overlay className="swipe-browser-overlay" />
+				<Dialog.Content
+					className={mode === "fan" ? "variant-fan" : "swipe-list"}
+					aria-describedby={undefined}
+					onContextMenu={(event) => event.preventDefault()}
+					onCloseAutoFocus={(event) => {
+						event.preventDefault();
+						returnFocus.current?.focus();
+					}}
+				>
+					{mode === "fan" ? <>
+						<Dialog.Title className="sr-only">Swipes</Dialog.Title>
+						<Deck {...browse} onDismiss={onClose} />
+					</> : <>
+						<header>
+							<Dialog.Title>Swipes</Dialog.Title>
+							<Dialog.Close className="icon-button" aria-label="Close"><X aria-hidden="true" /></Dialog.Close>
+						</header>
+						<List {...browse} />
+					</>}
 				</Dialog.Content>
 			</Dialog.Portal>
 		</Dialog.Root>
 	);
 }
 
-function Deck({ variants, shownIndex, onSelect, onDismiss }: {
-	variants: StoryVariant[];
-	shownIndex: number;
-	onSelect: (index: number) => void;
-	onDismiss: () => void;
+// @approved
+//  One Swipe as a card: its position, whether it is the shown Swipe, and its prose. Enter or Space picks it.
+function Card({ variant, index, count, current, onSelect, ref, ...props }: {
+	variant: StoryVariant;
+	index: number;
+	count: number;
+	current: boolean;
+	onSelect: () => void;
+	ref: (node: HTMLElement | null) => void;
+	className: string;
+	tabIndex: number;
+	style?: CSSProperties;
+	onClick: () => void;
+	"data-front"?: boolean;
 }) {
 	const id = useId();
+	return (
+		<div
+			{...props}
+			ref={ref}
+			role="button"
+			aria-label={`Swipe ${index + 1} of ${count}`}
+			aria-describedby={id}
+			aria-current={current || undefined}
+			onKeyDown={(event) => {
+				if (event.key !== "Enter" && event.key !== " ") return;
+				event.preventDefault();
+				onSelect();
+			}}
+		>
+			<header>
+				<span>{index + 1} of {count}</span>
+				{current && <span className="swipe-card-current">Current</span>}
+			</header>
+			<div id={id} className="swipe-card-prose prose" data-empty-variant={variant.empty} inert>
+				<Prose text={visibleVariantContent(variant)} streaming={false} />
+			</div>
+		</div>
+	);
+}
+
+function List({ variants, shownIndex, onSelect }: Browse) {
+	const cards = useRef<(HTMLElement | null)[]>([]);
+	useEffect(() => cards.current[shownIndex]?.focus(), []);
+	return (
+		<ol
+			onKeyDown={(event) => {
+				const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+				const at = cards.current.findIndex((card) => card === document.activeElement);
+				if (step === 0 || at === -1) return;
+				event.preventDefault();
+				cards.current[Math.min(variants.length - 1, Math.max(0, at + step))]?.focus();
+			}}
+		>
+			{variants.map((variant, index) => (
+				<li key={variant.id}>
+					<Card
+						variant={variant}
+						index={index}
+						count={variants.length}
+						current={index === shownIndex}
+						ref={(node) => { cards.current[index] = node; }}
+						className="swipe-card"
+						tabIndex={0}
+						onClick={() => onSelect(index)}
+						onSelect={() => onSelect(index)}
+					/>
+				</li>
+			))}
+		</ol>
+	);
+}
+
+function Deck({ variants, shownIndex, onSelect, onDismiss }: Browse & { onDismiss: () => void }) {
 	const last = variants.length - 1;
 	const clamp = (position: number) => Math.min(last, Math.max(0, position));
 	const [position, setPosition] = useState(shownIndex);
@@ -108,15 +194,15 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 				{variants.map((variant, index) => {
 					const offset = index - position;
 					return (
-						<div
+						<Card
 							key={variant.id}
+							variant={variant}
+							index={index}
+							count={variants.length}
+							current={index === shownIndex}
 							ref={(node) => { cards.current[index] = node; }}
-							className="variant-card"
-							role="button"
+							className="swipe-card variant-card"
 							tabIndex={index === front ? 0 : -1}
-							aria-label={`Swipe ${index + 1} of ${variants.length}`}
-							aria-describedby={`${id}-${index}`}
-							aria-current={index === shownIndex || undefined}
 							data-front={index === front}
 							// @approved
 							// SAFETY: React passes custom properties through to the style; CSSProperties only lacks their names.
@@ -130,20 +216,8 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: {
 								pointerEvents: Math.abs(offset) >= 3.2 ? "none" : undefined,
 							} as CSSProperties}
 							onClick={() => (index === front ? onSelect(index) : setPosition(index))}
-							onKeyDown={(event) => {
-								if (event.key !== "Enter" && event.key !== " ") return;
-								event.preventDefault();
-								onSelect(index);
-							}}
-						>
-							<header>
-								<span>{index + 1} of {variants.length}</span>
-								{index === shownIndex && <span className="variant-card-current">Current</span>}
-							</header>
-							<div id={`${id}-${index}`} className="variant-card-prose prose" data-empty-variant={variant.empty} inert>
-								<Prose text={visibleVariantContent(variant)} streaming={false} />
-							</div>
-						</div>
+							onSelect={() => onSelect(index)}
+						/>
 					);
 				})}
 			</div>
