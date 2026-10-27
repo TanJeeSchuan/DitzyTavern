@@ -93,28 +93,25 @@ export function useStoryMessageActions({
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const preview = story.preview;
-		if (preview !== null && preview.messageId !== messageId) return;
-
-		const shownId = displayedVariantId(storyMessage, preview, story.requestedSelections);
+		const shownId = displayedVariantId(storyMessage, story.preview, story.requestedSelections);
 		const currentIndex = storyMessage.swipes.findIndex((variant) => variant.id === shownId);
 		if (currentIndex === -1) return;
-		const targetIndex = Math.min(
-			storyMessage.swipes.length - 1,
-			Math.max(0, currentIndex + direction),
-		);
-		const target = storyMessage.swipes[targetIndex];
-		if (target === undefined) return;
+		const target = storyMessage.swipes[Math.min(storyMessage.swipes.length - 1, Math.max(0, currentIndex + direction))];
+		if (target !== undefined) await selectSwipe(messageId, target.id);
+	};
 
+	const selectSwipe = async (messageId: number, variantId: number) => {
+		const preview = story.preview;
 		if (preview !== null) {
+			if (preview.messageId !== messageId) return;
 			queueSwipeScroll(messageId);
-			dispatchStory({ type: "preview-retargeted", messageId, variantId: target.id });
+			dispatchStory({ type: "preview-retargeted", messageId, variantId });
 			return;
 		}
 		if (!canEnterPreview) return;
 		if (conversation === null) return;
 
-		const selection = classifyVariantSelection(story, messageId, target.id);
+		const selection = classifyVariantSelection(story, messageId, variantId);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
 		if (selection.kind === "preview") {
 			onEnterPreview();
@@ -176,5 +173,5 @@ export function useStoryMessageActions({
 		});
 	};
 
-	return { changeSwipe, editStoryMessage, setMessageMoves, deleteStoryMessage };
+	return { changeSwipe, selectSwipe, editStoryMessage, setMessageMoves, deleteStoryMessage };
 }

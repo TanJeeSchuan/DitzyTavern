@@ -1,18 +1,22 @@
-import { Monitor, Moon, Sun } from "lucide-react";
+import { GalleryHorizontal, List, Monitor, Moon, Sun } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ReactNode } from "react";
-import type { ThemePreference } from "../workspace";
+import type { SwipeBrowsing, ThemePreference } from "../workspace";
 import { UpdateSettings } from "./UpdateSettings";
 
 export function SettingsPanel({
 	theme,
 	onThemeChange,
+	swipeBrowsing,
+	onSwipeBrowsingChange,
 	inspectPromptPlanBeforeGenerating,
 	onInspectPromptPlanBeforeGeneratingChange,
 }: {
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
+	swipeBrowsing: SwipeBrowsing;
+	onSwipeBrowsingChange: (mode: SwipeBrowsing) => void;
 	inspectPromptPlanBeforeGenerating: boolean;
 	onInspectPromptPlanBeforeGeneratingChange: (enabled: boolean) => void;
 }) {
@@ -32,6 +36,14 @@ export function SettingsPanel({
 				<h3>Appearance</h3>
 				<p>Choose how the writing room responds to your display.</p>
 				<SegmentedControl value={theme} onValueChange={onThemeChange} label="Appearance" options={choices.map((choice) => ({ value: choice.value, label: <>{choice.icon}{choice.label}</> }))} />
+			</section>
+			<section className="settings-section">
+				<h3>Swipes</h3>
+				<p>Choose how a Message's Swipes open from their counter.</p>
+				<SegmentedControl value={swipeBrowsing} onValueChange={onSwipeBrowsingChange} label="Swipes" options={[
+					{ value: "fan", label: <><GalleryHorizontal aria-hidden="true" />Fan</> },
+					{ value: "modal", label: <><List aria-hidden="true" />Modal</> },
+				]} />
 			</section>
 			<section className="settings-section">
 				<h3>Generation workflow</h3>

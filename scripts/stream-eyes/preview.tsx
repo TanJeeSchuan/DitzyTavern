@@ -115,6 +115,8 @@ function Preview() {
 								onContinue={entry.id === reply.id && !generating ? () => {} : undefined}
 								continueLabel="Continue as Theodora Kline"
 								onMoveSwipe={() => {}}
+								onSelectVariant={() => {}}
+								swipeBrowsing="fan"
 								onEdit={async () => false}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls
