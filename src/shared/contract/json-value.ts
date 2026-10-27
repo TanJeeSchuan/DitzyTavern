@@ -1,4 +1,5 @@
 import { Kind, Type, TypeRegistry, type Static } from "@sinclair/typebox";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
 
 TypeRegistry.Set("JsonObject", (_schema, value) =>
 	value !== null && value !== undefined && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null));
@@ -17,7 +18,12 @@ const jsonValue = Type.Recursive((value) => Type.Union([
 
 type ReadonlyJson<T> = T extends readonly (infer Item)[] ? readonly ReadonlyJson<Item>[] : T extends string | number | boolean | null ? T : { readonly [Key in keyof T]: ReadonlyJson<T[Key]> };
 
-export const generationJsonValue = Type.Unsafe<ReadonlyJson<Static<typeof jsonValue>>>(jsonValue);
+// Elysia's exact-mirror cannot resolve `This` through a Record, so routes see
+// the recursive check only as an opaque kind.
+const checkJsonValue = TypeCompiler.Compile(jsonValue);
+TypeRegistry.Set("GenerationJsonValue", (_schema, value) => checkJsonValue.Check(value));
+
+export const generationJsonValue = Type.Unsafe<ReadonlyJson<Static<typeof jsonValue>>>({ [Kind]: "GenerationJsonValue" });
 
 export type GenerationJsonValue = Static<typeof generationJsonValue>;
 
