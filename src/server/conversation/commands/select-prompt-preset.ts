@@ -18,7 +18,7 @@ export const selectPromptPreset = (
 	input: { conversationId: number; promptPresetId: number },
 ): void => {
 	try {
-		selectConversationPromptPreset(db, input.conversationId, input.promptPresetId);
+		selectConversationPromptPreset(db, input);
 	} catch (error) {
 		if (error instanceof PromptPresetNotFoundError) {
 			throw new InvalidConversationCommandError(
