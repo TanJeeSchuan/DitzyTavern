@@ -66,6 +66,10 @@ function Card({ variant, index, count, current, onSelect, ref, ...props }: {
 	"data-front"?: boolean;
 }) {
 	const id = useId();
+	const prose = useRef<HTMLDivElement>(null);
+	// @approved
+	//  The excerpt is inert, but Radix still counts its links and image buttons when it wraps Tab inside the dialog.
+	useEffect(() => prose.current?.querySelectorAll<HTMLElement>("a[href], button").forEach((element) => { element.tabIndex = -1; }), [variant.content]);
 	return (
 		<div
 			{...props}
@@ -84,7 +88,7 @@ function Card({ variant, index, count, current, onSelect, ref, ...props }: {
 				<span>{index + 1} of {count}</span>
 				{current && <span className="swipe-card-current">Current</span>}
 			</header>
-			<div id={id} className="swipe-card-prose prose" data-empty-variant={variant.empty} inert>
+			<div ref={prose} id={id} className="swipe-card-prose prose" data-empty-variant={variant.empty} inert>
 				<Prose text={visibleVariantContent(variant)} streaming={false} />
 			</div>
 		</div>
@@ -93,7 +97,13 @@ function Card({ variant, index, count, current, onSelect, ref, ...props }: {
 
 function List({ variants, shownIndex, onSelect }: Browse) {
 	const cards = useRef<(HTMLElement | null)[]>([]);
-	useEffect(() => cards.current[shownIndex]?.focus(), []);
+	// @approved
+	//  Focus the shown card on opening, and again if the focused card's Variant goes away while the list is open.
+	useEffect(() => {
+		const focused = document.activeElement;
+		if (focused instanceof HTMLElement && focused.closest(".swipe-list") !== null && !focused.classList.contains("swipe-list")) return;
+		(cards.current[shownIndex] ?? cards.current[0])?.focus();
+	}, [variants.map((variant) => variant.id).join()]);
 	return (
 		<ol
 			onKeyDown={(event) => {

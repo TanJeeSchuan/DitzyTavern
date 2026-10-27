@@ -3,7 +3,7 @@ import { test, expect, send, story } from "./fixtures";
 import type { E2eServer } from "./harness";
 
 const threeTakes = async (page: Page, llm: E2eServer) => {
-	await llm.chat({ chunks: ["First take."] }, { chunks: ["Second take."] }, { chunks: ["Third take."] });
+	await llm.chat({ chunks: ["First take."] }, { chunks: ["Second take."] }, { chunks: ["Third take. See the [chart](https://example.com/chart)."] });
 	await page.goto("/");
 	await send(page, "Again.");
 	const reply = story(page).locator("article").last();
@@ -64,6 +64,9 @@ test("the Modal choice lists the Swipes, selects one, and stays chosen after a r
 	const list = page.getByRole("dialog", { name: "Swipes" });
 	await expect(list.getByRole("button", { name: /^Swipe \d of 3$/ })).toHaveCount(3);
 	await expect(list.getByRole("button", { name: "Swipe 3 of 3" })).toBeFocused();
+	// The last card's excerpt holds a link; Tab still wraps inside the dialog instead of escaping it.
+	await page.keyboard.press("Tab");
+	await expect(list.getByRole("button", { name: "Close" })).toBeFocused();
 	await list.getByRole("button", { name: "Swipe 2 of 3" }).click();
 	await expect(list).toBeHidden();
 	await expect(reply.getByText("Second take.")).toBeVisible();
