@@ -28,7 +28,6 @@ export function SwipeBrowser({ mode, returnFocus, onClose, ...browse }: Browse &
 				<Dialog.Content
 					className={mode === "fan" ? "variant-fan" : "swipe-list"}
 					aria-describedby={undefined}
-					onContextMenu={(event) => event.preventDefault()}
 					onCloseAutoFocus={(event) => {
 						event.preventDefault();
 						returnFocus.current?.focus();

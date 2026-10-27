@@ -81,28 +81,24 @@ test("the Modal choice lists the Swipes, selects one, and stays chosen after a r
 test.describe("touch", () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-	test("a long press opens the fan, a flick browses it and a tap selects, while a held scroll does not open it", async ({ page, llm }) => {
+	test("tapping the counter opens the fan, a flick browses it and a tap selects, while a long press leaves the text alone", async ({ page, llm }) => {
 		const reply = await threeTakes(page, llm);
-		const fan = page.getByRole("dialog", { name: "Swipes" });
 		const cdp = await page.context().newCDPSession(page);
 		const touch = (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) =>
 			cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
-		const hold = async (dy: number) => {
-			const box = await reply.getByText("Third take.").boundingBox();
-			if (box === null) throw new Error("the reply is not visible");
-			await touch("touchStart", box.x + 10, box.y + box.height / 2);
-			if (dy !== 0) await touch("touchMove", box.x + 10, box.y + box.height / 2 + dy);
-			await page.waitForTimeout(700);
-			// Android's own long-press context menu can arrive after the fan has opened, while the finger is still down.
-			const menuCancelled = await reply.evaluate((article) => !article.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
-			await touch("touchEnd");
-			return menuCancelled;
-		};
 
-		await hold(40);
-		await expect(fan).toBeHidden();
+		const box = await reply.getByText("Third take.").boundingBox();
+		if (box === null) throw new Error("the reply is not visible");
+		await touch("touchStart", box.x + 10, box.y + box.height / 2);
+		await page.waitForTimeout(700);
+		// The browser's own long-press menu and text selection go through untouched.
+		const menuAllowed = await reply.evaluate((article) => article.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
+		await touch("touchEnd");
+		expect(menuAllowed).toBe(true);
+		await expect(page.getByRole("dialog")).toHaveCount(0);
 
-		expect(await hold(0)).toBe(true);
+		await reply.getByRole("button", { name: "3 of 3, browse Swipes" }).tap();
+		const fan = page.getByRole("dialog", { name: "Swipes" });
 		await expect(fan.getByRole("button", { name: "Swipe 3 of 3" })).toBeFocused();
 
 		await touch("touchStart", 120, 422);

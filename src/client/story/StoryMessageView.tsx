@@ -159,44 +159,19 @@ export function StoryMessageView({
 		setSwipeDirection(index > activeIndex ? "next" : "previous");
 		onSelectVariant(message.id, variant.id);
 	};
-	// @approved
-	//  "browse" marks a touch whose long press opened the Swipes: its release is not a tap or a swipe.
-	const touchStart = useRef<{ x: number; y: number } | "browse" | null>(null);
-	// @approved
-	//  A still touch held this long opens the Swipes; any movement past the tap slop leaves it to swipes and scrolling.
-	const longPress = useRef<number | undefined>(undefined);
-	const cancelLongPress = () => {
-		window.clearTimeout(longPress.current);
-		longPress.current = undefined;
-	};
-	const pressBrowses = () => {
-		cancelLongPress();
-		touchStart.current = "browse";
-		browse(true);
-	};
+	const touchStart = useRef<{ x: number; y: number } | null>(null);
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
 		const touch = event.touches[0];
 		// @approved
 		//  The Swipes dialog is portalled out of the article, but its touches still bubble here through React.
 		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
-		cancelLongPress();
-		if (touchStart.current !== null && !browsingDisabled && !isEditing) longPress.current = window.setTimeout(pressBrowses, 450);
-	};
-	const moveTouch = (event: TouchEvent<HTMLElement>) => {
-		const start = touchStart.current;
-		const touch = event.touches[0];
-		if (start !== null && start !== "browse" && touch !== undefined && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) >= 10) cancelLongPress();
 	};
 	const endTouch = (event: TouchEvent<HTMLElement>) => {
-		cancelLongPress();
 		const start = touchStart.current;
 		const touch = event.changedTouches[0];
 		touchStart.current = null;
-		// @approved
-		//  Cancelling the release keeps the browser from sending its mouse events and click into the open Swipes.
-		if (start === "browse") event.preventDefault();
-		if (start === null || start === "browse" || touch === undefined) return;
+		if (start === null || touch === undefined) return;
 		const dx = touch.clientX - start.x;
 		const dy = touch.clientY - start.y;
 		if (Math.hypot(dx, dy) < 10) {
@@ -233,20 +208,8 @@ export function StoryMessageView({
 				}
 			}}
 			onTouchStart={startTouch}
-			onTouchMove={moveTouch}
 			onTouchEnd={endTouch}
-			onTouchCancel={() => {
-				cancelLongPress();
-				touchStart.current = null;
-			}}
-			// @approved
-			//  Android announces its own long press as a context menu, before or after the timer fires.
-			// Either way that press opens the Swipes instead of a menu or a text selection.
-			onContextMenu={(event) => {
-				if (longPress.current === undefined && touchStart.current !== "browse") return;
-				event.preventDefault();
-				if (touchStart.current !== "browse") pressBrowses();
-			}}
+			onTouchCancel={() => { touchStart.current = null; }}
 			onBlur={(event) => {
 				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
 					setAdvancedActionsSelected(false);
