@@ -389,7 +389,12 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 		case "moves-dropped":
 			return state.requestedMoves.has(action.messageId) ? { ...state, requestedMoves: without(state.requestedMoves, action.messageId) } : state;
 		case "generation-requested":
-			return { ...state, requestedGeneration: { request: action.request, accepted: null } };
+			return {
+				...state,
+				requestedGeneration: { request: action.request, accepted: null },
+				// A Requested Swipe's Variant replaces the Requested selection it was swiped from.
+				requestedSelections: action.request.kind === "sibling" ? without(state.requestedSelections, action.request.messageId) : state.requestedSelections,
+			};
 		case "generation-request-accepted":
 			return state.requestedGeneration === null
 				? state
@@ -549,11 +554,18 @@ const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number
 };
 
 // @approved
-//  The Message the writer sees, with its Requested Moves in place of the persisted ones.
+//  The Message the writer sees, with its Requested Moves in place of the persisted ones and, during a Requested
+// Swipe, an empty Variant selected at the end until a page places the real one.
 export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
 	const moves = state.requestedMoves.get(message.id);
-	return moves === undefined ? message : { ...message, moves };
+	const shown = moves === undefined ? message : { ...message, moves };
+	if (!hasRequestedSwipe(state, message.id)) return shown;
+	const requested = { id: -1, position: message.swipes.length + 1, content: "", empty: true };
+	return { ...shown, activeSwipe: message.swipes.length, swipes: [...message.swipes, requested] };
 };
+
+export const hasRequestedSwipe = (state: StoryState, messageId: number): boolean =>
+	state.requestedGeneration?.request.kind === "sibling" && state.requestedGeneration.request.messageId === messageId;
 
 // @approved
 //  Mirrors the server's reusableHumanMessageId: a Send repeating the trailing human Message's text and Moves reuses it.

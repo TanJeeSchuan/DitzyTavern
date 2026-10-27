@@ -36,7 +36,6 @@ export function StoryMessageView({
 	displayedVariantId,
 	mutationsDisabled = false,
 	generationActive = false,
-	generationRequested = false,
 	previewDownstream = false,
 	previewTarget = false,
 	portrait,
@@ -62,8 +61,6 @@ export function StoryMessageView({
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
 	generationActive?: boolean;
-	// A Sibling Generation for this Message waits for the server to accept it.
-	generationRequested?: boolean;
 	// @approved
 	//  Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
@@ -199,7 +196,7 @@ export function StoryMessageView({
 				<Portrait name={authorName} portrait={portrait} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
-					{(generationActive || generationRequested) && <GenerationSphere authorName={authorName} />}
+					{generationActive && <GenerationSphere authorName={authorName} />}
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
