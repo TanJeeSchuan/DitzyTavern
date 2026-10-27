@@ -240,11 +240,12 @@ export function StoryMessageView({
 				touchStart.current = null;
 			}}
 			// @approved
-			//  Android announces its own long press as a context menu first; that press opens the Swipes instead of selecting text.
+			//  Android announces its own long press as a context menu, before or after the timer fires.
+			// Either way that press opens the Swipes instead of a menu or a text selection.
 			onContextMenu={(event) => {
-				if (longPress.current === undefined) return;
+				if (longPress.current === undefined && touchStart.current !== "browse") return;
 				event.preventDefault();
-				pressBrowses();
+				if (touchStart.current !== "browse") pressBrowses();
 			}}
 			onBlur={(event) => {
 				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {

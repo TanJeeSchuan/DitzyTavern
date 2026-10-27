@@ -93,13 +93,16 @@ test.describe("touch", () => {
 			await touch("touchStart", box.x + 10, box.y + box.height / 2);
 			if (dy !== 0) await touch("touchMove", box.x + 10, box.y + box.height / 2 + dy);
 			await page.waitForTimeout(700);
+			// Android's own long-press context menu can arrive after the fan has opened, while the finger is still down.
+			const menuCancelled = await reply.evaluate((article) => !article.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
 			await touch("touchEnd");
+			return menuCancelled;
 		};
 
 		await hold(40);
 		await expect(fan).toBeHidden();
 
-		await hold(0);
+		expect(await hold(0)).toBe(true);
 		await expect(fan.getByRole("button", { name: "Swipe 3 of 3" })).toBeFocused();
 
 		await touch("touchStart", 120, 422);
