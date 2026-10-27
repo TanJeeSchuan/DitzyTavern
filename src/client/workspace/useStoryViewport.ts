@@ -106,10 +106,11 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		} else if (previous.firstId !== first.id && previous.firstTop !== null) {
 			// @approved
 			// Prepended pages push the Message that was first down; scroll by exactly that, since content below can change size between renders.
-			// Off the very top the browser's own scroll anchoring has already moved part or all of it.
+			// Off the very top the browser's own scroll anchoring has already moved part or all of it. Scrolling even when nothing
+			// remains stops a smooth scroll still in flight, which would otherwise carry on to its old target.
 			const shift = (messageTop(root, previous.firstId) ?? previous.firstTop) - previous.firstTop;
 			const remaining = shift - (root.scrollTop - lastScrollTopRef.current);
-			if (shift > 0 && Math.abs(remaining) > 1) root.scrollTo({ top: root.scrollTop + remaining, behavior: "instant" });
+			if (shift > 0) root.scrollTo({ top: root.scrollTop + remaining, behavior: "instant" });
 		}
 	}, [messages, conversationId, hasNewer]);
 
