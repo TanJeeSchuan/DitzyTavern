@@ -4,8 +4,8 @@
 	position: fixed;
 	inset: 0;
 	z-index: 50;
-	background: color-mix(in oklch, var(--background) 64%, transparent);
-	backdrop-filter: blur(2px);
+	/* No backdrop blur: on Firefox it re-blurs the whole story on every frame the list scrolls. */
+	background: color-mix(in oklch, var(--background) 72%, transparent);
 	animation: swipe-browser-fade 180ms ease-out;
 }
 
