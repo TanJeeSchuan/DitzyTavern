@@ -15,6 +15,7 @@ const deepSeekProfile = {
 	modelBackend: "automatic" as const,
 	adapter: "deepseek" as const,
 	outputTokenRepresentation: "automatic" as const,
+	systemPlacement: "strict" as const,
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
 };

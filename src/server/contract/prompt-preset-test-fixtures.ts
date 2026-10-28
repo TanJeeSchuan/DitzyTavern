@@ -50,6 +50,7 @@ export const profile = {
 	modelBackend: "automatic" as const,
 	adapter: "deepseek" as const,
 	outputTokenRepresentation: "automatic" as const,
+	systemPlacement: "none" as const,
 	timeoutMs: 120_000,
 	pinnedModels: [],
 };

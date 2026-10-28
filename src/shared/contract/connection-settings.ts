@@ -20,6 +20,13 @@ const apiFormat = Type.Union([
 	Type.Literal("system-one"),
 ]);
 
+// @approved
+//  How a request lays out system blocks. Strict sends one leading run of
+// system messages, the shape every chat target accepts: system blocks before
+// history move to the front, and later ones are sent as user messages where
+// they stand. None sends the plan exactly as authored.
+const systemPlacement = Type.Union([Type.Literal("strict"), Type.Literal("none")]);
+
 const profileDraft = Type.Object({
 	displayName: Type.String(),
 	apiFormat,
@@ -37,6 +44,7 @@ const profileDraft = Type.Object({
 		Type.Literal("max_completion_tokens"),
 		Type.Literal("omit"),
 	]),
+	systemPlacement,
 	timeoutMs: Type.Union([Type.Null(), Type.Integer()]),
 	pinnedModels: Type.Array(Type.String()),
 }, { additionalProperties: false });
@@ -50,6 +58,7 @@ export const connectionProfile = Type.Object({
 	modelBackend: Type.Union([Type.Literal("automatic"), Type.Literal("ai-sdk")]),
 	adapter: Type.Union([Type.Literal("openai-compatible"), Type.Literal("deepseek"), Type.Literal("openrouter")]),
 	outputTokenRepresentation: Type.Union([Type.Literal("automatic"), Type.Literal("max_tokens"), Type.Literal("max_completion_tokens"), Type.Literal("omit")]),
+	systemPlacement,
 	timeoutMs: Type.Union([Type.Null(), Type.Integer()]),
 	pinnedModels: Type.Array(Type.String()),
 	discoveryCatalog: Type.Array(Type.String()),
@@ -201,6 +210,7 @@ export const blankConnectionProfileDraft = {
 	modelBackend: "automatic",
 	adapter: "openai-compatible",
 	outputTokenRepresentation: "automatic",
+	systemPlacement: "strict",
 	timeoutMs: 120000,
 	pinnedModels: [],
 } satisfies Static<typeof profileDraft>;
@@ -272,6 +282,7 @@ export function connectionProfileDraftOf(
 		modelBackend: profile.modelBackend,
 		adapter: profile.adapter,
 		outputTokenRepresentation: profile.outputTokenRepresentation,
+		systemPlacement: profile.systemPlacement,
 		timeoutMs: profile.timeoutMs,
 		pinnedModels: [...profile.pinnedModels],
 	};

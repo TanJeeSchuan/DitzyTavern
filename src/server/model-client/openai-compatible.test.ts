@@ -14,6 +14,7 @@ const profile: ConnectionProfile = {
 	modelBackend: "automatic",
 	adapter: "openai-compatible",
 	outputTokenRepresentation: "max_completion_tokens",
+	systemPlacement: "strict",
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],

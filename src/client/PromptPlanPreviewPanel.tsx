@@ -85,7 +85,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const field = ({ block, index }: PlanBlockAt) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}{"demoted" in block && block.demoted === true ? " (authored as system)" : ""}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}

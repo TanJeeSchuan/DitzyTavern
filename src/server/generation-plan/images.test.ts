@@ -53,7 +53,7 @@ const compile = (
 	recipe: [{ reference: "history", enabled: true }],
 	context,
 	settings: settings(overrides),
-	connection: { apiFormat: "chat-completions" },
+	connection: { apiFormat: "chat-completions", systemPlacement: "none" },
 	estimator: () => 0,
 	images: { lookup, placement: overrides.repeatedImagePlacement ?? "last", sendImages: true },
 	...extra,

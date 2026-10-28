@@ -11,6 +11,7 @@ const validDraft = (): ConnectionProfileDraftPayload => ({
 	modelBackend: "automatic",
 	adapter: "openai-compatible",
 	outputTokenRepresentation: "automatic",
+	systemPlacement: "strict",
 	requestUrl: "https://api.example.com/v1/",
 	modelsUrl: "https://api.example.com/models",
 	timeoutMs: 120000,

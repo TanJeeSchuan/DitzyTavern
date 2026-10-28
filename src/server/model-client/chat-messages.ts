@@ -63,7 +63,8 @@ const userParts = (segments: readonly Segment[]): UserPart[] =>
 // @approved
 //  Images only travel in user messages. A system or assistant message keeps
 // its text and anchors; its Images follow in a user message, each after its
-// anchor.
+// anchor. A system message's Images wait for the end of its run of system
+// messages, so a leading run stays leading.
 const followingImages = (segments: readonly Segment[]): UserPart[] =>
 	segments.flatMap((segment): UserPart[] =>
 		"image" in segment ? [{ type: "text", text: segment.anchor }, imagePart(segment.image)] : []);
@@ -81,9 +82,20 @@ export function toMessages(
 	const images = new Map(input.promptPlan.images.map((image) => [`${image.block}:${image.start}`, image]));
 	const renderBlock = (blockIndex: number, content: string) =>
 		renderContent(blockIndex, content, images, loadImage);
+	let systemImages: UserPart[] = [];
+	const flushSystemImages = () => {
+		if (systemImages.length > 0) messages.push({ role: "user", content: systemImages });
+		systemImages = [];
+	};
 	const push = (role: "system" | "user" | "assistant", segments: readonly Segment[]) => {
 		const sent = segments.some((segment) => "image" in segment);
 		const text = segments.map((segment) => "text" in segment ? segment.text : "").join("");
+		if (role === "system") {
+			messages.push({ role, content: text });
+			systemImages.push(...followingImages(segments));
+			return;
+		}
+		flushSystemImages();
 		if (role === "user") {
 			messages.push({ role, content: sent ? userParts(segments) : text });
 			return;
@@ -144,14 +156,16 @@ export function toMessages(
 		// owns the same translation it applies to history authorship.
 		push(providerRoleFor[block.role], renderBlock(blockIndex, block.content));
 	}
+	flushSystemImages();
 	// @approved
-	//  Continuation instructions are request intent, not Conversation history.
-	// Keep them as an adapter-owned system message so no synthetic user turn
-	// is persisted or inferred by the provider-neutral workflow.
-	if (continuationIntent?.strategy === "instruction") {
-		if (continuationIntent.instruction.length > 0) {
-			messages.push({ role: "system", content: projectImageAnchors(continuationIntent.instruction) });
-		}
+	//  Continuation instructions are request intent, not Conversation history:
+	// a trailing system message, or a user message when Strict System
+	// Placement demoted it. Either way nothing is persisted as a turn.
+	if (continuationIntent?.strategy === "instruction" && continuationIntent.instruction.length > 0) {
+		messages.push({
+			role: continuationIntent.demoted === true ? "user" : "system",
+			content: projectImageAnchors(continuationIntent.instruction),
+		});
 	}
 	if (continuationIntent?.strategy === "assistant-prefill") {
 		const prefix = input.assistantPrefill?.prefix ?? lastModelHistoryContent;

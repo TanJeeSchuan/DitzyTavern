@@ -169,6 +169,24 @@ const expandInto = (request: {
 	warnings.push(...expanded.warnings);
 };
 
+// @approved
+//  Strict System Placement sends one leading run of system messages. System
+// blocks before history are static context, so they move to the front; a
+// system block after any other message keeps its place, for recency, and is
+// sent as a human message marked demoted.
+const placeStrictly = (blocks: readonly PromptBlock[], historyStart: number): PromptBlock[] => {
+	const preHistory = blocks.slice(0, historyStart);
+	let dialogue = false;
+	return [
+		...preHistory.filter((block) => block.role === "system"),
+		...preHistory.filter((block) => block.role !== "system"),
+		...blocks.slice(historyStart),
+	].map((block) => {
+		if (block.role !== "system") dialogue = true;
+		return dialogue && block.role === "system" ? { ...block, role: "human", demoted: true } : block;
+	});
+};
+
 /** @approved Where a Box item's one expansion is kept in the attempt, so admission reads it instead of recompiling. */
 export const boxItemExpansionKey = (slotIndex: number, itemIndex: number) => `slot:${slotIndex}:item:${itemIndex}`;
 
@@ -179,6 +197,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
 	const macroAttemptState = input.attempt?.state ?? createMacroAttemptState();
+	let historyStart: number | undefined;
 
 	// @approved
 	//  Owner-relative macro context: `{{self}}` is the Definition owner and
@@ -201,6 +220,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	for (const [slotIndex, slot] of input.recipe.entries()) {
 		if (!slot.enabled) continue;
 		if (slot.reference === "history") {
+			historyStart ??= blocks.length;
 			for (const entry of input.context ?? []) {
 				blocks.push({
 					kind: "history",
@@ -286,5 +306,6 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		});
 	}
 
-	return resolvePromptImages({ blocks, warnings }, input.images);
+	const placed = input.systemPlacement === "strict" ? placeStrictly(blocks, historyStart ?? blocks.length) : blocks;
+	return resolvePromptImages({ blocks: placed, warnings }, input.images);
 }

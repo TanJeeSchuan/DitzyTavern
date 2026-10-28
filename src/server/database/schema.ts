@@ -852,6 +852,7 @@ export const connectionProfileTable = sqliteTable(
 		model_backend: text().notNull(),
 		adapter: text().notNull(),
 		output_token_representation: text().notNull().default("automatic"),
+		system_placement: text({ enum: ["strict", "none"] }).notNull().default("strict"),
 		timeout_ms: int().default(120000),
 	},
 	(table) => [

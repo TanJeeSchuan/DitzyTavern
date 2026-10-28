@@ -71,6 +71,7 @@ const createConnection = (database: Database): number => {
 			modelBackend: "automatic",
 			adapter: "openai-compatible",
 			outputTokenRepresentation: "automatic",
+			systemPlacement: "strict",
 			timeoutMs: 120_000,
 			pinnedModels: [],
 		},

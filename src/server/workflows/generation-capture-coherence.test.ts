@@ -152,7 +152,7 @@ describe("generation capture coherence", () => {
 			expectedRevision: createConnectionSettingsModule(state.database, { masterKey }).get().revision,
 			profile: {
 				displayName: "Shutdown", apiFormat: "chat-completions", requestUrl: "http://127.0.0.1:43127/v1/",
-				modelsUrl: "", modelBackend: "automatic", adapter: "deepseek", outputTokenRepresentation: "automatic",
+				modelsUrl: "", modelBackend: "automatic", adapter: "deepseek", outputTokenRepresentation: "automatic", systemPlacement: "strict",
 				timeoutMs: null, pinnedModels: [],
 			},
 			credential: "shutdown-test-secret",

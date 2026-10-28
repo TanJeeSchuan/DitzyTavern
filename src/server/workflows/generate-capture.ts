@@ -135,6 +135,7 @@ const compilePlanFrom = (
 		settings: configuration.settings,
 		connection: configuration.connection === null ? null : {
 			apiFormat: configuration.connection.apiFormat,
+			systemPlacement: configuration.connection.systemPlacement,
 		},
 		estimator: options.estimator,
 		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),

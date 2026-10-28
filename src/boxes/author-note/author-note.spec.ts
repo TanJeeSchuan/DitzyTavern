@@ -14,5 +14,5 @@ test("writer saves an Author Note and sends it after history", async ({ page, ll
 	const call = firstCall((await llm.log()).calls, isChatModelCall);
 	const messages = call.body.messages;
 	const history = messages.findIndex((message) => message.content.includes("Close the door."));
-	expect(messages[history + 1]).toMatchObject({ role: "system", content: expect.stringContaining("Keep the room silent.") });
+	expect(messages[history + 1]).toMatchObject({ role: "user", content: expect.stringContaining("Keep the room silent.") });
 });

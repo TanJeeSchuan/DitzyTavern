@@ -31,6 +31,7 @@ export function validateConnectionProfileDraft(
 		modelBackend: input.modelBackend,
 		adapter: input.adapter,
 		outputTokenRepresentation: input.outputTokenRepresentation,
+		systemPlacement: input.systemPlacement,
 		timeoutMs: input.timeoutMs,
 		pinnedModels,
 	};

@@ -6,6 +6,7 @@ import type {
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { PromptImageResolution } from "./images";
 import type { BoxItems } from "../box/registry";
+import type { SystemPlacement } from "../connection-settings/types";
 
 export type {
 	AttemptEnvironment,
@@ -84,4 +85,6 @@ export interface CompilePromptInput {
 	/** How References are resolved once Prompt Macros have expanded, mapped to
 	 * the attempt's effective sending policy. */
 	images: PromptImageResolution;
+	/** How system blocks are laid out; absent, the plan keeps the recipe's order and roles. */
+	systemPlacement?: SystemPlacement;
 }

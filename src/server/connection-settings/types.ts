@@ -13,6 +13,7 @@ import type {
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
 export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one">;
+export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];
 
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
 

@@ -134,6 +134,10 @@ export const compileGenerationPlan = (
 		environment: { self: input.human.name, other: input.model.name },
 		state: createMacroAttemptState(),
 	};
+	const systemPlacement = input.connection?.systemPlacement ?? "none";
+	const placedIntent = intent?.type === "continuation" && intent.strategy === "instruction" && systemPlacement === "strict"
+		? { ...intent, demoted: true as const }
+		: intent;
 	// @approved
 	//  Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
@@ -158,8 +162,9 @@ export const compileGenerationPlan = (
 			lore,
 			attempt,
 			images: input.images,
+			systemPlacement,
 		});
-		return intent === undefined ? compiled : { ...compiled, intent };
+		return intent === undefined ? compiled : { ...compiled, intent: placedIntent };
 	};
 	// @approved
 	//  Intent applicability decides the protected history: an assistant-prefill

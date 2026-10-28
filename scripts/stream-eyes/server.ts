@@ -57,7 +57,7 @@ const connections = createConnectionSettingsModule(database, { masterKey });
 const profile = {
 	apiFormat: "chat-completions", adapter: "openai-compatible",
 	requestUrl: "https://screenshots.invalid/v1/", modelsUrl: "https://screenshots.invalid/v1/models",
-	modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
+	modelBackend: "automatic", outputTokenRepresentation: "automatic", systemPlacement: "strict", timeoutMs: 10_000,
 } as const;
 connections.createProfile({ expectedRevision: 0, profile: { ...profile, displayName: "Screenshot provider", pinnedModels: ["deepseek-chat"] } });
 const embeddings = connections.createProfile({

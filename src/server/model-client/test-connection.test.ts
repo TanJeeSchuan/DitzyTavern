@@ -15,6 +15,7 @@ const profile: ConnectionProfileDraft = {
 	modelBackend: "automatic",
 	adapter: "deepseek",
 	outputTokenRepresentation: "automatic",
+	systemPlacement: "strict",
 	timeoutMs: 120_000,
 	pinnedModels: [],
 };

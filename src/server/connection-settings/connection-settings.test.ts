@@ -24,6 +24,7 @@ const deepSeekDraft = (): ConnectionProfileDraft => ({
 	modelBackend: "automatic",
 	adapter: "deepseek",
 	outputTokenRepresentation: "automatic",
+	systemPlacement: "strict",
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
 });
@@ -82,6 +83,7 @@ describe("Connection Settings", () => {
 			backend: "ai-sdk",
 			adapter: markedProfile.adapter,
 			apiFormat: "chat-completions",
+			systemPlacement: "strict",
 			textOnlyModels: ["text-model"],
 		});
 	});
