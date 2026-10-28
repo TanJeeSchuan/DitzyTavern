@@ -4,8 +4,10 @@
 	"type": "module",
 	"packageManager": "bun@1.4.4",
 	"scripts": {
+		"prepare": "git config core.hooksPath .githooks",
 		"dev:server": "bun --watch src/server/index.ts",
 		"dev:client": "vite",
+		"dev:stop": "bun -e \"process.exit(Bun.spawnSync(process.platform === 'win32' ? ['powershell', '-c', 'Stop-Process -Force -Id (Get-NetTCPConnection -State Listen -LocalPort 3000,5173).OwningProcess'] : ['fuser', '-k', '3000/tcp', '5173/tcp'], { stdio: ['inherit', 'inherit', 'inherit'] }).exitCode)\"",
 		"build": "vite build",
 		"box:build": "bun scripts/build-box-client.ts",
 		"start": "bun src/server/index.ts",
@@ -17,18 +19,18 @@
 		"db:import": "bun src/server/database/import-chat.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
-		"lint:rules": "node --test --test-isolation=none --experimental-strip-types \"tools/oxlint/*/rules/*.test.ts\"",
+		"lint:rules": "node --test --test-reporter=dot --test-isolation=none --experimental-strip-types \"tools/oxlint/*/rules/*.test.ts\"",
 		"audit:comments": "bun scripts/audit-comments.ts",
 		"check:contracts": "bun scripts/check-contract-ownership.ts",
 		"check:clones": "jscpd src",
 		"typecheck": "tsc --noEmit",
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",
-		"test": "bun test --parallel=3 --no-isolate --path-ignore-patterns '**/*.spec.ts' --preload ./src/client/test-fixtures/window.ts --preload ./src/server/test-fixtures/boxes.ts src",
+		"test": "bun test --only-failures --parallel=3 --no-isolate --path-ignore-patterns '**/*.spec.ts' --preload ./src/client/test-fixtures/window.ts --preload ./src/server/test-fixtures/boxes.ts src",
 		"test:publication": "bun test scripts/publish-docker.test.ts scripts/write-build-metadata.test.ts",
 		"check": "bun scripts/run-check.ts check",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
 		"test:e2e": "bun scripts/run-check.ts e2e",
-		"test:e2e:harness": "node --test e2e/harness.test.ts"
+		"test:e2e:harness": "node --test --test-reporter=dot e2e/harness.test.ts"
 	},
 	"engines": {
 		"node": "26.12.1"

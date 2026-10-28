@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
+import type { SwipeBrowsing } from "../workspace";
 import { type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
 import {
 	type StoryMessage,
@@ -23,6 +24,7 @@ import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
+import { SwipeBrowser } from "./SwipeBrowser";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -36,11 +38,12 @@ export function StoryMessageView({
 	displayedVariantId,
 	mutationsDisabled = false,
 	generationActive = false,
-	generationRequested = false,
 	previewDownstream = false,
 	previewTarget = false,
 	portrait,
 	onMoveSwipe,
+	onSelectVariant,
+	swipeBrowsing,
 	onEdit,
 	continueLabel = "Continue",
 	onContinue,
@@ -62,8 +65,6 @@ export function StoryMessageView({
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
 	generationActive?: boolean;
-	// A Sibling Generation for this Message waits for the server to accept it.
-	generationRequested?: boolean;
 	// @approved
 	//  Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
@@ -75,6 +76,8 @@ export function StoryMessageView({
 	// other mutation remains locked.
 	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
+	onSelectVariant: (messageId: number, variantId: number) => void;
+	swipeBrowsing: SwipeBrowsing;
 	onEdit: (messageId: number, content: string) => Promise<boolean>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -140,10 +143,28 @@ export function StoryMessageView({
 		if (atLastSwipe) onSibling?.(message.id);
 		else onMoveSwipe(message.id, 1);
 	};
+	const [browsing, setBrowsing] = useState(false);
+	const browsingDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
+	const swipeCount = useRef<HTMLButtonElement>(null);
+	const browse = (open: boolean) => {
+		setBrowsing(open);
+		// @approved
+		//  Closing keeps the Message selected, so its Swipe controls are visible for focus to return to.
+		if (!open) setAdvancedActionsSelected(true);
+	};
+	const selectVariant = (index: number) => {
+		browse(false);
+		const variant = message.swipes[index];
+		if (variant === undefined || index === activeIndex) return;
+		setSwipeDirection(index > activeIndex ? "next" : "previous");
+		onSelectVariant(message.id, variant.id);
+	};
 	const touchStart = useRef<{ x: number; y: number } | null>(null);
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
 		const touch = event.touches[0];
-		const onControl = event.target instanceof Element && event.target.closest("button, textarea, input") !== null;
+		// @approved
+		//  The Swipes dialog is portalled out of the article, but its touches still bubble here through React.
+		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
 	};
 	const endTouch = (event: TouchEvent<HTMLElement>) => {
@@ -199,7 +220,7 @@ export function StoryMessageView({
 				<Portrait name={authorName} portrait={portrait} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
-					{(generationActive || generationRequested) && <GenerationSphere authorName={authorName} />}
+					{generationActive && <GenerationSphere authorName={authorName} />}
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
@@ -306,7 +327,7 @@ export function StoryMessageView({
 					<button
 						className="edit-action"
 						type="button"
-						disabled={mutationsDisabled}
+						disabled={mutationsDisabled || generationActive}
 						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit
@@ -343,9 +364,10 @@ export function StoryMessageView({
 					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
-					<span>
+					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
 						{activeIndex + 1} of {message.swipes.length}
-					</span>
+					</button>
+					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={message.swipes} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
 					<button
 						className="icon-button"
 						type="button"

@@ -68,7 +68,7 @@ test("one process deadline bounds unfinished HTTP, worker, and generation work w
 		registry.track(pending);
 		const runtime = registry.start({ generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
 			startedAt: new Date().toISOString(), checkpoint: { eventInterval: 99, intervalMs: 0 },
-			onCheckpoint: ({ content }) => console.log("checkpoint:" + content),
+			onCheckpoint: ({ contentDelta }) => console.log("checkpoint:" + contentDelta),
 			onStop: () => console.log("provider cancelled") });
 		runtime.publish({ type: "content", text: "retained output" });
 		const entered = Promise.withResolvers();

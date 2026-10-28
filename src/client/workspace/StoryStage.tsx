@@ -1,9 +1,10 @@
 import { isStoryReady } from "../story";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
-import { useState, type Dispatch } from "react";
+import type { Dispatch } from "react";
 import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
+import type { SwipeBrowsing } from "../workspace";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
 import type { BoxWindowsController } from "../box-windows/useBoxWindows";
@@ -11,11 +12,13 @@ import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
+	hasRequestedSwipe,
 	reusesTrailingHumanMessage,
 	shownMessage,
 	type StoryAction,
 	type StoryState,
 } from "../story";
+import { BackgroundImage } from "../ChatBackground";
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
 import { RequestedSendView } from "../story/RequestedSendView";
@@ -46,6 +49,7 @@ export function StoryStage({
 	generation,
 	preview,
 	boxWindows,
+	swipeBrowsing,
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
@@ -63,6 +67,7 @@ export function StoryStage({
 	assemblyActive: boolean;
 	inert: boolean;
 	boxWindows: BoxWindowsController;
+	swipeBrowsing: SwipeBrowsing;
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
 	preview: ReturnType<typeof usePreviewController>;
@@ -93,9 +98,7 @@ export function StoryStage({
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
 	});
-	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const onLayerFocus = useLayerFocus(inert);
-	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
@@ -109,6 +112,7 @@ export function StoryStage({
 
 	return (
 		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
+			{conversation !== null && conversation.background !== null && <BackgroundImage key={conversation.background} hash={conversation.background} className="story-background" />}
 			<StoryHeader
 				chat={session.activeChat}
 				conversation={conversation}
@@ -151,20 +155,20 @@ export function StoryStage({
 						</div>
 					)}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
-					{story.messages.map((message) => (
+					{story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
 						<StoryMessageView
 							key={message.id}
-							message={shownMessage(story, message)}
+							message={message}
 							lens={lens}
+							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 							isLatest={latestStoryMessage?.id === message.id}
-							generationActive={generation.activeGenerationTargets.some((target) =>
+							generationActive={swiping || generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
 								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
 							)}
-							generationRequested={requested?.kind === "sibling" && requested.messageId === message.id}
 							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
-							mutationsDisabled={story.preview !== null}
+							mutationsDisabled={story.preview !== null || swiping}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={
@@ -195,7 +199,7 @@ export function StoryStage({
 								: undefined}
 							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-							onInspect={onInspectVariant}
+							onInspect={swiping ? undefined : onInspectVariant}
 							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
@@ -206,6 +210,7 @@ export function StoryStage({
 								/>
 							)}
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
+							onSelectVariant={(messageId, variantId) => void storyActions.selectSwipe(messageId, variantId)}
 							onEdit={storyActions.editStoryMessage}
 							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
 								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
@@ -264,9 +269,8 @@ export function StoryStage({
 					onMovesChange={generation.setMoves}
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
-					isReceded={composerIsReceded}
+					atLatest={viewport.atLatest}
 					onDraftChange={generation.setDraft}
-					onFocusChange={setIsComposerFocused}
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}

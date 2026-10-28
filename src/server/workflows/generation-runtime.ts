@@ -41,9 +41,10 @@ export interface GenerationRuntimeSubscription {
 export interface GenerationCheckpointOptions {
 	/**
 	 * @approved Checkpoint after this many visible deltas (the normal bounded
-	 * cadence). Every checkpoint rewrites the whole accumulated stream, so the
-	 * count prices a reply in full-text rewrites: 64 keeps a 4,000-token reply at
-	 * 62 of them instead of 500, and `intervalMs` bounds crash loss either way.
+	 * cadence). Every checkpoint commits about one database page whatever the
+	 * reply's length, so the count prices a reply in commits: 64 keeps a
+	 * 4,000-token reply at 62 of them instead of 500, and `intervalMs` bounds
+	 * crash loss either way.
 	 */
 	readonly eventInterval?: number;
 	/** @approved Also checkpoint when this amount of time elapsed between visible deltas. */
@@ -52,6 +53,25 @@ export interface GenerationCheckpointOptions {
 	readonly now?: () => number;
 }
 
+/** @approved Each stream's text since the previous successful checkpoint, and the length it starts at. */
+export interface CheckpointOutput {
+	readonly contentOffset: number;
+	readonly contentDelta: string;
+	readonly reasoningOffset: number;
+	readonly reasoningDelta: string;
+	readonly latestEventId: number;
+}
+
+// @approved
+//  A cadence checkpoint waits while a stream ends between the two halves of a
+// surrogate pair: a lone half is stored as U+FFFD, and a checkpoint's text
+// must hold everything through the event position it records, because a
+// reconnecting client resumes the stream after that position.
+const endsInsidePair = (text: string): boolean => {
+	const last = text.charCodeAt(text.length - 1);
+	return last >= 0xd800 && last <= 0xdbff;
+};
+
 export interface StartGenerationRuntimeInput {
 	generationId: number;
 	conversationId: number;
@@ -59,7 +79,7 @@ export interface StartGenerationRuntimeInput {
 	variantId: number;
 	startedAt: string;
 	/** @approved Called only at the bounded checkpoint cadence, or by flushCheckpoint. */
-	onCheckpoint?: (output: { content: string; reasoning: string; latestEventId: number }) => void;
+	onCheckpoint?: (output: CheckpointOutput) => void;
 	/** @approved Aborts the provider attempt owned by the runtime when Stop is requested. */
 	onStop?: () => void;
 	/** @approved Removes the terminal inspection copy with the retained event buffer. */
@@ -201,6 +221,8 @@ export class GenerationRuntime {
 	private readonly checkpointIntervalMs: number;
 	private readonly checkpointNow: () => number;
 	private lastCheckpointEventId = 0;
+	private checkpointedContent = 0;
+	private checkpointedReasoning = 0;
 	private lastCheckpointAt: number;
 	private checkpointPending = false;
 	private progress: MutableRuntimeProgress;
@@ -275,8 +297,9 @@ export class GenerationRuntime {
 			this.checkpointPending = true;
 			const elapsed = this.checkpointNow() - this.lastCheckpointAt;
 			if (
-				envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
-				(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)
+				(envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
+					(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)) &&
+				!endsInsidePair(this.progress.content) && !endsInsidePair(this.progress.reasoning)
 			) {
 				try { this.flushCheckpoint(); } catch { /* @approved Retry at the next cadence or forced flush. */ }
 			}
@@ -318,14 +341,19 @@ export class GenerationRuntime {
 		this.notifyState();
 	}
 
-	/** @approved Persist the latest accumulated output immediately, including its event position. */
+	/** @approved Persist the output since the last successful checkpoint immediately, including its event position. */
 	flushCheckpoint(): void {
 		if (!this.checkpointPending && this.lastCheckpointEventId === this.progress.latestEventId) return;
+		const { content, reasoning, latestEventId } = this.progress;
 		this.onCheckpoint?.({
-			content: this.progress.content,
-			reasoning: this.progress.reasoning,
-			latestEventId: this.progress.latestEventId,
+			contentOffset: this.checkpointedContent,
+			contentDelta: content.slice(this.checkpointedContent),
+			reasoningOffset: this.checkpointedReasoning,
+			reasoningDelta: reasoning.slice(this.checkpointedReasoning),
+			latestEventId,
 		});
+		this.checkpointedContent = content.length;
+		this.checkpointedReasoning = reasoning.length;
 		this.checkpointPending = false;
 		this.lastCheckpointEventId = this.progress.latestEventId;
 		this.lastCheckpointAt = this.checkpointNow();

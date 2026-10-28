@@ -47,7 +47,7 @@ const setup = () => {
 			{ reference: "lore", enabled: true, role: "system" },
 		],
 	});
-	selectConversationPromptPreset(drizzle(database), conversation.id, preset.id);
+	selectConversationPromptPreset(drizzle(database), { conversationId: conversation.id, promptPresetId: preset.id });
 	const book = importNativeLorebook(database, {
 		name: "Captured World",
 		description: "",

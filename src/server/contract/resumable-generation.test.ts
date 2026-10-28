@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import { readActiveGenerationDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -8,6 +8,8 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
 import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
+import { GenerationRuntime } from "../workflows/generation-runtime";
+import { generationSubscriptionEvents } from "./generation-sse";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -37,6 +39,29 @@ describe("Resumable generation transport", () => {
 		database = openObservedDatabase();
 	});
 	afterEach(() => database.close());
+
+	test("opens an idle subscription before the first provider event", async () => {
+		const runtime = new GenerationRuntime({ generationId: 1, conversationId: 1, messageId: 1, variantId: 1, startedAt: "2026-10-25T00:00:00Z" });
+		const app = new Elysia().get("/events", (context) => generationSubscriptionEvents(runtime, 0, context));
+		const response = await app.handle(new Request("http://localhost/events"));
+		expect(response.headers.get("content-type")).toContain("text/event-stream");
+		await response.body!.cancel();
+	}, 1_000);
+
+	for (const terminal of ["complete", "stopped", "error"] as const) test(`replays an already ${terminal} generation through its terminal frame`, async () => {
+		const runtime = new GenerationRuntime({ generationId: 1, conversationId: 1, messageId: 1, variantId: 1, startedAt: "2026-10-25T00:00:00Z" });
+		runtime.publish({ type: "content", text: "First." });
+		runtime.publish({ type: "content", text: "Second." });
+		if (terminal === "complete") runtime.complete();
+		else if (terminal === "stopped") runtime.markStopped();
+		else runtime.fail({ reason: "Provider failed." });
+		const app = new Elysia().get("/events", (context) => generationSubscriptionEvents(runtime, 1, context));
+		const body = await (await app.handle(new Request("http://localhost/events"))).text();
+		expect(body).not.toContain("id: 1\n");
+		expect(body).toContain('id: 2\nevent: generation\ndata: {"type":"content","text":"Second."}');
+		expect(body).toContain('event: state\ndata: {"generationId":1');
+		expect(body.match(new RegExp(`event: ${terminal}\\n`, "g"))).toHaveLength(1);
+	}, 1_000);
 
 	test("separates acceptance from subscription and replays buffered events", async () => {
 		const conversation = createConversationWithHistory(database, {
@@ -397,7 +422,7 @@ describe("Resumable generation transport", () => {
 			generationSettings: {},
 			connection: {},
 		});
-		checkpointConversationGeneration(database, {
+		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
 			content: "Recovered checkpoint.",

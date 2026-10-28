@@ -1,11 +1,10 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import {
 	executeConversationCommand,
 	acceptConversationTailGeneration,
 	resolveConversationGeneration,
 	readVariantDetails,
 	acceptConversationSiblingGeneration,
-	checkpointConversationGeneration,
 	stopConversationGeneration,
 } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -170,7 +169,7 @@ describe("permanent Box traces", () => {
 
 		const interruptedBase = readTestConversationSnapshot(module, created.id)!;
 		const interrupted = acceptConversationTailGeneration(module, { ...acceptedInput(interruptedBase, captured), expectedRevision: interruptedBase.revision, timestamp: "2026-09-23T00:06:00.000Z" });
-		checkpointConversationGeneration(module, { conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
+		checkpointFromStart(module, { conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
 		stopConversationGeneration(module, { conversationId: created.id, generationId: interrupted.generationId });
 		const interruptedTarget = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		expect(readVariantDetails(module, created.id, interruptedTarget.id, interruptedTarget.variants[0]!.id)?.boxTraces).toEqual(captured);

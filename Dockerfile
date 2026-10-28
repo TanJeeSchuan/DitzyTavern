@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 COPY . .
 ARG DISTRIBUTION=custom
 ARG BUILD_NUMBER
@@ -12,7 +12,7 @@ RUN bun run build
 FROM oven/bun:1.4.4 AS dependencies
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production --ignore-scripts
 
 FROM oven/bun:1.4.4 AS runtime
 ARG DISTRIBUTION=custom
@@ -32,5 +32,5 @@ COPY --from=build /app/src/server/build-metadata.json ./src/server/build-metadat
 RUN mkdir data && chown bun:bun data
 USER bun
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD bun -e 'const response = await fetch("http://127.0.0.1:3000/api/health"); process.exit(response.ok ? 0 : 1)'
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD bun -e 'const response = await fetch(`http://127.0.0.1:${process.env.PORT ?? 3000}/api/health`); process.exit(response.ok ? 0 : 1)'
 CMD ["bun", "src/server/index.ts"]

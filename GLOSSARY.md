@@ -169,6 +169,10 @@ _Avoid_: pending selection, optimistic selection, unconfirmed selection
 A Send the writer has submitted that the server has not yet accepted, shown as the writer's Message with a reply in progress. If the server does not accept it, the Message disappears and its text returns to the composer.
 _Avoid_: optimistic message, pending message, unsent message
 
+**Requested Swipe**:
+A Sibling Generation the writer has started that the server has not yet accepted, shown as an empty Variant in progress at the end of its Message. If the server does not accept it, the Message returns to the Variant it showed before.
+_Avoid_: optimistic Variant, pending Variant, placeholder Variant
+
 **Confirm Change**:
 The action that makes a previewed Variant part of the Selected narrative path. Messages after the changed Variant remain unchanged.
 _Avoid_: apply preview, commit branch

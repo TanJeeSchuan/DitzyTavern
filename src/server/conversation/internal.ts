@@ -502,9 +502,7 @@ export interface InsertedParticipant {
 export const insertParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
-	position: number,
-	definition: ParticipantDefinition,
-	sourceCharacterId: number | null,
+	{ position, definition, sourceCharacterId }: { position: number; definition: ParticipantDefinition; sourceCharacterId: number | null },
 ): InsertedParticipant => {
 	const name = normalizeParticipantName(definition.name);
 	const inserted = db

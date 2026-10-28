@@ -609,7 +609,7 @@ describe("Generation runtime behavior", () => {
 				{ reference: "lore", enabled: true, role: "system" },
 			],
 		});
-		selectConversationPromptPreset(drizzle(database), conversationId, preset.id);
+		selectConversationPromptPreset(drizzle(database), { conversationId, promptPresetId: preset.id });
 		const book = importNativeLorebook(database, {
 			name: "Retry Lorebook",
 			description: "",

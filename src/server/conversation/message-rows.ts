@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, lte, type SQL } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray, lte, type SQL } from "drizzle-orm";
 import { messageDataTable, messageTable, messageVariantDataTable, messageVariantTable } from "../database/schema";
 import { groupRowsByNumber, groupVariantsByMessage, type ConversationDatabase } from "./internal";
 import type { ConversationDataEntry } from "./types";
+import { liveVariantContent } from "./generation-checkpoint";
 
 export const toDataEntry = (row: { namespace: string; key: string; value: string }): ConversationDataEntry => ({ namespace: row.namespace, key: row.key, value: row.value });
 
@@ -20,7 +21,7 @@ export function loadMessageRows(db: ConversationDatabase, conversationId: number
 		request.upToPosition === undefined ? undefined : lte(messageTable.position, request.upToPosition),
 	)).orderBy(asc(messageTable.position)).all();
 	const ids = messages.map((message) => message.id);
-	const variants = ids.length === 0 ? [] : db.select().from(messageVariantTable).where(and(
+	const variants = ids.length === 0 ? [] : db.select({ ...getTableColumns(messageVariantTable), content: liveVariantContent }).from(messageVariantTable).where(and(
 		inArray(messageVariantTable.message_id, ids),
 		request.selectedOnly ? eq(messageVariantTable.selected, true) : undefined,
 	)).orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position)).all();

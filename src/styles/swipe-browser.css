@@ -1,0 +1,182 @@
+/* A Message's Swipes in a dialog, as a fan or a list. The dialog mounts only
+   while it is open, so it fades in and leaves at once. */
+.swipe-browser-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	/* No backdrop blur: on Firefox it re-blurs the whole story on every frame the list scrolls. */
+	background: color-mix(in oklch, var(--background) 72%, transparent);
+	animation: swipe-browser-fade 180ms ease-out;
+}
+
+/* One Swipe as a card face, shared by the fan and the list. */
+.swipe-card {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	gap: 0.65rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 1.1rem;
+	background: var(--surface-raised);
+	cursor: pointer;
+	outline: none;
+}
+
+.swipe-card > header {
+	display: flex;
+	justify-content: space-between;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	font-weight: 610;
+	font-variant-numeric: tabular-nums;
+}
+
+.swipe-card-current {
+	color: var(--primary);
+}
+
+.swipe-card-prose {
+	overflow: hidden;
+	font-size: 1.0625rem;
+	mask-image: linear-gradient(to bottom, #000 70%, transparent);
+	transition: opacity 200ms ease;
+}
+
+/* The list: a plain dialog to scan every Swipe at once and pick one. */
+.swipe-list {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	z-index: 50;
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	width: min(36rem, calc(100vw - 1.5rem));
+	max-height: min(44rem, calc(100dvh - 3rem));
+	border: 1px solid var(--border);
+	border-radius: 1.25rem;
+	background: var(--surface);
+	box-shadow: 0 1.4rem 3.5rem var(--shadow);
+	transform: translate(-50%, -50%);
+	outline: none;
+	animation: swipe-list-in 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.swipe-list > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.7rem 0.7rem 0.4rem 1.25rem;
+}
+
+.swipe-list h2 {
+	font-size: 0.95rem;
+	font-weight: 650;
+}
+
+.swipe-list ol {
+	display: grid;
+	gap: 0.6rem;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 0.3rem 1rem 1rem;
+	list-style: none;
+}
+
+.swipe-list .swipe-card {
+	padding: 0.8rem 1rem 0.2rem;
+	border-color: var(--border);
+	transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.swipe-list .swipe-card-prose {
+	max-height: 6em;
+	font-size: 1rem;
+}
+
+.swipe-list .swipe-card[aria-current="true"] {
+	border-color: color-mix(in oklch, var(--focus) 55%, var(--border));
+	background: var(--accent-softer);
+}
+
+.swipe-list .swipe-card:hover {
+	border-color: var(--border-strong);
+	background: var(--surface-muted);
+}
+
+.swipe-list .swipe-card:focus-visible {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 1px var(--focus);
+}
+
+/* The fan: a Message's Swipes held like a hand of cards, each turned about a
+   point well below the deck, with the browsed card in front. */
+.variant-fan {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	outline: none;
+}
+
+.variant-fan-surface {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	touch-action: none;
+	user-select: none;
+}
+
+.variant-fan-deck {
+	position: relative;
+	width: min(30rem, calc(100vw - 5.5rem));
+	height: min(18rem, 50dvh);
+	pointer-events: none;
+}
+
+.variant-card {
+	position: absolute;
+	inset: 0;
+	padding: 0.95rem 1.15rem 0;
+	box-shadow: 0 1.2rem 3rem var(--shadow);
+	pointer-events: auto;
+	transform-origin: 50% 260%;
+	transform: rotate(calc(var(--offset) * 6deg)) scale(calc(1 - min(var(--distance), 4) * 0.03));
+	opacity: clamp(0, calc(3.2 - var(--distance)), 1);
+	transition: transform 300ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms ease, border-color 150ms ease, box-shadow 150ms ease;
+	animation: variant-card-deal 280ms cubic-bezier(0.2, 0, 0, 1) backwards;
+	animation-delay: calc(var(--deal) * 28ms);
+}
+
+.variant-fan-surface[data-dragging="true"] .variant-card {
+	transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+/* The front card holds focus while the fan is open, and is the one a tap or Enter picks. */
+.variant-card[data-front="true"] {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 1px var(--focus), 0 1.2rem 3rem var(--shadow);
+}
+
+.variant-card:not([data-front="true"]) .swipe-card-prose {
+	opacity: 0.45;
+}
+
+@keyframes variant-card-deal {
+	from {
+		opacity: 0;
+		transform: translateY(1.25rem) scale(0.96);
+	}
+}
+
+@keyframes swipe-list-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, calc(-50% + 0.5rem)) scale(0.985);
+	}
+}
+
+@keyframes swipe-browser-fade {
+	from {
+		opacity: 0;
+	}
+}

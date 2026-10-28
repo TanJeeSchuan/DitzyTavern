@@ -69,12 +69,29 @@
 	gap: 0.2rem;
 }
 
-.swipe-controls > span {
+.swipe-count {
 	min-width: 3.5rem;
+	height: 2.25rem;
+	padding: 0 0.4rem;
+	border: 0;
+	border-radius: 0.75rem;
+	background: transparent;
 	color: var(--text-muted);
 	font-size: 0.72rem;
 	font-variant-numeric: tabular-nums;
-	text-align: center;
+	transition: color 150ms ease, background-color 150ms ease;
+}
+
+.swipe-count:hover:not(:disabled),
+.swipe-count:focus-visible {
+	background: var(--surface-muted);
+	color: var(--foreground);
+}
+
+@media (pointer: coarse) {
+	.swipe-count {
+		height: 2.75rem;
+	}
 }
 
 .message-editor {

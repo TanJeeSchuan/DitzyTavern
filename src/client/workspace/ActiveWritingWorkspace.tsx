@@ -37,8 +37,9 @@ import { useConversationSession } from "./useConversationSession";
 import { useGenerationController } from "./useGenerationController";
 import { useGenerationSettingsDraft } from "./useGenerationSettingsDraft";
 import { usePreviewController } from "./usePreviewController";
-import { useNarrow } from "../lib/use-narrow";
+import { useNarrow } from "../lib/use-media";
 import { useThemePreference } from "../lib/use-theme";
+import { useSwipeBrowsing } from "../lib/use-swipe-browsing";
 import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
 import { StoryStage } from "./StoryStage";
@@ -75,6 +76,7 @@ export function ActiveWritingWorkspace({
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const saveNavigation = useSaveNavigation();
 	const [theme, setPersistedTheme] = useThemePreference();
+	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
 	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
@@ -219,6 +221,8 @@ export function ActiveWritingWorkspace({
 				activeChat={session.activeChat}
 				theme={theme}
 				onThemeChange={setPersistedTheme}
+				swipeBrowsing={swipeBrowsing}
+				onSwipeBrowsingChange={setSwipeBrowsing}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
 				onSelectChat={(chatId) => saveNavigation.requestNavigation(() => selectChat(chatId))}
@@ -249,6 +253,7 @@ export function ActiveWritingWorkspace({
 				generation={generation}
 				preview={preview}
 				boxWindows={boxWindows}
+				swipeBrowsing={swipeBrowsing}
 				onEnterPreview={() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();
@@ -291,6 +296,8 @@ export function ActiveWritingWorkspace({
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
 					chatTitle={session.activeChat.title}
+					conversation={session.conversation}
+					onConversationChange={session.setConversation}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}

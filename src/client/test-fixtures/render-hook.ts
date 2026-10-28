@@ -10,7 +10,10 @@ const windowStub = {
 Object.defineProperty(globalThis, "window", { configurable: true, value: windowStub });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { QueryClientProvider } = await import("@tanstack/react-query");
+const { QueryClientProvider, notifyManager } = await import("@tanstack/react-query");
+// @approved
+// Query results notify observers on a timer, which can land between act scopes.
+notifyManager.setNotifyFunction((notify) => act(notify));
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {

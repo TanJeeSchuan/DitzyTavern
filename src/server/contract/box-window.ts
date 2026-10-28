@@ -31,7 +31,7 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		"/api/conversations/:id/boxes/:box/digest",
 		({ params, body }) => {
 			if (!isDigestBox(params.box)) return notFoundResponse();
-			queueBoxDigest(database, params.id, params.box, body.variantId);
+			queueBoxDigest(database, params.id, params.box, body);
 			return readDigest(database, params.id, params.box) ?? notFoundResponse();
 		},
 		{ params, body: digestPassageCommand, response: readResponse },

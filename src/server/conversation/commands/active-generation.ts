@@ -5,14 +5,16 @@ import { recordKey } from "../../box/records";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
+	generationCheckpointTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
+import { selectActiveGenerations } from "../generation-checkpoint";
 import {
 	InvalidConversationCommandError,
 } from "../errors";
@@ -41,9 +43,7 @@ const readActiveGeneration = (
 	db: ConversationDatabase,
 	conversationId: number,
 	generationId: number,
-) => db
-	.select()
-	.from(activeGenerationTable)
+) => selectActiveGenerations(db)
 	.where(
 		and(
 			eq(activeGenerationTable.id, generationId),
@@ -94,8 +94,6 @@ const provisionalVariantRow = (
 
 type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
 
-type CheckpointVariantValues = { content: string; timestamp?: string };
-
 const terminalStatusFrom = (
 	data: readonly ConversationDataEntry[],
 ): "complete" | "length-limited" | "interrupted" => {
@@ -109,10 +107,10 @@ const terminalStatusFrom = (
 //  The Active Generation columns the bounded replay window carries over
 // verbatim. The exclusions are the active-only bookkeeping the durable
 // Variant or the running attempt owns (provenance, human Message, prior
-// Variant) and the two checkpoint columns the terminal outcome supplies
-// below. Every other active_generation column carries, so a new column
-// defaults to carried and the exclusion names are type-checked against the
-// row here.
+// Variant) and the two assembled checkpoint streams the terminal outcome
+// supplies below. Every other active_generation column carries, so a new
+// column defaults to carried and the exclusion names are type-checked
+// against the row here.
 const replayCarriedColumns = (active: ActiveGenerationRow) => {
 	const {
 		human_message_id: _humanMessageId,
@@ -359,73 +357,73 @@ export const removeConversationGeneration = (
 };
 
 /** @approved
- * Persist one revision-neutral Generation checkpoint.
- *
- * The Active Generation row is the authoritative crash-recovery copy of both
- * streams and their application event position. The provisional Variant's
- * visible content is mirrored as well so a normal Conversation read remains
- * useful while the provider is still running. Reasoning stays active-only
- * until terminal resolution, keeping ordinary history free of partial private
- * reasoning.
+ * Persist one revision-neutral Generation checkpoint: the output streamed
+ * since the previous one, appended as one delta row. The delta rows are the
+ * authoritative crash-recovery copy of both streams and their application
+ * event position; nothing else is rewritten, so the provisional Variant keeps
+ * its acceptance content until terminal resolution and live readers get the
+ * assembled streams from the Active Generation instead. A delta that does not
+ * start where the stored streams end would corrupt the assembled text, so it
+ * is rejected.
  */
 export function checkpointConversationGeneration(
 	database: Database,
 	input: CheckpointGenerationInput,
 ): void {
 	runConversationTransaction(database, (db) => {
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) return;
-		writeCheckpointInTransaction(db, active, input);
+		const stored = storedCheckpointEnds(db, input);
+		if (stored === undefined) return;
+		if (stored.content !== input.contentOffset || stored.reasoning !== input.reasoningOffset) {
+			throw new InvalidConversationCommandError("The checkpoint does not continue the stored Generation output.");
+		}
+		appendCheckpoint(db, input);
 	});
 }
 
-// @approved
-//  The checkpoint write against an already-read Active Generation row:
-// the monotonic event position guards delayed writes, the provisional
-// Variant mirrors the visible content, and the crash-recovery copy stores
-// both streams. Shared by the Tail and Sibling checkpoint seams.
-function writeCheckpointInTransaction(
-	db: ConversationDatabase,
-	active: ActiveGenerationRow,
-	input: CheckpointGenerationInput,
+/** @approved
+ * Persist a whole outcome as the first checkpoint of an attempt that has
+ * none, so a failed terminal write still leaves the output for recovery. An
+ * attempt with a runtime has already flushed its streamed output and is left
+ * as it is.
+ */
+export function checkpointUnstreamedOutcome(
+	database: Database,
+	input: { conversationId: number; generationId: number; content: string; reasoning: string },
 ): void {
-	const currentEventId = active.checkpoint_event_id;
-	if (
-		input.latestEventId !== undefined &&
-		Number.isInteger(input.latestEventId) &&
-		input.latestEventId < currentEventId
-	) return;
-	const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
-		? currentEventId
-		: Math.max(currentEventId, input.latestEventId);
-	const values: CheckpointVariantValues = {
-		content: input.content,
-		...(input.timestamp === undefined ? undefined : { timestamp: input.timestamp }),
-	};
-	db.update(messageVariantTable)
-		.set(values)
-		.where(
-			and(
-				eq(messageVariantTable.id, active.variant_id),
-				eq(messageVariantTable.message_id, active.message_id),
-			),
-		)
-		.run();
-	db.update(activeGenerationTable)
-		.set({
-			checkpoint_content: input.content,
-			checkpoint_reasoning: input.reasoning ?? active.checkpoint_reasoning,
-			checkpoint_event_id: eventId,
-			checkpointed_at: input.timestamp ?? new Date().toISOString(),
-		})
-		.where(
-			and(
-				eq(activeGenerationTable.id, active.id),
-				eq(activeGenerationTable.conversation_id, input.conversationId),
-			),
-		)
-		.run();
+	runConversationTransaction(database, (db) => {
+		const stored = storedCheckpointEnds(db, input);
+		if (stored === undefined || stored.content > 0 || stored.reasoning > 0) return;
+		appendCheckpoint(db, {
+			...input, contentOffset: 0, contentDelta: input.content, reasoningOffset: 0, reasoningDelta: input.reasoning, latestEventId: 0,
+		});
+	});
 }
+
+/** @approved Where both stored streams end, or undefined once the Active Generation is gone. */
+const storedCheckpointEnds = (db: ConversationDatabase, input: { conversationId: number; generationId: number }) => {
+	const active = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable)
+		.where(and(eq(activeGenerationTable.id, input.generationId), eq(activeGenerationTable.conversation_id, input.conversationId)))
+		.get();
+	if (active === undefined) return undefined;
+	return db.select({ content: generationCheckpointTable.content_end, reasoning: generationCheckpointTable.reasoning_end })
+		.from(generationCheckpointTable)
+		.where(eq(generationCheckpointTable.generation_id, active.id))
+		.orderBy(desc(generationCheckpointTable.event_id))
+		.limit(1)
+		.get() ?? { content: 0, reasoning: 0 };
+};
+
+const appendCheckpoint = (db: ConversationDatabase, input: CheckpointGenerationInput): void => {
+	db.insert(generationCheckpointTable).values({
+		generation_id: input.generationId,
+		event_id: input.latestEventId,
+		content_end: input.contentOffset + input.contentDelta.length,
+		reasoning_end: input.reasoningOffset + input.reasoningDelta.length,
+		content: input.contentDelta,
+		reasoning: input.reasoningDelta,
+		checkpointed_at: input.timestamp ?? new Date().toISOString(),
+	}).run();
+};
 
 interface StoppedSiblingTarget {
 	messageId: number;
@@ -601,9 +599,7 @@ export function stopConversationGenerations(
 ): StoppedGenerations {
 	return runConversationTransaction(database, (db, reportChange) => {
 		requireConversation(db, input.conversationId);
-		const activeRows = db
-			.select()
-			.from(activeGenerationTable)
+		const activeRows = selectActiveGenerations(db)
 			.where(eq(activeGenerationTable.conversation_id, input.conversationId))
 			.orderBy(asc(activeGenerationTable.id))
 			.all();

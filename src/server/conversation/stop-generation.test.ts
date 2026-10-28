@@ -1,10 +1,9 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
 import { readVariantDetails, acceptConversationSiblingGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import {
 	acceptConversationTailGeneration,
-	checkpointConversationGeneration,
 } from ".";
 // The raw durable stop transitions are private implementation details of the
 // Conversation module; only these durable-transaction tests reach them
@@ -69,7 +68,7 @@ describe("explicit Conversation Generation Stop", () => {
 	test("persists partial Tail output as an interrupted Variant", () => {
 		const input = setup();
 		const accepted = acceptTail(input);
-		checkpointConversationGeneration(database, {
+		checkpointFromStart(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Partial answer.",
@@ -147,7 +146,7 @@ describe("explicit Conversation Generation Stop", () => {
 	test("keeps partial Sibling output selected and marks it interrupted", () => {
 		const input = setup();
 		const accepted = acceptSibling(input);
-		checkpointConversationGeneration(database, {
+		checkpointFromStart(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Alternative answer.",

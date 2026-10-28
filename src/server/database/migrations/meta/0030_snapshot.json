@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6a5f715d-6a6e-4ff5-94b6-43a651e3b21b",
+  "id": "cd3b9418-79ed-4c1b-929c-82866ab0aa70",
   "prevId": "a3866856-59ee-4143-af30-cbeb885a6883",
   "tables": {
     "active_generation": {
@@ -85,28 +85,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "prompt_plan_json": {
-          "name": "prompt_plan_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt_inspection_json": {
-          "name": "prompt_inspection_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "prompt_context_json": {
-          "name": "prompt_context_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "lore_activation_json": {
           "name": "lore_activation_json",
           "type": "text",
@@ -144,37 +122,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'{\"type\":\"tail\"}'"
-        },
-        "checkpoint_content": {
-          "name": "checkpoint_content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "checkpoint_reasoning": {
-          "name": "checkpoint_reasoning",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "checkpoint_event_id": {
-          "name": "checkpoint_event_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "checkpointed_at": {
-          "name": "checkpointed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "provenance_namespace": {
           "name": "provenance_namespace",
@@ -951,14 +898,6 @@
           "autoincrement": false,
           "default": "'automatic'"
         },
-        "system_placement": {
-          "name": "system_placement",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'strict'"
-        },
         "timeout_ms": {
           "name": "timeout_ms",
           "type": "integer",
@@ -1704,6 +1643,118 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "generation_capture": {
+      "name": "generation_capture",
+      "columns": {
+        "generation_id": {
+          "name": "generation_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "capture": {
+          "name": "capture",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "image_references": {
+          "name": "image_references",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "generation_checkpoint": {
+      "name": "generation_checkpoint",
+      "columns": {
+        "generation_id": {
+          "name": "generation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_end": {
+          "name": "content_end",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reasoning_end": {
+          "name": "reasoning_end",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reasoning": {
+          "name": "reasoning",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpointed_at": {
+          "name": "checkpointed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "generation_checkpoint_generation_id_active_generation_id_fk": {
+          "name": "generation_checkpoint_generation_id_active_generation_id_fk",
+          "tableFrom": "generation_checkpoint",
+          "tableTo": "active_generation",
+          "columnsFrom": [
+            "generation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "generation_checkpoint_generation_id_event_id_pk": {
+          "columns": [
+            "generation_id",
+            "event_id"
+          ],
+          "name": "generation_checkpoint_generation_id_event_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "generation_replay": {
       "name": "generation_replay",
       "columns": {
@@ -1765,27 +1816,6 @@
         },
         "started_at": {
           "name": "started_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt_plan_json": {
-          "name": "prompt_plan_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt_inspection_json": {
-          "name": "prompt_inspection_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt_context_json": {
-          "name": "prompt_context_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

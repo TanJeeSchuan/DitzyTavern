@@ -55,13 +55,11 @@ export function addParticipant(
 		)
 		.get()?.value;
 
-	const inserted = insertParticipant(
-		db,
-		input.conversationId,
-		(latestPosition ?? 0) + 1,
+	const inserted = insertParticipant(db, input.conversationId, {
+		position: (latestPosition ?? 0) + 1,
 		definition,
-		input.sourceCharacterId ?? null,
-	);
+		sourceCharacterId: input.sourceCharacterId ?? null,
+	});
 
 	// @approved
 	//  Completion fill: only an incomplete Conversation (fewer than two

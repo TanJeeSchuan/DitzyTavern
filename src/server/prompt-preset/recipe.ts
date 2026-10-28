@@ -94,8 +94,7 @@ export const selectDefaultPromptPreset = (
 // keeps the exactly-one-selection invariant the creation seam established.
 export const selectConversationPromptPreset = (
 	db: PromptPresetDatabase,
-	conversationId: number,
-	promptPresetId: number,
+	{ conversationId, promptPresetId }: { conversationId: number; promptPresetId: number },
 ): void => {
 	const preset = db
 		.select({ id: promptPresetTable.id })

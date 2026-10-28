@@ -215,8 +215,22 @@
     {
       "idx": 30,
       "version": "6",
-      "when": 1793159125558,
-      "tag": "0030_system_placement",
+      "when": 1792919176372,
+      "tag": "0030_generation_checkpoint_deltas",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1792932883136,
+      "tag": "0031_chat_background",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793161307961,
+      "tag": "0032_system_placement",
       "breakpoints": true
     }
   ]

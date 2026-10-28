@@ -86,11 +86,13 @@ type TextFields = { name?: string; content: string; role: PromptOutgoingRole };
 //  for the Box's own content and reset to the Box's default.
 const TextFieldEditor = ({
 	slot,
+	title,
 	draft,
 	disabled,
 	onChange,
 }: {
 	slot: TextSlot;
+	title: string;
 	draft: BlockDraft | undefined;
 	disabled: boolean;
 	onChange: (fields: TextFields) => void;
@@ -99,8 +101,7 @@ const TextFieldEditor = ({
 	const fields: TextFields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
 		: { name: "name" in slot ? slot.name : undefined, content: slot.content, role: slot.role };
-	const label = slotTitle(slot);
-	const warnings = unknownMacrosOf(fields.content, label);
+	const warnings = unknownMacrosOf(fields.content, title);
 	return <div className="flex flex-col gap-3">
 		{slot.reference === "instruction" && <label className="flex flex-col gap-1 text-xs text-muted-foreground">
 			<span>Name</span>
@@ -192,7 +193,7 @@ export function PromptPresetRecipeRow({
 		group: presetId,
 		disabled: pending,
 	});
-	const title = slotTitle(slot);
+	const title = slotTitle(slot.reference === "instruction" && draft?.kind === "content" ? { ...slot, name: draft.name ?? slot.name } : slot);
 	const referenceCopy = slot.reference === "instruction" ? null : referenceBlockCopy(slot, title);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
@@ -267,6 +268,7 @@ export function PromptPresetRecipeRow({
 				{slot.reference === "instruction" ? (
 					<TextFieldEditor
 						slot={slot}
+						title={title}
 						draft={draft}
 						disabled={pending}
 						onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
@@ -279,6 +281,7 @@ export function PromptPresetRecipeRow({
 						</dl>
 						<TextFieldEditor
 							slot={slot}
+							title={title}
 							draft={draft}
 							disabled={pending}
 							onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}

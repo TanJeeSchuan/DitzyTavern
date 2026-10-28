@@ -424,13 +424,11 @@ export function createConversation(
 		// error class so the transport contracts map them to 422.
 		const insertedParticipants = asCreationError(() =>
 			seeds.map((seed, index) =>
-				insertParticipant(
-					db,
-					conversation.id,
-					index + 1,
-					seed.definition,
-					seed.sourceCharacterId ?? null,
-				),
+				insertParticipant(db, conversation.id, {
+					position: index + 1,
+					definition: seed.definition,
+					sourceCharacterId: seed.sourceCharacterId ?? null,
+				}),
 			),
 		);
 

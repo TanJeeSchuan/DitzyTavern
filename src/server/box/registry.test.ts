@@ -12,9 +12,9 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, checkpointConversationGeneration, observeConversationWrites } from "../conversation";
+import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
-import { insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
 import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
@@ -181,7 +181,7 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 			promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, omittedContext: [] }, promptContext: [], generationSettings: {}, connection: {},
 			boxRecords: { lantern: { instance, record: { lit: true } } },
 		});
-		checkpointConversationGeneration(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
+		checkpointFromStart(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
 		await loadBoxes([builtInBoxes]);
 		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, failed: 0 });
 		const stored = database.query<{ value: string }, [number]>("SELECT value FROM message_variant_data WHERE message_variant_id = ? AND namespace = 'box:lantern'").get(accepted.provisionalVariantId);
@@ -320,7 +320,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));
 		if (value.startsWith("{")) expect((await result)["box:lantern"]?.[field]).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
-		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected union value.`);
+		else await expect(result).rejects.toThrow(`The lantern Box's advance.run result is invalid at /${field}: Expected kind 'GenerationJsonValue'.`);
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -349,7 +349,7 @@ for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested
 		if (value.startsWith("{")) expect(JSON.parse(stored.value).automatic).toEqual({ value: { nested: [null, true, 3, "lit", { wick: false }] } });
 		else {
 			expect(JSON.parse(stored.value).automatic).toBeUndefined();
-			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected union value.");
+			expect(JSON.parse(stored.value).error.message).toBe("The lantern Box's records.digest.run result is invalid at /: Expected kind 'GenerationJsonValue'.");
 		}
 	} finally {
 		await stop?.();

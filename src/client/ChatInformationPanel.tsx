@@ -19,6 +19,8 @@ import { ImportWarningsList } from "./import-chat/ImportNotices";
 import { useAsyncEffect } from "./lib/use-async";
 import { formatSize } from "./lib/format";
 import { PanelHeader } from "./PanelHeader";
+import { ChatBackgroundSetting } from "./ChatBackground";
+import type { ConversationSummary } from "./conversation";
 
 // @approved
 //  Keep import origin in this on-demand panel. Do not add an Imported badge,
@@ -27,12 +29,16 @@ import { PanelHeader } from "./PanelHeader";
 interface ChatInformationPanelProps {
 	conversationId: number;
 	chatTitle: string;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary) => void;
 	onClose: () => void;
 }
 
 export function ChatInformationPanel({
 	conversationId,
 	chatTitle,
+	conversation,
+	onConversationChange,
 	onClose,
 }: ChatInformationPanelProps) {
 	const [state, dispatch] = useReducer(
@@ -92,6 +98,8 @@ export function ChatInformationPanel({
 						<dd>{conversationId}</dd>
 					</div>
 				</dl>
+
+				{conversation !== null && <ChatBackgroundSetting conversation={conversation} onConversationChange={onConversationChange} />}
 
 				{state.status === "loading" && (
 					<p className="panel-note" role="status">
