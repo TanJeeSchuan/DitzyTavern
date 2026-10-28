@@ -196,6 +196,18 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 							]}
 						/>
 						</Field>
+						<Field htmlFor="connection-system-placement" label="System placement" helper="Strict sends system blocks before history first, and later ones as user messages.">
+							<AppSelect
+							id="connection-system-placement"
+							className="field-input"
+							value={draft.systemPlacement}
+							onValueChange={(value) => updateDraft({ systemPlacement: value === "none" ? "none" : "strict" })}
+							options={[
+								{ value: "strict", label: "Strict" },
+								{ value: "none", label: "None, as authored" },
+							]}
+						/>
+						</Field>
 						</>}
 						<div className="grid gap-1.5">
 							<div className="flex items-center justify-between gap-3">

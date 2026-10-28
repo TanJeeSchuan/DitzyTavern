@@ -95,6 +95,7 @@ export function connectionSnapshotOf(
 		backend: "ai-sdk",
 		adapter: profile.adapter,
 		apiFormat: profile.apiFormat,
+		systemPlacement: profile.systemPlacement,
 		textOnlyModels: [...profile.textOnlyModels],
 	};
 }

@@ -97,6 +97,7 @@ export function readProfile(
 			modelBackend: row.model_backend,
 			adapter: row.adapter,
 			outputTokenRepresentation: row.output_token_representation,
+			systemPlacement: row.system_placement,
 			timeoutMs: row.timeout_ms,
 			pinnedModels: pins,
 			discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
@@ -174,6 +175,7 @@ export function toProfileRow(profile: ConnectionProfileDraft) {
 		model_backend: profile.modelBackend,
 		adapter: profile.adapter,
 		output_token_representation: profile.outputTokenRepresentation,
+		system_placement: profile.systemPlacement,
 		timeout_ms: profile.timeoutMs,
 	};
 }

@@ -12,6 +12,7 @@ const deepSeekProfile: ConnectionProfileDraft = {
 	modelBackend: "automatic",
 	adapter: "deepseek",
 	outputTokenRepresentation: "automatic",
+	systemPlacement: "strict",
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
 };
@@ -38,6 +39,7 @@ const presets: readonly ConnectionPreset[] = [
 			modelBackend: "automatic",
 			adapter: "openrouter",
 			outputTokenRepresentation: "automatic",
+			systemPlacement: "strict",
 			timeoutMs: 120000,
 			pinnedModels: [
 				"deepseek/deepseek-v4-flash",

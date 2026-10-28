@@ -67,6 +67,10 @@ const promptBlock = Type.Union([
 		kind: promptDefinitionBlockKind,
 		role: promptDefinitionRole,
 		content: Type.String(),
+		// @approved
+		//  Set when Strict System Placement sent this authored system block as
+		// a human message, so inspection can say why its role changed.
+		demoted: Type.Optional(Type.Literal(true)),
 	}),
 	Type.Object({
 		kind: Type.Literal("history"),
@@ -82,6 +86,10 @@ const generationIntent = Type.Union([
 		type: Type.Literal("continuation"),
 		strategy: Type.Literal("instruction"),
 		instruction: Type.String(),
+		// @approved
+		//  Set when Strict System Placement sends the instruction as a human
+		// message instead of a trailing system message.
+		demoted: Type.Optional(Type.Literal(true)),
 	}),
 	Type.Object({
 		type: Type.Literal("continuation"),

@@ -101,6 +101,10 @@ _Avoid_: configuration snapshot, raw Generation Settings
 The provider-neutral, ordered writing context compiled for one Generation attempt, including its named prompt blocks, selected Conversation history, and Generation intent.
 _Avoid_: compiled prompt, provider messages, request payload
 
+**System Placement**:
+A Connection Profile's rule for laying out a Prompt Plan's system blocks. Strict sends one leading run of system messages: system blocks before history move to the front, and a system block after any other message keeps its place and is sent as a human message, marked demoted. None sends the recipe's order and roles exactly.
+_Avoid_: prompt post-processing, system squashing
+
 **Prompt Preset**:
 A shared, reusable ordered recipe for assembling character information, instructions, and Conversation history into a Prompt Plan. Conversations using the same Prompt Preset share its saved edits; an independent recipe is a copy of the entire preset. Generation Settings and text-processing scripts are outside its scope.
 _Avoid_: Generation Settings, Connection Preset, Prompt Plan

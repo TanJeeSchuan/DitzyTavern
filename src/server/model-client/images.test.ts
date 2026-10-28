@@ -18,6 +18,7 @@ const profile: ConnectionProfile = {
 	modelBackend: "automatic",
 	adapter: "openai-compatible",
 	outputTokenRepresentation: "omit",
+	systemPlacement: "strict",
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
@@ -131,6 +132,23 @@ describe("Model Client Image transport", () => {
 			{ role: "user", content: ["[Image: map]", "<image/png:AQID>"] },
 			{ role: "assistant", content: "I wear [Image: mug]." },
 			{ role: "user", content: ["[Image: mug]", "<image/webp:BAUG>"] },
+			{ role: "user", content: "Hello" },
+		]);
+	});
+
+	test("holds a system message's Images until its run of system messages ends", async () => {
+		const sent = await sentTo({
+			promptPlan: planOf([
+				{ kind: "scenario", role: "system", content: `Setting: ${map}` },
+				{ kind: "lore", role: "system", content: "Lore line." },
+				history("Hello"),
+			]),
+		});
+		await sent.result;
+		expect(sent.messages()).toEqual([
+			{ role: "system", content: "Setting: [Image: map]" },
+			{ role: "system", content: "Lore line." },
+			{ role: "user", content: ["[Image: map]", "<image/png:AQID>"] },
 			{ role: "user", content: "Hello" },
 		]);
 	});

@@ -76,6 +76,7 @@ describe("Generation capture and provenance", () => {
 			modelBackend: "automatic" as const,
 			adapter: "deepseek" as const,
 			outputTokenRepresentation: "automatic" as const,
+			systemPlacement: "strict" as const,
 			timeoutMs: 120_000,
 			pinnedModels: ["custom-before-discovery"],
 		};
@@ -195,6 +196,7 @@ describe("Generation capture and provenance", () => {
 				modelBackend: "automatic" as const,
 				adapter: "deepseek" as const,
 				outputTokenRepresentation: "automatic" as const,
+				systemPlacement: "strict" as const,
 				timeoutMs: null,
 				pinnedModels: [],
 			},

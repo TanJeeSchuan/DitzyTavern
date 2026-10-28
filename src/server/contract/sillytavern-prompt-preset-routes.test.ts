@@ -410,6 +410,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				modelBackend: "automatic",
 				adapter: "deepseek",
 				outputTokenRepresentation: "automatic",
+				systemPlacement: "strict",
 				timeoutMs: 120_000,
 				pinnedModels: [],
 			},

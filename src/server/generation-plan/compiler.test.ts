@@ -12,6 +12,7 @@ import {
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
+import { toMessages } from "../model-client/chat-messages";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
 // intent, the budget outcomes, the active API Format selection for Request
@@ -95,7 +96,7 @@ const compile = (
 	recipe: defaultRecipe,
 	context: [entry("Maren", "The lamp turns above you.", "model")],
 	settings: configuredSettings(),
-	connection: { apiFormat: "chat-completions" },
+	connection: { apiFormat: "chat-completions", systemPlacement: "none" },
 	estimator: transcriptLengthEstimator,
 	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	...overrides,
@@ -361,6 +362,19 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.effectiveSettings.continuationPrefillSuffix).toBeNull();
 	});
 
+	test("sends a strictly placed instruction Continuation as the trailing user message", () => {
+		const intent = continuationIntentFor(configuredSettings({
+			continuationStrategy: "instruction",
+			continuationInstruction: "Carry the scene forward.",
+		}));
+		const plan = compile({ intent, connection: { apiFormat: "chat-completions", systemPlacement: "strict" } });
+
+		expect(toMessages({ promptPlan: plan.promptPlan }, () => undefined).slice(-2)).toEqual([
+			{ role: "assistant", content: "The lamp turns above you." },
+			{ role: "user", content: "Carry the scene forward." },
+		]);
+	});
+
 	test("compiles an assistant-prefill Continuation retaining only the Prefill suffix", () => {
 		const settings = configuredSettings({
 			continuationStrategy: "assistant-prefill",
@@ -386,13 +400,13 @@ describe("Generation Plan Compiler", () => {
 
 	test("selects Request Overrides only from the active API Format", () => {
 		const chatCompletions = compile({
-			connection: { apiFormat: "chat-completions" },
+			connection: { apiFormat: "chat-completions", systemPlacement: "none" },
 		});
 		const responses = compile({
-			connection: { apiFormat: "responses" },
+			connection: { apiFormat: "responses", systemPlacement: "none" },
 		});
 		const anthropicMessages = compile({
-			connection: { apiFormat: "anthropic-messages" },
+			connection: { apiFormat: "anthropic-messages", systemPlacement: "none" },
 		});
 
 		expect(chatCompletions.effectiveSettings.requestOverrides).toEqual({

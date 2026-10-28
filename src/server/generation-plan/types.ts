@@ -4,7 +4,7 @@
 // implementation. These types describe the one complete plan every
 // Generation workflow consumes.
 
-import type { ChatApiFormat } from "../connection-settings/types";
+import type { ChatApiFormat, SystemPlacement } from "../connection-settings/types";
 import type {
 	CanonicalGenerationSettings,
 	EffectiveGenerationSettings,
@@ -52,13 +52,14 @@ export interface GenerationPlan {
 
 /**
  * The safe Connection facts compilation consumes: the selected Profile's API
- * Format. Resolution happens before compilation so only the matching
- * Request Overrides namespace participates; credentials, headers, and
- * connection URLs stay behind the transport seam and never reach the
- * compiler or the plan.
+ * Format, so only the matching Request Overrides namespace participates, and
+ * its System Placement, which lays out the plan's system blocks.
+ * Credentials, headers, and connection URLs stay behind the transport seam
+ * and never reach the compiler or the plan.
  */
 export interface GenerationConnectionFacts {
 	readonly apiFormat: ChatApiFormat;
+	readonly systemPlacement: SystemPlacement;
 }
 
 /** The captured inputs one compilation consumes. */

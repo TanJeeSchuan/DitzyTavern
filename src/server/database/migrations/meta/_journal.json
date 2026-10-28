@@ -225,6 +225,13 @@
       "when": 1792932883136,
       "tag": "0031_chat_background",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793161307961,
+      "tag": "0032_system_placement",
+      "breakpoints": true
     }
   ]
 }

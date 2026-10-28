@@ -25,6 +25,7 @@ const profile = {
 	modelBackend: "automatic" as const,
 	adapter: "openai-compatible" as const,
 	outputTokenRepresentation: "automatic" as const,
+	systemPlacement: "strict" as const,
 	timeoutMs: 120_000,
 	pinnedModels: [],
 };

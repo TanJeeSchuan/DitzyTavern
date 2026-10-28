@@ -1,0 +1,1 @@
+ALTER TABLE `connection_profile` ADD `system_placement` text DEFAULT 'strict' NOT NULL;

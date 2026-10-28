@@ -713,3 +713,56 @@ describe("Box blocks", () => {
 		expect(contents({ "box:mood": [], "box:thought": [] })).toEqual(["Write thoughts as <thought>…</thought>."]);
 	});
 });
+
+describe("Strict System Placement", () => {
+	const strict = (overrides: Partial<CompilePromptInput> = {}) =>
+		compilePrompt({ ...filled(), systemPlacement: "strict", ...overrides }).blocks.map((block) =>
+			[block.content, block.role, "demoted" in block ? block.demoted : undefined]);
+
+	test("moves pre-history system blocks to the front and demotes system blocks after history", () => {
+		expect(strict()).toEqual([
+			["System line.", "system", undefined],
+			["Scenario line.", "system", undefined],
+			["Human identity line.", "human", undefined],
+			["Model identity line.", "model", undefined],
+			["Example line.", "human", undefined],
+			["First history line.", "human", undefined],
+			["Second history line.", "model", undefined],
+			["Post line.", "human", true],
+		]);
+	});
+
+	test("collapses every system block into the leading run when the recipe has no history", () => {
+		const instruction = (content: string, role: "system" | "user" | "assistant") =>
+			({ reference: "instruction", enabled: true, role, name: "", content }) as const;
+		expect(strict({ recipe: [
+			instruction("one", "system"),
+			instruction("two", "system"),
+			instruction("ask", "user"),
+			instruction("three", "system"),
+			instruction("reply", "assistant"),
+			instruction("four", "system"),
+		] })).toEqual([
+			["one", "system", undefined],
+			["two", "system", undefined],
+			["three", "system", undefined],
+			["four", "system", undefined],
+			["ask", "human", undefined],
+			["reply", "model", undefined],
+		]);
+	});
+
+	test("keeps a post-history system block leading when nothing else precedes it", () => {
+		expect(strict({
+			recipe: [
+				{ reference: "model-system-instruction", enabled: true, role: "system" },
+				{ reference: "history", enabled: true },
+				{ reference: "model-post-history-instruction", enabled: true, role: "system" },
+			],
+			context: [],
+		})).toEqual([
+			["System line.", "system", undefined],
+			["Post line.", "system", undefined],
+		]);
+	});
+});
