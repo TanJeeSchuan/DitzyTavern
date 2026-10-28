@@ -9,6 +9,11 @@ import { LoreActivationDetails, PromptImageList } from "./GenerationDetailsPanel
 import { ProseEditor } from "./editor/ProseEditor";
 import { BoxTraceViews } from "./box-windows/BoxTraceViews";
 
+const roleLabel = (block: PromptPlan["blocks"][number]): string => {
+	if (block.role === null) return "";
+	return "demoted" in block && block.demoted === true ? ` · ${block.role} (authored as system)` : ` · ${block.role}`;
+};
+
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
 	if (kind === "sibling") return "Sibling";
@@ -85,7 +90,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const field = ({ block, index }: PlanBlockAt) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}{"demoted" in block && block.demoted === true ? " (authored as system)" : ""}</span>
+								<span>{isSingleUseReference(block.kind) ? singleUseReferenceLabel(block.kind) : block.kind}{roleLabel(block)}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}
