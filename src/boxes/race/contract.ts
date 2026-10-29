@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { imageHash } from "@/box-sdk/shared";
+import { imageHash, ParticipantId } from "@/box-sdk/shared";
 
 export const runningStyles = ["Front Runner", "Pace Chaser", "Late Surger", "End Closer"] as const;
 export type RunningStyle = typeof runningStyles[number];
@@ -29,7 +29,7 @@ export const raceRunner = Type.Composite([
 	Type.Object({
 		name: Type.String({ minLength: 1, maxLength: 100 }),
 		// @approved The Participant this slot came from, if any; roster Runners leave it unset. It links the gate back to the Cast for Portrait, stat sheet and withdrawal.
-		participantId: Type.Optional(Type.Integer()),
+		participantId: Type.Optional(ParticipantId),
 	}),
 	raceStats,
 ]);

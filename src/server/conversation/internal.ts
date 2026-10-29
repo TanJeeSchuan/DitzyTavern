@@ -551,11 +551,13 @@ export const insertParticipant = (
 			enabled: row.enabled,
 		}))).run();
 		// @approved
-		//  The seed copy: every Character Box-data row becomes the new
-		//  Participant's own row at this moment. The two are independent
-		//  afterwards, so a later Character edit never reaches this Participant.
+		//  Copy Character data that the Box declares for Participants; subsequent edits are independent.
 		const data = db.select().from(characterDataTable)
-			.where(eq(characterDataTable.character_id, sourceCharacterId)).all();
+			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key }) => {
+			const box = boxIdOf(namespace);
+			const values = box === undefined ? undefined : boxDescriptors().get(box)?.values?.participant;
+			return box === undefined || (values !== undefined && Object.hasOwn(values, key));
+		});
 		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
 			participant_id: inserted.id,
 			namespace: row.namespace,

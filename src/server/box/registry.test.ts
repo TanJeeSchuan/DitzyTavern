@@ -68,6 +68,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		lantern: {},
 		constructor: {},
 		unlabelled: { fields: "label: 3" },
+		"bad-value-schema": { fields: "values: { chat: { settings: {} } }" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
 		"old-sdk": { fields: `sdk: ${boxSdkVersion - 1}` },
@@ -88,6 +89,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	expect(boxes.map(({ descriptor }) => descriptor.id)).toEqual([...boxDescriptors().keys(), "lantern"]);
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
+		["bad-value-schema", "Its descriptor is invalid at /values/chat/settings: Expected kind 'BoxSchema'."],
 		["broken", "The wick is wet."],
 		["constructor", "Its id, constructor, names an Object.prototype property."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],

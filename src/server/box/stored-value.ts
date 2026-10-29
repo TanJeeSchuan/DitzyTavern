@@ -4,7 +4,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { characterDataTable, conversationDataTable, libraryDataTable, participantDataTable } from "../database/schema";
 import { InvalidConversationCommandError } from "../conversation";
-import { boxReference, type BoxId } from "../../shared/contract/box";
+import { boxDescriptor, boxReference, type BoxId } from "../../shared/contract/box";
 import { isHostChatKey, readBoxLifecycles } from "./setup";
 
 // @approved
@@ -82,10 +82,16 @@ export const readParticipantValues = (db: BunSQLiteDatabase, box: BoxId, key: st
 
 /** @approved A Participant belongs to one Chat, whose revision guards its values, so the write carries no revision of its own. */
 export const putParticipantValue = (db: BunSQLiteDatabase, box: BoxId, participantId: number, write: ValueWrite) => {
+	requireDeclaredValueKey(box, "participant", write.key);
 	db.insert(participantDataTable)
 		.values({ participant_id: participantId, namespace: boxReference(box), key: write.key, value: write.value })
 		.onConflictDoUpdate({ target: [participantDataTable.participant_id, participantDataTable.namespace, participantDataTable.key], set: { value: write.value } })
 		.run();
+};
+
+const requireDeclaredValueKey = (box: BoxId, scope: "chat" | "participant", key: string): void => {
+	const values = boxDescriptor(box).values?.[scope];
+	if (values === undefined || !Object.hasOwn(values, key)) throw new InvalidConversationCommandError(`The ${box} Box has no declared ${scope} value for ${key}.`);
 };
 
 const chatRow = (conversationId: number, namespace: string, key: string) =>
@@ -110,6 +116,7 @@ export const readChatValue = <T extends TSchema>(db: BunSQLiteDatabase, conversa
 // its namespace, so a write while it is absent would outlive the instance.
 export const putChatValue = (db: BunSQLiteDatabase, conversationId: number, box: BoxId, write: ValueWrite, guard: ChatGuard) => {
 	requireBoxValueKey(write.key);
+	requireDeclaredValueKey(box, "chat", write.key);
 	const namespace = boxReference(box);
 	db.transaction((tx) => {
 		const instance = readBoxLifecycles(tx, conversationId)[box]?.instance;

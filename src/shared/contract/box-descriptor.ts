@@ -5,7 +5,7 @@ import { boxMetadataSchema } from "./box-metadata";
 import { promptOutgoingRole } from "./prompt-preset";
 
 /** @approved The Box SDK's major version. The host refuses a Box whose descriptor declares another. */
-export const boxSdkVersion = 1;
+export const boxSdkVersion = 2;
 
 // @approved
 //  A Box's own schemas, which the host checks the Box's values against: a
@@ -42,6 +42,7 @@ export const boxDescriptorSchema = Type.Object({
 	startsEnabled: Type.Boolean(),
 	alwaysRender: Type.Optional(Type.Literal(true)),
 	setup: Type.Optional(Type.Object({ schema, initial: boxValue })),
+	values: Type.Optional(Type.Object({ chat: Type.Optional(Type.Record(Type.String(), schema)), participant: Type.Optional(Type.Record(Type.String(), schema)) })),
 	record: Type.Optional(Type.Unsafe<TObject>({ [Kind]: "BoxRecordSchema" })),
 	moves: Type.Optional(Type.Object({
 		schema,

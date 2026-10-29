@@ -10,7 +10,7 @@ A Box is its folder, `src/boxes/<id>/` for a built-in or `data/boxes/<id>/` for 
 // 1. Descriptor: the default export of src/boxes/<id>/shared-descriptor.ts
 export default {
   id: "<id>",                                        // the folder's name, the `box:<id>` preset reference and data namespace; lowercase words joined by `-`
-  sdk: 1,                                            // the Box SDK major it was built against, written as a number
+  sdk: 2,                                            // the Box SDK major it was built against, written as a number
   label: "…",                                        // display name everywhere the host shows the Box
   summary: "…",                                      // one plain sentence saying what the Box does, shown in the Box manager
   role: "system",                                    // the preset block's role until an author changes it
@@ -19,6 +19,7 @@ export default {
   alwaysRender: true,                                // optional: render the block even when `advance` returns no items
   block: { description, source },                    // optional: the preset editor's copy for the block, in place of the generic copy
   setup: describeSetup(schema, initial),             // optional: per-Chat configuration
+  values: { chat: { key: schema }, participant: { key: schema } }, // optional: schemas for stored values
   record: Type.Object({ … }),                        // optional: one Variant's record, folded into state
   moves: describeMoves(schema, max, label),          // optional: actions on a Human-authored Message; add `seatBound: true` to drop them on a seat change
   decision: { summary, description, off, context },  // optional: digest settled prose; copy for its Decision Model setting
@@ -74,7 +75,7 @@ The host finds every Box by its folder, so adding a Box edits no host file excep
 
 1. **Pick the hooks.** From [the contract](#the-contract), choose the descriptor keys and hooks the Box needs. The descriptor keys decide which server hooks the loader demands. Done when you can name each one.
 2. **Create the folder.** Make `src/boxes/<id>/` with files named by layer ([Folder and SDK](#folder-and-sdk)). Schemas go in `contract.ts`, or `shared.ts` for a small Box such as Thoughts or Mood. Logic both the server and the client use goes in `shared.ts`. Done when `bun run lint` and `bun run check:contracts` pass.
-3. **Describe it.** Write `shared-descriptor.ts`, default-exporting the descriptor with the folder's name as its `id` and `sdk: 1`, and `server.ts`, default-exporting the Box that `satisfies Box<…>` with the types of your own schemas. The loader checks the Box's hooks against its descriptor's keys and refuses the Box with the reason in the server log, so every server test that reads it fails until they match. Done when `bun run typecheck` and the Box's server tests pass.
+3. **Describe it.** Write `shared-descriptor.ts`, default-exporting the descriptor with the folder's name as its `id` and `sdk: 2`, and `server.ts`, default-exporting the Box that `satisfies Box<…>` with the types of your own schemas. The loader checks the Box's hooks against its descriptor's keys and refuses the Box with the reason in the server log, so every server test that reads it fails until they match. Done when `bun run typecheck` and the Box's server tests pass.
 4. **Write the client module.** Every Box has a `client.tsx` that default-exports its descriptor, its icon and its client surfaces, such as its window. A digesting Box needs a window for its passage timeline and a `Status` line for the dock; Memory, which keeps its own inspector, has none. A digesting Box with no setup, whose generic record summary reads well, needs nothing else: its client module is `{ descriptor, ...digestWindow(descriptor, { icon, size }) }`, as Mood's `client.tsx` shows. Done when `bun run typecheck` and `bun run build` pass.
 5. **Test it.** Write `src/boxes/<id>/<flow>.spec.ts` with one test per user flow, asserting through Prompt Plan inspection. Inserting the Box adds its block to the Chat's preset. Insert it with `insertBox(page, "<label>")` from `e2e/fixtures.ts`. A digesting Box also needs `selectBoxDecisionModel(request, "<id>")` and scripted `llm.decisions(…)`. Digests also read the human's Messages, and the first matching rule wins, so end with a catch-all rule after the passage-specific ones (`src/boxes/world-clock/world-clock.spec.ts`). Add unit tests only for logic that can really fail, such as a parser on malformed markup, determinism for a seed, or a fold. Write no UI component tests and no tests of the contract's shape. Done when `bun run check` and `bun run test:e2e` pass.
 
@@ -82,11 +83,17 @@ The host finds every Box by its folder, so adding a Box edits no host file excep
 
 A plugin is a Box folder installed into a running DitzyTavern without rebuilding it. It is written exactly as in [Add a Box](#add-a-box), except that it lives outside `src/boxes/`.
 
-1. **Write it in a checkout.** Make the folder in a DitzyTavern checkout's `data/boxes/<id>/`, which git ignores and `bun run typecheck` includes. Under the checkout, `@/box-sdk/<entry>` resolves through its `tsconfig.json` and packages through its `node_modules`, for the server, the typecheck and the build alike. Set `sdk` to the `boxSdkVersion` the shared SDK exports, today `1`. Done when `bun run typecheck` passes.
+1. **Write it in a checkout.** Make the folder in a DitzyTavern checkout's `data/boxes/<id>/`, which git ignores and `bun run typecheck` includes. Under the checkout, `@/box-sdk/<entry>` resolves through its `tsconfig.json` and packages through its `node_modules`, for the server, the typecheck and the build alike. Set `sdk` to the `boxSdkVersion` the shared SDK exports, today `2`. Done when `bun run typecheck` passes.
 2. **Build its client.** Run `bun run box:build data/boxes/<id>`. It builds `client.tsx` into `data/boxes/<id>/dist/client.js` as `bun run build` builds a built-in's ([Client modules](#client-modules)): the host modules stay imports, anything else `client.tsx` imports, such as `lucide-react`, is bundled, and a stylesheet it imports becomes `dist/client.css`. The descriptor, contract, shared and server files ship as `.ts`, which Bun runs directly. Done when `dist/client.js` exists.
 3. **Install it.** Copy the folder, `dist/` included, to the plugin folder: `data/boxes/<id>/` beside the app, `/app/data/boxes/<id>/` in [Docker](../docker.md). Restart the server. Done when the Box manager lists it with no `Did not load` line. The server log names a Box it refused and why ([Loading](#loading) lists the rules), and a Box whose client module did not load shows `Did not load: <reason>` in its Box manager row.
 
 `e2e/fixtures/boxes/tip-jar/` is a plugin with a window, a Move and a record. `e2e/box-plugin.spec.ts` installs it: the e2e global setup builds it with `box:build`, `llm.installBox("tip-jar")` copies it into the worker's plugin folder, and `llm.restart` loads it. The worker's plugin folder sits under the repository, in `.scratch/`, so the fixture's imports resolve, and each test starts with it empty.
+
+## Row References and stored values
+
+Declare every Chat and Participant value key in `values.chat` or `values.participant`, with a TypeBox schema for its JSON value. The loader rejects invalid schemas; writes to undeclared keys fail. Library and Character values need no declaration. When a Character seeds a Participant, only Character Box values declared for Participants are copied. Host-owned Chat keys such as `setup` are not Box values.
+
+Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherever setup, Moves, records, traces, or declared values contain those row ids. For Participant-keyed records use `Type.Record(ParticipantKey, valueSchema)`. These schemas mark Row References so a Fork can rewrite them to copied rows. A missing reference fails the Fork with its path; traces retain missing ids. TypeBox retains `ParticipantKey`'s distinctive digit pattern when building the record, so use the SDK schema instead of spelling that pattern yourself.
 
 ## Hooks
 
@@ -317,7 +324,7 @@ The layer rules read Box file names too: a `client*` file imports `server*` code
 |---|---|---|
 | Library | `library_data (namespace, key, value)` | the window, through `put-box-data` |
 | Character | `character_data (character_id, namespace, key, value)` | the window, through `put-box-data` |
-| Participant | `participant_data (participant_id, namespace, key, value)` | copied from Character data when a Character seeds a Participant; then the window, through `put-box-data` |
+| Participant | `participant_data (participant_id, namespace, key, value)` | declared Participant keys copied from Character data when it seeds a Participant; then the window, through `put-box-data` |
 | Conversation | `conversation_data` | the host: `enabled`, `instance`, `setup`; the Box: every other key |
 | Message | `messages_data` | the host: `moves` |
 | Variant | `message_variant_data` | the host: `record:<instance>` slots |
@@ -424,7 +431,7 @@ The Race uses most of the contract. Its files in `src/boxes/race/`: `shared-desc
 
 ```ts
 export default {
-  id: "race", sdk: 1, label: "Race", role: "system", startsEnabled: false, instructions: "",
+  id: "race", sdk: 2, label: "Race", role: "system", startsEnabled: false, instructions: "",
   setup: describeSetup(raceSetup, initialRaceSetup),
   record: raceRecord,
   moves: describeMoves(raceMove, MAX_RACE_MOVES, raceMoveLabel),

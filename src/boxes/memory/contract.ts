@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { boxCatchUp, invalidOutcome, numericWire } from "@/box-sdk/shared";
+import { boxCatchUp, invalidOutcome, numericWire, MessageId, VariantId, ParticipantKey } from "@/box-sdk/shared";
 
 // @approved
 //  A Writer override reaches storage through `set-box-record`, so the record
@@ -7,7 +7,7 @@ import { boxCatchUp, invalidOutcome, numericWire } from "@/box-sdk/shared";
 const memoryText = Type.String({ minLength: 1, maxLength: 1024, pattern: "\\S" });
 export const memoryCandidate = Type.Object({
 	claim: memoryText, attribution: memoryText, people: Type.Array(Type.String({ pattern: "\\S" }), { uniqueItems: true }),
-	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
+	evidence: Type.Array(Type.Object({ messageId: MessageId, excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
 	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Optional(Type.Number()), attribution: Type.Optional(Type.Number()), usefulness: Type.Optional(Type.Number()) }) }),
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
@@ -17,7 +17,7 @@ export const memoryRecord = Type.Object({ claims: Type.Array(memoryCandidate) })
 export type MemoryRecord = Static<typeof memoryRecord>;
 export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
 export type MemoryIdentity = Static<typeof memoryIdentity>;
-export const memoryIdentities = Type.Record(Type.String(), memoryIdentity);
+export const memoryIdentities = Type.Record(ParticipantKey, memoryIdentity);
 export type MemoryIdentities = Static<typeof memoryIdentities>;
 export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.String(), participantId: Type.Integer(), identity: memoryIdentity });
 export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
@@ -30,7 +30,7 @@ export const memoryLabelMerges = Type.Array(memoryLabelMerge);
 // the automatic record is the one for exactly this text, and the error of a
 // digest that failed on exactly this text.
 export const memorySource = Type.Object({
-	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(),
+	messageId: MessageId, variantId: VariantId, selected: Type.Boolean(),
 	claims: Type.Union([Type.Array(memoryCandidate), Type.Null()]), overridden: Type.Boolean(), digested: Type.Boolean(), error: Type.Union([Type.String(), Type.Null()]),
 });
 export type MemorySourceView = Static<typeof memorySource>;
@@ -42,7 +42,7 @@ export const conversationMemories = Type.Object({
 	revision: Type.Integer(), labelRevision: Type.String(), identities: memoryIdentities,
 	cast: Type.Array(Type.Object({ id: Type.Integer(), names: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }) })),
 	labelMerges: memoryLabelMerges, sources: Type.Array(memorySource),
-	path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]), authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })),
+	path: Type.Array(Type.Object({ messageId: MessageId, author: Type.Union([Type.String(), Type.Null()]), authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })),
 	digestReady: Type.Boolean(), embeddingReady: Type.Boolean(), catchUp: Type.Union([boxCatchUp, Type.Null()]),
 });
 export type ConversationMemories = Static<typeof conversationMemories>;
@@ -68,7 +68,7 @@ export const memoryLabels = Type.Object({ identities: memoryIdentities, merges: 
 export const memoryExtractionResponse = Type.Object({
 	candidates: Type.Array(Type.Object({
 		claim: Type.String(), attribution: Type.String(), people: Type.Array(Type.String()),
-		evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String() }, { additionalProperties: false })),
+		evidence: Type.Array(Type.Object({ messageId: MessageId, excerpt: Type.String() }, { additionalProperties: false })),
 	}, { additionalProperties: false }), { maxItems: 16 }),
 }, { additionalProperties: false });
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
@@ -135,15 +135,15 @@ export const memoryAdmissionReason = Type.Union([
 
 export const memoryRecallCandidate = Type.Object({
 	identity: Type.String(),
-	messageId: Type.Integer(),
-	variantId: Type.Integer(),
+	messageId: MessageId,
+	variantId: VariantId,
 	writer: Type.Boolean(),
 	sourceChanged: Type.Boolean(),
 	claimIndex: Type.Integer(),
 	claim: Type.String({ maxLength: 1024 }),
 	attribution: Type.String({ maxLength: 1024 }),
 	people: Type.Array(Type.String()),
-	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
+	evidence: Type.Array(Type.Object({ messageId: MessageId, excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
 	sourcePosition: Type.Integer(),
 	semanticSimilarity: Type.Union([Type.Number(), Type.Null()]),
 	semanticRank: Type.Union([Type.Integer(), Type.Null()]),
@@ -176,7 +176,7 @@ export const memoryActivationRecord = Type.Object({
 	failedSourceCount: Type.Integer(),
 	sourceSnapshotFingerprint: Type.String(),
 	embeddingConfigurationFingerprint: Type.String(),
-	scanMessageIds: Type.Array(Type.Integer()),
+	scanMessageIds: Type.Array(MessageId),
 	scanTruncated: Type.Boolean(),
 	scene: Type.String(),
 	semanticShortlistCount: Type.Integer(),

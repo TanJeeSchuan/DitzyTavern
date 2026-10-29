@@ -165,7 +165,7 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 		if (record === undefined || hash === null) continue;
 		for (const [claimIndex, claim] of record.claims.entries()) claimed.push({
 			record: {
-				identity: `${message.messageId}:${message.variantId}:${claimIndex}:${hash.slice(0, 16)}`,
+				identity: sha256(`${message.messageId}:${message.variantId}:${claimIndex}:${hash}`),
 				messageId: message.messageId,
 				variantId: message.variantId,
 				writer: slot?.writer !== undefined,
