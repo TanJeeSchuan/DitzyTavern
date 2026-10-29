@@ -12,7 +12,7 @@ test("a trimmed Fork is independent and Rewind restores the human draft", async 
 	await reply.hover();
 	await reply.getByRole("button", { name: "Fork", exact: true }).click();
 	const dialog = page.getByRole("dialog", { name: "Fork Chat" });
-	await dialog.getByLabel(/Trim Variants/).check();
+	await dialog.getByRole("switch", { name: /Trim Variants/ }).click();
 	await dialog.getByRole("button", { name: "Fork", exact: true }).click();
 	await expect(page.getByRole("button", { name: /Forked from/ })).toBeVisible();
 	await expect(story(page).getByText("Second answer.")).toBeVisible();

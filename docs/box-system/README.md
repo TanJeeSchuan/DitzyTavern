@@ -91,7 +91,7 @@ A plugin is a Box folder installed into a running DitzyTavern without rebuilding
 
 ## Row References and stored values
 
-Declare every Chat and Participant value key in `values.chat` or `values.participant`, with a TypeBox schema for its JSON value. The loader rejects invalid schemas; writes to undeclared keys fail. Library and Character values need no declaration. When a Character seeds a Participant, only Character Box values declared for Participants are copied. Host-owned Chat keys such as `setup` are not Box values.
+Declare every Chat and Participant value key in `values.chat` or `values.participant`, with a TypeBox schema for its JSON value. The loader rejects invalid schemas; writes to undeclared keys fail. Library and Character values need no declaration. When a Character seeds a Participant, a loaded Box's Character values are copied only if declared for Participants; an unloaded Box's values are all copied, since there is no descriptor to check them against. Host-owned Chat keys such as `setup` are not Box values.
 
 Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherever setup, Moves, records, traces, or declared values contain those row ids. For Participant-keyed records use `Type.Record(ParticipantKey, valueSchema)`. These schemas mark Row References so a Fork can rewrite them to copied rows. A missing reference fails the Fork with its path; traces retain missing ids. TypeBox retains `ParticipantKey`'s distinctive digit pattern when building the record, so use the SDK schema instead of spelling that pattern yourself.
 
@@ -324,7 +324,7 @@ The layer rules read Box file names too: a `client*` file imports `server*` code
 |---|---|---|
 | Library | `library_data (namespace, key, value)` | the window, through `put-box-data` |
 | Character | `character_data (character_id, namespace, key, value)` | the window, through `put-box-data` |
-| Participant | `participant_data (participant_id, namespace, key, value)` | declared Participant keys copied from Character data when it seeds a Participant; then the window, through `put-box-data` |
+| Participant | `participant_data (participant_id, namespace, key, value)` | Character data copied when it seeds a Participant (a loaded Box's undeclared keys excepted); then the window, through `put-box-data` |
 | Conversation | `conversation_data` | the host: `enabled`, `instance`, `setup`; the Box: every other key |
 | Message | `messages_data` | the host: `moves` |
 | Variant | `message_variant_data` | the host: `record:<instance>` slots |

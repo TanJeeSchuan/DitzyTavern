@@ -63,6 +63,13 @@ test("Rewind follows ADR-0035's authorship rule after seats swap", () => {
 	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: swapped.revision, at: { rewind: message.id }, name: "Rewind", trimVariants: false })).toThrow("Only a Human-authored Message can be rewound.");
 });
 
+test("deleting a source with both Fork link columns set clears the link", () => {
+	const { source, message } = createSource();
+	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: false }).conversation;
+	deleteConversation(database, source.id);
+	expect(readConversationSummary(database, fork.id)!.forkedFrom).toBeNull();
+});
+
 test("fork links follow their immediate source, survive message deletion, and clear on source deletion", () => {
 	const { source, message } = createSource();
 	const first = forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "First", trimVariants: false }).conversation;
