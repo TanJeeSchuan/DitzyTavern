@@ -192,6 +192,7 @@ const createProvisionalModelTarget = (
 		position: input.position,
 		timestamp: input.timestamp,
 		author: { participantId: model.id, name: model.name },
+		authorRole: "model",
 		context: {
 			humanParticipantId: input.humanParticipantId,
 			modelParticipantId: model.id,
@@ -436,6 +437,7 @@ export function acceptConversationTailGeneration(
 				position: (latestPosition ?? 0) + 1,
 				timestamp: input.timestamp,
 				author: { participantId: human.id, name: human.name },
+				authorRole: "human",
 				context: null,
 			});
 			insertVariant(db, {

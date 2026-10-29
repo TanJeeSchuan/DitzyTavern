@@ -25,6 +25,7 @@ import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
 import { SwipeBrowser } from "./SwipeBrowser";
+import { useSaveGuard } from "../SaveGuard";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -54,6 +55,8 @@ export function StoryMessageView({
 	onInspect,
 	boxActions,
 	onDelete,
+	onFork,
+	onRewind,
 	generationControls,
 	lens,
 }: {
@@ -88,6 +91,8 @@ export function StoryMessageView({
 	onInspect?: (messageId: number, variantId: number) => void;
 	boxActions?: ReactNode;
 	onDelete?: (messageId: number) => void;
+	onFork: (messageId: number) => void;
+	onRewind?: (messageId: number) => void;
 	// @approved
 	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
 	// takes when it ends, so the story does not jump.
@@ -123,17 +128,19 @@ export function StoryMessageView({
 	};
 	const saveEdit = async () => {
 		const value = editText.trim();
-		if ((!value && !hasMoves(message.moves)) || active === undefined) return;
+		if ((!value && !hasMoves(message.moves)) || active === undefined) return false;
 		if (active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);
-			return;
+			return false;
 		}
 		setSaving(true);
 		const applied = await onEdit(message.id, value);
 		setSaving(false);
 		if (applied) setIsEditing(false);
+		return applied;
 	};
+	useSaveGuard({ dirty: isEditing && editText !== editBase, saving, save: saveEdit, discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -228,6 +235,8 @@ export function StoryMessageView({
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
+					<button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onFork(message.id)}>Fork from here</button>
+					{onRewind !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onRewind(message.id)}>Rewind</button>}
 					{onSibling !== undefined && (
 						<button
 							className="edit-action"

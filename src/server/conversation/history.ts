@@ -193,6 +193,7 @@ export function readChatHistory(
 			id: message.id,
 			position: message.position,
 			timestamp: message.timestamp,
+			authorRole: message.author_role,
 			author,
 			modelParticipantIdAtCreation:
 				message.context_model_participant_id ?? null,

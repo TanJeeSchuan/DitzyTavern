@@ -60,6 +60,10 @@ export function StoryStage({
 	onInspectVariant,
 	onOpenGenerationDetails,
 	onControlChange,
+	onFork,
+	onOpenForkSource,
+	onUnlinkFork,
+	narrow,
 }: {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
@@ -81,6 +85,10 @@ export function StoryStage({
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
+	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
+	onOpenForkSource: () => void;
+	onUnlinkFork: () => void;
+	narrow: boolean;
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
 	const viewport = useStoryViewport({
@@ -122,6 +130,9 @@ export function StoryStage({
 				onOpenVariables={onOpenVariables}
 				onOpenInspector={onOpenInspector}
 				onOpenWindow={boxWindows.open}
+				onOpenForkSource={onOpenForkSource}
+				onUnlinkFork={onUnlinkFork}
+				narrow={narrow}
 			/>
 
 			{story.preview !== null && previewedMessage !== undefined && (
@@ -132,6 +143,7 @@ export function StoryStage({
 				</div>
 				<div className="preview-dock-actions">
 					<button className="primary-button" type="button" onClick={() => void preview.confirmPreview()}>Confirm</button>
+					<button className="secondary-button" type="button" onClick={() => onFork({ through: story.preview!.messageId, variantId: story.preview!.variantId })}>Fork with this Variant</button>
 					<button className="secondary-button" type="button" onClick={preview.cancelPreview}>Cancel</button>
 				</div>
 			</div>
@@ -212,6 +224,8 @@ export function StoryStage({
 							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 							onSelectVariant={(messageId, variantId) => void storyActions.selectSwipe(messageId, variantId)}
 							onEdit={storyActions.editStoryMessage}
+							onFork={(messageId) => onFork({ through: messageId })}
+							onRewind={message.authorRole === "human" ? (messageId) => onFork({ rewind: messageId }) : undefined}
 							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
 								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
 								: undefined}
@@ -276,6 +290,7 @@ export function StoryStage({
 					writerName={humanParticipant?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
+							key={session.conversation.id}
 							onOpenPanel={onOpenPanel}
 							onOpenWindow={boxWindows.open}
 							conversation={session.conversation}

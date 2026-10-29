@@ -40,6 +40,7 @@ export interface StoryMessage {
 	//  Immutable Author Stamp name (the captured resolved Participant name).
 	authorName: string | null;
 	authorParticipantId: number | null;
+	authorRole: ChatHistoryMessage["authorRole"];
 	// @approved
 	//  Historical model Control identity, when the Message came from
 	// generation. It may differ from the current Conversation Control.
@@ -224,6 +225,7 @@ const toStoryMessage = (
 	timestamp: message.timestamp,
 	authorName: message.author?.capturedName ?? null,
 	authorParticipantId: message.author?.participantId ?? null,
+	authorRole: message.authorRole,
 	modelParticipantIdAtCreation: message.modelParticipantIdAtCreation,
 	continuable: message.continuable,
 	swipe: message.swipe,

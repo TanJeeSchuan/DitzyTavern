@@ -44,6 +44,11 @@ import { GenerationErrorToast } from "./GenerationErrorToast";
 import { ControlChangeToaster, type ControlChangeToasterHandle } from "./ControlChangeToaster";
 import { StoryStage } from "./StoryStage";
 import { CoveredLayer } from "./CoveredLayer";
+import { ForkDialog } from "./ForkDialog";
+import { forkConversation } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
+import type { ForkConversationAction } from "../../shared/contract/conversation-schema";
+import { hasMoves } from "../../shared/contract/box-generation";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -74,6 +79,8 @@ export function ActiveWritingWorkspace({
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
+	const [forkAt, setForkAt] = useState<ForkConversationAction["at"] | null>(null);
+	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
@@ -160,6 +167,41 @@ export function ActiveWritingWorkspace({
 	};
 
 	const conversation = session.conversation;
+	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
+		if (conversation === null || forkAt === null) return "The Chat is not available.";
+		let error: string | null = null;
+		const applied = await runConversationCommand({
+			conversationId: conversation.id, revision: () => conversation.revision,
+			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
+			isCurrent: () => !session.signal.aborted,
+		}, async (revision) => {
+			const result = await forkConversation(conversation.id, revision, { type: "fork-conversation", at: forkAt, name, trimVariants });
+			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
+		}, { onOperation: (result) => {
+			generation.conversationSwitched();
+			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+			dispatchStory({ type: "preview-cancelled" });
+			dispatchPanel({ type: "workspace-reset" });
+			session.selectChat(String(result.conversation.id));
+			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
+			setForkAt(null);
+		} });
+		return applied ? null : error ?? "The Fork could not be created. Try again.";
+	};
+	const unlinkFork = () => {
+		if (conversation === null) return;
+		void runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
+	};
+	const openForkSource = () => {
+		const source = conversation?.forkedFrom;
+		if (!source) return;
+		saveNavigation.requestNavigation(() => {
+			generation.conversationSwitched();
+			dispatchStory({ type: "preview-cancelled" });
+			dispatchPanel({ type: "workspace-reset" });
+			session.selectChat(String(source.conversationId), source.messageId);
+		});
+	};
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
 	const inspectorBox = panelState.detailsSurface === null ? undefined : boxIdOf(panelState.detailsSurface);
@@ -253,6 +295,13 @@ export function ActiveWritingWorkspace({
 				generation={generation}
 				preview={preview}
 				boxWindows={boxWindows}
+				onFork={(at) => saveNavigation.requestNavigation(() => {
+					if ("rewind" in at && (generation.draft.get().trim() !== "" || hasMoves(generation.moves)) && !window.confirm("Replace the current draft and Moves with the rewound Message?")) return;
+					setForkAt(at);
+				})}
+				onOpenForkSource={openForkSource}
+				onUnlinkFork={unlinkFork}
+				narrow={narrow}
 				swipeBrowsing={swipeBrowsing}
 				onEnterPreview={() => {
 					dispatchPanel({ type: "preview-entered" });
@@ -351,6 +400,8 @@ export function ActiveWritingWorkspace({
 			acknowledge={generation.acknowledgeGenerationError}
 		/>
 		<ControlChangeToaster ref={controlToaster} />
+		{forkNotice !== null && <div role="status" className="fixed bottom-4 right-4 z-50 rounded-xl bg-popover p-4 text-sm shadow-lg">{forkNotice} <button type="button" onClick={() => setForkNotice(null)} aria-label="Dismiss Fork notice">×</button></div>}
+		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generation.isGenerating || conversation.activeGenerations.length > 0} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		</Toast.Provider>

@@ -95,7 +95,7 @@ describe("history refresh error classification", () => {
 			conversationId: 1, name: "Chat", revision: 1, cast: [],
 			messages: [{
 				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
-				modelParticipantIdAtCreation: null, continuable: false,
+				authorRole: null, modelParticipantIdAtCreation: null, continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
 				author: null, variants: [], moves: {},
 			}],

@@ -597,6 +597,7 @@ export const insertMessage = (
 		position: number;
 		timestamp: string;
 		author: MessageAuthorStamp | null;
+		authorRole?: "human" | "model" | null;
 		context: MessageControlContext | null;
 	},
 ): number => {
@@ -608,6 +609,7 @@ export const insertMessage = (
 			timestamp: values.timestamp,
 			author_participant_id: values.author?.participantId ?? null,
 			author_name: values.author?.name ?? null,
+			author_role: values.authorRole ?? null,
 			context_human_participant_id: values.context?.humanParticipantId ?? null,
 			context_model_participant_id: values.context?.modelParticipantId ?? null,
 		})

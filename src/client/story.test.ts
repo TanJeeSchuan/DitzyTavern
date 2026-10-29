@@ -59,6 +59,7 @@ const message = (
 	id: 10,
 	position: 1,
 	timestamp: "2026-01-01T00:00:00.000Z",
+	authorRole: "model",
 	modelParticipantIdAtCreation: null,
 	continuable: true,
 	swipe: { eligible: true, reason: null },
@@ -80,6 +81,7 @@ const storyMessage = (
 	timestamp: `2026-01-01T00:00:0${position}.000Z`,
 	authorName: authorParticipantId === 20 ? "Model" : "Writer",
 	authorParticipantId,
+	authorRole: authorParticipantId === 20 ? "model" : "human",
 	modelParticipantIdAtCreation: null,
 	continuable: true,
 	// Server-derived capability carried by history: eligible unless a test

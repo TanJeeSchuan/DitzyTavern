@@ -383,6 +383,7 @@ const chatHistoryMessage = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
 	timestamp: Type.String(),
+	authorRole: Type.Union([Type.Null(), Type.Literal("human"), Type.Literal("model")]),
 	// Historical model Control identity used to decide whether a terminal
 	// Message is eligible for Continue after Control changes.
 	modelParticipantIdAtCreation: Type.Union([Type.Null(), Type.Integer()]),

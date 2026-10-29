@@ -483,6 +483,7 @@ export function createConversation(
 					author: authorSeed
 						? { participantId: authorSeed.id, name: authorSeed.name }
 						: null,
+					authorRole: authorSeed === undefined ? null : authorSeed.id === human?.id ? "human" : authorSeed.id === model?.id ? "model" : null,
 					context,
 				}),
 			);

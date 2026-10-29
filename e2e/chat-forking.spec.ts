@@ -1,0 +1,78 @@
+import { test, expect, send, story } from "./fixtures";
+
+test("a trimmed Fork is independent and Rewind restores the human draft", async ({ page, llm }) => {
+	await llm.chat({ chunks: ["First answer."] }, { chunks: ["Second answer."] }, { chunks: ["Fork answer."] }, { chunks: ["Rewritten answer."] });
+	await page.goto("/");
+	await send(page, "Original guidance.");
+	const reply = story(page).locator("article").last();
+	await expect(reply.getByText("First answer.")).toBeVisible();
+	await reply.getByRole("button", { name: "New Swipe" }).click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(reply.getByText("Second answer.")).toBeVisible();
+	await reply.hover();
+	await reply.getByRole("button", { name: "Fork from here" }).click();
+	const dialog = page.getByRole("dialog", { name: "Fork Chat" });
+	await dialog.getByLabel(/Trim Variants/).check();
+	await dialog.getByRole("button", { name: "Fork", exact: true }).click();
+	await expect(page.getByRole("button", { name: /Forked from/ })).toBeVisible();
+	await expect(story(page).getByText("Second answer.")).toBeVisible();
+	await expect(story(page).getByRole("button", { name: "Previous Swipe" }).last()).toBeDisabled();
+	await story(page).locator("article").last().locator(".swipe-controls").getByRole("button", { name: "New Swipe" }).click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("Fork answer.")).toBeVisible();
+	await page.getByRole("button", { name: /Forked from/ }).click();
+	await expect(story(page).getByText("Second answer.")).toBeVisible();
+	await story(page).locator("article").last().getByRole("button", { name: "Previous Swipe" }).click();
+	await expect(story(page).getByText("First answer.")).toBeVisible();
+	const human = story(page).locator("article").filter({ hasText: "Original guidance." });
+	await human.hover();
+	await human.getByRole("button", { name: "Rewind" }).click();
+	await page.getByRole("dialog", { name: "Fork Chat" }).getByRole("button", { name: "Fork", exact: true }).click();
+	const draft = page.getByRole("textbox", { name: "Message draft" });
+	await expect(draft).toHaveText("Original guidance.");
+	await send(page, "Edited guidance.");
+	await expect(story(page).getByText("Rewritten answer.")).toBeVisible();
+});
+
+test("forking a preview leaves the source selection intact", async ({ page, llm }) => {
+	await llm.chat({ chunks: ["First answer."] }, { chunks: ["Second answer."] }, { chunks: ["Later answer."] });
+	await page.goto("/");
+	await send(page, "First guidance.");
+	const reply = story(page).locator("article").filter({ hasText: /First answer\.|Second answer\./ });
+	await expect(reply.getByText("First answer.")).toBeVisible();
+	await reply.getByRole("button", { name: "New Swipe" }).click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(reply.getByText("Second answer.")).toBeVisible();
+	await send(page, "Later guidance.");
+	await expect(story(page).getByText("Later answer.")).toBeVisible();
+	await reply.hover();
+	await reply.getByRole("button", { name: "Previous Swipe" }).click();
+	await page.getByRole("button", { name: "Fork with this Variant" }).click();
+	await page.getByRole("dialog", { name: "Fork Chat" }).getByRole("button", { name: "Fork", exact: true }).click();
+	await expect(story(page).getByText("First answer.")).toBeVisible();
+	await page.getByRole("button", { name: /Forked from/ }).click();
+	await expect(story(page).getByText("Second answer.")).toBeVisible();
+	await expect(story(page).getByText("Later answer.")).toBeVisible();
+});
+
+test("forking protects an inline edit and Rewind asks before replacing a draft", async ({ page, llm }) => {
+	await llm.chat({ chunks: ["A reply."] });
+	await page.goto("/");
+	await send(page, "Original guidance.");
+	await expect(story(page).getByText("A reply.")).toBeVisible();
+	const reply = story(page).locator("article").last();
+	await reply.getByRole("button", { name: "Edit", exact: true }).click();
+	await reply.getByRole("textbox", { name: "Edit Message" }).fill("Unsaved edit");
+	await reply.hover();
+	await reply.getByRole("button", { name: "Fork from here" }).click();
+	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Keep editing" }).click();
+	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Unsaved edit");
+	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("textbox", { name: "Message draft" }).fill("Existing draft");
+	const human = story(page).locator("article").filter({ hasText: "Original guidance." });
+	await human.hover();
+	page.once("dialog", (dialog) => void dialog.dismiss());
+	await human.getByRole("button", { name: "Rewind" }).click();
+	await expect(page.getByRole("textbox", { name: "Message draft" })).toHaveText("Existing draft");
+	await expect(page.getByRole("dialog", { name: "Fork Chat" })).toHaveCount(0);
+});

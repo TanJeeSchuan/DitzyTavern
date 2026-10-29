@@ -10,10 +10,8 @@ import { variantDataCodecs } from "../../../shared/variant-data-codecs";
 import { rewriteRowReferences, type RowIdMaps } from "../../box/row-references";
 import { serverBox } from "../../box/registry";
 import { parseStoredBoxJson } from "../../box/stored-json";
-import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
-import { hasActiveGenerationFromConnection, readControlAssignment, requireConversationRevision } from "../internal";
-import { toHistoricalContext } from "../message-read-projection";
+import { hasActiveGenerationFromConnection, requireConversationRevision } from "../internal";
 import { requireConversationSummary, runConversationTransaction } from "./transaction";
 import {
 	conversationTable, conversationControlTable, conversationDataTable, conversationGenerationSettingsTable,
@@ -35,7 +33,7 @@ export function forkConversation(database: Database, input: Omit<ForkConversatio
 		const variantId = "through" in input.at ? input.at.variantId : undefined;
 		const selected = variantId !== undefined ? pointVariants.find((v) => v.id === variantId) : pointVariants.find((v) => v.selected);
 		if (!selected) throw new InvalidConversationCommandError("The selected Variant is not on the fork point.");
-		if ("rewind" in input.at && authorRoleOf({ author: { participantId: point.author_participant_id }, historicalContext: toHistoricalContext(point) }, readControlAssignment(db, input.conversationId)) !== "human") throw new InvalidConversationCommandError("Only a Human-authored Message can be rewound.");
+		if ("rewind" in input.at && point.author_role !== "human") throw new InvalidConversationCommandError("Only a Human-authored Message can be rewound.");
 
 		const fork = db.insert(conversationTable).values({ name: input.name.trim(), creation_time: new Date().toISOString(), last_message_time: point.timestamp, background_hash: source.background_hash, forked_from_conversation_id: input.conversationId, forked_from_message_id: point.id }).returning().get();
 		const participantMap = new Map<number, number>(), messageMap = new Map<number, number>(), variantMap = new Map<number, number>();

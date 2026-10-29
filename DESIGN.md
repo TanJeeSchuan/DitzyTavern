@@ -224,6 +224,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Story header
 
 - Persistently shows the Chat title.
+- A Fork shows a quiet source link and a remove-link button beside the title; on narrow screens both actions live in the title menu.
 - Includes one compact Cast control rather than listing portraits or names.
 - The Cast control opens the primary left participant panel.
 - A Chat tools group sits between the title and the Cast control: a header item for each Box present in the Chat that declares one, disabled ones included, the host's Chat information and Macro Variables icons, then inspector icons for Boxes present in the Chat. The host supplies the Memories icon from Memory's inspector registration. A Box item is a quiet button with the Box's icon and one short line, such as the World Clock's in-story time, and opens the Box's window. While the Box is off, its item is muted and its title says the Box is off.
@@ -292,6 +293,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Panels and details
 
 - Use the shared coral Switch, segmented control, input shape, and destructive Button across panels.
+- The Fork dialog uses the standard focused dialog with a name field, a clearly labelled destructive trim option, and contextual refusal text.
 - Show validation errors after blur or a submit attempt, never on an untouched form.
 
 - Left panels contain primary story context such as Cast and other first-order Chat controls.

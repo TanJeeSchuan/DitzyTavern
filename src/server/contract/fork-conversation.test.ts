@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createConversationWithHistory, openObservedDatabase, insertBox, readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, deleteConversation, acceptConversationTailGeneration } from "../conversation";
+import { executeConversationCommand, readConversationSummary, readChatHistory, deleteConversation, acceptConversationTailGeneration } from "../conversation";
 import { forkConversation } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -54,6 +54,13 @@ test("rewind returns the original draft and an empty history without changing it
 	expect(fork.rewind).toEqual({ content: "Rewrite me", moves: {} });
 	expect(database.query<{ count: number }, [number]>("SELECT count(*) AS count FROM messages WHERE conversation_id = ?").get(fork.conversation.id)!.count).toBe(0);
 	expect(readConversationSummary(database, source.id)!.revision).toBe(1);
+});
+
+test("Rewind follows the Message's captured Control after seats swap", () => {
+	const { source, message } = createSource();
+	const swapped = executeConversationCommand(database, { conversationId: source.id, expectedRevision: 1, action: { type: "assign-control", seat: "human", participantId: source.cast[1]!.id } });
+	expect(readChatHistory(database, source.id)!.messages[0]!.authorRole).toBe("human");
+	expect(forkConversation(database, { conversationId: source.id, expectedRevision: swapped.revision, at: { rewind: message.id }, name: "Rewind", trimVariants: false }).rewind?.content).toBe("Rewrite me");
 });
 
 test("fork links follow their immediate source, survive message deletion, and clear on source deletion", () => {
