@@ -1,0 +1,26 @@
+# Fork Chats as independent copies
+
+A writer who wants to take a story somewhere else from an earlier point has no way to do it without losing the original. Preview mode's Confirm Change keeps every later Message, though they were written against the Variant being replaced.
+
+A Fork creates a new Chat that copies the source's history through one Message, the fork point, in a single SQLite transaction. The copy covers the Cast, removed Participants included, with their Definitions, Participant data and lorebook attachments, Control, the Messages through the fork point with their Variants, `messages_data` and `message_variant_data`, `conversation_data`, Generation Settings, the Prompt Preset selection, Chat lorebook attachments and lore settings, and the background. Nothing in the new Chat refers back to the source's rows. Macro State, each Box's state and Memory Collections are derived from the selected Variants in Message order (ADR-0038, ADR-0050), so they come out right in the Fork without being snapshotted. Images are stored by content, so a copy only adds owners. Chat-scoped values, such as Box setup, a Box's Chat values, the Author Note and Generation Settings, are copied as they are now, not as they were at the fork point. They already ignore which Variants are selected in the source, so a Fork behaves as the source does when the writer selects an earlier Variant. A Race started after the fork point is therefore already started in the Fork, and its first Stretch runs at the Fork's next Generation.
+
+By default the Fork keeps every Variant of the copied Messages, with their selections. Trim Variants copies only the selected Variant of each, which drops the others' data from the Fork; the source keeps everything. Forking with a Variant, from Preview mode, selects that Variant on the fork point in the Fork. A Rewind, on a Human-authored Message, is a Fork that copies only the Messages before it and puts its text and Moves in the new Chat's composer, so the writer can say something else there; the Moves pass through the same Row Reference rewrite as stored Box values. A Fork is refused while the source has an Active Generation, as Control changes are (ADR-0003). It copies no Import provenance, Canonical Source Archive or Exact Source Artifact, so a Fork of an imported Chat is a plain native Chat (ADR-0026). It copies no generation captures or replays either.
+
+Each Chat carries an optional Fork link: the Chat it was forked from and the Message it was forked at, both `ON DELETE SET NULL`. Deleting the fork point leaves a link to the Chat; deleting the Chat removes the link. The writer can remove the link. A Fork of a Fork links to its own source, so Forks chain without limit, and the source shows no list of its Forks.
+
+## Row References in Box data
+
+Box values are opaque to the host, but some hold row ids: Memory evidence cites Messages, Memory labels key identities by Participant, and Race slots name Participants. The box-sdk provides `MessageId`, `VariantId` and `ParticipantId` schemas, and `ParticipantKey` for record keys, each an integer or digit-string schema carrying a Row Reference annotation. A Box uses them wherever its setup, Moves, record, trace or stored Chat or Participant value holds an id. The descriptor declares a schema for each Chat and Participant value key, as it already does for setup, Moves and records.
+
+The Fork builds an old-to-new id map for each row kind. It copies each Box value by walking it against its schema and replacing every annotated id. A Row Reference to a row the Fork did not copy fails the Fork with an error naming the Box and the path, except in traces, which describe a past attempt and keep it unchanged. Ids are never reused, so an unchanged id can never name another row. A Box value with no declared schema fails the Fork too. The data of a Box that is not loaded is not copied, and the Fork's result names those Boxes; a plugin's data is lost to Forks while it is uninstalled.
+
+## Considered Options
+
+- A message tree with parent links, as in ChatGPT: rejected because every history read, Preview mode, Macro State and Box folds assume one ordered list of Messages with one selected Variant each (ADR-0003, ADR-0029, ADR-0038).
+- A Fork that reads its source's Messages through the fork point: rejected because every history query would union two Chats, and editing or swiping the shared part would change both.
+- Letting each Chat value declare whether a Fork copies it as of the fork point, as it is now, or from its initial value, as pi's durable package does for conversation documents: rejected because Chat values keep no history, and no Box needs a value reset in a Fork.
+- A `fork(value, idMap)` hook on each Box: rejected because each Box would write its own walk, and a Box that forgot to would keep stale ids without failing.
+- Matching keys named like ids: rejected as guessing.
+- Dropping Box data that holds ids: rejected because Memory would have to re-extract the whole Chat through model calls.
+- Chat-local ids that need no rewriting, as pi's file-local session entry ids do: deferred. It would change every table's keys to remove one walker.
+- Collapsing a Row Reference to a trimmed Variant onto its Message's selected Variant instead of failing: deferred until Trim Variants fails on real Chats.
