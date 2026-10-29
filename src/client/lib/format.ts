@@ -5,15 +5,11 @@
 // @approved
 //  Renders a wire timestamp in the viewer's locale; unparseable input is
 // echoed back unchanged.
+const timestampFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 export const formatTimestamp = (value: string): string => {
 	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) {
-		return value;
-	}
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(date);
+	return Number.isNaN(date.getTime()) ? value : timestampFormat.format(date);
 };
 
 // @approved

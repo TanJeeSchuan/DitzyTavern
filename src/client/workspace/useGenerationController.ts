@@ -1,4 +1,5 @@
 import { isStoryReady } from "../story";
+import { store } from "../lib/store";
 import { useMutation } from "@tanstack/react-query";
 import {
 	useEffect,
@@ -87,7 +88,9 @@ export function useGenerationController({
 	ensureLatest,
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
-	const [draft, setDraft] = useState("");
+	// @approved
+	// A store rather than state: a keystroke re-renders only the composer, not every Message on the stage.
+	const [draft] = useState(() => store(""));
 	// @approved
 	//  Staged Moves belong to the Chat they were staged in. Seat-bound Moves,
 	//  such as Phone texts, also belong to the human seat that wrote them:
@@ -212,11 +215,11 @@ export function useGenerationController({
 		},
 		dispatchStory,
 		takeComposer: () => {
-			const taken = { draft, staged };
-			setDraft("");
+			const taken = { draft: draft.get(), staged };
+			draft.set("");
 			setStaged(UNSTAGED);
 			return () => {
-				setDraft((current) => current === "" ? taken.draft : current);
+				if (draft.get() === "") draft.set(taken.draft);
 				setStaged((current) => hasMoves(current.moves) ? current : taken.staged);
 			};
 		},
@@ -282,8 +285,8 @@ export function useGenerationController({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (!assemblyAvailable || conversation === null || (draft.trim() === "" && !hasMoves(moves))) return;
-		requestGeneration({ kind: "send", content: draft, moves, ...clientFormattingContext() });
+		if (!assemblyAvailable || conversation === null || (draft.get().trim() === "" && !hasMoves(moves))) return;
+		requestGeneration({ kind: "send", content: draft.get(), moves, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -336,7 +339,6 @@ export function useGenerationController({
 
 	return {
 		draft,
-		setDraft,
 		moves,
 		setMoves,
 		isGenerating,

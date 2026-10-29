@@ -42,6 +42,8 @@ test("jumping to a source reads one window, pages newer, returns to latest and s
 	await expect(articles).toHaveCount(50);
 	await expect(story(page).getByText("History passage 225.", { exact: true })).toBeInViewport();
 	await expect(story(page).getByRole("button", { name: "Jump to latest", exact: true })).toHaveCount(0);
+	const composer = page.locator("form.composer");
+	await expect(composer).toHaveAttribute("data-receded", "false");
 	await llm.chat({ chunks: ["The story continues at the end.\n\n", "Then"], hold: true });
 	await send(page, "Continue from the latest passage.");
 	await expect(articles.last()).toContainText("The story continues at the end.");
@@ -54,10 +56,13 @@ test("jumping to a source reads one window, pages newer, returns to latest and s
 	await expect(story(page).getByRole("button", { name: "Jump to latest", exact: true })).toHaveCount(1);
 	await expect(articles).toHaveCount(27);
 	await llm.release();
-	await expect(page.getByRole("button", { name: "Generate Variant" })).toBeVisible();
+	const write = page.getByRole("button", { name: /^Write/ });
+	await expect(write).toBeVisible();
 	await expect(articles).toHaveCount(27);
 	await expect(story(page).getByText("The story continues at the end.", { exact: true })).toHaveCount(0);
 	await llm.chat({ chunks: ["Sending reattached the story."] });
+	await write.click();
+	await expect(composer).toHaveAttribute("data-receded", "false");
 	await send(page, "Send while reading the beginning.");
 	await expect(story(page).getByRole("button", { name: "Jump to latest", exact: true })).toHaveCount(0);
 	await expect(articles.last()).toContainText("Sending reattached the story.");
