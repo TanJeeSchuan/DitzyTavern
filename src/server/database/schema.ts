@@ -314,7 +314,6 @@ export const messageTable = sqliteTable(
 		// records whose authors are not yet resolved into Participants.
 		author_participant_id: int().references(() => participantTable.id),
 		author_name: text(),
-		author_role: text({ enum: ["human", "model"] }),
 		// @approved
 		//  Historical Control context: the human/model pair active when native
 		// generation (including initial openings) began. Set together or not

@@ -1,5 +1,5 @@
 /* eslint-disable anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns, anti-slop/no-runtime-typeof -- The walker traverses TypeBox schemas and their dynamically shaped values. */
-import { TypeGuard, type Static, type TSchema } from "@sinclair/typebox";
+import { Kind, TypeGuard, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
 
@@ -15,7 +15,10 @@ export function rewriteRowReferences<T extends TSchema>(schema: T, value: Static
 	};
 	const walk = (node: TSchema, current: unknown, path: string): unknown => {
 		const reference = node.rowReference;
-		if ((reference === "message" || reference === "variant" || reference === "participant") && typeof current === "number") return rewrite(reference, current, path);
+		if (reference === "message" || reference === "variant" || reference === "participant") {
+			if (typeof current === "number") return rewrite(reference, current, path);
+			if (typeof current === "string") return String(rewrite(reference, Number(current), path));
+		}
 		if (TypeGuard.IsUnion(node)) {
 			const branch = node.anyOf.find((candidate) => Value.Check(candidate, current));
 			if (branch === undefined) throw new Error(`No union branch matches at ${path || "/"}.`);
@@ -30,6 +33,7 @@ export function rewriteRowReferences<T extends TSchema>(schema: T, value: Static
 		}
 		if (TypeGuard.IsRecord(node) && current !== null && typeof current === "object" && !Array.isArray(current)) {
 			const [pattern, itemSchema] = Object.entries(node.patternProperties)[0]!;
+			if (pattern === integerKeyPattern) throw new Error(`Integer Record keys at ${path || "/"} lose their Row Reference; key ids with ParticipantKey.`);
 			return Object.fromEntries(Object.entries(current).map(([key, item]) => {
 				const itemPath = `${path}/${escapePath(key)}`;
 				if (!new RegExp(pattern).test(key)) return [key, TypeGuard.IsSchema(node.additionalProperties) ? walk(node.additionalProperties, item, itemPath) : item];
@@ -38,10 +42,13 @@ export function rewriteRowReferences<T extends TSchema>(schema: T, value: Static
 				return [mapped === undefined ? key : String(mapped), walk(itemSchema, item, itemPath)];
 			}));
 		}
+		if (JSON.stringify(node).includes('"rowReference"')) throw new Error(`A Row Reference under ${String(node[Kind])} at ${path || "/"} cannot be rewritten.`);
 		return current;
 	};
 	// SAFETY: the walk preserves the schema shape and replaces ids with ids.
 	return walk(schema, value, "") as Static<T>;
 }
 
+// TypeBox writes this pattern for any Integer or Number key and drops the key schema's annotations.
+const integerKeyPattern = "^(0|[1-9][0-9]*)$";
 const escapePath = (key: string) => key.replaceAll("~", "~0").replaceAll("/", "~1");

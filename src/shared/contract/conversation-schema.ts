@@ -643,16 +643,16 @@ export type ConversationAction = Static<typeof conversationCommandAction>;
 
 // The revision is part of the Conversation command; the conversation id
 // lives in the route path.
-export const forkConversationAction = Type.Object({
-	type: Type.Literal("fork-conversation"),
+export const forkConversationBody = Type.Object({
+	expectedRevision: Type.Integer(),
 	at: Type.Union([Type.Object({ through: Type.Integer(), variantId: Type.Optional(Type.Integer()) }, { additionalProperties: false }), Type.Object({ rewind: Type.Integer() }, { additionalProperties: false })]),
 	trimVariants: Type.Boolean(), name: Type.String(),
 });
-export type ForkConversationAction = Static<typeof forkConversationAction>;
+export type ForkConversationBody = Static<typeof forkConversationBody>;
 
 export const conversationCommandBody = Type.Object({
 	expectedRevision: Type.Integer(),
-	action: Type.Union([conversationCommandAction, forkConversationAction]),
+	action: conversationCommandAction,
 });
 
 export const forkConversationResponse = Type.Object({
@@ -861,8 +861,6 @@ export const conversationAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	conversation: conversationSummary,
 });
-
-export const conversationCommandApplied = Type.Union([conversationAppliedResponse, forkConversationResponse]);
 
 export const characterAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),

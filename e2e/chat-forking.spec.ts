@@ -10,7 +10,7 @@ test("a trimmed Fork is independent and Rewind restores the human draft", async 
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(reply.getByText("Second answer.")).toBeVisible();
 	await reply.hover();
-	await reply.getByRole("button", { name: "Fork from here" }).click();
+	await reply.getByRole("button", { name: "Fork", exact: true }).click();
 	const dialog = page.getByRole("dialog", { name: "Fork Chat" });
 	await dialog.getByLabel(/Trim Variants/).check();
 	await dialog.getByRole("button", { name: "Fork", exact: true }).click();
@@ -64,7 +64,7 @@ test("forking protects an inline edit and Rewind asks before replacing a draft",
 	await reply.getByRole("button", { name: "Edit", exact: true }).click();
 	await reply.getByRole("textbox", { name: "Edit Message" }).fill("Unsaved edit");
 	await reply.hover();
-	await reply.getByRole("button", { name: "Fork from here" }).click();
+	await reply.getByRole("button", { name: "Fork", exact: true }).click();
 	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Keep editing" }).click();
 	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Unsaved edit");
 	await reply.getByRole("button", { name: "Cancel", exact: true }).click();

@@ -551,13 +551,16 @@ export const insertParticipant = (
 			enabled: row.enabled,
 		}))).run();
 		// @approved
-		//  Copy Character data that the Box declares for Participants; subsequent edits are independent.
+		//  The seed copy: every Character Box-data row becomes the new
+		//  Participant's own row at this moment, except keys a loaded Box does
+		//  not declare for Participants. The two are independent afterwards,
+		//  so a later Character edit never reaches this Participant.
 		const data = db.select().from(characterDataTable)
 			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key }) => {
-			const box = boxIdOf(namespace);
-			const values = box === undefined ? undefined : boxDescriptors().get(box)?.values?.participant;
-			return box === undefined || (values !== undefined && Object.hasOwn(values, key));
-		});
+				const box = boxIdOf(namespace);
+				const descriptor = box === undefined ? undefined : boxDescriptors().get(box);
+				return descriptor === undefined || Object.hasOwn(descriptor.values?.participant ?? {}, key);
+			});
 		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
 			participant_id: inserted.id,
 			namespace: row.namespace,
@@ -597,7 +600,6 @@ export const insertMessage = (
 		position: number;
 		timestamp: string;
 		author: MessageAuthorStamp | null;
-		authorRole?: "human" | "model" | null;
 		context: MessageControlContext | null;
 	},
 ): number => {
@@ -609,7 +611,6 @@ export const insertMessage = (
 			timestamp: values.timestamp,
 			author_participant_id: values.author?.participantId ?? null,
 			author_name: values.author?.name ?? null,
-			author_role: values.authorRole ?? null,
 			context_human_participant_id: values.context?.humanParticipantId ?? null,
 			context_model_participant_id: values.context?.modelParticipantId ?? null,
 		})

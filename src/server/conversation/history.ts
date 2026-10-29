@@ -189,16 +189,17 @@ export function readChatHistory(
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
 		const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
+		const authorRole = authorRoleOf({ author, historicalContext }, control);
 		return {
 			id: message.id,
 			position: message.position,
 			timestamp: message.timestamp,
-			authorRole: message.author_role,
+			authorRole,
 			author,
 			modelParticipantIdAtCreation:
 				message.context_model_participant_id ?? null,
 			continuable: selected !== undefined && continuationEligibility({
-				authorRole: authorRoleOf({ author, historicalContext }, control),
+				authorRole,
 				content: selected.content,
 				hasReasoning: (selected.reasoning?.length ?? 0) > 0,
 			}, continuationStrategy) === null,

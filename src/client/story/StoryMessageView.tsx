@@ -9,6 +9,8 @@ import {
 	Info,
 	RefreshCw,
 	Trash2,
+	GitFork,
+	Undo2,
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
@@ -235,8 +237,6 @@ export function StoryMessageView({
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
-					<button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onFork(message.id)}>Fork from here</button>
-					{onRewind !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onRewind(message.id)}>Rewind</button>}
 					{onSibling !== undefined && (
 						<button
 							className="edit-action"
@@ -341,6 +341,12 @@ export function StoryMessageView({
 					>
 						<Edit3 aria-hidden="true" /> Edit
 					</button>
+					<button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onFork(message.id)}>
+						<GitFork aria-hidden="true" /> Fork
+					</button>
+					{onRewind !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onRewind(message.id)}>
+						<Undo2 aria-hidden="true" /> Rewind
+					</button>}
 					{generationControls}
 					{onRegenerate !== undefined && (
 						<button

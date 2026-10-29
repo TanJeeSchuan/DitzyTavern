@@ -132,7 +132,7 @@ export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undef
 		"advance.run": Type.Object({
 			items: Type.Array(Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) })),
 			allowance: Type.Optional(Type.Integer({ minimum: 0 })),
-			trace: Type.Optional(trace === undefined ? boxValue : Type.Intersect([boxValue, trace])),
+			trace: Type.Optional(trace === undefined ? Type.Undefined() : Type.Intersect([boxValue, trace])),
 			record: Type.Optional(record),
 		}),
 		status: Type.Union([Type.String(), Type.Null()]),

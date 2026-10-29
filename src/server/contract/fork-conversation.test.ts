@@ -24,8 +24,8 @@ test("forks through a selected alternative and leaves later Messages behind", as
 	});
 	executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
 	const app = createConversationRoutes(database);
-	const response = await app.handle(new Request(`http://localhost/api/conversations/${source.id}/commands`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 1, action: { type: "fork-conversation", at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" } }),
+	const response = await app.handle(new Request(`http://localhost/api/conversations/${source.id}/fork`, {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 1, at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" }),
 	}));
 	if (response.status !== 200) throw new Error(await response.text());
 	const result = await response.json();
@@ -56,11 +56,11 @@ test("rewind returns the original draft and an empty history without changing it
 	expect(readConversationSummary(database, source.id)!.revision).toBe(1);
 });
 
-test("Rewind follows the Message's captured Control after seats swap", () => {
+test("Rewind follows ADR-0035's authorship rule after seats swap", () => {
 	const { source, message } = createSource();
 	const swapped = executeConversationCommand(database, { conversationId: source.id, expectedRevision: 1, action: { type: "assign-control", seat: "human", participantId: source.cast[1]!.id } });
-	expect(readChatHistory(database, source.id)!.messages[0]!.authorRole).toBe("human");
-	expect(forkConversation(database, { conversationId: source.id, expectedRevision: swapped.revision, at: { rewind: message.id }, name: "Rewind", trimVariants: false }).rewind?.content).toBe("Rewrite me");
+	expect(readChatHistory(database, source.id)!.messages[0]!.authorRole).not.toBe("human");
+	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: swapped.revision, at: { rewind: message.id }, name: "Rewind", trimVariants: false })).toThrow("Only a Human-authored Message can be rewound.");
 });
 
 test("fork links follow their immediate source, survive message deletion, and clear on source deletion", () => {

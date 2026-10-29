@@ -44,7 +44,8 @@ import {
 	chatHistoryPage,
 	conversationAppliedResponse,
 	conversationCommandBody,
-	conversationCommandApplied,
+	forkConversationBody,
+	forkConversationResponse,
 	conversationCommandConflict,
 	conversationConflict,
 	conversationGenerationSettings,
@@ -103,8 +104,15 @@ const addCastCharacterResponse = {
 	422: invalidOutcome,
 };
 
+const forkResponse = {
+	200: forkConversationResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
 const commandResponse = {
-	200: conversationCommandApplied,
+	200: conversationAppliedResponse,
 	409: conversationCommandConflict,
 	404: notFoundOutcome,
 	422: invalidOutcome,
@@ -559,10 +567,6 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/commands",
 			({ params, body }) => {
 				try {
-					if (body.action.type === "fork-conversation") {
-						const result = forkConversation(database, { conversationId: params.id, expectedRevision: body.expectedRevision, ...body.action });
-						return { outcome: "applied" as const, ...result, conversation: toConversationSummary(result.conversation) };
-					}
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
@@ -586,6 +590,18 @@ export const createConversationRoutes = (
 				body: conversationCommandBody,
 				response: commandResponse,
 			},
+		)
+		.post(
+			"/api/conversations/:id/fork",
+			({ params, body }) => {
+				try {
+					const result = forkConversation(database, { conversationId: params.id, ...body });
+					return { outcome: "applied" as const, ...result, conversation: toConversationSummary(result.conversation) };
+				} catch (error) {
+					return presentDomainError(error, forkResponse);
+				}
+			},
+			{ params: conversationIdParams, body: forkConversationBody, response: forkResponse },
 		)
 		.post(
 			"/api/conversations/:id/cast/characters",

@@ -5,7 +5,7 @@ import type {
 	ConversationAction,
 	ConversationGenerationSettings,
 	ConversationSummary,
-	ForkConversationAction,
+	ForkConversationBody,
 	GenerationPreviewBody,
 	GenerationFormattingContext,
 	PromptPlan,
@@ -94,8 +94,8 @@ export async function applyConversationCommand(
 	);
 }
 
-export async function forkConversation(conversationId: number, expectedRevision: number, action: ForkConversationAction) {
-	return requestOutcome(api.api.conversations({ id: conversationId }).commands.post({ expectedRevision, action }), forkConversationResponse, conversationCommandErrors);
+export async function forkConversation(conversationId: number, body: ForkConversationBody) {
+	return requestOutcome(api.api.conversations({ id: conversationId }).fork.post(body), forkConversationResponse, conversationCommandErrors);
 }
 
 export async function addCharacterToCast(input: {

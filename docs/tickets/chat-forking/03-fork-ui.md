@@ -18,7 +18,7 @@ A writer forks or rewinds from a Message's actions, or forks from Preview mode, 
 
 ## Work
 
-- [x] Add "Fork from here" to every Message's actions.
+- [x] Add "Fork" to every Message's actions.
 - [x] Add "Rewind" to Human-authored Messages' actions. It opens the same dialog, and on success the new Chat's composer holds the returned text and Moves.
 - [x] Add "Fork with this Variant" beside Confirm Change and Cancel in Preview mode; it forks with the previewed Variant.
 - [x] Build the dialog: name prefilled with "*Name* (fork)", an unchecked "Trim Variants? (Destructive, will remove all other unselected variant data for the fork)" checkbox, Fork and Cancel. Show the refusal reason when a Generation is running.

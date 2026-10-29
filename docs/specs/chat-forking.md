@@ -14,7 +14,7 @@ See [ADR-0052](../adr/0052-fork-chats-as-independent-copies.md).
 
 ### Starting a Fork
 
-1. As a writer, I want "Fork from here" on any Message, so that I can start a new Chat that ends at that Message.
+1. As a writer, I want "Fork" on any Message, so that I can start a new Chat that ends at that Message.
 2. As a writer previewing an older Variant, I want "Fork with this Variant" beside Confirm Change and Cancel, so that I can follow that Variant without keeping Messages written against another one.
 3. As a writer, I want a dialog to name the Fork before it is created, prefilled with "*Name* (fork)", so that I can tell my Chats apart.
 4. As a writer, I want an unchecked "Trim Variants? (Destructive, will remove all other unselected variant data for the fork)" option, so that I can make a lean Fork when I don't need the alternatives.

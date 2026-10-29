@@ -32,3 +32,11 @@ test("rewrites only matching record entries and schema-valued additional propert
 	expect(() => rewriteRowReferences(extra, { source: 9 }, maps, { keepMissing: false })).toThrow("/source");
 	expect(rewriteRowReferences(record, { "3": 1, note: 2 }, maps, { keepMissing: false })).toEqual({ "33": 11, note: 22 });
 });
+
+test("fails on Row References it cannot rewrite", () => {
+	expect(rewriteRowReferences(Type.Object({ owner: ParticipantKey }), { owner: "3" }, maps, { keepMissing: false })).toEqual({ owner: "33" });
+	expect(() => rewriteRowReferences(Type.Object({ owner: ParticipantKey }), { owner: "9" }, maps, { keepMissing: false })).toThrow("/owner");
+	expect(() => rewriteRowReferences(Type.Record(MessageId, Type.String()), { "1": "x" }, maps, { keepMissing: false })).toThrow("ParticipantKey");
+	expect(() => rewriteRowReferences(Type.Tuple([ParticipantId]), [3], maps, { keepMissing: false })).toThrow("Tuple");
+	expect(() => rewriteRowReferences(Type.Intersect([Type.Object({ a: MessageId }), Type.Object({ b: Type.String() })]), { a: 1, b: "" }, maps, { keepMissing: false })).toThrow("Intersect");
+});

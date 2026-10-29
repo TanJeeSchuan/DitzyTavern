@@ -1,17 +1,19 @@
-import type { ForkConversationAction } from "../../../shared/contract/conversation-schema";
+import type { ForkConversationBody } from "../../../shared/contract/conversation-schema";
 import type { Database } from "bun:sqlite";
 import { Type, type TSchema } from "@sinclair/typebox";
 import { and, asc, eq } from "drizzle-orm";
 import { boxDescriptors, boxIdOf } from "../../../shared/contract/box";
 import { boxRecordSlot } from "../../../shared/contract/box-digest";
-import { boxMoves, type BoxMoves } from "../../../shared/contract/box-generation";
+import type { BoxMoves } from "../../../shared/contract/box-generation";
 import { isImportOwnedDataNamespace } from "../../../shared/import-data";
 import { variantDataCodecs } from "../../../shared/variant-data-codecs";
 import { rewriteRowReferences, type RowIdMaps } from "../../box/row-references";
 import { serverBox } from "../../box/registry";
 import { parseStoredBoxJson } from "../../box/stored-json";
+import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
-import { hasActiveGenerationFromConnection, requireConversationRevision } from "../internal";
+import { hasActiveGenerationFromConnection, readControlAssignment, requireConversationRevision } from "../internal";
+import { toHistoricalContext } from "../message-read-projection";
 import { requireConversationSummary, runConversationTransaction } from "./transaction";
 import {
 	conversationTable, conversationControlTable, conversationDataTable, conversationGenerationSettingsTable,
@@ -20,8 +22,8 @@ import {
 	participantTable, participantPromptTable, participantOpeningTable, participantDataTable, participantLorebookAttachmentTable,
 } from "../../database/schema";
 
-export function forkConversation(database: Database, input: Omit<ForkConversationAction, "type"> & { conversationId: number; expectedRevision: number }) {
-	return runConversationTransaction(database, (db) => {
+export function forkConversation(database: Database, input: ForkConversationBody & { conversationId: number }) {
+	return runConversationTransaction(database, (db, reportChange) => {
 		requireConversationRevision(db, input.conversationId, input.expectedRevision, "conversation");
 		const source = db.select().from(conversationTable).where(eq(conversationTable.id, input.conversationId)).get()!;
 		if (hasActiveGenerationFromConnection(db, input.conversationId)) throw new InvalidConversationCommandError("Cannot fork while an Active Generation exists.");
@@ -33,9 +35,11 @@ export function forkConversation(database: Database, input: Omit<ForkConversatio
 		const variantId = "through" in input.at ? input.at.variantId : undefined;
 		const selected = variantId !== undefined ? pointVariants.find((v) => v.id === variantId) : pointVariants.find((v) => v.selected);
 		if (!selected) throw new InvalidConversationCommandError("The selected Variant is not on the fork point.");
-		if ("rewind" in input.at && point.author_role !== "human") throw new InvalidConversationCommandError("Only a Human-authored Message can be rewound.");
+		if ("rewind" in input.at && authorRoleOf({ author: { participantId: point.author_participant_id }, historicalContext: toHistoricalContext(point) }, readControlAssignment(db, input.conversationId)) !== "human") throw new InvalidConversationCommandError("Only a Human-authored Message can be rewound.");
 
-		const fork = db.insert(conversationTable).values({ name: input.name.trim(), creation_time: new Date().toISOString(), last_message_time: point.timestamp, background_hash: source.background_hash, forked_from_conversation_id: input.conversationId, forked_from_message_id: point.id }).returning().get();
+		const messages = db.select().from(messageTable).where(eq(messageTable.conversation_id, input.conversationId)).orderBy(asc(messageTable.position)).all().filter((m) => "rewind" in input.at ? m.position < point.position : m.position <= point.position);
+		const now = new Date().toISOString();
+		const fork = db.insert(conversationTable).values({ name: input.name.trim(), creation_time: now, last_message_time: messages.at(-1)?.timestamp ?? now, background_hash: source.background_hash, forked_from_conversation_id: input.conversationId, forked_from_message_id: point.id }).returning().get();
 		const participantMap = new Map<number, number>(), messageMap = new Map<number, number>(), variantMap = new Map<number, number>();
 		const maps: RowIdMaps = { participant: participantMap, message: messageMap, variant: variantMap };
 		const participants = db.select().from(participantTable).where(eq(participantTable.conversation_id, input.conversationId)).all();
@@ -49,7 +53,6 @@ export function forkConversation(database: Database, input: Omit<ForkConversatio
 			for (const { id: _, ...row } of db.select().from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.participant_id, participant.id)).all()) db.insert(participantLorebookAttachmentTable).values({ ...row, participant_id: id }).run();
 		}
 		for (const row of db.select().from(conversationControlTable).where(eq(conversationControlTable.conversation_id, input.conversationId)).all()) db.insert(conversationControlTable).values({ ...row, conversation_id: fork.id, participant_id: participantMap.get(row.participant_id)! }).run();
-		const messages = db.select().from(messageTable).where(eq(messageTable.conversation_id, input.conversationId)).orderBy(asc(messageTable.position)).all().filter((m) => "rewind" in input.at ? m.position < point.position : m.position <= point.position);
 		for (const { id, ...row } of messages) {
 			const newId = db.insert(messageTable).values({ ...row, conversation_id: fork.id, author_participant_id: remap(row.author_participant_id), context_human_participant_id: remap(row.context_human_participant_id), context_model_participant_id: remap(row.context_model_participant_id) }).returning({ id: messageTable.id }).get().id;
 			messageMap.set(id, newId);
@@ -94,7 +97,7 @@ export function forkConversation(database: Database, input: Omit<ForkConversatio
 				const value = boxValue(row.namespace, row.key, row.value, "message");
 				if (value === undefined) continue;
 				const id = boxIdOf(row.namespace);
-				if (id !== undefined && row.key === "moves") result[id] = parseStoredBoxJson(JSON.stringify({ [id]: JSON.parse(value) }), boxMoves, `moves/${id}`)[id]!;
+				if (id !== undefined && row.key === "moves") result[id] = JSON.parse(value);
 				const newId = messageMap.get(messageId);
 				if (newId !== undefined) db.insert(messageDataTable).values({ ...row, id: undefined, message_id: newId, value }).run();
 			}
@@ -123,6 +126,7 @@ export function forkConversation(database: Database, input: Omit<ForkConversatio
 		if (lore) db.insert(conversationLoreSettingsTable).values({ ...lore, conversation_id: fork.id }).run();
 		for (const { id: _, ...row } of db.select().from(conversationLorebookAttachmentTable).where(eq(conversationLorebookAttachmentTable.conversation_id, input.conversationId)).all()) db.insert(conversationLorebookAttachmentTable).values({ ...row, conversation_id: fork.id }).run();
 		const rewind = "rewind" in input.at ? { content: selected.content, moves: copyMessageDataAndReadMoves(point.id) } : undefined;
+		reportChange({ conversationId: fork.id, touchedVariantIds: [...variantMap.values()], removedVariantIds: [] });
 		return { conversation: requireConversationSummary(db, fork.id), omittedBoxes: [...omitted].sort(), rewind };
 	});
 }

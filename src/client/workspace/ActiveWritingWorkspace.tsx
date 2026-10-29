@@ -1,5 +1,6 @@
 import { boxIdOf } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
+import { X } from "lucide-react";
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
 	SaveGuardContext,
@@ -47,7 +48,7 @@ import { CoveredLayer } from "./CoveredLayer";
 import { ForkDialog } from "./ForkDialog";
 import { forkConversation } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
-import type { ForkConversationAction } from "../../shared/contract/conversation-schema";
+import type { ForkConversationBody } from "../../shared/contract/conversation-schema";
 import { hasMoves } from "../../shared/contract/box-generation";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
@@ -79,7 +80,7 @@ export function ActiveWritingWorkspace({
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
-	const [forkAt, setForkAt] = useState<ForkConversationAction["at"] | null>(null);
+	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
 	const [theme, setPersistedTheme] = useThemePreference();
@@ -147,7 +148,13 @@ export function ActiveWritingWorkspace({
 		dispatchPanel({ type: "primary-toggled", panel });
 	};
 
-	const selectChat = (chatId: string) => {
+	const openChat = (chatId: string, messageId: number | null = null) => {
+		dispatchStory({ type: "preview-cancelled" });
+		if (chatId !== session.activeChatId) generation.conversationSwitched();
+		session.selectChat(chatId, messageId);
+		dispatchPanel({ type: "workspace-reset" });
+	};
+	const selectChat = (chatId: string, messageId: number | null = null) => {
 		// @approved
 		//  Workspace chat ids are wire strings; the story read model speaks
 		// numeric Conversation ids, so the coercion happens at this boundary.
@@ -159,11 +166,7 @@ export function ActiveWritingWorkspace({
 			) &&
 			!window.confirm("Discard Preview mode and open another Chat?")
 		) return;
-
-		dispatchStory({ type: "preview-cancelled" });
-		if (chatId !== session.activeChatId) generation.conversationSwitched();
-		session.selectChat(chatId);
-		dispatchPanel({ type: "workspace-reset" });
+		openChat(chatId, messageId);
 	};
 
 	const conversation = session.conversation;
@@ -175,14 +178,11 @@ export function ActiveWritingWorkspace({
 			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 			isCurrent: () => !session.signal.aborted,
 		}, async (revision) => {
-			const result = await forkConversation(conversation.id, revision, { type: "fork-conversation", at: forkAt, name, trimVariants });
+			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkAt, name, trimVariants });
 			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
 		}, { onOperation: (result) => {
-			generation.conversationSwitched();
+			openChat(String(result.conversation.id));
 			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
-			dispatchStory({ type: "preview-cancelled" });
-			dispatchPanel({ type: "workspace-reset" });
-			session.selectChat(String(result.conversation.id));
 			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
 			setForkAt(null);
 		} });
@@ -195,12 +195,7 @@ export function ActiveWritingWorkspace({
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;
 		if (!source) return;
-		saveNavigation.requestNavigation(() => {
-			generation.conversationSwitched();
-			dispatchStory({ type: "preview-cancelled" });
-			dispatchPanel({ type: "workspace-reset" });
-			session.selectChat(String(source.conversationId), source.messageId);
-		});
+		saveNavigation.requestNavigation(() => selectChat(String(source.conversationId), source.messageId));
 	};
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
@@ -400,7 +395,10 @@ export function ActiveWritingWorkspace({
 			acknowledge={generation.acknowledgeGenerationError}
 		/>
 		<ControlChangeToaster ref={controlToaster} />
-		{forkNotice !== null && <div role="status" className="fixed bottom-4 right-4 z-50 rounded-xl bg-popover p-4 text-sm shadow-lg">{forkNotice} <button type="button" onClick={() => setForkNotice(null)} aria-label="Dismiss Fork notice">×</button></div>}
+		{forkNotice !== null && <Toast.Root key={forkNotice} className="workspace-toast" defaultOpen onOpenChange={(open) => { if (!open) setForkNotice(null); }}>
+			<Toast.Description className="workspace-toast-description">{forkNotice}</Toast.Description>
+			<Toast.Close className="icon-button" aria-label="Dismiss Fork notice"><X aria-hidden="true" /></Toast.Close>
+		</Toast.Root>}
 		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generation.isGenerating || conversation.activeGenerations.length > 0} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />

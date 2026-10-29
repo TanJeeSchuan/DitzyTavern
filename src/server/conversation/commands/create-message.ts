@@ -47,13 +47,11 @@ export function createMessage(
 		.from(messageTable)
 		.where(eq(messageTable.conversation_id, input.conversationId))
 		.get()?.value;
-	const control = readControlAssignment(db, input.conversationId);
 	const messageId = insertMessage(db, {
 		conversationId: input.conversationId,
 		position: (latestPosition ?? 0) + 1,
 		timestamp: input.timestamp,
 		author: { participantId: author.id, name: author.name },
-		authorRole: author.id === control.humanParticipantId ? "human" : author.id === control.modelParticipantId ? "model" : null,
 		context: null,
 	});
 
@@ -71,7 +69,7 @@ export function createMessage(
 	//  Only a Human-authored Message is reported: Memory derives a
 	// source from the Human's selected Variant, while model turns are
 	// remembered through their own Generation resolution.
-	if (author.id === control.humanParticipantId) {
+	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) {
 		return {
 			conversationId: input.conversationId,
 			touchedVariantIds: variantIds,
