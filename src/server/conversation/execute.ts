@@ -1,3 +1,5 @@
+import { eq } from "drizzle-orm";
+import { conversationTable } from "../database/schema";
 import type { Database } from "bun:sqlite";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
@@ -91,6 +93,7 @@ const handlers = {
 	"set-box-record": setBoxRecord,
 	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,
+	"unlink-fork": (db, input) => { db.update(conversationTable).set({ forked_from_conversation_id: null, forked_from_message_id: null }).where(eq(conversationTable.id, input.conversationId)).run(); },
 	"set-background": setBackground,
 	"attach-chat": attachConversationLorebook,
 	"detach-chat": detachConversationLorebook,

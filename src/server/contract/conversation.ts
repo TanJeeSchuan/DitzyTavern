@@ -1,3 +1,4 @@
+import { forkConversation } from "../conversation";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -43,6 +44,7 @@ import {
 	chatHistoryPage,
 	conversationAppliedResponse,
 	conversationCommandBody,
+	conversationCommandApplied,
 	conversationCommandConflict,
 	conversationConflict,
 	conversationGenerationSettings,
@@ -102,7 +104,7 @@ const addCastCharacterResponse = {
 };
 
 const commandResponse = {
-	200: conversationAppliedResponse,
+	200: conversationCommandApplied,
 	409: conversationCommandConflict,
 	404: notFoundOutcome,
 	422: invalidOutcome,
@@ -557,6 +559,10 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/commands",
 			({ params, body }) => {
 				try {
+					if (body.action.type === "fork-conversation") {
+						const result = forkConversation(database, { conversationId: params.id, expectedRevision: body.expectedRevision, ...body.action });
+						return { outcome: "applied" as const, ...result, conversation: toConversationSummary(result.conversation) };
+					}
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values

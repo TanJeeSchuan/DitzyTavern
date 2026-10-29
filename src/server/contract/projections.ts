@@ -28,6 +28,7 @@ export const toConversationSummary = (
 	name: conversation.name,
 	revision: conversation.revision,
 	background: conversation.background,
+	forkedFrom: conversation.forkedFrom,
 	cast: conversation.cast,
 	control: conversation.control,
 	controlValidity: conversation.controlValidity,

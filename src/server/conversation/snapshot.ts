@@ -290,6 +290,10 @@ export function readConversationSummaryFromConnection(
 		name: conversation.name,
 		revision: conversation.revision,
 		background: conversation.background_hash,
+		forkedFrom: conversation.forked_from_conversation_id === null ? null : {
+			conversationId: conversation.forked_from_conversation_id, messageId: conversation.forked_from_message_id,
+			name: db.select({ name: conversationTable.name }).from(conversationTable).where(eq(conversationTable.id, conversation.forked_from_conversation_id)).get()!.name,
+		},
 		cast: cast.map((participant) => ({
 			...participant,
 			duplicateLabel: labelsById.get(participant.id) ?? participant.name,

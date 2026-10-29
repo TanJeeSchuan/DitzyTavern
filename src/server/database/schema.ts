@@ -11,6 +11,7 @@ import {
 	primaryKey,
 	real,
 	sqliteTable,
+	type AnySQLiteColumn,
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
@@ -272,7 +273,9 @@ export const conversationTable = sqliteTable("conversation", {
 	last_message_time: text().notNull(),
 	revision: int().notNull().default(0),
 	background_hash: text(),
-});
+	forked_from_conversation_id: int().references((): AnySQLiteColumn => conversationTable.id, { onDelete: "set null" }),
+	forked_from_message_id: int().references((): AnySQLiteColumn => messageTable.id, { onDelete: "set null" }),
+}, (table) => [check("conversation_fork_link_check", sql`${table.forked_from_conversation_id} IS NOT NULL OR ${table.forked_from_message_id} IS NULL`)]);
 
 // @approved
 //  The Conversation's own selection from the shared preset library. The

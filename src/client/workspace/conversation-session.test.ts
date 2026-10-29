@@ -13,7 +13,8 @@ const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
 const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: `Chat ${id}`, boxSetups, boxes, background: null, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
+	id, revision, name: `Chat ${id}`, boxSetups, boxes, forkedFrom: null,
+	background: null, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
 	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
 	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
 		generate: { available: false, reason: "conversation-not-playable" }, swipe: { available: false, reason: "conversation-not-playable" } }, activeGenerations: [],
