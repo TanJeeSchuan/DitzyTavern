@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
-import type { AtLatest } from "../workspace/useStoryViewport";
+import type { Store } from "../lib/store";
 
 export function Composer({
 	draft,
@@ -13,20 +13,18 @@ export function Composer({
 	canWrite,
 	atLatest,
 	controlSelectors,
-	onDraftChange,
 	onSubmit,
 	onCancel,
 	stopPending = false,
 	writerName,
 }: {
-	draft: string;
+	draft: Store<string>;
 	moves: BoxMoves;
 	onMovesChange: (moves: BoxMoves) => void;
 	isGenerating: boolean;
 	canWrite: boolean;
-	atLatest: AtLatest;
+	atLatest: Store<boolean>;
 	controlSelectors?: ReactNode;
-	onDraftChange: (value: string) => void;
 	onSubmit: (event: FormEvent) => void;
 	onCancel?: () => void;
 	stopPending?: boolean;
@@ -38,6 +36,7 @@ export function Composer({
 	// @approved
 	// Disabling or swapping the focused control drops focus without a blur event, so read focus again when they change.
 	useEffect(() => setFocused(formRef.current?.contains(document.activeElement) ?? false), [isGenerating, canWrite, stopPending]);
+	const value = useSyncExternalStore(draft.subscribe, draft.get);
 	const isReceded = !useSyncExternalStore(atLatest.subscribe, atLatest.get) && !focused && !isGenerating;
 
 	return (
@@ -76,8 +75,8 @@ export function Composer({
 			<MoveChips moves={moves} onChange={onMovesChange} disabled={!canWrite} />
 			<ProseEditor
 				ref={editorRef}
-				value={draft}
-				onChange={onDraftChange}
+				value={value}
+				onChange={draft.set}
 				ariaLabel="Message draft"
 				placeholder={writerName !== undefined ? `What does ${writerName} do next?` : "Write the next part of the story…"}
 				disabled={!canWrite}

@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { StoryMessage } from "../story";
-
-export type AtLatest = { get: () => boolean; subscribe: (listener: () => void) => () => void };
+import { store } from "../lib/store";
 
 type StoryViewportOptions = {
 	messages: readonly StoryMessage[];
@@ -37,22 +36,7 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	// @approved
 	// A store rather than state: crossing the bottom while scrolling re-renders
 	// only the composer that recedes, not every Message on the stage.
-	const [atLatest] = useState(() => {
-		let value = !hasNewer;
-		const listeners = new Set<() => void>();
-		return {
-			get: () => value,
-			set: (next: boolean) => {
-				if (next === value) return;
-				value = next;
-				for (const listener of listeners) listener();
-			},
-			subscribe: (listener: () => void) => {
-				listeners.add(listener);
-				return () => void listeners.delete(listener);
-			},
-		};
-	});
+	const [atLatest] = useState(() => store(!hasNewer));
 	const lastScrollTopRef = useRef(0);
 	const anchoredRef = useRef<{ firstId: number; lastId: number; firstTop: number | null } | null>(null);
 	const swipeScrollTargetRef = useRef<number | null>(null);

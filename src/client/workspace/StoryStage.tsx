@@ -270,7 +270,6 @@ export function StoryStage({
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
 					atLatest={viewport.atLatest}
-					onDraftChange={generation.setDraft}
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
