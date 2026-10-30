@@ -66,22 +66,24 @@ describe("semantic Lore evaluation", () => {
 
 	test("starts the next request as soon as either slot frees, not when both do", async () => {
 		let requests = 0;
-		let startedBeforeSlowFinished = 0;
-		await evaluateSemanticLore({
+		const first = Promise.withResolvers<void>();
+		const third = Promise.withResolvers<void>();
+		const evaluation = evaluateSemanticLore({
 			entries: [{ enabled: true, semanticTriggers: Array.from({ length: 9 }, (_, index) => `situation ${index} ${"detail ".repeat(6000)}`) }],
 			messages: [],
 			settings,
 			fetch: async (_input, init) => {
-				const slow = ++requests === 1;
-				await Bun.sleep(slow ? 30 : 1);
-				if (slow) startedBeforeSlowFinished = requests;
+				const request = ++requests;
+				if (request === 1) await first.promise;
+				if (request === 3) third.resolve();
 				// SAFETY: the fake answers the questions evaluateSemanticLore sent.
 				const { questions } = JSON.parse(String(init?.body)) as { questions: object };
 				return Response.json({ answers: Object.fromEntries(Object.keys(questions).map((id) => [id, { type: "noul", noul: 0.1 }])) });
 			},
 		});
-		expect(requests).toBeGreaterThan(2);
-		expect(startedBeforeSlowFinished).toBe(requests);
+		await third.promise;
+		first.resolve();
+		expect(await evaluation).toMatchObject({ available: true });
 	});
 
 	test("uses one unavailable result when the Decision Model fails", async () => {
