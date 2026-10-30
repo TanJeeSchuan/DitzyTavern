@@ -13,12 +13,16 @@ const variantTextQuery = (conversationId: number, messageId: number, variantId: 
 const withText = (variant: StoryVariant, text: { content: string; reasoning: string } | undefined): StoryVariant =>
 	text === undefined ? variant : { ...variant, content: variant.content ?? text.content, reasoning: variant.reasoning || text.reasoning };
 
-/** @approved The Variant with its text: what the page carried, or else the Variant text read. `reasoning` asks for persisted Reasoning Content too. */
+/** @approved The Variant with its text: what the page carried, or else the Variant text read, and whether that read failed. `reasoning` asks for persisted Reasoning Content too. */
 export function useVariantText(conversationId: number, messageId: number, variant: StoryVariant | undefined, { reasoning = false } = {}) {
 	const needed = variant !== undefined && (variant.content === null || (reasoning && variant.hasReasoning && !variant.reasoning));
 	const read = useQuery({ ...variantTextQuery(conversationId, messageId, variant?.id ?? 0), enabled: needed });
-	return variant === undefined ? undefined : withText(variant, read.data);
+	return { variant: variant === undefined ? undefined : withText(variant, read.data), failed: needed && read.isError };
 }
+
+/** @approved A Variant's Content for an action that sends it: the page's, or else the Variant text read, from the cache when it has it. */
+export const variantContent = async (client: QueryClient, conversationId: number, messageId: number, variant: StoryVariant) =>
+	variant.content ?? (await client.fetchQuery(variantTextQuery(conversationId, messageId, variant.id))).content;
 
 /** @approved Every Variant of a Message with its Content, read while `enabled`, as the Swipes browser shows them all. */
 export function useVariantsText(conversationId: number, messageId: number, variants: StoryVariant[], enabled: boolean) {

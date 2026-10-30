@@ -47,3 +47,23 @@ test("a change during a read's first fetch reads again, so the older answer does
 	expect(calls).toBe(2);
 	expect(observer.getCurrentResult().data).toBe("after");
 });
+
+test("changes arriving faster than a read finishes let it land, then read once more", async () => {
+	Object.assign(globalThis, { EventSource: FakeEventSource });
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	const answers = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
+	let calls = 0;
+	const observer = new QueryObserver(client, { queryKey: ["memory"], meta: followsChanges, queryFn: () => answers[calls++]!.promise }); // @approved Two answers for two fetches.
+	observer.subscribe(() => {});
+	followServerChanges(client);
+	await Bun.sleep(0);
+	for (const seq of ["1", "2", "3"]) FakeEventSource.latest?.dispatchEvent(new MessageEvent("change", { data: seq }));
+	await Bun.sleep(0);
+	expect(calls).toBe(1);
+	answers[0]!.resolve("slow"); // @approved Created above.
+	await Bun.sleep(0);
+	expect(calls).toBe(2);
+	answers[1]!.resolve("latest"); // @approved Created above.
+	await Bun.sleep(0);
+	expect(observer.getCurrentResult().data).toBe("latest");
+});

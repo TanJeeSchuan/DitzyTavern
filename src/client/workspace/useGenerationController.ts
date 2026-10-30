@@ -1,6 +1,7 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { variantContent } from "../story/variant-text";
 import {
 	useEffect,
 	useMemo,
@@ -88,6 +89,7 @@ export function useGenerationController({
 	ensureLatest,
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
+	const client = useQueryClient();
 	// @approved
 	// A store rather than state: a keystroke re-renders only the composer, not every Message on the stage.
 	const [draft] = useState(() => store(""));
@@ -304,17 +306,14 @@ export function useGenerationController({
 		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
 	};
 
-	const regenerateResponse = (messageId: number) => {
+	const regenerateResponse = async (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const persisted = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
-		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content ?? undefined;
-		if (
-			latest?.id !== messageId ||
-			latest.authorParticipantId !== conversation.control.humanParticipantId ||
-			content === undefined ||
-			(content.trim() === "" && !hasMoves(latest.moves))
-		) return;
+		const shown = latest === undefined ? undefined : shownVariant(story, latest);
+		if (latest?.id !== messageId || latest.authorParticipantId !== conversation.control.humanParticipantId || shown === undefined) return;
+		const content = await variantContent(client, conversation.id, messageId, shown).catch(() => null);
+		if (content === null || (content.trim() === "" && !hasMoves(latest.moves))) return;
 		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
 	};
 

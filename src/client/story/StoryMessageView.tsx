@@ -109,7 +109,7 @@ export function StoryMessageView({
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
-	const active = useVariantText(conversationId, message.id, message.swipes.find((variant) => variant.id === visibleId));
+	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, message.swipes.find((variant) => variant.id === visibleId));
 	const activeIndex = active === undefined
 		? message.activeSwipe
 		: message.swipes.findIndex((variant) => variant.id === active.id);
@@ -135,9 +135,9 @@ export function StoryMessageView({
 	};
 	const saveEdit = async () => {
 		const value = editText.trim();
-		if ((!value && !hasMoves(message.moves)) || active === undefined) return false;
-		if ((active.content ?? "") !== editBase) {
-			setEditBase(active.content ?? "");
+		if ((!value && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
+		if (active.content !== editBase) {
+			setEditBase(active.content);
 			setChangedElsewhere(true);
 			return false;
 		}
@@ -334,6 +334,7 @@ export function StoryMessageView({
 						data-empty-variant={active?.empty === true && !generationActive}
 						data-generation-active={generationActive}
 					>
+						{textFailed && <p role="alert">This Swipe's text could not be loaded.</p>}
 						{active !== undefined && !(generationActive && active.empty)
 							? <LensedProse text={visibleVariantContent(active)} streaming={generationActive} lens={lens} />
 							: null}
@@ -346,7 +347,7 @@ export function StoryMessageView({
 					<button
 						className="edit-action"
 						type="button"
-						disabled={mutationsDisabled || generationActive}
+						disabled={mutationsDisabled || generationActive || active?.content === null}
 						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit
@@ -410,6 +411,6 @@ export function StoryMessageView({
 
 /** @approved An opened Reasoning section: the streamed text, or the persisted text read once it opens. */
 function Reasoning({ conversationId, messageId, variant }: { conversationId: number; messageId: number; variant: StoryVariant }) {
-	const reasoning = useVariantText(conversationId, messageId, variant, { reasoning: true })?.reasoning ?? "";
+	const reasoning = useVariantText(conversationId, messageId, variant, { reasoning: true }).variant?.reasoning ?? "";
 	return reasoning.split("\n\n").map((paragraph, index) => <p key={index}>{paragraph}</p>);
 }

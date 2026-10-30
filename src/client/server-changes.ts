@@ -13,13 +13,22 @@ export const followsChanges = { refetchOnChange: true } as const;
 // did not change answers 304.
 export const followServerChanges = (client: QueryClient) => {
 	const source = new EventSource("/api/changes");
+	const cache = client.getQueryCache();
 	const follows = (query: Query) => query.meta?.refetchOnChange === true;
-	source.addEventListener("change", () => void (async () => {
-		// @approved
-		//  A first read still in flight may have read before this change, and
-		// invalidating would join it rather than read again; it starts over.
-		await client.cancelQueries({ predicate: (query) => follows(query) && query.state.data === undefined && query.state.fetchStatus === "fetching" });
-		await client.invalidateQueries({ type: "active", predicate: follows });
-	})());
+	// @approved
+	//  A read in flight may have read before the change, and refetching would
+	// cancel it, so a read slower than the changes arriving would never land:
+	// it finishes, then reads once more.
+	const again = new Set<string>();
+	cache.subscribe((event) => {
+		if (event.type !== "updated" || event.query.state.fetchStatus !== "idle" || !again.delete(event.query.queryHash)) return;
+		void client.invalidateQueries({ queryKey: event.query.queryKey, exact: true, type: "active" });
+	});
+	source.addEventListener("change", () => {
+		for (const query of cache.findAll({ type: "active", predicate: follows })) {
+			if (query.state.fetchStatus === "fetching") again.add(query.queryHash);
+			else void client.invalidateQueries({ queryKey: query.queryKey, exact: true });
+		}
+	});
 	return () => source.close();
 };
