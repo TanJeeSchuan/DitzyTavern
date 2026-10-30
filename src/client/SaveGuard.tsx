@@ -32,10 +32,11 @@ export function useSaveNavigation(): SaveNavigationController {
 		return () => { guards.current.delete(guard); bumpGuards(); };
 	}, []);
 
-	const requestNavigation = (action: () => void) => {
+	// @approved Stable, because it is a context value: a new one each render made every consumer below the workspace re-render with each streamed event.
+	const requestNavigation = useCallback((action: () => void) => {
 		if ([...guards.current].some((guard) => guard.dirty || guard.saving)) { setError(null); setLeaveAction(() => action); }
 		else action();
-	};
+	}, []);
 
 	const saveAndLeave = async () => {
 		if (leaveAction === null) return;
