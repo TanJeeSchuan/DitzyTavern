@@ -20,6 +20,7 @@ import {
 } from "../errors";
 import { requireConversation, type ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
+import { withoutAnnouncing } from "../../database/changes";
 import type {
 	ConversationDataEntry,
 	ConversationSummary,
@@ -370,14 +371,14 @@ export function checkpointConversationGeneration(
 	database: Database,
 	input: CheckpointGenerationInput,
 ): void {
-	runConversationTransaction(database, (db) => {
+	withoutAnnouncing(database, () => runConversationTransaction(database, (db) => {
 		const stored = storedCheckpointEnds(db, input);
 		if (stored === undefined) return;
 		if (stored.content !== input.contentOffset || stored.reasoning !== input.reasoningOffset) {
 			throw new InvalidConversationCommandError("The checkpoint does not continue the stored Generation output.");
 		}
 		appendCheckpoint(db, input);
-	});
+	}));
 }
 
 /** @approved

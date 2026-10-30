@@ -11,6 +11,7 @@ import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
 import { prepareBoxDigests, startBoxDigests } from "./box/digest";
 import { bootIndex } from "./boot-index";
 import { revalidatedText } from "./contract/content-validators";
+import { watchDatabaseChanges } from "./database/changes";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -26,6 +27,7 @@ export async function createApp(options: AppOptions) {
 	// and published synchronously after it commits.
 	observeConversationWrites(database, prepareBoxDigests);
 	const stopBoxDigests = startBoxDigests(database, { fetch });
+	const stopChanges = watchDatabaseChanges(database);
 	// @approved
 	//  One process-start sweep resolves only abandoned local Active Generations;
 	// it never resumes or retries a provider request. It runs before the Image
@@ -51,7 +53,7 @@ export async function createApp(options: AppOptions) {
 	updates.start();
 
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
-		shutdownApplication(database, async () => { await updates.stop(); await stopHttp(); }, stopBoxDigests);
+		shutdownApplication(database, async () => { stopChanges(); await updates.stop(); await stopHttp(); }, stopBoxDigests);
 	return { app, close };
 }
 

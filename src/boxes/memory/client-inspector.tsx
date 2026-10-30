@@ -17,7 +17,7 @@ type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
 export function MemoriesPanel({ conversation, onConversationChange, focusRequest, onClose, onNavigateSource, onOpenSettings, onOpenConnections }: BoxInspectorProps) {
 	const conversationId = conversation.id;
-	const { status, memories, stored, settings, refresh, settingsSaved, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversation.revision, { poll: true });
+	const { status, memories, stored, settings, refresh, settingsSaved, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversation.revision);
 	const actions = useMemoryActions({ conversationId, conversation, onConversationChange, stored, refresh });
 	const { notice, busy, catchupBusy, editing, resetTarget } = actions;
 	const [query, setQuery] = useState("");

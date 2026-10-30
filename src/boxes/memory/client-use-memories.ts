@@ -1,4 +1,4 @@
-import { type ConversationSummary, CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } from "@/box-sdk/client";
+import { type ConversationSummary, CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, cancelBoxCatchUp, digestBoxPassage, followsChanges, startBoxCatchUp, type BoxDigest } from "@/box-sdk/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadConversationMemories, loadMemoryAllowance } from "./client-api";
@@ -9,8 +9,8 @@ type Source = ConversationMemories["sources"][number];
 type MemoryData = { memories: ConversationMemories; settings: ConversationMemoryAllowance };
 export type ClaimDraft = { claim: string; attribution: string; people: string[] };
 
-/** @approved The Chat's Memories, labelled for display. `poll` keeps an open panel current while digests land, faster during catch-up. */
-export function useConversationMemories(conversationId: number, conversationRevision: number, { poll = false } = {}) {
+/** @approved The Chat's Memories, labelled for display; the host revalidates them on each database change, so an open panel stays current while digests land. */
+export function useConversationMemories(conversationId: number, conversationRevision: number) {
 	const client = useQueryClient();
 	const queryKey = useMemo(() => ["memory", "memories", conversationId] as const, [conversationId]);
 	const query = useQuery({
@@ -19,8 +19,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			const [memories, settings] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
 			return { memories, settings };
 		},
-		refetchInterval: (current) => !poll ? false : current.state.data?.memories.catchUp == null ? 2_500 : 750,
-		refetchIntervalInBackground: false,
+		meta: followsChanges,
 	});
 	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
 	useEffect(() => { void refresh(); }, [conversationRevision, refresh]);

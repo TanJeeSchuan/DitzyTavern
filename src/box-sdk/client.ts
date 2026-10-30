@@ -3,6 +3,7 @@
 export type { BoxDataAction, MoveStaging } from "../client/box-windows/registry";
 export { useBoxSetupDraft } from "../client/box-windows/useBoxSetupDraft";
 export { useBoxRead } from "../client/box-windows/useBoxRead";
+export { followsChanges } from "../client/server-changes";
 export { boxDigestKey, digestWindow, useBoxStatus } from "../client/box-windows/PassageTimeline";
 export type { BoxDataWrite } from "../shared/contract/box-actions";
 export type { CastParticipant, ConversationSummary } from "../client/conversation";

@@ -19,6 +19,7 @@ import { healthResponse, workspaceResponse } from "../../shared/contract/workspa
 import { createUpdateChecker, type UpdateChecker } from "../updates";
 import { createUpdateRoutes } from "./updates";
 import { contentValidators } from "./content-validators";
+import { createChangeRoutes } from "./changes";
 
 export { createChatImportRoutes } from "./chat-import";
 export { createCharacterLibraryRoutes } from "./character-library";
@@ -35,6 +36,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
 	.use(createUpdateRoutes(updates))
+	.use(createChangeRoutes(database))
 	.use(createCharacterLibraryRoutes(database))
 	.use(createImageRoutes(database))
 	.use(createNativeConversationRoutes(database))
