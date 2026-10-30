@@ -9,6 +9,8 @@ import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
 import { prepareBoxDigests, startBoxDigests } from "./box/digest";
+import { bootIndex } from "./boot-index";
+import { revalidatedText } from "./contract/content-validators";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -32,7 +34,7 @@ export async function createApp(options: AppOptions) {
 	reportRecovery("Startup", recoverActiveGenerations(database));
 	sweepOrphanedImages(database);
 
-	const serveIndex = () => Bun.file("dist/index.html");
+	const serveIndex = async (request: Request) => revalidatedText(request, await bootIndex(database), { "content-type": "text/html;charset=utf-8" });
 	const updates = createUpdateChecker(database, options.updates);
 	// @approved
 	//  Hashed assets are cached for a day. The host chunks keep their names
@@ -40,11 +42,11 @@ export async function createApp(options: AppOptions) {
 	// rather than run a stale one against a newer host. The Box routes serve
 	// the Box client modules.
 	const app = createContract(database, options, artifactDirectory, updates)
-		.get("/", serveIndex)
+		.get("/", ({ request }) => serveIndex(request))
 		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true, ignorePatterns: [/[\\/]dist[\\/](?:host|boxes)[\\/]/] }))
 		.use(await staticPlugin({ assets: "dist/host", prefix: "/host", alwaysStatic: true, directive: "no-cache", maxAge: null }))
-		.onError(({ code, path }) => {
-			if (code === "NOT_FOUND" && !path.startsWith("/api/")) return serveIndex();
+		.onError(({ code, path, request }) => {
+			if (code === "NOT_FOUND" && !path.startsWith("/api/") && !/\.\w+$/.test(path)) return serveIndex(request);
 		});
 	updates.start();
 

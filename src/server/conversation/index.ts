@@ -61,7 +61,7 @@ export { readConversationRevision } from "./snapshot";
 // @approved
 //  The Workspace Chat list read model: the workspace route reads Chat
 // summaries through the Conversation seam instead of querying its tables.
-export { listChatSummaries } from "./chat-summaries";
+export { activeChatId, listChatSummaries } from "./chat-summaries";
 export {
 	cleanupRetainedGenerationInspections,
 	GENERATION_REPLAY_RETENTION_MS,

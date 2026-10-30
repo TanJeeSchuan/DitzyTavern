@@ -8,6 +8,12 @@ import { liveContentOf } from "./generation-checkpoint";
 //  order with its Cast and the selected Variant of its last Message, so the
 //  workspace route never reaches into Conversation tables itself.
 
+const recency = "ORDER BY c.last_message_time DESC";
+
+/** @approved The Chat the workspace opens: the first in the list's order. */
+export const activeChatId = (database: Database): number | null =>
+	database.query<{ id: number }, []>(`SELECT c.id FROM conversation c ${recency} LIMIT 1`).get()?.id ?? null;
+
 export const listChatSummaries = (database: Database) =>
 	database
 			.query<{ id: number; name: string; creation_time: string; last_message_time: string; cast: string; excerpt: string | null }, []>(`
@@ -16,7 +22,7 @@ export const listChatSummaries = (database: Database) =>
 					(SELECT ${liveContentOf("v")} FROM messages m JOIN message_variant v ON v.message_id = m.id AND v.selected = 1
 						WHERE m.conversation_id = c.id ORDER BY m.position DESC LIMIT 1) AS excerpt
 				FROM conversation c
-				ORDER BY c.last_message_time DESC`)
+				${recency}`)
 			.all()
 			.map((chat) => ({
 				id: chat.id,
