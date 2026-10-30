@@ -64,3 +64,17 @@ test("stopping the watch closes its listeners", () => {
 	stop();
 	expect(closed()).toBe(true);
 });
+
+test("an unannounced write never hides another connection's commit", async () => {
+	const folder = mkdtempSync(join(tmpdir(), "ditzy-changes-"));
+	cleanups.push(() => rmSync(folder, { recursive: true, force: true }));
+	const { database, heard } = watched(join(folder, "changes.sqlite"));
+	const other = new Database(join(folder, "changes.sqlite"));
+	withoutAnnouncing(database, () => {
+		other.run("INSERT INTO book VALUES (1)");
+		database.run("INSERT INTO book VALUES (2)");
+	});
+	other.close();
+	await ticks();
+	expect(heard).toEqual([0, 1]);
+});

@@ -563,7 +563,7 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.content).toBe("Authoritative");
 	});
 
-	test("Reasoning Content streams separately and survives an authoritative history refresh", () => {
+	test("Reasoning Content streams separately, and authoritative history hands it to the Variant text read", () => {
 		let state = stateWithProvisional();
 		state = reduceStory(state, {
 			type: "generation-observed",
@@ -595,14 +595,31 @@ describe("streaming Provisional Variant content", () => {
 				messages: [message({
 					id: 10,
 					variants: [
-						{ id: 100, position: 1, content: "Finished.", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+						{ id: 100, position: 1, content: "Finished.", empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 					],
 				})],
 			}),
 		});
 
-		expect(variantContent(state, 100)?.content).toBe("Finished.");
-		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
+		// A stream that missed its end must not stand in for the persisted text.
+		expect(variantContent(state, 100)).toMatchObject({ content: "Finished.", reasoning: "", hasReasoning: true });
+	});
+
+	test("a Variant the page stops carrying is read again, not kept from the earlier page", () => {
+		const variant = (id: number, content: string, selected: boolean): ChatHistoryPage["messages"][number]["variants"][number] => {
+			const entry: ChatHistoryPage["messages"][number]["variants"][number] = { id, position: id - 99, empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected };
+			if (selected) entry.content = content;
+			return entry;
+		};
+		const at = (revision: number, selectedId: number) => page({ revision, messages: [message({ id: 10, variants: [
+			variant(100, "Before the other tab's edit.", selectedId === 100),
+			variant(101, "Other.", selectedId === 101),
+		] })] });
+		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		state = reduceStory(state, { type: "window-received", page: at(4, 100) });
+		state = reduceStory(state, { type: "window-received", page: at(6, 101) });
+		expect(variantContent(state, 100)?.content).toBeNull();
+		expect(variantContent(state, 101)?.content).toBe("Other.");
 	});
 
 	test("stream events that land before the page placing their Variant replay once it arrives", () => {

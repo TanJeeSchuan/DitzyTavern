@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import type { Query, QueryClient } from "@tanstack/react-query";
 
 /** @approved A read that names this follows the database: it revalidates on each committed change instead of polling. */
 export const followsChanges = { refetchOnChange: true } as const;
@@ -13,8 +13,13 @@ export const followsChanges = { refetchOnChange: true } as const;
 // did not change answers 304.
 export const followServerChanges = (client: QueryClient) => {
 	const source = new EventSource("/api/changes");
-	source.addEventListener("change", () => {
-		void client.invalidateQueries({ type: "active", predicate: (query) => query.meta?.refetchOnChange === true });
-	});
+	const follows = (query: Query) => query.meta?.refetchOnChange === true;
+	source.addEventListener("change", () => void (async () => {
+		// @approved
+		//  A first read still in flight may have read before this change, and
+		// invalidating would join it rather than read again; it starts over.
+		await client.cancelQueries({ predicate: (query) => follows(query) && query.state.data === undefined && query.state.fetchStatus === "fetching" });
+		await client.invalidateQueries({ type: "active", predicate: follows });
+	})());
 	return () => source.close();
 };

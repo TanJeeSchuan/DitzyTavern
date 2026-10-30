@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
+import { Elysia } from "elysia";
 import { createContract } from ".";
+import { contentValidators } from "./content-validators";
 
 let database: Database;
 beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
@@ -28,4 +30,14 @@ test("an error answer carries no validator", async () => {
 	const missing = await get("/api/conversations/404");
 	expect(missing.status).toBe(404);
 	expect(missing.headers.get("etag")).toBeNull();
+});
+
+test("a validated answer keeps repeated headers apart", async () => {
+	const app = new Elysia().use(contentValidators).get("/api/boxes/jar/visit", ({ set }) => {
+		Object.assign(set.headers, { "set-cookie": ["a=1; Path=/", "b=2; Path=/"] });
+		return { visited: true };
+	});
+	const answer = await app.handle(new Request("http://localhost/api/boxes/jar/visit"));
+	expect(answer.headers.getSetCookie()).toEqual(["a=1; Path=/", "b=2; Path=/"]);
+	expect(answer.headers.get("etag")).not.toBeNull();
 });

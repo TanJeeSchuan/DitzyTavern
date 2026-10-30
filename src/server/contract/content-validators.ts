@@ -10,16 +10,21 @@ import { Elysia } from "elysia";
 const unchanged = (request: Request, etag: string) =>
 	request.headers.get("if-none-match")?.split(",").some((tag) => tag.trim().replace(/^W\//, "") === etag.slice(2)) ?? false;
 
-const revalidated = (request: Request, etag: string, body: BodyInit, headers: Record<string, string>) => unchanged(request, etag)
-	? new Response(null, { status: 304, headers: { etag, "cache-control": headers["cache-control"] ?? "no-cache" } })
-	: new Response(body, { headers: { "cache-control": "no-cache", ...headers, etag } });
+const revalidated = (request: Request, etag: string, body: BodyInit, init: HeadersInit) => {
+	const headers = new Headers(init);
+	if (!headers.has("cache-control")) headers.set("cache-control", "no-cache");
+	headers.set("etag", etag);
+	return unchanged(request, etag)
+		? new Response(null, { status: 304, headers: { etag, "cache-control": headers.get("cache-control")! } }) // @approved Set just above.
+		: new Response(body, { headers });
+};
 
 /** @approved A file's validator is its size and modification time. */
-export const revalidatedFile = (request: Request, file: BunFile, headers: Record<string, string> = {}) =>
-	revalidated(request, `W/"${file.size.toString(36)}-${file.lastModified.toString(36)}"`, file, { "content-type": file.type, ...headers });
+export const revalidatedFile = (request: Request, file: BunFile) =>
+	revalidated(request, `W/"${file.size.toString(36)}-${file.lastModified.toString(36)}"`, file, { "content-type": file.type });
 
 /** @approved A text answer's validator is a hash of its bytes. */
-export const revalidatedText = (request: Request, body: string, headers: Record<string, string>) =>
+export const revalidatedText = (request: Request, body: string, headers: HeadersInit) =>
 	revalidated(request, `W/"${Bun.hash(body).toString(36)}"`, body, headers);
 
 export const contentValidators = new Elysia({ name: "content-validators" }).mapResponse({ as: "global" }, ({ request, responseValue, set }) => {
@@ -27,6 +32,7 @@ export const contentValidators = new Elysia({ name: "content-validators" }).mapR
 	const json = responseValue != null && (Array.isArray(responseValue) || Object.getPrototypeOf(responseValue) === Object.prototype);
 	if (request.method !== "GET" || (set.status ?? 200) !== 200 || !json) return;
 	const body = JSON.stringify(responseValue);
-	const headers = Object.fromEntries(Object.entries(set.headers).map(([name, value]) => [name, String(value)]));
-	return revalidatedText(request, body, { ...headers, "content-type": "application/json;charset=utf-8" });
+	// @approved A repeated header, such as two cookies, stays two headers.
+	const headers = Object.entries(set.headers).flatMap(([name, value]) => [value].flat().map((each): [string, string] => [name, String(each)]));
+	return revalidatedText(request, body, [...headers.filter(([name]) => name.toLowerCase() !== "content-type"), ["content-type", "application/json;charset=utf-8"]]);
 });

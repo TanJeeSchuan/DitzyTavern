@@ -208,11 +208,15 @@ const toStoryVariant = (
 	) {
 		return { ...prior, id: variant.id, position: variant.position };
 	}
-	const reasoning = live?.reasoning ?? prior?.reasoning ?? "";
+	// @approved
+	//  Outside a live Generation the page is the authority: text it leaves out
+	// is read again rather than kept from an earlier page, which another tab's
+	// edit may have outdated, or from a stream that may have missed its end.
+	const reasoning = live?.reasoning ?? "";
 	return {
 		id: variant.id,
 		position: variant.position,
-		content: live?.content ?? variant.content ?? prior?.content ?? null,
+		content: live?.content ?? variant.content ?? null,
 		reasoning,
 		hasReasoning: variant.hasReasoning || reasoning !== "",
 		generationId: live?.generationId,

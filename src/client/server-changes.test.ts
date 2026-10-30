@@ -29,3 +29,21 @@ test("a database change refetches the open reads that follow changes, leaving ot
 	await Bun.sleep(0);
 	expect(fetched).toEqual(["digest"]);
 });
+
+test("a change during a read's first fetch reads again, so the older answer does not stand", async () => {
+	Object.assign(globalThis, { EventSource: FakeEventSource });
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	const answers = [Promise.withResolvers<string>(), Promise.withResolvers<string>()];
+	let calls = 0;
+	const observer = new QueryObserver(client, { queryKey: ["digest"], meta: followsChanges, queryFn: () => answers[calls++]!.promise }); // @approved Two answers for two fetches.
+	observer.subscribe(() => {});
+	followServerChanges(client);
+	await Bun.sleep(0);
+	FakeEventSource.latest?.dispatchEvent(new MessageEvent("change", { data: "1" }));
+	await Bun.sleep(0);
+	answers[0]!.resolve("before"); // @approved Created above.
+	answers[1]!.resolve("after"); // @approved Created above.
+	await Bun.sleep(0);
+	expect(calls).toBe(2);
+	expect(observer.getCurrentResult().data).toBe("after");
+});
