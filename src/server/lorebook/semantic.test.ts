@@ -64,6 +64,28 @@ describe("semantic Lore evaluation", () => {
 		expect(result.matches?.[0]).toEqual({ trigger: triggers[0]!, score: 0.9 });
 	});
 
+	test("starts the next request as soon as either slot frees, not when both do", async () => {
+		let requests = 0;
+		const first = Promise.withResolvers<void>();
+		const third = Promise.withResolvers<void>();
+		const evaluation = evaluateSemanticLore({
+			entries: [{ enabled: true, semanticTriggers: Array.from({ length: 9 }, (_, index) => `situation ${index} ${"detail ".repeat(6000)}`) }],
+			messages: [],
+			settings,
+			fetch: async (_input, init) => {
+				const request = ++requests;
+				if (request === 1) await first.promise;
+				if (request === 3) third.resolve();
+				// SAFETY: the fake answers the questions evaluateSemanticLore sent.
+				const { questions } = JSON.parse(String(init?.body)) as { questions: object };
+				return Response.json({ answers: Object.fromEntries(Object.keys(questions).map((id) => [id, { type: "noul", noul: 0.1 }])) });
+			},
+		});
+		await third.promise;
+		first.resolve();
+		expect(await evaluation).toMatchObject({ available: true });
+	});
+
 	test("uses one unavailable result when the Decision Model fails", async () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
 		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });

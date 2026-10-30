@@ -152,29 +152,22 @@ const streamToStagedFile = async (
 	return { byteLength, sha256: hash.digest("hex") };
 };
 
-const verifyStagedBytes = (
-	record: StagedRecord,
-): "available" | "missing" | "corrupt" => {
+// @approved
+//  A staged handle whose bytes are missing or no longer match the binding
+// can serve neither a preview nor a commit; the typed unavailable error
+// names the reason. Commit decodes the bytes verified here, so it reads the
+// file once.
+const readVerifiedStagedBytes = (record: StagedRecord): Buffer => {
 	let bytes: Buffer;
 	try {
 		bytes = readFileSync(record.stagedPath);
 	} catch {
-		return "missing";
+		throw new StagedChatImportUnavailableError("missing");
 	}
-	return bytes.length === record.byteLength && sha256Hex(bytes) === record.sha256
-		? "available"
-		: "corrupt";
-};
-
-// @approved
-//  A staged handle whose bytes are missing or no longer match the binding
-// can serve neither a preview nor a commit; the typed unavailable error
-// names the reason.
-const assertStagedAvailable = (record: StagedRecord): void => {
-	const status = verifyStagedBytes(record);
-	if (status !== "available") {
-		throw new StagedChatImportUnavailableError(status);
+	if (bytes.length !== record.byteLength || sha256Hex(bytes) !== record.sha256) {
+		throw new StagedChatImportUnavailableError("corrupt");
 	}
+	return bytes;
 };
 
 
@@ -418,7 +411,7 @@ export function createChatImportModule(
 			if (expectedSha256 !== undefined && expectedSha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
-			assertStagedAvailable(record);
+			readVerifiedStagedBytes(record);
 			return record.preview;
 		},
 
@@ -452,15 +445,13 @@ export function createChatImportModule(
 			if (input.sha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
-			assertStagedAvailable(record);
 
 			// @approved
 			//  Re-decode the exact staged bytes that produced the preview, so
 			// the committed Chat is always the previewed one. Awaiting no
 			// reopening of the user's original file: the flow works from the
 			// staged copy alone.
-			const stagedBytes = readFileSync(record.stagedPath);
-			const sourceText = decodeSillyTavernSourceBytes(stagedBytes);
+			const sourceText = decodeSillyTavernSourceBytes(readVerifiedStagedBytes(record));
 			const decoded = decodeSillyTavernImportSource(sourceText, {
 				name: chatNameFromFilename(record.originalFilename),
 				filename: record.originalFilename,

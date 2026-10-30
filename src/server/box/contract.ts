@@ -25,8 +25,8 @@ export interface BoxContext {
 	readonly llm: (profileId: number) => { complete(request: BoxCompletion): Promise<{ readonly content: string; readonly finishReason: "stop" | "length" | "other" }> } | undefined;
 	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. */
 	readonly decide: (state: DecisionJson, questions: DecisionQuestions) => ReturnType<typeof requestDecisions>;
-	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. */
-	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean }) => Promise<readonly Float32Array[]>;
+	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. `signal` cancels it before the Box's own signal does. */
+	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean; readonly signal?: AbortSignal }) => Promise<readonly Float32Array[]>;
 	readonly signal: AbortSignal;
 }
 
