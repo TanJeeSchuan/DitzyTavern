@@ -15,7 +15,8 @@ import {
 import { Collapsible } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { SwipeBrowsing } from "../workspace";
-import { type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
+import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import {
 	type StoryMessage,
 	type StoryVariant,
@@ -38,7 +39,9 @@ import { prefetchNeighbourText, useVariantText, useVariantsText } from "./varian
 // existing Swipe navigation. Empty and duplicate Variants stay separate
 // positions; an exact empty Variant renders a presentation-only placeholder
 // and its stored text is never modified.
-export function StoryMessageView({
+// @approved
+//  Memoized: while a reply streams, only the row whose text changed renders.
+export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
 	message,
 	isLatest = false,
@@ -59,7 +62,7 @@ export function StoryMessageView({
 	onReroll,
 	onMovesChange,
 	onInspect,
-	boxActions,
+	onOpenInspector,
 	onDelete,
 	onFork,
 	onRewind,
@@ -96,7 +99,7 @@ export function StoryMessageView({
 	onReroll?: (messageId: number) => void;
 	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
-	boxActions?: ReactNode;
+	onOpenInspector?: (box: string, focus: { messageId: number }) => void;
 	onDelete?: (messageId: number) => void;
 	onFork: (messageId: number) => void;
 	onRewind?: (messageId: number) => void;
@@ -271,7 +274,7 @@ export function StoryMessageView({
 							<Info aria-hidden="true" /> Details
 						</button>
 					)}
-					{boxActions}
+					{lens !== undefined && onOpenInspector !== undefined && <BoxMessageActions conversation={lens.conversation} messageId={message.id} onOpen={onOpenInspector} />}
 					{onDelete !== undefined && (
 						<button
 							className="edit-action delete-action"
@@ -407,7 +410,7 @@ export function StoryMessageView({
 			</footer>
 		</article>
 	);
-}
+});
 
 /** @approved An opened Reasoning section: the streamed text, or the persisted text read once it opens. */
 function Reasoning({ conversationId, messageId, variant }: { conversationId: number; messageId: number; variant: StoryVariant }) {

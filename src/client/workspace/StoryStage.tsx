@@ -1,6 +1,7 @@
 import { isStoryReady } from "../story";
-import { BoxMessageActions } from "../box-windows/BoxMessageActions";
-import type { Dispatch } from "react";
+import { useMemo, useRef, type Dispatch } from "react";
+import type { BoxId } from "../../shared/contract/box";
+import type { BoxMoves } from "../../shared/contract/box-generation";
 import { useLayerFocus } from "../lib/use-layer-focus";
 import type { PromptBoxReference } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
@@ -107,12 +108,39 @@ export function StoryStage({
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
 	});
+	// @approved
+	//  Message rows are memoized, so a streamed event re-renders only the row
+	// whose text changed. Their handlers keep one identity across renders and
+	// call the latest render's.
+	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector });
+	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector };
+	const rows = useMemo(() => ({
+		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
+		regenerate: (messageId: number) => {
+			latest.current.viewport.followLatest(messageId);
+			latest.current.generation.regenerateResponse(messageId);
+		},
+		sibling: (messageId: number) => {
+			latest.current.viewport.followLatest(messageId);
+			latest.current.generation.siblingMessage(messageId);
+		},
+		reroll: (messageId: number) => latest.current.generation.siblingMessage(messageId, true),
+		inspect: (messageId: number, variantId: number) => latest.current.onInspectVariant(messageId, variantId),
+		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
+		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
+		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
+		edit: (messageId: number, content: string) => latest.current.storyActions.editStoryMessage(messageId, content),
+		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
+		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
+		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
+		remove: (messageId: number) => void latest.current.storyActions.deleteStoryMessage(messageId),
+	}), []);
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
-	const lens = conversation === null ? undefined : { conversation, open: boxWindows.open };
+	const lens = useMemo(() => conversation === null ? undefined : { conversation, open: (box: BoxId) => latest.current.boxWindows.open(box) }, [conversation]);
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
@@ -191,7 +219,7 @@ export function StoryStage({
 								generation.activeGenerationTargets.length === 0 &&
 								isModelAuthoredMessage(message) &&
 								message.continuable === true
-									? generation.continueMessage
+									? rows.continueMessage
 									: undefined
 							}
 							onRegenerate={
@@ -199,22 +227,14 @@ export function StoryStage({
 								latestStoryMessage?.id === message.id &&
 								generation.activeGenerationTargets.length === 0 &&
 								message.authorParticipantId === conversation?.control.humanParticipantId
-									? (messageId) => {
-										viewport.followLatest(messageId);
-										generation.regenerateResponse(messageId);
-									}
+									? rows.regenerate
 									: undefined
 							}
-							onSibling={generation.canOfferSiblingMessage(message)
-								? (messageId) => {
-									viewport.followLatest(messageId);
-									generation.siblingMessage(messageId);
-								}
-								: undefined}
-							onReroll={generation.canOfferSiblingMessage(message) ? (messageId) => generation.siblingMessage(messageId, true) : undefined}
+							onSibling={generation.canOfferSiblingMessage(message) ? rows.sibling : undefined}
+							onReroll={generation.canOfferSiblingMessage(message) ? rows.reroll : undefined}
 							continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-							onInspect={swiping ? undefined : onInspectVariant}
-							boxActions={conversation === null ? undefined : <BoxMessageActions conversation={conversation} messageId={message.id} onOpen={onOpenInspector} />}
+							onInspect={swiping ? undefined : rows.inspect}
+							onOpenInspector={rows.openInspector}
 							generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
 								<GenerationControls
 									showStopAll={generation.activeGenerationTargets.length > 1}
@@ -223,17 +243,13 @@ export function StoryStage({
 									onInspect={onOpenGenerationDetails}
 								/>
 							)}
-							onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
-							onSelectVariant={(messageId, variantId) => void storyActions.selectSwipe(messageId, variantId)}
-							onEdit={storyActions.editStoryMessage}
-							onFork={(messageId) => onFork({ through: messageId })}
-							onRewind={message.authorRole === "human" ? (messageId) => onFork({ rewind: messageId }) : undefined}
-							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating
-								? (messageId, moves) => void storyActions.setMessageMoves(messageId, moves)
-								: undefined}
-							onDelete={!assemblyActive && !generation.isGenerating
-								? (messageId) => void storyActions.deleteStoryMessage(messageId)
-								: undefined}
+							onMoveSwipe={rows.moveSwipe}
+							onSelectVariant={rows.selectVariant}
+							onEdit={rows.edit}
+							onFork={rows.fork}
+							onRewind={message.authorRole === "human" ? rows.rewind : undefined}
+							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating ? rows.setMoves : undefined}
+							onDelete={!assemblyActive && !generation.isGenerating ? rows.remove : undefined}
 						/>
 					))}
 					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
