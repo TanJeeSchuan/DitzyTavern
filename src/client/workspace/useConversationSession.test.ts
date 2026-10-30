@@ -66,7 +66,7 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation),
 	{ preconnect: () => {} });
 	const dispatched: StoryAction[] = [];
-	const activeChat = { id: "1", title: "Chat", updatedAt: "", cast: [], excerpt: "" };
+	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const dispatchStory = (action: StoryAction) => { dispatched.push(action); };
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const hook = await renderHook(() => useConversationSession({

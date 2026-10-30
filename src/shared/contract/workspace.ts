@@ -12,6 +12,7 @@ export const chatSummaryCast = Type.Array(chatSummaryCastMember);
 export const chatSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
+	revision: Type.Integer(),
 	creationTime: Type.String(),
 	lastMessageTime: Type.String(),
 	cast: chatSummaryCast,

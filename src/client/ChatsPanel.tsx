@@ -49,7 +49,7 @@ export function ChatsPanel({
 		setRenamingId(null);
 		if (name.trim() === "" || name.trim() === chat.title) return;
 		setPending(true);
-		const outcome = await renameChat(chat.id, name);
+		const outcome = await renameChat(chat, name);
 		setPending(false);
 		if (outcome.outcome === "failed") return setNotice(outcome.reason);
 		setNotice(null);
