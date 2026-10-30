@@ -16,15 +16,16 @@ const roleLabel = (block: PromptPlan["blocks"][number]): string => {
 };
 
 // @approved
-//  A collapsed history run renders no editors: a long Chat's plan holds
-// hundreds of history blocks, and mounting an editor for each froze the
-// panel for most of a second.
+//  A history run mounts its editors when first opened: a long Chat's plan
+// holds hundreds of history blocks, and mounting an editor for each froze
+// the panel for most of a second. They then stay mounted, so collapsing a
+// run keeps a pending image insert, the undo history and the selection.
 function HistoryRun({ count, children }: { count: number; children: ReactNode }) {
-	const [open, setOpen] = useState(false);
+	const [opened, setOpened] = useState(false);
 	return (
-		<details className="prompt-plan-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
+		<details className="prompt-plan-history" onToggle={(event) => { if (event.currentTarget.open) setOpened(true); }}>
 			<summary>History · {count} {count === 1 ? "message" : "messages"}</summary>
-			{open && children}
+			{opened && children}
 		</details>
 	);
 }
