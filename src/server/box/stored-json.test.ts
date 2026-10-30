@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { putChatValue, readChatValue, readLibraryValue } from "./stored-value";
-import { readBoxSetups, readBoxStates } from "./setup";
+import { readBoxLifecycles, readBoxSetups, readBoxStates } from "./setup";
 import { readRecordSlots } from "./records";
 import { readMessageMoves } from "./moves";
 
@@ -56,14 +56,19 @@ test.each(["enabled", "instance", "setup"])("a Box keeps no Chat value under the
 
 test("a Chat value guard sees the revision the write lands on, and an absent Box keeps none", () => {
 	const db = drizzle(database);
-	const stored = readChatValue(db, conversationId, "race", "stats", record, { score: 0 });
-	expect(stored.revision).toStartWith(`${instance}:`);
+	const memoryInstance = readBoxLifecycles(db, conversationId).memory!.instance;
+	const stored = readChatValue(db, conversationId, "memory", "settings", record, { score: 0 });
+	expect(stored.revision).toStartWith(`${memoryInstance}:`);
 	const guards: string[] = [];
-	putChatValue(db, conversationId, "race", { key: "stats", value: JSON.stringify({ score: 3 }) }, (current) => guards.push(current.revision));
-	putChatValue(db, conversationId, "race", { key: "stats", value: JSON.stringify({ score: 4 }) }, (current) => guards.push(current.revision));
-	expect(guards).toEqual([stored.revision, `${instance}:1`]);
-	expect(readChatValue(db, conversationId, "race", "stats", record, { score: 0 })).toMatchObject({ score: 4, revision: `${instance}:2` });
+	putChatValue(db, conversationId, "memory", { key: "settings", value: JSON.stringify({ score: 3 }) }, (current) => guards.push(current.revision));
+	putChatValue(db, conversationId, "memory", { key: "settings", value: JSON.stringify({ score: 4 }) }, (current) => guards.push(current.revision));
+	expect(guards).toEqual([stored.revision, `${memoryInstance}:1`]);
+	expect(readChatValue(db, conversationId, "memory", "settings", record, { score: 0 })).toMatchObject({ score: 4, revision: `${memoryInstance}:2` });
 
-	database.query("DELETE FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:race'").run(conversationId);
-	expect(() => putChatValue(db, conversationId, "race", { key: "stats", value: "{}" }, () => undefined)).toThrow("is not in this Chat");
+	database.query("DELETE FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:memory'").run(conversationId);
+	expect(() => putChatValue(db, conversationId, "memory", { key: "settings", value: "{}" }, () => undefined)).toThrow("is not in this Chat");
+});
+
+test("a Box cannot write an undeclared Chat key", () => {
+	expect(() => putChatValue(drizzle(database), conversationId, "race", { key: "unknown", value: "{}" }, () => undefined)).toThrow("no declared chat value");
 });

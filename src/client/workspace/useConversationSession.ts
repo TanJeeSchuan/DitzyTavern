@@ -41,6 +41,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	const client = useQueryClient();
 	const [{ activeChatId, owner }, setSelection] = useState(() => selection(initialWorkspace.activeChat.id));
 	const [anchor, setAnchor] = useState<HistoryAnchor>("latest");
+	const pendingMessage = useRef<number | null>(null);
 	const activeChatIdRef = useRef(activeChatId);
 	const id = Number(activeChatId);
 	const conversationId = Number.isInteger(id) && id > 0 ? id : null;
@@ -97,8 +98,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	}, [history.data, conversation, history.refetch]);
 
 	const listedChat = initialWorkspace.chats.find((chat) => chat.id === activeChatId) ?? initialWorkspace.activeChat;
-	const activeChat = conversation !== null && String(conversation.id) === listedChat.id ? { ...listedChat, title: conversation.name } : listedChat;
-	const selectChat = (chatId: string) => {
+	const activeChat = conversation !== null && String(conversation.id) === activeChatId ? { ...listedChat, id: activeChatId, title: conversation.name } : { ...listedChat, id: activeChatId };
+	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current) return;
 		owner.cancellation.abort();
 		owner.window.abort();
@@ -106,7 +107,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		void client.invalidateQueries({ queryKey: conversationKey(Number(chatId)) });
 		void client.invalidateQueries({ queryKey: historyKey(Number(chatId)) });
 		activeChatIdRef.current = chatId;
-		setAnchor("latest");
+		pendingMessage.current = messageId;
+		setAnchor(messageId === null ? "latest" : { aroundMessageId: messageId });
 		setSelection(selection(chatId));
 	};
 
@@ -143,6 +145,14 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		} catch (error) { if (!signal.aborted) throw error; }
 		finally { if (!signal.aborted) owner.navigating = false; }
 	};
+	useEffect(() => {
+		const messageId = pendingMessage.current;
+		if (messageId === null || !isStoryReady(story) || story.conversationId !== conversationId || !story.messages.some((message) => message.id === messageId)) return;
+		pendingMessage.current = null;
+		void afterRender().then(() => {
+			if (!owner.cancellation.signal.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
+		});
+	}, [story, conversationId, owner]);
 
 	const refreshStory = useCallback(async (id: number, external?: AbortSignal) => {
 		const { owner } = currentSession();

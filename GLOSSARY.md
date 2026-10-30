@@ -353,6 +353,26 @@ _Avoid_: autoplay, spectator mode
 
 ## Chat provenance and imports
 
+**Fork**:
+A new Chat copied from another Chat's history through one Message, the fork point. Nothing in it refers back to the source's rows, so later edits to either Chat never reach the other.
+_Avoid_: branch, clone, duplicate
+
+**Rewind**:
+A Fork from a Human-authored Message that copies only the Messages before it and puts that Message's text and Moves in the new Chat's composer, so the writer can rewrite it.
+_Avoid_: edit and resend, Fork and rewrite
+
+**Fork link**:
+A Chat's optional, removable record of the Chat it was forked from and the Message it was forked at. It names only the immediate source, so Forks chain without limit.
+_Avoid_: parent chat, lineage
+
+**Trim Variants**:
+The Fork option that copies only the selected Variant of each copied Message, dropping the others' data from the Fork. The source keeps everything.
+_Avoid_: prune, flatten
+
+**Row Reference**:
+A row id inside a Box value, declared through a box-sdk id schema so a Fork can rewrite it to the copied row.
+_Avoid_: foreign key, id field
+
 **Native Conversation**:
 A Chat created by importing an external chat is an ordinary native Conversation; there is no lasting imported subtype, badge, or capability mode.
 _Avoid_: imported chat, imported subtype

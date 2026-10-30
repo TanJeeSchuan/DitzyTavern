@@ -53,7 +53,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	await expect(sheet.getByRole("spinbutton", { name: "Speed" })).toHaveValue("777");
 	await sheet.getByRole("button", { name: "Cancel" }).click();
 
-	// A new Chat seeded from the Character copies every Character data row.
+	// A new Chat seeded from the Character copies its declared Participant data.
 	const characters = await (await request.get("/api/characters")).json();
 	const character = characters.characters.find((entry: { id: number }) => entry.id === runner.sourceCharacterId);
 	const created = await (await request.post("/api/conversations/native", { data: {

@@ -22,6 +22,7 @@ const message = (id: number, authorName: string, content: string): StoryMessage 
 	timestamp: "2026-10-02T15:40:00.000Z",
 	authorName,
 	authorParticipantId: authorName === "Night Desk" ? 1 : 2,
+	authorRole: authorName === "Night Desk" ? "human" : "model",
 	modelParticipantIdAtCreation: null,
 	continuable: true,
 	swipe: { eligible: true, reason: null },
@@ -118,6 +119,7 @@ function Preview() {
 								onSelectVariant={() => {}}
 								swipeBrowsing="fan"
 								onEdit={async () => false}
+								onFork={() => {}}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls
 										showStopAll={false}

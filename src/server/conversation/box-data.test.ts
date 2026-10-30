@@ -83,14 +83,13 @@ describe("put-box-data and the Character seed copy", () => {
 		revision = write({ box: "race", owner: { type: "character", characterId: created.id, revision: 0 }, key: "stats", value: "{\"speed\":1}" }).revision;
 		revision = write({ box: "race", owner: { type: "participant", participantId: participantId! }, key: "stats", value: "{\"speed\":2}" }).revision;
 		revision = write({ box: "race", owner: { type: "participant", participantId: participantId! }, key: "stats", value: "{\"speed\":3}" }).revision;
-		write({ box: "author-note", owner: { type: "participant", participantId: participantId! }, key: "stats", value: "{\"speed\":4}" });
+		expect(() => write({ box: "author-note", owner: { type: "participant", participantId: participantId! }, key: "stats", value: "{\"speed\":4}" })).toThrow("no declared participant value");
 
 		expect(characterData()).toEqual([
 			expect.objectContaining({ character_id: created.id, namespace: "box:race", key: "stats", value: "{\"speed\":1}" }),
 		]);
 		expect(storedParticipantData()).toEqual([
 			{ participant_id: participantId!, namespace: "box:race", key: "stats", value: "{\"speed\":3}" },
-			{ participant_id: participantId!, namespace: "box:author-note", key: "stats", value: "{\"speed\":4}" },
 		]);
 	});
 
@@ -165,6 +164,7 @@ describe("put-box-data and the Character seed copy", () => {
 			definition: definition("Special Week"),
 		});
 		revision = write({ box: "race", owner: { type: "character", characterId: source.id, revision: 0 }, key: "stats", value: "{\"speed\":800}" }).revision;
+		revision = write({ box: "race", owner: { type: "character", characterId: source.id, revision: 0 }, key: "private", value: "secret" }).revision;
 		const seeded = createConversationWithHistory(database, {
 			name: "Seeded Chat",
 			participants: [

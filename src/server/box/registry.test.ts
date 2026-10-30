@@ -68,6 +68,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		lantern: {},
 		constructor: {},
 		unlabelled: { fields: "label: 3" },
+		"bad-value-schema": { fields: "values: { chat: { settings: {} } }" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
 		"old-sdk": { fields: `sdk: ${boxSdkVersion - 1}` },
@@ -88,6 +89,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	expect(boxes.map(({ descriptor }) => descriptor.id)).toEqual([...boxDescriptors().keys(), "lantern"]);
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["bad-initial", "Its initial setup does not match its setup schema."],
+		["bad-value-schema", "Its descriptor is invalid at /values/chat/settings: Expected kind 'BoxSchema'."],
 		["broken", "The wick is wet."],
 		["constructor", "Its id, constructor, names an Object.prototype property."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
@@ -308,12 +310,13 @@ test("a plugin's routes are served as the loader built them, its client module a
 	}
 });
 
+const valueObject = '{ [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }';
 for (const field of ["record", "trace"] as const) for (const value of ["new Date()", "new Map()", "() => 1", "Infinity", '{ nested: [null, true, 3, "lit", { wick: false }] }']) test(`advance checks ${field} is JSON: ${value}`, async () => {
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, installPlugins({ lantern: {
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
-			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
+			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { ${field === "trace" ? `trace: ${valueObject}, ` : ""}run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
 		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,

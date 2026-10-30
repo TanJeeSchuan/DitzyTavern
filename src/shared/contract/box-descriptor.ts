@@ -5,7 +5,7 @@ import { boxMetadataSchema } from "./box-metadata";
 import { promptOutgoingRole } from "./prompt-preset";
 
 /** @approved The Box SDK's major version. The host refuses a Box whose descriptor declares another. */
-export const boxSdkVersion = 1;
+export const boxSdkVersion = 2;
 
 // @approved
 //  A Box's own schemas, which the host checks the Box's values against: a
@@ -42,6 +42,7 @@ export const boxDescriptorSchema = Type.Object({
 	startsEnabled: Type.Boolean(),
 	alwaysRender: Type.Optional(Type.Literal(true)),
 	setup: Type.Optional(Type.Object({ schema, initial: boxValue })),
+	values: Type.Optional(Type.Object({ chat: Type.Optional(Type.Record(Type.String(), schema)), participant: Type.Optional(Type.Record(Type.String(), schema)) })),
 	record: Type.Optional(Type.Unsafe<TObject>({ [Kind]: "BoxRecordSchema" })),
 	moves: Type.Optional(Type.Object({
 		schema,
@@ -131,7 +132,7 @@ export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undef
 		"advance.run": Type.Object({
 			items: Type.Array(Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) })),
 			allowance: Type.Optional(Type.Integer({ minimum: 0 })),
-			trace: Type.Optional(trace === undefined ? boxValue : Type.Intersect([boxValue, trace])),
+			trace: Type.Optional(trace === undefined ? Type.Undefined() : Type.Intersect([boxValue, trace])),
 			record: Type.Optional(record),
 		}),
 		status: Type.Union([Type.String(), Type.Null()]),

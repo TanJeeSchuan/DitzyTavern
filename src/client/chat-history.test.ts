@@ -31,6 +31,7 @@ const messagePayload = {
 	id: 10,
 	position: 1,
 	timestamp: "2026-01-01T00:00:00.000Z",
+	authorRole: "model",
 	modelParticipantIdAtCreation: 20,
 	continuable: true,
 	swipe: { eligible: true, reason: null },

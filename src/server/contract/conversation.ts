@@ -1,3 +1,4 @@
+import { forkConversation } from "../conversation";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -43,6 +44,8 @@ import {
 	chatHistoryPage,
 	conversationAppliedResponse,
 	conversationCommandBody,
+	forkConversationBody,
+	forkConversationResponse,
 	conversationCommandConflict,
 	conversationConflict,
 	conversationGenerationSettings,
@@ -97,6 +100,13 @@ const saveParticipantResponse = {
 const addCastCharacterResponse = {
 	200: conversationAppliedResponse,
 	409: castCharacterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+const forkResponse = {
+	200: forkConversationResponse,
+	409: conversationCommandConflict,
 	404: notFoundOutcome,
 	422: invalidOutcome,
 };
@@ -580,6 +590,18 @@ export const createConversationRoutes = (
 				body: conversationCommandBody,
 				response: commandResponse,
 			},
+		)
+		.post(
+			"/api/conversations/:id/fork",
+			({ params, body }) => {
+				try {
+					const result = forkConversation(database, { conversationId: params.id, ...body });
+					return { outcome: "applied" as const, ...result, conversation: toConversationSummary(result.conversation) };
+				} catch (error) {
+					return presentDomainError(error, forkResponse);
+				}
+			},
+			{ params: conversationIdParams, body: forkConversationBody, response: forkResponse },
 		)
 		.post(
 			"/api/conversations/:id/cast/characters",

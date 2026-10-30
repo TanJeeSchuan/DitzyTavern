@@ -372,7 +372,7 @@ describe("Conversation creation", () => {
 	test("creates a Chat with no Box loaded, and one whose Boxes all start off", async () => {
 		const offFolder = mkdtempSync(join(tmpdir(), "ditzy-create-"));
 		mkdirSync(join(offFolder, "lantern"));
-		writeFileSync(join(offFolder, "lantern", "shared-descriptor.ts"), 'export default { id: "lantern", sdk: 1, label: "Lantern", summary: "Hangs a lantern.", role: "system", startsEnabled: false, instructions: "" };');
+		writeFileSync(join(offFolder, "lantern", "shared-descriptor.ts"), 'export default { id: "lantern", sdk: 2, label: "Lantern", summary: "Hangs a lantern.", role: "system", startsEnabled: false, instructions: "" };');
 		writeFileSync(join(offFolder, "lantern", "server.ts"), "export default {};");
 		const boxRows = (conversationId: number) =>
 			database.query("SELECT namespace, key FROM conversation_data WHERE conversation_id = ? AND namespace LIKE 'box:%' ORDER BY namespace, key").all(conversationId);

@@ -106,6 +106,10 @@ export function useGenerationController({
 	}
 	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {} : kept;
 	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
+	const restoreRewind = (target: ConversationSummary, rewind: { content: string; moves: BoxMoves }) => {
+		draft.set(rewind.content);
+		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
+	};
 	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
 	useEffect(() => {
 		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
@@ -341,6 +345,7 @@ export function useGenerationController({
 		draft,
 		moves,
 		setMoves,
+		restoreRewind,
 		isGenerating,
 		stopPending,
 		generationError,

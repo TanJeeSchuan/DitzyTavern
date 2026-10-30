@@ -24,7 +24,8 @@ afterEach(() => {
 // story reducer, wired per call exactly like the workspace does per render.
 
 const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes, background: null,
+	boxSetups, boxes, forkedFrom: null,
+	background: null,
 	id: 1,
 	name: "Seaside Letters",
 	revision,
@@ -60,6 +61,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		id: 10,
 		position: 1,
 		timestamp: "2026-01-01T00:00:00.000Z",
+		authorRole: "model",
 		modelParticipantIdAtCreation: null,
 		continuable: true,
 		swipe: { eligible: true, reason: null },
@@ -75,6 +77,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		id: 11,
 		position: 2,
 		timestamp: "2026-01-01T00:00:03.000Z",
+		authorRole: "human" as const,
 		modelParticipantIdAtCreation: null,
 		continuable: true,
 		swipe: { eligible: true as const, reason: null },

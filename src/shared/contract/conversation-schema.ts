@@ -221,6 +221,7 @@ export const conversationSummary = Type.Object({
 	name: Type.String(),
 	revision: Type.Integer(),
 	background: Type.Union([imageHash, Type.Null()]),
+	forkedFrom: Type.Union([Type.Null(), Type.Object({ conversationId: Type.Integer(), messageId: Type.Union([Type.Integer(), Type.Null()]), name: Type.String() })]),
 	cast: Type.Array(castParticipant),
 	control: conversationControl,
 	controlValidity: conversationControlValidity,
@@ -382,6 +383,7 @@ const chatHistoryMessage = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
 	timestamp: Type.String(),
+	authorRole: Type.Union([Type.Null(), Type.Literal("human"), Type.Literal("model")]),
 	// Historical model Control identity used to decide whether a terminal
 	// Message is eligible for Continue after Control changes.
 	modelParticipantIdAtCreation: Type.Union([Type.Null(), Type.Integer()]),
@@ -634,15 +636,28 @@ const conversationCommandAction = Type.Union([
 	setBoxRecordAction,
 	resetBoxRecordAction,
 	putBoxDataAction,
+	Type.Object({ type: Type.Literal("unlink-fork") }),
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
 
 // The revision is part of the Conversation command; the conversation id
 // lives in the route path.
+export const forkConversationBody = Type.Object({
+	expectedRevision: Type.Integer(),
+	at: Type.Union([Type.Object({ through: Type.Integer(), variantId: Type.Optional(Type.Integer()) }, { additionalProperties: false }), Type.Object({ rewind: Type.Integer() }, { additionalProperties: false })]),
+	trimVariants: Type.Boolean(), name: Type.String(),
+});
+export type ForkConversationBody = Static<typeof forkConversationBody>;
+
 export const conversationCommandBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	action: conversationCommandAction,
+});
+
+export const forkConversationResponse = Type.Object({
+	outcome: Type.Literal("applied"), conversation: conversationSummary, omittedBoxes: Type.Array(Type.String()),
+	rewind: Type.Optional(Type.Object({ content: Type.String(), moves: boxMoves })),
 });
 
 export const generationFormattingContext = Type.Object({
