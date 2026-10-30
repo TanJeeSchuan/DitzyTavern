@@ -32,8 +32,8 @@ export const digestStatusRead = Type.Object({ status: Type.Union([Type.Null(), T
 
 // @approved
 //  A digesting Box's window read: its folded one-line status and the selected
-//  path's passages. Each passage carries
-//  its resolved record (`writer ?? automatic`, null when not digested),
+//  path's passages. Each passage carries the plain-text start of its prose,
+//  enough for the timeline's two lines, its resolved record (`writer ?? automatic`, null when not digested),
 //  whether a writer set it, whether the automatic result is the one for
 //  exactly this text, so the window knows what a catch-up run would add, and
 //  the error of a digest that failed on exactly this text.
@@ -48,7 +48,7 @@ export const digestRead = <Record extends TSchema>(record: Record) => Type.Objec
 		messageId: Type.Integer(),
 		variantId: Type.Integer(),
 		author: Type.Union([Type.Null(), Type.String()]),
-		content: Type.String(),
+		excerpt: Type.String(),
 		record: Type.Union([Type.Null(), record]),
 		overridden: Type.Boolean(),
 		digested: Type.Boolean(),

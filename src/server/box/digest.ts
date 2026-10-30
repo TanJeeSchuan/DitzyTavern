@@ -321,6 +321,9 @@ export function readDigestStatus(database: Database, conversationId: number, box
 	});
 }
 
+const EXCERPT_LENGTH = 240;
+const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim().slice(0, EXCERPT_LENGTH);
+
 /** @approved A digesting Box's window reads one folded Selected path state
  *  without loading discarded Variants or arbitrary Variant data. */
 export function readDigest(database: Database, conversationId: number, box: BoxId) {
@@ -333,7 +336,7 @@ export function readDigest(database: Database, conversationId: number, box: BoxI
 			if (variant === null || variant.content.trim() === "") return [];
 			const slot = slots.get(variant.id);
 			return [{
-				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, content: variant.content, record: effectiveRecord(slot) ?? null,
+				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, excerpt: excerpt(variant.content), record: effectiveRecord(slot) ?? null,
 				overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content), error: hasDigestError(slot, variant.content) ? slot?.error?.message ?? null : null,
 			}];
 		});

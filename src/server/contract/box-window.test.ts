@@ -65,10 +65,10 @@ test("the window read folds the selected passages and reports the dock status", 
 	const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-01-01') RETURNING id").get(chat.id)!;
 	const variant = database.query<{ id: number }, [number, string]>(
 		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-01-01', 1) RETURNING id",
-	).get(message.id, "The lamp turns.")!;
+	).get(message.id, "*The lamp* turns.\n\nSlowly.")!;
 	const read = await readClock(app, chat.id);
 	expect(read.status).toBe("8:00 AM");
-	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, content: "The lamp turns.", record: null, overridden: false, digested: false, error: null }]);
+	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, excerpt: "The lamp turns. Slowly.", record: null, overridden: false, digested: false, error: null }]);
 });
 
 test("the window read reports a missing Chat", async () => {
