@@ -248,19 +248,19 @@ Judgment state is the complete source and captured context. If it exceeds the se
 
 ## Further Notes
 
-This spec consolidates the closed [Memory wayfinding map, ditzytavern#1](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/1). Read resolved decisions in the map's index order; final resolution comments supersede earlier working proposals. In particular, the final clarification in #10 governs cancellation publication checks and execution-time settings capture. Earlier research suggestions for measurement were superseded by #4.
+This spec consolidates the closed Memory wayfinding map. Read resolved decisions in the map's index order; final resolution comments supersede earlier working proposals. In particular, the final clarification in #10 governs cancellation publication checks and execution-time settings capture. Earlier research suggestions for measurement were superseded by #4.
 
 | Decision | Source |
 | --- | --- |
-| Documented Typesafe capabilities and limits | [#2: Assess Typesafe Jev](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/2) |
-| Evidence and character-perspective research | [#3: Investigate grounded story memory](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/3) |
-| Best-effort expectations; no measurement gate | [#4: Set memory expectations](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/4) |
-| Claims, attribution, belief, identity, and limited live probes | [#5: Define memory claims](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/5) |
-| Source ownership and preservation of later Memories | [#6: Narrative-path changes](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/6) |
-| Generative extraction followed by Jev judgments | [#7: Extraction and Typesafe's role](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/7) |
-| Story-wide recall, prompt placement, budgets, and captured evidence | [#8: Recall and prompt budget](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/8) |
-| Inspection, source-level manual ownership, and local removal | [#9: Inspection and correction](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/9) |
-| Resource bounds, work lifecycle, indexing, settings, and final clarifications | [#10: Bounded processing](https://tan-server.taild926e3.ts.net:8444/projects/ditzytavern/issues/10) |
+| Documented Typesafe capabilities and limits | #2: Assess Typesafe Jev |
+| Evidence and character-perspective research | #3: Investigate grounded story memory |
+| Best-effort expectations; no measurement gate | #4: Set memory expectations |
+| Claims, attribution, belief, identity, and limited live probes | #5: Define memory claims |
+| Source ownership and preservation of later Memories | #6: Narrative-path changes |
+| Generative extraction followed by Jev judgments | #7: Extraction and Typesafe's role |
+| Story-wide recall, prompt placement, budgets, and captured evidence | #8: Recall and prompt budget |
+| Inspection, source-level manual ownership, and local removal | #9: Inspection and correction |
+| Resource bounds, work lifecycle, indexing, settings, and final clarifications | #10: Bounded processing |
 
 The existing architectural decisions remain applicable: the deep Conversation module and domain-owned transactions; one provider-neutral Model Client; separate authorship and fictional identity; encrypted application secrets; shared Prompt Presets; the pure Generation Plan Compiler; exact accepted inspected prompts; and Variant-lifetime provenance. Memory extends the single-block Lore precedent with its own single referenced block and extends dynamic budget admission to follow preset order. It does not adopt Lore's embedding-failure fallback for Memory recall.
 
