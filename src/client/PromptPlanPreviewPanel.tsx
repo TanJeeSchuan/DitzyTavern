@@ -1,5 +1,6 @@
 import { isSingleUseReference, singleUseReferenceLabel } from "../shared/contract/prompt-preset";
 import { RefreshCw, Send, Settings, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import type { NonEmpty } from "../shared/non-empty";
@@ -13,6 +14,20 @@ const roleLabel = (block: PromptPlan["blocks"][number]): string => {
 	if (block.role === null) return "";
 	return "demoted" in block && block.demoted === true ? ` · ${block.role} (authored as system)` : ` · ${block.role}`;
 };
+
+// @approved
+//  A collapsed history run renders no editors: a long Chat's plan holds
+// hundreds of history blocks, and mounting an editor for each froze the
+// panel for most of a second.
+function HistoryRun({ count, children }: { count: number; children: ReactNode }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<details className="prompt-plan-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
+			<summary>History · {count} {count === 1 ? "message" : "messages"}</summary>
+			{open && children}
+		</details>
+	);
+}
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -101,7 +116,7 @@ export function PromptPlanPreviewPanel({
 							</div>
 						);
 						return run[0].block.kind === "history"
-							? <details key={run[0].index} className="prompt-plan-history"><summary>History · {run.length} {run.length === 1 ? "message" : "messages"}</summary>{run.map(field)}</details>
+							? <HistoryRun key={run[0].index} count={run.length}>{run.map(field)}</HistoryRun>
 							: field(run[0]);
 					})}
 				</section>}
