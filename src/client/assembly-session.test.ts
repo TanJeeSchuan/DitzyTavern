@@ -84,7 +84,7 @@ describe("assembly session", () => {
 		await h.hook.act(async () => response.resolve(Response.json(accepted)));
 		await flushHook();
 		expect(h.hook.current.assembly).toBeNull();
-		expect(h.effects).toEqual(["begin", "clear", "refresh", "accepted"]);
+		expect(h.effects).toEqual(["begin", "clear", "accepted", "refresh"]);
 		expect(h.targets).toEqual([accepted]);
 	});
 
@@ -207,7 +207,7 @@ describe("assembly session", () => {
 		expect(h.effects).toEqual(["begin"]);
 	});
 
-	test("switching during the accepted story refresh suppresses acceptance reporting", async () => {
+	test("acceptance subscribes while the story refresh is still in flight", async () => {
 		const h = await assemblyHarness(async ({ url }) => Response.json(url.endsWith("/preview") ? preview() : accepted));
 		await h.open();
 		const refreshed = Promise.withResolvers<ConversationSummary>();
@@ -215,12 +215,8 @@ describe("assembly session", () => {
 		await h.hook.rerender();
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
 		await flushHook();
-		expect(h.effects).toEqual(["begin", "clear", "refresh"]);
-		await h.switchTo(8);
-		await h.switchTo(7);
-		await h.hook.act(async () => refreshed.resolve(conversation()));
-		await flushHook();
-		expect(h.targets).toEqual([]);
+		expect(h.effects).toEqual(["begin", "clear", "accepted", "refresh"]);
+		expect(h.targets).toEqual([accepted]);
 	});
 
 	test("preparation cannot reopen a preview after its owner unmounts", async () => {
