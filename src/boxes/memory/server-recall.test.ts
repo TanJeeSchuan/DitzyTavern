@@ -235,6 +235,29 @@ describe("Memory recall in Generation preparation", () => {
 		expect(counts.embedding).toHaveLength(3);
 	});
 
+	test("recall cancels the scene embedding when the claim embedding fails", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
+		const corrected = memoryClaim(source.messageId, "Maren still holds the key.", "Maren returned Writer's key.", "Writer correction");
+		correct(database, conversation.id, source.variantId, [corrected]);
+		const answer = recallFetch(recallCounts());
+		let sceneCancelled = false;
+		const app = createConversationRoutes(database, { masterKey: key, fetch: async (input, init) => {
+			if (!String(input).includes("embedding.test")) return answer(input, init);
+			if (String(init?.body).includes(renderMemoryClaim(corrected))) {
+				await Bun.sleep(5);
+				return new Response("unavailable", { status: 503 });
+			}
+			return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { sceneCancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
+		} });
+		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).status).toBe(422);
+		expect(sceneCancelled).toBe(true);
+	});
+
 	test("recall embeds the scene while it embeds claims the cache lacks", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);

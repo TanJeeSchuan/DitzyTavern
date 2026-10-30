@@ -50,5 +50,6 @@ export const boxServices = (database: Database, fetch: ModelFetch | undefined, s
 		if (!fits) throw new Error(`The state sent to the ${label} Decision Model exceeds its token limit.`);
 		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal });
 	},
-	embed: (texts, configuration, options) => embedTexts(database, texts, configuration, { ...options, fetch, signal }),
+	embed: (texts, configuration, options) =>
+		embedTexts(database, texts, configuration, { cache: options?.cache, fetch, signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]) }),
 });
