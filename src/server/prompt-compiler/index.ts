@@ -17,6 +17,7 @@ export {
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,
+	promptPlanEstimator,
 } from "./budget";
 export type {
 	CompilePromptDefinition,

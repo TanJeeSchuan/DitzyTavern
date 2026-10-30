@@ -3,13 +3,14 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxAdmission } from "../../shared/contract/box-generation";
 import type { BlockItem } from "../box/contract";
 import type { BoxItems, BoxResults } from "../box/registry";
-import { boxItemExpansionKey, measurePromptPlan, toEstimationTranscript, tokenxEstimator, type MacroAttemptState, type PromptContextEntry, type PromptLoreEntry, type PromptPlan } from "../prompt-compiler";
+import { boxItemExpansionKey, measurePromptPlan, promptPlanEstimator, toEstimationTranscript } from "../prompt-compiler";
+import type { MacroAttemptState, PromptContextEntry, PromptLoreEntry, PromptPlan } from "../prompt-compiler";
 
 export const estimateDynamicBlockTokens = (
 	kind: "lore" | PromptBoxReference,
 	role: "system" | "human" | "model",
 	content: string,
-	estimator: (transcript: string) => number = tokenxEstimator,
+	estimator: (transcript: string) => number = promptPlanEstimator,
 ): number => content.length === 0 ? 0 : Math.max(0,
 	Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] })))
 	- Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
