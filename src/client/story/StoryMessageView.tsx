@@ -363,7 +363,7 @@ export function StoryMessageView({
 						<button
 							className="secondary-button continue-action"
 							type="button"
-							disabled={mutationsDisabled}
+							disabled={mutationsDisabled || active?.content === null}
 							onClick={() => onRegenerate(message.id)}
 						>
 							<RefreshCw aria-hidden="true" /> Regenerate response

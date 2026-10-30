@@ -20,9 +20,9 @@ export function useVariantText(conversationId: number, messageId: number, varian
 	return { variant: variant === undefined ? undefined : withText(variant, read.data), failed: needed && read.isError };
 }
 
-/** @approved A Variant's Content for an action that sends it: the page's, or else the Variant text read, from the cache when it has it. */
-export const variantContent = async (client: QueryClient, conversationId: number, messageId: number, variant: StoryVariant) =>
-	variant.content ?? (await client.fetchQuery(variantTextQuery(conversationId, messageId, variant.id))).content;
+/** @approved The Content the story shows for a Variant, for an action that sends it: the page's, or the Variant text read's once it has loaded; null before then. */
+export const shownContent = (client: QueryClient, conversationId: number, variant: StoryVariant) =>
+	variant.content ?? client.getQueryData<{ content: string }>([...variantTextKey(conversationId), variant.id])?.content ?? null;
 
 /** @approved Every Variant of a Message with its Content, read while `enabled`, as the Swipes browser shows them all. */
 export function useVariantsText(conversationId: number, messageId: number, variants: StoryVariant[], enabled: boolean) {

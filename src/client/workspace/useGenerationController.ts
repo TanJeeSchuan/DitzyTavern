@@ -1,7 +1,7 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { variantContent } from "../story/variant-text";
+import { shownContent } from "../story/variant-text";
 import {
 	useEffect,
 	useMemo,
@@ -306,13 +306,13 @@ export function useGenerationController({
 		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
 	};
 
-	const regenerateResponse = async (messageId: number) => {
+	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const persisted = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
 		const shown = latest === undefined ? undefined : shownVariant(story, latest);
 		if (latest?.id !== messageId || latest.authorParticipantId !== conversation.control.humanParticipantId || shown === undefined) return;
-		const content = await variantContent(client, conversation.id, messageId, shown).catch(() => null);
+		const content = shownContent(client, conversation.id, shown);
 		if (content === null || (content.trim() === "" && !hasMoves(latest.moves))) return;
 		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
 	};
