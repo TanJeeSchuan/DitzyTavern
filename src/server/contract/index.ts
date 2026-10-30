@@ -18,6 +18,7 @@ import { createBoxRoutes } from "./boxes";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 import { createUpdateChecker, type UpdateChecker } from "../updates";
 import { createUpdateRoutes } from "./updates";
+import { contentValidators } from "./content-validators";
 
 export { createChatImportRoutes } from "./chat-import";
 export { createCharacterLibraryRoutes } from "./character-library";
@@ -30,6 +31,7 @@ export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 
 export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
+	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
 	.use(createUpdateRoutes(updates))
