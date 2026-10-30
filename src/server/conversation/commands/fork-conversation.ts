@@ -1,15 +1,16 @@
 import type { ForkConversationBody } from "../../../shared/contract/conversation-schema";
 import type { Database } from "bun:sqlite";
 import { Type, type TSchema } from "@sinclair/typebox";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { boxDescriptors, boxIdOf } from "../../../shared/contract/box";
 import { boxRecordSlot } from "../../../shared/contract/box-digest";
 import type { BoxMoves } from "../../../shared/contract/box-generation";
 import { isImportOwnedDataNamespace } from "../../../shared/import-data";
 import { variantDataCodecs } from "../../../shared/variant-data-codecs";
+import type { GenerationJsonValue } from "../../../shared/contract/json-value";
 import { rewriteRowReferences, type RowIdMaps } from "../../box/row-references";
 import { serverBox } from "../../box/registry";
-import { parseStoredBoxJson } from "../../box/stored-json";
+import { checkStoredBoxValue, parseStoredBoxJson } from "../../box/stored-json";
 import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
 import { hasActiveGenerationFromConnection, readControlAssignment, requireConversationRevision } from "../internal";
@@ -66,11 +67,20 @@ export function forkConversation(database: Database, input: ForkConversationBody
 		}
 		const omitted = new Set<string>();
 		const descriptors = boxDescriptors();
-		const rewrite = (id: string, schema: TSchema | undefined, value: string, place: string, keepMissing = false): string => {
+		const inBox = <T>(id: string, schema: TSchema | undefined, place: string, run: (schema: TSchema) => T): T => {
 			if (!schema) throw new InvalidConversationCommandError(`The ${id} Box has no schema for ${place}.`);
-			try { return JSON.stringify(rewriteRowReferences(schema, parseStoredBoxJson(value, schema, place), maps, { keepMissing })); }
+			try { return run(schema); }
 			catch (error) { throw new InvalidConversationCommandError(`The ${id} Box at ${place}: ${error instanceof Error ? error.message : String(error)}`); }
 		};
+		const rewrite = (id: string, schema: TSchema | undefined, value: string, place: string): string => inBox(id, schema, place, (checked) =>
+			JSON.stringify(rewriteRowReferences(checked, parseStoredBoxJson(value, checked, place), maps, { keepMissing: false })));
+		// @approved
+		//  A trace is rewritten as the decoded value it already is, not
+		// serialized and parsed again: Box traces run to megabytes per Chat.
+		const rewriteTrace = (id: string, schema: TSchema | undefined, trace: GenerationJsonValue, place: string): GenerationJsonValue => inBox(id, schema, place, (checked) => {
+			// SAFETY: the value was checked against the schema, and the rewrite keeps its JSON shape, replacing ids with ids.
+			return rewriteRowReferences(checked, checkStoredBoxValue(trace, checked, place), maps, { keepMissing: true }) as GenerationJsonValue;
+		});
 		const boxValue = (namespace: string, key: string, value: string, scope: "chat" | "participant" | "message" | "variant"): string | undefined => {
 			const id = boxIdOf(namespace);
 			if (id === undefined) return isImportOwnedDataNamespace(namespace) ? undefined : value;
@@ -91,20 +101,29 @@ export function forkConversation(database: Database, input: ForkConversationBody
 			const value = boxValue(row.namespace, row.key, row.value, "participant");
 			if (value !== undefined) db.insert(participantDataTable).values({ ...row, id: undefined, participant_id: participantMap.get(participant.id)!, value }).run();
 		}
+		// @approved
+		//  The per-row copies reuse one prepared statement each: building a
+		// Drizzle query for every copied row cost more than SQLite running it.
+		const messageDataOf = db.select().from(messageDataTable).where(eq(messageDataTable.message_id, sql.placeholder("owner"))).prepare();
+		const insertMessageData = db.insert(messageDataTable)
+			.values({ message_id: sql.placeholder("owner"), namespace: sql.placeholder("namespace"), key: sql.placeholder("key"), value: sql.placeholder("value") }).prepare();
+		const variantDataOf = db.select().from(messageVariantDataTable).where(eq(messageVariantDataTable.message_variant_id, sql.placeholder("owner"))).prepare();
+		const insertVariantData = db.insert(messageVariantDataTable)
+			.values({ message_variant_id: sql.placeholder("owner"), namespace: sql.placeholder("namespace"), key: sql.placeholder("key"), value: sql.placeholder("value") }).prepare();
 		const copyMessageDataAndReadMoves = (messageId: number): BoxMoves => {
 			const result: BoxMoves = {};
-			for (const row of db.select().from(messageDataTable).where(eq(messageDataTable.message_id, messageId)).all()) {
+			for (const row of messageDataOf.all({ owner: messageId })) {
 				const value = boxValue(row.namespace, row.key, row.value, "message");
 				if (value === undefined) continue;
 				const id = boxIdOf(row.namespace);
 				if (id !== undefined && row.key === "moves") result[id] = JSON.parse(value);
 				const newId = messageMap.get(messageId);
-				if (newId !== undefined) db.insert(messageDataTable).values({ ...row, id: undefined, message_id: newId, value }).run();
+				if (newId !== undefined) insertMessageData.run({ owner: newId, namespace: row.namespace, key: row.key, value });
 			}
 			return result;
 		};
 		for (const message of messages) copyMessageDataAndReadMoves(message.id);
-		for (const [oldId, newId] of variantMap) for (const row of db.select().from(messageVariantDataTable).where(eq(messageVariantDataTable.message_variant_id, oldId)).all()) {
+		for (const [oldId, newId] of variantMap) for (const row of variantDataOf.all({ owner: oldId })) {
 			let value = boxValue(row.namespace, row.key, row.value, "variant");
 			if (row.namespace === variantDataCodecs.boxTraces.namespace && row.key === variantDataCodecs.boxTraces.key) {
 				const traces = variantDataCodecs.boxTraces.decode(row.value);
@@ -112,11 +131,11 @@ export function forkConversation(database: Database, input: ForkConversationBody
 					const id = boxIdOf(reference);
 					if (id === undefined || !descriptors.has(id)) { if (id !== undefined) omitted.add(id); delete traces[reference]; continue; }
 					const schema = serverBox(id)?.advance?.trace;
-				if (entry.trace !== undefined) entry.trace = JSON.parse(rewrite(id, schema, JSON.stringify(entry.trace), `trace/${reference}`, true));
+					if (entry.trace !== undefined) entry.trace = rewriteTrace(id, schema, entry.trace, `trace/${reference}`);
 				}
 				value = JSON.stringify(traces);
 			}
-			if (value !== undefined) db.insert(messageVariantDataTable).values({ ...row, id: undefined, message_variant_id: newId, value }).run();
+			if (value !== undefined) insertVariantData.run({ owner: newId, namespace: row.namespace, key: row.key, value });
 		}
 		const settings = db.select().from(conversationGenerationSettingsTable).where(eq(conversationGenerationSettingsTable.conversation_id, input.conversationId)).get();
 		if (settings) db.insert(conversationGenerationSettingsTable).values({ ...settings, conversation_id: fork.id }).run();
