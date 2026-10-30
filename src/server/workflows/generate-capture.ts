@@ -25,7 +25,7 @@ import type { CastParticipantSnapshot } from "../conversation";
 import { readConversationSummaryFromConnection } from "../conversation";
 import { readConversationGenerationSettingsFromConnection } from "../conversation";
 import { readSelectedHistoryFromConnection } from "../conversation";
-import { readVariantData, type VariantDataRecords } from "../conversation";
+import { readVariantData } from "../conversation";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
@@ -235,7 +235,7 @@ function captureFacts(
 	human: CastParticipantSnapshot,
 	model: CastParticipantSnapshot,
 	settings: ConversationGenerationSettings,
-	variantData: ReadonlyMap<number, VariantDataRecords>,
+	hasReasoning: (variantId: number) => boolean,
 	moves: ReadonlyMap<number, BoxMoves>,
 ): GenerationCaptureFacts {
 	switch (target.kind) {
@@ -248,7 +248,7 @@ function captureFacts(
 			const reason = continuationEligibility({
 				authorRole: authorRoleOf(latest, { humanParticipantId: human.id, modelParticipantId: model.id }),
 				content: variant.content,
-				hasReasoning: (variantData.get(variant.id)?.reasoning?.length ?? 0) > 0,
+				hasReasoning: hasReasoning(variant.id),
 			}, settings.continuationStrategy);
 			if (reason !== null) throw new ContinuationUnavailableError(reason);
 			return { kind: "continuation", precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
@@ -305,7 +305,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const siblingId = selected.target?.variant?.id;
 	const boxes = participatingBoxes(recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
-	const variantData = readVariantData(db, variantIds, ["reasoning", "macroWrites"]);
+	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
+	const hasReasoning = (id: number) => (readVariantData(db, [id], ["reasoning"]).get(id)?.reasoning?.length ?? 0) > 0;
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
 	const messageMoves = readMessageMoves(db, selected.messages.map(({ id }) => id));
 	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
@@ -349,7 +350,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		model,
 		context: rendered.map(({ speakerName, content, role }) => ({ kind: "message", speakerName, content, role })),
 	};
-	const facts = captureFacts(target, participation, human, model, settings, variantData, messageMoves);
+	const facts = captureFacts(target, participation, human, model, settings, hasReasoning, messageMoves);
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
 	const staged = target.kind === "send" ? target.moves : undefined;

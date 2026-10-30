@@ -246,8 +246,10 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 	}
 	let semantic: { candidate: ClaimedMemory; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
-		const vectors = await ctx.embed(claimed.map(({ renderedText }) => renderedText), embedding, { cache: true });
-		const queryVector = (await ctx.embed([activation.scene], embedding))[0];
+		const [[queryVector], vectors] = await Promise.all([
+			ctx.embed([activation.scene], embedding),
+			ctx.embed(claimed.map(({ renderedText }) => renderedText), embedding, { cache: true }),
+		]);
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
 		if (vectors.some((vector) => vector.length !== queryVector.length)) {
 			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");

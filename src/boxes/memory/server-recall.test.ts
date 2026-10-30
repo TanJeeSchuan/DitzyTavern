@@ -235,6 +235,32 @@ describe("Memory recall in Generation preparation", () => {
 		expect(counts.embedding).toHaveLength(3);
 	});
 
+	test("recall embeds the scene while it embeds claims the cache lacks", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
+		const corrected = memoryClaim(source.messageId, "Maren still holds the key.", "Maren returned Writer's key.", "Writer correction");
+		correct(database, conversation.id, source.variantId, [corrected]);
+		const answer = recallFetch(recallCounts());
+		let sceneStarted = false;
+		let sceneStartedDuringClaims = false;
+		const app = createConversationRoutes(database, { masterKey: key, fetch: async (input, init) => {
+			if (String(input).includes("embedding.test")) {
+				if (!String(init?.body).includes(renderMemoryClaim(corrected))) sceneStarted = true;
+				else {
+					await Bun.sleep(20);
+					sceneStartedDuringClaims = sceneStarted;
+				}
+			}
+			return answer(input, init);
+		} });
+		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).status).toBe(200);
+		expect(sceneStartedDuringClaims).toBe(true);
+	});
+
 	test("recalls the selected path's effective records into the inspected plan and accepts its edited block without recalling again", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);

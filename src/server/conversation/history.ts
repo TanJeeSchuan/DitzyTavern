@@ -1,6 +1,6 @@
 import { readMessageMoves } from "../box/moves";
 import { readVariantData } from "./variant-data";
-import { loadMessageRows } from "./message-rows";
+import { variantDataCodecs } from "../../shared/variant-data-codecs";
 import { checkpointColumns, liveVariantContent } from "./generation-checkpoint";
 import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
@@ -17,7 +17,7 @@ import { authorRoleOf, continuationEligibility } from "./continuation";
 // Variant-selection command, never a second source representation.
 
 import type { Database } from "bun:sqlite";
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import {
 	conversationTable,
 	conversationGenerationSettingsTable,
@@ -47,6 +47,10 @@ import type {
 	ChatHistoryVariant,
 	VariantText,
 } from "./types";
+
+const { namespace: reasoningNamespace, key: reasoningKey } = variantDataCodecs.reasoning;
+const hasReasoningContent = sql<boolean>`exists (select 1 from message_variant_data d
+	where d.message_variant_id = "message_variant"."id" and d.namespace = ${reasoningNamespace} and d.key = ${reasoningKey} and d.value <> '')`.mapWith(Boolean);
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 50;
 export const MAX_HISTORY_PAGE_SIZE = 200;
@@ -123,10 +127,23 @@ export function readChatHistory(
 		.reverse();
 	const messageIds = pageRows.map((message) => message.id);
 
-	const rows = loadMessageRows(db, conversationId, { ids: messageIds });
-	const messageRows = rows.messages;
-	const variantRows = rows.variants;
-	const dataByVariant = readVariantData(db, rows.variants.map((variant) => variant.id), ["reasoning"]);
+	const messageRows = messageIds.length === 0 ? [] : db.select().from(messageTable)
+		.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, messageIds)))
+		.orderBy(asc(messageTable.position)).all();
+	// @approved
+	//  Only the selected or streaming Variant's text is served, so the others
+	// answer their empty and Reasoning flags in SQL instead of shipping text.
+	const variantRows = messageIds.length === 0 ? [] : db.select({
+		id: messageVariantTable.id,
+		message_id: messageVariantTable.message_id,
+		position: messageVariantTable.position,
+		timestamp: messageVariantTable.timestamp,
+		selected: messageVariantTable.selected,
+		empty: sql<boolean>`${liveVariantContent} = ''`.mapWith(Boolean),
+		hasReasoning: hasReasoningContent,
+		content: sql<string | null>`case when "message_variant"."selected" or exists (select 1 from active_generation a where a.variant_id = "message_variant"."id") then ${liveVariantContent} end`,
+	}).from(messageVariantTable).where(inArray(messageVariantTable.message_id, messageIds))
+		.orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position)).all();
 	const liveGenerationByVariant = new Map(
 		variantRows.length === 0
 			? []
@@ -159,12 +176,12 @@ export function readChatHistory(
 			const historyVariant: ChatHistoryVariant = {
 				id: variant.id,
 				position: variant.position,
-				empty: variant.content === "",
-				hasReasoning: (dataByVariant.get(variant.id)?.reasoning ?? "") !== "",
+				empty: variant.empty,
+				hasReasoning: variant.hasReasoning,
 				timestamp: variant.timestamp,
 				selected: variant.selected,
 			};
-			if (variant.selected || liveGeneration !== undefined) historyVariant.content = variant.content;
+			if (variant.content !== null) historyVariant.content = variant.content;
 			if (liveGeneration !== undefined) historyVariant.liveGeneration = liveGeneration;
 			return historyVariant;
 		},
@@ -186,11 +203,12 @@ export function readChatHistory(
 		castIds,
 	).valid;
 
+	const selectedByMessage = new Map(variantRows.filter((variant) => variant.selected).map((variant) => [variant.message_id, variant]));
 	const moves = readMessageMoves(db, messageRows.map(({ id }) => id));
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
-		const selected = variantRows.find((variant) => variant.message_id === message.id && variant.selected);
+		const selected = selectedByMessage.get(message.id);
 		const authorRole = authorRoleOf({ author, historicalContext }, control);
 		return {
 			id: message.id,
@@ -202,8 +220,8 @@ export function readChatHistory(
 				message.context_model_participant_id ?? null,
 			continuable: selected !== undefined && continuationEligibility({
 				authorRole,
-				content: selected.content,
-				hasReasoning: (dataByVariant.get(selected.id)?.reasoning ?? "") !== "",
+				content: selected.content ?? "",
+				hasReasoning: selected.hasReasoning,
 			}, continuationStrategy) === null,
 			// @approved
 			//  Server-derived targeted Swipe eligibility from the canonical rule
