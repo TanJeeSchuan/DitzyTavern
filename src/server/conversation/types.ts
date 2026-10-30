@@ -12,6 +12,7 @@ import type {
 	ChatHistoryMessage as SharedChatHistoryMessage,
 	ChatHistoryPage as SharedChatHistoryPage,
 	ChatHistoryVariant as SharedChatHistoryVariant,
+	VariantText as SharedVariantText,
 	ConversationAction as SharedConversationAction,
 	ConversationDataScope as SharedConversationDataScope,
 	ConversationSummary as SharedConversationSummary,
@@ -200,6 +201,7 @@ export type ConversationSummary = SharedConversationSummary;
 // this boundary when it exists; other provenance remains behind deliberate
 // detail operations.
 export type ChatHistoryVariant = SharedChatHistoryVariant;
+export type VariantText = SharedVariantText;
 
 // Stable Participant identity needed to render one Message: the immutable
 // Author Stamp name plus the current active-Cast state. No prompts,

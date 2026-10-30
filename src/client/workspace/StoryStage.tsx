@@ -91,9 +91,10 @@ export function StoryStage({
 	narrow: boolean;
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
+	const storyConversationId = "conversationId" in story ? story.conversationId : null;
 	const viewport = useStoryViewport({
 		messages: story.messages,
-		conversationId: "conversationId" in story ? story.conversationId : null,
+		conversationId: storyConversationId,
 		hasNewer: readyStory?.page.hasNewer === true,
 	});
 	const storyActions = useStoryMessageActions({
@@ -167,9 +168,10 @@ export function StoryStage({
 						</div>
 					)}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
-					{story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
+					{storyConversationId !== null && story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
 						<StoryMessageView
 							key={message.id}
+							conversationId={storyConversationId}
 							message={message}
 							lens={lens}
 							swipeBrowsing={swipeBrowsing}

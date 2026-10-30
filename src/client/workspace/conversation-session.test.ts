@@ -24,7 +24,7 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
 	messages: Array.from({ length: 2 }, (_, i) => ({
 		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
 		authorRole: null, modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
-		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
+		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", empty: false, hasReasoning: false, selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
 	})),
 	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });
@@ -37,7 +37,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		return handler?.(request) ?? Promise.resolve(Response.json(request.url.pathname.endsWith("history") ? page(id) : summary(id)));
 	}, { preconnect() {} });
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-	const chat = (id: number) => ({ id: String(id), title: `Chat ${id}`, updatedAt: "", cast: [], excerpt: "" });
+	const chat = (id: number) => ({ id: String(id), title: `Chat ${id}`, revision: 1, updatedAt: "", cast: [], excerpt: "" });
 	const initialWorkspace = { activeChat: chat(1), chats: [chat(1), chat(2)], characters: [] };
 	const actions: StoryAction[] = [];
 	const hook = await renderHook(() => {
@@ -333,7 +333,7 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	await h.hook.act(async () => { late.resolve(Response.json(page())); });
 	await h.hook.unmount();
 	await refresh;
-	const activeChat = { id: "1", title: "Chat", updatedAt: "", cast: [], excerpt: "" };
+	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const reopened = await renderHook(() => {
 		const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 		const session = useConversationSession({ initialWorkspace: { activeChat, chats: [activeChat], characters: [] }, story, dispatchStory });

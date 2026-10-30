@@ -144,16 +144,17 @@ export function useAssemblyController({
 	// @approved
 	//  Acceptance and a direct start settle through the same completion: the
 	//  accepted target is only reported to the session machine while the Chat
-	//  that started it is still active, and the story refresh never blocks it.
+	//  that started it is still active. It subscribes before the story refresh
+	//  lands, and the story holds the output it streams until the refresh
+	//  places its Variant.
 	const finishStart = (submission: GenerationStartSubmission, { target, sentRevision }: AcceptedStart, closeAssembly: boolean) => {
 		if (submission.signal.aborted) return;
 		session.current.starting = false;
 		if (closeAssembly) setAssemblyRequest(null);
 		if (submission.clearComposer) takeComposer();
 		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
-		void refreshStory(submission.conversationId, submission.signal).catch(() => null).then(() => {
-			if (!submission.signal.aborted) generationStart.accepted(submission.startId, target);
-		});
+		generationStart.accepted(submission.startId, target);
+		void refreshStory(submission.conversationId, submission.signal).catch(() => null);
 	};
 	const startDirect = useMutation({
 		mutationKey: ["assembly", "start"],

@@ -5,10 +5,12 @@ import { registerWireFormats } from "../shared/contract/wire-formats";
 import { App } from "./App";
 import { loadBoxClients } from "./box-windows/registry";
 import { ImageDialogProvider } from "./ImageDialog";
+import { followServerChanges } from "./server-changes";
 
 registerWireFormats();
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+followServerChanges(queryClient);
 
 // @approved
 //  Build stamp: the hashed asset name identifies the exact bundle. Snapshot

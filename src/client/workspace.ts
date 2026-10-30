@@ -1,4 +1,4 @@
-import { applyConversationCommand, loadConversation, type ConversationSummary } from "./conversation";
+import { applyConversationCommand, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
 import { requestData } from "./lib/request-outcome";
 import type { Portrait } from "../shared/contract/image";
@@ -10,6 +10,7 @@ export type SwipeBrowsing = "fan" | "modal";
 export type ChatSummary = {
 	id: string;
 	title: string;
+	revision: number;
 	updatedAt: string;
 	cast: { name: string; portrait: Portrait | null }[];
 	excerpt: string;
@@ -45,6 +46,7 @@ const fetchWorkspace = async () => {
 		chats: data.chats.map((chat): ChatSummary => ({
 			id: String(chat.id),
 			title: chat.name,
+			revision: chat.revision,
 			updatedAt: chat.lastMessageTime,
 			cast: chat.cast,
 			excerpt: chat.excerpt,
@@ -61,13 +63,12 @@ export async function deleteChat(chatId: string): Promise<string | null> {
 }
 
 // @approved
-//  Renames any Chat, not only the open one, so the current revision is read
-// first; a revision that moved in between is retried once.
-export async function renameChat(chatId: string, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
-	const current = await loadConversation(Number(chatId)).catch(() => null);
-	if (current === null) return { outcome: "failed", reason: "The Chat could not be reached." };
-	let outcome = await applyConversationCommand(current.id, current.revision, { type: "rename-conversation", name });
-	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
+//  Renames any Chat, not only the open one, at the revision its list row
+// carries; a revision that moved since the list was read is retried once.
+export async function renameChat(chat: Pick<ChatSummary, "id" | "revision">, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
+	const id = Number(chat.id);
+	let outcome = await applyConversationCommand(id, chat.revision, { type: "rename-conversation", name });
+	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(id, outcome.currentConversation.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
 	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }

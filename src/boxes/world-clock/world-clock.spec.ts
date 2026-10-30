@@ -299,7 +299,7 @@ test("passage override drafts survive guarded close until saved or discarded", a
 	await unsaved.getByRole("button", { name: "Save and leave" }).click();
 	await expect(window).toHaveCount(0);
 	const read = await (await request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
-	const override = read.passages.find((entry: { content: string }) => entry.content === "You arrive as she pins a third map over the first two.");
+	const override = read.passages.find((entry: { excerpt: string }) => entry.excerpt === "You arrive as she pins a third map over the first two.");
 	expect(override.record).toMatchObject({ minutes: 125, weather: "clear" });
 	expect(override.overridden).toBe(true);
 });

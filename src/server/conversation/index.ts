@@ -45,6 +45,7 @@ export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
 	readChatHistory,
+	readVariantText,
 } from "./history";
 // @approved
 //  The application-installed write observer: app.ts hands Memory's
@@ -61,7 +62,7 @@ export { readConversationRevision } from "./snapshot";
 // @approved
 //  The Workspace Chat list read model: the workspace route reads Chat
 // summaries through the Conversation seam instead of querying its tables.
-export { listChatSummaries } from "./chat-summaries";
+export { activeChatId, listChatSummaries } from "./chat-summaries";
 export {
 	cleanupRetainedGenerationInspections,
 	GENERATION_REPLAY_RETENTION_MS,

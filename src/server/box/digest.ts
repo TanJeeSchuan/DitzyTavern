@@ -16,6 +16,7 @@ import { boxServices } from "./services";
 import { isHostChatKey, readBoxLifecycles } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 import { readBoxWindow } from "./window";
+import { announceChange } from "../database/changes";
 
 // @approved
 //  The host digest queue (ADR-0050). Selected passages are digested in the
@@ -52,6 +53,8 @@ interface DigestJob {
 
 interface DigestQueue {
 	readonly fetch: ModelFetch | undefined;
+	/** @approved Tells open windows a catch-up run moved: no row records its start, progress or end. */
+	readonly announce: () => void;
 	/** @approved The current job of each Variant and Box; a job whose result may land is the one held here. */
 	readonly current: Map<string, DigestJob>;
 	/** @approved FIFO queues of job references; a reference no longer current is skipped. Live work drains first. */
@@ -70,8 +73,9 @@ const catchUpKey = (conversationId: number, box: BoxId) => `${conversationId}:${
 
 const leaveCatchUp = (queue: DigestQueue, job: DigestJob): void => {
 	const run = job.catchUp;
-	if (run === null || !run.members.delete(job) || run.members.size > 0) return;
-	if (queue.catchUps.get(run.key) === run) queue.catchUps.delete(run.key);
+	if (run === null || !run.members.delete(job) || queue.catchUps.get(run.key) !== run) return;
+	if (run.members.size === 0) queue.catchUps.delete(run.key);
+	queue.announce();
 };
 
 /** @approved Drops the job as current: it is aborted, its result can no longer land, and it leaves its catch-up run. */
@@ -171,7 +175,7 @@ const pump = (database: Database, queue: DigestQueue): void => {
 };
 
 export function startBoxDigests(database: Database, options: { fetch?: ModelFetch | undefined } = {}): () => Promise<void> {
-	const queue: DigestQueue = { fetch: options.fetch, current: new Map(), live: [], catchUp: [], catchUps: new Map(), workers: new Set(), stopped: false };
+	const queue: DigestQueue = { fetch: options.fetch, announce: () => announceChange(database), current: new Map(), live: [], catchUp: [], catchUps: new Map(), workers: new Set(), stopped: false };
 	queues.set(database, queue);
 	return async () => {
 		queue.stopped = true;
@@ -292,6 +296,7 @@ export function startBoxCatchUp(database: Database, conversationId: number, box:
 			box, instance, source: sha256(variant.content), catchUp: run, controller: new AbortController(),
 		});
 	}
+	queue.announce();
 	queueMicrotask(() => pump(database, queue));
 }
 
@@ -307,6 +312,7 @@ export function cancelBoxCatchUp(database: Database, conversationId: number, box
 	if (queue === undefined || run === undefined) return;
 	queue.catchUps.delete(key);
 	for (const job of run.members) drop(queue, job);
+	queue.announce();
 }
 
 /** @approved A minimized digesting Box's dock read: the folded status from the selected Variant ids, loading no prose. */
@@ -321,6 +327,9 @@ export function readDigestStatus(database: Database, conversationId: number, box
 	});
 }
 
+const EXCERPT_LENGTH = 240;
+const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim().slice(0, EXCERPT_LENGTH);
+
 /** @approved A digesting Box's window reads one folded Selected path state
  *  without loading discarded Variants or arbitrary Variant data. */
 export function readDigest(database: Database, conversationId: number, box: BoxId) {
@@ -333,7 +342,7 @@ export function readDigest(database: Database, conversationId: number, box: BoxI
 			if (variant === null || variant.content.trim() === "") return [];
 			const slot = slots.get(variant.id);
 			return [{
-				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, content: variant.content, record: effectiveRecord(slot) ?? null,
+				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, excerpt: excerpt(variant.content), record: effectiveRecord(slot) ?? null,
 				overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content), error: hasDigestError(slot, variant.content) ? slot?.error?.message ?? null : null,
 			}];
 		});

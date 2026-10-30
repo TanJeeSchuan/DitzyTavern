@@ -24,12 +24,11 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await page.clock.install();
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const digestUrl = `/api/conversations/${activeChatId}/boxes/mood`;
-	// Let the real browser poll read a committed digest without waiting out its interval.
+	// Wait for the digest to commit; the window follows the database change. The page's clock is
+	// installed, so advance it for any timer the refetch waits on.
 	const pollMood = async (expected: string) => {
 		await expect.poll(async () => (await (await request.get(digestUrl)).json()).passages.at(-1)?.record).toEqual({ mood: expected });
-		const polled = page.waitForResponse((response) => new URL(response.url()).pathname === digestUrl);
-		await page.clock.fastForward(2_500);
-		await polled;
+		await page.clock.fastForward(1_000);
 	};
 	await selectBoxDecisionModel(request, "mood");
 	await llm.decisions(
@@ -49,7 +48,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 	await window.getByRole("button", { name: "Minimize Mood" }).click();
 
 	await send(page, "Wait out the night.");
-	await expect(story(page).getByText("The storm breaks")).toBeVisible();
+	await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 	await pollMood("tense");
 	await expect(dockTab(page)).toHaveText("Mood: 😬 tense", { timeout: 15_000 });
 
@@ -77,7 +76,7 @@ test("the Mood follows digested passages, a swipe and a Writer override, and an 
 
 	await expect(await moodLine(page, "Look outside.")).toHaveText(["Scene mood:", "eerie"]);
 	await page.getByRole("button", { name: "Send exact plan" }).click();
-	await expect(story(page).getByText("She lights the lamp.")).toBeVisible();
+	await expect(story(page).locator("article").getByText("She lights the lamp.")).toBeVisible();
 	await dockTab(page).click();
 	await pollMood("not clear");
 	await expect(window.getByRole("listitem").filter({ hasText: "She lights the lamp." })).toContainText("❔ Not clear", { timeout: 15_000 });
@@ -98,7 +97,7 @@ test.describe("a Writer override against a digest that landed meanwhile", () => 
 		await page.goto("/");
 		await insertBox(page, "Mood");
 		await send(page, "Wait out the night.");
-		await expect(story(page).getByText("The storm breaks")).toBeVisible();
+		await expect(story(page).locator("article").getByText("The storm breaks")).toBeVisible();
 		await page.getByRole("button", { name: "Mood", exact: true }).click();
 		const window = page.getByRole("dialog", { name: "Mood" });
 		const passage = window.getByRole("listitem").filter({ hasText: "The storm breaks" });

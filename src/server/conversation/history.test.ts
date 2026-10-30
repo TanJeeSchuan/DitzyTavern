@@ -1,5 +1,5 @@
 import { createConversationWithHistory } from "../test-fixtures/conversation";
-import { readChatHistory } from ".";
+import { readChatHistory, readVariantText } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -180,10 +180,11 @@ describe("Conversation paginated history", () => {
 			capturedName: "Writer",
 			inCast: true,
 		});
-		// Variant order is preserved with the persisted selected state.
+		// Variant order is preserved with the persisted selected state; only
+		// the selected Variant's Content rides on the page.
 		expect(message?.variants.map((variant) => variant.content)).toEqual([
 			"Second alternative",
-			"First alternative",
+			undefined,
 		]);
 		expect(
 			message?.variants.map((variant) => ({
@@ -215,15 +216,16 @@ describe("Conversation paginated history", () => {
 		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
 		// The duplicate and the exact empty alternative remain separate
 		// navigable positions; the empty content is untouched stored text.
-		expect(page?.messages[0]?.variants.map((variant) => variant.content)).toEqual([
-			"Once",
-			"Once",
-			"",
+		const [message] = page?.messages ?? [];
+		expect(message?.variants.map(({ content, empty }) => ({ content, empty }))).toEqual([
+			{ content: undefined, empty: false },
+			{ content: "Once", empty: false },
+			{ content: undefined, empty: true },
 		]);
-		expect(page?.messages[0]?.variants.length).toBe(3);
+		expect(message?.variants.map(({ id }) => readVariantText(conversation, chat.id, message.id, id)?.content)).toEqual(["Once", "Once", ""]);
 	});
 
-	test("returns persisted Generation Reasoning Content in authoritative history", () => {
+	test("announces persisted Reasoning Content on the page and serves it through the Variant text read", () => {
 		const chat = createConversationWithHistory(conversation, {
 			name: "Reasoning History",
 			participants: [{ definition: adHoc("Writer") }],
@@ -255,14 +257,14 @@ describe("Conversation paginated history", () => {
 		});
 
 		const page = readChatHistory(conversation, chat.id, { pageSize: 10 });
-			expect(page?.messages[0]?.variants[0]).toMatchObject({
-				content: "Visible prose.",
-				reasoning: "Persisted thought.",
-			});
-			expect(page?.messages[0]?.variants[1]).toMatchObject({
-				content: "Alternative prose.",
-				reasoning: "Alternative thought.",
-			});
+			const [message] = page?.messages ?? [];
+			expect(message?.variants.map(({ content, hasReasoning }) => ({ content, hasReasoning }))).toEqual([
+				{ content: "Visible prose.", hasReasoning: true },
+				{ content: undefined, hasReasoning: true },
+			]);
+			expect(message?.variants.some((variant) => "reasoning" in variant)).toBe(false);
+			expect(readVariantText(conversation, chat.id, message!.id, message!.variants[1]!.id)).toEqual({ content: "Alternative prose.", reasoning: "Alternative thought." });
+			expect(readVariantText(conversation, chat.id + 1, message!.id, message!.variants[1]!.id)).toBeUndefined();
 	});
 
 	test("excludes heavy provenance from ordinary reads: no message, variant, or Chat data", () => {

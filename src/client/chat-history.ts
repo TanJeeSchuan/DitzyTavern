@@ -11,14 +11,14 @@
 // stay behind deliberate detail operations.
 
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestData, requestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import type {
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryVariant,
 } from "../shared/contract/conversation-schema";
-import { chatHistoryPage } from "../shared/contract/conversation-schema";
+import { chatHistoryPage, variantText } from "../shared/contract/conversation-schema";
 import {
 	chatImportDetails,
 	importCleanedUpResponse,
@@ -70,6 +70,10 @@ export async function loadHistoryPage(
 		notFoundOutcome,
 	);
 }
+
+/** @approved One Variant's Content and Reasoning Content, for a Variant the page carried without them. */
+export const loadVariantText = (conversationId: number, messageId: number, variantId: number, signal?: AbortSignal) =>
+	requestData(api.api.conversations({ id: conversationId }).messages({ messageId }).variants({ variantId }).text.get({ fetch: { signal } }), variantText);
 
 // @approved
 // Loads the persisted receipt and source identity for one Chat; a typed

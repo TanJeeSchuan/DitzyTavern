@@ -12,6 +12,7 @@ import memoryBox from "../../boxes/memory/server";
 import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
+import { subscribeDatabaseChanges, watchDatabaseChanges } from "../database/changes";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
@@ -136,6 +137,29 @@ test("cancelling a catch-up run discards its in-flight results", async () => {
 	await stopDigests();
 	stopDigests = undefined;
 	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
+});
+
+test("a catch-up run announces its start and its cancellation, which no row records", async () => {
+	const chat = createChat();
+	addPassage(chat.id, 1, "The storm breaks over the tower.");
+	insertBox(database, chat.id, "world-clock");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+	// @approved A ticker that never ticks during the test, so only announcements are heard.
+	const stopWatch = watchDatabaseChanges(database, 60_000);
+	const heard: number[] = [];
+	subscribeDatabaseChanges(database, (seq) => heard.push(seq), () => {});
+	try {
+		startBoxCatchUp(database, chat.id, "world-clock");
+		expect(heard).toEqual([0, 1]);
+		await waitFor(() => stub.pending() === 1);
+		cancelBoxCatchUp(database, chat.id, "world-clock");
+		expect(heard).toEqual([0, 1, 2]);
+	} finally {
+		stopWatch();
+		stub.release();
+	}
 });
 
 test("a clock that stops running abandons its in-flight digest, even when it is enabled again before the result lands", async () => {

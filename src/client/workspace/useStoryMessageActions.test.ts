@@ -68,10 +68,10 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		author: { participantId: 20, capturedName: "Author", inCast: true },
 		moves: {},
 		variants: [
-			{ id: 100, position: 1, content: "First", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-			{ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false },
-			{ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false },
-			{ id: 103, position: 4, content: "Fourth", timestamp: "2026-01-01T00:00:03.000Z", selected: false },
+			{ id: 100, position: 1, content: "First", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+			{ id: 101, position: 2, content: "Second", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:01.000Z", selected: false },
+			{ id: 102, position: 3, content: "Third", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:02.000Z", selected: false },
+			{ id: 103, position: 4, content: "Fourth", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:03.000Z", selected: false },
 		],
 	}, ...(withLaterMessage ? [{
 		id: 11,
@@ -83,7 +83,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		swipe: { eligible: true as const, reason: null },
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
 		moves: {},
-		variants: [{ id: 110, position: 1, content: "Later", timestamp: "2026-01-01T00:00:03.000Z", selected: true }],
+		variants: [{ id: 110, position: 1, content: "Later", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:03.000Z", selected: true }],
 	}] : [])],
 });
 

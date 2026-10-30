@@ -1,6 +1,9 @@
 import { test, expect, insertBox, send, story } from "./fixtures";
 import { firstCall, isChatModelCall } from "./protocol";
 
+// A restart cuts the open change stream mid-response.
+test.use({ allowedBrowserErrors: /ERR_INCOMPLETE_CHUNKED_ENCODING/ });
+
 test("a plugin Box installed into the plugin folder loads on restart, resolves its Move into a record, and keeps it across a restart", async ({ page, llm }) => {
 	await llm.installBox("tip-jar");
 	await llm.restart("graceful");

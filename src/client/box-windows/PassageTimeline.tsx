@@ -15,31 +15,30 @@ import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conv
 import { useSaveGuard } from "../SaveGuard";
 import { cancelBoxCatchUp, loadBoxDigest, loadBoxDigestStatus, startBoxCatchUp, type BoxDigest, type BoxDigestPassage } from "../box-digest";
 import type { BoxWindowDefinition } from "./registry";
+import { followsChanges } from "../server-changes";
 
 export const boxDigestKey = (conversationId: number, box: BoxId) => ["box-digest", conversationId, box] as const;
 
-/** @approved The window's polled read: a digest that lands while it is open
- *  refreshes the status and the timeline, and a running catch-up polls faster
- *  so its progress moves. */
+/** @approved The window's read: a digest that lands while it is open, or a
+ *  catch-up step, is a database change, and that revalidates the timeline. */
 function useBoxDigest(conversationId: number, box: BoxId) {
 	return useQuery({
 		queryKey: boxDigestKey(conversationId, box),
 		queryFn: ({ signal }) => loadBoxDigest(conversationId, box, signal),
-		refetchInterval: (query) => query.state.data?.catchUp == null ? 2_500 : 750,
-		refetchIntervalInBackground: false,
+		meta: followsChanges,
 	});
 }
 
-//  A digesting Box's folded status line, polled; the label stands in for a
-//  null status. The host's dock button, header item and Box manager row read
-//  it. Its key extends the digest's, so a save that refreshes the timeline
-//  refreshes the status too.
+// @approved
+//  A digesting Box's folded status line, revalidated on each database change;
+//  the label stands in for a null status. The host's dock button, header item
+//  and Box manager row read it. Its key extends the digest's, so a save that
+//  refreshes the timeline refreshes the status too.
 export function useBoxStatus(conversationId: number, box: BoxId): string {
 	const read = useQuery({
 		queryKey: [...boxDigestKey(conversationId, box), "status"],
 		queryFn: ({ signal }) => loadBoxDigestStatus(conversationId, box, signal),
-		refetchInterval: 2_500,
-		refetchIntervalInBackground: false,
+		meta: followsChanges,
 	});
 	return read.data ?? (read.isError ? "Unavailable" : read.isSuccess ? boxMetadata(box).label : "Reading…");
 }
@@ -185,8 +184,6 @@ function RecordEditor({ box, passage, expected, fields, summarize, busy, onCance
 	</div>;
 }
 
-const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim();
-
 const commandNotices = { conflict: "The Chat changed elsewhere. Review the passage before saving again.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE };
 
 /** @approved Every digesting Box's window ends with this timeline of the
@@ -270,7 +267,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 			{passages.map((passage) => (
 				<li key={passage.variantId}>
 					<strong>{passage.author ?? "Unknown"}</strong>
-					<span className="box-timeline-text">{excerpt(passage.content)}</span>
+					<span className="box-timeline-text">{passage.excerpt}</span>
 					{editing?.variantId === passage.variantId
 						? <RecordEditor box={box} passage={passage} expected={editing.expected} fields={fields} summarize={summarize} busy={locked}
 							onCancel={() => setEditing(null)} onSave={(record) => save(passage, editing.expected, record)} />

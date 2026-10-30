@@ -29,7 +29,7 @@ const message = (id: number, authorName: string, content: string): StoryMessage 
 	inCast: true,
 	activeSwipe: 0,
 	moves: {},
-	swipes: [{ id: id * 10, position: 1, content, empty: content === "", reasoning: "" }],
+	swipes: [{ id: id * 10, position: 1, content, empty: content === "", reasoning: "", hasReasoning: false }],
 });
 
 const history = [
@@ -110,6 +110,7 @@ function Preview() {
 						{messages.map((entry) => (
 							<StoryMessageView
 								key={entry.id}
+								conversationId={1}
 								message={entry}
 								isLatest={entry.id === reply.id}
 								generationActive={entry.id === reply.id && generating}
