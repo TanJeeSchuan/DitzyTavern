@@ -13,6 +13,26 @@ export type TokenEstimator = (transcript: string) => number;
 // approximation for preflight, never a provider tokenization guarantee.
 export const tokenxEstimator: TokenEstimator = estimateTokenCount;
 
+const BLOCK = "\u001eBLOCK\u001f";
+const ESTIMATE_CACHE_ENTRIES = 8192;
+const blockEstimates = new Map<string, number>();
+
+// @approved
+//  A Prompt Plan's estimate is the sum of its blocks' estimates, each kept
+// in a bounded cache keyed by the block's transcript text. History blocks
+// repeat across budget trials and across Sends, so a long Chat estimates
+// only the text it has not seen before instead of rescanning megabytes.
+// The sum differs from one whole-transcript scan by a few tokens at block
+// boundaries, which this estimate, an approximation anyway, accepts.
+export const promptPlanEstimator: TokenEstimator = (transcript) => transcript.split(BLOCK).reduce((total, part) => {
+	let estimate = blockEstimates.get(part);
+	if (estimate === undefined) estimate = estimateTokenCount(part);
+	else blockEstimates.delete(part);
+	blockEstimates.set(part, estimate);
+	if (blockEstimates.size > ESTIMATE_CACHE_ENTRIES) blockEstimates.delete(blockEstimates.keys().next().value!); // @approved The cache is over its bound, so it holds a first key.
+	return total + estimate;
+}, 0);
+
 export interface PromptBudgetBreakdown {
 	contextLimit: number;
 	responseBudget: number;
@@ -85,7 +105,7 @@ export interface PromptBudgetMeasurement {
  * format so equivalent Prompt Plans produce equivalent estimates.
  */
 export function toEstimationTranscript(plan: PromptPlan): string {
-	const blocks = plan.blocks.map((block, index) => {
+	const blocks = plan.blocks.map((block) => {
 		// @approved
 		//  Definition blocks carry the outgoing role their recipe slot chose;
 		// history blocks carry no presentation role of their own, only a
@@ -93,7 +113,7 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 		const role = block.kind === "history" ? "none" : block.role;
 		const speaker = block.kind === "history" ? block.speakerName ?? "none" : "none";
 		return [
-			`\u001eBLOCK\u001f${index}\u001f${block.kind}`,
+			`${BLOCK}${block.kind}`,
 			`\u001eROLE\u001f${role}`,
 			`\u001eSPEAKER\u001f${speaker}`,
 			"\u001eCONTENT\u001f",
@@ -117,7 +137,7 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 					"\u001eSUFFIX\u001f",
 					plan.intent.suffix,
 				];
-	return projectImageAnchors(["ditzytavern-estimation-transcript-v2", ...blocks, ...intent].join("\n"));
+	return projectImageAnchors(["ditzytavern-estimation-transcript-v3", ...blocks, ...intent].join("\n"));
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
@@ -131,7 +151,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		throw new Error("The protected Prompt history index is outside the candidate history.");
 	}
 
-	const estimator = input.estimator ?? tokenxEstimator;
+	const estimator = input.estimator ?? promptPlanEstimator;
 	const allIndexes = input.context.map((_, index) => index);
 	const removableIndexes = allIndexes.filter((index) => index !== protectedHistoryIndex);
 	const candidateAfterRemoving = (count: number) => {
@@ -229,7 +249,7 @@ export function budgetEditedPromptPlan(input: {
  */
 export function measurePromptPlan(input: PromptBudgetMeasurementInput): PromptBudgetMeasurement {
 	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
-	const tokenEstimate = estimateCandidate(input.estimator ?? tokenxEstimator, input.plan);
+	const tokenEstimate = estimateCandidate(input.estimator ?? promptPlanEstimator, input.plan);
 	const breakdown = createBreakdown({
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,

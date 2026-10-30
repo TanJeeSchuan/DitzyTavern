@@ -16,7 +16,7 @@ import {
 	budgetPromptPlan,
 	compilePrompt,
 	PromptBudgetExceededError,
-	tokenxEstimator,
+	promptPlanEstimator,
 	type GenerationIntent,
 	type PromptPlan,
 	type PromptContextEntry,
@@ -196,7 +196,7 @@ export const compileGenerationPlan = (
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
-		estimator: input.estimator ?? tokenxEstimator,
+		estimator: input.estimator ?? promptPlanEstimator,
 	});
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan =>
 		compileWith(context, admissions.lore.selected, admissions.boxes);
