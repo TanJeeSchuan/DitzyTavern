@@ -328,7 +328,11 @@ export function readDigestStatus(database: Database, conversationId: number, box
 }
 
 const EXCERPT_LENGTH = 240;
-const excerpt = (content: string) => content.replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim().slice(0, EXCERPT_LENGTH);
+// @approved
+//  Only a bounded prefix is cleaned: stripping markup removes characters, so
+// eight times the excerpt leaves room, and cleaning whole Messages cost the
+// Memory window most of its time on a long Chat.
+const excerpt = (content: string) => content.slice(0, EXCERPT_LENGTH * 8).replace(/<[^>]*>|[*_`~#>|]+|^-{3,}$/gm, "").replace(/\s+/g, " ").trim().slice(0, EXCERPT_LENGTH);
 
 /** @approved A digesting Box's window reads one folded Selected path state
  *  without loading discarded Variants or arbitrary Variant data. */
