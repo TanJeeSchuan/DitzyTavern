@@ -8,6 +8,14 @@ These measurements test the [action audit](action-performance-audit.md) against 
 bun --env-file=/srv/DitzyTavern/.env run profile:actions /srv/DitzyTavern/data/ditzytavern.sqlite --latency=300
 ```
 
+For the browser, build an unminified client and serve the copy, then drive it:
+
+```sh
+bunx vite build --minify false
+bun --env-file=/srv/DitzyTavern/.env scripts/profile-actions.ts /srv/DitzyTavern/data/ditzytavern.sqlite --serve=3100 --token-ms=20
+bun run profile:browser http://127.0.0.1:3100/
+```
+
 The report and the Markdown CPU profile go to `.scratch/profile/`. Options: `--chat=<id>` (default: the Chat with the most Messages), `--latency=<ms>` per provider call, `--tokens=<n>` streamed per reply, `--repeat=<n>`, and `--cold-embeddings`, which empties the embedding cache before every timed run.
 
 ## The data
@@ -68,3 +76,42 @@ The profile also charges 1.19 s of self time to `bootstrapConnectionSecretKey`, 
 - **6 (Lore evidence):** this data has no Lore. Box traces are what grows here: 16.5 MB across 216 Variants, mostly Memory recall candidates.
 - **8 (compile stable prompt parts once):** the audit wanted measured evidence before acting, and this is it. Estimating history costs about 580 ms per Send, Swipe or Inspect on a long Chat. That is longer than either provider round trip in front of it.
 - **10 (bulk fork copy):** measured at 1.2 s for the largest Chat, and the cost is statement preparation.
+
+## Follow-up: history estimate cache (PR #135)
+
+PR #135 estimates a Prompt Plan as the sum of cached per-block estimates. Zero provider latency, longest Chat:
+
+| Action | master | PR #135 |
+| --- | ---: | ---: |
+| Inspect prompt (Send) | 711 ms | 161 ms |
+| Send to settled | 941 ms | 347 ms |
+| Swipe to settled | 894 ms | 252 ms |
+
+## Other hot spots
+
+The active Chat (517 Messages, 966 Variants, 0.8 MB of prose) was measured on master with zero provider latency. Reads such as workspace, Chat summary, Character list, history page, Variant text, select and edit each take under 25 ms.
+
+**Fork takes 3.0 s on the active Chat.** 2.2 s of that is `rewriteRowReferences` walking the Chat's 16.9 MB of Box traces leaf by leaf. Subtrees that hold no Row Reference get walked anyway, and every leaf it cannot classify runs `JSON.stringify(schema)` (`row-references.ts:45`). The other ~0.6 s is Drizzle building and preparing one INSERT per copied row. Fix: remember per schema node whether its subtree holds a Row Reference, and return reference-free values untouched.
+
+**The Memory window answers 1.08 MB in 57 ms on the active Chat.** `excerpt` runs its markup regexes over each Message's full text before keeping 240 characters (`digest.ts:331`). The change feed recomputes the window on every tick of a catch-up.
+
+**Startup** spends 130–290 ms opening and migrating the database and 106–140 ms in the image sweep.
+
+### Browser
+
+Unminified build, headless Chromium, active Chat with a 50-Message page, 20 ms per streamed token:
+
+| Phase | Wall | Long tasks |
+| --- | ---: | --- |
+| Open the latest Chat | 1.0–1.5 s | 3–4, totalling 470–650 ms, longest 330 ms |
+| Send through the Prompt Plan preview and stream 400 tokens | 11.2 s | 4–5, totalling 1.3 s, longest 800 ms |
+| New Swipe and stream 400 tokens | 11.1 s | 3–4, totalling 1.1–1.25 s, longest 780 ms |
+| Browse to the previous Swipe | 100 ms | none |
+
+**Streaming keeps the main thread 82% busy** (4.9 s of 6 s mid-stream). Every streamed event re-renders every `StoryMessageView` on the page through a synchronous React commit, including its lucide icons and `formatTimestamp`. This is audit item 9, now measured: memoize settled rows with stable props, and publish streamed text once per animation frame.
+
+**Opening the Prompt Plan preview is the 700–800 ms long task.** `PromptPlanPreviewPanel` mounts a CodeMirror `EditorView` for every block, including the history blocks inside the collapsed "History · N messages" `<details>`. That is 680 ms of editor construction for blocks nobody has opened. Mount a block's editor only when its `<details>` is open.
+
+The server uses 3.55 s of CPU over the 25.7 s browser session (14%), including two plan captures.
+
+**Profiler caveat.** Bun's Markdown profile charges idle time to whichever function was sampled last. On a mostly idle served process it reported multi-second self times that the process's CPU time contradicts. Trust it only for busy runs, and check against `/proc/<pid>/stat` or a direct timer.
