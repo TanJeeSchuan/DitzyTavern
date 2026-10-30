@@ -1,7 +1,7 @@
 import { readMessageMoves } from "../box/moves";
 import { readVariantData } from "./variant-data";
 import { loadMessageRows } from "./message-rows";
-import { checkpointColumns } from "./generation-checkpoint";
+import { checkpointColumns, liveVariantContent } from "./generation-checkpoint";
 import { authorRoleOf, continuationEligibility } from "./continuation";
 // @approved
 //  Paginated history read model: the normal Chat read seam for reading
@@ -23,6 +23,7 @@ import {
 	conversationGenerationSettingsTable,
 	activeGenerationTable,
 	messageTable,
+	messageVariantTable,
 } from "../database/schema";
 import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-settings";
 import {
@@ -44,6 +45,7 @@ import type {
 	ChatHistoryPage,
 	ChatHistoryPageRequest,
 	ChatHistoryVariant,
+	VariantText,
 } from "./types";
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 50;
@@ -153,16 +155,16 @@ export function readChatHistory(
 	const variantsByMessage = groupVariantsByMessage(
 		variantRows,
 		(variant): ChatHistoryVariant => {
+			const liveGeneration = liveGenerationByVariant.get(variant.id);
 			const historyVariant: ChatHistoryVariant = {
 				id: variant.id,
 				position: variant.position,
-				content: variant.content,
+				empty: variant.content === "",
+				hasReasoning: (dataByVariant.get(variant.id)?.reasoning ?? "") !== "",
 				timestamp: variant.timestamp,
 				selected: variant.selected,
 			};
-			const reasoning = dataByVariant.get(variant.id)?.reasoning;
-			if (reasoning !== undefined) historyVariant.reasoning = reasoning;
-			const liveGeneration = liveGenerationByVariant.get(variant.id);
+			if (variant.selected || liveGeneration !== undefined) historyVariant.content = variant.content;
 			if (liveGeneration !== undefined) historyVariant.liveGeneration = liveGeneration;
 			return historyVariant;
 		},
@@ -188,7 +190,7 @@ export function readChatHistory(
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
-		const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
+		const selected = variantRows.find((variant) => variant.message_id === message.id && variant.selected);
 		const authorRole = authorRoleOf({ author, historicalContext }, control);
 		return {
 			id: message.id,
@@ -201,7 +203,7 @@ export function readChatHistory(
 			continuable: selected !== undefined && continuationEligibility({
 				authorRole,
 				content: selected.content,
-				hasReasoning: (selected.reasoning?.length ?? 0) > 0,
+				hasReasoning: (dataByVariant.get(selected.id)?.reasoning ?? "") !== "",
 			}, continuationStrategy) === null,
 			// @approved
 			//  Server-derived targeted Swipe eligibility from the canonical rule
@@ -231,4 +233,17 @@ export function readChatHistory(
 		},
 		messages,
 	};
+}
+
+/** @approved One Variant's persisted Content and Reasoning Content, or undefined when the Chat has no such Variant. */
+export function readVariantText(database: Database, conversationId: number, messageId: number, variantId: number): VariantText | undefined {
+	const db = connectConversationDatabase(database);
+	const variant = db
+		.select({ content: liveVariantContent })
+		.from(messageVariantTable)
+		.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+		.where(and(eq(messageVariantTable.id, variantId), eq(messageTable.id, messageId), eq(messageTable.conversation_id, conversationId)))
+		.get();
+	if (variant === undefined) return undefined;
+	return { content: variant.content, reasoning: readVariantData(db, [variantId], ["reasoning"]).get(variantId)?.reasoning ?? "" };
 }

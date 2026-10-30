@@ -45,6 +45,7 @@ export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
 	readChatHistory,
+	readVariantText,
 } from "./history";
 // @approved
 //  The application-installed write observer: app.ts hands Memory's

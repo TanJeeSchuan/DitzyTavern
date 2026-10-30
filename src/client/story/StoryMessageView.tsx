@@ -18,6 +18,7 @@ import type { SwipeBrowsing } from "../workspace";
 import { type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
 import {
 	type StoryMessage,
+	type StoryVariant,
 	displayedVariantId as getDisplayedVariantId,
 	visibleVariantContent,
 } from "../story";
@@ -28,6 +29,8 @@ import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
 import { SwipeBrowser } from "./SwipeBrowser";
 import { useSaveGuard } from "../SaveGuard";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchNeighbourText, useVariantText, useVariantsText } from "./variant-text";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -36,6 +39,7 @@ import { useSaveGuard } from "../SaveGuard";
 // positions; an exact empty Variant renders a presentation-only placeholder
 // and its stored text is never modified.
 export function StoryMessageView({
+	conversationId,
 	message,
 	isLatest = false,
 	displayedVariantId,
@@ -62,6 +66,7 @@ export function StoryMessageView({
 	generationControls,
 	lens,
 }: {
+	conversationId: number;
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
@@ -104,7 +109,7 @@ export function StoryMessageView({
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
-	const active = message.swipes.find((variant) => variant.id === visibleId);
+	const active = useVariantText(conversationId, message.id, message.swipes.find((variant) => variant.id === visibleId));
 	const activeIndex = active === undefined
 		? message.activeSwipe
 		: message.swipes.findIndex((variant) => variant.id === active.id);
@@ -117,7 +122,7 @@ export function StoryMessageView({
 
 	useEffect(() => setIsEditing(false), [active?.id]);
 	useEffect(() => {
-		if (active !== undefined && !isEditing) setEditText(active.content);
+		if (active !== undefined && !isEditing) setEditText(active.content ?? "");
 	}, [active?.id, active?.content, isEditing]);
 
 	const [editBase, setEditBase] = useState("");
@@ -131,8 +136,8 @@ export function StoryMessageView({
 	const saveEdit = async () => {
 		const value = editText.trim();
 		if ((!value && !hasMoves(message.moves)) || active === undefined) return false;
-		if (active.content !== editBase) {
-			setEditBase(active.content);
+		if ((active.content ?? "") !== editBase) {
+			setEditBase(active.content ?? "");
 			setChangedElsewhere(true);
 			return false;
 		}
@@ -153,6 +158,12 @@ export function StoryMessageView({
 		else onMoveSwipe(message.id, 1);
 	};
 	const [browsing, setBrowsing] = useState(false);
+	const browsed = useVariantsText(conversationId, message.id, message.swipes, browsing);
+	const client = useQueryClient();
+	const prefetchNeighbours = () => prefetchNeighbourText(client, conversationId, message.id, message.swipes, activeIndex);
+	useEffect(() => {
+		if (isLatest || advancedActionsSelected) prefetchNeighbourText(client, conversationId, message.id, message.swipes, activeIndex);
+	}, [isLatest, advancedActionsSelected, client, conversationId, message.id, message.swipes, activeIndex]);
 	const browsingDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
 	const swipeCount = useRef<HTMLButtonElement>(null);
 	const browse = (open: boolean) => {
@@ -170,6 +181,7 @@ export function StoryMessageView({
 	};
 	const touchStart = useRef<{ x: number; y: number } | null>(null);
 	const startTouch = (event: TouchEvent<HTMLElement>) => {
+		prefetchNeighbours();
 		const touch = event.touches[0];
 		// @approved
 		//  The Swipes dialog is portalled out of the article, but its touches still bubble here through React.
@@ -306,16 +318,14 @@ export function StoryMessageView({
 					className="variant-content"
 					data-swipe-direction={swipeDirection}
 				>
-					{active?.reasoning !== undefined && active.reasoning !== "" && (
+					{active?.hasReasoning === true && (
 						<Collapsible.Root className="reasoning-content" aria-label="Reasoning Content">
 							<Collapsible.Trigger className="reasoning-trigger">
 								<strong>Reasoning</strong>
 								<ChevronDown aria-hidden="true" />
 							</Collapsible.Trigger>
 							<Collapsible.Content className="reasoning-body">
-								{active.reasoning
-									.split("\n\n")
-									.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+								<Reasoning conversationId={conversationId} messageId={message.id} variant={active} />
 							</Collapsible.Content>
 						</Collapsible.Root>
 					)}
@@ -382,7 +392,7 @@ export function StoryMessageView({
 					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
 						{activeIndex + 1} of {message.swipes.length}
 					</button>
-					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={message.swipes} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
+					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
 					<button
 						className="icon-button"
 						type="button"
@@ -396,4 +406,10 @@ export function StoryMessageView({
 			</footer>
 		</article>
 	);
+}
+
+/** @approved An opened Reasoning section: the streamed text, or the persisted text read once it opens. */
+function Reasoning({ conversationId, messageId, variant }: { conversationId: number; messageId: number; variant: StoryVariant }) {
+	const reasoning = useVariantText(conversationId, messageId, variant, { reasoning: true })?.reasoning ?? "";
+	return reasoning.split("\n\n").map((paragraph, index) => <p key={index}>{paragraph}</p>);
 }

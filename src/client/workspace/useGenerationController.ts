@@ -308,7 +308,7 @@ export function useGenerationController({
 		if (!assemblyAvailable || conversation === null) return;
 		const persisted = !isStoryReady(story) || story.page.hasNewer ? undefined : story.messages.at(-1);
 		const latest = persisted === undefined ? undefined : shownMessage(story, persisted);
-		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content;
+		const content = latest === undefined ? undefined : shownVariant(story, latest)?.content ?? undefined;
 		if (
 			latest?.id !== messageId ||
 			latest.authorParticipantId !== conversation.control.humanParticipantId ||

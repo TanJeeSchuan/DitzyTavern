@@ -19,11 +19,16 @@ import { sameMoves, type BoxMoves } from "../shared/contract/box-generation";
 export interface StoryVariant {
 	id: number;
 	position: number;
-	content: string;
+	// @approved
+	//  Null until the story needs a Variant the page did not carry: another
+	// Variant than the selected one loads through the Variant text read.
+	content: string | null;
 	// @approved
 	//  Reasoning Content stays separate from authored Content. Active streams
-	// update it locally and authoritative history restores it after reload.
+	// update it locally; persisted Reasoning Content, which `hasReasoning`
+	// announces, loads through the Variant text read when it is opened.
 	reasoning?: string;
+	hasReasoning: boolean;
 	generationId?: number;
 	lastEventId?: number;
 	// @approved
@@ -203,15 +208,16 @@ const toStoryVariant = (
 	) {
 		return { ...prior, id: variant.id, position: variant.position };
 	}
-	const content = live?.content ?? variant.content;
+	const reasoning = live?.reasoning ?? prior?.reasoning ?? "";
 	return {
 		id: variant.id,
 		position: variant.position,
-		content,
-		reasoning: live?.reasoning ?? variant.reasoning ?? prior?.reasoning ?? "",
+		content: live?.content ?? variant.content ?? prior?.content ?? null,
+		reasoning,
+		hasReasoning: variant.hasReasoning || reasoning !== "",
 		generationId: live?.generationId,
 		lastEventId: live?.eventId,
-		empty: content === "",
+		empty: live === undefined ? variant.empty : live.content === "",
 	};
 };
 
@@ -426,13 +432,14 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 						...variant,
 						content: action.content,
 						reasoning: action.reasoning,
+						hasReasoning: action.reasoning !== "",
 						empty: action.content === "",
 						generationId: action.generationId,
 						lastEventId: action.eventId,
 					};
 				}
 				if (action.stream === "content") {
-					const content = variant.content + action.text;
+					const content = (variant.content ?? "") + action.text;
 					return {
 						...variant,
 						content,
@@ -444,6 +451,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				return {
 					...variant,
 					reasoning: (variant.reasoning ?? "") + action.text,
+					hasReasoning: true,
 					generationId: action.generationId,
 					lastEventId: action.eventId,
 				};
@@ -506,7 +514,7 @@ export const EMPTY_VARIANT_PLACEHOLDER = "(empty alternative)";
 //  The content to render for one Variant: the stored text, or the
 // presentation-only placeholder for exact empty content.
 export const visibleVariantContent = (variant: StoryVariant): string =>
-	variant.empty ? EMPTY_VARIANT_PLACEHOLDER : variant.content;
+	variant.empty ? EMPTY_VARIANT_PLACEHOLDER : variant.content ?? "";
 
 export type StoryVariantSelection =
 	| { kind: "noop" }
@@ -562,7 +570,7 @@ export const shownMessage = (state: StoryState, message: StoryMessage): StoryMes
 	const moves = state.requestedMoves.get(message.id);
 	const shown = moves === undefined ? message : { ...message, moves };
 	if (!hasRequestedSwipe(state, message.id)) return shown;
-	const requested = { id: -1, position: message.swipes.length + 1, content: "", empty: true };
+	const requested = { id: -1, position: message.swipes.length + 1, content: "", hasReasoning: false, empty: true };
 	return { ...shown, activeSwipe: message.swipes.length, swipes: [...message.swipes, requested] };
 };
 

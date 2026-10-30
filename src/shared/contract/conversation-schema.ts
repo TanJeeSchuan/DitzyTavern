@@ -344,11 +344,18 @@ export type HistoricalControlSnapshot = NonNullable<VariantDetails["historicalCo
 // of native Messages with the Participant identity and selected Variant
 // state needed for rendering. Reasoning Content is included when present;
 // unrelated provenance never crosses this contract.
+// @approved
+//  A page carries the text a Chat shows without asking: the selected
+// Variant's Content and a live Generation's streams. Another Variant's
+// Content, and any persisted Reasoning Content, load through the Variant
+// text read when the story shows them; `empty` and `hasReasoning` say what
+// that read would find.
 const chatHistoryVariant = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
-	content: Type.String(),
-	reasoning: Type.Optional(Type.String()),
+	content: Type.Optional(Type.String()),
+	empty: Type.Boolean(),
+	hasReasoning: Type.Boolean(),
 	liveGeneration: Type.Optional(Type.Object({
 		generationId: Type.Integer(),
 		eventId: Type.Integer(),
@@ -360,6 +367,9 @@ const chatHistoryVariant = Type.Object({
 });
 
 export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
+
+export const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
+export type VariantText = Static<typeof variantText>;
 
 // Server-owned targeted Swipe eligibility (ADR-0003, ADR-0031): the
 // canonical server rule derives it from playability and the captured

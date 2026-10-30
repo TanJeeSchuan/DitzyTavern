@@ -10,6 +10,7 @@ import {
 	readMacroVariables,
 	editMacroVariables,
 	readChatHistory,
+	readVariantText,
 	executeConversationCommand,
 } from "../conversation";
 import type { Database } from "bun:sqlite";
@@ -42,6 +43,7 @@ import {
 	castCharacterConflict,
 	characterAppliedResponse,
 	chatHistoryPage,
+	variantText,
 	conversationAppliedResponse,
 	conversationCommandBody,
 	forkConversationBody,
@@ -375,6 +377,14 @@ export const createConversationRoutes = (
 			{
 				params: generationIdParams,
 				response: generationInspectionResponse,
+			},
+		)
+		.get(
+			"/api/conversations/:id/messages/:messageId/variants/:variantId/text",
+			({ params }) => readVariantText(database, params.id, params.messageId, params.variantId) ?? notFoundResponse(),
+			{
+				params: variantIdParams,
+				response: { 200: variantText, 404: notFoundOutcome },
 			},
 		)
 		.get(

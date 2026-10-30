@@ -1,6 +1,7 @@
 import { skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { loadConversation, type ConversationSummary } from "./conversation";
 import { adoptConversationSummary } from "./workspace/conversation-session-state";
+import { variantTextKey } from "./story/variant-text";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
 
@@ -21,11 +22,19 @@ export const cancellableFetch = async <T>(
 	return value;
 };
 
+// @approved
+//  A newer revision can change any page and any Variant's text: the story
+// reads them again when it next shows them.
+const revisionMoved = (client: QueryClient, id: number) => {
+	void client.invalidateQueries({ queryKey: ["conversation-history", id] });
+	void client.invalidateQueries({ queryKey: variantTextKey(id) });
+};
+
 export const publishConversation = (client: QueryClient, conversation: ConversationSummary) => {
 	const queryKey = conversationKey(conversation.id);
 	void client.cancelQueries({ queryKey });
 	const current = client.getQueryData<ConversationSummary | null>(queryKey);
-	if (conversation.revision > (current?.revision ?? 0)) void client.invalidateQueries({ queryKey: ["conversation-history", conversation.id] });
+	if (conversation.revision > (current?.revision ?? 0)) revisionMoved(client, conversation.id);
 	return client.setQueryData<ConversationSummary | null>(queryKey, (current) => adoptConversationSummary(current ?? null, conversation, conversation.id));
 };
 
@@ -40,7 +49,7 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 		);
 		const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 		if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-			void client.invalidateQueries({ queryKey: ["conversation-history", id] });
+			revisionMoved(client, id);
 		}
 		return adoptConversationSummary(current, incoming, id);
 	},
