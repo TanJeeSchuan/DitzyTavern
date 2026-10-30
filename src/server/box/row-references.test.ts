@@ -40,3 +40,11 @@ test("fails on Row References it cannot rewrite", () => {
 	expect(() => rewriteRowReferences(Type.Tuple([ParticipantId]), [3], maps, { keepMissing: false })).toThrow("Tuple");
 	expect(() => rewriteRowReferences(Type.Intersect([Type.Object({ a: MessageId }), Type.Object({ b: Type.String() })]), { a: 1, b: "" }, maps, { keepMissing: false })).toThrow("Intersect");
 });
+
+test("returns a value whose schema holds no Row Reference without walking it", () => {
+	const trace = { candidates: [{ claim: "Maren kept the key.", score: 2 }] };
+	const withTrace = Type.Object({ source: MessageId, trace: Type.Object({ candidates: Type.Array(Type.Object({ claim: Type.String(), score: Type.Number() })) }) });
+	const rewritten = rewriteRowReferences(withTrace, { source: 1, trace }, maps, { keepMissing: false });
+	expect(rewritten).toEqual({ source: 11, trace });
+	expect(rewritten.trace).toBe(trace);
+});
