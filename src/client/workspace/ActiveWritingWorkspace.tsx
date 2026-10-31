@@ -294,9 +294,6 @@ export function ActiveWritingWorkspace({
 					if ("rewind" in at && (generation.draft.get().trim() !== "" || hasMoves(generation.moves)) && !window.confirm("Replace the current draft and Moves with the rewound Message?")) return;
 					setForkAt(at);
 				})}
-				onOpenForkSource={openForkSource}
-				onUnlinkFork={unlinkFork}
-				narrow={narrow}
 				swipeBrowsing={swipeBrowsing}
 				onEnterPreview={() => {
 					dispatchPanel({ type: "preview-entered" });
@@ -342,6 +339,8 @@ export function ActiveWritingWorkspace({
 					chatTitle={session.activeChat.title}
 					conversation={session.conversation}
 					onConversationChange={session.setConversation}
+					onOpenForkSource={openForkSource}
+					onUnlinkFork={unlinkFork}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}

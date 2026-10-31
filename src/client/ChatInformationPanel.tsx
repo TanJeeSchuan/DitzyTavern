@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileArchive, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Download, FileArchive, GitFork, TriangleAlert, Unlink } from "lucide-react";
 import { useReducer, useState } from "react";
 import {
 	artifactAvailabilityLabel,
@@ -31,6 +31,8 @@ interface ChatInformationPanelProps {
 	chatTitle: string;
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onOpenForkSource: () => void;
+	onUnlinkFork: () => void;
 	onClose: () => void;
 }
 
@@ -39,6 +41,8 @@ export function ChatInformationPanel({
 	chatTitle,
 	conversation,
 	onConversationChange,
+	onOpenForkSource,
+	onUnlinkFork,
 	onClose,
 }: ChatInformationPanelProps) {
 	const [state, dispatch] = useReducer(
@@ -98,6 +102,14 @@ export function ChatInformationPanel({
 						<dd>{conversationId}</dd>
 					</div>
 				</dl>
+
+				{conversation?.forkedFrom && <div className="chat-fork-origin">
+					<button type="button" className="chat-fork-source" onClick={onOpenForkSource}>
+						<GitFork aria-hidden="true" />
+						<span>Forked from <strong>{conversation.forkedFrom.name}</strong></span>
+					</button>
+					<button type="button" className="icon-button" onClick={onUnlinkFork} aria-label="Remove Fork link" title="Remove Fork link"><Unlink aria-hidden="true" /></button>
+				</div>}
 
 				{conversation !== null && <ChatBackgroundSetting conversation={conversation} onConversationChange={onConversationChange} />}
 

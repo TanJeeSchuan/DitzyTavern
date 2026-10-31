@@ -62,9 +62,6 @@ export function StoryStage({
 	onOpenGenerationDetails,
 	onControlChange,
 	onFork,
-	onOpenForkSource,
-	onUnlinkFork,
-	narrow,
 }: {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
@@ -87,9 +84,6 @@ export function StoryStage({
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
-	onOpenForkSource: () => void;
-	onUnlinkFork: () => void;
-	narrow: boolean;
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
@@ -159,9 +153,6 @@ export function StoryStage({
 				onOpenVariables={onOpenVariables}
 				onOpenInspector={onOpenInspector}
 				onOpenWindow={boxWindows.open}
-				onOpenForkSource={onOpenForkSource}
-				onUnlinkFork={onUnlinkFork}
-				narrow={narrow}
 			/>
 
 			{story.preview !== null && previewedMessage !== undefined && (
