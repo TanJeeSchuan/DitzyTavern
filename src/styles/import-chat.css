@@ -786,6 +786,10 @@
 	text-align: left;
 }
 
+.chat-fork-source span {
+	overflow-wrap: anywhere;
+}
+
 .chat-fork-source strong {
 	color: var(--foreground);
 	font-weight: 640;
