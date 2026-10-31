@@ -146,8 +146,9 @@ const expandInto = (request: {
 	macroEnvironment: MacroEnvironment | undefined;
 	macroAttemptState: MacroAttemptState;
 	cacheKey: string;
+	beforeHistory: boolean;
 }) => {
-	const { blocks, warnings, block, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey } = request;
+	const { blocks, warnings, block, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey, beforeHistory } = request;
 	// @approved
 	//  Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
@@ -167,6 +168,7 @@ const expandInto = (request: {
 	if (expanded.text === "") return;
 	blocks.push({ ...block, role, content: expanded.text });
 	warnings.push(...expanded.warnings);
+	if (beforeHistory) warnings.push(...expanded.changing.map((macro) => ({ block: blockLabel, macro, reason: "uncached" as const })));
 };
 
 // @approved
@@ -198,6 +200,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
 	const macroAttemptState = input.attempt?.state ?? createMacroAttemptState();
 	let historyStart: number | undefined;
+	const historySlot = input.recipe.findIndex((slot) => slot.enabled && slot.reference === "history");
 
 	// @approved
 	//  Owner-relative macro context: `{{self}}` is the Definition owner and
@@ -255,7 +258,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			const context = { self: input.human.name, other: input.model.name };
 			const blockWarnings: PromptWarning[] = [];
 			const expand = (into: PromptBlock[], text: string, cacheKey: string) =>
-				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey });
+				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey, beforeHistory: slotIndex < historySlot });
 			const instructions: PromptBlock[] = [];
 			expand(instructions, slot.content, `slot:${slotIndex}`);
 			const expanded: PromptBlock[] = [];
@@ -287,6 +290,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 				macroEnvironment,
 				macroAttemptState,
 				cacheKey: `slot:${slotIndex}`,
+				beforeHistory: slotIndex < historySlot,
 			});
 			continue;
 		}
@@ -303,6 +307,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			macroEnvironment,
 			macroAttemptState,
 			cacheKey: `slot:${slotIndex}`,
+			beforeHistory: slotIndex < historySlot,
 		});
 	}
 

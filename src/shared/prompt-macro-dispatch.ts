@@ -10,6 +10,7 @@ export interface MacroDispatchContext {
 	readonly attemptState: MacroAttemptState;
 	readonly writes: MacroVariableWrite[];
 	readonly warnings: PromptWarning[];
+	readonly changing: string[];
 	readonly blockLabel: string;
 	readonly validationOnly: boolean;
 	readonly evaluate: (nodes: readonly MacroDocumentNode[]) => string;
@@ -21,6 +22,8 @@ type VariableOperation = "read" | "exists" | "delete" | "set" | "add" | "increme
 interface MacroDefinition {
 	handler: MacroHandler;
 	readonly volatile?: boolean;
+	// Its output can differ between two requests with the same inputs: it reads the clock or draws a random number.
+	readonly changes?: boolean;
 	readonly validate?: MacroHandler;
 	readonly evaluateArgs?: boolean;
 }
@@ -450,7 +453,7 @@ const macroDefinitions: ReadonlyMap<string, MacroDefinition> = new Map([
 	["noop", { handler: () => "" }],
 	["trim", { handler: (node, _args) => node.scope === undefined ? "" : scopedContent(node.scope, node.flags.includes("#")).trim() }],
 	["reverse", { handler: (node, args) => Array.from(node.scope === undefined ? args[0] ?? "" : scopedContent(node.scope, node.flags.includes("#"))).reverse().join("") }],
-	["random", { volatile: true, validate: requiredArgumentValidation, handler: (node, args, context) => {
+	["random", { volatile: true, changes: true, validate: requiredArgumentValidation, handler: (node, args, context) => {
 		const choices = listChoices(node, args, context);
 		if (choices === undefined) return context.validationOnly ? "" : node.raw;
 		return choices[Math.floor(randomFloat(context.environment) * choices.length)] ?? "";
@@ -461,20 +464,20 @@ const macroDefinitions: ReadonlyMap<string, MacroDefinition> = new Map([
 		const identity = `${context.environment.conversationId ?? ""}|${context.environment.promptPresetId ?? ""}|${context.attemptState.macroPositionBase}|${node.raw}|${node.start}`;
 		return choices[hash(identity) % choices.length] ?? "";
 	} }],
-	["roll", { volatile: true, validate: diceValidation, handler: (node, args, context) => {
+	["roll", { volatile: true, changes: true, validate: diceValidation, handler: (node, args, context) => {
 		const formula = args[0] ?? "";
 		if (!isDiceFormula(formula)) {
 			return failure(node, context);
 		}
 		return dice(formula, context.environment);
 	} }],
-	["time", { volatile: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LT", context.environment, args[0]) }],
-	["date", { volatile: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LL", context.environment, args[0]) }],
-	["weekday", { volatile: true, handler: (_node, args, context) => dateParts(context.environment.now ?? new Date(0), { timeZone: timezoneOf(args[0], timezoneOf(context.environment.timeZone, "UTC")), locale: localeOf(context.environment.locale) }).weekday }],
-	["isotime", { volatile: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "HH:mm", context.environment, args[0]) }],
-	["isodate", { volatile: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "YYYY-MM-DD", context.environment, args[0]) }],
-	["datetimeformat", { volatile: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), args[0] ?? "", context.environment, args[1]) }],
-	["timediff", { volatile: true, handler: (node, args, context) => {
+	["time", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LT", context.environment, args[0]) }],
+	["date", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LL", context.environment, args[0]) }],
+	["weekday", { volatile: true, changes: true, handler: (_node, args, context) => dateParts(context.environment.now ?? new Date(0), { timeZone: timezoneOf(args[0], timezoneOf(context.environment.timeZone, "UTC")), locale: localeOf(context.environment.locale) }).weekday }],
+	["isotime", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "HH:mm", context.environment, args[0]) }],
+	["isodate", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "YYYY-MM-DD", context.environment, args[0]) }],
+	["datetimeformat", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), args[0] ?? "", context.environment, args[1]) }],
+	["timediff", { volatile: true, changes: true, handler: (node, args, context) => {
 		const then = Date.parse(args[0] ?? "");
 		if (Number.isNaN(then)) return "";
 		return humanizeDuration((context.environment.now ?? new Date(0)).getTime() - then);
@@ -530,5 +533,9 @@ export const dispatchMacro = (node: MacroNode, context: MacroDispatchContext): s
 	}
 	const args = definition.evaluateArgs === false ? [] : node.args.map((arg) => context.evaluate(arg.nodes).trim());
 	if (context.validationOnly && definition.volatile) return definition.validate?.(node, args, context) ?? "";
-	return definition.handler(node, args, context);
+	const warned = context.warnings.length;
+	const output = definition.handler(node, args, context);
+	// A macro that failed stays literal, so its text cannot change.
+	if (definition.changes === true && context.warnings.length === warned) context.changing.push(node.raw);
+	return output;
 };
