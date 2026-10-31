@@ -185,18 +185,22 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		// rebuilding and rescanning a multi-megabyte prompt once per Message.
 		let lower = 1;
 		let upper = removableIndexes.length;
-		let fitting: ReturnType<typeof candidateAfterRemoving> | undefined;
+		let fitting: { count: number; candidate: ReturnType<typeof candidateAfterRemoving> } | undefined;
 		while (lower <= upper) {
 			const middle = Math.floor((lower + upper) / 2);
 			const inspected = candidateAfterRemoving(middle);
 			if (inspected.measurement.fits) {
-				fitting = inspected;
+				fitting = { count: middle, candidate: inspected };
 				upper = middle - 1;
 			} else {
 				lower = middle + 1;
 			}
 		}
-		candidate = fitting ?? candidateAfterRemoving(removableIndexes.length);
+		if (fitting === undefined) candidate = candidateAfterRemoving(removableIndexes.length);
+		else {
+			const count = stableRemovalCount(fitting.count, removableIndexes.map((index) => input.context[index]!.content), input.contextLimit, estimator);
+			candidate = count === fitting.count ? fitting.candidate : candidateAfterRemoving(count);
+		}
 	}
 
 	const { retainedIndexes, plan, measurement } = candidate;
@@ -305,6 +309,22 @@ export class PromptBudgetExceededError extends Error {
 		this.result = result;
 		this.breakdown = result.breakdown;
 	}
+}
+
+// The smallest fitting cut moves forward on every Send, so the first retained
+// entry changes each time and a provider's prefix cache stops where history
+// starts. The cut instead rounds up to the first entry past a grid line every
+// eighth of the context limit, counted in tokens from the oldest entry. Old
+// entries never change, so the grid holds still, and successive Sends keep the
+// same oldest entry until history grows past the next line. Removing more
+// still fits. If no entry reaches the line, the smallest cut stands.
+function stableRemovalCount(minimum: number, removable: readonly string[], contextLimit: number, estimator: TokenEstimator): number {
+	const step = Math.ceil(contextLimit / 8);
+	let removed = removable.slice(0, minimum).reduce((total, content) => total + Math.ceil(estimator(content)), 0);
+	const line = Math.ceil(removed / step) * step;
+	let count = minimum;
+	while (removed < line && count < removable.length) removed += Math.ceil(estimator(removable[count++]!));
+	return removed >= line ? count : minimum;
 }
 
 function findLatestHumanIndex(
