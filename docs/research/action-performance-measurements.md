@@ -115,3 +115,42 @@ Unminified build, headless Chromium, active Chat with a 50-Message page, 20 ms p
 The server uses 3.55 s of CPU over the 25.7 s browser session (14%), including two plan captures.
 
 **Profiler caveat.** Bun's Markdown profile charges idle time to whichever function was sampled last. On a mostly idle served process it reported multi-second self times that the process's CPU time contradicts. Trust it only for busy runs, and check against `/proc/<pid>/stat` or a direct timer.
+
+## Outcome
+
+Merged into master on 2026-10-30 as one stack, bottom to top:
+
+| PR | Change | Measured effect |
+| --- | --- | --- |
+| #134 | Scene and claim embeddings run together, and a failing one cancels the other. Semantic Lore uses two workers. Import reads the staged file once. History derives `empty`/`hasReasoning` in SQL. | One provider round trip less on a cold embedding cache. The rest is below measurement on this data. |
+| #135 | A Prompt Plan's estimate is the sum of cached per-block estimates. | Send to settled: 941 → 347 ms, longest Chat, 0 ms latency. |
+| #136 | Fork skips reference-free Box values and reuses prepared statements. | Fork of the active Chat: 3.0 → 1.77 s. |
+| #137 | Memoized Message rows with stable handlers, and a stable `requestNavigation`. | Main thread while streaming: 82% → 38% busy. |
+| #138 | History editors in the Prompt Plan preview mount when their run first opens. | Longest task on Send: ~800 → 184 ms. |
+
+Tried and dropped:
+
+- **Lazy Reasoning `Collapsible` and `content-visibility: auto` on Messages, for opening a Chat.** In four runs each, both were within noise of master (main thread busy 648–704 ms against 665–703 ms). Removing Radix's measurement moves the forced layout to `useStoryViewport`'s `messageTop`. Opening a Chat costs React committing 50 Messages plus the page's first layout. A smaller first page is the remaining lever.
+- **Cleaning a bounded prefix for Memory window excerpts (#139, closed).** It saved 3 ms per read, but a tag crossing the cut, or a whitespace-heavy prefix, changes the excerpt.
+
+## Box traces
+
+A Box trace (`generation-box` / `traces` Variant data) is what each captured Box contributed to one Generation. It holds the Box's own `trace`, the host's admission of each item, and the Box block's text as budgeted (`automaticText`) and as sent (`finalText`). It is written when a Generation is accepted, read only by Generation details and the Prompt Plan preview (`BoxTraceViews`), and copied by fork.
+
+On chat2 (2026-10-31), 277 Variants carry 21.4 MB of traces:
+
+| Part | MB |
+| --- | ---: |
+| Memory `trace.candidates` | 15.0 |
+| Author Note items and texts | 2.3 |
+| Memory `trace.scene` | 1.9 |
+| Memory items and texts | 1.9 |
+| Everything else | 0.3 |
+
+Memory's trace records every candidate recall considered: about 60 per Generation (the semantic top 48 plus the 16 most recent, deduplicated), 16,720 in total. Each candidate copies its claim, attribution, people and up to three evidence excerpts from the Memory record it came from, plus ranks and the Decision Model's score. 2,600 of them (16%) were admitted. The view shows them all under "Considered claims (N)", collapsed by default.
+
+Each Variant's trace stores a full copy of what its Memory records already hold, plus the 12 KB scan scene. Three ways to shrink it, each a choice about what the inspector keeps:
+
+1. **Reference the claims instead of copying them.** Store the identity, ranks, score and admission, and read the claim text and evidence from the Memory records when the trace is opened. This cuts about 9 MB of the 15. A trace whose source record was later corrected or reset would then show the current claim, so the view would have to label it.
+2. **Keep full detail only for admitted and near-miss candidates.** Count the rest. The inspector loses the long tail of irrelevant claims.
+3. **Drop `scene`.** It can be rebuilt from `scanMessageIds` as long as those Messages are unchanged.
