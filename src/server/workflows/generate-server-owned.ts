@@ -10,6 +10,7 @@ import {
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
 	type ModelClientFailureKind,
+	type ModelClientUsage,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
@@ -93,7 +94,7 @@ export type GenerationInterruptionCause =
 export interface GenerationOutcome {
 	content: string;
 	reasoning: string;
-	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+	usage: ModelClientUsage | null;
 	finishReason: "stop" | "length" | "other" | null;
 	status: GenerationOutcomeStatus;
 	interruptionCause: GenerationInterruptionCause | null;

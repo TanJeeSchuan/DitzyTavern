@@ -19,6 +19,8 @@ export const generationUsage = Type.Object({
 	inputTokens: Type.Optional(Type.Number()),
 	outputTokens: Type.Optional(Type.Number()),
 	totalTokens: Type.Optional(Type.Number()),
+	// The share of inputTokens the provider read from its prompt cache.
+	cachedInputTokens: Type.Optional(Type.Number()),
 });
 
 export type GenerationUsage = Static<typeof generationUsage>;

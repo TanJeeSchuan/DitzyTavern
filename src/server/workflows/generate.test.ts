@@ -579,7 +579,8 @@ describe("Generation runtime behavior", () => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
 			}),
-			tokenEstimator: () => estimates.shift() ?? 100,
+			// Only whole Prompt Plans cost tokens, so the stable history cut never rounds past the smallest one.
+			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
@@ -814,7 +815,8 @@ describe("Generation runtime behavior", () => {
 				receivedPlan = promptPlan;
 				return "Budgeted sibling output.";
 			}),
-			tokenEstimator: () => estimates.shift() ?? 100,
+			// Only whole Prompt Plans cost tokens, so the stable history cut never rounds past the smallest one.
+			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
