@@ -25,7 +25,7 @@ const judge = (claim: string, verdict: { support: string; attribution: string; u
 	{ match: [claim, "still matter to the story"], answer: choice(verdict.usefulness, ["retain", "omit"]) },
 ];
 
-test("a reply becomes an attributed Memory that the next Generation recalls", async ({ page, request, llm }) => {
+test("a reply becomes an attributed Memory that the next Generation recalls", async ({ page, context, request, llm }) => {
 	await enableDecisionModels(request);
 	await llm.embeddings("brass key", "Where is the key?", "Show me.");
 	await llm.memories(
@@ -65,24 +65,32 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 	expect(prompt).toContain("Theodora hid the brass key under the third map.");
 	expect(prompt).not.toContain("Theodora fears the dark.");
 
-	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
-	await expect(memories).toBeVisible();
-	const claim = memories.locator("article", { hasText: "Theodora hid the brass key under the third map." });
-	await claim.hover();
-	await claim.getByRole("button", { name: "Edit Memory" }).click();
-	await memories.getByRole("textbox", { name: "Memory" }).fill("Theodora moved the brass key to the attic.");
-	await memories.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(memories.getByText("Theodora moved the brass key to the attic.")).toBeVisible();
-	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
 	const reply = story(page).locator("article", { hasText: "She taps the map twice." });
 	await reply.hover();
 	await reply.getByRole("button", { name: "Details", exact: true }).click();
 	const details = page.getByRole("complementary", { name: "Generation details" });
 	await details.getByText("Considered claims (1)", { exact: true }).click();
+	await expect(details).toContainText("Theodora hid the brass key under the third map. (Attribution: Theodora Kline)");
+	await details.getByText("Supporting excerpts", { exact: true }).click();
+	await expect(details.locator("blockquote")).toContainText("I hid the brass key under the third map.");
+
+	const other = await context.newPage();
+	await other.goto("/");
+	await other.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
+	const otherMemories = other.getByRole("complementary", { name: "Memories" });
+	const claim = otherMemories.locator("article", { hasText: "Theodora hid the brass key under the third map." });
+	await claim.hover();
+	await claim.getByRole("button", { name: "Edit Memory" }).click();
+	await otherMemories.getByRole("textbox", { name: "Memory" }).fill("Theodora moved the brass key to the attic.");
+	await otherMemories.getByRole("button", { name: "Save", exact: true }).click();
+	await expect(otherMemories.getByText("Theodora moved the brass key to the attic.")).toBeVisible();
 	await expect(details).toContainText("This claim has since changed or its source is gone.");
 	await expect(details).not.toContainText("Theodora moved the brass key to the attic.");
+	await expect(details.locator("blockquote")).toHaveCount(0);
+	await other.close();
 	await expect(details.getByText("Included", { exact: true })).toBeVisible();
 	await details.getByRole("button", { name: "Close Generation details" }).click();
+	await page.reload();
 	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await closeBoxes(page);

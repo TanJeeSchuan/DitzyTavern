@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Value } from "@sinclair/typebox/value";
-import { Button, type BoxTrace } from "@/box-sdk/client";
+import { Button, followsChanges, type BoxTrace } from "@/box-sdk/client";
 import { memoryActivationRecord, type MemoryActivationRecord, type MemorySources } from "./contract";
 import { compareMemoryCandidates } from "./shared";
 import { loadMemorySources } from "./client-api";
@@ -45,6 +45,7 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 		queryKey: ["memory", "sources", conversationId, cited],
 		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
 		enabled: record !== null,
+		meta: followsChanges,
 	});
 	const memorySources = sources.isError || sources.data === undefined ? { messageIds: [], variantIds: [], records: [] } : sources.data;
 	if (record === null) return (
