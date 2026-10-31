@@ -1,11 +1,11 @@
 import type { AdvanceResult } from "@/box-sdk/server";
 import type { MemoryActivationRecord } from "./contract";
-import { renderMemoryClaim } from "./shared";
+import type { RecallActivation } from "./server-recall";
+import { compareMemoryCandidates, renderMemoryClaim } from "./shared";
 
-export const memoryItems = (trace: MemoryActivationRecord): AdvanceResult<MemoryActivationRecord> => {
+export const memoryItems = (trace: RecallActivation): AdvanceResult<MemoryActivationRecord> => {
 	const seen = new Set<string>();
-	const candidates = [...trace.candidates].sort((left, right) =>
-		(right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity));
+	const candidates = [...trace.candidates].sort(compareMemoryCandidates);
 	const duplicates = new Set<string>();
 	const items = candidates.filter((candidate) => {
 		if (candidate.admission === "request-limit" || candidate.admission === "not-retained") return false;
@@ -17,6 +17,6 @@ export const memoryItems = (trace: MemoryActivationRecord): AdvanceResult<Memory
 	return {
 		items,
 		allowance: trace.allowance,
-		trace: { ...trace, candidates: trace.candidates.map((candidate) => duplicates.has(candidate.identity) ? { ...candidate, admission: "duplicate-rendering" } : candidate) },
+		trace: { ...trace, candidates: trace.candidates.map(({ claim: _claim, attribution: _attribution, ...candidate }) => duplicates.has(candidate.identity) ? { ...candidate, admission: "duplicate-rendering" } : candidate) },
 	};
 };

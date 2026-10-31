@@ -359,7 +359,12 @@ describe("Memory recall in Generation preparation", () => {
 		const latest = readTestConversationSnapshot(database, conversation.id)!.messages.at(-1)!;
 		const variant = latest.variants.at(-1)!;
 		const details = async () => (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${variant.id}/details`))).json();
-		expect(await details()).toMatchObject({ boxTraces: { "box:memory": { automaticText: memoryText, finalText: editedMemoryText, trace: { candidates: [{ claim: extraction.claim, evidence: [{ messageId: source.messageId, excerpt: "Maren returned Writer's key." }] }] } } } });
+		const saved = await details();
+		expect(saved).toMatchObject({ boxTraces: { "box:memory": { automaticText: memoryText, finalText: editedMemoryText } } });
+		const stored = database.query<{ value: string }, [number]>("SELECT value FROM message_variant_data WHERE message_variant_id = ? AND namespace = 'generation-box' AND key = 'traces'").get(variant.id)!;
+		const persisted = JSON.parse(stored.value)["box:memory"].trace;
+		expect(persisted.candidates).toHaveLength(1);
+		for (const field of ["claim", "attribution", "people", "evidence"]) expect(persisted.candidates[0]).not.toHaveProperty(field);
 		correct(database, conversation.id, source.variantId, [extraction]);
 
 		await remember(database, conversation.id, variant.id, [memoryClaim(latest.id, "Maren and Writer kept their promise.", "The key stays between them.")]);

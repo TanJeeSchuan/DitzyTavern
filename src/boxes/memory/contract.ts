@@ -140,10 +140,6 @@ export const memoryRecallCandidate = Type.Object({
 	writer: Type.Boolean(),
 	sourceChanged: Type.Boolean(),
 	claimIndex: Type.Integer(),
-	claim: Type.String({ maxLength: 1024 }),
-	attribution: Type.String({ maxLength: 1024 }),
-	people: Type.Array(Type.String()),
-	evidence: Type.Array(Type.Object({ messageId: MessageId, excerpt: Type.String({ maxLength: 1024 }) }), { maxItems: 3 }),
 	sourcePosition: Type.Integer(),
 	semanticSimilarity: Type.Union([Type.Number(), Type.Null()]),
 	semanticRank: Type.Union([Type.Integer(), Type.Null()]),
@@ -151,7 +147,7 @@ export const memoryRecallCandidate = Type.Object({
 	relevance: Type.Union([memoryRelevanceScore, Type.Null()]),
 	relevanceScore: Type.Union([Type.Number(), Type.Null()]),
 	admission: memoryAdmissionReason,
-});
+}, { additionalProperties: false });
 
 /** @approved Memory's trace: what recall read and how it ranked each claim. The host keeps the text it admitted beside it. */
 export const memoryActivationRecord = Type.Object({
@@ -193,5 +189,8 @@ export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 // view links only to those. Each list is comma-separated ids.
 const idList = Type.String({ pattern: "^(\\d+(,\\d+)*)?$" });
 export const memorySourcesQuery = Type.Object({ messageIds: idList, variantIds: idList });
-export const memorySources = Type.Object({ messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()) });
+export const memorySources = Type.Object({
+	messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()),
+	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"])) })),
+});
 export type MemorySources = Static<typeof memorySources>;

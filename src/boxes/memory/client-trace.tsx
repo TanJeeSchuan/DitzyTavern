@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Value } from "@sinclair/typebox/value";
 import { Button, type BoxTrace } from "@/box-sdk/client";
 import { memoryActivationRecord, type MemoryActivationRecord, type MemorySources } from "./contract";
-import { renderMemoryClaim } from "./shared";
+import { compareMemoryCandidates } from "./shared";
 import { loadMemorySources } from "./client-api";
 
 const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
@@ -18,12 +18,12 @@ const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
 
 // @approved
 //  A claim recall offered to the prompt was then admitted or refused by the
-//  host's budget, which the trace's items record by text.
-const admissionLabel = (candidate: MemoryActivationRecord["candidates"][number], trace: BoxTrace, manuallyEdited: boolean): string => {
+//  host's budget. Items follow the admitted candidates in recall priority order.
+const admissionLabel = (candidate: MemoryActivationRecord["candidates"][number], item: BoxTrace["items"][number] | undefined, manuallyEdited: boolean): string => {
 	if (candidate.admission === "not-retained") return "Below relevance minimum";
 	if (candidate.admission === "request-limit") return "Omitted from Decision Model request";
 	if (candidate.admission === "duplicate-rendering") return "Duplicate rendering";
-	const admission = trace.items.find((item) => item.text === renderMemoryClaim(candidate))?.admission ?? "admitted";
+	const admission = item?.admission;
 	if (admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
 	if (admission === "allowance") return "Over Memory Allowance";
 	if (admission === "oversized") return "Too large for Memory Allowance";
@@ -38,7 +38,7 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 }) {
 	const record = useMemo(() => trace.trace !== undefined && Value.Check(memoryActivationRecord, trace.trace) ? trace.trace : null, [trace]);
 	const cited = useMemo(() => ({
-		messageIds: [...new Set([...(record?.scanMessageIds ?? []), ...(record?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? [])])],
+		messageIds: [...new Set([...(record?.scanMessageIds ?? []), ...(record?.candidates.map(({ messageId }) => messageId) ?? [])])],
 		variantIds: [...new Set(record?.candidates.map(({ variantId }) => variantId) ?? [])],
 	}), [record]);
 	const sources = useQuery({
@@ -46,7 +46,7 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 		queryFn: ({ signal }) => loadMemorySources(conversationId, cited, signal),
 		enabled: record !== null,
 	});
-	const memorySources = sources.isError || sources.data === undefined ? { messageIds: [], variantIds: [] } : sources.data;
+	const memorySources = sources.isError || sources.data === undefined ? { messageIds: [], variantIds: [], records: [] } : sources.data;
 	if (record === null) return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
@@ -54,11 +54,12 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 		</section>
 	);
 	const manuallyEdited = trace.finalText !== trace.automaticText;
+	const items = new Map(record.candidates.filter(({ admission }) => admission === "admitted").sort(compareMemoryCandidates).map((candidate, index) => [candidate.identity, trace.items[index]]));
 	return (
 		<section className="generation-detail-section">
 			<h3>Memory recall</h3>
 			{sources.isError && <div className="memory-trace-unchecked">
-				<p className="memory-trace-error" role="alert">Which sources are still in this Chat could not be checked, so they are not linked.</p>
+				<p className="memory-trace-error" role="alert">Memory claims could not be loaded. Sources are not linked.</p>
 				<Button type="button" size="sm" variant="outline" onClick={() => void sources.refetch()}>Try again</Button>
 			</div>}
 			<dl className="detail-list compact-detail-list">
@@ -92,9 +93,12 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 			<details>
 				<summary>Considered claims ({record.candidates.length})</summary>
 				{record.candidates.length === 0 ? <p className="panel-note">No ready claims were considered for this scene.</p> : <ol>
-					{record.candidates.map((candidate) => <li key={candidate.identity}>
-						<strong>{admissionLabel(candidate, trace, manuallyEdited)}</strong>
-						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
+					{record.candidates.map((candidate) => {
+						const source = memorySources.records.find(({ variantId }) => variantId === candidate.variantId);
+						const claim = source?.fingerprint === candidate.identity.split(":").at(-1) ? source?.claims[candidate.claimIndex] : undefined;
+						return <li key={candidate.identity}>
+						<strong>{admissionLabel(candidate, items.get(candidate.identity), manuallyEdited)}</strong>
+						<p>{claim ? <>{claim.claim} (Attribution: {claim.attribution}){claim.people.length > 0 ? ` · ${claim.people.join(", ")}` : ""}</> : sources.isPending ? "Loading claim…" : sources.isError ? "Claim unavailable." : "This claim has since changed or its source is gone."}</p>
 						<p className="panel-note">
 							<MemorySourceLink
 								messageId={candidate.messageId}
@@ -111,11 +115,11 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 								? "Not judged"
 								: `Decision Model relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}
 						</p>
-						{candidate.evidence.length > 0 && (
+						{claim !== undefined && claim.evidence.length > 0 && (
 							<details>
 								<summary>Supporting excerpts</summary>
 								<ul>
-									{candidate.evidence.map((evidence, index) => (
+									{claim.evidence.map((evidence, index) => (
 										<li key={`${evidence.messageId}-${index}`}>
 											<MemorySourceLink
 												messageId={evidence.messageId}
@@ -129,7 +133,8 @@ export function MemoryActivationDetails({ conversationId, trace, onNavigateSourc
 								</ul>
 							</details>
 						)}
-					</li>)}
+					</li>;
+					})}
 				</ol>}
 			</details>
 			{record.candidates.some((candidate) => candidate.relevance !== null) && (

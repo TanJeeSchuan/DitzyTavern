@@ -1,3 +1,4 @@
+import type { RecallCandidate } from "./server-recall";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../../server/database/database";
@@ -13,7 +14,7 @@ import { tokenxEstimator } from "../../server/prompt-compiler";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
 import { createMemorySettingsModule } from "./server-settings";
 import { captureMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "./server-recall";
-import { memoryRecord, type MemoryRecallCandidateRecord } from "./contract";
+import { memoryRecord } from "./contract";
 
 let database: Database;
 const key = new Uint8Array(32).fill(7);
@@ -92,7 +93,7 @@ test("recall accepts score answers without confidence or legend and reports the 
 	const snapshot = captureMemoryRecallSnapshot({ database, conversationId: conversation.id, seed: "seed", intent: "respond", human: { id: 0, name: "Writer" }, cast: [], messages: [], pending: "A brass key changes hands. ".repeat(2000) });
 	expect(snapshot.activation).toMatchObject({ decisionProfileName: "OpenRouter Decisions", decisionModel: "typesafe/jev-1.13", decisionConfigured: true, scanTruncated: true });
 	expect(tokenxEstimator(JSON.stringify({ scene: snapshot.activation.scene }))).toBeLessThanOrEqual(2000);
-	const candidate: MemoryRecallCandidateRecord = { identity: "1:1:0:ab", messageId: 1, variantId: 1, claimIndex: 0, writer: false, sourceChanged: false, ...extracted, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1, relevance: null, relevanceScore: null, admission: "request-limit" };
+	const candidate: RecallCandidate = { identity: "1:1:0:ab", messageId: 1, variantId: 1, claimIndex: 0, writer: false, sourceChanged: false, claim: extracted.claim, attribution: extracted.attribution, sourcePosition: 1, semanticSimilarity: 1, semanticRank: 1, recentRank: 1, relevance: null, relevanceScore: null, admission: "request-limit" };
 	const { decide } = boxServices(database, async (_url, init) => {
 		const body = JSON.parse(String(init?.body));
 		expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(2000);

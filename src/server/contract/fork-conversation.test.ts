@@ -7,6 +7,8 @@ import { Value } from "@sinclair/typebox/value";
 import { Type } from "@sinclair/typebox";
 import { installedBoxes, installBoxes } from "../../shared/contract/box";
 import { VariantId } from "../../shared/contract/box-row-reference";
+import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contract";
+import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
 import { raceSetup } from "../../boxes/race/contract";
 import { advanceRace } from "../../boxes/race/server-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
@@ -154,8 +156,12 @@ test("Memory traces remap copied IDs and retain IDs of trimmed Variants", () => 
 	const variant = variants[0]!;
 	database.query("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 2, 'Alternative', '2026-01-01', 0)").run(message.id);
 	const trimmed = database.query<{ id: number }, [number]>("SELECT id FROM message_variant WHERE message_id = ? AND selected = 0").get(message.id)!;
-	const candidate = { identity: "c", messageId: message.id, variantId: trimmed.id, writer: false, sourceChanged: false, claimIndex: 0, claim: "Fact", attribution: "Writer", people: [], evidence: [], sourcePosition: 1, semanticSimilarity: null, semanticRank: null, recentRank: null, relevance: null, relevanceScore: null, admission: "admitted" };
-	const trace = { state: "ready", allowance: 10, eligibleSourceCount: 1, readyRecordCount: 1, embeddingModel: "", embeddingDeadlineMs: 0, decisionProfileName: null, decisionModel: "", decisionConfigured: false, relevanceMinimum: 0, pendingSourceCount: 0, failedSourceCount: 0, sourceSnapshotFingerprint: "", embeddingConfigurationFingerprint: "", scanMessageIds: [message.id], scanTruncated: false, scene: "", semanticShortlistCount: 0, recentShortlistCount: 0, candidates: [candidate] };
+	const candidate = { identity: "c", messageId: message.id, variantId: trimmed.id, writer: false, sourceChanged: false, claimIndex: 0, sourcePosition: 1, semanticSimilarity: null, semanticRank: null, recentRank: null, relevance: null, relevanceScore: null, admission: "admitted" };
+	const record = Value.Parse(memoryRecord, { claims: [{ claim: "Fact", attribution: "Writer", people: [], evidence: [{ messageId: message.id, excerpt: "Fact" }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} } }] });
+	const instance = database.query<{ value: string }, [number]>("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:memory' AND key = 'instance'").get(source.id)!.value;
+	database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:memory', ?, ?)").run(variant.id, `record:${instance}`, JSON.stringify({ writer: record }));
+	const recalled = { ...candidate, variantId: variant.id, identity: `${message.id}:${variant.id}:0:${memoryRecordFingerprint(record)}` };
+	const trace = { state: "ready", allowance: 10, eligibleSourceCount: 1, readyRecordCount: 1, embeddingModel: "", embeddingDeadlineMs: 0, decisionProfileName: null, decisionModel: "", decisionConfigured: false, relevanceMinimum: 0, pendingSourceCount: 0, failedSourceCount: 0, sourceSnapshotFingerprint: "", embeddingConfigurationFingerprint: "", scanMessageIds: [message.id], scanTruncated: false, scene: "", semanticShortlistCount: 0, recentShortlistCount: 0, candidates: [candidate, recalled] };
 	database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'generation-box', 'traces', ?)").run(variant.id, JSON.stringify({ "box:memory": { trace, items: [], automaticText: "", finalText: "" } }));
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: true });
 	const copied = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ?").get(fork.conversation.id)!;
@@ -164,6 +170,11 @@ test("Memory traces remap copied IDs and retain IDs of trimmed Variants", () => 
 	expect(saved.scanMessageIds).toEqual([copied.id]);
 	expect(saved.candidates[0].messageId).toBe(copied.id);
 	expect(saved.candidates[0].variantId).toBe(trimmed.id);
+	const copiedTrace = Value.Parse(memoryActivationRecord, saved);
+	const copiedClaim = copiedTrace.candidates[1]!;
+	expect(copiedClaim.variantId).not.toBe(variant.id);
+	const resolved = readMemorySources(database, fork.conversation.id, { messageIds: [copied.id], variantIds: [copiedClaim.variantId, trimmed.id] });
+	expect(resolved.records).toMatchObject([{ variantId: copiedClaim.variantId, fingerprint: copiedClaim.identity.split(":").at(-1), claims: [{ claim: "Fact", evidence: [{ messageId: copied.id, excerpt: "Fact" }] }] }]);
 });
 
 

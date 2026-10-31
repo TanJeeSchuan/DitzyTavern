@@ -6,9 +6,13 @@ import {
 } from "@/box-sdk/server";
 import { projectImageAnchors } from "@/box-sdk/shared";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord, MemoryRecord } from "./contract";
-import { applyMemoryPeople, renderMemoryClaim } from "./shared";
+import { renderMemoryClaim } from "./shared";
 import { isExcludedAuthor, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
+import { memoryRecordFingerprint } from "./server-sources";
 import { createMemorySettingsModule, readMemoryEmbedding } from "./server-settings";
+
+export type RecallCandidate = MemoryRecallCandidateRecord & { claim: string; attribution: string };
+export type RecallActivation = Omit<MemoryActivationRecord, "candidates"> & { candidates: RecallCandidate[] };
 
 interface ClaimedMemory {
 	readonly record: RecallCandidateBase;
@@ -71,7 +75,7 @@ const sceneTextFor = (read: CaptureRead<MemoryRecord>, limit: number) => {
 };
 
 const scoreLabels = ["irrelevant", "incidental", "useful", "central"] as const;
-const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
+const relevanceQuestion = (candidate: RecallCandidate) => ({
 	type: "score",
 	instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "How much does `memory` help write the next reply to `scene`?" },
 	criteria: [
@@ -100,12 +104,12 @@ const parseScore = (answer: DecisionAnswer | undefined) => {
 //  Judges as many shortlisted candidates as fit one Decision Model request,
 //  in shortlist order; the rest stay unjudged.
 export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, selection, decide }: {
-	candidates: readonly MemoryRecallCandidateRecord[];
+	candidates: readonly RecallCandidate[];
 	scene: string;
 	relevanceMinimum: number;
 	selection: MemoryRecallSnapshot["selection"];
 	decide: BoxContext["decide"];
-}): Promise<MemoryRecallCandidateRecord[]> {
+}): Promise<RecallCandidate[]> {
 	if (candidates.length === 0) return [];
 	const batch = largestFittingBatch(candidates, (values) => {
 		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
@@ -113,7 +117,7 @@ export async function judgeMemoryRecallCandidates({ candidates, scene, relevance
 	});
 	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Decision Model request.");
 	const answers = await decide({ scene }, batch.questions);
-	const judged = new Map<string, MemoryRecallCandidateRecord>();
+	const judged = new Map<string, RecallCandidate>();
 	for (const candidate of batch.items) {
 		const relevance = parseScore(answers.get(`candidate_${candidate.identity}_relevance`));
 		judged.set(candidate.identity, { ...candidate, relevance: relevance.label, relevanceScore: relevance.score, admission: relevance.score >= relevanceMinimum ? "admitted" : "not-retained" });
@@ -135,7 +139,7 @@ const activationState = (input: {
 	return input.failedSourceCount > 0 ? "source-failed" : "empty";
 };
 
-type RecallCandidateBase = Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "relevance" | "relevanceScore" | "admission">;
+type RecallCandidateBase = Omit<RecallCandidate, "semanticSimilarity" | "semanticRank" | "recentRank" | "relevance" | "relevanceScore" | "admission">;
 
 // @approved
 //  One pass over the selected path's Memory records. Each passage counts as
@@ -157,7 +161,7 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 		const record = effectiveRecord(slot);
 		const digested = hasAutomaticRecord(slot, message.prose);
 		const failed = hasDigestError(slot, message.prose);
-		const hash = record === undefined ? null : sha256(JSON.stringify(record));
+		const hash = record === undefined ? null : memoryRecordFingerprint(record);
 		if (failed) counts.failedSourceCount += 1;
 		else if (slot?.writer === undefined && !digested) counts.pendingSourceCount += 1;
 		sources.push({ variantId: message.variantId, record: hash, digested, failed });
@@ -165,7 +169,7 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 		if (record === undefined || hash === null) continue;
 		for (const [claimIndex, claim] of record.claims.entries()) claimed.push({
 			record: {
-				identity: `${message.messageId}:${message.variantId}:${claimIndex}:${hash.slice(0, 16)}`,
+				identity: `${message.messageId}:${message.variantId}:${claimIndex}:${hash}`,
 				messageId: message.messageId,
 				variantId: message.variantId,
 				writer: slot?.writer !== undefined,
@@ -173,8 +177,6 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 				claimIndex,
 				claim: claim.claim,
 				attribution: claim.attribution,
-				people: applyMemoryPeople(claim.people, labels.cast, labels.identities, labels.merges),
-				evidence: claim.evidence,
 				sourcePosition: message.position,
 			},
 			renderedText: renderMemoryClaim(claim),
@@ -232,9 +234,9 @@ export const captureMemoryRecallSnapshot = (read: CaptureRead<MemoryRecord>): Me
 // @approved
 //  Recall embeds any claim text the cache lacks, such as a Writer's edit,
 //  before ranking every claim against the scene.
-export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext): Promise<MemoryActivationRecord> => {
+export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapshot, ctx: BoxContext): Promise<RecallActivation> => {
 	const { activation, claimed, recent, embedding } = snapshot;
-	if (activation.allowance === 0 || claimed.length === 0 || embedding === undefined) return activation;
+	if (activation.allowance === 0 || claimed.length === 0 || embedding === undefined) return { ...activation, candidates: [] };
 	switch (snapshot.decision.kind) {
 		case "off": throw new Error("Choose a Memory Decision Model in Connection Settings.");
 		case "unavailable": throw new Error(`${snapshot.decision.reason} Check the Memory Decision Model in Connection Settings.`);
@@ -264,7 +266,7 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
 			.slice(0, 48);
 	}
-	const shortlist = new Map<string, MemoryRecallCandidateRecord>();
+	const shortlist = new Map<string, RecallCandidate>();
 	for (const [index, { candidate, similarity }] of semantic.entries()) {
 		shortlist.set(candidate.record.identity, { ...candidate.record, semanticSimilarity: similarity, semanticRank: index + 1, recentRank: null, ...unjudged });
 	}

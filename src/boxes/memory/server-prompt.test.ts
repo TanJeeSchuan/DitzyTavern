@@ -1,8 +1,9 @@
+import type { RecallCandidate } from "./server-recall";
 import { describe, expect, test } from "bun:test";
 import { compileGenerationPlan } from "../../server/generation-plan";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
-import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "./contract";
+import type { RecallActivation } from "./server-recall";
 import { memoryItems } from "./server-prompt";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -12,7 +13,7 @@ const compile = (overrides: Partial<Parameters<typeof compileGenerationPlan>[0]>
 	images: { lookup: () => undefined, placement: "last", sendImages: true }, ...overrides,
 });
 
-const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): MemoryRecallCandidateRecord => ({
+const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): RecallCandidate => ({
 	identity,
 	messageId: sourcePosition + 1,
 	variantId: sourcePosition + 1,
@@ -21,8 +22,6 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	claimIndex: 0,
 	claim,
 	attribution: "Narrated event",
-	people: [],
-	evidence: [{ messageId: sourcePosition + 1, excerpt: claim }],
 	sourcePosition,
 	semanticSimilarity: 0.9,
 	semanticRank: 1,
@@ -32,7 +31,7 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	admission: "admitted",
 });
 
-const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], allowance = 2_048): MemoryActivationRecord => ({
+const memoryActivation = (candidates: readonly RecallCandidate[], allowance = 2_048): RecallActivation => ({
 	state: "ready",
 	allowance,
 	eligibleSourceCount: candidates.length,

@@ -51,7 +51,15 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible({ timeout: 15_000 });
 	await expect(memories.getByText("Theodora fears the dark.")).toHaveCount(0);
 
-	await send(page, "Show me.");
+	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
+	await page.getByRole("textbox", { name: "Message draft" }).fill("Show me.");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	const preview = page.getByRole("complementary", { name: "Prompt Plan preview" });
+	await preview.getByText("Considered claims (1)", { exact: true }).click();
+	await expect(preview).toContainText("Theodora hid the brass key under the third map. (Attribution: Theodora Kline)");
+	await preview.getByText("Supporting excerpts", { exact: true }).click();
+	await expect(preview.locator("blockquote")).toContainText("I hid the brass key under the third map.");
+	await preview.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("She taps the map twice.")).toBeVisible();
 	const prompt = JSON.stringify((await llm.log()).calls.filter(isChatModelCall).at(-1)!.body.messages);
 	expect(prompt).toContain("Theodora hid the brass key under the third map.");
@@ -59,15 +67,31 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 
 	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(memories).toBeVisible();
+	const claim = memories.locator("article", { hasText: "Theodora hid the brass key under the third map." });
+	await claim.hover();
+	await claim.getByRole("button", { name: "Edit Memory" }).click();
+	await memories.getByRole("textbox", { name: "Memory" }).fill("Theodora moved the brass key to the attic.");
+	await memories.getByRole("button", { name: "Save", exact: true }).click();
+	await expect(memories.getByText("Theodora moved the brass key to the attic.")).toBeVisible();
+	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
+	const reply = story(page).locator("article", { hasText: "She taps the map twice." });
+	await reply.hover();
+	await reply.getByRole("button", { name: "Details", exact: true }).click();
+	const details = page.getByRole("complementary", { name: "Generation details" });
+	await details.getByText("Considered claims (1)", { exact: true }).click();
+	await expect(details).toContainText("This claim has since changed or its source is gone.");
+	await expect(details).not.toContainText("Theodora moved the brass key to the attic.");
+	await expect(details.getByText("Included", { exact: true })).toBeVisible();
+	await details.getByRole("button", { name: "Close Generation details" }).click();
 	await openBoxes(page);
 	await page.getByRole("switch", { name: "Memory in this Chat" }).click();
 	await closeBoxes(page);
 	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
 	await expect(memories).toContainText("Memory is off in this Chat.");
-	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
+	await expect(memories.getByText("Theodora moved the brass key to the attic.")).toBeVisible();
 	await memories.getByRole("button", { name: "Close Memories", exact: true }).click();
 	await page.getByRole("group", { name: "Chat tools" }).getByRole("button", { name: "Memories", exact: true }).click();
-	await expect(memories.getByText("Theodora hid the brass key under the third map.")).toBeVisible();
+	await expect(memories.getByText("Theodora moved the brass key to the attic.")).toBeVisible();
 });
 
 test("a Message's Memories action remembers it on demand", async ({ page, request, llm }) => {
