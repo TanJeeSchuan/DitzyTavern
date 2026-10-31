@@ -78,7 +78,9 @@ export function PromptPlanPreviewPanel({
 					<section className="generation-detail-section">
 						<h3>Warnings</h3>
 						<ul>
-							{preview.promptPlan.warnings.map((warning, index) => <li key={`${warning.block}-${index}`}>{warning.block}: {warning.macro}</li>)}
+							{preview.promptPlan.warnings.map((warning, index) => <li key={`${warning.block}-${index}`}>{warning.block}: {warning.reason === "uncached"
+								? `${warning.macro} can change on every request and comes before history, so the provider's prompt cache misses from this block onward. Move it after history to keep the cache.`
+								: warning.macro}</li>)}
 						</ul>
 					</section>
 				)}
