@@ -1,4 +1,4 @@
-import type { MemoryIdentities, MemoryIdentity, MemoryLabelMerge } from "./contract";
+import type { MemoryRecallCandidateRecord, MemoryIdentities, MemoryIdentity, MemoryLabelMerge } from "./contract";
 
 export const renderMemoryClaim = (claim: { claim: string; attribution: string }): string =>
 	`${claim.claim} (attribution: ${claim.attribution})`;
@@ -20,3 +20,6 @@ export const applyMemoryPeople = (people: readonly string[], cast: readonly { id
 		return rules.get(target) === null ? [] : [target];
 	}))];
 };
+
+export const compareMemoryCandidates = (left: MemoryRecallCandidateRecord, right: MemoryRecallCandidateRecord) =>
+	(right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity);

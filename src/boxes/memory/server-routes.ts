@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { presentDomainError, readExistingSources } from "@/box-sdk/server";
+import { presentDomainError } from "@/box-sdk/server";
 import { invalidOutcome } from "@/box-sdk/shared";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
@@ -9,6 +9,7 @@ import {
 } from "./contract";
 import { mergeMemoryLabels, readConversationMemories, setMemoryAllowance, setMemoryIdentity, setMemoryNote } from "./server-memories";
 import { readMemoryChatSettings } from "./server-chat";
+import { readMemorySources } from "./server-sources";
 import { createMemorySettingsModule } from "./server-settings";
 
 const allowanceResponse = { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: invalidOutcome };
@@ -32,7 +33,7 @@ export const memoryRoutes = (database: Database) => new Elysia()
 		}
 	}, { body: memorySettingsCommandBody, response: settingsResponse })
 	.get("/conversations/:id/memories", ({ params }) => readConversationMemories(database, params.id), { params: memoryConversationIdParams, response: conversationMemories })
-	.get("/conversations/:id/memories/sources", ({ params, query }) => readExistingSources(database, params.id, { messageIds: ids(query.messageIds), variantIds: ids(query.variantIds) }),
+	.get("/conversations/:id/memories/sources", ({ params, query }) => readMemorySources(database, params.id, { messageIds: ids(query.messageIds), variantIds: ids(query.variantIds) }),
 		{ params: memoryConversationIdParams, query: memorySourcesQuery, response: memorySources })
 	.post("/conversations/:id/memories/identity", ({ params, body }) => {
 		try {
