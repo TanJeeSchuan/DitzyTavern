@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import type { MemoryActivationRecord, MemoryCandidateJudgment } from "./contract";
+import { memoryActivationRecord, type MemoryActivationRecord, type MemoryCandidateJudgment } from "./contract";
 import { initializeConnectionSecretKey } from "../../server/connection-secrets";
 import { createConversationRoutes } from "../../server/contract/conversation";
 import {
@@ -44,10 +44,10 @@ const configureMemoryEmbeddings = (database: Database, endpoint: string, model: 
 const memoryTrace = (read: { boxTraces: BoxTraces }) => read.boxTraces["box:memory"];
 const memoryOf = (read: { boxTraces: BoxTraces }) => memoryTrace(read)?.trace;
 
-const insertSelectedSource = (database: Database, conversationId: number, content = "Maren returned Writer's key.") => {
-	const message = database.query<{ id: number }, [number]>(
-		"INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 1, '2026-09-23T00:00:00.000Z') RETURNING id",
-	).get(conversationId);
+const insertSelectedSource = (database: Database, conversationId: number, content = "Maren returned Writer's key.", position = 1) => {
+	const message = database.query<{ id: number }, [number, number]>(
+		"INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, ?, '2026-09-23T00:00:00.000Z') RETURNING id",
+	).get(conversationId, position);
 	if (!message) throw new Error("Memory recall fixture Message insert failed.");
 	const variant = database.query<{ id: number }, [number, string]>(
 		"INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, ?, '2026-09-23T00:00:00.000Z', 1) RETURNING id",
@@ -86,13 +86,13 @@ const recallCounts = (): RecallCounts => ({ embedding: [], decisions: 0 });
 // @approved
 //  Embeddings answer one vector per text and the Decision Model scores every
 //  recall question useful; writing requests are captured.
-const recallFetch = (counts: RecallCounts, writing: ModelFetch = captureModelFetch(() => {})): ModelFetch => async (input, init) => {
+const recallFetch = (counts: RecallCounts, writing: ModelFetch = captureModelFetch(() => {}), vectorOf: (text: string) => number[] = () => [1, 0]): ModelFetch => async (input, init) => {
 	const url = String(input);
 	if (url.includes("embedding.test")) {
 		// SAFETY: the embedding request carries its text batch as `input`.
 		const { input: texts } = JSON.parse(String(init?.body)) as { input: string[] };
 		counts.embedding.push(texts);
-		return Response.json({ data: texts.map((_, index) => ({ index, embedding: [1, 0] })) });
+		return Response.json({ data: texts.map((text, index) => ({ index, embedding: vectorOf(text) })) });
 	}
 	if (!url.endsWith("/systemone")) return writing(input, init);
 	counts.decisions += 1;
@@ -135,9 +135,40 @@ describe("Memory recall in Generation preparation", () => {
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
 		expect(requests).toHaveLength(1);
 		expect(requests[0]).toContainEqual({ role: "system", content: editedText });
-		expect(requests[0]).not.toContainEqual({ role: "system", content: "Maren returned Writer's key. (attribution: Narrated event)" });
+		expect(requests[0]).not.toContainEqual({ role: "system", content: "[Message 1] Maren returned Writer's key. (attribution: Narrated event)" });
 		const inspection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`));
 		expect(await inspection.json()).toMatchObject({ boxTraces: preview.boxTraces });
+	});
+
+	test("shortlists one fact remembered in two scenes once, as its later telling", async () => {
+		const conversation = createChat(database);
+		const tell = async (position: number, claims: string[]) => {
+			const source = insertSelectedSource(database, conversation.id, claims.join(" "), position);
+			await remember(database, conversation.id, source.variantId, claims.map((claim) => memoryClaim(source.messageId, claim, claim)));
+			return source;
+		};
+		// Fifteen small things between the tellings push the earlier one out of the 16 most recent claims.
+		const earlier = await tell(1, ["Maren hid the brass key in the lodge."]);
+		await tell(2, Array.from({ length: 15 }, (_, index) => `Small thing ${index}.`));
+		const later = await tell(3, ["Maren hid the brass key in the cellar."]);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		// The two tellings nearly coincide and lead the scene's ranking; each small thing points elsewhere.
+		const vectorOf = (text: string) => {
+			const vector = Array.from({ length: 17 }, () => 0);
+			const small = /^Small thing (\d+)/.exec(text);
+			if (small) vector[Number(small[1]) + 2] = 1;
+			else if (text.includes("cellar")) { vector[0] = 1; vector[1] = 0.1; }
+			else vector[0] = 1;
+			return vector;
+		};
+		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(recallCounts(), undefined, vectorOf) });
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "Where is the brass key?" }));
+		expect(inspected.status).toBe(200);
+		const { candidates } = Value.Parse(memoryActivationRecord, memoryOf(Value.Parse(generationPreview, await inspected.json())));
+		expect(candidates.filter(({ semanticRank }) => semanticRank === 1).map(({ messageId }) => messageId)).toEqual([later.messageId]);
+		expect(candidates.map(({ messageId }) => messageId)).not.toContain(earlier.messageId);
 	});
 
 	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "correction", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
@@ -229,7 +260,7 @@ describe("Memory recall in Generation preparation", () => {
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(counts) });
 		for (let attempt = 0; attempt < 2; attempt += 1) {
 			const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
-			expect(Value.Parse(generationPreview, await inspected.json()).promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: renderMemoryClaim(corrected) });
+			expect(Value.Parse(generationPreview, await inspected.json()).promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: `[Message 1] ${renderMemoryClaim(corrected)}` });
 		}
 		expect(counts.embedding.filter((texts) => texts.includes(renderMemoryClaim(corrected)))).toEqual([[renderMemoryClaim(corrected)]]);
 		expect(counts.embedding).toHaveLength(3);
@@ -328,7 +359,7 @@ describe("Memory recall in Generation preparation", () => {
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
-		const memoryText = renderMemoryClaim(extraction);
+		const memoryText = `[Message 1] ${renderMemoryClaim(extraction)}`;
 		expect(preview.promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: memoryText });
 		expect(memoryTrace(preview)).toMatchObject({ automaticText: memoryText, finalText: memoryText, items: [{ text: memoryText, admission: "admitted" }] });
 		expect(memoryOf(preview)).toMatchObject({

@@ -32,6 +32,7 @@ export type MemoryRecallSnapshot = {
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
 
 const SCENE_TOKEN_LIMIT = 4_000;
+const NEAR_DUPLICATE_SIMILARITY = 0.95;
 
 const fitToTokenBudget = (text: string, limit: number) => {
 	for (let keep = limit; keep > 0;) {
@@ -262,9 +263,17 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");
 		}
 		/** @approved `embed` returns one vector per text, in order. */
-		semantic = claimed.map((candidate, index) => ({ candidate, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
-			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
-			.slice(0, 48);
+		const ranked = claimed.map((candidate, index) => ({ candidate, vector: vectors[index]!, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
+			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity));
+		// One fact remembered from several scenes takes one slot, held by its latest telling.
+		const kept: typeof ranked = [];
+		for (const entry of ranked) {
+			const twin = kept.findIndex(({ vector }) => cosineSimilarity(vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY);
+			const held = kept[twin];
+			if (held === undefined) { if (kept.length < 48) kept.push(entry); }
+			else if (entry.candidate.record.sourcePosition > held.candidate.record.sourcePosition) kept[twin] = entry;
+		}
+		semantic = kept;
 	}
 	const shortlist = new Map<string, RecallCandidate>();
 	for (const [index, { candidate, similarity }] of semantic.entries()) {
