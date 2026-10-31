@@ -267,12 +267,23 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity));
 		// One fact remembered from several scenes takes one slot, held by its latest telling.
 		let kept: typeof ranked = [];
-		for (const entry of ranked) {
+		const turnedAway: typeof ranked = [];
+		const join = (entry: (typeof ranked)[number]) => {
 			const twins = kept.filter(({ vector }) => cosineSimilarity(vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY);
-			if (twins.some(({ candidate }) => candidate.record.sourcePosition >= entry.candidate.record.sourcePosition)) continue;
+			if (twins.some(({ candidate }) => candidate.record.sourcePosition >= entry.candidate.record.sourcePosition)) return;
 			const [first, ...rest] = twins;
-			if (first === undefined) { if (kept.length < 48) kept.push(entry); }
-			else kept = kept.filter((held) => !rest.includes(held)).map((held) => held === first ? entry : held);
+			if (first !== undefined) kept = kept.filter((held) => !rest.includes(held)).map((held) => held === first ? entry : held);
+			else if (kept.length < 48) kept.push(entry);
+			else turnedAway.push(entry);
+		};
+		for (const entry of ranked) {
+			join(entry);
+			// Slots an eviction frees go to the closest matches turned away while full.
+			while (kept.length < 48) {
+				const waiting = turnedAway.shift();
+				if (waiting === undefined) break;
+				join(waiting);
+			}
 		}
 		semantic = kept;
 	}
