@@ -764,6 +764,49 @@
 	margin-bottom: 1.1rem;
 }
 
+.chat-fork-origin {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	margin-bottom: 1.1rem;
+	padding: 0.2rem 0.2rem 0.2rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+}
+
+.chat-fork-source {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	align-items: center;
+	gap: 0.55rem;
+	color: var(--text-muted);
+	font-size: 0.8rem;
+	line-height: 1.45;
+	text-align: left;
+}
+
+.chat-fork-source span {
+	overflow-wrap: anywhere;
+}
+
+.chat-fork-source strong {
+	color: var(--foreground);
+	font-weight: 640;
+}
+
+.chat-fork-source:hover strong {
+	text-decoration: underline;
+}
+
+.chat-fork-source svg {
+	flex: none;
+	width: 1rem;
+	height: 1rem;
+	color: var(--accent);
+	stroke-width: 1.8;
+}
+
 .import-details-section {
 	display: grid;
 	gap: 1rem;

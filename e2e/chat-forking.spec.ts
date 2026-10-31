@@ -1,4 +1,13 @@
+import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
+
+// Chat information looks up Import Details, which a Chat made in DitzyTavern does not have.
+test.use({ allowedBrowserErrors: /status of 404/ });
+
+const forkOrigin = async (page: Page) => {
+	await page.getByRole("button", { name: "Chat information", exact: true }).click();
+	return page.getByRole("button", { name: /Forked from/ });
+};
 
 test("a trimmed Fork is independent and Rewind restores the human draft", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["First answer."] }, { chunks: ["Second answer."] }, { chunks: ["Fork answer."] }, { chunks: ["Rewritten answer."] });
@@ -14,13 +23,13 @@ test("a trimmed Fork is independent and Rewind restores the human draft", async 
 	const dialog = page.getByRole("dialog", { name: "Fork Chat" });
 	await dialog.getByRole("switch", { name: /Trim Variants/ }).click();
 	await dialog.getByRole("button", { name: "Fork", exact: true }).click();
-	await expect(page.getByRole("button", { name: /Forked from/ })).toBeVisible();
+	await expect(await forkOrigin(page)).toBeVisible();
 	await expect(story(page).getByText("Second answer.")).toBeVisible();
 	await expect(story(page).getByRole("button", { name: "Previous Swipe" }).last()).toBeDisabled();
 	await story(page).locator("article").last().locator(".swipe-controls").getByRole("button", { name: "New Swipe" }).click();
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("Fork answer.")).toBeVisible();
-	await page.getByRole("button", { name: /Forked from/ }).click();
+	await (await forkOrigin(page)).click();
 	await expect(story(page).getByText("Second answer.")).toBeVisible();
 	await story(page).locator("article").last().getByRole("button", { name: "Previous Swipe" }).click();
 	await expect(story(page).getByText("First answer.")).toBeVisible();
@@ -50,7 +59,7 @@ test("forking a preview leaves the source selection intact", async ({ page, llm 
 	await page.getByRole("button", { name: "Fork with this Variant" }).click();
 	await page.getByRole("dialog", { name: "Fork Chat" }).getByRole("button", { name: "Fork", exact: true }).click();
 	await expect(story(page).getByText("First answer.")).toBeVisible();
-	await page.getByRole("button", { name: /Forked from/ }).click();
+	await (await forkOrigin(page)).click();
 	await expect(story(page).getByText("Second answer.")).toBeVisible();
 	await expect(story(page).getByText("Later answer.")).toBeVisible();
 });

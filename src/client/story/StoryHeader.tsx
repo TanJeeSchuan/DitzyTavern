@@ -36,9 +36,6 @@ export function StoryHeader({
 	onOpenVariables,
 	onOpenInspector,
 	onOpenWindow,
-	onOpenForkSource,
-	onUnlinkFork,
-	narrow,
 }: {
 	chat: ChatSummary;
 	conversation: ConversationSummary | null;
@@ -48,9 +45,6 @@ export function StoryHeader({
 	onOpenVariables: () => void;
 	onOpenInspector: (box: BoxId, focus: { messageId: number } | null) => void;
 	onOpenWindow: (box: BoxId) => void;
-	onOpenForkSource: () => void;
-	onUnlinkFork: () => void;
-	narrow: boolean;
 }) {
 	const headerItems = conversation === null ? [] : boxClients().flatMap(([id, client]) => client.header !== true || client.Status === undefined || !boxPresent(conversation, id) ? []
 		: [<HeaderItem key={id} conversation={conversation} box={id} icon={client.icon} Status={client.Status} onOpen={onOpenWindow} />]);
@@ -72,10 +66,6 @@ export function StoryHeader({
 						</DropdownMenuTrigger>
 					</h1>
 					<DropdownMenuContent align="start" className="w-48">
-						{narrow && conversation?.forkedFrom && <>
-							<DropdownMenuItem onSelect={onOpenForkSource}>Forked from {conversation.forkedFrom.name}</DropdownMenuItem>
-							<DropdownMenuItem onSelect={onUnlinkFork}>Remove Fork link</DropdownMenuItem>
-						</>}
 						<DropdownMenuItem onSelect={onOpenInfo}><Info aria-hidden="true" /> Chat information</DropdownMenuItem>
 						<DropdownMenuItem onSelect={onOpenVariables}><Variable aria-hidden="true" /> Macro Variables</DropdownMenuItem>
 						{conversation !== null && boxClients().map(([id, { icon, Inspector }]) => Inspector && boxPresent(conversation, id) && (
@@ -84,10 +74,6 @@ export function StoryHeader({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
-			{!narrow && conversation?.forkedFrom && <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-				<button type="button" className="truncate hover:underline" onClick={onOpenForkSource}>Forked from {conversation.forkedFrom.name}</button>
-				<button type="button" className="hover:underline" onClick={onUnlinkFork}>Remove Fork link</button>
-			</div>}
 			<div className="story-header-tools" role="group" aria-label="Chat tools">
 				{headerItems}
 				<button className="icon-button chat-info-button" type="button" onClick={onOpenInfo} aria-label="Chat information"><Info aria-hidden="true" /></button>
