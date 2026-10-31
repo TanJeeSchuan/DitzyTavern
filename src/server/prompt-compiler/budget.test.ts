@@ -152,6 +152,21 @@ describe("Prompt Plan budget", () => {
 		expect(oldestRetained(60)).toBe(`25:${"x".repeat(10)}`);
 	});
 
+	test("prices each history entry by the block the whole-plan estimate already cached", () => {
+		const history = Array.from({ length: 60 }, (_, index) => entry("Maren", `${index}:${"x".repeat(10)}`, index === 59 ? "human" : "model"));
+		const calls: string[] = [];
+		const estimator = (transcript: string) => {
+			calls.push(transcript);
+			return transcript.split("x").length - 1;
+		};
+		budgetPromptPlan({ plan: planFor(history), context: history, compile: planFor, contextLimit: 400, responseBudget: 1, safetyAllowance: 0, estimator });
+
+		const [wholePlans, entries] = [calls.filter((call) => call.startsWith("ditzytavern")), calls.filter((call) => !call.startsWith("ditzytavern"))];
+		const blocks = new Set(wholePlans.flatMap((transcript) => transcript.split("\u001eBLOCK\u001f")));
+		expect(entries.length).toBeGreaterThan(0);
+		expect(entries.filter((part) => !blocks.has(part))).toEqual([]);
+	});
+
 	test("uses the same measurement fields for an inspected intent", () => {
 		const instruction = "Continue this scene.";
 		const plan = {

@@ -198,7 +198,9 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		}
 		if (fitting === undefined) candidate = candidateAfterRemoving(removableIndexes.length);
 		else {
-			const count = stableRemovalCount(fitting.count, removableIndexes.map((index) => input.context[index]!.content), input.contextLimit, estimator);
+			// Each history entry's part of the first candidate's transcript, the key the block estimates are cached by.
+			const parts = toEstimationTranscript(input.plan).split(BLOCK).slice(1).filter((_, block) => input.plan.blocks[block]!.kind === "history");
+			const count = stableRemovalCount(fitting.count, removableIndexes.map((index) => parts[index]!), input.contextLimit, estimator);
 			candidate = count === fitting.count ? fitting.candidate : candidateAfterRemoving(count);
 		}
 	}
@@ -320,7 +322,7 @@ export class PromptBudgetExceededError extends Error {
 // still fits. If no entry reaches the line, the smallest cut stands.
 function stableRemovalCount(minimum: number, removable: readonly string[], contextLimit: number, estimator: TokenEstimator): number {
 	const step = Math.ceil(contextLimit / 8);
-	let removed = removable.slice(0, minimum).reduce((total, content) => total + Math.ceil(estimator(content)), 0);
+	let removed = removable.slice(0, minimum).reduce((total, part) => total + Math.ceil(estimator(part)), 0);
 	const line = Math.ceil(removed / step) * step;
 	let count = minimum;
 	while (removed < line && count < removable.length) removed += Math.ceil(estimator(removable[count++]!));
