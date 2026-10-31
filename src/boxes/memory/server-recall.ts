@@ -32,6 +32,7 @@ export type MemoryRecallSnapshot = {
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
 
 const SCENE_TOKEN_LIMIT = 4_000;
+const NEAR_DUPLICATE_SIMILARITY = 0.95;
 
 const fitToTokenBudget = (text: string, limit: number) => {
 	for (let keep = limit; keep > 0;) {
@@ -262,9 +263,15 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");
 		}
 		/** @approved `embed` returns one vector per text, in order. */
-		semantic = claimed.map((candidate, index) => ({ candidate, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
+		const closest = claimed.map((candidate, index) => ({ candidate, vector: vectors[index]!, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
-			.slice(0, 48);
+			.slice(0, 96);
+		// One fact remembered from several scenes takes one slot: among the closest 96 matches, a
+		// claim drops out when a later one, or a closer one from the same Message, repeats it.
+		const position = (entry: (typeof closest)[number]) => entry.candidate.record.sourcePosition;
+		semantic = closest.filter((entry, index) => !closest.some((other, otherIndex) =>
+			(position(other) > position(entry) || (position(other) === position(entry) && otherIndex < index))
+			&& cosineSimilarity(other.vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY)).slice(0, 48);
 	}
 	const shortlist = new Map<string, RecallCandidate>();
 	for (const [index, { candidate, similarity }] of semantic.entries()) {

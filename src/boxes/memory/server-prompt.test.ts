@@ -69,13 +69,13 @@ describe("Memory prompt admission", () => {
 		expect(plan.promptPlan.blocks).toEqual([{
 			kind: "box:memory",
 			role: "system",
-			content: "fits (attribution: Narrated event)",
+			content: "[Message 0] fits (attribution: Narrated event)",
 		}]);
 		expect(plan.boxTraces["box:memory"]).toMatchObject({
 			allowance: 6,
-			items: [{ text: "oversized claim (attribution: Narrated event)", admission: "oversized" }, { text: "fits (attribution: Narrated event)", admission: "admitted" }],
-			automaticText: "fits (attribution: Narrated event)",
-			finalText: "fits (attribution: Narrated event)",
+			items: [{ text: "[Message 0] oversized claim (attribution: Narrated event)", admission: "oversized" }, { text: "[Message 0] fits (attribution: Narrated event)", admission: "admitted" }],
+			automaticText: "[Message 0] fits (attribution: Narrated event)",
+			finalText: "[Message 0] fits (attribution: Narrated event)",
 		});
 	});
 
@@ -92,8 +92,8 @@ describe("Memory prompt admission", () => {
 		});
 
 		expect(plan.boxTraces["box:memory"]?.items).toEqual([
-			{ text: "higher relevance (attribution: Narrated event)", admission: "admitted" },
-			{ text: "lower relevance (attribution: Narrated event)", admission: "allowance" },
+			{ text: "[Message 0] higher relevance (attribution: Narrated event)", admission: "admitted" },
+			{ text: "[Message 0] lower relevance (attribution: Narrated event)", admission: "allowance" },
 		]);
 	});
 
@@ -105,7 +105,7 @@ describe("Memory prompt admission", () => {
 			boxes: { "box:memory": memoryItems(memoryActivation([memoryCandidate("macro", "{{setvar::mood::grim}}{{self}} waits")])) },
 			attempt: { environment: { self: "Writer", other: "Maren" }, state },
 		});
-		expect(plan.promptPlan.blocks[0]?.content).toBe("{{setvar::mood::grim}}{{self}} waits (attribution: Narrated event)");
+		expect(plan.promptPlan.blocks[0]?.content).toBe("[Message 0] {{setvar::mood::grim}}{{self}} waits (attribution: Narrated event)");
 		expect(state.writes).toEqual([]);
 	});
 });

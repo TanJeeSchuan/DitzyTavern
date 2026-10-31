@@ -5,6 +5,7 @@ import { compareMemoryCandidates, renderMemoryClaim } from "./shared";
 
 export const memoryItems = (trace: RecallActivation): AdvanceResult<MemoryActivationRecord> => {
 	const seen = new Set<string>();
+	// The block is ordered by relevance, so each claim names its Message for the writing model to tell which came later.
 	const candidates = [...trace.candidates].sort(compareMemoryCandidates);
 	const duplicates = new Set<string>();
 	const items = candidates.filter((candidate) => {
@@ -13,7 +14,7 @@ export const memoryItems = (trace: RecallActivation): AdvanceResult<MemoryActiva
 		if (seen.has(text)) { duplicates.add(candidate.identity); return false; }
 		seen.add(text);
 		return true;
-	}).map((candidate) => ({ text: renderMemoryClaim(candidate), priority: candidate.relevanceScore ?? -1, literal: true }));
+	}).map((candidate) => ({ text: `[Message ${candidate.sourcePosition}] ${renderMemoryClaim(candidate)}`, priority: candidate.relevanceScore ?? -1, literal: true }));
 	return {
 		items,
 		allowance: trace.allowance,
