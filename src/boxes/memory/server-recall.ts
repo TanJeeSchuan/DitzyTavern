@@ -263,29 +263,15 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 			throw new Error("The embedding endpoint answered with a different vector size than the Memories it embedded before. Choose another embedding model in Memory Settings.");
 		}
 		/** @approved `embed` returns one vector per text, in order. */
-		const ranked = claimed.map((candidate, index) => ({ candidate, vector: vectors[index]!, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
-			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity));
-		// One fact remembered from several scenes takes one slot, held by its latest telling.
-		let kept: typeof ranked = [];
-		const turnedAway: typeof ranked = [];
-		const join = (entry: (typeof ranked)[number]) => {
-			const twins = kept.filter(({ vector }) => cosineSimilarity(vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY);
-			if (twins.some(({ candidate }) => candidate.record.sourcePosition >= entry.candidate.record.sourcePosition)) return;
-			const [first, ...rest] = twins;
-			if (first !== undefined) kept = kept.filter((held) => !rest.includes(held)).map((held) => held === first ? entry : held);
-			else if (kept.length < 48) kept.push(entry);
-			else turnedAway.push(entry);
-		};
-		for (const entry of ranked) {
-			join(entry);
-			// Slots an eviction frees go to the closest matches turned away while full.
-			while (kept.length < 48) {
-				const waiting = turnedAway.shift();
-				if (waiting === undefined) break;
-				join(waiting);
-			}
-		}
-		semantic = kept;
+		const closest = claimed.map((candidate, index) => ({ candidate, vector: vectors[index]!, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
+			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
+			.slice(0, 96);
+		// One fact remembered from several scenes takes one slot: among the closest 96 matches, a
+		// claim drops out when a later one, or a closer one from the same Message, repeats it.
+		const position = (entry: (typeof closest)[number]) => entry.candidate.record.sourcePosition;
+		semantic = closest.filter((entry, index) => !closest.some((other, otherIndex) =>
+			(position(other) > position(entry) || (position(other) === position(entry) && otherIndex < index))
+			&& cosineSimilarity(other.vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY)).slice(0, 48);
 	}
 	const shortlist = new Map<string, RecallCandidate>();
 	for (const [index, { candidate, similarity }] of semantic.entries()) {

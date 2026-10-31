@@ -160,19 +160,24 @@ describe("Memory recall in Generation preparation", () => {
 			return vector;
 		};
 		// The lodge and barn tellings sit 30° apart, 0.864 from the scene. The cellar telling, 0.822
-		// from it, repeats both. Forty-six closer clues fill the shortlist with them, so the next clue
-		// waits for the slot the cellar telling frees, ahead of the distant clue.
+		// from it, repeats both. Forty-six closer clues fill the shortlist with them. The next clue,
+		// 0.86, and its retelling, 0.828, rank below them, so one telling takes the slot the cellar
+		// telling frees, ahead of the distant clue.
 		const lodge = await tell(1, [["Maren hid the brass key in the lodge.", [1, 0, 0]]]);
 		const barn = await tell(2, [["Maren hid the brass key in the barn.", [0.866, 0.5, 0]]]);
 		let clue = 0;
 		for (const [position, count] of [[3, 16], [4, 16], [5, 14]] as const) {
 			await tell(position, Array.from({ length: count }, () => [`Clue ${clue}.`, toward(0.97 - 0.002 * clue++)] as const));
 		}
-		const next = await tell(6, [["The next clue.", toward(0.85)]]);
+		const nextVector = toward(0.86);
+		const next = await tell(6, [["The next clue.", nextVector]]);
 		const distant = await tell(7, [["A distant clue.", toward(0.8)]]);
 		const cellar = await tell(8, [["Maren hid the brass key in the cellar.", [0.9563, 0.2562, 0.141]]]);
+		const retold = [...nextVector];
+		retold[axis++] = 0.28;
+		const retelling = await tell(9, [["The next clue, retold.", retold]]);
 		// The 16 most recent claims, far from the scene, keep the others out of the recent shortlist.
-		await tell(9, Array.from({ length: 16 }, (_, index) => [`An aside ${index}.`, toward(0.1)] as const));
+		await tell(10, Array.from({ length: 16 }, (_, index) => [`An aside ${index}.`, toward(0.1)] as const));
 		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
@@ -182,8 +187,8 @@ describe("Memory recall in Generation preparation", () => {
 		expect(inspected.status).toBe(200);
 		const { candidates } = Value.Parse(memoryActivationRecord, memoryOf(Value.Parse(generationPreview, await inspected.json())));
 		const shortlisted = candidates.map(({ messageId }) => messageId);
-		expect(shortlisted).toEqual(expect.arrayContaining([cellar.messageId, next.messageId]));
-		for (const absent of [lodge, barn, distant]) expect(shortlisted).not.toContain(absent.messageId);
+		expect(shortlisted).toEqual(expect.arrayContaining([cellar.messageId, retelling.messageId]));
+		for (const absent of [lodge, barn, next, distant]) expect(shortlisted).not.toContain(absent.messageId);
 	});
 
 	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "correction", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
