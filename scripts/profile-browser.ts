@@ -73,18 +73,16 @@ await phase("Open the latest Chat", cdp, async () => {
 	await story.locator("article").first().waitFor({ timeout: 60_000 });
 	await page.waitForLoadState("networkidle");
 });
-// @approved Send and New Swipe may open the inspected plan first, depending on the Chat's settings.
-const sendExactPlan = async () => {
-	const exact = page.getByRole("button", { name: "Send exact plan" });
-	if (await exact.isVisible({ timeout: 3_000 }).catch(() => false)) await exact.click();
-};
 // @approved
-//  Waits on the Generation's event stream rather than a locator: Playwright
-// polls locators by querying the whole page, which would land in the profile.
+//  Waits on network events rather than locators: Playwright polls a locator
+// by querying the whole page, which would land in the profile. Send and New
+// Swipe open the inspected plan first when that setting is on, and the
+// preview's request tells which way this Chat went.
 const streamed = async (start: () => Promise<void>) => {
 	const events = page.waitForRequest((request) => request.url().includes("/events"), { timeout: 30_000 });
+	const previewed = page.waitForResponse((response) => response.url().endsWith("/generations/preview"), { timeout: 30_000 }).then(() => true, () => false);
 	await start();
-	await sendExactPlan();
+	if (await Promise.race([previewed, events.then(() => false)])) await page.getByRole("button", { name: "Send exact plan" }).click();
 	await (await (await events).response())?.finished();
 	await page.waitForTimeout(1_000);
 };

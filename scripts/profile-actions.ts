@@ -8,7 +8,7 @@
 // `--serve=<port>` it skips the timed actions and serves the built app on
 // that port instead, for scripts/profile-browser.ts to drive.
 import { Database } from "bun:sqlite";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
@@ -46,10 +46,14 @@ const tokens = Number(values.tokens);
 const repeat = Number(values.repeat);
 const tokenMs = Number(values["token-ms"]);
 
+// @approved
+//  Each run copies into its own fresh folder, removed on exit, so a run never
+// deletes its input or the copy a serving run still has open.
 const directory = join(process.cwd(), ".scratch", "profile");
-const copy = join(directory, "actions.sqlite");
 mkdirSync(directory, { recursive: true });
-for (const suffix of ["", "-wal", "-shm"]) rmSync(copy + suffix, { force: true });
+const run = mkdtempSync(join(directory, "run-"));
+process.once("exit", () => rmSync(run, { recursive: true, force: true }));
+const copy = join(run, "actions.sqlite");
 new Database(source, { readonly: true }).run("VACUUM INTO ?", [copy]);
 
 type Call = { kind: string; start: number; end?: number; bytes: number };
@@ -138,7 +142,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 };
 
 if (values.serve !== undefined) {
-	const { app: served } = await createApp({ database, fetch: fakeFetch, artifactDirectory: join(directory, "artifacts") });
+	const { app: served } = await createApp({ database, fetch: fakeFetch, artifactDirectory: join(run, "artifacts") });
 	served.listen({ hostname: "127.0.0.1", port: Number(values.serve) });
 	console.log(`Serving a copy of ${source} at ${served.server?.url}`);
 	// @approved Exiting on Ctrl-C lets `--cpu-prof-md` write the served session's profile.
@@ -150,7 +154,7 @@ if (values.serve !== undefined) {
 //  Digests are queued as the app queues them but never run: background
 // extraction would land inside the timed actions.
 observeConversationWrites(database, prepareBoxDigests);
-const app = createContract(database, { fetch: fakeFetch }, join(directory, "artifacts"));
+const app = createContract(database, { fetch: fakeFetch }, join(run, "artifacts"));
 const chatId = values.chat === undefined
 	? database.query<{ id: number }, []>("SELECT conversation_id AS id FROM messages GROUP BY conversation_id ORDER BY count(*) DESC LIMIT 1").get()?.id
 	: Number(values.chat);
@@ -170,7 +174,11 @@ const request = async (method: string, path: string, body?: RouteBody) => {
 const revision = async () => (await request("GET", `/api/conversations/${chatId}`)).parse(Type.Object({ revision: Type.Integer() })).revision;
 const awaitGeneration = async (accepted: Awaited<ReturnType<typeof request>>) => {
 	const { generationId } = accepted.parse(Type.Object({ generationId: Type.String() }));
-	return (await request("GET", `/api/conversations/${chatId}/generations/${generationId}/events`)).text.length;
+	const { text } = await request("GET", `/api/conversations/${chatId}/generations/${generationId}/events`);
+	// @approved A failed Generation still closes its stream normally; only a `complete` terminal frame counts as settled.
+	const terminal = text.split("\n\n").findLast((frame) => /^event: (complete|stopped|error)$/m.test(frame));
+	if (terminal === undefined || !/^event: complete$/m.test(terminal)) throw new Error(`Generation ${generationId} did not complete: ${terminal ?? "its stream ended without a terminal frame"}`);
+	return text.length;
 };
 
 type Row = { action: string; ms: number[]; bytes: number; calls: Call[] };
