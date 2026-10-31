@@ -140,35 +140,40 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await inspection.json()).toMatchObject({ boxTraces: preview.boxTraces });
 	});
 
-	test("shortlists one fact remembered in two scenes once, as its later telling", async () => {
+	test("shortlists every telling of one fact once, as its latest telling", async () => {
 		const conversation = createChat(database);
 		const tell = async (position: number, claims: string[]) => {
 			const source = insertSelectedSource(database, conversation.id, claims.join(" "), position);
 			await remember(database, conversation.id, source.variantId, claims.map((claim) => memoryClaim(source.messageId, claim, claim)));
 			return source;
 		};
-		// Fifteen small things between the tellings push the earlier one out of the 16 most recent claims.
-		const earlier = await tell(1, ["Maren hid the brass key in the lodge."]);
-		await tell(2, Array.from({ length: 15 }, (_, index) => `Small thing ${index}.`));
-		const later = await tell(3, ["Maren hid the brass key in the cellar."]);
+		// Fifteen small things before the latest telling push the older ones out of the 16 most recent claims.
+		const lodge = await tell(1, ["Maren hid the brass key in the lodge."]);
+		const barn = await tell(2, ["Maren hid the brass key in the barn."]);
+		await tell(3, Array.from({ length: 15 }, (_, index) => `Small thing ${index}.`));
+		const cellar = await tell(4, ["Maren hid the brass key in the cellar."]);
 		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
-		// The two tellings nearly coincide and lead the scene's ranking; each small thing points elsewhere.
+		// The lodge and barn tellings lead the scene's ranking without repeating each other;
+		// the cellar telling, ranked below both, repeats each. Each small thing points elsewhere.
 		const vectorOf = (text: string) => {
-			const vector = Array.from({ length: 17 }, () => 0);
+			const vector = Array.from({ length: 18 }, () => 0);
 			const small = /^Small thing (\d+)/.exec(text);
-			if (small) vector[Number(small[1]) + 2] = 1;
-			else if (text.includes("cellar")) { vector[0] = 1; vector[1] = 0.1; }
-			else vector[0] = 1;
+			if (small) vector[Number(small[1]) + 3] = 1;
+			else if (!text.includes("(attribution:")) vector.splice(0, 3, 0.9659, 0.2588, -0.5);
+			else if (text.includes("lodge")) vector[0] = 1;
+			else if (text.includes("barn")) vector.splice(0, 2, 0.866, 0.5);
+			else vector.splice(0, 3, 0.9563, 0.2562, 0.141);
 			return vector;
 		};
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(recallCounts(), undefined, vectorOf) });
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "Where is the brass key?" }));
 		expect(inspected.status).toBe(200);
 		const { candidates } = Value.Parse(memoryActivationRecord, memoryOf(Value.Parse(generationPreview, await inspected.json())));
-		expect(candidates.filter(({ semanticRank }) => semanticRank === 1).map(({ messageId }) => messageId)).toEqual([later.messageId]);
-		expect(candidates.map(({ messageId }) => messageId)).not.toContain(earlier.messageId);
+		expect(candidates.filter(({ semanticRank }) => semanticRank === 1).map(({ messageId }) => messageId)).toEqual([cellar.messageId]);
+		expect(candidates.map(({ messageId }) => messageId)).not.toContain(lodge.messageId);
+		expect(candidates.map(({ messageId }) => messageId)).not.toContain(barn.messageId);
 	});
 
 	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "correction", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {

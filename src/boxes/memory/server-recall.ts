@@ -266,12 +266,13 @@ export const evaluateMemoryRecallSnapshot = async (snapshot: MemoryRecallSnapsho
 		const ranked = claimed.map((candidate, index) => ({ candidate, vector: vectors[index]!, similarity: cosineSimilarity(queryVector, vectors[index]!) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity));
 		// One fact remembered from several scenes takes one slot, held by its latest telling.
-		const kept: typeof ranked = [];
+		let kept: typeof ranked = [];
 		for (const entry of ranked) {
-			const twin = kept.findIndex(({ vector }) => cosineSimilarity(vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY);
-			const held = kept[twin];
-			if (held === undefined) { if (kept.length < 48) kept.push(entry); }
-			else if (entry.candidate.record.sourcePosition > held.candidate.record.sourcePosition) kept[twin] = entry;
+			const twins = kept.filter(({ vector }) => cosineSimilarity(vector, entry.vector) >= NEAR_DUPLICATE_SIMILARITY);
+			if (twins.some(({ candidate }) => candidate.record.sourcePosition >= entry.candidate.record.sourcePosition)) continue;
+			const [first, ...rest] = twins;
+			if (first === undefined) { if (kept.length < 48) kept.push(entry); }
+			else kept = kept.filter((held) => !rest.includes(held)).map((held) => held === first ? entry : held);
 		}
 		semantic = kept;
 	}
