@@ -301,7 +301,7 @@ describe("Continuation Generation", () => {
 			continuationInstruction:
 				"Continue the narrative naturally without repeating the previous text.",
 			continuationPrefillSuffix: null,
-			repeatedImagePlacement: "last",
+			repeatedImagePlacement: "first",
 		});
 	});
 
