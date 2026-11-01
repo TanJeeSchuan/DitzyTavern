@@ -1,12 +1,14 @@
 # Architecture enforcement
 
 `bun run check` is the local and CI entrypoint for repository policy. It runs
-Oxlint, the custom rule tests, the whole-repository contract audit, both
-TypeScript projects, and the Bun tests. Clone detection is a separate advisory
-command.
+Oxlint, the custom rule tests, both TypeScript projects, and the Bun tests.
+Clone detection is a separate advisory command.
 
 The `ditzy` Oxlint plugin owns six project rules:
 
+- `no-box-boundary-imports` keeps each Box to its own folder, by relative
+  path, and its layer's Box SDK, by `@/` path; only tests import from
+  `src/boxes`.
 - `no-contract-definition-outside-contract` rejects TypeBox schema construction
   in client and server consumers. Canonical schemas belong in
   `src/shared/contract/**`.
@@ -16,27 +18,14 @@ The `ditzy` Oxlint plugin owns six project rules:
 - `no-server-runtime-imports-in-client` restricts client imports of server
   modules to type-only imports, keeping runtime dependencies behind the
   transport boundary.
-- `no-hand-written-wire-guards` rejects property-by-property decoders in
-  migrated client transport modules when a function guards an object with
-  `isRow` and then reads its fields by hand. Schema-based decoding with
-  `Value.Decode` is the replacement.
 - `no-manual-conversation-transaction` rejects direct Conversation transaction
   construction outside the `runConversationTransaction` owner.
 - `no-conversation-internal-imports` rejects imports of Conversation internals
   and of the Message, Variant, and Active Generation tables from outside the
   Conversation module; other modules use its public barrel and read seams.
 
-The `no-contract-definition-outside-contract` Oxlint rule is the primary hard
-gate for schema ownership. `scripts/check-contract-ownership.ts` repeats a
-narrower `Type.Object` ownership check as a safety net, so that part can also
-fail `bun run check`. Its distinct job is advisory: it fingerprints interfaces,
-object type aliases, and TypeBox object schemas to warn about possible duplicate
-cross-layer shapes. Equal shapes can represent different concepts, so those
-matches never fail the command.
-
-The audit uses the stable TypeScript 5.9 compiler API through the `typescript5`
-alias because the application's TypeScript 7 package does not expose the
-classic compiler API.
+The `no-contract-definition-outside-contract` Oxlint rule is the only gate for
+schema ownership.
 
 ## Existing violations
 

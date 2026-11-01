@@ -66,7 +66,6 @@ import {
 	generationIdParams,
 	generationStopped,
 	generationsStopped,
-	type GenerationTargetKind,
 	historyPageQuery,
 	messageIdParams,
 	participantIdParams,
@@ -192,7 +191,6 @@ async function acceptanceResponse<S extends ResponseSchemas>(
 const previewUseFor = (
 	database: Database,
 	conversationId: number,
-	kind: GenerationTargetKind,
 	previewId: string | undefined,
 	promptPlan: PromptPlan | undefined,
 ): GenerationPreviewAcceptance | undefined => {
@@ -202,7 +200,7 @@ const previewUseFor = (
 		}
 		return undefined;
 	}
-	const record = previewRecordFor(database, previewId, conversationId, kind);
+	const record = previewRecordFor(database, previewId, conversationId);
 	return {
 		record,
 		editedPlan: promptPlan ?? record.capture.plan.promptPlan,
@@ -302,7 +300,7 @@ export const createConversationRoutes = (
 						: currentConversationRevision(database, params.id),
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					target: { kind: body.kind },
-					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
+					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
 				}),
 				generationStartRouteResponse,
 			),
@@ -519,7 +517,7 @@ export const createConversationRoutes = (
 						: currentConversationRevision(database, params.id),
 					target: { kind: body.kind, content: body.content, moves: body.moves },
 					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
+					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
 				}),
 				generationStartRouteResponse,
 			),
@@ -560,7 +558,7 @@ export const createConversationRoutes = (
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						preview: body.previewId === undefined
 							? undefined
-							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
+							: previewUseFor(database, params.id, body.previewId, body.promptPlan),
 					}),
 					siblingGenerationResponse,
 				),

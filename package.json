@@ -21,7 +21,6 @@
 		"lint:fix": "oxlint --fix",
 		"lint:rules": "node --test --test-reporter=dot --test-isolation=none --experimental-strip-types \"tools/oxlint/*/rules/*.test.ts\"",
 		"audit:comments": "bun scripts/audit-comments.ts",
-		"check:contracts": "bun scripts/check-contract-ownership.ts",
 		"check:clones": "jscpd src",
 		"typecheck": "tsc --noEmit",
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceRecord, type RaceSetup, type RaceState } from "./contract";
+import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceSetup, type RaceState } from "./contract";
 import { readCharacterRevisions, readLibraryValues, type Box, type BoxWindowRead } from "@/box-sdk/server";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
@@ -23,7 +23,7 @@ const raceBox = {
 			return { items: turn === undefined ? [] : [{ text: turn.narrative, priority: 100, pinned: true }], record: turn?.record };
 		},
 	},
-} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>;
+} satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceState, RaceState | null, RaceMove>;
 export default raceBox;
 
 function readRace({ db, conversationId, summary, setup, state: folded }: BoxWindowRead<RaceSetup, RaceState | null>): RaceRead {

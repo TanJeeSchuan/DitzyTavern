@@ -433,13 +433,13 @@ The Race uses most of the contract. Its files in `src/boxes/race/`: `shared-desc
 export default {
   id: "race", sdk: 2, label: "Race", role: "system", startsEnabled: false, instructions: "",
   setup: describeSetup(raceSetup, initialRaceSetup),
-  record: raceRecord,
+  record: raceState,
   moves: describeMoves(raceMove, MAX_RACE_MOVES, raceMoveLabel),
 } satisfies BoxDescriptor;
 ```
 
 ```ts
-satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceRecord, RaceState | null, RaceMove>
+satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceState, RaceState | null, RaceMove>
 ```
 
 It has no trace. It has no `decision`, so it does not digest, serves its own `read`, and gets no override editor; its slots hold only `automatic` in practice.
@@ -458,7 +458,7 @@ dependencies: ({ seed, intent, cast }, setup) => ({
 
 `withdrawn` lists slotted Cast Runners whose Participant has left the Cast. The Race declares no `fingerprint`: the default fingerprints these dependencies, so a new seed or withdrawal marks a preview stale.
 
-**Records and fold.** A record is `{ raceId, stretch, outcome, after }`, where `after` is the full post-Stretch state: standings, energy, Hidden intents and the replay so far. `foldRace` returns `after` when it belongs to the current `raceId`, so old races never leak into a new one, and `currentRaceState` treats state from another `raceId` as initial. Withdrawals only drop standings, so a standing whose Runner holds no gate means the `raceId` was reused for another field: `advanceRace` refuses that state with an error naming the Runner instead of resuming it.
+**Records and fold.** A record is the full post-Stretch state: standings, energy, Hidden intents and the replay so far. `foldRace` returns the record when it belongs to the current `raceId`, so old races never leak into a new one, and `currentRaceState` treats state from another `raceId` as initial. Withdrawals only drop standings, so a standing whose Runner holds no gate means the `raceId` was reused for another field: `advanceRace` refuses that state with an error naming the Runner instead of resuming it.
 
 **Advance.** `advanceRace` is a pure function of setup, state, Moves, seed and intent; all randomness comes from `raceRandom(seed)`, so equal inputs, withdrawals included, repeat the outcome. One call:
 

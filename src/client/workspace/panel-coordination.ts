@@ -9,7 +9,6 @@ export interface PanelCoordinationState {
 	primaryPanel: PrimaryPanel;
 	inspector: SplitInspector | null;
 	detailsSurface: DetailsSurface | null;
-	previewMode: boolean;
 	generationDetailsTarget: GenerationDetailsTarget | null;
 	boxFocus: { messageId: number } | null;
 }
@@ -26,14 +25,12 @@ export type PanelCoordinationAction =
 	| { type: "box-inspector-opened"; box: string; focus: { messageId: number } | null }
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
-	| { type: "preview-exited" }
 	| { type: "workspace-reset" };
 
 export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	primaryPanel: null,
 	inspector: null,
 	detailsSurface: null,
-	previewMode: false,
 	generationDetailsTarget: null,
 	boxFocus: null,
 });
@@ -50,7 +47,8 @@ const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState =>
 const openDetailSurface = (
 	state: PanelCoordinationState,
 	detailsSurface: DetailsSurface,
-): PanelCoordinationState => state.previewMode
+	preview: boolean,
+): PanelCoordinationState => preview
 	? state
 	: {
 			...dropFocusData(state),
@@ -59,9 +57,13 @@ const openDetailSurface = (
 			detailsSurface,
 	};
 
+// @approved
+//  `preview` is whether the story shows a Swipe preview, which owns that
+// state; while it does, inspectors and detail surfaces stay closed.
 export function reducePanelCoordination(
 	state: PanelCoordinationState,
 	action: PanelCoordinationAction,
+	preview: boolean,
 ): PanelCoordinationState {
 	switch (action.type) {
 		case "primary-toggled": {
@@ -83,31 +85,28 @@ export function reducePanelCoordination(
 		case "primary-closed":
 			return { ...dropFocusData(state), primaryPanel: null, inspector: null, detailsSurface: null };
 		case "inspector-opened":
-			return state.previewMode || state.primaryPanel !== action.inspector
+			return preview || state.primaryPanel !== action.inspector
 				? state
 				: { ...dropFocusData(state), inspector: action.inspector, detailsSurface: null };
 		case "inspector-closed":
 			return { ...state, inspector: null };
 		case "chat-info-opened":
-			return openDetailSurface(state, "chat-info");
+			return openDetailSurface(state, "chat-info", preview);
 		case "generation-details-opened":
-			return { ...openDetailSurface(state, "generation-details"), generationDetailsTarget: action.target };
+			return { ...openDetailSurface(state, "generation-details", preview), generationDetailsTarget: action.target };
 		case "macro-variables-opened":
-			return openDetailSurface(state, "macro-variables");
+			return openDetailSurface(state, "macro-variables", preview);
 		case "box-inspector-opened":
-			return state.previewMode ? state : { ...openDetailSurface(state, boxReference(action.box)), boxFocus: action.focus };
+			return preview ? state : { ...openDetailSurface(state, boxReference(action.box), preview), boxFocus: action.focus };
 		case "details-closed":
 			return { ...dropFocusData(state), detailsSurface: null };
 		case "preview-entered":
 			return {
 				...dropFocusData(state),
-				previewMode: true,
 				primaryPanel: null,
 				inspector: null,
 				detailsSurface: null,
 			};
-		case "preview-exited":
-			return { ...state, previewMode: false };
 		case "workspace-reset":
 			return { ...dropFocusData(state), primaryPanel: null, inspector: null, detailsSurface: null };
 	}

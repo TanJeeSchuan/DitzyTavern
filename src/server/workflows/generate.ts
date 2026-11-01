@@ -100,40 +100,22 @@ function acceptCapturedGeneration(database: Database, input: GenerationInput, ca
  * Acceptance is exposed separately so an HTTP caller can return as soon as
  * the provisional target exists. The provider attempt remains owned by the
  * controller until its terminal result settles, regardless of request
- * disconnects. Input composition is identical for every lifecycle: the
- * caller's own callbacks fire first, then the detached observer callbacks,
- * and the provider signal replaces whatever the observing request owned.
+ * disconnects. `accepted` resolves on commit, before any observer runs, and
+ * the provider signal replaces whatever the observing request owned. The
+ * observer's synchronous part still runs before an `accepted` continuation.
  */
-export function startServerOwnedGeneration(database: Database, input: GenerationInput, callbacks: ServerOwnedGenerationCallbacks = {}): ServerOwnedGeneration {
+export function startServerOwnedGeneration(database: Database, input: Omit<GenerationInput, "onAccepted" | "onEvent">, callbacks: ServerOwnedGenerationCallbacks = {}): ServerOwnedGeneration {
 	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: AcceptedGenerationRecord) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<AcceptedGenerationRecord>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
+	const accepted = Promise.withResolvers<AcceptedGenerationRecord>();
 	const result = runGenerationLifecycle(database, {
 		...input,
 		signal: controller.signal,
-		onAccepted: async (value) => {
-			await input.onAccepted?.(value);
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, {
-				signal: controller.signal,
-				stop: () => controller.abort(),
-			});
+		onAccepted: (value) => {
+			accepted.resolve(value);
+			return callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
 		},
-		onEvent: async (event) => {
-			await input.onEvent?.(event);
-			await callbacks.onEvent?.(event);
-		},
+		onEvent: callbacks.onEvent,
 	});
-	void result.catch((error) => {
-		if (!accepted) {
-			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-		}
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
+	void result.catch(accepted.reject);
+	return { accepted: accepted.promise, result, signal: controller.signal };
 }

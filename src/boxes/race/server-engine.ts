@@ -1,5 +1,5 @@
 import { isNonEmpty } from "@/box-sdk/shared";
-import type { RaceDecision, RaceInput, RaceIntent, RaceMove, RaceRecord, RaceRunner, RaceSetup, RaceSpectatorState, RaceStanding, RaceState, RunningStyle } from "./contract";
+import type { RaceDecision, RaceInput, RaceIntent, RaceMove, RaceRunner, RaceSetup, RaceSpectatorState, RaceStanding, RaceState, RunningStyle } from "./contract";
 import { raceRandom } from "./shared-data";
 import { checkRaceMove, checkRunnerMove, FATIGUE_ENERGY, MOVE_METRES, raceMoveCatalog, raceMoveLabel, spendEnergy, type RaceMoveCheck, type RunnerMoveKind } from "./shared";
 
@@ -9,8 +9,8 @@ export const initialRaceState = (setup: RaceSetup): RaceState => ({
 	intents: [], replay: [],
 });
 
-/** @approved A record holds the whole state after its Stretch; records of another race leave the current one untouched. */
-export const foldRace = (state: RaceState | null, record: RaceRecord, { raceId }: Pick<RaceSetup, "raceId">): RaceState | null => record.raceId === raceId ? record.after : state;
+/** @approved A record is the whole state after its Stretch; records of another race leave the current one untouched. */
+export const foldRace = (state: RaceState | null, record: RaceState, { raceId }: Pick<RaceSetup, "raceId">): RaceState | null => record.raceId === raceId ? record : state;
 
 const stylePace = {
 	"Front Runner": [1.08, 1.03, 0.99, 0.97],
@@ -90,7 +90,7 @@ const engineDecision = (setup: RaceSetup, before: RaceState, { slot, standing }:
 
 const settleIntents = (intents: RaceIntent[], stretch: number) => intents.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
 
-export function advanceRace({ setup, state, seed, intent, moves, withdrawn = [] }: RaceInput): { narrative: string; record?: RaceRecord } | undefined {
+export function advanceRace({ setup, state, seed, intent, moves, withdrawn = [] }: RaceInput): { narrative: string; record?: RaceState } | undefined {
 	const original = currentRaceState(setup, state);
 	const removed = new Set(withdrawn);
 	const withdrawalLines = original.standings.flatMap(({ name }) => removed.has(name) ? [`${name} is withdrawn.`] : []);
@@ -100,7 +100,7 @@ export function advanceRace({ setup, state, seed, intent, moves, withdrawn = [] 
 	};
 	const narrate = (heading: string, lines: string[]) => [heading, ...withdrawalLines, ...lines].join("\n");
 	const unchanged = (narrative: string) => withdrawalLines.length === 0 ? { narrative }
-		: { narrative, record: { raceId: setup.raceId, stretch: before.stretch, outcome: narrative, after: before } };
+		: { narrative, record: before };
 	const [first] = moves;
 	if (intent === "respond" && setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold" && checkRaceMove(setup, before, [], first).legal) {
 		return unchanged(narrate(setup.course.name, [`${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`]));
@@ -109,17 +109,17 @@ export function advanceRace({ setup, state, seed, intent, moves, withdrawn = [] 
 	if (withdrawalLines.length > 0 && setup.slots.length < 2) {
 		const stretch = before.stretch + 1;
 		const winner = before.standings[0];
-		const outcome = narrate(setup.course.name, [winner === undefined ? "The race is called off." : `${winner.name} wins by default.`, "Narrate the finish."]);
-		return { narrative: outcome, record: { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, intents: settleIntents(before.intents, stretch) } } };
+		const narrative = narrate(setup.course.name, [winner === undefined ? "The race is called off." : `${winner.name} wins by default.`, "Narrate the finish."]);
+		return { narrative, record: { ...before, stretch, finished: true, intents: settleIntents(before.intents, stretch) } };
 	}
 	const stopped = setup.slots.length < 2 || intent === "continue" && (setup.auto === "off" || (setup.auto !== "on" && setup.auto.until > 0 && before.metres >= setup.course.distance - setup.auto.until));
 	const paused = () => withdrawalLines.length === 0 ? undefined : unchanged(narrate(setup.course.name, ["The Stretch does not advance this turn."]));
 	if (stopped) return paused();
-	const record = advanceStretch({ setup, state: before, seed, intent, moves }, withdrawalLines);
-	return record === undefined ? paused() : { narrative: record.outcome, record };
+	const advanced = advanceStretch({ setup, state: before, seed, intent, moves }, withdrawalLines);
+	return advanced === undefined ? paused() : { narrative: advanced.narrative, record: advanced.after };
 }
 
-function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLines: string[]): RaceRecord | undefined {
+function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLines: string[]): { narrative: string; after: RaceState } | undefined {
 	const before = currentRaceState(setup, state);
 	const field = raceField(setup, before);
 	const stretch = before.stretch + 1;
@@ -135,7 +135,7 @@ function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLine
 		const reveals = outstanding.map(({ runner }) => hiddenIntent.unspent(runner));
 		const outcome = [course, ...withdrawalLines, "Results Stretch", ...order, ...report, ...reveals, "Narrate the finish."].join("\n");
 		const intents = settleIntents(before.intents, stretch);
-		return { raceId: setup.raceId, stretch, outcome, after: { ...before, stretch, finished: true, intents } };
+		return { narrative: outcome, after: { ...before, stretch, finished: true, intents } };
 	}
 	if (!isNonEmpty(field)) return undefined;
 	const random = raceRandom(seed);
@@ -242,5 +242,5 @@ function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLine
 	const heading = `Stretch ${stretch}: ${before.metres}–${end} m, ${phases[phaseAt(before.metres, setup.course.distance)]}`;
 	const outcome = [course, ...withdrawalLines, heading, ...order, ...events, ...moveLines, ...intentLines, `Narrate only this Stretch. Do not go past ${end} m.`].join("\n");
 	const replay = [...before.replay, { stretch, metres: end, runners: standings.map(({ name, energy }) => ({ name, energy, decisions: decisions.get(name) ?? [] })) }];
-	return { raceId: setup.raceId, stretch, outcome, after: { raceId: setup.raceId, stretch, metres: end, finished: false, standings, intents, replay } };
+	return { narrative: outcome, after: { raceId: setup.raceId, stretch, metres: end, finished: false, standings, intents, replay } };
 }

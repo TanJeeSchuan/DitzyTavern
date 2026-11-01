@@ -23,7 +23,6 @@ import { InvalidConversationCommandError } from "../conversation";
 import type {
 	GenerationFormattingContext,
 	GenerationTarget,
-	GenerationTargetKind,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
@@ -83,7 +82,7 @@ export const createGenerationPreviewStore = (): GenerationPreviewStore => {
 
 const previewStore = (database: Database): GenerationPreviewStore => processStateFor(database).generationPreviews;
 
-const ensureRecord = (database: Database, id: string, conversationId: number): GenerationPreviewRecord => {
+export const previewRecordFor = (database: Database, id: string, conversationId: number): GenerationPreviewRecord => {
 	const store = previewStore(database);
 	store.sweep();
 	const record = store.previews.get(conversationId);
@@ -91,19 +90,6 @@ const ensureRecord = (database: Database, id: string, conversationId: number): G
 		throw new InvalidConversationCommandError(
 			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
 		);
-	}
-	return record;
-};
-
-export const previewRecordFor = (
-	database: Database,
-	id: string,
-	conversationId: number,
-	kind: GenerationTargetKind,
-): GenerationPreviewRecord => {
-	const record = ensureRecord(database, id, conversationId);
-	if (record.capture.target.kind !== kind) {
-		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
 	}
 	return record;
 };
@@ -240,27 +226,11 @@ const assertPreviewCurrent = (
 	}
 };
 
-const assertSubmittedTargetUnchanged = (
-	recorded: GenerationTarget,
-	submitted: GenerationTarget,
-): void => {
+const sameGenerationTarget = (recorded: GenerationTarget, submitted: GenerationTarget): boolean => {
 	switch (recorded.kind) {
-		case "send":
-			if (submitted.kind !== "send" || recorded.content !== submitted.content || !sameMoves(recorded.moves, submitted.moves)) {
-				throw new InvalidConversationCommandError("The submitted Human text or Moves changed. Refresh the Prompt Plan before sending.");
-			}
-			return;
-		case "sibling":
-			if (submitted.kind !== "sibling" || recorded.messageId !== submitted.messageId || Boolean(recorded.reroll) !== Boolean(submitted.reroll)) {
-				throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
-			}
-			return;
-		case "continuation":
-			return;
-		default: {
-			const _exhaustive: never = recorded;
-			throw new InvalidConversationCommandError(`Unhandled Generation target: ${JSON.stringify(_exhaustive)}`);
-		}
+		case "send": return submitted.kind === "send" && recorded.content === submitted.content && sameMoves(recorded.moves, submitted.moves);
+		case "continuation": return submitted.kind === "continuation";
+		case "sibling": return submitted.kind === "sibling" && recorded.messageId === submitted.messageId && Boolean(recorded.reroll) === Boolean(submitted.reroll);
 	}
 };
 
@@ -274,8 +244,10 @@ export const captureGenerationPreview = (
 	target: GenerationTarget,
 ): CapturedGeneration => {
 	const { record } = preview;
-	ensureRecord(context.database, record.id, context.conversationId);
-	assertSubmittedTargetUnchanged(record.capture.target, target);
+	previewRecordFor(context.database, record.id, context.conversationId);
+	if (!sameGenerationTarget(record.capture.target, target)) {
+		throw new InvalidConversationCommandError("The submitted Generation target changed. Refresh the Prompt Plan before sending.");
+	}
 	assertPreviewCurrent(context, record.fingerprint, target, record.capture.preparation.seed);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };
