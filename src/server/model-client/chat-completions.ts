@@ -102,12 +102,12 @@ async function* generateOpenAICompatibleStream(options: {
 		if (inactivityTimer !== undefined) clearTimeout(inactivityTimer);
 		if (options.profile.timeoutMs === null || options.profile.timeoutMs <= 0) return;
 		inactivityTimer = setTimeout(() => {
-			cancellation = "inactivity";
+			cancellation ??= "inactivity";
 			controller.abort();
 		}, options.profile.timeoutMs);
 	};
 	const onCallerAbort = () => {
-		cancellation = "cancelled";
+		cancellation ??= "cancelled";
 		controller.abort(options.input.signal?.reason);
 	};
 	if (options.input.signal !== undefined) {

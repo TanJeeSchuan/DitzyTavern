@@ -156,6 +156,36 @@ describe("DeepSeek production Model Client", () => {
 		}
 	});
 
+	test("keeps a user cancel labelled as cancelled when the inactivity timeout fires during teardown", async () => {
+		const client = createModelClient({
+			profile: { ...profile, timeoutMs: 20 },
+			secrets: { credential: "secret", headers: {} },
+			// A provider that ignores the abort signal keeps teardown running past the timeout.
+			fetch: async () => {
+				await Bun.sleep(60);
+				return new Response(new ReadableStream<Uint8Array>({ start() {} }), { headers: { "content-type": "text/event-stream" } });
+			},
+		});
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 5);
+
+		try {
+			for await (const _event of client.generate({
+				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Wait." }], warnings: [], images: [] },
+				modelId: "custom-model",
+				generationSettings,
+				signal: controller.signal,
+			})) {
+				// The cancelled stream must not produce events.
+			}
+			throw new Error("Expected the cancel to abort the stream.");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ModelClientTransportError);
+			if (!(error instanceof ModelClientTransportError)) return;
+			expect(error.kind).toBe("cancelled");
+		}
+	});
+
 	test("keeps an inactive-looking stream alive while the provider sends SSE comment frames", async () => {
 		const encoder = new TextEncoder();
 		const commentFrame = ": keep-alive\n\n";
