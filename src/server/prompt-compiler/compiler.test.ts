@@ -527,6 +527,33 @@ describe("Macro expansion", () => {
 		]);
 	});
 
+	test("warns about a macro that changes between requests only when its block comes before history", () => {
+		const prompt = (scenario: string, postHistoryInstruction: string) => ({
+			systemInstruction: "", identity: "", scenario, exampleDialogue: "", postHistoryInstruction,
+		});
+		const plan = compilePrompt(source({
+			model: { name: "Maren Voss", prompt: prompt("It is {{time}}. {{random}} stays.", "Roll {{roll::1d6}}.") },
+		}));
+
+		expect(plan.warnings).toEqual([
+			{ block: "scenario", macro: "{{random}}" },
+			{ block: "scenario", macro: "{{time}}", reason: "uncached" },
+		]);
+	});
+
+	test("warns on the block that reads a variable holding a changing value", () => {
+		const plan = compilePrompt(source({
+			recipe: [
+				{ reference: "instruction", enabled: true, role: "system", name: "Clock", content: "{{setvar::clock::{{time}}}}{{setvar::name::{{self}}}}{{setvar::was::{{time}}}}{{setvar::was::then}}" },
+				{ reference: "model-scenario", enabled: true, role: "system" },
+				{ reference: "history", enabled: true },
+			],
+			model: { name: "Maren Voss", prompt: { ...source().model.prompt, scenario: "{{getvar::name}} at {{getvar::clock}}, {{getvar::clock}}, {{getvar::was}}." } },
+		}));
+
+		expect(plan.warnings).toEqual([{ block: "scenario", macro: "{{time}}", reason: "uncached" }]);
+	});
+
 	test("leaves unclosed braces literal without a warning", () => {
 		const plan = compilePrompt(
 			source({

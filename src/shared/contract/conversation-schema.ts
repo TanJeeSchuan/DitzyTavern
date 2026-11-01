@@ -117,9 +117,13 @@ const promptImage = Type.Object({
 // authorship or continuation intent.
 export const promptPlan = Type.Object({
 	blocks: Type.Array(promptBlock),
+	// Without a reason, the macro is unknown and stayed literal. `uncached` marks
+	// a macro whose text can change on the next request in a block before
+	// history, so the provider's prompt cache misses from that block onward.
 	warnings: Type.Array(Type.Object({
 		block: Type.String(),
 		macro: Type.String(),
+		reason: Type.Optional(Type.Literal("uncached")),
 	})),
 	images: Type.Array(promptImage),
 	intent: Type.Optional(generationIntent),

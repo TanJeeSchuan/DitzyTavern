@@ -30,6 +30,8 @@ export interface MacroAttemptState {
 	readonly variables: Map<string, MacroValue>;
 	readonly writes: MacroVariableWrite[];
 	readonly expansionCache: Map<string, MacroExpansionResult>;
+	// The changing macros each variable's current value came from, so a block that reads it reports them too.
+	readonly changingVariables: Map<string, readonly string[]>;
 	macroPositionBase: string | number;
 }
 
@@ -56,6 +58,7 @@ export const createMacroAttemptState = (
 	variables: new Map(variables),
 	writes: [],
 	expansionCache: new Map(),
+	changingVariables: new Map(),
 	macroPositionBase: "",
 });
 
@@ -81,6 +84,8 @@ export interface MacroExpansionResult {
 	readonly text: string;
 	readonly warnings: readonly PromptWarning[];
 	readonly writes: readonly MacroVariableWrite[];
+	// The macros that produced text which can differ on the next request, such as `{{time}}` or `{{random}}`.
+	readonly changing: readonly string[];
 }
 
 export interface MacroValidationResult {
@@ -131,6 +136,7 @@ export const expandMacroText = (
 		attemptState,
 		writes: [],
 		warnings: [],
+		changing: [],
 		blockLabel,
 		validationOnly: options.validationOnly === true,
 	};
@@ -139,6 +145,7 @@ export const expandMacroText = (
 		text: evaluateNodes(nodes, context),
 		warnings: context.warnings,
 		writes: context.writes,
+		changing: context.changing,
 	};
 };
 
