@@ -456,6 +456,19 @@ describe("Conversation module", () => {
 		expect(rows).toHaveLength(state.length);
 	});
 
+	test("a copy of a Variant without a stored seed keeps drawing from the source's seed", () => {
+		const greeting = requireSnapshot(database, conversationId).messages[0]!;
+		const source = greeting.variants[0]!;
+		const copied = applyCommand(database, {
+			conversationId,
+			expectedRevision: requireSnapshot(database, conversationId).revision,
+			action: { type: "create-variant", messageId: greeting.id, sourceVariantId: source.id, content: "Greeting" },
+		}).messages[0]!.variants.at(-1)!;
+
+		expect(drizzle(database).select({ value: messageVariantDataTable.value }).from(messageVariantDataTable)
+			.where(eq(messageVariantDataTable.message_variant_id, copied.id)).all()).toEqual([{ value: `variant:${source.id}` }]);
+	});
+
 	test("protects the final Variant without advancing the revision", () => {
 		const conversation = database;
 		const created = applyCommand(conversation, {

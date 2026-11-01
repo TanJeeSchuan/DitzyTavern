@@ -202,6 +202,7 @@ export function StoryStage({
 							)}
 							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
 							mutationsDisabled={story.preview !== null || swiping}
+							saveAsNewDisabled={generation.isGenerating}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={

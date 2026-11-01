@@ -47,6 +47,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	isLatest = false,
 	displayedVariantId,
 	mutationsDisabled = false,
+	saveAsNewDisabled = false,
 	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
@@ -77,6 +78,9 @@ export const StoryMessageView = memo(function StoryMessageView({
 	// Persisted activeSwipe remains untouched until the server applies the selection.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
+	// @approved
+	//  The server refuses a new Variant while any Generation in the Chat runs.
+	saveAsNewDisabled?: boolean;
 	generationActive?: boolean;
 	// @approved
 	//  Causally downstream of the previewed Variant: the stored text stays
@@ -137,8 +141,9 @@ export const StoryMessageView = memo(function StoryMessageView({
 		setIsEditing(true);
 	};
 	const saveEdit = async (asNew: boolean) => {
-		const value = editText.trim();
-		if ((!value && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
+		const duplicate = asNew && editText === editBase;
+		const value = duplicate ? editBase : editText.trim();
+		if ((!value && !duplicate && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
 		if (!asNew && active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);
@@ -308,7 +313,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled || saving}
+							disabled={mutationsDisabled || saveAsNewDisabled || saving}
 							onClick={() => saveEdit(true)}
 						>
 							Save as new Swipe
