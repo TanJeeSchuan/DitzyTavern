@@ -143,9 +143,9 @@ const activationState = (input: {
 type RecallCandidateBase = Omit<RecallCandidate, "semanticSimilarity" | "semanticRank" | "recentRank" | "relevance" | "relevanceScore" | "admission">;
 
 // @approved
-//  One pass over the selected path's Memory records. Each passage counts as
-//  failed when its digest failed on its current text, and as pending when it
-//  has neither that digest's record nor a Writer override; a stale record
+//  One pass over the selected path's Memory records. A Writer override
+//  settles a passage. Otherwise it counts as failed when its digest failed on
+//  its current text, and as pending when it has no record for that text; a stale record
 //  stays recallable until its new digest lands, as every effective record
 //  does. `writers` are the overrides, the only records whose change marks an
 //  inspected plan stale: a digest landing in the background does not.
@@ -161,7 +161,7 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 		const { slot } = message;
 		const record = effectiveRecord(slot);
 		const digested = hasAutomaticRecord(slot, message.prose);
-		const failed = hasDigestError(slot, message.prose);
+		const failed = slot?.writer === undefined && hasDigestError(slot, message.prose);
 		const hash = record === undefined ? null : memoryRecordFingerprint(record);
 		if (failed) counts.failedSourceCount += 1;
 		else if (slot?.writer === undefined && !digested) counts.pendingSourceCount += 1;
