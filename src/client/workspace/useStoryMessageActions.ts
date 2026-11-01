@@ -129,7 +129,10 @@ export function useStoryMessageActions({
 		await requestSelection(story.conversationId, { messageId: selection.messageId, variantId: selection.variantId });
 	};
 
-	const editStoryMessage = async (messageId: number, content: string) => {
+	// @approved
+	//  Saving as new copies the shown Variant, with its edited text, to a new
+	// selected Swipe at the end and leaves the source untouched.
+	const editStoryMessage = async (messageId: number, content: string, asNew: boolean) => {
 		if (!isStoryReady(story) || story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return false;
@@ -138,12 +141,9 @@ export function useStoryMessageActions({
 		if (variantId === undefined) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, {
-			type: "edit-variant",
-			messageId,
-			variantId,
-			content,
-		}, {
+		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, asNew
+			? { type: "create-variant", messageId, sourceVariantId: variantId, content }
+			: { type: "edit-variant", messageId, variantId, content }, {
 			notices: STORY_COMMAND_NOTICES,
 			onApplied: () => { applied = true; },
 		});

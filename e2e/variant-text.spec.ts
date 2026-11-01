@@ -31,3 +31,22 @@ test("a swipe the page left out shows its text and regenerates from it", async (
 	const call = firstCall((await llm.log()).calls, isChatModelCall);
 	expect(JSON.stringify(call.body.messages)).toContain(unselectedText);
 });
+
+test("saving an edit as a new Swipe keeps the original one Swipe back", async ({ page, request }) => {
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const { messages } = await (await request.get(`/api/conversations/${activeChatId}/history`)).json();
+	const latest = messages.at(-1);
+	const original = latest.variants.find((variant: { selected: boolean }) => variant.selected).content;
+
+	await page.goto("/");
+	const message = story(page).locator(`[data-message-id="${latest.id}"]`);
+	await message.hover();
+	await message.getByRole("button", { name: "Edit", exact: true }).click();
+	await message.getByRole("textbox", { name: "Edit Message" }).fill("The rewritten take.");
+	await message.getByRole("button", { name: "Save as new Swipe", exact: true }).click();
+	await expect(message.getByText("The rewritten take.", { exact: true })).toBeVisible();
+
+	await message.hover();
+	await message.getByRole("button", { name: "Previous Swipe" }).click();
+	await expect(message.getByText(original, { exact: true })).toBeVisible();
+});

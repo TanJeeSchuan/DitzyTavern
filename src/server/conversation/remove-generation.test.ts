@@ -269,6 +269,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 				action: {
 					type: "create-variant",
 					messageId: target.id,
+					sourceVariantId: priorVariant.id,
 					content: "Should not displace the active target.",
 				},
 			}),

@@ -485,6 +485,7 @@ const createMessageAction = Type.Object({
 const createVariantAction = Type.Object({
 	type: Type.Literal("create-variant"),
 	messageId: Type.Integer(),
+	sourceVariantId: Type.Integer(),
 	content: Type.String(),
 });
 

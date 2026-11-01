@@ -102,8 +102,8 @@ const handlers = {
 	"save-settings": saveConversationLoreSettings,
 } satisfies { [K in ConversationAction["type"]]: CommandHandler<K> };
 
-const playOnly = new Set<ConversationAction["type"]>(["create-message", "create-variant"]);
-const quietOnly = new Set<ConversationAction["type"]>([...playOnly, "assign-control"]);
+const playOnly = new Set<ConversationAction["type"]>(["create-message"]);
+const quietOnly = new Set<ConversationAction["type"]>([...playOnly, "create-variant", "assign-control"]);
 
 export function executeConversationCommand(
 	database: Database,

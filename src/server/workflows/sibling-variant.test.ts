@@ -342,6 +342,7 @@ describe("Historical sibling Variant generation", () => {
 			action: {
 				type: "create-variant",
 				messageId: first.id,
+				sourceVariantId: selected.id,
 				content: "Selected alternative.",
 			},
 		});

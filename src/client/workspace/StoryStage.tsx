@@ -123,7 +123,7 @@ export function StoryStage({
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
 		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
 		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
-		edit: (messageId: number, content: string) => latest.current.storyActions.editStoryMessage(messageId, content),
+		edit: (messageId: number, content: string, asNew: boolean) => latest.current.storyActions.editStoryMessage(messageId, content, asNew),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
 		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
@@ -202,6 +202,7 @@ export function StoryStage({
 							)}
 							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
 							mutationsDisabled={story.preview !== null || swiping}
+							saveAsNewDisabled={generation.isGenerating}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={
