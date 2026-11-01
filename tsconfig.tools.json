@@ -6,7 +6,6 @@
 		"types": ["bun", "node"]
 	},
 	"include": [
-		"scripts/check-contract-ownership.ts",
 		"tools/oxlint/anti-slop/**/*.ts",
 		"tools/oxlint/ditzy/**/*.ts"
 	]

@@ -32,6 +32,8 @@ import { GenerationSettingsInspector } from "./GenerationSettingsInspector";
 import {
 	createPanelCoordinationState,
 	reducePanelCoordination,
+	type PanelCoordinationAction,
+	type PanelCoordinationState,
 	type SplitInspector,
 } from "./panel-coordination";
 import { useConversationSession } from "./useConversationSession";
@@ -72,7 +74,7 @@ export function ActiveWritingWorkspace({
 }) {
 	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 	const [panelState, dispatchPanel] = useReducer(
-		reducePanelCoordination,
+		(state: PanelCoordinationState, action: PanelCoordinationAction) => reducePanelCoordination(state, action, story.preview !== null),
 		undefined,
 		createPanelCoordinationState,
 	);
@@ -119,12 +121,6 @@ export function ActiveWritingWorkspace({
 		dispatchStory,
 		setConversation: session.setConversation,
 	});
-	const previewMode = story.preview !== null;
-
-	useEffect(() => {
-		dispatchPanel({ type: previewMode ? "preview-entered" : "preview-exited" });
-	}, [previewMode]);
-
 	useEffect(() => {
 		const root = document.documentElement;
 		const statusBars = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');

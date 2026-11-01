@@ -205,7 +205,7 @@ describe("generation capture coherence", () => {
 		const newer = await createGenerationPreviewAsync(state.database, {connection: null, ...input, kind: "send", content: "newer" });
 		releaseFirst();
 		await older;
-		expect(previewRecordFor(state.database, newer.id, state.conversationId, "send").id).toBe(newer.id);
+		expect(previewRecordFor(state.database, newer.id, state.conversationId).id).toBe(newer.id);
 	});
 	test("independent databases retain previews for identical Conversation IDs", async () => {
 		const first = setup();
@@ -214,8 +214,8 @@ describe("generation capture coherence", () => {
 		expect(first.conversationId).toBe(second.conversationId);
 		const left = await createGenerationPreviewAsync(first.database, {connection: null, conversationId: first.conversationId, kind: "send", content: "First application." });
 		const right = await createGenerationPreviewAsync(second.database, {connection: null, conversationId: second.conversationId, kind: "send", content: "Second application." });
-		expect(previewRecordFor(first.database, left.id, first.conversationId, "send").id).toBe(left.id);
-		expect(previewRecordFor(second.database, right.id, second.conversationId, "send").id).toBe(right.id);
+		expect(previewRecordFor(first.database, left.id, first.conversationId).id).toBe(left.id);
+		expect(previewRecordFor(second.database, right.id, second.conversationId).id).toBe(right.id);
 	});
 
 });

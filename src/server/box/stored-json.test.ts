@@ -49,7 +49,7 @@ test.each(["{", '[{"type":"invalid"}]'])("stored Moves errors locate invalid JSO
 test.each(["enabled", "instance", "setup"])("a Box keeps no Chat value under the host's %s key", (key) => {
 	const db = drizzle(database);
 	expect(() => putChatValue(db, conversationId, "race", { key, value: "true" }, () => undefined)).toThrow("belongs to the host");
-	expect(() => readChatValue(db, conversationId, "race", key, Type.String(), "")).toThrow("belongs to the host");
+	expect(() => readChatValue(db, conversationId, "race", key, record, { score: 0 })).toThrow("belongs to the host");
 	expect(readBoxSetups(db, conversationId).race).toMatchObject({ phase: "setup" });
 	expect(readBoxStates(db, conversationId).race).toBe("enabled");
 });

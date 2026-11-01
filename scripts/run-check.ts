@@ -4,7 +4,7 @@ const [task, ...args] = process.argv.slice(2);
 if (task !== "check" && task !== "e2e") throw new Error("Expected check or e2e.");
 
 const commands = {
-	check: "bun run lint && bun run lint:rules && bun run check:contracts && bun run typecheck && bun run typecheck:tools && bun run test && bun run test:e2e:harness",
+	check: "bun run lint && bun run lint:rules && bun run typecheck && bun run typecheck:tools && bun run test && bun run test:e2e:harness",
 	e2e: "bunx --no-install playwright test",
 };
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;

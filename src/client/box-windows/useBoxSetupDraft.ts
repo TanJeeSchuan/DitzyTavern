@@ -12,8 +12,9 @@ const same = (left: BoxValue, right: BoxValue) => JSON.stringify(left) === JSON.
 type SetupSchema = TSchema & { static: BoxValue };
 
 // @approved
-//  One Box setup form's draft against its saved setup. The expected revision
-// follows the Chat while the saved setup is unchanged elsewhere; a conflict
+//  One Box setup form's draft against its saved setup. An untouched draft
+// follows the Chat's setup and revision; an edited draft follows the revision
+// only while the saved setup is unchanged elsewhere, and a conflict
 // keeps the draft and loads the current saved setup beside it. The window's
 // SaveGuard saves or discards the draft, and `extra` is further unsaved work
 // it saves instead and discards along with the draft. `schema` is the Box's
@@ -34,9 +35,13 @@ export function useBoxSetupDraft<Schema extends SetupSchema>(box: BoxId, schema:
 	const [revision, setRevision] = useState(conversation.revision);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-	if (conversation.revision > revision && same(current, saved)) setRevision(conversation.revision);
-	const locked = pending || disabled;
 	const dirty = !same(draft, saved);
+	if (conversation.revision > revision && (!dirty || same(current, saved))) {
+		if (!dirty) setDraft(current);
+		setSaved(current);
+		setRevision(conversation.revision);
+	}
+	const locked = pending || disabled;
 
 	/** @approved Marks the form pending around one task, clearing the notice first. */
 	const run = async <Result>(task: () => Promise<Result>): Promise<Result> => {

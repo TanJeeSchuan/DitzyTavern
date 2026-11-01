@@ -649,6 +649,40 @@ describe("Prompt Plan inspection", () => {
 		expect(retried.status).toBe(200);
 	});
 
+	test("rejects a Send submitted with a Continuation preview token", async () => {
+		const conversation = createConversationWithHistory(database, {
+			name: "Continuation Preview Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "continuation" });
+		const rejected = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ kind: "send",
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(rejected.status).toBe(422);
+		expect(await rejected.json()).toEqual({
+			outcome: "invalid",
+			reason: "The submitted Generation target changed. Refresh the Prompt Plan before sending.",
+		});
+	});
+
 	test("keeps only the newest inspected plan for a Conversation", async () => {
 		const conversation = createChat(database);
 		withProfile(database);

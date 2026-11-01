@@ -18,12 +18,12 @@ test("a withdrawn Cast Runner leaves the field, and the item says so once", asyn
 	const first = await raceBox.advance!.run({ setup, state: null, dependencies, moves: [] });
 
 	expect(first.items[0]!.text).toContain(`${withdrawn} is withdrawn.`);
-	expect(first.record!.after.standings).toHaveLength(setup.slots.length - 1);
-	expect(first.record!.after.standings.some(({ name }) => name === withdrawn)).toBe(false);
+	expect(first.record!.standings).toHaveLength(setup.slots.length - 1);
+	expect(first.record!.standings.some(({ name }) => name === withdrawn)).toBe(false);
 
 	const second = await raceBox.advance!.run({
 		setup,
-		state: first.record!.after,
+		state: first.record!,
 		dependencies: { ...dependencies, seed: "second" },
 		moves: [],
 	});
@@ -40,12 +40,12 @@ test("a Hold turn that loses a Runner persists the withdrawal, and the next Hold
 		moves: [{ kind: "hold", runner: setup.slots[1]!.name }],
 	});
 	expect(first.items[0]!.text).toContain(`${runner} is withdrawn.`);
-	expect(first.record!.after.standings.some(({ name }) => name === runner)).toBe(false);
-	expect(first.record!.after.stretch).toBe(0);
+	expect(first.record!.standings.some(({ name }) => name === runner)).toBe(false);
+	expect(first.record!.stretch).toBe(0);
 
 	const second = await raceBox.advance!.run({
 		setup: { ...setup, auto: "off" },
-		state: first.record!.after,
+		state: first.record!,
 		dependencies: { ...dependencies, seed: "hold-2" },
 		moves: [{ kind: "hold", runner: setup.slots[1]!.name }],
 	});
@@ -58,8 +58,8 @@ test("a Runner withdrawn on a Hold forms no Hidden intent on the next Stretch", 
 	const runner = field.slots[0]!.name;
 	const dependencies = { seed: "hold", intent: "respond" as const, withdrawn: [runner] };
 	const hold = await raceBox.advance!.run({ setup: field, state: null, dependencies, moves: [{ kind: "hold", runner: field.slots[1]!.name }] });
-	const next = await raceBox.advance!.run({ setup: field, state: hold.record!.after, dependencies: { ...dependencies, seed: "next" }, moves: [] });
-	expect(next.record!.after.intents.some((planned) => planned.runner === runner)).toBe(false);
+	const next = await raceBox.advance!.run({ setup: field, state: hold.record!, dependencies: { ...dependencies, seed: "next" }, moves: [] });
+	expect(next.record!.intents.some((planned) => planned.runner === runner)).toBe(false);
 	expect(next.items[0]!.text).not.toContain("is withdrawn.");
 });
 
@@ -72,7 +72,7 @@ test("a paused continuation still announces and persists a withdrawal", async ()
 		moves: [],
 	});
 	expect(result.items[0]!.text).toContain(`${runner} is withdrawn.`);
-	expect(result.record!.after.standings.some(({ name }) => name === runner)).toBe(false);
+	expect(result.record!.standings.some(({ name }) => name === runner)).toBe(false);
 });
 
 test("a field reduced below two Runners finishes with a default winner", async () => {
@@ -87,8 +87,8 @@ test("a field reduced below two Runners finishes with a default winner", async (
 	});
 	expect(record.items[0]!.text).toContain(`${withdrawn.name} is withdrawn.`);
 	expect(record.items[0]!.text).toContain(`${winner.name} wins by default.`);
-	expect(record.record!.after.finished).toBe(true);
-	expect(record.record!.after.standings.map(({ name }) => name)).toEqual([winner.name]);
+	expect(record.record!.finished).toBe(true);
+	expect(record.record!.standings.map(({ name }) => name)).toEqual([winner.name]);
 });
 
 test("a Hold cannot skip the walkover when the field is below two", async () => {
@@ -99,7 +99,7 @@ test("a Hold cannot skip the walkover when the field is below two", async () => 
 		dependencies: { seed: "hold-walkover", intent: "respond" as const, withdrawn: [two.slots[0]!.name] },
 		moves: [{ kind: "hold", runner: two.slots[1]!.name }],
 	});
-	expect(record.record!.after.finished).toBe(true);
+	expect(record.record!.finished).toBe(true);
 });
 
 test("a walkover settles the surviving Runner's open Hidden intent", async () => {
@@ -112,7 +112,7 @@ test("a walkover settles the surviving Runner's open Hidden intent", async () =>
 		dependencies: { seed: "intent", intent: "respond" as const, withdrawn: [two.slots[0]!.name] },
 		moves: [],
 	});
-	expect(record.record!.after.intents).toEqual([{ runner: survivor.name, formed: 1, payoff: 2 }]);
+	expect(record.record!.intents).toEqual([{ runner: survivor.name, formed: 1, payoff: 2 }]);
 });
 
 test("a Participant that is still in the Cast is not withdrawn", async () => {
@@ -124,5 +124,5 @@ test("a Participant that is still in the Cast is not withdrawn", async () => {
 		moves: [],
 	});
 	expect(record.items[0]!.text).not.toContain("is withdrawn.");
-	expect(record.record!.after.standings).toHaveLength(setup.slots.length);
+	expect(record.record!.standings).toHaveLength(setup.slots.length);
 });

@@ -68,10 +68,6 @@ export const raceState = Type.Object({ ...spectatorProperties, intents: Type.Arr
 export type RaceState = Static<typeof raceState>;
 export const raceSpectatorState = Type.Object(spectatorProperties);
 export type RaceSpectatorState = Static<typeof raceSpectatorState>;
-export const raceRecord = Type.Object({
-	raceId: Type.String(), stretch: Type.Integer(), outcome: Type.String(), after: raceState,
-});
-export type RaceRecord = Static<typeof raceRecord>;
 // @approved
 //  A Race Move acts on one Runner: the human-seat Runner, or the Runner the
 //  writer orders when the human seat is not racing.

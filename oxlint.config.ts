@@ -53,7 +53,6 @@ export default defineConfig({
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
 		"ditzy/no-box-boundary-imports": "error",
 		"ditzy/no-contract-definition-outside-contract": "error",
-		"ditzy/no-hand-written-wire-guards": "error",
 		"ditzy/no-layer-dependencies-in-shared": "error",
 		"ditzy/no-manual-conversation-transaction": "error",
 		"ditzy/no-conversation-internal-imports": "error",

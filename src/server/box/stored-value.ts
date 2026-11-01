@@ -1,5 +1,5 @@
 import { parseStoredBoxJson } from "./stored-json";
-import type { Static, TSchema } from "@sinclair/typebox";
+import type { Static, TObject } from "@sinclair/typebox";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { characterDataTable, conversationDataTable, libraryDataTable, participantDataTable } from "../database/schema";
@@ -25,13 +25,13 @@ export interface ValueWrite {
 
 const chatRevision = (instance: string | undefined, revision: number): string => `${instance ?? "absent"}:${revision}`;
 
-const decode = <T extends TSchema, Revision extends number | string>(row: Row, schema: T, initial: Static<T>, place: string, revision: Revision) =>
-	Object.assign({}, row === undefined ? initial : parseStoredBoxJson(row.value, schema, place), { revision });
+const decode = <T extends TObject, Revision extends number | string>(row: Row, schema: T, initial: Static<T>, place: string, revision: Revision) =>
+	({ ...row === undefined ? initial : parseStoredBoxJson(row.value, schema, place), revision });
 
 const libraryRow = (namespace: string, key: string) => and(eq(libraryDataTable.namespace, namespace), eq(libraryDataTable.key, key));
 
 /** @approved A host value in library_data under its own namespace, such as a Decision Model selection. */
-export const readNamespacedLibraryValue = <T extends TSchema>(db: BunSQLiteDatabase, namespace: string, key: string, schema: T, initial: Static<T>) => {
+export const readNamespacedLibraryValue = <T extends TObject>(db: BunSQLiteDatabase, namespace: string, key: string, schema: T, initial: Static<T>) => {
 	const row = db.select().from(libraryDataTable).where(libraryRow(namespace, key)).get();
 	return decode(row, schema, initial, `${namespace} ${key}`, row?.revision ?? 0);
 };
@@ -46,7 +46,7 @@ export const putNamespacedLibraryValue = (db: BunSQLiteDatabase, namespace: stri
 		.run();
 };
 
-export const readLibraryValue = <T extends TSchema>(db: BunSQLiteDatabase, box: BoxId, key: string, schema: T, initial: Static<T>) =>
+export const readLibraryValue = <T extends TObject>(db: BunSQLiteDatabase, box: BoxId, key: string, schema: T, initial: Static<T>) =>
 	readNamespacedLibraryValue(db, boxReference(box), key, schema, initial);
 
 export const putLibraryValue = (db: BunSQLiteDatabase, box: BoxId, write: ValueWrite, guard: SharedGuard) =>
@@ -101,7 +101,7 @@ const requireBoxValueKey = (key: string): void => {
 	if (isHostChatKey(key)) throw new InvalidConversationCommandError(`The ${key} key belongs to the host, so a Box keeps no value under it.`);
 };
 
-export const readChatValue = <T extends TSchema>(db: BunSQLiteDatabase, conversationId: number, box: BoxId, key: string, schema: T, initial: Static<T>) => {
+export const readChatValue = <T extends TObject>(db: BunSQLiteDatabase, conversationId: number, box: BoxId, key: string, schema: T, initial: Static<T>) => {
 	requireBoxValueKey(key);
 	const namespace = boxReference(box);
 	return db.transaction((tx) => {
