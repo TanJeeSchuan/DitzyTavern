@@ -404,6 +404,14 @@ describe("staged SillyTavern chat import", () => {
 		);
 	});
 
+	test("disposing the process state deletes staged files, which no session can reach after a restart", async () => {
+		await stageBytes(Buffer.from(jsonl([header, writer]), "utf8"), "interrupted.jsonl");
+		expect(stagedFiles()).toHaveLength(1);
+
+		processStateFor(database).dispose();
+		expect(stagedFiles()).toEqual([]);
+	});
+
 	test("reports malformed JSON, invalid UTF-8, and structural defects contextually and discards the upload", async () => {
 		const brokenLine = Buffer.from(
 			`${JSON.stringify(header)}\n{"broken`,

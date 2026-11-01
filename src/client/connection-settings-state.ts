@@ -124,8 +124,8 @@ export type ConnectionSettingsControllerAction =
 	| { type: "clear-feedback" }
 	| { type: "set-error"; message: string }
 	| { type: "test-started" }
-	| { type: "test-succeeded"; result: TestConnectionResult }
-	| { type: "test-failed"; message: string }
+	| { type: "test-succeeded"; editorIdentity: symbol; result: TestConnectionResult }
+	| { type: "test-failed"; editorIdentity: symbol; message: string }
 	| { type: "refresh-started" }
 	| { type: "refresh-succeeded"; notice: string }
 	| { type: "refresh-failed"; message: string }
@@ -134,7 +134,18 @@ export type ConnectionSettingsControllerAction =
 	| { type: "delete-succeeded"; deletedProfileId: number; deletedDisplayName: string }
 	| { type: "reset-credential-succeeded" };
 
+// @approved
+//  A test result describes the editor it was started from: any edit that
+// replaces the editor identity clears it, and a result for an older identity is dropped.
 export function reduceConnectionSettingsController(
+	state: ConnectionSettingsControllerState,
+	action: ConnectionSettingsControllerAction,
+): ConnectionSettingsControllerState {
+	const next = reduceEditor(state, action);
+	return next.editorIdentity === state.editorIdentity ? next : { ...next, testResult: null };
+}
+
+function reduceEditor(
 	state: ConnectionSettingsControllerState,
 	action: ConnectionSettingsControllerAction,
 ): ConnectionSettingsControllerState {
@@ -186,9 +197,9 @@ export function reduceConnectionSettingsController(
 		case "test-started":
 			return { ...state, testResult: null, notice: null, error: null };
 		case "test-succeeded":
-			return { ...state, testResult: action.result };
+			return action.editorIdentity === state.editorIdentity ? { ...state, testResult: action.result } : state;
 		case "test-failed":
-			return { ...state, error: action.message };
+			return action.editorIdentity === state.editorIdentity ? { ...state, error: action.message } : state;
 		case "refresh-started":
 			return { ...state, notice: null, error: null };
 		case "refresh-succeeded":

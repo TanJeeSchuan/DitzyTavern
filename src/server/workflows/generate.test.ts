@@ -356,6 +356,17 @@ describe("Generation runtime behavior", () => {
 		});
 	});
 
+	test("preserves visible partial work as interrupted when a stream ends without finishing", async () => {
+		const committed = await generateTerminalTailFixture(database, {connection: null,
+			conversationId,
+			modelClient: createFakeModelClient(() => [{ type: "content", text: "Cut off mid" }]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.content).toBe("Cut off mid");
+		expect(variant?.data).toContainEqual({ namespace: "generation", key: "outcome", value: "interrupted" });
+	});
+
 	test("removes a failed zero-output attempt and keeps the prior selection", async () => {
 		const before = readTestConversationSnapshot(database, conversationId);
 		if (before === undefined) throw new Error("Snapshot missing.");

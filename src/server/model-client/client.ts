@@ -7,13 +7,6 @@ import type {
 	ModelClientUsage,
 } from "./types";
 
-export class ModelClientProtocolError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "ModelClientProtocolError";
-	}
-}
-
 export class ModelClientGenerationError extends Error {
 	readonly kind: ModelClientFailureKind;
 	readonly partial: Partial<CollectedModelClientGeneration>;
@@ -67,9 +60,7 @@ export async function collectModelClientGeneration(
 	try {
 		for await (const event of client.generate(input)) {
 			if (finished !== null) {
-				throw new ModelClientProtocolError(
-					"A Model Client emitted an event after its finished outcome.",
-				);
+				throw new ModelClientGenerationError("transport", "A Model Client emitted an event after its finished outcome.");
 			}
 			await options.onEvent?.(event);
 
@@ -104,6 +95,9 @@ export async function collectModelClientGeneration(
 				await scheduler.yield();
 			}
 		}
+		if (finished === null) {
+			throw new ModelClientGenerationError("transport", "A Model Client stream ended without a finished outcome.");
+		}
 	} catch (error) {
 		const partial: Partial<MutableCollectedModelClientGeneration> = { content, reasoning, usage };
 		if (finished !== null) {
@@ -116,12 +110,6 @@ export async function collectModelClientGeneration(
 			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody);
 		}
 		throw error;
-	}
-
-	if (finished === null) {
-		throw new ModelClientProtocolError(
-			"A Model Client stream ended without a finished outcome.",
-		);
 	}
 
 	return {
@@ -151,9 +139,7 @@ function isModelClientFailure(
 }
 
 const assertNeverModelClientEvent = (event: never): never => {
-	throw new ModelClientProtocolError(
-		`Unsupported Model Client event: ${JSON.stringify(event)}.`,
-	);
+	throw new ModelClientGenerationError("transport", `Unsupported Model Client event: ${JSON.stringify(event)}.`);
 };
 
 export type { ModelClientEvent } from "./types";

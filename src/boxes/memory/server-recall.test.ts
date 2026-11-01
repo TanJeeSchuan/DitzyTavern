@@ -467,6 +467,8 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await preview()).toMatchObject({ state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] });
 		writeDigestError(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId, sha256(contentOf(database, source.variantId)), "Memory extraction unavailable.");
 		expect(await preview()).toMatchObject({ state: "source-failed", readyRecordCount: 0, pendingSourceCount: 0, failedSourceCount: 1, candidates: [] });
+		correct(database, conversation.id, source.variantId, []);
+		expect(await preview()).toMatchObject({ state: "empty", pendingSourceCount: 0, failedSourceCount: 0, candidates: [] });
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
 		const memoryBlock = preset.slots.find((slot) => slot.reference === "box:memory");
 		if (!memoryBlock) throw new Error("The Default recipe has no Memory block.");

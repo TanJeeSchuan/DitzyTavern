@@ -5,7 +5,6 @@
 export {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
-	ModelClientProtocolError,
 } from "./client";
 export type { CollectedModelClientGeneration } from "./client";
 export { createFakeModelClient } from "./fake";
