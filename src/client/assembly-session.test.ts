@@ -37,7 +37,9 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 	const effects: string[] = [];
 	const targets: GenerationAttemptTarget[] = [];
+	let visit = new AbortController();
 	const options = {
+		get signal() { return visit.signal; },
 		conversation: conversation(), activeChatIdRef: { current: "7" },
 		ensureLatest: async () => options.conversation,
 		refreshStory: async (_id: number) => { effects.push("refresh"); return options.conversation; },
@@ -59,12 +61,16 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 	const switchTo = async (id: number) => {
 		await hook.act(async () => {
 			hook.current.conversationSwitched();
+			reselect();
 			options.activeChatIdRef.current = String(id);
 			options.conversation = conversation(id);
 		});
 		await hook.rerender();
 	};
-	return { hook, cache, effects, targets, requests, options, open, switchTo };
+	// The workspace owns the Chat visit: unmounting it ends the visit with the controller.
+	const leave = async () => { visit.abort(); await hook.unmount(); };
+	const reselect = () => { visit.abort(); visit = new AbortController(); };
+	return { hook, cache, effects, targets, requests, options, open, switchTo, leave, reselect };
 }
 
 describe("assembly session", () => {
@@ -192,6 +198,27 @@ describe("assembly session", () => {
 		expect(h.effects).toEqual(["begin"]);
 	});
 
+	test("a direct start failing after a batched A to B to A reports nothing to the returned visit", async () => {
+		const response = Promise.withResolvers<Response>();
+		const h = await assemblyHarness(() => response.promise);
+		h.options.inspectPromptPlanBeforeGenerating = false;
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await flushHook();
+		await h.hook.act(async () => {
+			for (const id of [8, 7]) {
+				h.hook.current.conversationSwitched();
+				h.reselect();
+				h.options.activeChatIdRef.current = String(id);
+			}
+		});
+		await h.hook.rerender();
+		await h.hook.act(async () => response.resolve(Response.json({ outcome: "not-found" }, { status: 404 })));
+		await flushHook();
+		expect(h.hook.current.directStartError).toBeNull();
+		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+	});
+
 	test("switching while acceptance waits for latest prevents the network call", async () => {
 		const h = await assemblyHarness(async () => Response.json(preview()));
 		await h.open();
@@ -225,7 +252,7 @@ describe("assembly session", () => {
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
 		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
-		await h.hook.unmount();
+		await h.leave();
 		await h.hook.act(async () => latest.resolve(conversation()));
 		await flushHook();
 		expect(h.requests).toEqual([]);
@@ -238,7 +265,7 @@ describe("assembly session", () => {
 		await h.open();
 		expect(h.hook.current.assembly?.phase).toBe("ready");
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
-		await h.hook.unmount();
+		await h.leave();
 		await h.hook.act(async () => response.resolve(Response.json(accepted)));
 		await flushHook();
 		expect(h.effects).toEqual(["begin"]);

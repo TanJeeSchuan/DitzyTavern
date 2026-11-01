@@ -18,8 +18,8 @@ export function useVisitSignal(key?: string | number | null): AbortSignal {
 	return visit.controller.signal;
 }
 
-/** @approved Writes an authoritative copy into the cache unless the cached copy has a newer revision, and drops in-flight reads of it. */
+/** @approved Writes an authoritative copy into the cache unless the cached copy has a newer revision, and drops in-flight reads of it. A cached `null` (not found) is absent. */
 export const foldNewer = <T>(client: QueryClient, queryKey: QueryKey, value: T, revisionOf: (value: T) => number) => {
 	void client.cancelQueries({ queryKey });
-	return client.setQueryData<T>(queryKey, (current) => current !== undefined && revisionOf(current) > revisionOf(value) ? current : value);
+	return client.setQueryData<T>(queryKey, (current) => current !== undefined && current !== null && revisionOf(current) > revisionOf(value) ? current : value);
 };

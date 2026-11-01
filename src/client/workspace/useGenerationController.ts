@@ -1,6 +1,5 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
-import { useVisitSignal } from "../lib/visit";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { shownContent } from "../story/variant-text";
 import {
@@ -61,6 +60,8 @@ const stopCommandOutcome = (
 };
 
 type GenerationControllerOptions = {
+	/** @approved The Chat visit's signal: work it started settles nothing once the writer selects a Chat again. */
+	signal: AbortSignal;
 	conversation: ConversationSummary | null;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
@@ -81,6 +82,7 @@ const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: u
  * acceptance while this hook renders the combined state and composer actions.
  */
 export function useGenerationController({
+	signal,
 	conversation,
 	story,
 	dispatchStory,
@@ -112,7 +114,6 @@ export function useGenerationController({
 		draft.set(rewind.content);
 		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
 	};
-	const visit = useVisitSignal(conversation?.id);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -200,6 +201,7 @@ export function useGenerationController({
 	};
 
 	const assemblyController = useAssemblyController({
+		signal,
 		conversation,
 		activeChatIdRef,
 		refreshStory,
@@ -266,17 +268,17 @@ export function useGenerationController({
 	});
 	const stopGeneration = async (generationId: number) => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || stopPending || visit.aborted) return;
+		if (conversationId === undefined || stopPending || signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		await stop.mutateAsync({ conversationId, generationId, signal: visit });
+		await stop.mutateAsync({ conversationId, generationId, signal });
 	};
 	const stopAllGenerations = async () => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || visit.aborted) return;
+		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		await stopAll.mutateAsync({ conversationId, signal: visit });
+		await stopAll.mutateAsync({ conversationId, signal });
 	};
 
 	const cancelGeneration = () => {

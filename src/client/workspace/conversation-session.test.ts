@@ -281,15 +281,17 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 	let conversation = { ...summary(), activeGenerations: [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }] };
 	const activeChatIdRef = { current: "1" };
 	const dispatchStory = () => {};
+	let visit = new AbortController();
+	const reselect = () => { visit.abort(); visit = new AbortController(); };
 	const hook = await renderHook(() => useGenerationController({
-		conversation, story: { ...createStoryState(), status: "loading-first", conversationId: conversation.id }, dispatchStory, activeChatIdRef,
+		signal: visit.signal, conversation, story: { ...createStoryState(), status: "loading-first", conversationId: conversation.id }, dispatchStory, activeChatIdRef,
 		refreshStory: async () => conversation, ensureLatest: async () => conversation, inspectPromptPlanBeforeGenerating: false,
 	}), client);
 	let older: Promise<void> = Promise.resolve();
 	await hook.act(async () => { older = hook.current.stopGeneration(7); });
-	await hook.act(async () => { hook.current.conversationSwitched(); conversation = { ...conversation, id: 2 }; activeChatIdRef.current = "2"; });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 2 }; activeChatIdRef.current = "2"; });
 	await hook.rerender();
-	await hook.act(async () => { hook.current.conversationSwitched(); conversation = { ...conversation, id: 1 }; activeChatIdRef.current = "1"; });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 1 }; activeChatIdRef.current = "1"; });
 	await hook.rerender();
 	let newer: Promise<void> = Promise.resolve();
 	await hook.act(async () => { newer = hook.current.stopGeneration(7); });
