@@ -184,7 +184,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		},
 	});
 	const swipe = (messageId: number, direction: -1 | 1) => actions().changeSwipe(messageId, direction);
-	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content);
+	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content, false);
 
 	const activeVariantId = (): number | null => {
 		const message = story.messages.find((entry) => entry.id === 10);

@@ -119,7 +119,7 @@ test("editing during an Active Generation preserves its capture and reaches a la
 	const humanMessage = history.messages[0]!;
 	const oldVariantId = humanMessage.variants[0]!.id;
 	let current = await readConversation(app, chat.id);
-	expect((await command(app, chat.id, current.revision, { type: "create-variant", messageId: humanMessage.id, content: "Another branch" })).status).toBe(200);
+	expect((await command(app, chat.id, current.revision, { type: "create-variant", messageId: humanMessage.id, sourceVariantId: oldVariantId, content: "Another branch" })).status).toBe(200);
 	current = await readConversation(app, chat.id);
 	expect((await command(app, chat.id, current.revision, { type: "select-variant", messageId: humanMessage.id, variantId: oldVariantId })).status).toBe(200);
 	expect((await preview(app, chat.id)).promptPlan.blocks.find((block) => block.kind === "box:author-note")?.content).toBe("Current note");

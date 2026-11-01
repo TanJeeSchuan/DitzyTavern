@@ -91,7 +91,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onSelectVariant: (messageId: number, variantId: number) => void;
 	swipeBrowsing: SwipeBrowsing;
-	onEdit: (messageId: number, content: string) => Promise<boolean>;
+	onEdit: (messageId: number, content: string, asNew: boolean) => Promise<boolean>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
 	onRegenerate?: (messageId: number) => void;
@@ -136,21 +136,21 @@ export const StoryMessageView = memo(function StoryMessageView({
 		setChangedElsewhere(false);
 		setIsEditing(true);
 	};
-	const saveEdit = async () => {
+	const saveEdit = async (asNew: boolean) => {
 		const value = editText.trim();
 		if ((!value && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
-		if (active.content !== editBase) {
+		if (!asNew && active.content !== editBase) {
 			setEditBase(active.content);
 			setChangedElsewhere(true);
 			return false;
 		}
 		setSaving(true);
-		const applied = await onEdit(message.id, value);
+		const applied = await onEdit(message.id, value, asNew);
 		setSaving(false);
 		if (applied) setIsEditing(false);
 		return applied;
 	};
-	useSaveGuard({ dirty: isEditing && editText !== editBase, saving, save: saveEdit, discard: () => setIsEditing(false) });
+	useSaveGuard({ dirty: isEditing && editText !== editBase, saving, save: () => saveEdit(false), discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -306,10 +306,18 @@ export const StoryMessageView = memo(function StoryMessageView({
 							Cancel
 						</button>
 						<button
+							className="secondary-button"
+							type="button"
+							disabled={mutationsDisabled || saving}
+							onClick={() => saveEdit(true)}
+						>
+							Save as new Swipe
+						</button>
+						<button
 							className="primary-button"
 							type="button"
 							disabled={mutationsDisabled || saving}
-							onClick={saveEdit}
+							onClick={() => saveEdit(false)}
 						>
 							Save
 						</button>

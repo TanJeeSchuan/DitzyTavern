@@ -188,7 +188,7 @@ describe("Image Reference lifetime", () => {
 		executeConversationCommand(conversations(), {
 			conversationId: target.id,
 			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
-			action: { type: "create-variant", messageId: message.id, content: art.token },
+			action: { type: "create-variant", messageId: message.id, sourceVariantId: message.variants[0]!.id, content: art.token },
 		});
 		expect(referenced()).toEqual([art.hash]);
 		const added = lastMessage(target).variants.find((variant) => variant.content === art.token);

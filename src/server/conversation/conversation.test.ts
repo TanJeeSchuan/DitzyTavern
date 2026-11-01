@@ -12,8 +12,10 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { eq } from "drizzle-orm";
 import {
 	messageTable,
+	messageVariantDataTable,
 	messageVariantTable,
 } from "../database/schema";
 import {
@@ -410,6 +412,7 @@ describe("Conversation module", () => {
 			action: {
 				type: "create-variant",
 				messageId: message.id,
+				sourceVariantId: variants[0]!.id,
 				content: "Four",
 			},
 		});
@@ -421,6 +424,36 @@ describe("Conversation module", () => {
 			withSibling.messages.find((candidate) => candidate.id === message.id)
 				?.variants[2]?.selected,
 		).toBe(true);
+	});
+
+	test("a new Variant copies its source's state but not the evidence of the Generation that wrote it", () => {
+		const greeting = requireSnapshot(database, conversationId).messages[0]!;
+		const source = greeting.variants[0]!;
+		const state = [
+			{ namespace: "box:mood", key: "record:instance", value: "{\"automatic\":{\"mood\":\"wary\"}}" },
+			{ namespace: "box", key: "seed", value: "seed" },
+			{ namespace: "prompt-macro", key: "write:1", value: "[]" },
+			{ namespace: "generation", key: "reasoning", value: "Thinking." },
+		];
+		const evidence = [
+			{ namespace: "generation", key: "provenance", value: "{}" },
+			{ namespace: "lore-activation", key: "record", value: "{}" },
+			{ namespace: "generation-box", key: "traces", value: "{}" },
+		];
+		const db = drizzle(database);
+		db.insert(messageVariantDataTable).values([...state, ...evidence].map((row) => ({ ...row, message_variant_id: source.id }))).run();
+
+		const copied = applyCommand(database, {
+			conversationId,
+			expectedRevision: requireSnapshot(database, conversationId).revision,
+			action: { type: "create-variant", messageId: greeting.id, sourceVariantId: source.id, content: "Edited greeting" },
+		}).messages[0]!.variants.at(-1)!;
+
+		expect(copied.selected).toBe(true);
+		const rows = db.select({ namespace: messageVariantDataTable.namespace, key: messageVariantDataTable.key, value: messageVariantDataTable.value })
+			.from(messageVariantDataTable).where(eq(messageVariantDataTable.message_variant_id, copied.id)).all();
+		expect(rows).toEqual(expect.arrayContaining(state));
+		expect(rows).toHaveLength(state.length);
 	});
 
 	test("protects the final Variant without advancing the revision", () => {
@@ -455,7 +488,7 @@ describe("Conversation module", () => {
 		expect(readTestConversationSnapshot(conversation, conversationId)?.revision).toBe(created.revision);
 	});
 
-	test("gates Compose and Swipe behind derived playability while edits stay available", () => {
+	test("gates Compose behind derived playability while edits stay available", () => {
 		const module = database;
 		const incomplete = createConversationWithHistory(module, {
 			name: "Incomplete Import",
@@ -478,27 +511,18 @@ describe("Conversation module", () => {
 		expect(preservedMessage.historicalContext).toBeNull();
 		expect(incomplete.playable).toBe(false);
 
-		for (const action of [
-			{
-				type: "create-message" as const,
-				timestamp: "2026-08-20T11:00:00Z",
-				variantContents: ["Composed"],
-				authorParticipantId: 0,
-			},
-			{
-				type: "create-variant" as const,
-				messageId: preservedMessage.id,
-				content: "Swiped",
-			},
-		]) {
-			expect(() =>
-				executeConversationCommand(module, {
-					conversationId: incomplete.id,
-					expectedRevision: incomplete.revision,
-					action,
-				}),
-			).toThrow(ConversationNotPlayableError);
-		}
+		expect(() =>
+			executeConversationCommand(module, {
+				conversationId: incomplete.id,
+				expectedRevision: incomplete.revision,
+				action: {
+					type: "create-message",
+					timestamp: "2026-08-20T11:00:00Z",
+					variantContents: ["Composed"],
+					authorParticipantId: 0,
+				},
+			}),
+		).toThrow(ConversationNotPlayableError);
 
 		// Reads, edits, selection, and configuration remain available.
 		const edited = applyCommand(module, {
@@ -512,6 +536,12 @@ describe("Conversation module", () => {
 			},
 		});
 		expect(edited.messages[0]?.variants[0]?.content).toBe("Edited preservation");
+		const copied = applyCommand(module, {
+			conversationId: incomplete.id,
+			expectedRevision: edited.revision,
+			action: { type: "create-variant", messageId: preservedMessage.id, sourceVariantId: preservedVariant.id, content: "Written alternative" },
+		});
+		expect(copied.messages[0]?.variants.map((variant) => variant.content)).toEqual(["Edited preservation", "Written alternative"]);
 	});
 
 	test("stores Variant-scoped data and deletes its Message", () => {
@@ -776,6 +806,7 @@ describe("Conversation module", () => {
 			action: {
 				type: "create-variant",
 				messageId: greeting.id,
+				sourceVariantId: variant.id,
 				content: "Another opening alternative",
 			},
 		});
