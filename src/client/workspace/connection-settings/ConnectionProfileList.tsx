@@ -142,7 +142,7 @@ function ProfileRows({ label, profiles, controller, describe, badge, empty }: {
 						<span className="truncate text-xs text-muted-foreground">
 							{describe(profile)}
 							{profile.pinnedModels[0] !== undefined && <> · <span className="font-mono">{profile.pinnedModels[0]}</span></>}
-							{" · "}{profile.credentialConfigured ? "Key saved" : <span className="text-destructive">No key</span>}
+							{" · "}{profile.credentialState === "saved" ? "Key saved" : <span className="text-destructive">{profile.credentialState === "none" ? "No key" : "Key unreadable"}</span>}
 						</span>
 					</button>
 					<DropdownMenu>

@@ -90,7 +90,7 @@ export function MemorySettingsEditor() {
 				<p>Memory runs in each Chat where its Box is on. Extraction runs separately from writing generations. Its Decision Model is chosen in Connections.</p>
 				{connectionsQuery.isError && <p className="settings-feedback-error" role="alert">Connection Settings could not be loaded.</p>}
 				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
-				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && (
+				{(extractionProfile?.credentialState !== "saved" || draft.extractionModel.length === 0) && (
 					<p className="settings-feedback" role="status">
 						Memory extraction is not ready. Choose an extraction model whose connection has an API key.
 					</p>

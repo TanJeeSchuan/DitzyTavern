@@ -63,7 +63,7 @@ export const connectionProfile = Type.Object({
 	pinnedModels: Type.Array(Type.String()),
 	discoveryCatalog: Type.Array(Type.String()),
 	textOnlyModels: Type.Array(Type.String()),
-	credentialConfigured: Type.Boolean(),
+	credentialState: Type.Union([Type.Literal("none"), Type.Literal("saved"), Type.Literal("unreadable")]),
 	headers: Type.Array(redactedHeader),
 });
 

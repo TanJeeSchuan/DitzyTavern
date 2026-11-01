@@ -5,8 +5,8 @@ import { initializeConnectionSecretKey } from "./connection-secrets";
 import { boxFolders, loadBoxes } from "./box/registry";
 
 registerWireFormats();
-initializeConnectionSecretKey();
 const database = openInitializedDatabase();
+initializeConnectionSecretKey({ secretsStored: database.query("SELECT 1 FROM connection_secret LIMIT 1").get() !== null });
 await loadBoxes(boxFolders, database);
 const { app, close } = await createApp({ database });
 app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: Number(process.env.PORT ?? 3000) });

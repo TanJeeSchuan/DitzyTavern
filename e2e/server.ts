@@ -270,6 +270,7 @@ const server = Bun.serve({
 				break;
 			}
 			case "/__e2e/release": held.resolve(); break;
+			case "/__e2e/corrupt-secrets": current!.database.query("UPDATE connection_secret SET tag = ?").run(Buffer.alloc(16).toString("base64")); break;
 			case "/__e2e/install-box": {
 				const id: string = await request.json();
 				cpSync(join(import.meta.dir, "fixtures", "boxes", id), join(pluginFolder, id), { recursive: true });

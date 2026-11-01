@@ -27,6 +27,7 @@ export interface ConnectionSecretKeyBootstrapOptions {
 	environment?: Readonly<Record<string, string | undefined>>;
 	envFilePath?: string;
 	randomBytes?: (length: number) => Uint8Array;
+	secretsStored?: boolean;
 }
 
 export class ConnectionSecretBootstrapError extends Error {
@@ -58,6 +59,12 @@ export function bootstrapConnectionSecretKey(
 	const envFile = readEnvFile(envFilePath);
 	if (envFile.key !== undefined) {
 		return createResult(decodeKey(envFile.key, "local configuration"), "env-file");
+	}
+
+	if (options.secretsStored === true) {
+		throw new ConnectionSecretBootstrapError(
+			`No ${CONNECTION_SECRET_KEY_ENV} was found in the environment or ${envFilePath}, but the database holds Connection Secrets. Restore the key that encrypted them; a new key cannot read them.`,
+		);
 	}
 
 	const generated = options.randomBytes?.(CONNECTION_SECRET_KEY_BYTES) ??

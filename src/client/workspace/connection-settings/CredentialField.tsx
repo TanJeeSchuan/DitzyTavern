@@ -3,20 +3,23 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
+import type { ConnectionProfile } from "../../connection-settings";
 
-export function CredentialField({ id, label, value, onChange, configured, pending = false, onRemove, placeholder }: {
+const unreadableHelper = "The saved value cannot be decrypted with this server's master key. Enter it again or remove it.";
+
+export function CredentialField({ id, label, value, onChange, saved, pending = false, onRemove, placeholder }: {
 	id: string;
 	label: string;
 	value: string;
 	onChange: (value: string) => void;
-	configured: boolean;
+	saved: ConnectionProfile["credentialState"];
 	pending?: boolean;
 	onRemove: () => void;
 	placeholder: string;
 }) {
 	const [confirming, setConfirming] = useState(false);
 	return (
-		<Field htmlFor={id} label={label} helper="Stored apart from Chat data and never shown again after saving.">
+		<Field htmlFor={id} label={label} helper={saved === "unreadable" ? unreadableHelper : "Stored apart from Chat data and never shown again after saving."}>
 			<div className="flex items-center gap-2">
 				<div className="relative min-w-0 flex-1">
 					<KeyRound className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -27,10 +30,10 @@ export function CredentialField({ id, label, value, onChange, configured, pendin
 					autoComplete="new-password"
 					value={value}
 					onChange={(event) => onChange(event.target.value)}
-					placeholder={configured ? "Saved · type to replace" : placeholder}
+					placeholder={saved === "none" ? placeholder : saved === "saved" ? "Saved · type to replace" : "Unreadable · type to replace"}
 				/>
 				</div>
-				{configured && <Button type="button" size="sm" variant="ghost" className="text-muted-foreground" disabled={pending} onClick={() => setConfirming(true)}>Remove</Button>}
+				{saved !== "none" && <Button type="button" size="sm" variant="ghost" className="text-muted-foreground" disabled={pending} onClick={() => setConfirming(true)}>Remove</Button>}
 			</div>
 			<Dialog open={confirming} onOpenChange={(open) => { if (!pending) setConfirming(open); }}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">

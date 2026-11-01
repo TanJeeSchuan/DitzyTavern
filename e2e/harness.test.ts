@@ -50,7 +50,7 @@ test("the intercepted call log keeps provider request fields the interceptor doe
 		await server.reset();
 		const { profiles } = await call("connection-settings");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
-		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...draft } = chat;
+		const { id, discoveryCatalog: _catalog, credentialState: _credential, headers: _headers, textOnlyModels: _textOnly, ...draft } = chat;
 		await call("connection-settings/test-connection", { profileId: id, profile: draft, modelId: "e2e-model" });
 		const chatCall = (await server.log()).calls.find(isChatModelCall);
 		assert.ok(chatCall, "the Test Connection logged a chat call");
@@ -96,7 +96,7 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile: decisionPreset });
 		const decision = created.settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "system-one");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
-		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
+		const { id, discoveryCatalog: _catalog, credentialState: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
 		await call("connection-settings/discovery", { profileId: chat.id });
 		await call("connection-settings/test-connection", { profileId: id, profile: embedding, modelId: "e2e-embedding" });
 		const { revision, ...settings } = await call("boxes/memory/settings");

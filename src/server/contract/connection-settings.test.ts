@@ -82,7 +82,7 @@ describe("Connection Settings transport adapter", () => {
 		expect(response.status).toBe(200);
 		const body = await response.json();
 		expect(body.outcome).toBe("applied");
-		expect(body.settings.profiles[0].credentialConfigured).toBe(true);
+		expect(body.settings.profiles[0].credentialState).toBe("saved");
 		expect(JSON.stringify(body)).not.toContain("secret-value-never-returned");
 
 		const reread = await get("/api/connection-settings");

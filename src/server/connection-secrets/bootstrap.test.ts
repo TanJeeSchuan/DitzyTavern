@@ -104,6 +104,14 @@ describe("Connection Secret master-key bootstrap", () => {
 		).toEqual([`${CONNECTION_SECRET_KEY_ENV}=${result.encoded}`]);
 	});
 
+	test("refuses to generate a key while the database holds secrets a new key cannot read", () => {
+		const envFilePath = join(temporaryDirectory(), ".env");
+
+		expect(() => bootstrapConnectionSecretKey({ environment: {}, envFilePath, randomBytes: () => generatedKey, secretsStored: true }))
+			.toThrow("Restore the key that encrypted them");
+		expect(() => readFileSync(envFilePath)).toThrow();
+	});
+
 	test("uses a valid key already present in .env without duplicating it", () => {
 		const directory = temporaryDirectory();
 		const envFilePath = join(directory, ".env");

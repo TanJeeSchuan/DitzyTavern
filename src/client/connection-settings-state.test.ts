@@ -24,7 +24,7 @@ const profile = (id: number, displayName: string, pinnedModels: string[] = ["mod
 	pinnedModels,
 	discoveryCatalog: [...pinnedModels, "discovered-model"],
 	textOnlyModels: [],
-	credentialConfigured: true,
+	credentialState: "saved",
 	headers: [{ name: "X-Client", configured: true }],
 });
 
@@ -74,7 +74,7 @@ describe("copyDraft", () => {
 			timeoutMs: 120_000,
 			pinnedModels: ["deepseek-chat"],
 			discoveryCatalog: ["deepseek-chat", "deepseek-reasoner"],
-			credentialConfigured: true,
+			credentialState: "saved",
 			headers: [{ name: "X-Client", configured: true }],
 		};
 
