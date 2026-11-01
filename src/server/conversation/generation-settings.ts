@@ -52,7 +52,7 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	continuationStrategy: DEFAULT_CONTINUATION_STRATEGY,
 	continuationInstruction: DEFAULT_CONTINUATION_INSTRUCTION,
 	continuationPrefillSuffix: "",
-	repeatedImagePlacement: "last",
+	repeatedImagePlacement: "first",
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
