@@ -544,7 +544,7 @@ export const dispatchMacro = (node: MacroNode, context: MacroDispatchContext): s
 	if (definition.changes === true && context.warnings.length === warned) context.changing.push(node.raw);
 	// A variable written here holds a value that changes when anything this macro evaluated did.
 	for (const { name, operation } of context.attemptState.writes.slice(written)) {
-		context.attemptState.changingVariables.set(name, operation === "delete" ? [] : context.changing.slice(changed));
+		context.attemptState.changingVariables.set(name, operation === "delete" ? [] : [...new Set(context.changing.slice(changed))]);
 	}
 	return output;
 };

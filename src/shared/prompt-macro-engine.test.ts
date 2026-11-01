@@ -121,6 +121,12 @@ describe("Prompt macro engine", () => {
 		]);
 	});
 
+	test("appending to a variable that holds a changing value keeps one copy of what changes it", () => {
+		const state = createMacroAttemptState();
+		expandMacroTextWithState(`{{setvar::clock::{{time}}}}${"{{addvar::clock::x}}".repeat(12)}`, environment, state, "instruction");
+		expect(state.changingVariables.get("clock")).toEqual(["{{time}}"]);
+	});
+
 	test("does not execute global shorthand operations", () => {
 		const result = expandMacroText("{{$count=3}}", environment, "instruction");
 		expect(result.text).toBe("{{$count=3}}");
