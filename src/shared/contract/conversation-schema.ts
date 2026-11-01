@@ -81,8 +81,6 @@ const promptBlock = Type.Union([
 	}),
 ]);
 
-
-
 const promptImage = Type.Object({
 	block: Type.Integer(),
 	start: Type.Integer(),
@@ -248,8 +246,6 @@ export const generationVariant = Type.Object({
 });
 
 export type GenerationVariant = Static<typeof generationVariant>;
-
-
 
 // @approved
 //  The budget decision made at Generation start, with the whole history

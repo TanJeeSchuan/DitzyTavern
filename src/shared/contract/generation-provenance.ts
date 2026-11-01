@@ -34,8 +34,6 @@ const provenanceSettingsSchemas = {
 	repeatedImagePlacement: nullable(canonicalGenerationSettings.properties.repeatedImagePlacement),
 } as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
 
-
-
 // The persisted provenance record. Null leads every union so the schema's
 // created value is the all-unavailable record. A start-time record has no
 // terminal status yet; the terminal record written beside the durable

@@ -6,7 +6,6 @@ import { decodeStoredGenerationIntent, isProvisional } from "./generation-state"
 import type { ConversationDatabase } from "./internal";
 import type { ConversationAction } from "./types";
 
-// @approved These commands have their own transactions instead of executeConversationCommand.
 type GenerationCommand = ConversationAction
 	| { type: "delete-conversation" | "fork-conversation" | "accept-tail" | "accept-continuation" }
 	| { type: "accept-sibling"; messageId: number }

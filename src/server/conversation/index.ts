@@ -31,15 +31,6 @@ export {
 //  Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";
-// @approved
-//  Canonical persisted-intent reader shared by terminal commands and the
-// recovery sweep so the sibling discriminator cannot drift between them.
-// @approved
-//  The one Active-Generation existence probe, shared with the
-// Generation-start capture workflows so no workflow re-probes the
-// active_generation table through its own raw handle. The probe accepts the
-// raw Database like every other public entry point, so workflows never
-// construct the module's Drizzle handle.
 export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
