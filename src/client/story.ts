@@ -12,6 +12,7 @@
 
 import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
 import { sameMoves, type BoxMoves } from "../shared/contract/box-generation";
+import { replaceEqualDeep } from "@tanstack/react-query";
 
 // @approved
 //  A reading view of one Variant: the stored content plus whether the
@@ -347,6 +348,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 			};
 		case "window-received":
 			if (state.status === "idle" || ("conversationId" in state && state.conversationId !== action.page.conversationId) || (isStoryReady(state) && action.page.revision < state.revision)) return state;
+			const priorMessages = new Map(state.messages.map((message) => [message.id, message]));
 			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
 			const accepted = state.requestedGeneration?.accepted ?? null;
 			const previewed = action.page.messages.find((message) => message.id === state.preview?.messageId);
@@ -359,11 +361,11 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				conversationId: action.page.conversationId,
 				title: action.page.name,
 				revision: action.page.revision,
-				messages: action.page.messages.map((message) => toStoryMessage(
+				messages: action.page.messages.map((message) => replaceEqualDeep(priorMessages.get(message.id), toStoryMessage(
 					message,
-					state.messages.find((entry) => entry.id === message.id),
+					priorMessages.get(message.id),
 					activeGenerationIds,
-				)),
+				))),
 				page: action.page.page,
 				status: "ready",
 				loadingMore: false,

@@ -216,18 +216,31 @@ async function consumeGenerationStream(
 
 // @approved
 // The production adapter: session observation over the resumable SSE stream.
-//  It contributes no session behavior of its own, so the fake adapters used in
-// tests and this adapter are interchangeable behind GenerationStreamAdapter.
+// Observations arrive in 16 ms batches so token speed cannot dictate render
+// speed. Snapshots and subscription settlement flush the preceding events first.
 export const generationStreamAdapter: GenerationStreamAdapter = {
-	subscribe: (request) =>
-		subscribeConversationGeneration(request.conversationId, request.generationId, {
-			messageId: request.messageId,
-			variantId: request.variantId,
-			afterEventId: request.afterEventId,
-			signal: request.signal,
-			onDelta: (event, eventId) => request.onEvent({ eventId, event }),
-			onState: request.onState,
-		}),
+	async subscribe(request) {
+		const pending: GenerationStreamObservation[] = [];
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const flush = () => {
+			clearTimeout(timer);
+			timer = undefined;
+			for (const observation of pending.splice(0)) if (!request.signal.aborted) request.onEvent(observation);
+		};
+		try {
+			return await subscribeConversationGeneration(request.conversationId, request.generationId, {
+				messageId: request.messageId,
+				variantId: request.variantId,
+				afterEventId: request.afterEventId,
+				signal: request.signal,
+				onDelta: (event, eventId) => {
+					pending.push({ eventId, event });
+					timer ??= setTimeout(flush, 16);
+				},
+				onState: (state) => { flush(); request.onState(state); },
+			});
+		} finally { flush(); }
+	},
 };
 
 // @approved

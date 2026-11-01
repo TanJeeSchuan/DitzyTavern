@@ -26,7 +26,7 @@ export const shownContent = (client: QueryClient, conversationId: number, varian
 
 /** @approved Every Variant of a Message with its Content, read while `enabled`, as the Swipes browser shows them all. */
 export function useVariantsText(conversationId: number, messageId: number, variants: StoryVariant[], enabled: boolean) {
-	const reads = useQueries({ queries: variants.map((variant) => ({ ...variantTextQuery(conversationId, messageId, variant.id), enabled: enabled && variant.content === null })) });
+	const reads = useQueries({ queries: enabled ? variants.map((variant) => ({ ...variantTextQuery(conversationId, messageId, variant.id), enabled: variant.content === null })) : [] });
 	return variants.map((variant, index) => withText(variant, reads[index]?.data));
 }
 

@@ -77,6 +77,7 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		const last = messages.at(-1);
 		if (!root) return;
 		const previous = anchoredRef.current;
+		if (first && last && previous?.firstId === first.id && previous.lastId === last.id) return;
 		anchoredRef.current = first && last ? { firstId: first.id, lastId: last.id, firstTop: messageTop(root, first.id) } : null;
 		if (!first || !last) return;
 		if (hasNewer && (previous === null || !messages.some((message) => message.id === previous.lastId))) { follow(false); return; }
