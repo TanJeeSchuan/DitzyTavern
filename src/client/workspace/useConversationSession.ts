@@ -8,6 +8,7 @@ import { cancellableFetch, conversationKey, conversationQuery, publishConversati
 import type { StoryAction, StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { NetworkError, SERVER_UNREACHABLE_NOTICE } from "../lib/request-outcome";
+import { useVisitSignal } from "../lib/visit";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -33,33 +34,36 @@ const historyQuery = (id: number, anchor: HistoryAnchor) => infiniteQueryOptions
 		return outcome;
 	},
 });
-const selection = (activeChatId: string) => ({ activeChatId, owner: { cancellation: new AbortController(), window: new AbortController(), navigating: false } });
 const afterRender = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
 
 /** @approved Coordinates the selected Chat's authoritative snapshot and paginated reading history. */
 export function useConversationSession({ initialWorkspace, story, dispatchStory }: ConversationSessionOptions) {
 	const client = useQueryClient();
-	const [{ activeChatId, owner }, setSelection] = useState(() => selection(initialWorkspace.activeChat.id));
+	// @approved
+	//  Each selection is a new visit, even when a batch returns to the same Chat.
+	const [{ activeChatId, visit }, setSelection] = useState({ activeChatId: initialWorkspace.activeChat.id, visit: 0 });
+	const signal = useVisitSignal(visit);
+	// @approved
+	//  The latest navigation within the visit: a newer one, or a Chat switch, aborts it.
+	const navigation = useRef({ window: new AbortController(), navigating: false });
 	const [anchor, setAnchor] = useState<HistoryAnchor>("latest");
 	const pendingMessage = useRef<number | null>(null);
 	const activeChatIdRef = useRef(activeChatId);
 	const id = Number(activeChatId);
 	const conversationId = Number.isInteger(id) && id > 0 ? id : null;
-	const currentSession = useEffectEvent(() => ({ story, owner }));
+	const currentSession = useEffectEvent(() => ({ story, signal }));
 	const conversationRead = useConversationQuery(conversationId);
 	const history = useInfiniteQuery({ ...historyQuery(id, anchor), enabled: conversationId !== null });
 	const conversation = conversationRead.data ?? null;
 	const setConversation = useCallback((next: ConversationSummary | null) => {
-		if (owner.cancellation.signal.aborted || Number(activeChatIdRef.current) !== conversationId) return;
+		if (signal.aborted || Number(activeChatIdRef.current) !== conversationId) return;
 		if (next !== null && next.id === conversationId) publishConversation(client, next);
 		else if (next === null) client.setQueryData(conversationKey(conversationId), null);
-	}, [client, conversationId, owner]);
+	}, [client, conversationId, signal]);
 
 	useEffect(() => {
-		if (owner.cancellation.signal.aborted) { owner.cancellation = new AbortController(); owner.window = new AbortController(); }
 		if (conversationId !== null) dispatchStory({ type: "chat-opened", conversationId });
-		return () => { owner.cancellation.abort(); owner.window.abort(); };
-	}, [conversationId, owner, dispatchStory]);
+	}, [visit, conversationId, dispatchStory]);
 
 	const receiveWindow = useCallback((data: InfiniteData<HistoryOutcome>) => {
 		const pages = data.pages.flatMap((outcome) => outcome.outcome === "available" ? [outcome.value] : []);
@@ -68,7 +72,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		if (!first || !last) return;
 		const authority = client.getQueryData<ConversationSummary | null>(conversationKey(id));
 		const { revision } = first;
-		if (owner.cancellation.signal.aborted || revision < (authority?.revision ?? 0) || pages.some((page) => page.revision !== revision)) return;
+		if (signal.aborted || revision < (authority?.revision ?? 0) || pages.some((page) => page.revision !== revision)) return;
 		dispatchStory({
 			type: "window-received",
 			page: { ...first, revision,
@@ -77,10 +81,10 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 			},
 			activeGenerationIds: authority?.activeGenerations.map(({ generationId }) => generationId),
 		});
-	}, [client, id, owner, dispatchStory]);
+	}, [client, id, signal, dispatchStory]);
 
 	useEffect(() => {
-		if (owner.cancellation.signal.aborted || conversationRead.data === undefined || history.isFetching) return;
+		if (signal.aborted || conversationRead.data === undefined || history.isFetching) return;
 		if (history.isError) { dispatchStory({ type: "history-failed" }); return; }
 		if (!history.data) return;
 		if (history.data.pages.some((page) => page.outcome === "not-found")) {
@@ -90,7 +94,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		}
 
 		receiveWindow(history.data);
-	}, [conversationRead.data, conversation, history.data, history.isFetching, history.isError, anchor, owner, dispatchStory, receiveWindow]);
+	}, [conversationRead.data, conversation, history.data, history.isFetching, history.isError, anchor, signal, dispatchStory, receiveWindow]);
 
 	useEffect(() => {
 		const revisions = history.data?.pages.flatMap((page) => page.outcome === "available" ? [page.value.revision] : []) ?? [];
@@ -101,30 +105,29 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	const activeChat = conversation !== null && String(conversation.id) === activeChatId ? { ...listedChat, id: activeChatId, title: conversation.name } : { ...listedChat, id: activeChatId };
 	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current) return;
-		owner.cancellation.abort();
-		owner.window.abort();
+		navigation.current.window.abort();
+		navigation.current = { window: new AbortController(), navigating: false };
 		void client.cancelQueries({ queryKey: historyKey(id) });
 		void client.invalidateQueries({ queryKey: conversationKey(Number(chatId)) });
 		void client.invalidateQueries({ queryKey: historyKey(Number(chatId)) });
 		activeChatIdRef.current = chatId;
 		pendingMessage.current = messageId;
 		setAnchor(messageId === null ? "latest" : { aroundMessageId: messageId });
-		setSelection(selection(chatId));
+		setSelection((current) => ({ activeChatId: chatId, visit: current.visit + 1 }));
 	};
 
 	const loadMoreHistory = async (direction: "older" | "newer" = "older") => {
-		if (history.isFetching || owner.navigating || owner.cancellation.signal.aborted || !(direction === "older" ? history.hasNextPage : history.hasPreviousPage)) return;
+		if (history.isFetching || navigation.current.navigating || signal.aborted || !(direction === "older" ? history.hasNextPage : history.hasPreviousPage)) return;
 		dispatchStory({ type: "load-more-started" });
 		await (direction === "older" ? history.fetchNextPage({ cancelRefetch: false }) : history.fetchPreviousPage({ cancelRefetch: false }));
 	};
 
 	const beginNavigation = () => {
-		owner.window.abort();
+		navigation.current.window.abort();
 		void client.cancelQueries({ queryKey: historyKey(id) });
-		owner.window = new AbortController();
-		owner.navigating = true;
+		navigation.current = { window: new AbortController(), navigating: true };
 		dispatchStory({ type: "paging-cancelled" });
-		return AbortSignal.any([owner.cancellation.signal, owner.window.signal]);
+		return AbortSignal.any([signal, navigation.current.window.signal]);
 	};
 	const openAnchor = async (next: HistoryAnchor, signal: AbortSignal) => {
 		client.removeQueries({ queryKey: historyQuery(id, next).queryKey, exact: true });
@@ -134,51 +137,50 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 	const navigateToSourceMessage = async (messageId: number) => {
 		const current = currentSession().story;
-		if (!isStoryReady(current) || owner.cancellation.signal.aborted) return;
-		const signal = beginNavigation();
+		if (!isStoryReady(current) || signal.aborted) return;
+		const navigationSignal = beginNavigation();
 		try {
-			if (!current.messages.some((message) => message.id === messageId)) await openAnchor({ aroundMessageId: messageId }, signal);
+			if (!current.messages.some((message) => message.id === messageId)) await openAnchor({ aroundMessageId: messageId }, navigationSignal);
 			await afterRender();
-			signal.throwIfAborted();
+			navigationSignal.throwIfAborted();
 			document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
 			await afterRender();
-		} catch (error) { if (!signal.aborted) throw error; }
-		finally { if (!signal.aborted) owner.navigating = false; }
+		} catch (error) { if (!navigationSignal.aborted) throw error; }
+		finally { if (!navigationSignal.aborted) navigation.current.navigating = false; }
 	};
 	useEffect(() => {
 		const messageId = pendingMessage.current;
 		if (messageId === null || !isStoryReady(story) || story.conversationId !== conversationId || !story.messages.some((message) => message.id === messageId)) return;
 		pendingMessage.current = null;
 		void afterRender().then(() => {
-			if (!owner.cancellation.signal.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
+			if (!signal.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
 		});
-	}, [story, conversationId, owner]);
+	}, [story, conversationId, signal]);
 
 	const refreshStory = useCallback(async (id: number, external?: AbortSignal) => {
-		const { owner } = currentSession();
-		const signal = AbortSignal.any([owner.cancellation.signal, ...(external ? [external] : []), owner.window.signal]);
-		signal.throwIfAborted();
+		const refresh = AbortSignal.any([currentSession().signal, ...(external ? [external] : []), navigation.current.window.signal]);
+		refresh.throwIfAborted();
 		await client.cancelQueries({ queryKey: conversationKey(id) });
-		const freshConversation = await client.fetchQuery({ ...conversationQuery(client, id, signal), staleTime: 0 });
-		signal.throwIfAborted();
+		const freshConversation = await client.fetchQuery({ ...conversationQuery(client, id, refresh), staleTime: 0 });
+		refresh.throwIfAborted();
 		await client.refetchQueries({ queryKey: historyKey(id), type: "active" }, { cancelRefetch: false, throwOnError: true });
-		signal.throwIfAborted();
+		refresh.throwIfAborted();
 		return freshConversation;
 	}, [client]);
 
 	const jumpToLatest = async () => {
 		if (!isStoryReady(currentSession().story)) return null;
-		const signal = beginNavigation();
+		const navigationSignal = beginNavigation();
 		try {
 			await client.cancelQueries({ queryKey: conversationKey(id) });
-			const loaded = await client.fetchQuery({ ...conversationQuery(client, id, signal), staleTime: 0 });
-			await openAnchor("latest", signal);
+			const loaded = await client.fetchQuery({ ...conversationQuery(client, id, navigationSignal), staleTime: 0 });
+			await openAnchor("latest", navigationSignal);
 			await afterRender();
-			signal.throwIfAborted();
+			navigationSignal.throwIfAborted();
 			const root = document.querySelector<HTMLElement>(".story-scroll");
 			root?.scrollTo({ top: root.scrollHeight, behavior: "instant" });
 			return loaded;
-		} finally { if (!signal.aborted) owner.navigating = false; }
+		} finally { if (!navigationSignal.aborted) navigation.current.navigating = false; }
 	};
 	const ensureLatest = async () => {
 		const current = currentSession().story;
@@ -186,7 +188,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 
 	return {
-		signal: owner.cancellation.signal, activeChatId, activeChat, conversation, setConversation, activeChatIdRef,
+		signal, activeChatId, activeChat, conversation, setConversation, activeChatIdRef,
 		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory,
 	};
 }

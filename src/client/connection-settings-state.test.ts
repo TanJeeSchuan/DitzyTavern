@@ -6,7 +6,6 @@ import {
 	createConnectionSettingsControllerState,
 	emptyConnectionProfileDraft,
 	headerEditorDataFor,
-	newerSettings,
 	reduceConnectionSettingsController,
 } from "./connection-settings-state";
 
@@ -90,17 +89,6 @@ describe("copyDraft", () => {
 			timeoutMs: 120_000,
 			pinnedModels: ["deepseek-chat"],
 		});
-	});
-});
-
-describe("newerSettings", () => {
-	test("an older snapshot never replaces a newer one", () => {
-		const older = { revision: 2, profiles: [profile(1, "Old")] };
-		const newer = { revision: 4, profiles: [profile(1, "Fresh")] };
-
-		expect(newerSettings(older, newer)).toBe(newer);
-		expect(newerSettings(newer, older)).toBe(newer);
-		expect(newerSettings(null, older)).toBe(older);
 	});
 });
 

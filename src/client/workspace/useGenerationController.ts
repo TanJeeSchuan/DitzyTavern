@@ -1,10 +1,10 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
+import { useVisitSignal } from "../lib/visit";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { shownContent } from "../story/variant-text";
 import {
 	useEffect,
-	useMemo,
 	useReducer,
 	useRef,
 	useState,
@@ -112,11 +112,7 @@ export function useGenerationController({
 		draft.set(rewind.content);
 		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
 	};
-	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
-	useEffect(() => {
-		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
-		return () => stopOwner.cancellation.abort();
-	}, [stopOwner]);
+	const visit = useVisitSignal(conversation?.id);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -249,7 +245,6 @@ export function useGenerationController({
 	};
 
 	const conversationSwitched = () => {
-		stopOwner.cancellation.abort();
 		dispatchPendingStarts({ type: "conversation-switched" });
 		assemblyController.conversationSwitched();
 		runner.dispatch({ type: "conversation-switched" });
@@ -271,17 +266,17 @@ export function useGenerationController({
 	});
 	const stopGeneration = async (generationId: number) => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || stopPending || stopOwner.cancellation.signal.aborted) return;
+		if (conversationId === undefined || stopPending || visit.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		await stop.mutateAsync({ conversationId, generationId, signal: stopOwner.cancellation.signal });
+		await stop.mutateAsync({ conversationId, generationId, signal: visit });
 	};
 	const stopAllGenerations = async () => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || stopOwner.cancellation.signal.aborted) return;
+		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || visit.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		await stopAll.mutateAsync({ conversationId, signal: stopOwner.cancellation.signal });
+		await stopAll.mutateAsync({ conversationId, signal: visit });
 	};
 
 	const cancelGeneration = () => {

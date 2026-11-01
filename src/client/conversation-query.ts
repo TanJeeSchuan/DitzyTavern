@@ -1,6 +1,5 @@
 import { skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { loadConversation, type ConversationSummary } from "./conversation";
-import { adoptConversationSummary } from "./workspace/conversation-session-state";
 import { variantTextKey } from "./story/variant-text";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
@@ -24,18 +23,21 @@ export const cancellableFetch = async <T>(
 
 // @approved
 //  A newer revision can change any page and any Variant's text: the story
-// reads them again when it next shows them.
-const revisionMoved = (client: QueryClient, id: number) => {
-	void client.invalidateQueries({ queryKey: ["conversation-history", id] });
-	void client.invalidateQueries({ queryKey: variantTextKey(id) });
+// reads them again when it next shows them. An older copy never replaces the
+// cached one.
+const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number) => {
+	const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
+	if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
+		void client.invalidateQueries({ queryKey: ["conversation-history", id] });
+		void client.invalidateQueries({ queryKey: variantTextKey(id) });
+	}
+	return incoming !== null && current !== null && current.revision > incoming.revision ? current : incoming;
 };
 
 export const publishConversation = (client: QueryClient, conversation: ConversationSummary) => {
 	const queryKey = conversationKey(conversation.id);
 	void client.cancelQueries({ queryKey });
-	const current = client.getQueryData<ConversationSummary | null>(queryKey);
-	if (conversation.revision > (current?.revision ?? 0)) revisionMoved(client, conversation.id);
-	return client.setQueryData<ConversationSummary | null>(queryKey, (current) => adoptConversationSummary(current ?? null, conversation, conversation.id));
+	return client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
 };
 
 export const conversationQuery = (client: QueryClient, id: number, owner?: AbortSignal) => ({
@@ -44,14 +46,8 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 	refetchOnReconnect: false,
 	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
-		const incoming = await cancellableFetch(signal, owner, (cancellation) =>
-			loadConversation(id, cancellation),
-		);
-		const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
-		if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-			revisionMoved(client, id);
-		}
-		return adoptConversationSummary(current, incoming, id);
+		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
+		return adoptConversation(client, incoming, id);
 	},
 });
 

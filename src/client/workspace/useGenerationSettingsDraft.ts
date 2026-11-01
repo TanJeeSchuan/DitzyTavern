@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
 import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "../generation-settings-query";
+import { useVisitSignal } from "../lib/visit";
 import type { ConnectionProfile } from "../connection-settings";
 import {
 	applyConversationCommand,
@@ -166,12 +167,12 @@ export function useGenerationSettingsDraft({
 	const { reset, getValues, setValue, watch, formState: { isDirty } } = form;
 	const { instruction, strategy, prefillSuffix, imagePlacement, samplingDrafts, budgetDrafts, overridesDrafts } = watch();
 	const [problem, setProblem] = useState<string | null>(null);
-	const session = useRef({ cancellation: new AbortController(), editorIdentity: Symbol(), saving: false });
+	const signal = useVisitSignal(conversationId);
+	const session = useRef({ editorIdentity: Symbol(), saving: false });
 	const initializedConversation = useRef<number | null>(null);
 	useEffect(() => {
-		session.current = { cancellation: new AbortController(), editorIdentity: Symbol(), saving: false };
+		session.current = { editorIdentity: Symbol(), saving: false };
 		setProblem(null);
-		return () => session.current.cancellation.abort();
 	}, [conversationId]);
 	const resetDraft = (authoritative: ConversationGenerationSettings, preserve: boolean) => {
 		const current = getValues();
@@ -258,7 +259,7 @@ export function useGenerationSettingsDraft({
 		if (conversation === null || !canSave || samplingValues === null || budgetValues === null || overridesValues === null || session.current.saving) return false;
 		session.current.saving = true;
 		return write.mutateAsync({
-			conversation, signal: session.current.cancellation.signal, editorIdentity: session.current.editorIdentity,
+			conversation, signal, editorIdentity: session.current.editorIdentity,
 			drafts: { sampling: samplingValues, budget: budgetValues, overrides: overridesValues, strategy, instruction, prefillSuffix, imagePlacement },
 		});
 	};

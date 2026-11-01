@@ -82,14 +82,6 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	error: null,
 });
 
-// @approved
-//  Every settings snapshot enters the query cache through this fold, so a
-//  late command result can never replace a newer authoritative revision.
-export const newerSettings = (
-	current: ConnectionSettings | null,
-	incoming: ConnectionSettings,
-): ConnectionSettings => current === null || incoming.revision >= current.revision ? incoming : current;
-
 export type ConnectionSettingsEditorSnapshot = Pick<ConnectionSettingsControllerState, "editorIdentity" | "selectedProfileId">;
 
 const profileEditorState = (

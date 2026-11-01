@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ConversationSummary } from "./conversation";
 import { generationSettingsKey, publishGenerationSettings, useGenerationSettingsQuery } from "./generation-settings-query";
@@ -7,6 +7,7 @@ import { commitConversationModel } from "./model-selection-command";
 import { type ConnectionProfile } from "./connection-settings";
 import { useConnectionSettingsQuery } from "./connection-settings-query";
 import { ProfileModelPicker, type ProfileModelChoice } from "./ProfileModelPicker";
+import { useVisitSignal } from "./lib/visit";
 
 export function ModelSelector({ conversation, disabled = false, disabledReason, onConversationChange }: {
 	conversation: ConversationSummary;
@@ -22,18 +23,13 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const session = useRef(new AbortController());
-	useEffect(() => {
-		session.current = new AbortController();
-		setPending(false); setError(null); setNotice(null);
-		return () => session.current.abort();
-	}, [conversation.id]);
+	const signal = useVisitSignal(conversation.id);
+	useEffect(() => { setPending(false); setError(null); setNotice(null); }, [conversation.id]);
 	const reasonId = useId();
 
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
 
 	const updateSelection = async (profile: ConnectionProfile, modelId: string) => {
-		const signal = session.current.signal;
 		setPending(true);
 		setError(null);
 		setNotice(null);
