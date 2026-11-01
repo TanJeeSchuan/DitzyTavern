@@ -28,6 +28,7 @@ import {
 	readSettingsRow,
 	readProfile,
 	readSecret,
+	readSecretState,
 	requireProfile,
 	toProfileRow,
 	writePinnedModels,
@@ -177,10 +178,10 @@ export function createConnectionSettingsModule(
 		tx: RevisionedProfileWriteTx,
 		credential: string | null,
 	): void => {
-		const currentSecret = readSecret(tx.db, tx.profile.id, getKey());
+		const currentSecret = readSecretState(tx.db, tx.profile.id, getKey());
 		writeSecretState(tx.db, tx.profile.id, {
 			credential,
-			headers: currentSecret?.headers ?? {},
+			headers: currentSecret === "unreadable" ? {} : currentSecret?.headers ?? {},
 		}, getKey());
 	};
 
@@ -227,7 +228,7 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: ({ db, profile: current }) => {
 				ensureProfileNameAvailable(db, profile.displayName, input.profileId);
-				const currentSecret = readSecret(db, input.profileId, getKey());
+				const currentSecret = readSecretState(db, input.profileId, getKey());
 				const modelsUrlChanged = current.models_url !== profile.modelsUrl;
 
 				db.update(connectionProfileTable)
@@ -240,9 +241,10 @@ export function createConnectionSettingsModule(
 						.where(eq(connectionProfileDiscoveryModelTable.profile_id, input.profileId))
 						.run();
 				}
-				writeSecretState(db, input.profileId, {
-					credential: credential === undefined ? currentSecret?.credential ?? null : credential,
-					headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
+				const readable = currentSecret === "unreadable" ? null : currentSecret;
+				if (currentSecret !== "unreadable" || credential !== undefined || headerOperations.length > 0) writeSecretState(db, input.profileId, {
+					credential: credential === undefined ? readable?.credential ?? null : credential,
+					headers: applyHeaderOperations(readable?.headers ?? {}, headerOperations),
 				}, getKey());
 				return { kind: "advanced" };
 			},

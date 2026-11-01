@@ -91,6 +91,7 @@ export const startE2eServer = async () => {
 		checkpointClock: (...times: number[]) => call("checkpoint-clock", times),
 		updates: (scenario: UpdateScenario) => call("updates", scenario),
 		release: () => call("release"),
+		corruptSecrets: () => call("corrupt-secrets"),
 		installBox: (id: string) => call("install-box", id),
 		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],

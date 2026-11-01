@@ -122,7 +122,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						label="API key"
 						value={credentialDraft}
 						onChange={setCredentialDraft}
-						configured={selectedProfile?.credentialConfigured ?? false}
+						saved={selectedProfile?.credentialState ?? "none"}
 						pending={controller.saving}
 						onRemove={() => void controller.resetCredential()}
 						placeholder="Enter API key"

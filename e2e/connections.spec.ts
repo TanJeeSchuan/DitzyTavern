@@ -30,6 +30,26 @@ test("a new connection discovers models and passes a connection test with its sa
 	expect(firstCall(calls, isChatModelCall).body.model).toBe("e2e-model");
 });
 
+test("a saved key the server can no longer decrypt is flagged and can be removed", async ({ page, llm }) => {
+	const provider = page.getByRole("button", { name: /^E2E provider/ });
+	await page.goto("/");
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
+	await provider.click();
+	await page.getByRole("textbox", { name: "API key" }).fill("sk-e2e-secret");
+	await page.getByRole("button", { name: "Save" }).click();
+	await expect(page.getByRole("textbox", { name: "API key" })).toHaveAttribute("placeholder", "Saved · type to replace");
+
+	await llm.corruptSecrets();
+	await page.reload();
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
+	await expect(provider).toContainText("Key unreadable");
+	await provider.click();
+	await expect(page.getByRole("textbox", { name: "API key" })).toHaveAttribute("placeholder", "Unreadable · type to replace");
+	await page.getByRole("button", { name: "Remove", exact: true }).click();
+	await page.getByRole("dialog").getByRole("button", { name: "Remove" }).click();
+	await expect(page.getByRole("textbox", { name: "API key" })).toHaveAttribute("placeholder", "Enter API key");
+});
+
 test("OpenRouter Decisions refreshes its filtered catalog and tests a discovered model", async ({ page, llm }) => {
 	await llm.models(["e2e-decision"]);
 	await llm.decisions({ match: [], answer: { type: "noul", noul: 0.9 } });

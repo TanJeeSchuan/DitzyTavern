@@ -19,7 +19,7 @@ const profile: ConnectionProfile = {
 	pinnedModels: [],
 	discoveryCatalog: [],
 	textOnlyModels: [],
-	credentialConfigured: false,
+	credentialState: "none",
 	headers: [],
 };
 

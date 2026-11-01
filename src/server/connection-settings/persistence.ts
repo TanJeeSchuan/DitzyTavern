@@ -12,6 +12,7 @@ import {
 	connectionSettingsTable,
 } from "../database/schema";
 import {
+	ConnectionSecretDecryptionError,
 	decryptConnectionSecretSync,
 	encryptConnectionSecretSync,
 } from "../connection-secrets";
@@ -76,17 +77,12 @@ export function readProfile(
 		.where(eq(connectionProfileTextOnlyModelTable.profile_id, row.id))
 		.all()
 		.map((model) => model.modelId);
-	let credentialConfigured = false;
-	const headers: Array<{ name: string; configured: boolean }> = [];
-	const payload = readSecret(db, row.id, masterKey);
-	if (payload !== null) {
-		credentialConfigured = payload.credential !== null;
-		for (const name of Object.keys(payload.headers).sort((a, b) =>
-			a.localeCompare(b, undefined, { sensitivity: "base" }),
-		)) {
-			headers.push({ name, configured: true });
-		}
-	}
+	const payload = readSecretState(db, row.id, masterKey);
+	const secret = payload === "unreadable" ? null : payload;
+	const credentialState = payload === "unreadable" ? payload : secret === null || secret.credential === null ? "none" : "saved";
+	const headers = Object.keys(secret?.headers ?? {})
+		.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+		.map((name) => ({ name, configured: true }));
 	try {
 		return Value.Decode<typeof connectionProfile>(connectionProfile, {
 			id: row.id,
@@ -102,7 +98,7 @@ export function readProfile(
 			pinnedModels: pins,
 			discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
 			textOnlyModels: normalizeDiscoveryCatalog(textOnlyModels),
-			credentialConfigured,
+			credentialState,
 			headers,
 		});
 	} catch (cause) {
@@ -118,7 +114,6 @@ export type EncryptedSecretRow = {
 	tag: string;
 };
 export type NullableEncryptedSecretRow = { [Column in keyof EncryptedSecretRow]: EncryptedSecretRow[Column] | null };
-export const NO_ENCRYPTED_SECRET: NullableEncryptedSecretRow = { format_version: null, key_id: null, nonce: null, ciphertext: null, tag: null };
 
 export function readEncryptedSecret(
 	row: NullableEncryptedSecretRow | undefined,
@@ -166,6 +161,20 @@ export function readSecret(
 	);
 }
 
+/** @approved Secret writers and the aggregate read survive a secret the current master key cannot open; only callers that need the plaintext throw. */
+export function readSecretState(
+	db: ConnectionSettingsDb,
+	profileId: number,
+	masterKey: Uint8Array,
+): ConnectionProfileSecretSnapshot | null | "unreadable" {
+	try {
+		return readSecret(db, profileId, masterKey);
+	} catch (error) {
+		if (error instanceof ConnectionSecretDecryptionError) return "unreadable";
+		throw error;
+	}
+}
+
 export function toProfileRow(profile: ConnectionProfileDraft) {
 	return {
 		display_name: profile.displayName,
@@ -206,8 +215,9 @@ export function writeSecretState(
 	payload: ConnectionProfileSecretSnapshot,
 	masterKey: Uint8Array,
 ): void {
-	const current = readSecret(db, profileId, masterKey);
-	if (current && current.credential === payload.credential && JSON.stringify(Object.entries(current.headers).sort()) === JSON.stringify(Object.entries(payload.headers).sort())) return;
+	const current = readSecretState(db, profileId, masterKey);
+	const headerEntries = (headers: Record<string, string>) => JSON.stringify(Object.entries(headers).sort());
+	if (current !== null && current !== "unreadable" && current.credential === payload.credential && headerEntries(current.headers) === headerEntries(payload.headers)) return;
 	if (payload.credential === null && Object.keys(payload.headers).length === 0) {
 		db.delete(connectionSecretTable)
 			.where(eq(connectionSecretTable.profile_id, profileId))

@@ -201,7 +201,7 @@ function toProfilePayload(entry: ConnectionSettingsSnapshot["profiles"][number])
 		id: entry.id,
 		discoveryCatalog: [...entry.discoveryCatalog],
 		textOnlyModels: [...entry.textOnlyModels],
-		credentialConfigured: entry.credentialConfigured,
+		credentialState: entry.credentialState,
 		headers: [...entry.headers],
 	};
 }

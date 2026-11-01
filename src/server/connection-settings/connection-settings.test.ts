@@ -12,6 +12,7 @@ import {
 	InvalidConnectionProfileError,
 } from ".";
 import { StaleRevisionError } from "../revision";
+import { ConnectionSecretDecryptionError } from "../connection-secrets";
 import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
@@ -109,7 +110,7 @@ describe("Connection Settings", () => {
 
 		expect(created.revision).toBe(1);
 		expect(profile?.displayName).toBe("Deep Seek");
-		expect(profile?.credentialConfigured).toBe(true);
+		expect(profile?.credentialState).toBe("saved");
 		expect(JSON.stringify(created)).not.toContain("sk-deepseek-secret");
 
 		const db = drizzle(database);
@@ -139,7 +140,7 @@ describe("Connection Settings", () => {
 		});
 		expect(changed.profiles[0]?.displayName).toBe("Edited DeepSeek");
 		expect(changed.profiles[0]?.requestUrl).toBe("http://127.0.0.1:8080/v1/");
-		expect(changed.profiles[0]?.credentialConfigured).toBe(true);
+		expect(changed.profiles[0]?.credentialState).toBe("saved");
 		expect(changed.revision).toBe(2);
 	});
 
@@ -215,7 +216,7 @@ describe("Connection Settings", () => {
 			profileId,
 			credential: "replacement-secret",
 		});
-		expect(updated.profiles[0]?.credentialConfigured).toBe(true);
+		expect(updated.profiles[0]?.credentialState).toBe("saved");
 		expect(JSON.stringify(updated)).not.toContain("replacement-secret");
 
 		expect(() =>
@@ -231,7 +232,32 @@ describe("Connection Settings", () => {
 			profileId,
 			confirmed: true,
 		});
-		expect(reset.profiles[0]?.credentialConfigured).toBe(false);
+		expect(reset.profiles[0]?.credentialState).toBe("none");
+	});
+
+	test("reports a secret the master key cannot open instead of failing every read and write", () => {
+		const oldKey = new Uint8Array(32).fill(9);
+		createConnectionSettingsModule(database, { masterKey: oldKey }).createProfile({
+			expectedRevision: 0,
+			profile: deepSeekDraft(),
+			credential: "old-secret",
+			headers: [{ operation: "replace", name: "X-Team", value: "old-team" }],
+		});
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 1, profile: { ...deepSeekDraft(), displayName: "Healthy" }, credential: "new-secret" });
+		const [unreadable, healthy] = created.profiles;
+		expect([unreadable?.credentialState, unreadable?.headers, healthy?.credentialState]).toEqual(["unreadable", [], "saved"]);
+		expect(() => settings.getProfileSecrets(1)).toThrow(ConnectionSecretDecryptionError);
+
+		const renamed = settings.applyProfile({ expectedRevision: created.revision, profileId: 1, profile: { ...deepSeekDraft(), displayName: "Renamed" } });
+		expect(createConnectionSettingsModule(database, { masterKey: oldKey }).getProfileSecrets(1)?.credential).toBe("old-secret");
+
+		const replaced = settings.setCredential({ expectedRevision: renamed.revision, profileId: 1, credential: "typed-again" });
+		expect(settings.getProfileSecrets(1)).toEqual({ credential: "typed-again", headers: {} });
+
+		database.query("UPDATE connection_secret SET tag = ? WHERE profile_id = 1").run(Buffer.alloc(16).toString("base64"));
+		const reset = settings.resetCredential({ expectedRevision: replaced.revision, profileId: 1, confirmed: true });
+		expect(reset.profiles[0]?.credentialState).toBe("none");
 	});
 
 	test("rejects malformed structural drafts before changing state", () => {

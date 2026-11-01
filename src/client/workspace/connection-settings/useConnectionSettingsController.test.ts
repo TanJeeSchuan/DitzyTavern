@@ -10,7 +10,7 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 const key = ["connection-settings", "settings"];
 const profile = (name: string): ConnectionProfile => ({
 	...blankConnectionProfileDraft, id: 1, displayName: name, requestUrl: "https://provider.example/v1",
-	credentialConfigured: true, discoveryCatalog: [], textOnlyModels: [], headers: [],
+	credentialState: "saved", discoveryCatalog: [], textOnlyModels: [], headers: [],
 });
 const settings = (revision: number, name: string): ConnectionSettings => ({ revision, profiles: [profile(name)] });
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
