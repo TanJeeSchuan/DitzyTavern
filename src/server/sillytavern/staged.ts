@@ -12,8 +12,9 @@ import { readConversationSummary } from "../conversation";
 // source stays session-bound at its managed path until commit.
 // Staging is session-bound by construction: staged handles and committed
 // receipts live in one expiring session store owned by the per-database
-// process-state container. A server restart (graceful shutdown included)
-// clears it wholesale (the expiry contract); no durable import draft or
+// process-state container. A graceful shutdown expires every session and
+// deletes its staged file; a crash leaves the file behind, as the artifact
+// store accepts for unclaimed bytes. No durable import draft or
 // resume system is added. Every session also expires on its own after the
 // documented TTL: a lazy sweep on every module access plus the container's
 // periodic sweep tick evicts expired sessions and deletes their staged
@@ -104,20 +105,19 @@ export interface StagedImportStore {
 // lifecycle; this factory owns only the store's behavior. `now` is injectable for tests.
 export const createStagedImportStore = (): StagedImportStore => {
 	const sessions = new Map<string, StagedImportSession>();
-	return {
-		sessions,
-		sweep: (now: number = Date.now()) => {
-			for (const [token, session] of sessions) {
-				if (session.expiresAt <= now) {
-					if (session.phase === "staged") {
-						rmSync(session.record.stagedPath, { force: true });
-					}
-					sessions.delete(token);
+	const sweep = (now: number = Date.now()) => {
+		for (const [token, session] of sessions) {
+			if (session.expiresAt <= now) {
+				if (session.phase === "staged") {
+					rmSync(session.record.stagedPath, { force: true });
 				}
+				sessions.delete(token);
 			}
-		},
-		dispose: () => sessions.clear(),
+		}
 	};
+	// @approved
+	//  No session survives the process, so disposal expires every one of them.
+	return { sessions, sweep, dispose: () => sweep(Number.POSITIVE_INFINITY) };
 };
 
 const stagedImportStore = (database: Database): StagedImportStore => processStateFor(database).stagedImports;
