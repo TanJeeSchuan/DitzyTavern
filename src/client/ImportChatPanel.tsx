@@ -185,6 +185,7 @@ export function ImportChatPanel({
 								? "Back to file selection"
 								: "Back to Chats"
 					}
+					disabled={flow.phase === "committing"}
 				>
 					<ArrowLeft aria-hidden="true" />
 				</button>
