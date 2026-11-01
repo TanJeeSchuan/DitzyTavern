@@ -7,7 +7,8 @@ import { subscribeDatabaseChanges, watchDatabaseChanges, withoutAnnouncing } fro
 
 const TICK = 5;
 const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+// Last registered runs first, so a database closes before its folder is removed.
+afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 const watched = (path = ":memory:") => {
 	const database = new Database(path);

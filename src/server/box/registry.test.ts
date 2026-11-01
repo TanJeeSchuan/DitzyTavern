@@ -280,7 +280,8 @@ test("a capture reads in one transaction while another connection commits", asyn
 		const capture = () => prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, connection: null, target: { kind: "send", content: "Light it." } });
 		expect(capture().conversationId).toBe(conversation.id);
 	} finally {
-		database.close();
+		// close(true) finalizes the statements Drizzle prepared, so Windows releases the file before the folder is removed.
+		database.close(true);
 		await loadBoxes([builtInBoxes]);
 	}
 });

@@ -28,7 +28,8 @@ test("reclaims the dead pages a previous open left behind, and only those", asyn
 		const deadPages = freePages(seeded);
 		const pagesBefore = pageCount(seeded);
 		expect(deadPages * pageSize(seeded)).toBeGreaterThanOrEqual(32 * 1024 * 1024);
-		seeded.close();
+		// close(true) finalizes the statements Drizzle prepared, so Windows releases the file before the folder is removed.
+		seeded.close(true);
 		const bytesBefore = await diskBytes(path);
 
 		const reclaimed = openInitializedDatabase({ path });
@@ -39,12 +40,12 @@ test("reclaims the dead pages a previous open left behind, and only those", asyn
 		reclaimed.exec("INSERT INTO churn (payload) VALUES (zeroblob(4096))");
 		reclaimed.exec("DELETE FROM churn");
 		const pagesWithSmallDebt = pageCount(reclaimed);
-		reclaimed.close();
+		reclaimed.close(true);
 
 		const reopened = openInitializedDatabase({ path });
 		expect(freePages(reopened)).toBeGreaterThan(0);
 		expect(pageCount(reopened)).toBe(pagesWithSmallDebt);
-		reopened.close();
+		reopened.close(true);
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
