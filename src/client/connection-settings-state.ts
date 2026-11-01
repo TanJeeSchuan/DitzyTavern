@@ -202,7 +202,11 @@ function reduceEditor(
 			const saved = action.settings.profiles.find((profile) => state.selectedProfileId === null ? profile.displayName === name : profile.id === state.selectedProfileId);
 			const notice = edited ? state.notice : "Changes saved. No provider request was made.";
 			if (saved === undefined) return { ...draftEvent(state, { type: "failed", submitted: action.submitted }), notice, error: null };
-			const next = draftEvent(state, { type: "saved", submitted: action.submitted, saved: { value: editOf(saved), revision: action.settings.revision } });
+			// @approved
+			//  A new Profile had no identity while it saved, so what arrived meanwhile
+			// was the blank edit; the created Profile follows newer copies once selected.
+			const settling = state.selectedProfileId === null ? { ...state, session: { ...state.session, seen: null } } : state;
+			const next = draftEvent(settling, { type: "saved", submitted: action.submitted, saved: { value: editOf(saved), revision: action.settings.revision } });
 			return { ...next, selectedProfileId: saved.id, notice, error: null };
 		}
 		case "apply-conflicted": {

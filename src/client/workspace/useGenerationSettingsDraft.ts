@@ -216,11 +216,12 @@ export function useGenerationSettingsDraft({
 			}
 			if (lost === null || signal.aborted) return result;
 			const current: ConversationSummary = lost;
-			await client.refetchQueries({ queryKey: generationSettingsKey(current.id) });
-			const theirs = client.getQueryData<SettingsRead>(generationSettingsKey(current.id));
 			// @approved
-			//  Read after the conflict, so they are at least as new as the revision it reported.
-			return theirs === undefined ? result : { outcome: "conflict", theirs: revisioned(theirs.settings, Math.max(theirs.revision, current.revision)) };
+			//  Only settings read after the conflict are as new as the revision it
+			// reported; without them the draft stays unsaved against its own base.
+			const read = await client.refetchQueries({ queryKey: generationSettingsKey(current.id) }, { throwOnError: true }).then(() => true, () => false);
+			const theirs = client.getQueryData<SettingsRead>(generationSettingsKey(current.id));
+			return !read || theirs === undefined ? result : { outcome: "conflict", theirs: revisioned(theirs.settings, Math.max(theirs.revision, current.revision)) };
 		},
 	});
 	const { instruction, strategy, prefillSuffix, imagePlacement, samplingDrafts, budgetDrafts, overridesDrafts } = editor.value ?? EMPTY_FIELDS;

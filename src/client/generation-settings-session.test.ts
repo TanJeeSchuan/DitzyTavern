@@ -128,6 +128,21 @@ test("a newer Conversation revision without newer settings does not move the dra
 	expect(JSON.parse(String(h.requests.find(({ init }) => init?.method === "POST")?.init?.body)).expectedRevision).toBe(5);
 });
 
+test("a conflict whose settings cannot be read again keeps the draft unsaved instead of retrying", async () => {
+	let reads = 0;
+	const h = await harness(async ({ init }) => init?.method === "POST"
+		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 })
+		: ++reads === 3 ? new Response(null, { status: 500 }) : Response.json(settings()));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
+	let saved = true;
+	await h.hook.act(async () => { saved = await h.hook.current.save(); });
+	await flushHook();
+	expect(saved).toBe(false);
+	expect(h.requests.filter(({ init }) => init?.method === "POST")).toHaveLength(1);
+	expect(h.hook.current.instruction).toBe("Local");
+	expect(h.hook.current.dirty).toBe(true);
+});
+
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"

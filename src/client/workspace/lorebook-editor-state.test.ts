@@ -40,4 +40,13 @@ describe("lorebook drafts", () => {
 		const discarded = reduceLorebookEditor(changed, { type: "discard" });
 		expect(discarded.bookDraft).toMatchObject({ status: "clean", base: { revision: 2, value: { name: "Theirs" } } });
 	});
+
+	test("an entry deleted elsewhere while its save was in flight is not settled as saved", () => {
+		const mine = { ...blankEntry(), title: "Mine" };
+		const edited = reduceLorebookEditor(loaded(), { type: "entry-draft", event: { type: "edited", mine } });
+		const saving = reduceLorebookEditor(edited, { type: "entry-draft", event: { type: "save-started", submitted: mine } });
+		const deleted = reduceLorebookEditor(saving, { type: "refreshed", book: { ...book, revision: 3, entries: [] } });
+		const saved = reduceLorebookEditor(deleted, { type: "entry-draft", entryId: 7, event: { type: "saved", submitted: mine, saved: { value: mine, revision: 2 } } });
+		expect(saved.entryDraft?.status).toBe("conflict");
+	});
 });

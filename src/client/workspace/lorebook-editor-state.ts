@@ -93,10 +93,11 @@ export function reduceLorebookEditor(state: LorebookEditorState, action: EditorA
 			const claimed = session?.status === "saving" && action.event.type === "saved" && session.submitted === action.event.submitted;
 			if (!claimed || action.entryId === undefined || session?.status !== "saving") return { ...state, entryDraft: reduceDraft(session, action.event, sameEntry) };
 			// @approved
-			//  What arrived while a new entry saved was read without its id; the
-			// newest book holds the created entry, so that is what it is measured against.
-			const created = state.book?.entries.some((entry) => entry.id === action.entryId) === true && state.book !== null ? entryFieldsOf(state.book, action.entryId) : null;
-			return { ...state, entryId: action.entryId, entryDraft: reduceDraft({ ...session, seen: created }, action.event, sameEntry) };
+			//  What arrived while a new entry saved was read without its id, so the
+			// saved entry is measured against the newest book's copy of it, or its
+			// absence there when it was deleted meanwhile.
+			const newest = state.book === null ? session.seen : entryFieldsOf(state.book, action.entryId);
+			return { ...state, entryId: action.entryId, entryDraft: reduceDraft({ ...session, seen: newest }, action.event, sameEntry) };
 		}
 		case "entry-selected": return selectEntry(state, action.id);
 		case "dialog-opened": return { ...state, dialog: action.dialog };
