@@ -48,7 +48,7 @@ export function ParticipantEditor({
 		equals: sameDefinition,
 		save: async (submitted, revision) => {
 			let result: DraftSaveResult<ParticipantDefinition> = { outcome: "failed" };
-			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, {
+			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, exact: true, onConversationChange, setNotice }, {
 				type: "update-participant-definition", participantId, definition: submittableDefinition(submitted),
 			}, {
 				notices: EDITOR_NOTICES,

@@ -179,10 +179,10 @@ export function useGenerationSettingsDraft({
 	useEffect(() => { setProblem(null); }, [conversationId]);
 	// @approved
 	//  The settings belong to the Conversation revision they were read or
-	// written at, and stay current while it moves on without touching them.
+	// written at; a save that lost only to a newer revision is sent again.
 	const revisioned = (read: ConversationGenerationSettings, revision: number) => ({ value: fieldsFromSettings(read), revision });
 	const readRevision = client.getQueryData<SettingsRead>(generationSettingsKey(conversationId))?.revision ?? 0;
-	const editor = useRevisionedDraft<GenerationSettingsFields>(settings === null || conversation === null ? null : revisioned(settings, Math.max(readRevision, conversation.revision)), {
+	const editor = useRevisionedDraft<GenerationSettingsFields>(settings === null ? null : revisioned(settings, readRevision), {
 		key: conversationId,
 		equals: sameFields,
 		save: async (fields, revision) => {
@@ -196,6 +196,7 @@ export function useGenerationSettingsDraft({
 					surface: {
 						conversationId: conversation.id,
 						revision: () => revision,
+						exact: true,
 						isCurrent: () => !signal.aborted,
 						onConversationChange: (current) => {
 							const authority = client.getQueryData<SettingsRead>(generationSettingsKey(current.id));
@@ -217,6 +218,8 @@ export function useGenerationSettingsDraft({
 			const current: ConversationSummary = lost;
 			await client.refetchQueries({ queryKey: generationSettingsKey(current.id) });
 			const theirs = client.getQueryData<SettingsRead>(generationSettingsKey(current.id));
+			// @approved
+			//  Read after the conflict, so they are at least as new as the revision it reported.
 			return theirs === undefined ? result : { outcome: "conflict", theirs: revisioned(theirs.settings, Math.max(theirs.revision, current.revision)) };
 		},
 	});

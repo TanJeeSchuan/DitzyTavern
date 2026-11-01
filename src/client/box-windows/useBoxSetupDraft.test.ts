@@ -6,6 +6,7 @@ import type { ConversationSummary } from "../conversation";
 import { authorNoteSetup } from "../../boxes/author-note/contract";
 
 const { useBoxSetupDraft } = await import("./useBoxSetupDraft");
+const { queueConversationCommand } = await import("../conversation-command-runner");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -90,5 +91,31 @@ describe("useBoxSetupDraft", () => {
 		await hook.act(async () => { hook.current.discard(); });
 		expect(hook.current.draft).toBe("theirs");
 		expect(hook.current.dirty).toBe(false);
+	});
+
+	test("a save that lost only to a newer revision is sent once more against it", async () => {
+		const { hook } = await render(chat(1, "before"));
+		await hook.act(async () => { hook.current.setDraft("mine"); });
+		const sent = serve(chat(2, "before"));
+		let saved = false;
+		await hook.act(async () => { saved = await hook.current.save(); });
+		expect(sent).toEqual([1, 2]);
+		expect(saved).toBe(true);
+		expect(hook.current.dirty).toBe(false);
+	});
+
+	test("a save queued behind another command still sends the revision its draft started from", async () => {
+		const { hook, change } = await render(chat(1, "before"));
+		await hook.act(async () => { hook.current.setDraft("mine"); });
+		await change(chat(2, "theirs"));
+		const ahead = Promise.withResolvers<number>();
+		void queueConversationCommand(1, () => ahead.promise);
+		const sent = serve(chat(3, "theirs"));
+		let saving: Promise<boolean> = Promise.resolve(true);
+		await hook.act(async () => { saving = hook.current.save(); });
+		await hook.act(async () => { ahead.resolve(3); expect(await saving).toBe(false); });
+		expect(sent).toEqual([1]);
+		expect(hook.current.conflict).toBe(true);
+		expect(hook.current.draft).toBe("mine");
 	});
 });

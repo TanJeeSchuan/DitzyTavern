@@ -117,6 +117,17 @@ test("discard during a save keeps the submitted draft until the save settles", a
 	expect(h.hook.current.dirty).toBe(false);
 });
 
+test("a newer Conversation revision without newer settings does not move the draft's save revision", async () => {
+	const h = await harness(({ init }) => init?.method === "POST"
+		? Promise.resolve(Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 }))
+		: Promise.resolve(Response.json(settings())));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
+	h.options.conversation = summary(1, 6);
+	await h.hook.rerender();
+	await h.hook.act(async () => { await h.hook.current.save(); });
+	expect(JSON.parse(String(h.requests.find(({ init }) => init?.method === "POST")?.init?.body)).expectedRevision).toBe(5);
+});
+
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"

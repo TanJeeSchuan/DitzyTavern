@@ -21,4 +21,23 @@ describe("lorebook drafts", () => {
 		const toggled = reduceLorebookEditor(edited, { type: "applied", book: toggledBook, enabled: false, notice: null });
 		expect(toggled.entryDraft).toMatchObject({ status: "dirty", base: { revision: 2 }, mine: { title: "Edited", enabled: false } });
 	});
+
+	test("a new entry saved while an unrelated book edit arrived settles against the entry it created", () => {
+		const created = { ...blankEntry(), title: "Created" };
+		const selected = reduceLorebookEditor(loaded(), { type: "entry-selected", id: null });
+		const edited = reduceLorebookEditor(selected, { type: "entry-draft", event: { type: "edited", mine: created } });
+		const saving = reduceLorebookEditor(edited, { type: "entry-draft", event: { type: "save-started", submitted: created } });
+		const newer: Lorebook = { ...book, name: "Renamed", revision: 3, entries: [...book.entries, { ...created, id: 8, position: 1 }] };
+		const observed = reduceLorebookEditor(saving, { type: "refreshed", book: newer });
+		const saved = reduceLorebookEditor(observed, { type: "entry-draft", entryId: 8, event: { type: "saved", submitted: created, saved: { value: created, revision: 2 } } });
+		expect(saved.entryId).toBe(8);
+		expect(saved.entryDraft).toMatchObject({ status: "clean", base: { revision: 3, value: { title: "Created" } } });
+	});
+
+	test("discard restores the newest book the editor has seen, not the copy the draft started from", () => {
+		const edited = reduceLorebookEditor(loaded(), { type: "book-draft", event: { type: "edited", mine: { name: "Mine", description: "" } } });
+		const changed = reduceLorebookEditor(edited, { type: "refreshed", book: { ...book, name: "Theirs", revision: 2 } });
+		const discarded = reduceLorebookEditor(changed, { type: "discard" });
+		expect(discarded.bookDraft).toMatchObject({ status: "clean", base: { revision: 2, value: { name: "Theirs" } } });
+	});
 });

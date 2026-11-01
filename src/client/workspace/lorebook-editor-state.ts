@@ -89,19 +89,30 @@ export function reduceLorebookEditor(state: LorebookEditorState, action: EditorA
 			// @approved
 			//  A saved new entry becomes the selected one, while the draft that
 			// created it is still the selected draft.
-			const claimed = state.entryDraft?.status === "saving" && action.event.type === "saved" && state.entryDraft.submitted === action.event.submitted;
-			return { ...state, entryId: claimed && action.entryId !== undefined ? action.entryId : state.entryId, entryDraft: reduceDraft(state.entryDraft, action.event, sameEntry) };
+			const session = state.entryDraft;
+			const claimed = session?.status === "saving" && action.event.type === "saved" && session.submitted === action.event.submitted;
+			if (!claimed || action.entryId === undefined || session?.status !== "saving") return { ...state, entryDraft: reduceDraft(session, action.event, sameEntry) };
+			// @approved
+			//  What arrived while a new entry saved was read without its id; the
+			// newest book holds the created entry, so that is what it is measured against.
+			const created = state.book?.entries.some((entry) => entry.id === action.entryId) === true && state.book !== null ? entryFieldsOf(state.book, action.entryId) : null;
+			return { ...state, entryId: action.entryId, entryDraft: reduceDraft({ ...session, seen: created }, action.event, sameEntry) };
 		}
 		case "entry-selected": return selectEntry(state, action.id);
 		case "dialog-opened": return { ...state, dialog: action.dialog };
 		case "dialog-closed": return { ...state, dialog: null };
 		case "notice": return { ...state, notice: action.notice };
-		case "discard": return {
-			...state,
-			bookDraft: reduceDraft(state.bookDraft, { type: "discarded" }, sameBook),
-			entryDraft: reduceDraft(state.entryDraft, { type: "discarded" }, sameEntry),
-			notice: null,
-		};
+		case "discard": {
+			// @approved
+			//  The discarded drafts start again from the newest book the editor has seen.
+			const discarded = {
+				...state,
+				bookDraft: reduceDraft(state.bookDraft, { type: "discarded" }, sameBook),
+				entryDraft: reduceDraft(state.entryDraft, { type: "discarded" }, sameEntry),
+				notice: null,
+			};
+			return state.book === null ? discarded : observe(discarded, state.book);
+		}
 		case "keep-mine": return {
 			...state,
 			bookDraft: reduceDraft(state.bookDraft, { type: "kept-mine" }, sameBook),

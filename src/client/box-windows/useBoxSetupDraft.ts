@@ -34,9 +34,9 @@ export function useBoxSetupDraft<Schema extends SetupSchema>(box: BoxId, schema:
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const writes = useRef<BoxDataWrite[] | undefined>(undefined);
-	/** @approved Runs one command at `revision`, the draft's base unless the command says otherwise. */
-	const command = (action: ConversationAction, conflictNotice: string, handlers: { onApplied?: (next: ConversationSummary) => void; onConflict?: (next: ConversationSummary) => void } = {}, revision = conversation.revision) =>
-		runConversationCommand({ conversationId: conversation.id, revision: () => revision, onConversationChange, setNotice }, action, {
+	/** @approved Runs one command at the Chat's revision, or exactly at the draft's base `revision` for its save. */
+	const command = (action: ConversationAction, conflictNotice: string, handlers: { onApplied?: (next: ConversationSummary) => void; onConflict?: (next: ConversationSummary) => void } = {}, revision?: number) =>
+		runConversationCommand({ conversationId: conversation.id, revision: () => revision ?? conversation.revision, exact: revision !== undefined, onConversationChange, setNotice }, action, {
 			notices: { conflict: conflictNotice, notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 			onApplied: handlers.onApplied,
 			onConflict: handlers.onConflict,

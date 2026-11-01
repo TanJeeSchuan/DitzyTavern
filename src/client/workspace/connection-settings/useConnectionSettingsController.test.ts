@@ -217,3 +217,21 @@ test("StrictMode and rerenders issue one settings read and one presets read", as
 	await flushHook();
 	expect(reads.sort()).toEqual(["presets", "settings"]);
 });
+
+test("a save overtaken by a newer change to its Profile keeps the draft and does not report success", async () => {
+	const cache = client();
+	cache.setQueryData(key, settings(2, "Original"));
+	const response = Promise.withResolvers<Response>();
+	installFetch(async (url) => url.endsWith("/presets") ? Response.json({ presets: [] }) : response.promise);
+	const editor = await renderHook(useConnectionSettingsController, cache);
+	await editor.act(async () => editor.current.chooseProfile(profile("Original")));
+	await editor.act(async () => { editor.current.setDraft({ ...editor.current.draft, displayName: "Mine" }); });
+	let saved: Promise<boolean> = Promise.resolve(true);
+	await editor.act(async () => { saved = editor.current.applyDraft(); });
+	await editor.act(async () => { publishConnectionSettings(cache, settings(3, "Theirs")); });
+	await editor.act(async () => { response.resolve(Response.json({ outcome: "applied", settings: settings(2, "Mine") })); });
+	await flushHook();
+	expect(await saved).toBe(false);
+	expect(editor.current.draft.displayName).toBe("Mine");
+	expect(editor.current.conflict).toBe(true);
+});

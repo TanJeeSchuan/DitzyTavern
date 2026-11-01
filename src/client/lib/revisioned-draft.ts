@@ -122,7 +122,7 @@ export function useRevisionedDraft<T>(server: Revisioned<T> | null, { key = null
 		return next;
 	};
 	/** @approved Saves the draft, or `value` in its place; the draft itself is kept if that save fails. */
-	const submit = async (value?: T) => {
+	const submit = async (value?: T, retry = true): Promise<boolean> => {
 		const started = latest.current;
 		if (started === null || (started.status !== "dirty" && (started.status !== "clean" || value === undefined))) return false;
 		const submitted = value ?? (started.status === "dirty" ? started.mine : started.base.value);
@@ -131,6 +131,11 @@ export function useRevisionedDraft<T>(server: Revisioned<T> | null, { key = null
 		const edited = latest.current?.status === "saving" && latest.current.edited;
 		const settled = apply(result.outcome === "saved" ? { type: "saved", submitted, saved: result.saved }
 			: result.outcome === "conflict" ? { type: "conflicted", submitted, theirs: result.theirs } : { type: "failed", submitted });
+		// @approved
+		//  A conflict that only moved the shared revision leaves the untouched
+		// draft against the copy it lost to; it is sent once more against that.
+		const moved = result.outcome === "conflict" && settled !== null && settled.status !== "conflict" && settled.status !== "saving" && settled.base === result.theirs;
+		if (retry && moved && !edited) return submit(value, false);
 		return result.outcome === "saved" && !edited && settled?.status === "clean";
 	};
 	return {
@@ -148,7 +153,7 @@ export function useRevisionedDraft<T>(server: Revisioned<T> | null, { key = null
 			const current = latest.current;
 			if (current !== null) apply({ type: "edited", mine: change(current.status === "clean" ? current.base.value : current.mine) });
 		},
-		save: submit,
+		save: (value?: T) => submit(value),
 		/** @approved Keeps the edits and takes the copy they lost to as their new base. */
 		keepMine: () => { apply({ type: "kept-mine" }); },
 		discard: () => { apply({ type: "discarded" }); },
