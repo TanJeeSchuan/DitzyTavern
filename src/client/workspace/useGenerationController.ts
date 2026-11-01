@@ -1,5 +1,6 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
+import { useConversationVisit } from "../lib/visit";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { shownContent } from "../story/variant-text";
 import {
@@ -82,7 +83,7 @@ const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: u
  * acceptance while this hook renders the combined state and composer actions.
  */
 export function useGenerationController({
-	signal,
+	signal: selection,
 	conversation,
 	story,
 	dispatchStory,
@@ -114,6 +115,7 @@ export function useGenerationController({
 		draft.set(rewind.content);
 		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
 	};
+	const signal = useConversationVisit(selection, conversation?.id);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -201,7 +203,7 @@ export function useGenerationController({
 	};
 
 	const assemblyController = useAssemblyController({
-		signal,
+		signal: selection,
 		conversation,
 		activeChatIdRef,
 		refreshStory,

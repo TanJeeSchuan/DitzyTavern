@@ -11,6 +11,7 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
+import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
@@ -77,7 +78,7 @@ const loadPreview = async (request: AssemblyRequest, signal: AbortSignal): Promi
  * phase is derived from their fetch, pending, and error state.
  */
 export function useAssemblyController({
-	signal,
+	signal: selection,
 	conversation,
 	activeChatIdRef,
 	refreshStory,
@@ -90,6 +91,7 @@ export function useAssemblyController({
 	takeComposer,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
+	const signal = useConversationVisit(selection, conversation?.id);
 	const starting = useRef(false);
 	const [assemblyRequest, setAssemblyRequest] = useState<AssemblyRequest | null>(null);
 	const [preparing, setPreparing] = useState(false);

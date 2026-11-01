@@ -38,7 +38,7 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 	const effects: string[] = [];
 	const targets: GenerationAttemptTarget[] = [];
 	let visit = new AbortController();
-	const options = {
+	const options: Parameters<typeof useAssemblyController>[0] = {
 		get signal() { return visit.signal; },
 		conversation: conversation(), activeChatIdRef: { current: "7" },
 		ensureLatest: async () => options.conversation,
@@ -217,6 +217,20 @@ describe("assembly session", () => {
 		await flushHook();
 		expect(h.hook.current.directStartError).toBeNull();
 		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+	});
+
+	test("a Chat deleted while a Send waits for latest opens no preview for it", async () => {
+		const h = await assemblyHarness(async () => Response.json(preview()));
+		const latest = Promise.withResolvers<ConversationSummary | null>();
+		h.options.ensureLatest = () => latest.promise;
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		h.options.conversation = null;
+		await h.hook.rerender();
+		await h.hook.act(async () => latest.resolve(null));
+		await flushHook();
+		expect(h.hook.current.assembly).toBeNull();
+		expect(h.requests).toHaveLength(0);
 	});
 
 	test("switching while acceptance waits for latest prevents the network call", async () => {
