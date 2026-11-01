@@ -60,10 +60,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: null,
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
 		});
 		resolveConversationGeneration(module, {
@@ -127,10 +124,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: null,
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
 		});
 		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", ["{", accepted.generationId]);
@@ -191,10 +185,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: null,
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
 		});
 		checkpointFromStart(module, {
@@ -219,10 +210,7 @@ describe("permanent Lore Activation Records", () => {
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: null,
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
 		});
 		stopConversationGeneration(module, { conversationId: created.id, generationId: zeroOutput.generationId });

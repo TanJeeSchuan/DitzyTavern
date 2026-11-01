@@ -1,26 +1,15 @@
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
-import type { AcceptTailGenerationInput, ConversationDataEntry, ConversationJsonValue } from "../conversation";
+import type { AcceptTailGenerationInput, ConversationDataEntry } from "../conversation";
 import type { GenerationPlan } from "../generation-plan";
 import type { PromptBudgetResult, PromptPlan } from "../prompt-compiler";
+import type { GenerationBudgetInspection } from "../../shared/contract/conversation-schema";
 import { projectModelClientGenerationSettings, type ModelClientConnectionSnapshot, type ModelClientGenerationInput } from "../model-client";
 import {
 	type GenerationProvenanceRecord,
 	type GenerationProvenanceSettings,
 } from "../../shared/contract/generation-provenance";
-
-const connectionIdentityOf = (
-	connection: ModelClientConnectionSnapshot | null,
-): ConversationJsonValue => connection === null
-	? null
-	: {
-			profileId: connection.profileId,
-			settingsRevision: connection.settingsRevision,
-			backend: connection.backend,
-			adapter: connection.adapter,
-			apiFormat: connection.apiFormat,
-		};
 
 
 export const generationProvenanceEntry = (
@@ -75,11 +64,9 @@ export function capturedAcceptanceFields(
 		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
+		modelId: capture.plan.effectiveSettings.modelId,
 		promptPlan: capture.plan.promptPlan,
-		promptInspection: promptInspectionJson(capture.plan.budget),
-		promptContext: capture.context,
-		generationSettings: capture.plan.effectiveSettings,
-		connection: connectionIdentityOf(capture.connection),
+		promptInspection: promptInspectionOf(capture.plan.budget),
 		loreActivation: capture.plan.loreActivation,
 		boxTraces: capture.plan.boxTraces,
 		provenance: capture.provenance,
@@ -87,8 +74,8 @@ export function capturedAcceptanceFields(
 	} satisfies Pick<
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
-		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "provenance" |
+		"capturedHumanName" | "capturedModelName" | "modelId" | "promptPlan" | "promptInspection" |
+		"loreActivation" | "boxTraces" | "provenance" |
 		"macro" | "seed" | "boxRecords"
 	>;
 }
@@ -126,20 +113,15 @@ const finalModelHistoryContent = (plan: PromptPlan): string => {
 	return content;
 };
 
-
 // @approved
 //  Active inspection keeps the exact budget decision made at Generation
-// start, including the whole history entries omitted during preflight. The
-// retained writing context and the Effective Generation Settings pass
-// through as the closed JSON values they already are, and the connection
-// identity projection strips the provider snapshot's runtime-only model
-// list at the Conversation domain boundary. Inspection is deliberately not
-// copied into terminal Variant provenance.
-const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
+// start, including the whole history entries omitted during preflight. It is
+// deliberately not copied into terminal Variant provenance.
+const promptInspectionOf = (budget: PromptBudgetResult): GenerationBudgetInspection => ({
 	tokenEstimate: budget.tokenEstimate,
 	responseBudget: budget.responseBudget,
 	safetyAllowance: budget.safetyAllowance,
 	contextLimit: budget.contextLimit,
 	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedContext: budget.omittedContext,
+	omittedContext: [...budget.omittedContext],
 });

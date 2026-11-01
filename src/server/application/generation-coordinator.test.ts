@@ -286,10 +286,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
@@ -302,10 +299,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 
 	const startRuntime = (
@@ -556,10 +550,7 @@ describe("Generation Coordinator terminal races", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 		promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 
 	test("Stop releases terminal ownership when the provider wins during cancellation", async () => {

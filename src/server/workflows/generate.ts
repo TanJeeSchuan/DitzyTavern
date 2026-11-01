@@ -52,7 +52,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = acceptCapturedGeneration(database, input, capture, timestamp);
+	const accepted = acceptCapturedGeneration(database, capture, { conversationId: input.conversationId, revision, timestamp });
 	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	try {
 		await input.onAccepted?.(accepted);
@@ -71,7 +71,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 				content: outcome.content,
 				reasoning: outcome.reasoning,
 				data: [
-					...(capture.facts.kind === "continuation" ? [toVariantDataEntry(variantDataCodecs.intent, variantDataCodecs.intent.encode(capture.facts.intent))] : []),
+					...(capture.target.kind === "continuation" ? [toVariantDataEntry(variantDataCodecs.intent, variantDataCodecs.intent.encode(capture.target.intent))] : []),
 					...generationOutcomeData(outcome),
 				],
 			});
@@ -80,17 +80,27 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	});
 }
 
-function acceptCapturedGeneration(database: Database, input: GenerationInput, capture: CapturedGeneration, timestamp: string): AcceptedGenerationRecord {
-	const fields = capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp });
-	switch (capture.target.kind) {
-		case "send":
-			if (input.expectedRevision === undefined || capture.facts.kind !== "send") throw new Error("Send capture is incomplete.");
-			return acceptConversationTailGeneration(database, { ...fields, expectedRevision: input.expectedRevision, humanContent: capture.target.content, humanMoves: capture.target.moves, reuseHumanMessageId: capture.facts.reuseHumanMessageId });
-		case "continuation":
-			if (input.expectedRevision === undefined || capture.facts.kind !== "continuation") throw new Error("Continuation capture is incomplete.");
-			return acceptConversationContinuationGeneration(database, { ...fields, expectedRevision: input.expectedRevision, precedingMessageId: capture.facts.precedingMessageId, precedingVariantId: capture.facts.precedingVariantId, generationIntent: capture.facts.intent });
+interface GenerationAcceptance { conversationId: number; revision: number; timestamp: string }
+
+// @approved
+//  Send and Continuation accept only while the Conversation still has the
+// revision the lifecycle read before capturing, which a submitted expected
+// revision has already matched. Sibling acceptance is revision-neutral.
+function acceptCapturedGeneration(database: Database, capture: CapturedGeneration, acceptance: GenerationAcceptance): AcceptedGenerationRecord {
+	const fields = capturedAcceptanceFields(capture, acceptance);
+	const expectedRevision = acceptance.revision;
+	const { target } = capture;
+	switch (target.kind) {
+		case "send": {
+			const { content: humanContent, moves: humanMoves, reuseHumanMessageId } = target;
+			return acceptConversationTailGeneration(database, { ...fields, expectedRevision, humanContent, humanMoves, reuseHumanMessageId });
+		}
+		case "continuation": {
+			const { precedingMessageId, precedingVariantId, intent: generationIntent } = target;
+			return acceptConversationContinuationGeneration(database, { ...fields, expectedRevision, precedingMessageId, precedingVariantId, generationIntent });
+		}
 		case "sibling":
-			return acceptConversationSiblingGeneration(database, { ...fields, messageId: capture.target.messageId, generationIntent: { type: "sibling" } });
+			return acceptConversationSiblingGeneration(database, { ...fields, messageId: target.messageId, generationIntent: { type: "sibling" } });
 	}
 }
 

@@ -236,7 +236,7 @@ const unsentPlans = async () => {
 	const unsent: string[] = [];
 	for (const { id, conversation_id } of generations) {
 		const details = await (await current!.app.handle(new Request(`http://localhost/api/conversations/${conversation_id}/generations/${id}/inspection`))).json();
-		const captured = JSON.stringify([details.generationSettings.modelId, toMessages({ promptPlan: details.promptPlan }, () => undefined)]);
+		const captured = JSON.stringify([details.modelId, toMessages({ promptPlan: details.promptPlan }, () => undefined)]);
 		if (!sent.includes(captured)) unsent.push(`Generation ${id}: ${captured}`);
 	}
 	return unsent;

@@ -5,6 +5,7 @@ import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
+	GenerationBudgetInspection,
 	ActiveGenerationDetails as SharedActiveGenerationDetails,
 	CapabilityAvailability as SharedCapabilityAvailability,
 	CastParticipant as SharedCastParticipant,
@@ -302,11 +303,9 @@ export interface GenerationAcceptanceCapture {
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
+	modelId: string;
 	promptPlan: PromptPlan;
-	promptInspection: ConversationJsonValue;
-	promptContext: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
+	promptInspection: GenerationBudgetInspection;
 	/** Captured server-owned lore evidence retained with the terminal Variant. */
 	loreActivation?: LoreActivationRecord | null;
 	boxTraces?: BoxTraces;

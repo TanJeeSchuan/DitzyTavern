@@ -733,8 +733,6 @@ export const activeGenerationTable = sqliteTable(
 		// @approved
 		//  Each captured Box's trace and budget evidence, keyed by `box:<id>`.
 		box_traces_json: text().notNull().default("{}"),
-		generation_settings_json: text().notNull(),
-		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
 		provenance_namespace: text(),
 		provenance_key: text(),
@@ -819,8 +817,6 @@ export const generationReplayTable = sqliteTable(
 		started_at: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
 		box_traces_json: text().notNull().default("{}"),
-		generation_settings_json: text().notNull(),
-		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),
 		checkpoint_content: text().notNull(),
 		checkpoint_reasoning: text().notNull(),

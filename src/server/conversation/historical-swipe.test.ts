@@ -193,10 +193,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 			modelParticipantId: control.modelId,
 			capturedModelName: control.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 
 	const resolveSibling = (
@@ -452,10 +449,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 				modelParticipantId: humanId,
 				capturedModelName: "Writer",
 			promptPlan: { blocks: [], warnings: [], images: [] },
-				promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-				promptContext: [],
-				generationSettings: {},
-				connection: {},
+				modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			}),
 		).toThrow(
 			"The captured historical Control pair does not match the target Message.",

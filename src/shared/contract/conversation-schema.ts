@@ -21,7 +21,6 @@ import {
 import { numericWire } from "./wire";
 import type { GenerationJsonObject } from "../generation-provenance";
 import { generationProvenance } from "./generation-provenance";
-import { generationJsonValue as jsonValue } from "./json-value";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
@@ -269,9 +268,25 @@ export const generationVariant = Type.Object({
 
 export type GenerationVariant = Static<typeof generationVariant>;
 
+// @approved
+//  The intent an Active Generation stored at acceptance: a Send stores `tail`.
+export const storedGenerationIntent = Type.Union([Type.Object({ type: Type.Literal("tail") }), generationIntent]);
+
+// @approved
+//  The budget decision made at Generation start, with the whole history
+// entries omitted during preflight.
+export const generationBudgetInspection = Type.Object({
+	tokenEstimate: Type.Number(),
+	responseBudget: Type.Integer(),
+	safetyAllowance: Type.Integer(),
+	contextLimit: Type.Integer(),
+	totalRequiredTokens: Type.Number(),
+	omittedContext: Type.Array(Type.Object({ speakerName: Type.Union([Type.String(), Type.Null()]), content: Type.String() })),
+});
+
 // Active details are intentionally a separate contract from Conversation
-// summaries and ordinary history. Opaque prompt JSON is provider-neutral and
-// retained only for the bounded Active Generation/replay lifecycle.
+// summaries and ordinary history, retained only for the bounded Active
+// Generation/replay lifecycle.
 export const activeGenerationDetails = Type.Object({
 	conversationId: Type.Integer(),
 	generationId: Type.Integer(),
@@ -284,25 +299,16 @@ export const activeGenerationDetails = Type.Object({
 		Type.Literal("length-limited"),
 		Type.Literal("interrupted"),
 	]),
-	intent: jsonValue,
+	intent: storedGenerationIntent,
 	participants: Type.Object({
 		human: Type.Object({ id: Type.Integer(), name: Type.String() }),
 		model: Type.Object({ id: Type.Integer(), name: Type.String() }),
 	}),
+	modelId: Type.String(),
 	promptPlan,
-	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	boxTraces,
-	generationSettings: jsonValue,
-	connection: jsonValue,
-	budget: Type.Object({
-		tokenEstimate: Type.Union([Type.Null(), Type.Integer()]),
-		responseBudget: Type.Union([Type.Null(), Type.Integer()]),
-		safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
-		contextLimit: Type.Union([Type.Null(), Type.Integer()]),
-		totalRequiredTokens: Type.Union([Type.Null(), Type.Integer()]),
-		omittedContext: jsonValue,
-	}),
+	budget: generationBudgetInspection,
 	checkpoint: Type.Object({
 		content: Type.String(),
 		reasoning: Type.String(),
@@ -312,6 +318,7 @@ export const activeGenerationDetails = Type.Object({
 });
 
 export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>["status"];
+export type GenerationBudgetInspection = Static<typeof generationBudgetInspection>;
 export type ActiveGenerationDetails = Static<typeof activeGenerationDetails>;
 
 export const variantDetails = Type.Object({

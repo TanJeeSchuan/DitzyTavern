@@ -31,9 +31,7 @@ describe("Generation checkpoints", () => {
 			seed: "seed", conversationId: created.id, expectedRevision: created.revision, timestamp: "2026-10-25T00:00:00.000Z",
 			humanContent: "Go on.", humanParticipantId: created.cast[0]!.id, modelParticipantId: created.cast[1]!.id, capturedModelName: "Maren",
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-			promptContext: [{ kind: "message", speakerName: "Writer", content: "Go on.", role: "human" }],
-			generationSettings: {}, connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
 		});
 		const checkpoint = (contentOffset: number, contentDelta: string, reasoningOffset: number, reasoningDelta: string, latestEventId: number) =>
 			checkpointConversationGeneration(database, {
@@ -50,7 +48,6 @@ describe("Generation checkpoints", () => {
 		generation.checkpoint(5, "upon", 4, "", 5);
 		generation.checkpoint(9, " a time.", 4, " more", 9);
 		expect(generation.details()?.checkpoint).toMatchObject({ content: "Once upon a time.", reasoning: "Plan more", latestEventId: 9 });
-		expect(generation.details()?.promptContext).toEqual([{ kind: "message", speakerName: "Writer", content: "Go on.", role: "human" }]);
 	});
 
 	test("a delta that does not continue the stored output is rejected and stores nothing", () => {
