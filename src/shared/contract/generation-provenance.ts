@@ -1,3 +1,4 @@
+import { terminalOutcome } from "./generation-phase";
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { canonicalGenerationSettings, type GenerationSettingsField } from "./generation-settings";
 import { generationFinishReason, generationUsage } from "./generation-events";
@@ -33,11 +34,7 @@ const provenanceSettingsSchemas = {
 	repeatedImagePlacement: nullable(canonicalGenerationSettings.properties.repeatedImagePlacement),
 } as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
 
-export const generationProvenanceStatus = Type.Union([
-	Type.Literal("complete"),
-	Type.Literal("length-limited"),
-	Type.Literal("interrupted"),
-]);
+
 
 // The persisted provenance record. Null leads every union so the schema's
 // created value is the all-unavailable record. A start-time record has no
@@ -52,7 +49,7 @@ export const generationProvenanceRecord = Type.Object({
 	generationSettings: Type.Object(provenanceSettingsSchemas),
 	usage: nullable(generationUsage),
 	finishReason: nullable(generationFinishReason),
-	status: nullable(generationProvenanceStatus),
+	status: nullable(terminalOutcome),
 	interruptionCause: nullable(Type.String()),
 });
 
@@ -63,7 +60,7 @@ export type GenerationProvenanceSettings = GenerationProvenanceRecord["generatio
 // resolved.
 export const generationProvenance = Type.Object({
 	...generationProvenanceRecord.properties,
-	status: generationProvenanceStatus,
+	status: terminalOutcome,
 });
 
 export type GenerationProvenance = Static<typeof generationProvenance>;

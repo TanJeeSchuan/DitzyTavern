@@ -44,7 +44,7 @@ import type { BoxItems, BoxResults } from "../box/registry";
  */
 export const continuationIntentFor = (
 	settings: CanonicalGenerationSettings,
-): GenerationIntent => settings.continuationStrategy === "instruction"
+): Extract<GenerationIntent, { type: "continuation" }> => settings.continuationStrategy === "instruction"
 	? {
 		type: "continuation",
 		strategy: "instruction",

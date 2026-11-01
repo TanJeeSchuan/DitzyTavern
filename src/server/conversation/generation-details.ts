@@ -7,7 +7,6 @@ import { variantDataCodecs } from "../../shared/variant-data-codecs";
 // compact safe provenance allow-list.
 
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
 import { and, eq, getTableColumns } from "drizzle-orm";
 import {
 	activeGenerationTable,
@@ -33,25 +32,7 @@ import type {
 	ActiveGenerationDetails,
 	VariantDetails,
 } from "./types";
-import { storedGenerationIntent } from "../../shared/contract/conversation-schema";
-
-type StoredGenerationIntent = ActiveGenerationDetails["intent"];
-
-const deriveGenerationStatus = (
-	active: boolean,
-	terminalStatus: string | null | undefined,
-): ActiveGenerationDetails["status"] =>
-	active
-		? "active"
-		: terminalStatus === "length-limited" || terminalStatus === "interrupted"
-			? terminalStatus
-			: "complete";
-
-const storedIntent = (json: string): StoredGenerationIntent => {
-	const value: unknown = JSON.parse(json);
-	if (!Value.Check(storedGenerationIntent, value)) throw new Error("Persisted Generation intent is invalid.");
-	return value;
-};
+import { decodeStoredGenerationIntent } from "./generation-state";
 
 export function readActiveGenerationDetails(
 	database: Database,
@@ -106,8 +87,8 @@ export function readActiveGenerationDetailsFromConnection(
 		messageId: row.message_id,
 		variantId: row.variant_id,
 		startedAt: row.started_at,
-		status: deriveGenerationStatus(active !== undefined, retained?.terminal_status),
-		intent: storedIntent(row.generation_intent_json),
+		status: "terminal_status" in row ? row.terminal_status : "active",
+		intent: decodeStoredGenerationIntent(row.generation_intent_json),
 		participants: {
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },

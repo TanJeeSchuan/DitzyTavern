@@ -1,3 +1,5 @@
+import { durableOutcome, terminalOutcome, type TerminalOutcome } from "../../../shared/contract/generation-phase";
+import { decodeStoredGenerationIntent } from "../generation-state";
 import { Value } from "@sinclair/typebox/value";
 import { boxRecords } from "../../../shared/contract/box-generation";
 import { boxReference } from "../../../shared/contract/box";
@@ -69,11 +71,6 @@ const requireActiveGeneration = (
 	return active;
 };
 
-export const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolean => {
- try { return variantDataCodecs.intent.parse(row.generation_intent_json).type === "sibling"; }
- catch (error) { throw new InvalidConversationCommandError(error instanceof Error ? error.message : variantDataCodecs.intent.parseError); }
-};
-
 // @approved
 //  The one provisional Variant existence read: terminal persistence and
 // the stop transition both validate the same (variant_id, message_id) pair,
@@ -97,11 +94,11 @@ type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
 
 const terminalStatusFrom = (
 	data: readonly ConversationDataEntry[],
-): "complete" | "length-limited" | "interrupted" => {
+): TerminalOutcome => {
 	const value = data.find(
 		(entry) => entry.namespace === GENERATION_DATA_NAMESPACE && entry.key === GENERATION_DATA_KEYS.outcome,
 	)?.value;
-	return value === "length-limited" || value === "interrupted" ? value : "complete";
+	return value === undefined ? "complete" : Value.Parse(terminalOutcome, value);
 };
 
 // @approved
@@ -451,7 +448,7 @@ function removeActiveGenerationTargetInTransaction(
 	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 ): StopTransition {
-	if (isSiblingGenerationRow(active)) {
+	if (decodeStoredGenerationIntent(active.generation_intent_json).type === "sibling") {
 		const variant = provisionalVariantRow(db, active);
 		if (variant === undefined) {
 			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
@@ -514,7 +511,7 @@ function stopActiveGenerationInTransaction(
 		reasoning,
 		timestamp,
 		suppliedData: [
-			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: "interrupted" },
+			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: durableOutcome({ status: "stopped" }) },
 			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.interruptionCause, value: "user-stop" },
 		] satisfies ConversationDataEntry[],
 	});

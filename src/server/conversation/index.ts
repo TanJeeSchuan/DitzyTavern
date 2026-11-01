@@ -34,7 +34,6 @@ export { deriveMessageSwipeEligibility } from "./snapshot";
 // @approved
 //  Canonical persisted-intent reader shared by terminal commands and the
 // recovery sweep so the sibling discriminator cannot drift between them.
-export { isSiblingGenerationRow } from "./commands/active-generation";
 // @approved
 //  The one Active-Generation existence probe, shared with the
 // Generation-start capture workflows so no workflow re-probes the
@@ -154,3 +153,5 @@ export { readVariantData } from "./variant-data";
 export type { VariantDataRecords } from "./variant-data";
 
 export { forkConversation } from "./commands/fork-conversation";
+
+export { generationGate } from "./generation-gate";

@@ -1,3 +1,4 @@
+import { generationGate } from "./generation-gate";
 import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import type { Database } from "bun:sqlite";
 import { and, eq, max } from "drizzle-orm";
@@ -161,6 +162,7 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 			if (current === undefined) throw new ConversationNotFoundError(input.conversationId);
 			return current;
 		});
+		generationGate(db, input.conversationId, { type: "edit-macro-variables", position: input.position });
 		if (!Number.isInteger(input.promptPresetId) || input.promptPresetId <= 0) {
 			throw new InvalidConversationCommandError("Prompt Preset ID must be a positive integer.");
 		}

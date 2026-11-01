@@ -1,5 +1,5 @@
 import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
-import { readVariantDetails, acceptConversationSiblingGeneration } from "./index";
+import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptConversationSiblingGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import {
@@ -136,6 +136,51 @@ describe("explicit Conversation Generation Stop", () => {
 			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 	};
+
+	for (const target of ["human-message", "model-message", "historical-message"] as const) {
+		test(`deleting a ${target} cannot orphan a running Tail Generation`, () => {
+			const input = setup();
+			const accepted = acceptTail(input);
+			const before = requireSnapshot(database, input.created.id);
+			const messageId = target === "human-message" ? before.messages.at(-2)!.id
+				: target === "model-message" ? accepted.messageId : before.messages[0]!.id;
+			expect(() => executeConversationCommand(database, {
+				conversationId: input.created.id, expectedRevision: before.revision,
+				action: { type: "delete-message", messageId },
+			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
+			checkpointFromStart(database, { conversationId: input.created.id, generationId: accepted.generationId, content: "Still owned." });
+			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			expect(requireSnapshot(database, input.created.id).messages.at(-1)?.variants[0]?.content).toBe("Still owned.");
+		});
+	}
+
+	for (const target of ["provisional", "prior"] as const) {
+		test(`deleting a ${target} Sibling Variant cannot invalidate a running Generation`, () => {
+			const input = setup();
+			const accepted = acceptSibling(input);
+			const variantId = target === "provisional" ? accepted.provisionalVariantId : input.created.messages[0]!.variants[0]!.id;
+			expect(() => executeConversationCommand(database, {
+				conversationId: input.created.id, expectedRevision: accepted.conversation.revision,
+				action: { type: "delete-variant", messageId: accepted.messageId, variantId },
+			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
+			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			expect(requireSnapshot(database, input.created.id).messages[0]?.variants).toMatchObject([{ content: "Original answer.", selected: true }]);
+		});
+	}
+
+	test("Macro edits cannot be overwritten by a provisional Variant's captured writes", () => {
+		const input = setup();
+		const accepted = acceptTail(input);
+		const position = requireSnapshot(database, input.created.id).messages.at(-1)!.position;
+		const edit = (position: number, expectedRevision: number) => editMacroVariables(database, {
+			conversationId: input.created.id, expectedRevision, position, promptPresetId: 1,
+			operation: "set", name: "mood", value: "writer value",
+		});
+		expect(() => edit(position, accepted.conversation.revision)).toThrow("Macro Variables cannot change on a Variant while its Generation is running.");
+		const initial = edit(0, accepted.conversation.revision);
+		expect(readMacroVariables(database, input.created.id)?.variables).toMatchObject([{ name: "mood", value: "writer value" }]);
+		expect(() => edit(1, initial.conversation.revision)).not.toThrow();
+	});
 
 	test("keeps partial Sibling output selected and marks it interrupted", () => {
 		const input = setup();

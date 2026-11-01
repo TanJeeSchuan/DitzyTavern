@@ -1,3 +1,4 @@
+import { generationGate } from "./generation-gate";
 import { eq } from "drizzle-orm";
 import { conversationTable } from "../database/schema";
 import type { Database } from "bun:sqlite";
@@ -37,10 +38,8 @@ import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
 import {
 	ConversationNotPlayableError,
-	InvalidConversationCommandError,
 } from "./errors";
 import {
-	hasActiveGenerationFromConnection,
 	isPlayable,
 	readControlAssignment,
 	requireConversationRevision,
@@ -103,7 +102,6 @@ const handlers = {
 } satisfies { [K in ConversationAction["type"]]: CommandHandler<K> };
 
 const playOnly = new Set<ConversationAction["type"]>(["create-message"]);
-const quietOnly = new Set<ConversationAction["type"]>([...playOnly, "create-variant", "assign-control"]);
 
 export function executeConversationCommand(
 	database: Database,
@@ -116,14 +114,7 @@ export function executeConversationCommand(
 			command.expectedRevision,
 			"conversation",
 		);
-		if (
-			quietOnly.has(command.action.type) &&
-			hasActiveGenerationFromConnection(db, command.conversationId)
-		) {
-			throw new InvalidConversationCommandError(
-				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
-			);
-		}
+		generationGate(db, command.conversationId, command.action);
 		if (
 			playOnly.has(command.action.type) &&
 			!isPlayable(readControlAssignment(db, command.conversationId))

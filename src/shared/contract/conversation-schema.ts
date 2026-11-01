@@ -1,3 +1,5 @@
+import { generationIntent, storedGenerationIntent } from "./generation-intent";
+import { terminalOutcome } from "./generation-phase";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
@@ -79,28 +81,7 @@ const promptBlock = Type.Union([
 	}),
 ]);
 
-const generationIntent = Type.Union([
-	Type.Object({ type: Type.Literal("sibling") }),
-	Type.Object({
-		type: Type.Literal("continuation"),
-		strategy: Type.Literal("instruction"),
-		instruction: Type.String(),
-		// @approved
-		//  Set when Strict System Placement sends the instruction as a human
-		// message instead of a trailing system message.
-		demoted: Type.Optional(Type.Literal(true)),
-	}),
-	Type.Object({
-		type: Type.Literal("continuation"),
-		strategy: Type.Literal("assistant-prefill"),
-		suffix: Type.Union([
-			Type.Literal(""),
-			Type.Literal(" "),
-			Type.Literal("\n"),
-			Type.Literal("\n\n"),
-		]),
-	}),
-]);
+
 
 const promptImage = Type.Object({
 	block: Type.Integer(),
@@ -268,9 +249,7 @@ export const generationVariant = Type.Object({
 
 export type GenerationVariant = Static<typeof generationVariant>;
 
-// @approved
-//  The intent an Active Generation stored at acceptance: a Send stores `tail`.
-export const storedGenerationIntent = Type.Union([Type.Object({ type: Type.Literal("tail") }), generationIntent]);
+
 
 // @approved
 //  The budget decision made at Generation start, with the whole history
@@ -293,12 +272,7 @@ export const activeGenerationDetails = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	startedAt: Type.String(),
-	status: Type.Union([
-		Type.Literal("active"),
-		Type.Literal("complete"),
-		Type.Literal("length-limited"),
-		Type.Literal("interrupted"),
-	]),
+	status: Type.Union([Type.Literal("active"), terminalOutcome]),
 	intent: storedGenerationIntent,
 	participants: Type.Object({
 		human: Type.Object({ id: Type.Integer(), name: Type.String() }),

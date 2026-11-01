@@ -198,6 +198,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		const openingVariant = opening?.variants[0];
 		if (opening === undefined || openingVariant === undefined) throw new Error("Opening missing.");
 		const accepted = acceptConversationContinuationGeneration(database, {
+			generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
