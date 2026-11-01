@@ -30,6 +30,8 @@ export interface MacroAttemptState {
 	readonly variables: Map<string, MacroValue>;
 	readonly writes: MacroVariableWrite[];
 	readonly expansionCache: Map<string, MacroExpansionResult>;
+	// The changing macros each variable's current value came from, so a block that reads it reports them too.
+	readonly changingVariables: Map<string, readonly string[]>;
 	macroPositionBase: string | number;
 }
 
@@ -56,6 +58,7 @@ export const createMacroAttemptState = (
 	variables: new Map(variables),
 	writes: [],
 	expansionCache: new Map(),
+	changingVariables: new Map(),
 	macroPositionBase: "",
 });
 

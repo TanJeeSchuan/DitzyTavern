@@ -168,7 +168,7 @@ const expandInto = (request: {
 	if (expanded.text === "") return;
 	blocks.push({ ...block, role, content: expanded.text });
 	warnings.push(...expanded.warnings);
-	if (beforeHistory) warnings.push(...expanded.changing.map((macro) => ({ block: blockLabel, macro, reason: "uncached" as const })));
+	if (beforeHistory) warnings.push(...[...new Set(expanded.changing)].map((macro) => ({ block: blockLabel, macro, reason: "uncached" as const })));
 };
 
 // @approved

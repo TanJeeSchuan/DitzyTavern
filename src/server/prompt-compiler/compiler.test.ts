@@ -541,6 +541,19 @@ describe("Macro expansion", () => {
 		]);
 	});
 
+	test("warns on the block that reads a variable holding a changing value", () => {
+		const plan = compilePrompt(source({
+			recipe: [
+				{ reference: "instruction", enabled: true, role: "system", name: "Clock", content: "{{setvar::clock::{{time}}}}{{setvar::name::{{self}}}}{{setvar::was::{{time}}}}{{setvar::was::then}}" },
+				{ reference: "model-scenario", enabled: true, role: "system" },
+				{ reference: "history", enabled: true },
+			],
+			model: { name: "Maren Voss", prompt: { ...source().model.prompt, scenario: "{{getvar::name}} at {{getvar::clock}}, {{getvar::clock}}, {{getvar::was}}." } },
+		}));
+
+		expect(plan.warnings).toEqual([{ block: "scenario", macro: "{{time}}", reason: "uncached" }]);
+	});
+
 	test("leaves unclosed braces literal without a warning", () => {
 		const plan = compilePrompt(
 			source({

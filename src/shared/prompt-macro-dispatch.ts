@@ -271,7 +271,10 @@ const failure = (node: MacroNode, context: MacroDispatchContext, keepLiteralDuri
 	return context.validationOnly && !keepLiteralDuringValidation ? "" : node.raw;
 };
 
-const variable = (context: MacroDispatchContext, name: string): string => normalize(context.attemptState.variables.get(name));
+const variable = (context: MacroDispatchContext, name: string): string => {
+	context.changing.push(...context.attemptState.changingVariables.get(name) ?? []);
+	return normalize(context.attemptState.variables.get(name));
+};
 
 const setVariable = (context: MacroDispatchContext, name: string, value: MacroValue): void => {
 	context.attemptState.variables.set(name, value);
@@ -531,11 +534,17 @@ export const dispatchMacro = (node: MacroNode, context: MacroDispatchContext): s
 		const args = node.args.map((arg) => context.evaluate(arg.nodes).trim());
 		return unknownMacro(node, args, context);
 	}
+	const changed = context.changing.length;
+	const written = context.attemptState.writes.length;
 	const args = definition.evaluateArgs === false ? [] : node.args.map((arg) => context.evaluate(arg.nodes).trim());
 	if (context.validationOnly && definition.volatile) return definition.validate?.(node, args, context) ?? "";
 	const warned = context.warnings.length;
 	const output = definition.handler(node, args, context);
 	// A macro that failed stays literal, so its text cannot change.
 	if (definition.changes === true && context.warnings.length === warned) context.changing.push(node.raw);
+	// A variable written here holds a value that changes when anything this macro evaluated did.
+	for (const { name, operation } of context.attemptState.writes.slice(written)) {
+		context.attemptState.changingVariables.set(name, operation === "delete" ? [] : context.changing.slice(changed));
+	}
 	return output;
 };
