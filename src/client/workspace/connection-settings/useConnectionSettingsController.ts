@@ -167,9 +167,9 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	});
 	const test = useMutation({
 		mutationKey: ["connection-settings", "test"],
-		mutationFn: testConnectionDraft,
-		onSuccess: (result) => dispatch({ type: "test-succeeded", result }),
-		onError: () => dispatch({ type: "test-failed", message: "Test Connection could not be completed." }),
+		mutationFn: ({ request }: { request: TestConnectionDraftInput; editorIdentity: symbol }) => testConnectionDraft(request),
+		onSuccess: (result, { editorIdentity }) => dispatch({ type: "test-succeeded", editorIdentity, result }),
+		onError: (_error, { editorIdentity }) => dispatch({ type: "test-failed", editorIdentity, message: "Test Connection could not be completed." }),
 	});
 	const refresh = useMutation({
 		mutationKey: ["connection-settings", "discovery"],
@@ -270,7 +270,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			headers: headerOperationsFor(headerEditorData),
 		};
 		if (selectedProfileId !== null) request.profileId = selectedProfileId;
-		test.mutate(request);
+		test.mutate({ request, editorIdentity: state.editorIdentity });
 	};
 
 	const refreshModels = async () => {

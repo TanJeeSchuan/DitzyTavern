@@ -141,6 +141,24 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.notice).toBeNull();
 	});
 
+	test("editing the draft clears a test result that no longer describes it", () => {
+		const next = reduceConnectionSettingsController(controllerState(), { type: "set-credential-draft", value: "other secret" });
+
+		expect(next.testResult).toBeNull();
+	});
+
+	test("a test result for an editor that changed meanwhile is dropped", () => {
+		const testing = reduceConnectionSettingsController(controllerState(), { type: "test-started" });
+		const edited = reduceConnectionSettingsController(testing, { type: "set-draft", draft: { ...testing.draft, requestUrl: "http://other.test" } });
+		const next = reduceConnectionSettingsController(edited, {
+			type: "test-succeeded",
+			editorIdentity: testing.editorIdentity,
+			result: { outcome: "available", value: { outcome: "success", message: "Connected." } },
+		});
+
+		expect(next.testResult).toBeNull();
+	});
+
 	test("a save result adopts the saved profile while the editor still matches", () => {
 		const state = controllerState();
 		const next = reduceConnectionSettingsController(state, {
