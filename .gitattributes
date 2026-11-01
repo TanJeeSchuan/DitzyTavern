@@ -1,0 +1,2 @@
+# Drizzle migrations and snapshots: collapsed in PR diffs and left out of language stats.
+src/server/database/migrations/** linguist-generated=true
