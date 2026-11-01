@@ -4,7 +4,6 @@
 	"type": "module",
 	"packageManager": "bun@1.4.4",
 	"scripts": {
-		"prepare": "git config core.hooksPath .githooks",
 		"dev:server": "bun --watch src/server/index.ts",
 		"dev:client": "vite",
 		"dev:stop": "bun -e \"process.exit(Bun.spawnSync(process.platform === 'win32' ? ['powershell', '-c', 'Stop-Process -Force -Id (Get-NetTCPConnection -State Listen -LocalPort 3000,5173).OwningProcess'] : ['fuser', '-k', '3000/tcp', '5173/tcp'], { stdio: ['inherit', 'inherit', 'inherit'] }).exitCode)\"",
