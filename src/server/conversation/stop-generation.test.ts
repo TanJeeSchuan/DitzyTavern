@@ -59,10 +59,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 
 	test("persists partial Tail output as an interrupted Variant", () => {
@@ -136,10 +133,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 	};
 
@@ -214,10 +208,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 		const first = accept("2026-08-27T00:00:01.000Z");
 		const second = accept("2026-08-27T00:00:02.000Z");

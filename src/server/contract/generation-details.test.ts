@@ -56,30 +56,13 @@ describe("Generation detail transport", () => {
 				}],
 				warnings: [], images: [],
 			},
-			promptInspection: {
+			modelId: "fixture-model", promptInspection: {
 				tokenEstimate: 19,
 				responseBudget: 64,
 				safetyAllowance: 5,
 				contextLimit: 128,
 				totalRequiredTokens: 88,
-				omittedContext: [{ kind: "message", speakerName: "Older", content: "Omitted.", role: "human" }],
-			},
-			promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
-			generationSettings: {
-				modelId: "details-model",
-				temperature: 0.2,
-				contextLimit: 128,
-				responseBudget: 64,
-				safetyAllowance: 5,
-				requestOverrides: { headers: "do-not-expose" },
-			},
-			connection: {
-				profileId: 3,
-				settingsRevision: 4,
-				backend: "ai-sdk",
-				adapter: "deepseek",
-				requestUrl: "https://secret.invalid/endpoint",
-				credential: "credential-do-not-expose",
+				omittedContext: [{ speakerName: "Older", content: "Omitted." }],
 			},
 			provenance: {
 				namespace: "generation",
@@ -119,10 +102,9 @@ describe("Generation detail transport", () => {
 		)).then(async (inspection) => {
 			expect(inspection.status).toBe(200);
 			const body = await inspection.text();
-			expect(body).toContain("details-model");
+			expect(body).toContain('"modelId":"fixture-model"');
 			expect(body).toContain('"tokenEstimate":19');
 			expect(body).toContain("Omitted.");
-			expect(body).not.toContain("secret.invalid");
 			expect(body).not.toContain("credential-do-not-expose");
 
 			resolveConversationGeneration(module, {

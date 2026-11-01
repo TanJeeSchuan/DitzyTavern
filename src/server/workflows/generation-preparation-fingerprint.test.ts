@@ -34,8 +34,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	const settings = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	return {
 		seed: "preview-seed",
-		target: { kind: "send", content: "" },
-		facts: { kind: "send", reuseHumanMessageId: undefined },
+		target: { kind: "send", content: "", reuseHumanMessageId: undefined },
 		scanMessages: [],
 		conversationId: 1,
 		boxes: [],
@@ -51,7 +50,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			control: { humanParticipantId: 1, modelParticipantId: 2 },
 		},
 		settings,
-		intent: undefined,
 		pendingHumanText: undefined,
 		effectiveSettings: effectiveGenerationSettingsFor(settings, undefined, null),
 		recipe: { id: 1, name: "Default", slots: [] },

@@ -186,16 +186,18 @@ interface GenerationPreparationBase {
 	readonly lore: ScopedLoreEvaluation;
 }
 
-export type GenerationCaptureFacts =
-	| { readonly kind: "send"; readonly reuseHumanMessageId: number | undefined }
-	| { readonly kind: "continuation"; readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: GenerationIntent }
-	| { readonly kind: "sibling" };
+/** @approved The Generation Target with the facts its acceptance needs, read in the capture's transaction. */
+export type CapturedTarget =
+	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId: number | undefined }
+	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: GenerationIntent }
+	| Extract<GenerationTarget, { kind: "sibling" }>;
+
+export const generationIntentOf = (target: CapturedTarget): GenerationIntent | undefined =>
+	target.kind === "continuation" ? target.intent : target.kind === "sibling" ? { type: "sibling" } : undefined;
 
 interface PreparationFields extends GenerationPreparationBase {
 	readonly seed: string;
-	readonly target: GenerationTarget;
-	readonly facts: GenerationCaptureFacts;
-	readonly intent: GenerationIntent | undefined;
+	readonly target: CapturedTarget;
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
@@ -229,7 +231,7 @@ const reusableHumanMessageId = (
 		: undefined;
 };
 
-function captureFacts(
+function captureTarget(
 	target: GenerationTarget,
 	participation: ParticipatingHistory,
 	human: CastParticipantSnapshot,
@@ -237,10 +239,10 @@ function captureFacts(
 	settings: ConversationGenerationSettings,
 	hasReasoning: (variantId: number) => boolean,
 	moves: ReadonlyMap<number, BoxMoves>,
-): GenerationCaptureFacts {
+): CapturedTarget {
 	switch (target.kind) {
-		case "send": return { kind: "send", reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
-		case "sibling": return { kind: "sibling" };
+		case "send": return { ...target, reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
+		case "sibling": return target;
 		case "continuation": {
 			const latest = participation.messages.at(-1);
 			const variant = latest?.variant;
@@ -251,7 +253,7 @@ function captureFacts(
 				hasReasoning: hasReasoning(variant.id),
 			}, settings.continuationStrategy);
 			if (reason !== null) throw new ContinuationUnavailableError(reason);
-			return { kind: "continuation", precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
+			return { ...target, precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
 		}
 	}
 }
@@ -350,17 +352,17 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		model,
 		context: rendered.map(({ speakerName, content, role }) => ({ kind: "message", speakerName, content, role })),
 	};
-	const facts = captureFacts(target, participation, human, model, settings, hasReasoning, messageMoves);
+	const captured = captureTarget(target, participation, human, model, settings, hasReasoning, messageMoves);
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
 	const staged = target.kind === "send" ? target.moves : undefined;
 	const invalid = staged === undefined ? undefined : boxMovesError(staged);
 	if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
-	const closed = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined
+	const submitted = captured.kind === "send" && captured.reuseHumanMessageId === undefined ? captured : undefined;
+	const closed = submitted !== undefined
 		? Object.keys(staged ?? {}).find((id) => summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
-	const intent = facts.kind === "continuation" ? facts.intent : target.kind === "sibling" ? { type: "sibling" as const } : undefined;
-	const pendingHumanText = target.kind === "send" && facts.kind === "send" && facts.reuseHumanMessageId === undefined ? humanMessageText(target.moves ?? {}, target.content, human.name, summary.boxes) : undefined;
+	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, summary.boxes);
 	const scanMessages = rendered.map(({ message, content }) => ({ id: message.id, content }));
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
@@ -371,7 +373,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
-	const effectiveSettings = effectiveGenerationSettingsFor(settings, intent, connection);
+	const effectiveSettings = effectiveGenerationSettingsFor(settings, generationIntentOf(captured), connection);
 	const macroState = new Map(deriveMacroState({
 		initialData: selected.initialData,
 		presetId: recipe.id,
@@ -412,7 +414,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		macroState,
 		lore,
 	};
-	return { ...preparation, target, facts, intent, pendingHumanText, scanMessages };
+	return { ...preparation, target: captured, pendingHumanText, scanMessages };
 }
 
 /** @approved
@@ -494,9 +496,7 @@ const captureConfigurationFromPreparation = (
  * facts of one kind ride on the same Generation Target union.
  */
 export interface CapturedGeneration {
-	readonly target: GenerationTarget;
-	readonly facts: GenerationCaptureFacts;
-	readonly intent: GenerationIntent | undefined;
+	readonly target: CapturedTarget;
 	readonly preparation: Preparation;
 	readonly plan: GenerationPlan;
 	readonly context: readonly PromptContextEntry[];
@@ -527,8 +527,6 @@ const toCapturedGeneration = (
 	plan: GenerationPlan,
 ): CapturedGeneration => ({
 	target: preparation.target,
-	facts: preparation.facts,
-	intent: preparation.intent,
 	preparation,
 	plan,
 	context: plan.budget.retainedContext,
@@ -572,7 +570,7 @@ export async function captureGeneration(
 		? derivation.context
 		: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content: preparation.pendingHumanText, role: "human" as const }];
 	const plan = compilePlanFrom({ ...derivation, context }, configuration, {
-		intent: preparation.intent,
+		intent: generationIntentOf(preparation.target),
 		estimator: options.tokenEstimator,
 		database,
 	});

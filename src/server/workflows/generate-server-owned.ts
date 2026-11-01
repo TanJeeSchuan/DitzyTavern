@@ -29,10 +29,9 @@ import type { GenerationFormattingContext } from "../../shared/contract/conversa
 export interface GenerationAttemptInput {
 	conversationId: number;
 	// @approved
-	//  Present on the revisioned lifecycles (Send, Continue) and absent on
-	// Sibling, whose eligibility is revision-neutral. The lifecycle runner
-	// reads it directly for its pre-capture fail-fast; the acceptance
-	// transaction owns the authoritative guard.
+	//  The revision the client submitted against, checked before capture. A
+	// previewed attempt omits it, since its Prompt Plan fingerprint is the
+	// staleness guard, and Sibling is revision-neutral.
 	expectedRevision?: number;
 	// @approved
 	//  The provider-neutral Model Client receives the compiled Prompt Plan and

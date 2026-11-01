@@ -87,8 +87,8 @@ const jsonText = (
 
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
-	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "boxTraces" | "generationIntent" |
+	"capturedHumanName" | "capturedModelName" | "modelId" | "promptPlan" | "promptInspection" |
+	"loreActivation" | "boxTraces" | "generationIntent" |
 	"provenance" | "macro" | "seed" | "boxRecords"
 >;
 
@@ -130,8 +130,6 @@ const persistActiveGeneration = (
 			captured_human_name: input.capturedHumanName,
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
-			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
-			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
 			box_traces_json: jsonText(traces, "Box traces"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
@@ -152,7 +150,7 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
-	const capture = `{"promptPlan":${jsonText(input.promptPlan, "Prompt Plan")},"promptInspection":${jsonText(input.promptInspection, "Prompt inspection")},"promptContext":${jsonText(input.promptContext, "Prompt context")}}`;
+	const capture = `{"modelId":${JSON.stringify(input.modelId)},"promptPlan":${jsonText(input.promptPlan, "Prompt Plan")},"promptInspection":${jsonText(input.promptInspection, "Prompt inspection")}}`;
 	db.insert(generationCaptureTable)
 		.values({ generation_id: active.id, ...encodeGenerationCapture(capture) })
 		.run();

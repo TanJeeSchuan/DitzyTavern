@@ -50,10 +50,7 @@ describe("generation recovery diagnostics", () => {
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			promptContext: [],
-			generationSettings: {},
-			connection: {},
+			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		});
 		const corrupt = accepted("2026-08-27T00:00:00.000Z");
 		accepted("2026-08-27T00:00:01.000Z");

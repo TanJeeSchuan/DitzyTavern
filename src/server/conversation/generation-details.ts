@@ -31,110 +31,11 @@ import {
 } from "./message-read-projection";
 import type {
 	ActiveGenerationDetails,
-	ConversationJsonValue,
 	VariantDetails,
 } from "./types";
-import {
-	generationJsonInteger,
-	generationJsonNumber,
-	generationJsonObject,
-	generationJsonString,
-	parseGenerationJson,
-} from "../../shared/generation-provenance";
-import {
-	type CanonicalGenerationSettings,
-	type GenerationSettingsField,
-} from "../../shared/contract/generation-settings";
-import {
-	promptPlan,
-	type PromptPlan,
-} from "../../shared/contract/conversation-schema";
+import { storedGenerationIntent } from "../../shared/contract/conversation-schema";
 
-interface SafeConnection {
-	readonly [key: string]: ConversationJsonValue;
-	profileId: number | null;
-	settingsRevision: number | null;
-	backend: string | null;
-	adapter: string | null;
-	apiFormat: string | null;
-}
-
-const safeConnection = (value: ConversationJsonValue): SafeConnection => {
-	const source = generationJsonObject(value);
-	return {
-		profileId: generationJsonInteger(source?.profileId),
-		settingsRevision: generationJsonInteger(source?.settingsRevision),
-		backend: generationJsonString(source?.backend),
-		adapter: generationJsonString(source?.adapter),
-		apiFormat: generationJsonString(source?.apiFormat),
-	};
-};
-
-// @approved
-//  Active inspection decodes the persisted Generation Settings into the safe
-// display projection over the canonical Generation Settings vocabulary
-// (ADR-0032). Every canonical field except Request Overrides participates —
-// inspection never re-exposes Request Overrides — and every participating
-// field decodes as null when the persisted value is absent or corrupt. The
-// Safety allowance participates like every other budget field, so the
-// formerly omitted value is retained instead of being decoded as absent.
-type InspectionSettingsField = Exclude<GenerationSettingsField, "requestOverrides">;
-
-// @approved
-//  The persisted value is written from validated domain settings, so display
-// decoding keeps strings loose: a corrupt persisted value surfaces as its
-// raw string rather than being silently mistaken for a valid literal.
-type InspectionSettingsValue<T> = T extends string ? string | null : T | null;
-
-type SafeGenerationSettings = {
-	[K in InspectionSettingsField]: InspectionSettingsValue<CanonicalGenerationSettings[K]>;
-};
-
-// @approved
-//  The decoded value for each inspection field. Compile-locked: adding a
-// canonical field (outside the exclusion) fails typecheck until inspection
-// states how it decodes — and the projection below maps the table, so that
-// one line is the whole change.
-type InspectionSettingsDecoder = {
-	readonly [K in InspectionSettingsField]: (
-		source: Record<string, ConversationJsonValue> | null,
-	) => InspectionSettingsValue<CanonicalGenerationSettings[K]>;
-};
-
-const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
-	modelId: (source) => generationJsonString(source?.modelId),
-	temperature: (source) => generationJsonNumber(source?.temperature),
-	topP: (source) => generationJsonNumber(source?.topP),
-	frequencyPenalty: (source) => generationJsonNumber(source?.frequencyPenalty),
-	presencePenalty: (source) => generationJsonNumber(source?.presencePenalty),
-	contextLimit: (source) => generationJsonInteger(source?.contextLimit),
-	responseBudget: (source) => generationJsonInteger(source?.responseBudget),
-	safetyAllowance: (source) => generationJsonInteger(source?.safetyAllowance),
-	siblingGenerationLimit: (source) => generationJsonInteger(source?.siblingGenerationLimit),
-	continuationStrategy: (source) => generationJsonString(source?.continuationStrategy),
-	continuationInstruction: (source) => generationJsonString(source?.continuationInstruction),
-	continuationPrefillSuffix: (source) => generationJsonString(source?.continuationPrefillSuffix),
-	repeatedImagePlacement: (source) => generationJsonString(source?.repeatedImagePlacement),
-};
-
-const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
-	// @approved
-	//  SAFETY: a non-object source decodes as an empty record, and every field
-	// decoder then resolves its own intentional null. The projection maps the
-	// decoder table itself, so the table's declaration order is the field
-	// order and a new field cannot be forgotten in the projection.
-	const source = generationJsonObject(value);
-	// @approved
-	//  SAFETY: the key list is the decoder table's own keys in declared
-	// order and every value is that table's decode of the same field, so the
-	// record is exactly the mapped SafeGenerationSettings shape.
-	return Object.fromEntries(
-		(Object.keys(inspectionSettingsFieldValue) as InspectionSettingsField[]).map((field) => [
-			field,
-			inspectionSettingsFieldValue[field](source),
-		]),
-	) as SafeGenerationSettings;
-};
+type StoredGenerationIntent = ActiveGenerationDetails["intent"];
 
 const deriveGenerationStatus = (
 	active: boolean,
@@ -146,10 +47,9 @@ const deriveGenerationStatus = (
 			? terminalStatus
 			: "complete";
 
-const persistedPromptPlan = (value: ConversationJsonValue): PromptPlan => {
-	if (!Value.Check(promptPlan, value)) {
-		throw new Error("Persisted generation prompt plan is invalid.");
-	}
+const storedIntent = (json: string): StoredGenerationIntent => {
+	const value: unknown = JSON.parse(json);
+	if (!Value.Check(storedGenerationIntent, value)) throw new Error("Persisted Generation intent is invalid.");
 	return value;
 };
 
@@ -199,10 +99,6 @@ export function readActiveGenerationDetailsFromConnection(
 	//  A Generation accepted before migration 0030 has no capture to inspect.
 	if (captured === undefined) return undefined;
 	const capture = decodeGenerationCapture(captured.capture);
-	const inspection = capture.promptInspection;
-	const inspectionRecord = generationJsonObject(inspection);
-	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
-	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	const loreActivation = variantDataCodecs.loreActivation.decode(row.lore_activation_json);
 	return {
 		conversationId,
@@ -211,25 +107,16 @@ export function readActiveGenerationDetailsFromConnection(
 		variantId: row.variant_id,
 		startedAt: row.started_at,
 		status: deriveGenerationStatus(active !== undefined, retained?.terminal_status),
-		intent: variantDataCodecs.intent.decode(row.generation_intent_json),
+		intent: storedIntent(row.generation_intent_json),
 		participants: {
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
-		promptPlan: persistedPromptPlan(capture.promptPlan),
-		promptContext: capture.promptContext,
+		modelId: capture.modelId,
+		promptPlan: capture.promptPlan,
 		loreActivation,
 		boxTraces: variantDataCodecs.boxTraces.decode(row.box_traces_json),
-		generationSettings: settings,
-		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
-		budget: {
-			tokenEstimate: generationJsonInteger(inspectionRecord?.tokenEstimate),
-			responseBudget: generationJsonInteger(inspectionRecord?.responseBudget) ?? generationJsonInteger(settings.responseBudget),
-			safetyAllowance: generationJsonInteger(inspectionRecord?.safetyAllowance) ?? generationJsonInteger(settings.safetyAllowance),
-			contextLimit: generationJsonInteger(inspectionRecord?.contextLimit) ?? generationJsonInteger(settings.contextLimit),
-			totalRequiredTokens: generationJsonInteger(inspectionRecord?.totalRequiredTokens),
-			omittedContext,
-		},
+		budget: capture.promptInspection,
 		checkpoint: {
 			content: row.checkpoint_content,
 			reasoning: row.checkpoint_reasoning,

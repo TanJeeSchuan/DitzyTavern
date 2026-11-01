@@ -1,13 +1,13 @@
-import type { ConversationJsonValue } from "./types";
+import type { GenerationBudgetInspection, PromptPlan } from "../../shared/contract/conversation-schema";
 
 // @approved
-//  The three prompt captures are one zstd frame: the plan repeats the writing
-// context's text, so compressing them together removes the repetition as
-// well (a 77k-token Chat's 920 KB capture stores as about 200 KB).
+//  The model, Prompt Plan and budget decision are one zstd frame: the omitted
+// history repeats text the plan once held, so compressing them together
+// removes the repetition as well.
 export interface GenerationCapture {
-	readonly promptPlan: ConversationJsonValue;
-	readonly promptInspection: ConversationJsonValue;
-	readonly promptContext: ConversationJsonValue;
+	readonly modelId: string;
+	readonly promptPlan: PromptPlan;
+	readonly promptInspection: GenerationBudgetInspection;
 }
 
 const imageReference = /image:[0-9a-f]{64}/g;
@@ -20,5 +20,5 @@ export const encodeGenerationCapture = (json: string) => ({
 export const decodeGenerationCapture = (capture: Uint8Array): GenerationCapture =>
 	// @approved
 	//  SAFETY: acceptance is the only writer, and it encodes exactly this
-	// object from three values it has already serialized as JSON.
+	// object from the typed values it has already serialized as JSON.
 	JSON.parse(new TextDecoder().decode(Bun.zstdDecompressSync(capture))) as GenerationCapture;

@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initializeDatabase } from "./database";
 import journal from "./migrations/meta/_journal.json";
 import { builtInBoxes, loadBoxes } from "../box/registry";
-import { observeConversationWrites, readConversationSummary, readVariantData } from "../conversation";
+import { observeConversationWrites, readActiveGenerationDetails, readConversationSummary, readVariantData } from "../conversation";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { readBoxDecisionSettings } from "../box/decision-settings";
 import { readRecordSlots } from "../box/records";
@@ -139,6 +139,32 @@ test("an Active Generation interrupted by the checkpoint-delta upgrade still rec
 		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, removed: 0, failed: 0 });
 		expect(database.query<{ content: string }, []>("SELECT content FROM message_variant WHERE id = 1").get()?.content).toBe("The tide turns.");
 		expect(readVariantData(drizzle(database), [1], ["reasoning"]).get(1)?.reasoning).toBe("Watch the pier.");
+	} finally {
+		database.close();
+		await rm(folder, { recursive: true, force: true });
+	}
+});
+
+test("a Generation capture stored before inspection kept its model is cleared rather than inspected without one", async () => {
+	const database = new Database(":memory:");
+	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 34) }));
+		initializeDatabase(database, folder);
+		database.exec(`
+			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Upgrade', '2026-11-01', '2026-11-01');
+			INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
+			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 0, '2026-11-01');
+			INSERT INTO message_variant (id, message_id, position, content, timestamp, selected) VALUES (1, 1, 0, '', '2026-11-01', 1);
+			INSERT INTO active_generation (id, conversation_id, message_id, variant_id, human_participant_id, model_participant_id, captured_model_name, started_at,
+				generation_settings_json, connection_json)
+			VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-11-01', '{}', 'null');
+		`);
+		const oldCapture = { promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] }, promptContext: [] };
+		database.query("INSERT INTO generation_capture (generation_id, capture, image_references) VALUES (1, ?, '')").run(Bun.zstdCompressSync(JSON.stringify(oldCapture)));
+		initializeDatabase(database);
+		expect(readActiveGenerationDetails(database, 1, 1)).toBeUndefined();
 	} finally {
 		database.close();
 		await rm(folder, { recursive: true, force: true });

@@ -2,7 +2,6 @@ import { forkConversation } from "../conversation";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
-	readConversationRevision,
 	readConversationGenerationSettings,
 	readActiveGenerationDetails,
 	readVariantDetails,
@@ -207,15 +206,6 @@ const previewUseFor = (
 	};
 };
 
-const currentConversationRevision = (
-	database: Database,
-	conversationId: number,
-): number => {
-	const revision = readConversationRevision(database, conversationId);
-	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
-	return revision;
-};
-
 // @approved
 //  Route options extend the Coordinator composition options, so the
 // transport layer and the application share one options shape (transport
@@ -295,9 +285,7 @@ export const createConversationRoutes = (
 				params.id,
 				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
-					expectedRevision: body.previewId === undefined
-						? body.expectedRevision
-						: currentConversationRevision(database, params.id),
+					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					target: { kind: body.kind },
 					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
@@ -512,9 +500,7 @@ export const createConversationRoutes = (
 				params.id,
 				() => generationCoordinator.startGeneration({
 					conversationId: params.id,
-					expectedRevision: body.previewId === undefined
-						? body.expectedRevision
-						: currentConversationRevision(database, params.id),
+					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
 					target: { kind: body.kind, content: body.content, moves: body.moves },
 					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),

@@ -9,12 +9,7 @@ import {
 	type GenerationProvenance,
 	type VariantDetails,
 } from "./conversation";
-import {
-	generationJsonObject,
-	generationJsonString,
-} from "../shared/generation-provenance";
-import type { GenerationJsonValue } from "../shared/generation-json";
-import type { PromptImage } from "../shared/contract/conversation-schema";
+import type { PromptImage, PromptPlan as CapturedPromptPlan } from "../shared/contract/conversation-schema";
 import type { GenerationUsage } from "../shared/contract/generation-events";
 import { projectImageAnchors } from "../shared/image-reference";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
@@ -93,7 +88,7 @@ export function GenerationDetailsPanel({
 
 function GenerationInspectionDetails({ details, onNavigateSource }: { details: ActiveGenerationDetails; onNavigateSource?: (messageId: number) => void }) {
 	const intent = intentLabel(details.intent);
-	const omitted = Array.isArray(details.budget.omittedContext) ? details.budget.omittedContext : [];
+	const omitted = details.budget.omittedContext;
 	return (
 		<>
 			<p className="generation-detail-status" role="status">{inspectionStatusLabel(details.status)} · Generation {details.generationId}</p>
@@ -102,21 +97,16 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 				<div><dt>Intent</dt><dd>{intent}</dd></div>
 				<div><dt>Writing as</dt><dd>{details.participants.human.name}</dd></div>
 				<div><dt>Responding as</dt><dd>{details.participants.model.name}</dd></div>
-				<div><dt>Token estimate</dt><dd>{details.budget.tokenEstimate ?? "Unavailable"}</dd></div>
-				<div><dt>Response budget</dt><dd>{details.budget.responseBudget ?? "Unavailable"}</dd></div>
-				<div><dt>Safety allowance</dt><dd>{details.budget.safetyAllowance ?? "Unavailable"}</dd></div>
-				<div><dt>Context limit</dt><dd>{details.budget.contextLimit ?? "Unavailable"}</dd></div>
+				<div><dt>Token estimate</dt><dd>{details.budget.tokenEstimate}</dd></div>
+				<div><dt>Response budget</dt><dd>{details.budget.responseBudget}</dd></div>
+				<div><dt>Safety allowance</dt><dd>{details.budget.safetyAllowance}</dd></div>
+				<div><dt>Context limit</dt><dd>{details.budget.contextLimit}</dd></div>
 			</dl>
 			{omitted.length > 0 && (
 				<section className="generation-detail-section">
 					<h3>Omitted history</h3>
 					<ul>
-						{omitted.map((entry, index) => {
-							const item = generationJsonObject(entry);
-							const speakerName = generationJsonString(item?.speakerName);
-							const content = generationJsonString(item?.content);
-							return <li key={index}>{speakerName === null ? "" : `${speakerName}: `}{content ?? "Message omitted"}</li>;
-						})}
+						{omitted.map(({ speakerName, content }, index) => <li key={index}>{speakerName === null ? "" : `${speakerName}: `}{content}</li>)}
 					</ul>
 				</section>
 			)}
@@ -156,20 +146,14 @@ export function PromptImageList({ images }: { images: readonly DisplayImage[] })
 	);
 }
 
-function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
-	const object = generationJsonObject(plan);
-	const blocks = Array.isArray(object?.blocks) ? object.blocks : [];
+function PromptPlan({ plan: { blocks } }: { plan: CapturedPromptPlan }) {
 	return (
 		<details className="generation-detail-section generation-prompt-plan" open>
 			<summary>Captured Prompt Plan</summary>
 			{blocks.length === 0 ? <p className="panel-note">No Prompt Plan blocks are available.</p> : (
 				<ol>
-					{blocks.map((block, index) => {
-						const item = generationJsonObject(block);
-						const kind = generationJsonString(item?.kind);
-						const content = generationJsonString(item?.content);
-						return <li key={index}><span>{kind !== null && isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
-					})}
+					{blocks.map(({ kind, content }, index) =>
+						<li key={index}><span>{isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind}</span><p>{projectImageAnchors(content)}</p></li>)}
 				</ol>
 			)}
 		</details>
@@ -239,15 +223,9 @@ function ProvenanceSettings({ provenance }: { provenance: GenerationProvenance }
 	);
 }
 
-function intentLabel(intent: GenerationJsonValue): string {
-	const value = generationJsonObject(intent);
-	const type = generationJsonString(value?.type);
-	if (type === "sibling") return "Sibling";
-	if (type === "continuation") {
-		return generationJsonString(value?.strategy) === "assistant-prefill"
-			? "Continuation · Assistant prefill"
-			: "Continuation · Instruction";
-	}
+function intentLabel(intent: ActiveGenerationDetails["intent"]): string {
+	if (intent.type === "sibling") return "Sibling";
+	if (intent.type === "continuation") return intent.strategy === "assistant-prefill" ? "Continuation · Assistant prefill" : "Continuation · Instruction";
 	return "Tail";
 }
 

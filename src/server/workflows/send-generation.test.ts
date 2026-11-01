@@ -203,7 +203,7 @@ describe("Send through provisional Tail Generation", () => {
 		expect(touched).toContain(humanVariant);
 	});
 
-	test("persists the attempt's Effective Generation Settings so active inspection retains the Safety allowance", async () => {
+	test("active inspection retains the attempt's Safety allowance in its budget", async () => {
 		const conversation = database;
 		executeConversationCommand(conversation, {
 			conversationId,
@@ -257,30 +257,10 @@ describe("Send through provisional Tail Generation", () => {
 		});
 		await acceptedReady;
 
-		// The workflow persisted the attempt's Effective Generation Settings at
-		// acceptance: every participating value is retained (including the
-		// Safety allowance), while the Continuation group has no applicable
-		// operand for a Tail attempt. Active inspection re-exposes only safe
-		// settings and never Request Overrides.
 		const details = readActiveGenerationDetails(database,
 			conversationId,
 			generationId ?? -1,
 		);
-		expect(details?.generationSettings).toMatchObject({
-			modelId: "inspection-model",
-			temperature: 0.5,
-			topP: null,
-			frequencyPenalty: null,
-			presencePenalty: null,
-			contextLimit: 8192,
-			responseBudget: 256,
-			safetyAllowance: 777,
-			siblingGenerationLimit: null,
-			continuationStrategy: null,
-			continuationInstruction: null,
-			continuationPrefillSuffix: null,
-			repeatedImagePlacement: "last",
-		});
 		expect(details?.budget.safetyAllowance).toBe(777);
 
 		release();
