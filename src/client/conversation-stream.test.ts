@@ -37,6 +37,35 @@ afterEach(() => {
 });
 
 describe("server-owned Generation client", () => {
+	test("batches a burst of stream observations before notifying the view", async () => {
+		const release = Promise.withResolvers<void>();
+		const observedBatch = Promise.withResolvers<number>();
+		const observations: number[] = [];
+		const encoder = new TextEncoder();
+		installFetch(async () => new Response(new ReadableStream({
+			async start(controller) {
+				for (const id of [1, 2, 3]) {
+					controller.enqueue(encoder.encode(`id: ${id}\nevent: generation\ndata: {"type":"content","text":"${id}"}\n\n`));
+					await Promise.resolve();
+				}
+				await release.promise;
+				controller.enqueue(encoder.encode(`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 3 })}\n\n`));
+				controller.close();
+			},
+		})));
+		const subscription = generationStreamAdapter.subscribe({
+			...attemptTarget, afterEventId: 0, signal: new AbortController().signal,
+			onEvent: ({ eventId }) => {
+				observations.push(eventId);
+				if (observations.length === 1) queueMicrotask(() => observedBatch.resolve(observations.length));
+			},
+			onState() {},
+		});
+		try { expect(await observedBatch.promise).toBe(3); }
+		finally { release.resolve(); await subscription; }
+		expect(observations).toEqual([1, 2, 3]);
+	});
+
 	test("subscribes to the final events route, decodes split SSE frames, and returns completion", async () => {
 		const encoder = new TextEncoder();
 		const chunks = [
@@ -199,6 +228,7 @@ describe("server-owned Generation client", () => {
 
 			const observations: { eventId: number; text: string }[] = [];
 			const states: number[] = [];
+			const order: string[] = [];
 			const result = await generationStreamAdapter.subscribe({
 				conversationId: 42,
 				generationId: 7,
@@ -207,14 +237,16 @@ describe("server-owned Generation client", () => {
 				afterEventId: 3,
 				signal: new AbortController().signal,
 				onEvent: ({ eventId, event }) => {
+					order.push("event");
 					if (event.type === "content") observations.push({ eventId, text: event.text });
 				},
-				onState: (state) => states.push(state.latestEventId),
+				onState: (state) => { order.push("state"); states.push(state.latestEventId); },
 			});
 
 			expect(requestUrl).toBe("/api/conversations/42/generations/7/events?after=3");
 			expect(observations).toEqual([{ eventId: 4, text: "Resumed." }]);
 			expect(states).toEqual([5]);
+			expect(order).toEqual(["event", "state"]);
 			expect(result).toEqual({ outcome: "applied" });
 		});
 

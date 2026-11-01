@@ -38,6 +38,8 @@
 	position: relative;
 	margin-bottom: 3.6rem;
 	outline: none;
+	content-visibility: auto;
+	contain-intrinsic-size: auto 500px;
 }
 
 .story-message:focus-visible {
