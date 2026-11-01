@@ -15,6 +15,7 @@ import {
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
 import type { PromptImage } from "../shared/contract/conversation-schema";
+import type { GenerationUsage } from "../shared/contract/generation-events";
 import { projectImageAnchors } from "../shared/image-reference";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
 import { useAsyncEffect } from "./lib/use-async";
@@ -263,6 +264,12 @@ function inspectionStatusLabel(status: GenerationInspectionStatus): string {
 	return "Active";
 }
 
-function formatUsage(usage: Record<string, number>): string {
-	return Object.entries(usage).map(([key, value]) => `${key}: ${value}`).join(" · ");
+function formatUsage({ inputTokens, outputTokens, totalTokens, cachedInputTokens }: GenerationUsage): string {
+	const cached = inputTokens === undefined || inputTokens === 0 || cachedInputTokens === undefined
+		? "" : ` (${Math.round(cachedInputTokens / inputTokens * 100)}% cached)`;
+	return [
+		inputTokens === undefined ? undefined : `Input ${inputTokens.toLocaleString()}${cached}`,
+		outputTokens === undefined ? undefined : `Output ${outputTokens.toLocaleString()}`,
+		totalTokens === undefined ? undefined : `Total ${totalTokens.toLocaleString()}`,
+	].filter((part) => part !== undefined).join(" · ");
 }

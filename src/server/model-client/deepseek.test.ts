@@ -107,6 +107,28 @@ describe("DeepSeek production Model Client", () => {
 		expect(request?.body.custom_field).toBe("kept");
 	});
 
+	test("reports the input tokens DeepSeek read from its prompt cache", async () => {
+		const usage = { prompt_tokens: 900, completion_tokens: 2, total_tokens: 902, prompt_cache_hit_tokens: 768 };
+		const client = createModelClient({
+			profile,
+			secrets: { credential: "secret", headers: {} },
+			fetch: async () => new Response([
+				{ choices: [{ index: 0, delta: { content: "Hi." }, finish_reason: null }] },
+				{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage },
+			].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
+		});
+		const events = [];
+		for await (const event of client.generate({
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], images: [] },
+			modelId: "custom-model",
+			generationSettings,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toContainEqual({ type: "usage", usage: { inputTokens: 900, outputTokens: 2, totalTokens: 902, cachedInputTokens: 768 } });
+	});
+
 	test("aborts an inactive stream without imposing a total-duration limit", async () => {
 		const client = createModelClient({
 			profile: { ...profile, timeoutMs: 20 },

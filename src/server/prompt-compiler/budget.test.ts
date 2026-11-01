@@ -114,7 +114,7 @@ describe("Prompt Plan budget", () => {
 		));
 		let estimateCalls = 0;
 		const estimator = (transcript: string) => {
-			estimateCalls += 1;
+			if (transcript.startsWith("ditzytavern-estimation-transcript")) estimateCalls += 1;
 			const historyBlocks = transcript.split("\u001fhistory").length - 1;
 			return historyBlocks * 10;
 		};
@@ -133,6 +133,38 @@ describe("Prompt Plan budget", () => {
 		expect(result.retainedContext[0]).toBe(history[1_016]);
 		expect(result.retainedContext.at(-1)).toBe(history.at(-1));
 		expect(estimateCalls).toBeLessThanOrEqual(12);
+	});
+
+	test("keeps the oldest retained entry while later Sends still fit", () => {
+		// Ten tokens per entry; the limit leaves room for 39 entries and puts a
+		// grid line every 50 tokens, so the cut holds for five entries at a time.
+		const historyOf = (length: number) => Array.from({ length }, (_, index) =>
+			entry("Maren", `${index}:${"x".repeat(10)}`, index === length - 1 ? "human" : "model"));
+		const estimator = (transcript: string) => transcript.split("x").length - 1;
+		const oldestRetained = (length: number) => {
+			const history = historyOf(length);
+			const result = budgetPromptPlan({ plan: planFor(history), context: history, compile: planFor, contextLimit: 400, responseBudget: 1, safetyAllowance: 0, estimator });
+			expect(result.fits).toBe(true);
+			return result.retainedContext[0]!.content;
+		};
+
+		expect(oldestRetained(62)).toBe(oldestRetained(60));
+		expect(oldestRetained(60)).toBe(`25:${"x".repeat(10)}`);
+	});
+
+	test("prices each history entry by the block the whole-plan estimate already cached", () => {
+		const history = Array.from({ length: 60 }, (_, index) => entry("Maren", `${index}:${"x".repeat(10)}`, index === 59 ? "human" : "model"));
+		const calls: string[] = [];
+		const estimator = (transcript: string) => {
+			calls.push(transcript);
+			return transcript.split("x").length - 1;
+		};
+		budgetPromptPlan({ plan: planFor(history), context: history, compile: planFor, contextLimit: 400, responseBudget: 1, safetyAllowance: 0, estimator });
+
+		const [wholePlans, entries] = [calls.filter((call) => call.startsWith("ditzytavern")), calls.filter((call) => !call.startsWith("ditzytavern"))];
+		const blocks = new Set(wholePlans.flatMap((transcript) => transcript.split("\u001eBLOCK\u001f")));
+		expect(entries.length).toBeGreaterThan(0);
+		expect(entries.filter((part) => !blocks.has(part))).toEqual([]);
 	});
 
 	test("uses the same measurement fields for an inspected intent", () => {

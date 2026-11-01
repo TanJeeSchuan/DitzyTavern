@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, type LanguageModelUsage } from "ai";
 import { getErrorMessage } from "@ai-sdk/provider";
 import type {
 	ConnectionProfile,
@@ -196,7 +196,7 @@ async function* generateOpenAICompatibleStream(options: {
 					break;
 				case "finish-step":
 					resetInactivity();
-					const stepUsage = normalizeUsage(part.usage);
+					const stepUsage = providerUsage(part.usage);
 					if (Object.keys(stepUsage).length > 0) {
 						usageEmitted = true;
 						yield { type: "usage", usage: stepUsage };
@@ -226,7 +226,7 @@ async function* generateOpenAICompatibleStream(options: {
 		if (!usageEmitted) {
 			const usage = await result.usage;
 			if (usage !== undefined) {
-				const normalizedUsage = normalizeUsage(usage);
+				const normalizedUsage = providerUsage(usage);
 				if (Object.keys(normalizedUsage).length > 0) {
 					yield { type: "usage", usage: normalizedUsage };
 				}
@@ -329,15 +329,19 @@ function normalizeFinishReason(value: string | null | undefined): "stop" | "leng
 	return "other";
 }
 
-export function normalizeUsage(value: {
-	inputTokens?: number | undefined;
-	outputTokens?: number | undefined;
-	totalTokens?: number | undefined;
-}): ModelClientUsage {
+const providerUsage = (usage: LanguageModelUsage): ModelClientUsage => normalizeUsage({
+	inputTokens: usage.inputTokens,
+	outputTokens: usage.outputTokens,
+	totalTokens: usage.totalTokens,
+	cachedInputTokens: usage.inputTokenDetails.cacheReadTokens,
+});
+
+export function normalizeUsage(value: { [Key in keyof ModelClientUsage]?: number | undefined }): ModelClientUsage {
 	const usage: Record<string, number> = {};
 	addUsage(usage, "inputTokens", value.inputTokens);
 	addUsage(usage, "outputTokens", value.outputTokens);
 	addUsage(usage, "totalTokens", value.totalTokens);
+	addUsage(usage, "cachedInputTokens", value.cachedInputTokens);
 	return usage;
 }
 

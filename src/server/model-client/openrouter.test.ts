@@ -102,7 +102,7 @@ describe("OpenRouter Model Client", () => {
 		expect(result.content).toBe("OpenRouter reply.");
 		expect(result.reasoning).toBe("Plan first. ");
 		expect(result.finishReason).toBe("stop");
-		expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 3, totalTokens: 10 });
+		expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 3, totalTokens: 10, cachedInputTokens: 0 });
 		expect(request?.url).toBe("http://127.0.0.1:43127/api/v1/chat/completions");
 		expect(request?.headers.get("authorization")).toBe("Bearer openrouter-secret-never-returned");
 		expect(request?.headers.get("x-route")).toBe("route-secret-never-returned");
