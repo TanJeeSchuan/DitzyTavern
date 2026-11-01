@@ -53,14 +53,14 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	// @approved
 	//  An open stat sheet is this window's unsaved work: the shared guard saves
 	//  it by adding the Runner, and discards it with the setup draft.
-	const { draft, setDraft, dirty, locked, notice, setNotice, run, command, save } = useBoxSetupDraft("race", raceSetup, {
+	const { draft, updateDraft, dirty, locked, notice, setNotice, run, command, save } = useBoxSetupDraft("race", raceSetup, {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed. Review your setup and save again.",
 		valid: isValid,
 		extra: sheet === null ? undefined : { save: () => addToField(), discard: () => setSheet(null) },
 	});
 	const running = draft.phase !== "setup";
-	const update = (patch: Partial<RaceSetup>) => setDraft((value) => ({ ...value, ...patch }));
+	const update = (patch: Partial<RaceSetup>) => updateDraft((value) => ({ ...value, ...patch }));
 	const valid = isValid(draft);
 	const data = read.data ?? null;
 	const race = data !== null && data.state.raceId === draft.raceId ? data : null;

@@ -76,7 +76,38 @@ test("a conflict adopts authority for every reader while retaining the edited Pr
 	expect(reader.current.data).toEqual(settings(4, "Authority"));
 	expect(editor.current.draft.displayName).toBe("Local");
 	expect(editor.current.credentialDraft).toBe("secret");
-	expect(editor.current.conflict?.actualRevision).toBe(4);
+	expect(editor.current.conflict).toBe(true);
+});
+
+test("a Profile changed elsewhere after it was opened conflicts on save instead of being overwritten", async () => {
+	const cache = client();
+	cache.setQueryData(key, settings(2, "Original"));
+	const sent: number[] = [];
+	installFetch(async (url, init) => {
+		if (url.endsWith("/presets")) return Response.json({ presets: [] });
+		const { expectedRevision } = JSON.parse(String(init?.body));
+		sent.push(expectedRevision);
+		return expectedRevision === 3
+			? Response.json({ outcome: "applied", settings: settings(4, "Local") })
+			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: 3, currentSettings: settings(3, "Theirs") }, { status: 409 });
+	});
+	const editor = await renderHook(useConnectionSettingsController, cache);
+	await editor.act(async () => editor.current.chooseProfile(profile("Original")));
+	await editor.act(async () => editor.current.setDraft({ ...editor.current.draft, displayName: "Local" }));
+	await editor.act(async () => { publishConnectionSettings(cache, settings(3, "Theirs")); });
+	await flushHook();
+	expect(editor.current.draft.displayName).toBe("Local");
+
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	expect(sent).toEqual([2]);
+	expect(editor.current.conflict).toBe(true);
+	expect(editor.current.draft.displayName).toBe("Local");
+
+	await editor.act(async () => editor.current.keepMine());
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	expect(sent).toEqual([2, 3]);
+	expect(editor.current.dirty).toBe(false);
 });
 
 test("deletion adopts authority for every reader and clears pending deletion", async () => {

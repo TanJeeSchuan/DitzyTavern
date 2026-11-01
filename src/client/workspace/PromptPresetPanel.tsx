@@ -31,7 +31,7 @@ export function PromptPresetPanel({
 		onClose,
 	});
 	const ready = editor.view.status === "ready" ? editor.view : null;
-	useSaveGuard({ dirty: editor.dirtyCount > 0, saving: editor.busy, save: editor.save, discard: () => undefined });
+	useSaveGuard({ dirty: editor.dirtyCount > 0, saving: editor.busy, save: editor.save, discard: editor.discard });
 
 	return (
 		<>

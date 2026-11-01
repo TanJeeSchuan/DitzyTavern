@@ -101,6 +101,22 @@ test("ABA edits during save preserve the newer draft and prevent save-and-leave 
 	expect(h.hook.current.settings?.continuationInstruction).toBe("Submitted");
 });
 
+test("discard during a save keeps the submitted draft until the save settles", async () => {
+	const response = Promise.withResolvers<Response>();
+	const h = await harness(({ init }) => init?.method === "POST" ? response.promise : Promise.resolve(Response.json(settings())));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Submitted"));
+	let save: Promise<boolean> = Promise.resolve(false);
+	await h.hook.act(async () => { save = h.hook.current.save(); });
+	await flushHook();
+	await h.hook.act(async () => { h.hook.current.discard(); });
+	expect(h.hook.current.instruction).toBe("Submitted");
+	await h.hook.act(async () => response.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })));
+	await flushHook();
+	expect(await save).toBe(true);
+	expect(h.hook.current.instruction).toBe("Submitted");
+	expect(h.hook.current.dirty).toBe(false);
+});
+
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { renderHook } from "../test-fixtures/render-hook";
 import { boxSetups, boxes } from "../test-fixtures/box-setups";
@@ -6,6 +6,8 @@ import type { ConversationSummary } from "../conversation";
 import { authorNoteSetup } from "../../boxes/author-note/contract";
 
 const { useBoxSetupDraft } = await import("./useBoxSetupDraft");
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 const chat = (revision: number, note: string): ConversationSummary => ({
 	id: 1, name: "Chat", revision, boxSetups: { ...boxSetups, "author-note": note }, boxes, forkedFrom: null, background: null, cast: [],
@@ -22,8 +24,23 @@ const chat = (revision: number, note: string): ConversationSummary => ({
 
 const render = async (initial: ConversationSummary) => {
 	let conversation = initial;
-	const hook = await renderHook(() => useBoxSetupDraft("author-note", authorNoteSetup, { conversation, disabled: false, onConversationChange: () => {}, conflict: "" }), new QueryClient());
+	const hook = await renderHook(() => useBoxSetupDraft("author-note", authorNoteSetup, {
+		conversation, disabled: false, onConversationChange: (next) => { conversation = next; }, conflict: "Changed elsewhere.",
+	}), new QueryClient());
 	return { hook, change: (next: ConversationSummary) => { conversation = next; return hook.rerender(); } };
+};
+
+/** The server holds `server`: a save at its revision applies, any other conflicts. */
+const serve = (server: ConversationSummary) => {
+	const sent: number[] = [];
+	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+		const { expectedRevision, action } = JSON.parse(String(init?.body));
+		sent.push(expectedRevision);
+		return expectedRevision === server.revision
+			? Response.json({ outcome: "applied", conversation: chat(server.revision + 1, action.setup) })
+			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: server.revision, currentConversation: server }, { status: 409 });
+	}, { preconnect: () => {} });
+	return sent;
 };
 
 describe("useBoxSetupDraft", () => {
@@ -31,12 +48,47 @@ describe("useBoxSetupDraft", () => {
 		const { hook, change } = await render(chat(1, "before"));
 		await change(chat(2, "after"));
 		expect(hook.current.draft).toBe("after");
+		expect(hook.current.dirty).toBe(false);
 	});
 
-	test("an edited draft keeps its edits when the setup is saved elsewhere", async () => {
+	test("an edited draft follows a newer revision that left its setup alone", async () => {
 		const { hook, change } = await render(chat(1, "before"));
 		await hook.act(async () => { hook.current.setDraft("mine"); });
-		await change(chat(2, "after"));
+		await change(chat(2, "before"));
+		const sent = serve(chat(2, "before"));
+		await hook.act(async () => { await hook.current.save(); });
+		expect(sent).toEqual([2]);
+		expect(hook.current.dirty).toBe(false);
+	});
+
+	test("an edited draft saves against the setup it started from, so a change elsewhere conflicts instead of being overwritten", async () => {
+		const { hook, change } = await render(chat(1, "before"));
+		await hook.act(async () => { hook.current.setDraft("mine"); });
+		await change(chat(2, "theirs"));
 		expect(hook.current.draft).toBe("mine");
+		const sent = serve(chat(2, "theirs"));
+		let saved = true;
+		await hook.act(async () => { saved = await hook.current.save(); });
+		expect(saved).toBe(false);
+		expect(sent).toEqual([1]);
+		expect(hook.current.conflict).toBe(true);
+		expect(hook.current.draft).toBe("mine");
+		expect(hook.current.saved).toBe("theirs");
+
+		await hook.act(async () => { await hook.current.save(); });
+		expect(sent).toEqual([1, 2]);
+		expect(hook.current.conflict).toBe(false);
+		expect(hook.current.dirty).toBe(false);
+	});
+
+	test("Load saved replaces a conflicted draft with the current setup", async () => {
+		const { hook, change } = await render(chat(1, "before"));
+		await hook.act(async () => { hook.current.setDraft("mine"); });
+		await change(chat(2, "theirs"));
+		serve(chat(2, "theirs"));
+		await hook.act(async () => { await hook.current.save(); });
+		await hook.act(async () => { hook.current.discard(); });
+		expect(hook.current.draft).toBe("theirs");
+		expect(hook.current.dirty).toBe(false);
 	});
 });

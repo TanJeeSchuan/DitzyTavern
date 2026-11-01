@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile, ConnectionPreset } from "./connection-settings";
-import type { ConnectionSettingsControllerState } from "./connection-settings-state";
+import type { ConnectionSettingsControllerState, ProfileEdit } from "./connection-settings-state";
 import {
 	copyDraft,
 	createConnectionSettingsControllerState,
+	editIn,
+	editOf,
 	emptyConnectionProfileDraft,
 	headerEditorDataFor,
 	reduceConnectionSettingsController,
+	testedEditor,
 } from "./connection-settings-state";
 
 const profile = (id: number, displayName: string, pinnedModels: string[] = ["model"]): ConnectionProfile => ({
@@ -45,12 +48,15 @@ const preset: ConnectionPreset = {
 	},
 };
 
-const controllerState = (): ConnectionSettingsControllerState => ({
-	...createConnectionSettingsControllerState(),
-	selectedProfileId: 1,
+const localEdit: ProfileEdit = {
 	draft: { ...emptyConnectionProfileDraft, displayName: "Local edit" },
 	credentialDraft: "secret",
 	headerEditorData: { "X-Client": { configured: true, operation: "replace", replacement: "local" } },
+};
+const controllerState = (): ConnectionSettingsControllerState => ({
+	...createConnectionSettingsControllerState(),
+	selectedProfileId: 1,
+	session: { status: "dirty", base: { value: editOf(profile(1, "Saved")), revision: 2 }, mine: localEdit },
 	testModelId: "local-model",
 	testResult: { outcome: "available", value: { outcome: "success", message: "Connected." } },
 	pendingDeletionProfileId: 1,
@@ -93,17 +99,16 @@ describe("copyDraft", () => {
 });
 
 describe("reduceConnectionSettingsController", () => {
-	test("choosing a preset creates a clean new-profile draft", () => {
-		const next = reduceConnectionSettingsController(controllerState(), {
-			type: "choose-preset",
-			preset,
-		});
+	test("choosing a preset opens an unsaved new-profile draft", () => {
+		const next = reduceConnectionSettingsController(controllerState(), { type: "choose-preset", preset, revision: 2 });
+		const edit = editIn(next);
 
 		expect(next.selectedProfileId).toBeNull();
-		expect(next.draft).toEqual(copyDraft(preset.profile));
-		expect(next.credentialDraft).toBe("");
+		expect(next.session?.status).toBe("dirty");
+		expect(edit.draft).toEqual(copyDraft(preset.profile));
+		expect(edit.credentialDraft).toBe("");
+		expect(edit.headerEditorData).toEqual({});
 		expect(next.testModelId).toBe("preset-model");
-		expect(next.headerEditorData).toEqual({});
 		expect(next.pendingDeletionProfileId).toBeNull();
 		expect(next.error).toBeNull();
 	});
@@ -112,9 +117,10 @@ describe("reduceConnectionSettingsController", () => {
 		const next = reduceConnectionSettingsController(controllerState(), {
 			type: "choose-preset",
 			preset: { ...preset, profile: emptyConnectionProfileDraft },
+			revision: 2,
 		});
 
-		expect(next.editorOpen).toBe(true);
+		expect(next.session).not.toBeNull();
 	});
 
 	test("a late deletion result leaves another profile's deletion confirmation open", () => {
@@ -137,10 +143,10 @@ describe("reduceConnectionSettingsController", () => {
 
 	test("a test result for an editor that changed meanwhile is dropped", () => {
 		const testing = reduceConnectionSettingsController(controllerState(), { type: "test-started" });
-		const edited = reduceConnectionSettingsController(testing, { type: "set-draft", draft: { ...testing.draft, requestUrl: "http://other.test" } });
+		const edited = reduceConnectionSettingsController(testing, { type: "set-draft", draft: { ...editIn(testing).draft, requestUrl: "http://other.test" } });
 		const next = reduceConnectionSettingsController(edited, {
 			type: "test-succeeded",
-			editorIdentity: testing.editorIdentity,
+			editor: testedEditor(testing),
 			result: { outcome: "available", value: { outcome: "success", message: "Connected." } },
 		});
 
@@ -148,41 +154,47 @@ describe("reduceConnectionSettingsController", () => {
 	});
 
 	test("a save result adopts the saved profile while the editor still matches", () => {
-		const state = controllerState();
-		const next = reduceConnectionSettingsController(state, {
+		const saving = reduceConnectionSettingsController(controllerState(), { type: "apply-started", submitted: localEdit });
+		const next = reduceConnectionSettingsController(saving, {
 			type: "apply-succeeded",
 			settings: { revision: 3, profiles: [profile(1, "Saved"), profile(2, "Second")] },
-			draftDisplayName: "Local edit",
-			submitted: {
-				selectedProfileId: 1,
-				editorIdentity: state.editorIdentity,
-			},
+			submitted: localEdit,
 		});
+		const edit = editIn(next);
 
-		expect(next.draft).toEqual(copyDraft(profile(1, "Saved")));
-		expect(next.headerEditorData).toEqual(headerEditorDataFor(profile(1, "Saved").headers));
-		expect(next.credentialDraft).toBe("");
+		expect(next.session?.status).toBe("clean");
+		expect(edit.draft).toEqual(copyDraft(profile(1, "Saved")));
+		expect(edit.headerEditorData).toEqual(headerEditorDataFor(profile(1, "Saved").headers));
+		expect(edit.credentialDraft).toBe("");
 		expect(next.notice).toBe("Changes saved. No provider request was made.");
 	});
 
 	test("a save result preserves a draft the editor changed while saving", () => {
-		const editing = reduceConnectionSettingsController(controllerState(), {
+		const saving = reduceConnectionSettingsController(controllerState(), { type: "apply-started", submitted: localEdit });
+		const editing = reduceConnectionSettingsController(saving, {
 			type: "set-draft",
 			draft: { ...emptyConnectionProfileDraft, displayName: "Newer local edit" },
 		});
 		const next = reduceConnectionSettingsController(editing, {
 			type: "apply-succeeded",
 			settings: { revision: 3, profiles: [profile(1, "Older saved edit"), profile(2, "Second")] },
-			draftDisplayName: "Local edit",
-			submitted: {
-				selectedProfileId: 1,
-				editorIdentity: Symbol(),
-			},
+			submitted: localEdit,
 		});
 
 		expect(next.selectedProfileId).toBe(1);
-		expect(next.draft.displayName).toBe("Newer local edit");
+		expect(next.session?.status).toBe("dirty");
+		expect(editIn(next).draft.displayName).toBe("Newer local edit");
 		expect(next.notice).toBe(editing.notice);
-		expect(next.testResult).toBe(editing.testResult);
+	});
+
+	test("a conflict that left the Profile unchanged keeps the draft saveable at the newer revision", () => {
+		const saving = reduceConnectionSettingsController(controllerState(), { type: "apply-started", submitted: localEdit });
+		const next = reduceConnectionSettingsController(saving, {
+			type: "apply-conflicted", submitted: localEdit, theirs: { value: editOf(profile(1, "Saved")), revision: 5 }, message: "Changed elsewhere.",
+		});
+		const followed = reduceConnectionSettingsController(next, { type: "observed", server: { value: editOf(profile(1, "Saved")), revision: 5 } });
+
+		expect(followed.session?.status).toBe("dirty");
+		expect(followed.session?.status === "dirty" && followed.session.base.revision).toBe(5);
 	});
 });

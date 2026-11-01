@@ -1,5 +1,5 @@
 import { MoreHorizontal, Pin, Plus, Trash2 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -14,6 +14,8 @@ import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
+import { useRevisionedDraft, type DraftSaveResult } from "../lib/revisioned-draft";
+import { ConflictBanner } from "../ConflictBanner";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
@@ -33,25 +35,20 @@ export function CharacterEditor({
 	onClosed: (notice: string | null) => void;
 }) {
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
-	const [draft, setDraft] = useState<ParticipantDefinition | null>(null);
-	const [conflict, setConflict] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | null>(null);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
-	const draftRef = useRef(draft);
-	draftRef.current = draft;
 
 	useAsyncEffect((isCancelled) => {
 		void getCharacter(characterId).then((loaded) => {
 			if (isCancelled()) return;
 			if (loaded === null) return onClosed("That Character is no longer in the Library.");
 			setSnapshot(loaded);
-			setDraft(definitionOf(loaded));
 		}, () => { if (!isCancelled()) onClosed(LIBRARY_UNREACHABLE_NOTICE); });
 	}, [characterId]);
 
-	const run = useCallback(async (action: "save" | "pin" | "delete", command: CharacterCommand) => {
-		const submitted = draftRef.current;
+	/** @approved Runs one Character command; resolves the Character it left, or the one it lost to. */
+	const run = useCallback(async (action: "save" | "pin" | "delete", command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
 		setPendingAction(action);
 		try {
 			const outcome = await applyCommand(command);
@@ -61,53 +58,50 @@ export function CharacterEditor({
 					if ("result" in applied) {
 						onChanged();
 						onClosed(deletionResultNotice(applied.result));
-						return false;
+						return null;
 					}
 					setSnapshot(applied.character);
-					// @approved
-					//  Only a save adopts the saved Definition, and only when nothing was typed meanwhile.
-					if (command.type === "update-definition") setDraft((current) => current === submitted ? definitionOf(applied.character) : current);
-					setConflict(null);
 					setNotice(null);
 					onChanged();
-					return draftRef.current === submitted;
+					return { applied: applied.character };
 				}
 				case "conflict":
-					setConflict(outcome.currentCharacter);
-					return false;
+					// @approved
+					//  A pin or delete that lost has loaded the change, so trying again applies.
+					setSnapshot(outcome.currentCharacter);
+					if (action !== "save") setNotice("This Character changed elsewhere. Try again.");
+					return { conflict: outcome.currentCharacter };
 				case "not-found":
 					onChanged();
 					onClosed("That Character is no longer in the Library.");
-					return false;
+					return null;
 				case "invalid":
 				case "unusable":
 					setNotice(outcome.reason);
-					return false;
+					return null;
 				default:
 					setNotice(LIBRARY_UNREACHABLE_NOTICE);
-					return false;
+					return null;
 			}
 		} catch (cause) {
 			setNotice(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
-			return false;
+			return null;
 		} finally {
 			setPendingAction(null);
 		}
-	}, [onChanged, onClosed, snapshot]);
+	}, [onChanged, onClosed]);
 
-	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
-	const save = async () =>
-		snapshot !== null &&
-		draft !== null &&
-		dirty &&
-		run("save", {
-			type: "update-definition",
-			characterId: snapshot.id,
-			expectedRevision: snapshot.revision,
-			definition: submittableDefinition(draft),
-		});
-	useSaveGuard({ dirty, saving: pendingAction === "save", save, discard: () => undefined });
-
+	const revisioned = (character: CharacterSnapshot) => ({ value: definitionOf(character), revision: character.revision });
+	const editor = useRevisionedDraft(snapshot === null ? null : revisioned(snapshot), {
+		equals: sameDefinition,
+		save: async (submitted, expectedRevision): Promise<DraftSaveResult<ParticipantDefinition>> => {
+			const result = await run("save", { type: "update-definition", characterId, expectedRevision, definition: submittableDefinition(submitted) });
+			if (result === null) return { outcome: "failed" };
+			return "applied" in result ? { outcome: "saved", saved: revisioned(result.applied) } : { outcome: "conflict", theirs: revisioned(result.conflict) };
+		},
+	});
+	const draft = editor.value;
+	useSaveGuard({ dirty: editor.dirty, saving: editor.saving, save: editor.save, discard: editor.discard });
 	if (snapshot === null || draft === null) return <p className="panel-body text-sm text-muted-foreground" role="status">Loading the Character…</p>;
 	const deleteCopy = deletionConfirmationCopy(snapshot.name, snapshot.deletionImpact);
 
@@ -115,14 +109,14 @@ export function CharacterEditor({
 		<>
 			<DefinitionEditor
 				draft={draft}
-				onDraftChange={setDraft}
+				onDraftChange={editor.edit}
 				subtitle={`Library Character · ${usedCountLabel(snapshot.deletionImpact.provenanceReferenceCount)}`}
-				dirty={dirty}
-				saving={pendingAction === "save"}
+				dirty={editor.dirty}
+				saving={editor.saving}
 				error={notice}
-				valid={conflict === null}
+				valid={!editor.conflict}
 				autoSelectName={autoSelectName}
-				onSave={() => void save()}
+				onSave={() => void editor.save()}
 				onBack={() => onClosed(null)}
 				actions={<>
 					<Button
@@ -158,15 +152,11 @@ export function CharacterEditor({
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</>}
-				banner={conflict !== null && (
-					<div className="conflict-banner" role="alert">
-						<p>This Character changed elsewhere after you opened it. Your edits were not saved and are still here.</p>
-						<div>
-							<Button type="button" size="sm" onClick={() => { setSnapshot(conflict); setConflict(null); }}>Keep my edits</Button>
-							<Button type="button" size="sm" variant="outline" onClick={() => { setSnapshot(conflict); setDraft(definitionOf(conflict)); setConflict(null); }}>Load saved version</Button>
-						</div>
-					</div>
-				)}
+				banner={editor.conflict && <ConflictBanner
+					message="This Character changed elsewhere after you opened it. Your edits were not saved and are still here."
+					onKeepMine={editor.keepMine}
+					onLoadSaved={editor.discard}
+				/>}
 			>
 				<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null} />
 			</DefinitionEditor>
