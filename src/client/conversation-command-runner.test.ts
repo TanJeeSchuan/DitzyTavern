@@ -253,3 +253,12 @@ test("a rejected queue callback cannot strand the next command", async () => {
 	expect(await Promise.all([failed, next])).toEqual([false, 9]);
 	expect(sent).toEqual([null]);
 });
+
+test("a refusal between two commands preserves the revision the first command produced", async () => {
+	const events: string[] = [];
+	const first = run(events, fakeSend(events, { outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } }));
+	const refused = run(events, fakeSend(events, { outcome: "invalid", reason: "No change applied." }));
+	const last = run(events, applied(events));
+	expect(await Promise.all([first, refused, last])).toEqual([true, false, true]);
+	expect(events).toEqual(["send:7", "adopt:8", "send:8", "notice:No change applied.", "send:8", "adopt:7"]);
+});

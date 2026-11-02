@@ -35,7 +35,6 @@ export function PortraitDialog({
 		setError(null);
 		try {
 			const { hash } = await uploadImage(file);
-			setError(null);
 			onChange({ hash, focalX: 0.5, focalY: 0.5 });
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : "That file could not be read as an image.");

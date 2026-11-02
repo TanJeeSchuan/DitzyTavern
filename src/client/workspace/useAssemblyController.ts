@@ -130,13 +130,12 @@ export function useAssemblyController({
 	// A start waits its turn behind the Conversation commands already queued, so it builds on what they changed.
 	const issueGeneration = async (submission: GenerationStartSubmission): Promise<AcceptedStart> => {
 		const started = Promise.withResolvers<AcceptedStart>();
-		const settled = await queueConversationCommand(submission.conversationId, async (previous) => {
+		await queueConversationCommand(submission.conversationId, async (previous) => {
 			const attempt = startGeneration(submission, previous);
 			attempt.then(started.resolve, started.reject);
 			await attempt;
 			return null;
 		});
-		if (settled === false) started.reject(new Error("An earlier change did not apply, so this was not sent."));
 		return started.promise;
 	};
 
