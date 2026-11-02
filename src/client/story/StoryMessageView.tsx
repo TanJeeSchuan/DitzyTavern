@@ -193,7 +193,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 		const touch = event.touches[0];
 		// @approved
 		//  The Swipes dialog is portalled out of the article, but its touches still bubble here through React.
-		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input") !== null;
+		const onControl = !(event.target instanceof Element) || !event.currentTarget.contains(event.target) || event.target.closest("button, textarea, input, [contenteditable]") !== null;
 		touchStart.current = event.touches.length === 1 && touch !== undefined && !onControl ? { x: touch.clientX, y: touch.clientY } : null;
 	};
 	const endTouch = (event: TouchEvent<HTMLElement>) => {
