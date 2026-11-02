@@ -103,7 +103,7 @@ export function CharactersPanel({
 							disabled={castActions.pending}
 							onClick={() => {
 								if (removeTarget !== null) {
-									void castActions.applyRemove(removeTarget).then(openList);
+									void castActions.applyRemove(removeTarget).then((removed) => { if (removed) openList(); });
 								}
 							}}
 						>
@@ -131,6 +131,7 @@ export function CharactersPanel({
 				onConversationChange={onConversationChange}
 				onBack={openList}
 			/>
+			{castActions.notice !== null && <p role="alert" className="px-3 text-sm text-destructive">{castActions.notice}</p>}
 			{removeDialog}
 		</>;
 	}

@@ -116,11 +116,11 @@ export function useCastActions({
 		id: number;
 		duplicateLabel: string;
 	}) => {
-		if (conversation === null) return;
+		if (conversation === null) return false;
 		setRemoveTargetId(null);
 		setPending(true);
 		try {
-			await runConversationCommand(surface, {
+			return await runConversationCommand(surface, {
 				type: "remove-participant",
 				participantId: participant.id,
 			}, {

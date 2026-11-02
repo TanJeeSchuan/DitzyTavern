@@ -26,27 +26,29 @@ export function PortraitDialog({
 	onChange: (portrait: PortraitImage | undefined) => void;
 }) {
 	const picker = useRef<HTMLInputElement>(null);
+	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const pick = async (file: File | undefined) => {
-		if (file === undefined) return;
+		if (file === undefined || pending) return;
+		setPending(true);
+		setError(null);
 		try {
 			const { hash } = await uploadImage(file);
-			setError(null);
 			onChange({ hash, focalX: 0.5, focalY: 0.5 });
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : "That file could not be read as an image.");
-		}
+		} finally { setPending(false); }
 	};
 
 	const aim = (event: PointerEvent<HTMLDivElement>) => {
-		if (portrait === undefined || (event.type === "pointermove" && event.buttons === 0)) return;
+		if (pending || portrait === undefined || (event.type === "pointermove" && event.buttons === 0)) return;
 		const box = event.currentTarget.getBoundingClientRect();
 		onChange({ ...portrait, focalX: clamp((event.clientX - box.left) / box.width), focalY: clamp((event.clientY - box.top) / box.height) });
 	};
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
 					<DialogTitle>Portrait</DialogTitle>
@@ -55,7 +57,7 @@ export function PortraitDialog({
 				{portrait === undefined
 					? (
 						<button
-							type="button"
+							type="button" disabled={pending}
 							className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:bg-muted/40"
 							onClick={() => picker.current?.click()}
 						>
@@ -82,11 +84,11 @@ export function PortraitDialog({
 						</div>
 					</>}
 				{error !== null && <p role="alert" className="text-sm text-destructive">{error}</p>}
-				<input ref={picker} type="file" accept={imageAccept} className="sr-only" aria-label="Portrait file" onChange={(event) => { void pick(event.target.files?.[0]); event.target.value = ""; }} />
+				<input disabled={pending} ref={picker} type="file" accept={imageAccept} className="sr-only" aria-label="Portrait file" onChange={(event) => { void pick(event.target.files?.[0]); event.target.value = ""; }} />
 				<DialogFooter>
-					{portrait !== undefined && <Button type="button" variant="ghost" className="mr-auto" onClick={() => onChange(undefined)}><Trash2 aria-hidden="true" /> Remove</Button>}
-					{portrait !== undefined && <Button type="button" variant="outline" onClick={() => picker.current?.click()}><ImagePlus aria-hidden="true" /> Replace</Button>}
-					<Button type="button" onClick={() => onOpenChange(false)}>Done</Button>
+					{portrait !== undefined && <Button type="button" disabled={pending} variant="ghost" className="mr-auto" onClick={() => onChange(undefined)}><Trash2 aria-hidden="true" /> Remove</Button>}
+					{portrait !== undefined && <Button type="button" disabled={pending} variant="outline" onClick={() => picker.current?.click()}><ImagePlus aria-hidden="true" /> Replace</Button>}
+					<Button type="button" disabled={pending} onClick={() => onOpenChange(false)}>Done</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

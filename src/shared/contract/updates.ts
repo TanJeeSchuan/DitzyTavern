@@ -14,8 +14,10 @@ export const updateStatus = Type.Object({
 		buildNumber: Type.Integer({ minimum: 1 }), revision: Type.String(), checkedAt: Type.String(),
 	})]),
 	attempt: Type.Union([Type.Null(), Type.Object({
-		status: Type.Union([Type.Literal("checking"), Type.Literal("succeeded"), Type.Literal("failed")]),
-		startedAt: Type.String(), error: Type.Union([Type.String(), Type.Null()]),
+		status: Type.Union([Type.Literal("checking"), Type.Literal("succeeded")]),
+		startedAt: Type.String(), error: Type.Null(),
+	}), Type.Object({
+		status: Type.Literal("failed"), startedAt: Type.String(), error: Type.String(),
 	})]),
 });
 export type UpdateStatus = Static<typeof updateStatus>;

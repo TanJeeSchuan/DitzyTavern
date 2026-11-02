@@ -186,7 +186,7 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: Browse & { onDismis
 				setPosition(front);
 			}}
 			onClickCapture={(event) => {
-				if (press.current === "drag") event.stopPropagation();
+				if (press.current === "drag" && event.detail > 0) event.stopPropagation();
 				press.current = null;
 			}}
 			onClick={(event) => {

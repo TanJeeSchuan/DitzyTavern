@@ -97,6 +97,7 @@ const queuedFor = (queue: DigestQueue, key: string, source: string, catchUp: boo
 };
 
 const enqueue = (queue: DigestQueue, job: DigestJob): void => {
+	if (queue.stopped) return;
 	dropKey(queue, job.key);
 	queue.current.set(job.key, job);
 	job.catchUp?.members.add(job);

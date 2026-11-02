@@ -19,7 +19,7 @@ export function UnsavedBlockEditDialog({
 }) {
 	const [saving, setSaving] = useState(false);
 	return (
-		<Dialog open={open} onOpenChange={(next) => { if (!next) onKeepEditing(); }}>
+		<Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onKeepEditing(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
 					<DialogTitle>Unsaved block edit{count === 1 ? "" : "s"}</DialogTitle>

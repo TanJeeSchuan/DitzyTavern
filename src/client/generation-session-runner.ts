@@ -19,7 +19,6 @@ import {
 	type GenerationSessionsAction,
 	type GenerationSessionsState,
 } from "./generation-sessions";
-import { NetworkError } from "./lib/request-outcome";
 
 // @approved
 // The host surfaces the runner's outward effects. Story effects are mapped
@@ -71,14 +70,12 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 				if (pending.controller.signal.aborted) return;
 				if (pending.requested) void attempt();
 				else refresh = null;
-			} catch (error) {
+			} catch {
 				if (pending.controller.signal.aborted) return;
-				if (error instanceof NetworkError) {
-					pending.timer = setTimeout(() => {
-						pending.timer = null;
-						void attempt(Math.min(delay * 2, 2_000));
-					}, delay);
-				} else refresh = null;
+				pending.timer = setTimeout(() => {
+					pending.timer = null;
+					void attempt(Math.min(delay * 2, 2_000));
+				}, delay);
 			}
 		};
 		void attempt();

@@ -31,8 +31,6 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	const storyScrollRef = useRef<HTMLDivElement>(null);
 	const followingRef = useRef(true);
 	const detachedRef = useRef(hasNewer);
-	detachedRef.current = hasNewer;
-	if (hasNewer) followingRef.current = false;
 	// @approved
 	// A store rather than state: crossing the bottom while scrolling re-renders
 	// only the composer that recedes, not every Message on the stage.
@@ -57,7 +55,8 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	};
 
 	useLayoutEffect(() => {
-		if (hasNewer) atLatest.set(false);
+		detachedRef.current = hasNewer;
+		if (hasNewer) { followingRef.current = false; atLatest.set(false); }
 	}, [atLatest, hasNewer]);
 
 	useEffect(() => {

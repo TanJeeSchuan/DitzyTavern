@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	CONVERSATION_REVISION_UNAVAILABLE_NOTICE,
 	runConversationCommand,
+	queueConversationCommand,
 	type ConversationCommandRunOptions,
 	type ConversationCommandSend,
 	type ConversationCommandSurface,
@@ -229,17 +230,35 @@ describe("runConversationCommand", () => {
 		expect(events).toEqual(["send:7", "adopt:8", "send:8", "adopt:7"]);
 	});
 
-	test("a failed command drops the commands queued behind it, and the queue then runs again", async () => {
+	test("a failed command does not drop queued commands or Generation starts", async () => {
 		const events: string[] = [];
 		const first = Promise.withResolvers<CommandOutcome>();
 		const earlier = run(events, async (expectedRevision) => {
 			events.push(`send:${expectedRevision}`);
 			return first.promise;
 		});
-		const dropped = run(events, applied(events));
+		const later = run(events, applied(events));
+		const start = queueConversationCommand(1, async (revision) => { events.push(`start:${revision}`); return null; });
 		first.resolve({ outcome: "network" });
-		expect(await Promise.all([earlier, dropped])).toEqual([false, false]);
-		expect(events).toEqual(["send:7", "notice:unreachable notice"]);
+		expect(await Promise.all([earlier, later, start])).toEqual([false, true, null]);
+		expect(events).toEqual(["send:7", "notice:unreachable notice", "send:7", "adopt:7", "start:7"]);
 		expect(await run(events, applied(events))).toBe(true);
 	});
+});
+
+test("a rejected queue callback cannot strand the next command", async () => {
+	const failed = queueConversationCommand(88, async () => { throw new Error("failed start"); });
+	const sent: (number | null)[] = [];
+	const next = queueConversationCommand(88, async (revision) => { sent.push(revision); return 9; });
+	expect(await Promise.all([failed, next])).toEqual([false, 9]);
+	expect(sent).toEqual([null]);
+});
+
+test("a refusal between two commands preserves the revision the first command produced", async () => {
+	const events: string[] = [];
+	const first = run(events, fakeSend(events, { outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } }));
+	const refused = run(events, fakeSend(events, { outcome: "invalid", reason: "No change applied." }));
+	const last = run(events, applied(events));
+	expect(await Promise.all([first, refused, last])).toEqual([true, false, true]);
+	expect(events).toEqual(["send:7", "adopt:8", "send:8", "notice:No change applied.", "send:8", "adopt:7"]);
 });
