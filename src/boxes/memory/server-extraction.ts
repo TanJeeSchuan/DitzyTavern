@@ -12,6 +12,10 @@ const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 
+/** @approved The model's raw reply for the server log, its start and end kept: fences show at the start, truncation at the end. */
+const rawOutput = (model: string, content: string) =>
+	`${model} replied with ${content.length} characters: ${content.length > 2_000 ? `${content.slice(0, 1_500)} … ${content.slice(-500)}` : content}`;
+
 /** @approved The digest's own `box:memory` values, decoded from the window. */
 const chatValue = <T extends TSchema>(window: DigestWindow, key: string, schema: T, initial: Static<T>): Static<T> => {
 	const stored = window.data[key];
@@ -110,7 +114,11 @@ const extractCandidates = async (
 	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext) || !fitsDecision(retainedContext))) {
 		retainedContext.shift();
 	}
-	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
+	if (exceedsContext(retainedContext)) {
+		const { outputReserve, safetyAllowance, contextLimit } = memory;
+		const budget = `About ${tokenxEstimator(promptOf(retainedContext))} prompt tokens plus ${outputReserve} reserved for output and ${safetyAllowance} of safety allowance`;
+		throw new Error(`${budget} exceed the ${contextLimit}-token Memory extraction context. Raise the extraction context limit or shorten the source.`);
+	}
 	if (!fitsDecision(retainedContext)) throw new Error("The Memory source exceeds the Decision Model state token limit.");
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
@@ -128,16 +136,18 @@ const extractCandidates = async (
 	}).catch((error: Error) => {
 		throw deadline.aborted ? new Error("Memory extraction exceeded its 10-minute limit. Retry this source.") : error;
 	});
+	const cause = rawOutput(memory.extractionModel, result.content);
 	if (result.finishReason !== "stop") {
 		throw new Error(
 			result.finishReason === "length"
 				? "Memory extraction output was truncated. Retry after reducing the source or increasing its output reserve."
 				: "Memory extraction did not finish successfully. Retry this source.",
+			{ cause },
 		);
 	}
 	let parsed: MemoryExtractionResponse;
-	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch {
-		throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source.");
+	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch (error) {
+		throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source.", { cause: `${error instanceof Error ? error.message : String(error)}\n${cause}` });
 	}
 	return { candidates: validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId).candidates, context: retainedContext, settings: memory };
 };
