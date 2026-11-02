@@ -202,7 +202,18 @@ export function useGenerationController({
 		return startId;
 	};
 
-	const assemblyController = useAssemblyController({
+	const {
+		assembly,
+		assemblyAvailable,
+		editPromptPlanPreview,
+		refreshPromptPlanPreview,
+		cancelPromptPlanPreview,
+		sendPromptPlanPreview,
+		requestGeneration,
+		retryGeneration,
+		directStartError,
+		acknowledgeDirectStartError,
+	} = useAssemblyController({
 		signal: selection,
 		conversation,
 		activeChatIdRef,
@@ -230,18 +241,6 @@ export function useGenerationController({
 			};
 		},
 	});
-	const {
-		assembly,
-		assemblyAvailable,
-		editPromptPlanPreview,
-		refreshPromptPlanPreview,
-		cancelPromptPlanPreview,
-		sendPromptPlanPreview,
-		requestGeneration,
-		retryGeneration,
-		directStartError,
-		acknowledgeDirectStartError,
-	} = assemblyController;
 	const generationError = directStartError ?? sessionError;
 	const acknowledgeGenerationError = () => {
 		acknowledgeDirectStartError();
@@ -250,7 +249,6 @@ export function useGenerationController({
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
-		assemblyController.conversationSwitched();
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
