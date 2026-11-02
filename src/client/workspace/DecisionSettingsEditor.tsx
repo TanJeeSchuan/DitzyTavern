@@ -60,6 +60,9 @@ export function useSettingsDraft<S extends Settings>(
 
 	return {
 		...read,
+		// @approved
+		// SAFETY: the session's authoritative copy is draftOf(S) at its revision, so restoring the revision restores S.
+		settings: editor.saved === null ? read.settings : { ...editor.saved.value, revision: editor.saved.revision } as S,
 		draft: editor.value,
 		pending: editor.saving,
 		dirty: editor.dirty,

@@ -48,3 +48,17 @@ test("Load saved replaces a conflicted draft with the settings it lost to", asyn
 	expect(hook.current.draft?.decisionModel).toBe("theirs");
 	expect(hook.current.dirty).toBe(false);
 });
+
+test("the settings a summary reads follow a successful save", async () => {
+	let server = settings(1, "start");
+	const load = () => Promise.resolve(server);
+	const apply = async ({ decisionModel, expectedRevision }: Omit<Settings, "revision"> & { expectedRevision: number }) => {
+		server = settings(expectedRevision + 1, decisionModel);
+		return { outcome: "available" as const, value: { settings: server } };
+	};
+	const hook = await renderHook(() => useSettingsDraft("Test Settings", load, apply), new QueryClient());
+	await flushHook();
+	await hook.act(async () => { hook.current.update({ decisionModel: "mine" }); });
+	await hook.act(async () => { await hook.current.save(); });
+	expect(hook.current.settings).toEqual(settings(2, "mine"));
+});
