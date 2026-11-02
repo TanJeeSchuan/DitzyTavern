@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
 import { type BoxValue } from "../../shared/contract/box-value";
-import { boxRecordSlot } from "../../shared/contract/box-digest";
+import { boxRecordSlot, type DigestStatus, type SlotStatus } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
 import { sha256 } from "../hash";
 import { SEED_KEY, SEED_NAMESPACE } from "./seed";
@@ -42,8 +42,18 @@ const slotOf = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: n
 /** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
 export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["writer"] | S["automatic"] | undefined => slot?.writer ?? slot?.automatic;
 
-/** @approved Whether the slot holds the automatic result for exactly this text; an edit makes the stored result stale. */
-export const hasAutomaticRecord = (slot: RecordSlot | undefined, content: string): boolean => slot?.source === sha256(content);
+// @approved
+//  The slot's status for its passage's current text: `source` and `error`
+//  each name the text they came from, so an edit makes the stored result
+//  stale and an earlier failure no longer counts. A result for this text
+//  wins over a failure on it.
+export const slotStatus = (slot: RecordSlot | undefined, content: string): SlotStatus => {
+	const hash = sha256(content);
+	const automatic: DigestStatus = slot?.source === hash ? { kind: "fresh" }
+		: slot?.error?.source === hash ? { kind: "failed", error: slot.error.message, stale: slot.source !== undefined }
+		: slot?.source !== undefined ? { kind: "stale" } : { kind: "missing" };
+	return slot?.writer === undefined ? automatic : { kind: "overridden", automatic };
+};
 
 // @approved
 //  One Box's record slots on the given Variants, for its instance, and its
@@ -91,9 +101,6 @@ export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: BoxId, instance:
 /** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
 export const writeDigestError = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, source: string, message: string): void =>
 	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
-
-/** @approved Whether a digest already failed on exactly this text. */
-export const hasDigestError = (slot: RecordSlot | undefined, content: string): boolean => slot?.error?.source === sha256(content);
 
 /** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
 export const writeWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue): void =>

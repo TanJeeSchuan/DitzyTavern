@@ -22,9 +22,7 @@ const source = (messageId: number, claims: MemoryClaim[], selected = true): Memo
 	variantId: messageId * 10,
 	selected,
 	claims,
-	overridden: false,
-	digested: true,
-	error: null,
+	status: { kind: "fresh" },
 });
 
 const path = (...messageIds: number[]) =>

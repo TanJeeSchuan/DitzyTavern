@@ -5,7 +5,7 @@ import { Button, Field, Select, SelectContent, SelectItem, SelectTrigger, Select
 import { boxMovesOf, boxSetupOf } from "@/box-sdk/shared";
 import { raceMove, raceSetup, type RaceMoveKind } from "./contract";
 import { checkRaceMove, raceMoveCatalog } from "./shared";
-import { RaceStatus, RaceWindow, useRace } from "./client-window";
+import { currentRace, RaceStatus, RaceWindow, useRace } from "./client-window";
 import descriptor from "./shared-descriptor";
 
 const kinds = /* @approved SAFETY: Object.keys of the literal catalog returns exactly its keys. */ Object.keys(raceMoveCatalog) as RaceMoveKind[];
@@ -24,11 +24,11 @@ function RaceMoves({ conversation, disabled, staging }: { conversation: Conversa
 	const seated = seat !== undefined;
 	const [ordered, setOrdered] = useState<string | undefined>(undefined);
 	const runner = seated ? seat : ordered ?? setup.slots[0]?.name;
-	const state = read.data?.state;
-	if (setup.phase !== "running" || state === undefined || state.finished || runner === undefined) return null;
+	const race = currentRace(read.data, setup.raceId);
+	if (race === null || race.phase.kind === "finished" || runner === undefined) return null;
 	const staged = staging === null ? [] : boxMovesOf(staging.moves, "race", raceMove);
-	const offers = kinds.map((kind) => ({ kind, check: checkRaceMove(setup, state, staged, { kind, runner }) }));
-	const open = checkRaceMove(setup, state, [], { kind: "hold", runner });
+	const offers = kinds.map((kind) => ({ kind, check: checkRaceMove(setup, race.phase, staged, { kind, runner }) }));
+	const open = checkRaceMove(setup, race.phase, [], { kind: "hold", runner });
 	return <section className="race-moves" aria-label="Race Moves">
 		{seated ? <p>Moves for {runner}</p> : <Field label="Order Runner">
 			<Select value={runner} onValueChange={setOrdered} disabled={disabled}>

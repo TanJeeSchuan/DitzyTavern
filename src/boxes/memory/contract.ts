@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { boxCatchUp, invalidOutcome, numericWire, MessageId, VariantId, ParticipantKey } from "@/box-sdk/shared";
+import { boxCatchUp, boxSlotStatus, invalidOutcome, numericWire, MessageId, VariantId, ParticipantKey } from "@/box-sdk/shared";
 
 // @approved
 //  A Writer override reaches storage through `set-box-record`, so the record
@@ -26,12 +26,10 @@ export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
 export const memoryLabelMerges = Type.Array(memoryLabelMerge);
 // @approved
 //  One Variant as the Memories panel lists it: its effective claims as stored
-// (labels apply when shown), whether a Writer override holds them, whether
-// the automatic record is the one for exactly this text, and the error of a
-// digest that failed on exactly this text.
+// (labels apply when shown) and its slot status.
 export const memorySource = Type.Object({
 	messageId: MessageId, variantId: VariantId, selected: Type.Boolean(),
-	claims: Type.Union([Type.Array(memoryCandidate), Type.Null()]), overridden: Type.Boolean(), digested: Type.Boolean(), error: Type.Union([Type.String(), Type.Null()]),
+	claims: Type.Union([Type.Array(memoryCandidate), Type.Null()]), status: boxSlotStatus,
 });
 export type MemorySourceView = Static<typeof memorySource>;
 // @approved

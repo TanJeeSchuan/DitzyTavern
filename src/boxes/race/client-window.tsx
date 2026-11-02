@@ -4,7 +4,7 @@ import {
 	useBoxRead, type BoxDataAction, type BoxDataWrite, type CastParticipant, type ConversationSummary,
 } from "@/box-sdk/client";
 import { Value } from "@sinclair/typebox/value";
-import { raceRead, raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
+import { raceRead, raceSetup, raceStats, isRaceAutoValid, runningStyles, type RaceRead, type RaceRunner, type RaceSetup, type RaceStats, type RunningStyle } from "./contract";
 import { addRaceRunner, fillRaceField, initialRaceSetup, RACE_AVATAR_PREFIX, raceCourses, raceRandom, rollRaceStats } from "./shared-data";
 import { RaceOval } from "./client-oval";
 import { RaceReplay } from "./client-replay";
@@ -13,6 +13,13 @@ import { RaceReplay } from "./client-replay";
 //  The previous read stays mounted as placeholder data through a refetch: the
 //  oval must keep its markers to animate them to the new Stretch.
 export const useRace = (conversation: ConversationSummary) => useBoxRead(conversation, "race", raceRead);
+
+// @approved
+//  The read when it shows the race `raceId` names under way or finished. A
+//  placeholder read from before a New race or Start race names another race
+//  and shows nothing, while one from the previous Stretch keeps the oval.
+export const currentRace = (read: RaceRead | null | undefined, raceId: string) =>
+	read === null || read === undefined || read.phase.kind === "setup" || read.phase.state.raceId !== raceId ? null : { ...read, phase: read.phase };
 
 const statKeys = ["speed", "stamina", "power", "guts", "wit"] as const;
 type StatKey = typeof statKeys[number];
@@ -63,7 +70,7 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	const update = (patch: Partial<RaceSetup>) => updateDraft((value) => ({ ...value, ...patch }));
 	const valid = isValid(draft);
 	const data = read.data ?? null;
-	const race = data !== null && data.state.raceId === draft.raceId ? data : null;
+	const race = currentRace(data, draft.raceId);
 	const avatars = new Map(Object.entries(data?.avatars ?? {}).map(([name, { hash }]) => [name, { hash, focalX: 0.5, focalY: 0.5 }]));
 	// @approved
 	//  A Cast Runner's own Portrait wins over any roster avatar under the same
@@ -124,8 +131,8 @@ export function RaceWindow({ conversation, disabled, boxData, onConversationChan
 	};
 	return <div className="race-window">
 		<p role="status">{read.isError ? "The Race could not be read." : race?.status ?? "Choose a course and fill the field."}</p>
-		{running && race !== null && <RaceOval key={race.state.raceId} course={draft.course} state={race.state} avatars={avatars} />}
-		{running && race !== null && race.replay !== null && <RaceReplay key={race.state.raceId} replay={race.replay} avatars={avatars} />}
+		{running && race !== null && <RaceOval key={race.phase.state.raceId} course={draft.course} state={race.phase.state} avatars={avatars} />}
+		{running && race !== null && race.replay !== null && <RaceReplay key={race.phase.state.raceId} replay={race.replay} avatars={avatars} />}
 		{!running && <fieldset disabled={locked} className="race-setup">
 			<Field label="Course">
 				<Select value={raceCourses.find((course) => JSON.stringify(course) === JSON.stringify(draft.course))?.name ?? "custom"}

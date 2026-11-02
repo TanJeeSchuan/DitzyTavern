@@ -3,7 +3,7 @@
 // imports only its own folder and the SDK entries for its layer, which the
 // `ditzy/no-box-boundary-imports` lint enforces.
 export { imageHash } from "../shared/contract/image";
-export { boxCatchUp } from "../shared/contract/box-digest";
+export { automaticStatus, boxCatchUp, boxSlotStatus, isStale, type DigestStatus, type SlotStatus } from "../shared/contract/box-digest";
 export { boxMovesOf, boxSetupOf } from "../shared/contract/box-value";
 export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from "../shared/contract/box-descriptor";
 export { invalidOutcome } from "../shared/contract/outcomes";

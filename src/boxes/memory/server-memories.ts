@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	conversationExists, effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxCatchUp, readBoxDecision, readBoxLifecycles,
-	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots,
+	conversationExists, effectiveRecord, readBoxCatchUp, readBoxDecision, readBoxLifecycles,
+	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots, slotStatus,
 } from "@/box-sdk/server";
 import { memoryRecord, type ConversationMemories, type ConversationMemoryAllowanceCommand, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
 import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
@@ -26,9 +26,7 @@ export function readConversationMemories(database: Database, conversationId: num
 			return {
 				messageId, variantId, selected,
 				claims: effectiveRecord(slot)?.claims ?? null,
-				overridden: slot?.writer !== undefined,
-				digested: hasAutomaticRecord(slot, content),
-				error: hasDigestError(slot, content) ? slot?.error?.message ?? null : null,
+				status: slotStatus(slot, content),
 			};
 		});
 	return {

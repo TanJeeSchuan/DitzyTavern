@@ -2,6 +2,7 @@ import { Button } from "@/box-sdk/client";
 import { Check, ChevronLeft, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { Value } from "@sinclair/typebox/value";
+import { isStale, type SlotStatus } from "@/box-sdk/shared";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { type ConversationMemories, memoryCandidate } from "./contract";
 import { memorySourceState } from "./client-source-state";
@@ -9,6 +10,9 @@ import type { ClaimDraft } from "./client-use-memories";
 
 type Source = ConversationMemories["sources"][number];
 type Claim = NonNullable<Source["claims"]>[number];
+
+/** @approved The automatic claims shown came from an earlier text of the Message. */
+const sourceChanged = (status: SlotStatus) => status.kind !== "overridden" && isStale(status);
 
 /** @approved What a source card asks for its Message: a digest now, or the Writer override reset. */
 type SourceCardActions = {
@@ -36,8 +40,9 @@ export function MemorySourceCard({ source, label, busy, ready, excluded, actions
 	onClear: () => void;
 }) {
 	const { kind, text } = memorySourceState(source);
-	const stale = source !== undefined && source.claims !== null && !source.digested && !source.overridden;
-	const notes = [excluded ? "Author isn't in the story" : text, source?.overridden && "Writer-maintained", stale && "Source changed"].filter(Boolean).join(" · ");
+	const overridden = source?.status.kind === "overridden";
+	const changed = source !== undefined && sourceChanged(source.status);
+	const notes = [excluded ? "Author isn't in the story" : text, overridden && "Writer-maintained", changed && "Source changed"].filter(Boolean).join(" · ");
 	return <section className="memory-source-card" aria-label={`Memories from ${label}`} data-kind={kind}>
 		<header>
 			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Previous Message" onClick={() => onStep(-1)}><ChevronLeft aria-hidden="true" /></Button>}
@@ -46,18 +51,18 @@ export function MemorySourceCard({ source, label, busy, ready, excluded, actions
 			<span className="memory-source-notes">{notes}</span>
 			<Button type="button" variant="ghost" size="icon-xs" aria-label="Show every Message" onClick={onClear}><X aria-hidden="true" /></Button>
 		</header>
-		{kind === "failed" && source && <div className="memory-source-error">
-			<p>{source.error}</p>
+		{source?.status.kind === "failed" && <div className="memory-source-error">
+			<p>{source.status.error}</p>
 			<Button type="button" size="xs" variant="outline" disabled={busy || !ready} onClick={() => actions.remember(source)}>Retry</Button>
 		</div>}
-		{source?.overridden && source.claims?.length === 0 && (
+		{overridden && source?.claims?.length === 0 && (
 			<p className="memory-source-empty">All Memories were removed. Reset to bring back the automatic ones.</p>
 		)}
-		{source && (kind === "unprocessed" || source.overridden) && <div className="memory-source-actions">
-			{kind === "unprocessed" && !source.overridden && (
+		{source && (kind === "unprocessed" || overridden) && <div className="memory-source-actions">
+			{kind === "unprocessed" && !overridden && (
 				<Button type="button" size="xs" variant="outline" disabled={busy || !ready} onClick={() => actions.remember(source)}>Remember this Message</Button>
 			)}
-			{source.overridden && (
+			{overridden && (
 				<Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.requestReset(source)}>Reset corrections…</Button>
 			)}
 		</div>}
@@ -104,7 +109,7 @@ export function MemoryClaimRow({ source, claim, index, group, busy, editing, act
 			<button type="button" className="memory-source-link" onClick={() => onSelectSource(source)}>{actions.label(source.messageId)}</button>
 			{claim.attribution !== group && <span> · {claim.attribution}</span>}
 			{claim.writerMaintained && <span> · Edited</span>}
-			{!source.digested && !source.overridden && <span> · Source changed</span>}
+			{sourceChanged(source.status) && <span> · Source changed</span>}
 		</p>
 		<div className="memory-claim-actions" data-confirming={confirming} onKeyDown={(event) => { if (event.key === "Escape") setConfirming(false); }}>
 			{confirming ? (
