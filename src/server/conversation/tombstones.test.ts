@@ -13,7 +13,6 @@ import { readLorebookAttachmentImpact } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 import { applyCommand, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
 import { deleteConversation } from "./delete";
-import { forkConversation } from "./commands/fork-conversation";
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
@@ -86,26 +85,6 @@ test("deleting Chats collects a source tombstone only after its last provenance 
 	expect(sourceRow()?.name).toBe(source.name);
 	deleteConversation(database, second.id);
 	expect(sourceRow()).toBeUndefined();
-});
-
-test("forking before a tombstone's only Message does not copy an unreferenced tombstone", () => {
-	const library = createCharacterLibraryModule(database);
-	const source = library.execute({ type: "create", definition: definition("Guest") });
-	const chat = createConversationWithHistory(database, {
-		name: "Source Chat",
-		participants: [{ definition: definition("Writer") }, { definition: definition("Model", ["Opening"]) }, { definition: source, sourceCharacterId: source.id }],
-		control: { human: 0, model: 1 },
-	});
-	const participantId = chat.cast[2]!.id;
-	const written = applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "create-message", authorParticipantId: participantId, timestamp: "2026-11-02T00:00:00Z", variantContents: ["Guest speaks"] } });
-	const removed = applyCommand(database, { conversationId: chat.id, expectedRevision: written.revision, action: { type: "remove-participant", participantId } });
-	library.execute({ type: "delete", characterId: source.id, expectedRevision: source.revision });
-	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: removed.revision, name: "Fork", at: { through: chat.messages[0]!.id }, trimVariants: false });
-	const db = drizzle(database);
-	expect(db.select().from(participantTable).where(eq(participantTable.conversation_id, fork.conversation.id)).all().map(({ name }) => name)).toEqual(["Writer", "Model"]);
-	expect(db.select().from(participantTable).where(eq(participantTable.id, participantId)).get()?.name).toBe("Guest");
-	deleteConversation(database, chat.id);
-	expect(db.select().from(characterTable).where(eq(characterTable.id, source.id)).get()).toBeUndefined();
 });
 
 test("a live Character without its Prompt is rejected instead of fabricating an empty Definition", () => {

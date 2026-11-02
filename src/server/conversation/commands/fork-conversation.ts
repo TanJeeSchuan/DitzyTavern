@@ -1,4 +1,3 @@
-import { collectReleasedTombstones } from "../cleanup";
 import { generationGate } from "../generation-gate";
 import type { ForkConversationBody } from "../../../shared/contract/conversation-schema";
 import type { Database } from "bun:sqlite";
@@ -147,7 +146,6 @@ export function forkConversation(database: Database, input: ForkConversationBody
 		if (lore) db.insert(conversationLoreSettingsTable).values({ ...lore, conversation_id: fork.id }).run();
 		for (const { id: _, ...row } of db.select().from(conversationLorebookAttachmentTable).where(eq(conversationLorebookAttachmentTable.conversation_id, input.conversationId)).all()) db.insert(conversationLorebookAttachmentTable).values({ ...row, conversation_id: fork.id }).run();
 		const rewind = "rewind" in input.at ? { content: selected.content, moves: copyMessageDataAndReadMoves(point.id) } : undefined;
-		collectReleasedTombstones(db, fork.id);
 		reportChange({ conversationId: fork.id, touchedVariantIds: [...variantMap.values()], removedVariantIds: [] });
 		return { conversation: requireConversationSummary(db, fork.id), omittedBoxes: [...omitted].sort(), rewind };
 	});
