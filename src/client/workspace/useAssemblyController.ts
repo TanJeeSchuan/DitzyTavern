@@ -1,5 +1,5 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type Dispatch, type RefObject } from "react";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useSyncExternalStore, type Dispatch, type RefObject } from "react";
 import {
 	previewConversationGeneration,
 	startConversationContinuationGeneration,
@@ -11,11 +11,13 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
+import { store } from "../lib/store";
 import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
+import { generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent, type StartRequest } from "../generation-start";
 
 type GenerationStartLifecycle = {
 	begin: () => number;
@@ -35,34 +37,23 @@ type AssemblyControllerOptions = {
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
-	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send is not accepted.
+	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send fails while its visit is current.
 	takeComposer: () => () => void;
 };
 
-// @approved
-//  `seat` is the human seat the request was made from, which its seat-bound Moves belong to.
-type AssemblyRequest = { conversationId: number; seat: number | null; request: GenerationPreviewBody };
 // The accepted target and the revision its start was sent on; acceptance always lands on a later one.
 type AcceptedStart = { target: GenerationAttemptTarget; sentRevision: number };
 
-type GenerationStartSubmission = {
+type GenerationStartSubmission = StartRequest & {
 	signal: AbortSignal;
-	startId: number;
-	conversationId: number;
-	seat: number | null;
-	request: GenerationPreviewBody;
-	clearComposer: boolean;
-	// @approved
-	//  Puts back what a direct start took from the composer up front, if the start is not accepted.
-	restoreComposer?: (() => void) | undefined;
-	preview?: { previewId: string; promptPlan: PromptPlan };
+	preview?: { previewId: string; promptPlan: PromptPlan } | undefined;
 };
 
 // @approved
 //  The preview read and the Generation starts classify their own failure
 //  wording; the transport returns typed outcomes and never rejects, so the
 //  query and mutation seams throw the message the surface shows.
-const loadPreview = async (request: AssemblyRequest, signal: AbortSignal): Promise<GenerationPreview> => {
+const loadPreview = async (request: StartRequest, signal: AbortSignal): Promise<GenerationPreview> => {
 	const outcome = await previewConversationGeneration(request.conversationId, request.request, signal);
 	if (outcome.outcome === "available") return outcome.value;
 	throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" || outcome.outcome === "not-playable"
@@ -73,9 +64,8 @@ const loadPreview = async (request: AssemblyRequest, signal: AbortSignal): Promi
 };
 
 /** @approved
- * Owns the Prompt Plan preview and acceptance: react-query holds the preview
- * read keyed by its request and the two Generation starts, while the panel
- * phase is derived from their fetch, pending, and error state.
+ * Owns a Generation start: the generation-start reducer holds its phase, react-query holds the Prompt Plan preview read
+ * keyed by its request, and the story and pending starts hear of each start, acceptance and failure the reducer allows.
  */
 export function useAssemblyController({
 	signal: selection,
@@ -92,12 +82,17 @@ export function useAssemblyController({
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
 	const signal = useConversationVisit(selection, conversation?.id);
-	const starting = useRef(false);
-	const [assemblyRequest, setAssemblyRequest] = useState<AssemblyRequest | null>(null);
-	const [preparing, setPreparing] = useState(false);
-	const [directStartError, setDirectStartError] = useState<string | null>(null);
-	const [acceptError, setAcceptError] = useState<string | null>(null);
-	const [lastGeneration, setLastGeneration] = useState<AssemblyRequest | null>(null);
+	// @approved
+	//  A store rather than state: a second call in the same tick must see the transition the first one made.
+	const [machine] = useState(() => store<GenerationStart>({ visit: signal, last: null, phase: "idle", error: null }));
+	const start = generationStartAt(useSyncExternalStore(machine.subscribe, machine.get), signal);
+	const transition = (event: GenerationStartEvent) => {
+		const previous = machine.get();
+		machine.set(reduceGenerationStart(previous, event));
+		return machine.get() !== previous;
+	};
+	const inspecting = start.phase === "inspecting" ? start : null;
+	const assemblyRequest = inspecting?.request ?? null;
 
 	const previewKey = ["assembly-preview", assemblyRequest] as const;
 	const preview = useQuery({
@@ -146,73 +141,49 @@ export function useAssemblyController({
 	};
 
 	// @approved
-	//  Acceptance and a direct start settle through the same completion: the
-	//  accepted target is only reported to the session machine while the Chat
-	//  that started it is still active. It subscribes before the story refresh
+	//  A direct start and a preview acceptance launch the same way once the
+	//  reducer lets them. The accepted target is only reported while the visit
+	//  that started it is current. It subscribes before the story refresh
 	//  lands, and the story holds the output it streams until the refresh
 	//  places its Variant.
-	const finishStart = (submission: GenerationStartSubmission, { target, sentRevision }: AcceptedStart, closeAssembly: boolean) => {
-		if (submission.signal.aborted) return;
-		starting.current = false;
-		if (closeAssembly) setAssemblyRequest(null);
-		if (submission.clearComposer) takeComposer();
-		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
-		generationStart.accepted(submission.startId, target);
-		void refreshStory(submission.conversationId, submission.signal).catch(() => null);
-	};
-	const startDirect = useMutation({
-		mutationKey: ["assembly", "start"],
-		mutationFn: issueGeneration,
-		onSuccess: (target, submission) => finishStart(submission, target, false),
-		onError: (error, submission) => {
-			submission.restoreComposer?.();
-			if (submission.signal.aborted) return;
-			starting.current = false;
-			generationStart.settle(submission.startId);
+	const launch = (request: StartRequest, preview?: GenerationStartSubmission["preview"]) => {
+		const startId = generationStart.begin();
+		dispatchStory({ type: "generation-requested", request: request.request });
+		const restoreComposer = request.request.kind === "send" ? takeComposer() : undefined;
+		issueGeneration({ ...request, signal, preview }).then(({ target, sentRevision }) => {
+			if (!transition({ type: "start-accepted", visit: signal })) return;
+			dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
+			generationStart.accepted(startId, target);
+			void refreshStory(request.conversationId, signal).catch(() => null);
+		}, (error: Error) => {
+			if (!transition({ type: "failed", visit: signal, error: error.message })) return;
+			restoreComposer?.();
+			generationStart.settle(startId);
 			dispatchStory({ type: "generation-request-failed" });
-			setDirectStartError(error.message);
-		},
-	});
-	const accept = useMutation({
-		mutationKey: ["assembly", "accept"],
-		mutationFn: issueGeneration,
-		onSuccess: (target, submission) => finishStart(submission, target, true),
-		onError: (error, submission) => {
-			if (submission.signal.aborted) return;
-			starting.current = false;
-			generationStart.settle(submission.startId);
-			setAcceptError(error.message);
-		},
-	});
+		});
+	};
 
 	const previewError = preview.isFetching ? null : preview.error?.message ?? null;
-	const phase: AssemblySessionPhase = accept.isPending ? "accepting"
+	const acceptance = inspecting?.acceptance;
+	const acceptError = acceptance?.status === "failed" ? acceptance.error : null;
+	const phase: AssemblySessionPhase = acceptance?.status === "accepting" ? "accepting"
 		: preview.isFetching ? "assembling"
 			: previewError !== null || acceptError !== null ? "failed"
 				: preview.data === undefined ? "assembling" : "ready";
-	const assembly: AssemblySession | null = assemblyRequest === null ? null : {
+	const assembly: AssemblySession | null = inspecting === null ? null : {
 		phase,
 		preview: preview.data ?? null,
 		error: previewError ?? acceptError,
 	};
 
-	const openPromptPlanPreview = (seat: number | null, request: GenerationPreviewBody) => {
-		if (conversation === null || assemblyRequest !== null) return;
-		client.removeQueries({ queryKey: ["assembly-preview"] });
-		setAcceptError(null);
-		setAssemblyRequest({ conversationId: conversation.id, seat, request });
-	};
-
 	const refreshPromptPlanPreview = () => {
 		if (assembly === null || isAssemblyPending(assembly)) return;
-		setAcceptError(null);
+		transition({ type: "preview-refreshed", visit: signal });
 		void preview.refetch();
 	};
 
 	const cancelPromptPlanPreview = () => {
-		if (assembly === null || assembly.phase === "accepting") return;
-		setAcceptError(null);
-		setAssemblyRequest(null);
+		if (!transition({ type: "cancelled", visit: signal })) return;
 		void client.cancelQueries({ queryKey: ["assembly-preview"] });
 	};
 
@@ -222,100 +193,42 @@ export function useAssemblyController({
 	};
 
 	const sendPromptPlanPreview = () => {
-		const currentPreview = preview.data;
-		if (starting.current || assemblyRequest === null || currentPreview === undefined || (phase !== "ready" && phase !== "failed")) return;
-		starting.current = true;
-		const { conversationId, seat, request } = assemblyRequest;
-		const startId = generationStart.begin();
-		setAcceptError(null);
-		setLastGeneration(assemblyRequest);
-		accept.mutate({
-			signal,
-			startId,
-			conversationId,
-			seat,
-			request,
-			clearComposer: request.kind === "send",
-			preview: { previewId: currentPreview.previewId, promptPlan: currentPreview.promptPlan },
-		});
-	};
-
-	const startWithoutPreview = (seat: number | null, request: GenerationPreviewBody) => {
-		if (starting.current || conversation === null || assemblyRequest !== null) return;
-		starting.current = true;
-		const conversationId = conversation.id;
-		const startId = generationStart.begin();
-		setDirectStartError(null);
-		setLastGeneration({ conversationId, seat, request });
-		dispatchStory({ type: "generation-requested", request });
-		const restoreComposer = request.kind === "send" ? takeComposer() : undefined;
-		startDirect.mutate({ signal, startId, conversationId, seat, request, clearComposer: false, restoreComposer });
+		const current = preview.data;
+		if (inspecting === null || current === undefined || (phase !== "ready" && phase !== "failed")) return;
+		if (!transition({ type: "accepting", visit: signal })) return;
+		launch(inspecting.request, { previewId: current.previewId, promptPlan: current.promptPlan });
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
-		if (preparing || conversation === null) return;
-		const conversationId = conversation.id;
-		setPreparing(true);
-		setDirectStartError(null);
+		if (conversation === null) return;
+		const requested = { conversationId: conversation.id, seat, request };
+		if (!transition({ type: "requested", visit: signal, request: requested })) return;
+		const inspect = inspectPromptPlanBeforeGenerating;
 		void ensureLatest().then(() => {
-			if (signal.aborted || Number(activeChatIdRef.current) !== conversationId) return;
-			if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(seat, request);
-			else startWithoutPreview(seat, request);
-		}).catch(() => { if (!signal.aborted) setDirectStartError("The latest Messages could not be loaded."); })
-			.finally(() => { if (!signal.aborted) setPreparing(false); });
+			if (Number(activeChatIdRef.current) !== requested.conversationId) return void transition({ type: "cancelled", visit: signal });
+			if (!transition({ type: "prepared", visit: signal, inspect })) return;
+			if (inspect) client.removeQueries({ queryKey: ["assembly-preview"] });
+			else launch(requested);
+		}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
 	};
 
-	const canRetry = conversation !== null && lastGeneration?.conversationId === conversation.id &&
-		assemblyRequest === null && !variantPreviewActive && !isGenerating;
-
-	const retryLastGeneration = () => {
-		if (!canRetry || lastGeneration === null) return;
-		requestGeneration(lastGeneration.request, lastGeneration.seat);
-	};
-
-	const conversationSwitched = () => {
-		starting.current = false;
-		accept.reset();
-		startDirect.reset();
-		setPreparing(false);
-		setLastGeneration(null);
-		setDirectStartError(null);
-		setAcceptError(null);
-		setAssemblyRequest(null);
-		void client.cancelQueries({ queryKey: ["assembly-preview"] });
-	};
-
-	const resetAccept = accept.reset;
-	const resetDirect = startDirect.reset;
-	useEffect(() => {
-		starting.current = false;
-		setAssemblyRequest(null);
-		setAcceptError(null);
-		setDirectStartError(null);
-		setPreparing(false);
-		setLastGeneration(null);
-		resetAccept();
-		resetDirect();
-	}, [conversation?.id, resetAccept, resetDirect]);
-
-	const assemblyAvailable = canStartAssembly({
-		playable: conversation?.playable === true,
-		isGenerating: isGenerating || preparing,
-		assemblyActive: assemblyRequest !== null,
-		variantPreviewActive,
-	});
+	const retry = conversation !== null && start.phase === "idle" && !variantPreviewActive && !isGenerating ? start.last : null;
 
 	return {
 		assembly,
-		directStartError,
-		acknowledgeDirectStartError: () => setDirectStartError(null),
-		assemblyAvailable,
+		directStartError: start.phase === "idle" ? start.error : null,
+		acknowledgeDirectStartError: () => void transition({ type: "error-acknowledged", visit: signal }),
+		assemblyAvailable: canStartAssembly({
+			playable: conversation?.playable === true,
+			isGenerating,
+			assemblyActive: start.phase !== "idle",
+			variantPreviewActive,
+		}),
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
-		retryGeneration: canRetry ? retryLastGeneration : null,
-		conversationSwitched,
+		retryGeneration: retry === null ? null : () => requestGeneration(retry.request, retry.seat),
 	};
 }
