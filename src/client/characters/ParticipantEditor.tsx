@@ -1,11 +1,12 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
-import { emptyPromptChannels } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
+import { useRevisionedDraft, type DraftSaveResult } from "../lib/revisioned-draft";
+import { ConflictBanner } from "../ConflictBanner";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
@@ -38,60 +39,60 @@ export function ParticipantEditor({
 	onBack: () => void;
 }) {
 	const participant = conversation.cast.find((candidate) => candidate.id === participantId);
-	const [draft, setDraft] = useState<ParticipantDefinition>(() => definitionOf(participant ?? { name: "", prompt: emptyPromptChannels(), openings: [] }));
-	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-	const draftRef = useRef(draft);
-	draftRef.current = draft;
-
-	const dirty = participant !== undefined && !sameDefinition(draft, definitionOf(participant));
-	const surface = {
-		conversationId: conversation.id,
-		revision: () => conversation.revision,
-		onConversationChange,
-		setNotice,
+	const revisioned = (current: ConversationSummary) => {
+		const found = current.cast.find((candidate) => candidate.id === participantId);
+		return found === undefined ? null : { value: definitionOf(found), revision: current.revision };
 	};
-
-	const apply = async () => {
-		if (participant === undefined || !dirty || pending || draft.name.trim() === "") return false;
-		const submitted = draft;
-		let appliedSuccessfully = false;
-		setPending(true);
-		try {
-			await runConversationCommand(surface, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }, {
+	const editor = useRevisionedDraft(revisioned(conversation), {
+		equals: sameDefinition,
+		save: async (submitted, revision) => {
+			let result: DraftSaveResult<ParticipantDefinition> = { outcome: "failed" };
+			await runConversationCommand({ conversationId: conversation.id, revision: () => revision, exact: true, onConversationChange, setNotice }, {
+				type: "update-participant-definition", participantId, definition: submittableDefinition(submitted),
+			}, {
 				notices: EDITOR_NOTICES,
 				onApplied: (applied) => {
-					appliedSuccessfully = true;
-					const saved = applied.cast.find((candidate) => candidate.id === participant.id);
-					if (saved) setDraft((current) => current === submitted ? definitionOf(saved) : current);
+					const saved = revisioned(applied);
+					if (saved !== null) result = { outcome: "saved", saved };
 					setNotice(null);
 				},
+				onConflict: (current) => {
+					const theirs = revisioned(current);
+					if (theirs !== null) result = { outcome: "conflict", theirs };
+				},
 			});
-		} finally {
-			setPending(false);
-		}
-		return appliedSuccessfully && draftRef.current === submitted;
-	};
-	useSaveGuard({ dirty, saving: pending, save: apply, discard: () => undefined });
-	if (participant === undefined) return <p className="panel-body text-sm text-muted-foreground">This Participant is no longer in the Cast.</p>;
+			return result;
+		},
+	});
+	const draft = editor.value;
+	const save = () => draft === null || draft.name.trim() === "" ? Promise.resolve(false) : editor.save();
+	useSaveGuard({ dirty: editor.dirty, saving: editor.saving, save, discard: editor.discard });
+	if (participant === undefined || draft === null) return <p className="panel-body text-sm text-muted-foreground">This Participant is no longer in the Cast.</p>;
 
 	return (
 		<DefinitionEditor
 			draft={draft}
-			onDraftChange={setDraft}
+			onDraftChange={editor.edit}
 			subtitle={subtitle}
 			actions={actions}
-			dirty={dirty}
-			saving={pending}
-			error={notice}
+			dirty={editor.dirty}
+			saving={editor.saving}
+			error={editor.conflict ? null : notice}
+			valid={!editor.conflict}
 			autoSelectName={autoSelectName}
-			onSave={() => void apply()}
+			onSave={() => void save()}
 			onBack={onBack}
+			banner={editor.conflict && <ConflictBanner
+				message="This Participant changed elsewhere after you opened it. Your edits were not saved and are still here."
+				onKeepMine={editor.keepMine}
+				onLoadSaved={editor.discard}
+			/>}
 		>
 			{boxClients().map(([id, { ParticipantSection }]) => ParticipantSection && <BoxBoundary key={id} box={id}>
 				<ParticipantSection conversation={conversation} participant={participant} />
 			</BoxBoundary>)}
-			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
+			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={editor.saving} />
 		</DefinitionEditor>
 	);
 }

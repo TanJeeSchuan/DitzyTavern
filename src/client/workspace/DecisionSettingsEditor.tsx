@@ -5,6 +5,8 @@ import { Field } from "@/components/ui/field";
 import { DecisionModelPicker } from "../DecisionModelPicker";
 import { useConnectionSettingsQuery } from "../connection-settings-query";
 import { useAsyncEffect } from "../lib/use-async";
+import { useRevisionedDraft } from "../lib/revisioned-draft";
+import { ConflictBanner } from "../ConflictBanner";
 import type { RequestOutcome } from "../lib/request-outcome";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
@@ -13,17 +15,23 @@ import { MIN_DECISION_STATE_TOKEN_LIMIT, type DecisionSelection } from "../../sh
 
 type Settings = DecisionSelection & { revision: number };
 type SaveOutcome<S> = RequestOutcome<{ settings: S }, { outcome: "conflict"; currentSettings: S } | { outcome: "invalid"; reason: string } | { outcome: "not-found" }>;
-type State<S> = { settings: S | null; draft: Omit<S, "revision"> | null; loading: boolean; pending: boolean; error: string | null };
+type Read<S> = { settings: S | null; loading: boolean; error: string | null };
 
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
 const draftOf = <S extends Settings>({ revision: _revision, ...draft }: S): Omit<S, "revision"> => draft;
+const revisioned = <S extends Settings>(settings: S) => ({ value: draftOf(settings), revision: settings.revision });
+const same = <T,>(left: T, right: T) => JSON.stringify(left) === JSON.stringify(right);
 
 /** @approved The draft and commands a revisioned Decision Model settings editor reads and writes. */
-export type SettingsDraft<S extends Settings> = State<S> & {
+export type SettingsDraft<S extends Settings> = Read<S> & {
+	draft: Omit<S, "revision"> | null;
+	pending: boolean;
 	dirty: boolean;
+	conflict: boolean;
 	reload: () => void;
 	update: (patch: Partial<DecisionSelection> | Partial<Omit<S, "revision">>) => void;
 	discard: () => void;
+	keepMine: () => void;
 	save: () => Promise<boolean>;
 };
 
@@ -32,36 +40,43 @@ export function useSettingsDraft<S extends Settings>(
 	load: () => Promise<S>,
 	apply: (command: Omit<S, "revision"> & { type: "apply"; expectedRevision: number }) => Promise<SaveOutcome<S>>,
 ): SettingsDraft<S> {
-	const [state, setState] = useState<State<S>>({ settings: null, draft: null, loading: true, pending: false, error: null });
-	const loaded = (settings: S): State<S> => ({ settings, draft: draftOf(settings), loading: false, pending: false, error: null });
-
+	const [read, setRead] = useState<Read<S>>({ settings: null, loading: true, error: null });
 	const reload = useCallback((isCancelled: () => boolean = () => false) => load()
-		.then((settings) => { if (!isCancelled()) setState(loaded(settings)); })
-		.catch(() => { if (!isCancelled()) setState((current) => ({ ...current, loading: false, error: `${name} could not be loaded.` })); }), [load, name]);
+		.then((settings) => { if (!isCancelled()) setRead({ settings, loading: false, error: null }); })
+		.catch(() => { if (!isCancelled()) setRead((current) => ({ ...current, loading: false, error: `${name} could not be loaded.` })); }), [load, name]);
 	useAsyncEffect((isCancelled) => { void reload(isCancelled); }, [reload]);
 
-	const { settings, draft } = state;
-	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
-
-	const save = async () => {
-		if (settings === null || draft === null) return false;
-		setState((current) => ({ ...current, pending: true, error: null }));
-		const result = await apply({ ...draft, type: "apply", expectedRevision: settings.revision });
-		if (result.outcome === "available") setState((current) => ({ ...loaded(result.value.settings), draft: current.draft !== draft ? current.draft : draftOf(result.value.settings) }));
-		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, error: CONFLICT_ERROR }));
-		else setState((current) => ({ ...current, pending: false, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : `${name} could not be saved.` }));
-		return result.outcome === "available";
-	};
+	const editor = useRevisionedDraft(read.settings === null ? null : revisioned(read.settings), {
+		equals: same,
+		save: async (submitted, expectedRevision) => {
+			setRead((current) => ({ ...current, error: null }));
+			const result = await apply({ ...submitted, type: "apply", expectedRevision });
+			if (result.outcome === "available") return { outcome: "saved", saved: revisioned(result.value.settings) };
+			if (result.outcome === "conflict") return { outcome: "conflict", theirs: revisioned(result.currentSettings) };
+			setRead((current) => ({ ...current, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : `${name} could not be saved.` }));
+			return { outcome: "failed" };
+		},
+	});
 
 	return {
-		...state,
-		dirty,
-		reload: () => { setState((current) => ({ ...current, loading: true, error: null })); void reload(); },
+		...read,
 		// @approved
-		// SAFETY: S extends DecisionSelection, so a patch of S's own fields keeps the draft's shape.
-		update: (patch) => setState((current) => current.draft === null ? current : { ...current, draft: { ...current.draft, ...patch } as Omit<S, "revision">, error: null }),
-		discard: () => setState((current) => current.settings === null ? current : { ...current, draft: draftOf(current.settings), error: null }),
-		save,
+		// SAFETY: the session's authoritative copy is draftOf(S) at its revision, so restoring the revision restores S.
+		settings: editor.saved === null ? read.settings : { ...editor.saved.value, revision: editor.saved.revision } as S,
+		draft: editor.value,
+		pending: editor.saving,
+		dirty: editor.dirty,
+		conflict: editor.conflict,
+		reload: () => { setRead((current) => ({ ...current, loading: true, error: null })); void reload(); },
+		update: (patch) => {
+			// @approved
+			// SAFETY: S extends DecisionSelection, so a patch of S's own fields keeps the draft's shape.
+			editor.update((current) => ({ ...current, ...patch }) as Omit<S, "revision">);
+			setRead((current) => ({ ...current, error: null }));
+		},
+		discard: () => { editor.discard(); setRead((current) => ({ ...current, error: null })); },
+		keepMine: editor.keepMine,
+		save: editor.save,
 	};
 }
 
@@ -94,6 +109,7 @@ export function DecisionSettingsEditor<S extends Settings>({ editor, id, title, 
 						</div>
 					) : (
 						<div className="grid gap-4">
+							{editor.conflict && <ConflictBanner message={CONFLICT_ERROR} onKeepMine={editor.keepMine} onLoadSaved={editor.discard} />}
 							{connections.isError ? <div className="grid justify-items-start gap-2">
 								<p className="text-xs text-destructive" role="alert">Connection Settings could not be loaded.</p>
 								<Button type="button" size="sm" variant="outline" onClick={() => void connections.refetch()}>Try again</Button>
@@ -115,7 +131,7 @@ export function DecisionSettingsEditor<S extends Settings>({ editor, id, title, 
 					)}
 				</section>
 			</div>
-			<SaveFooter dirty={editor.dirty} saving={editor.pending} error={editor.error} onSave={() => void editor.save()} />
+			<SaveFooter dirty={editor.dirty} saving={editor.pending} valid={!editor.conflict} error={editor.error} onSave={() => void editor.save()} />
 		</>
 	);
 }

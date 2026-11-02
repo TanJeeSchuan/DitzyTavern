@@ -2,7 +2,8 @@ import { skipToken, useQuery, useQueryClient, type Query, type QueryClient } fro
 import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
 import { foldNewer } from "./lib/visit";
 
-interface SettingsRead { revision: number; settings: ConversationGenerationSettings }
+/** @approved The cached settings and the Conversation revision they were read or written at. */
+export interface SettingsRead { revision: number; settings: ConversationGenerationSettings }
 export const generationSettingsKey = (conversationId: number | null) => ["generation-settings", conversationId] as const;
 
 export const publishGenerationSettings = (client: QueryClient, conversation: ConversationSummary, settings: ConversationGenerationSettings) =>

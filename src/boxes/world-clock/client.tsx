@@ -27,14 +27,14 @@ function WorldClockPanel({ conversation, disabled, onConversationChange }: {
 }): ReactNode {
 	const client = useQueryClient();
 	const [startTouched, setStartTouched] = useState(false);
-	const { draft, setDraft, dirty, pending, locked, notice, save, discard } = useBoxSetupDraft("world-clock", worldClockSetup, {
+	const { draft, updateDraft, dirty, pending, locked, notice, save, discard } = useBoxSetupDraft("world-clock", worldClockSetup, {
 		conversation, disabled, onConversationChange,
 		conflict: "The Chat changed elsewhere. Your draft was kept. Review it before saving again.",
 		valid: (setup) => isWorldClockStart(setup.start),
 		onSaved: () => void client.invalidateQueries({ queryKey: boxDigestKey(conversation.id, "world-clock") }),
 	});
 	const valid = isWorldClockStart(draft.start);
-	const update = (patch: Partial<WorldClockSetup>) => setDraft((value) => ({ ...value, ...patch }));
+	const update = (patch: Partial<WorldClockSetup>) => updateDraft((value) => ({ ...value, ...patch }));
 	return <div className="world-clock-window">
 		<Field label="Start" htmlFor="world-clock-start" helper={!valid && startTouched ? "Enter a real calendar date and time." : undefined}>
 			<Input id="world-clock-start" type="datetime-local" value={draft.start} disabled={locked} onChange={(event) => update({ start: event.target.value })} onBlur={() => setStartTouched(true)} />

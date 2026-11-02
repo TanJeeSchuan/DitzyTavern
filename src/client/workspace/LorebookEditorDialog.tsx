@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSaveGuard } from "../SaveGuard";
+import { ConflictBanner } from "../ConflictBanner";
 import type { LoreAttachmentCommand, LoreAttachmentState, LorebookCommand, LoreMatchTest } from "../lorebook-library";
 import { EntryEditor, MatchTester, UnsavedLorebookDialog } from "./LorebookPanelEditors";
 import { useLorebookEditor } from "./useLorebookEditor";
@@ -33,7 +34,7 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 	tester: LorebookEditorTester;
 }) {
 	const editor = useLorebookEditor(bookId);
-	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, pending, notice, dialog,
+	const { book, name, description, entryId, entryDraft, selectedEntry, dirty, conflict, pending, notice, dialog,
 		setName, setDescription, updateEntryDraft, updateList,
 		setLeaveIntent, setBookDeleteConfirmation, setEntryDeleteConfirmation, confirmDeleteBook, exportBook, saveDirty } = editor;
 	const { attachmentState, attachmentPending, updateAttachment } = attachments;
@@ -52,7 +53,7 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 	};
 	const saveAll = () => saveDirty();
 	const execute = (command: LorebookCommand, success?: string) => editor.executeLorebookCommand(command, success, onOpenBook);
-	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });
+	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: editor.discard });
 	return <>
 		{(editor.loadError ?? (!book ? notice : null)) && <p role="status" className="text-sm text-muted-foreground">{editor.loadError ?? notice}</p>}
 		{book !== null && <Dialog open onOpenChange={(open) => { if (!open) requestLeave({ type: "library" }); }}>
@@ -83,6 +84,11 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 						placeholder="Add a description…"
 					/>
 				</DialogHeader>
+				{conflict && <ConflictBanner
+					message="This Lorebook changed elsewhere after you opened it. Your edits were not saved and are still here."
+					onKeepMine={editor.keepMine}
+					onLoadSaved={editor.discard}
+				/>}
 				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1">
 					<div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
 						<div className="flex min-w-0 flex-col gap-6">
@@ -173,7 +179,7 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 					<div className="flex items-center gap-2">
 						<span role="status" className="mr-2 text-sm text-muted-foreground">{pending ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}</span>
 						<Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>Close</Button>
-						<Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
+						<Button type="button" size="sm" disabled={pending || !dirty || conflict} onClick={() => void saveAll()}>Save</Button>
 					</div>
 				</DialogFooter>
 			</DialogContent>

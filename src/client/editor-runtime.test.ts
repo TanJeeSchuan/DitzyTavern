@@ -143,6 +143,41 @@ test("Lorebook writes reach every reader while retaining another editor's local 
 	expect(second.current.name).toBe("Other draft");
 });
 
+test("a Lorebook draft saves against the book it started from, so another editor's save conflicts instead of being overwritten", async () => {
+	let server = book();
+	const sent: number[] = [];
+	install(async ({ init }) => {
+		if (init?.method !== "POST") return Response.json(server);
+		const { expectedRevision, name } = JSON.parse(String(init.body));
+		sent.push(expectedRevision);
+		if (expectedRevision !== server.revision) {
+			return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: server.revision, currentBook: server }, { status: 409 });
+		}
+		server = book(1, server.revision + 1, name);
+		return Response.json({ outcome: "applied", book: server });
+	});
+	const cache = client();
+	const first = await renderHook(() => useLorebookEditor(1), cache); await flushHook();
+	const second = await renderHook(() => useLorebookEditor(1), cache); await flushHook();
+	await second.act(async () => second.current.setName("Mine"));
+	await first.act(async () => first.current.setName("Theirs"));
+	await first.act(async () => { expect(await first.current.saveDirty()).toBe(true); }); await flushHook();
+
+	await second.act(async () => { expect(await second.current.saveDirty()).toBe(false); }); await flushHook();
+	expect(sent).toEqual([1, 1]);
+	expect(server.name).toBe("Theirs");
+	expect(second.current.name).toBe("Mine");
+	expect(second.current.conflict).toBe(true);
+
+	await second.act(async () => { expect(await second.current.saveDirty()).toBe(false); });
+	expect(sent).toEqual([1, 1]);
+	await second.act(async () => second.current.keepMine());
+	await second.act(async () => { expect(await second.current.saveDirty()).toBe(true); }); await flushHook();
+	expect(sent).toEqual([1, 1, 2]);
+	expect(server.name).toBe("Mine");
+	expect(second.current.dirty).toBe(false);
+});
+
 test("Prompt Preset refresh reaches another reader and retains its edited block", async () => {
 	let fresh = false;
 	install(async ({ url }) => Response.json(url.endsWith("/prompt-presets") ? { presets: [] } : { ...recipe(), name: fresh ? "Renamed" : "Preset 1" }));

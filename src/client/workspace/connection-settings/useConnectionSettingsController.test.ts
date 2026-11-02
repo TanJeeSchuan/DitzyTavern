@@ -76,7 +76,38 @@ test("a conflict adopts authority for every reader while retaining the edited Pr
 	expect(reader.current.data).toEqual(settings(4, "Authority"));
 	expect(editor.current.draft.displayName).toBe("Local");
 	expect(editor.current.credentialDraft).toBe("secret");
-	expect(editor.current.conflict?.actualRevision).toBe(4);
+	expect(editor.current.conflict).toBe(true);
+});
+
+test("a Profile changed elsewhere after it was opened conflicts on save instead of being overwritten", async () => {
+	const cache = client();
+	cache.setQueryData(key, settings(2, "Original"));
+	const sent: number[] = [];
+	installFetch(async (url, init) => {
+		if (url.endsWith("/presets")) return Response.json({ presets: [] });
+		const { expectedRevision } = JSON.parse(String(init?.body));
+		sent.push(expectedRevision);
+		return expectedRevision === 3
+			? Response.json({ outcome: "applied", settings: settings(4, "Local") })
+			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: 3, currentSettings: settings(3, "Theirs") }, { status: 409 });
+	});
+	const editor = await renderHook(useConnectionSettingsController, cache);
+	await editor.act(async () => editor.current.chooseProfile(profile("Original")));
+	await editor.act(async () => editor.current.setDraft({ ...editor.current.draft, displayName: "Local" }));
+	await editor.act(async () => { publishConnectionSettings(cache, settings(3, "Theirs")); });
+	await flushHook();
+	expect(editor.current.draft.displayName).toBe("Local");
+
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	expect(sent).toEqual([2]);
+	expect(editor.current.conflict).toBe(true);
+	expect(editor.current.draft.displayName).toBe("Local");
+
+	await editor.act(async () => editor.current.keepMine());
+	await editor.act(async () => { await editor.current.applyDraft(); });
+	expect(sent).toEqual([2, 3]);
+	expect(editor.current.dirty).toBe(false);
 });
 
 test("deletion adopts authority for every reader and clears pending deletion", async () => {
@@ -185,4 +216,42 @@ test("StrictMode and rerenders issue one settings read and one presets read", as
 	await editor.rerender();
 	await flushHook();
 	expect(reads.sort()).toEqual(["presets", "settings"]);
+});
+
+test("a save overtaken by a newer change to its Profile keeps the draft and does not report success", async () => {
+	const cache = client();
+	cache.setQueryData(key, settings(2, "Original"));
+	const response = Promise.withResolvers<Response>();
+	installFetch(async (url) => url.endsWith("/presets") ? Response.json({ presets: [] }) : response.promise);
+	const editor = await renderHook(useConnectionSettingsController, cache);
+	await editor.act(async () => editor.current.chooseProfile(profile("Original")));
+	await editor.act(async () => { editor.current.setDraft({ ...editor.current.draft, displayName: "Mine" }); });
+	let saved: Promise<boolean> = Promise.resolve(true);
+	await editor.act(async () => { saved = editor.current.applyDraft(); });
+	await editor.act(async () => { publishConnectionSettings(cache, settings(3, "Theirs")); });
+	await editor.act(async () => { response.resolve(Response.json({ outcome: "applied", settings: settings(2, "Mine") })); });
+	await flushHook();
+	expect(await saved).toBe(false);
+	expect(editor.current.draft.displayName).toBe("Mine");
+	expect(editor.current.conflict).toBe(true);
+});
+
+test("a created Profile settles against itself when a newer revision arrives during its save", async () => {
+	const cache = client();
+	cache.setQueryData(key, { revision: 1, profiles: [] });
+	const response = Promise.withResolvers<Response>();
+	installFetch(async (url) => url.endsWith("/presets") ? Response.json({ presets: [] }) : response.promise);
+	const editor = await renderHook(useConnectionSettingsController, cache);
+	const created = settings(2, "Created");
+	await editor.act(async () => editor.current.choosePreset({ id: "custom", label: "Custom", description: "", profile: { ...created.profiles[0]! } }));
+	let saved: Promise<boolean> = Promise.resolve(false);
+	await editor.act(async () => { saved = editor.current.applyDraft(); });
+	await editor.act(async () => { publishConnectionSettings(cache, { revision: 3, profiles: created.profiles }); });
+	await flushHook();
+	expect(editor.current.settings?.revision).toBe(3);
+	await editor.act(async () => { response.resolve(Response.json({ outcome: "applied", settings: created })); });
+	await flushHook();
+	expect(await saved).toBe(true);
+	expect(editor.current.conflict).toBe(false);
+	expect(editor.current.draft.displayName).toBe("Created");
 });

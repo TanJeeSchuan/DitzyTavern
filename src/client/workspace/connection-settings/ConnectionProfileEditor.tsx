@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { CONNECTION_ADAPTER_LABELS, type ConnectionProfileDraft, type TestConnectionResult } from "../../connection-settings";
 import { SaveFooter } from "../../SaveFooter";
+import { ConflictBanner } from "../../ConflictBanner";
 import { useSaveGuard, useNavigationRequest } from "../../SaveGuard";
 import { CredentialField } from "./CredentialField";
 import { HeaderEditor } from "./HeaderEditor";
@@ -89,6 +90,11 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 					<p className="text-xs text-muted-foreground">{[title !== provider && provider, selectedProfile === undefined && "Not saved yet"].filter(Boolean).join(" · ")}</p>
 				</div>
 
+				{controller.conflict && <ConflictBanner
+					message="This Connection changed elsewhere after you opened it. Your edits were not saved and are still here."
+					onKeepMine={controller.keepMine}
+					onLoadSaved={controller.discardDraft}
+				/>}
 				<div className="grid gap-4">
 					<Field htmlFor="connection-api-format" label="API Format">
 						<AppSelect
@@ -242,6 +248,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 			<SaveFooter
 			dirty={controller.dirty}
 			saving={controller.saving}
+			valid={!controller.conflict}
 			error={controller.error ?? (validationVisible ? controller.validationError : null)}
 			onSave={() => {
 				setValidationVisible(true);

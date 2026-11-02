@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useReducer } from "react";
+import { useMemo, useReducer, useRef } from "react";
 import {
 	loadConnectionPresets,
 	refreshDiscoveryCatalog,
@@ -15,13 +15,16 @@ import {
 	type TestConnectionResult,
 } from "../../connection-settings";
 import {
+	blankEdit,
 	createConnectionSettingsControllerState,
+	editIn,
+	editOf,
 	reduceConnectionSettingsController,
-	type ConnectionSettingsConflict,
-	type ConnectionSettingsEditorSnapshot,
+	testedEditor,
 	type HeaderEditorData,
+	type ConnectionSettingsControllerAction,
+	type ProfileEdit,
 	copyDraft,
-	headerEditorDataFor,
 } from "../../connection-settings-state";
 import { connectionSettingsKey as settingsKey, publishConnectionSettings, useConnectionSettingsQuery } from "../../connection-settings-query";
 import { connectionDraftValidationError } from "../../connection-settings-draft";
@@ -46,7 +49,7 @@ const LOAD_ERROR = "Connection Settings could not be loaded.";
 //  One submission shape per Profile command family, so the shared command
 // mutation can adopt the server's copy for the editor that sent it.
 type ConnectionCommandSubmission =
-	| { type: "apply"; command: ConnectionSettingsCommand; draftDisplayName: string; submitted: ConnectionSettingsEditorSnapshot }
+	| { type: "apply"; command: ConnectionSettingsCommand; submitted: ProfileEdit }
 	| { type: "delete"; command: ConnectionSettingsCommand; deletedProfileId: number; deletedDisplayName: string }
 	| { type: "reset-credential"; command: ConnectionSettingsCommand };
 
@@ -69,7 +72,8 @@ export type ConnectionSettingsController = {
 	dirty: boolean;
 	saving: boolean;
 	validationError: string | null;
-	conflict: ConnectionSettingsConflict | null;
+	/** @approved The draft lost its save to a change elsewhere; saving waits for Keep my edits or Load saved version. */
+	conflict: boolean;
 	notice: string | null;
 	error: string | null;
 	selectedProfile: ConnectionProfile | undefined;
@@ -89,6 +93,7 @@ export type ConnectionSettingsController = {
 	refreshModels: () => Promise<void>;
 	applyDraft: () => Promise<boolean>;
 	discardDraft: () => void;
+	keepMine: () => void;
 	requestProfileDeletion: (profile: ConnectionProfile) => void;
 	deletePendingProfile: () => Promise<void>;
 	resetCredential: () => Promise<void>;
@@ -107,19 +112,40 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		undefined,
 		createConnectionSettingsControllerState,
 	);
+	const latest = useRef(state);
+	latest.current = state;
+	// @approved
+	//  Whether each save left the draft saved: clean, with nothing typed while
+	// it was in flight. It is settled ahead of the render, so the save reports it.
+	const saved = useRef(new WeakMap<ProfileEdit, boolean>());
+	const settleApply = (action: ConnectionSettingsControllerAction & { submitted: ProfileEdit }) => {
+		// @approved
+		//  The cache may hold a newer copy of the Profile the draft has not rendered yet; it reaches the draft first.
+		const cached = client.getQueryData<ConnectionSettings>(settingsKey);
+		const profileId = latest.current.selectedProfileId;
+		const current = profileId === null ? undefined : cached?.profiles.find((profile) => profile.id === profileId);
+		if (cached !== undefined && current !== undefined) {
+			const observed = { type: "observed", server: { value: editOf(current), revision: cached.revision } } as const;
+			latest.current = reduceConnectionSettingsController(latest.current, observed);
+			dispatch(observed);
+		}
+		const session = latest.current.session;
+		const edited = session?.status === "saving" && session.edited;
+		latest.current = reduceConnectionSettingsController(latest.current, action);
+		saved.current.set(action.submitted, action.type === "apply-succeeded" && !edited && latest.current.session?.status === "clean");
+		dispatch(action);
+	};
 	const {
 		selectedProfileId,
-		draft,
-		credentialDraft,
-		headerEditorData,
+		session,
 		testModelId,
 		testResult,
 		pendingDeletionProfileId,
-		editorOpen,
-		conflict,
 		notice,
 		error,
 	} = state;
+	const { draft, credentialDraft, headerEditorData } = editIn(state);
+	const editorOpen = session !== null;
 	const settingsQuery = useConnectionSettingsQuery();
 	const presetsQuery = useQuery({
 		queryKey: ["connection-settings", "presets"],
@@ -132,6 +158,15 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	});
 	const settings = settingsQuery.data ?? null;
 	const presets = presetsQuery.data ?? [];
+	// @approved
+	//  The open draft follows each settings revision through its revisioned
+	// session: a new Profile against the blank edit, a saved one against its own.
+	const serverProfile = selectedProfileId === null ? undefined : settings?.profiles.find((profile) => profile.id === selectedProfileId);
+	const serverEdit = selectedProfileId === null ? blankEdit : serverProfile === undefined ? null : editOf(serverProfile);
+	if (session !== null && settings !== null && serverEdit !== null) {
+		const action = { type: "observed", server: { value: serverEdit, revision: settings.revision } } as const;
+		if (reduceConnectionSettingsController(state, action) !== state) dispatch(action);
+	}
 	const loadError = settingsQuery.isError || presetsQuery.isError ? LOAD_ERROR : null;
 	// @approved
 	//  A conflict carries the revision it saw; when the cache already holds a
@@ -144,32 +179,44 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const command = useMutation({
 		mutationKey: ["connection-settings", "command"],
 		mutationFn: (submission: ConnectionCommandSubmission) => saveConnectionCommand(submission.command),
-			onSuccess: (result, submission) => {
+		onSuccess: (result, submission) => {
 			if (result.outcome === "conflict") {
 				publishConnectionSettings(client, result.currentSettings);
 				if (submission.type === "reset-credential") dispatch({ type: "set-error", message: "Credential reset failed." });
-				else if (!conflictIsStale(result.actualRevision)) dispatch({ type: "command-conflict", conflict: result, message: APPLY_CONFLICT_ERROR });
+				else if (submission.type === "apply") {
+					const id = submission.command.type === "apply-profile" ? submission.command.profileId : null;
+					const current = result.currentSettings.profiles.find((profile) => profile.id === id);
+					const theirs = id === null ? blankEdit : current === undefined ? null : editOf(current);
+					const { submitted } = submission;
+					if (theirs === null) settleApply({ type: "apply-failed", submitted, message: PROFILE_NOT_FOUND_ERROR });
+					else settleApply({ type: "apply-conflicted", submitted, theirs: { value: theirs, revision: result.currentSettings.revision }, message: APPLY_CONFLICT_ERROR });
+				} else if (!conflictIsStale(result.actualRevision)) dispatch({ type: "set-error", message: APPLY_CONFLICT_ERROR });
 				return;
 			}
 			if (result.outcome !== "available") {
-				dispatch({
-					type: "set-error",
-					message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "network" ? "The connection could not be reached." : PROFILE_NOT_FOUND_ERROR,
-				});
+				const message = result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : result.outcome === "network" ? "The connection could not be reached." : PROFILE_NOT_FOUND_ERROR;
+				if (submission.type === "apply") settleApply({ type: "apply-failed", submitted: submission.submitted, message });
+				else dispatch({ type: "set-error", message });
 				return;
 			}
-			const applied = publishConnectionSettings(client, result.value.settings) ?? result.value.settings;
-			if (submission.type === "apply") dispatch({ type: "apply-succeeded", settings: applied, draftDisplayName: submission.draftDisplayName, submitted: submission.submitted });
+			publishConnectionSettings(client, result.value.settings);
+			// @approved
+			//  The save settles with the copy it wrote; a newer one in the cache reaches the draft as an observation.
+			if (submission.type === "apply") settleApply({ type: "apply-succeeded", settings: result.value.settings, submitted: submission.submitted });
 			else if (submission.type === "delete") dispatch({ type: "delete-succeeded", deletedProfileId: submission.deletedProfileId, deletedDisplayName: submission.deletedDisplayName });
 			else dispatch({ type: "reset-credential-succeeded" });
 		},
-		onError: () => dispatch({ type: "set-error", message: "Connection settings could not be saved." }),
+		onError: (_error, submission) => {
+			const message = "Connection settings could not be saved.";
+			if (submission.type === "apply") settleApply({ type: "apply-failed", submitted: submission.submitted, message });
+			else dispatch({ type: "set-error", message });
+		},
 	});
 	const test = useMutation({
 		mutationKey: ["connection-settings", "test"],
-		mutationFn: ({ request }: { request: TestConnectionDraftInput; editorIdentity: symbol }) => testConnectionDraft(request),
-		onSuccess: (result, { editorIdentity }) => dispatch({ type: "test-succeeded", editorIdentity, result }),
-		onError: (_error, { editorIdentity }) => dispatch({ type: "test-failed", editorIdentity, message: "Test Connection could not be completed." }),
+		mutationFn: ({ request }: { request: TestConnectionDraftInput; editor: string }) => testConnectionDraft(request),
+		onSuccess: (result, { editor }) => dispatch({ type: "test-succeeded", editor, result }),
+		onError: (_error, { editor }) => dispatch({ type: "test-failed", editor, message: "Test Connection could not be completed." }),
 	});
 	const refresh = useMutation({
 		mutationKey: ["connection-settings", "discovery"],
@@ -177,11 +224,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		onSuccess: (result) => {
 			if (result.outcome === "conflict") {
 				publishConnectionSettings(client, result.currentSettings);
-				if (!conflictIsStale(result.actualRevision)) dispatch({
-					type: "command-conflict",
-					conflict: result,
-					message: "Connection Settings changed while models were refreshing. Your draft is preserved.",
-				});
+				if (!conflictIsStale(result.actualRevision)) dispatch({ type: "set-error", message: "Connection Settings changed while models were refreshing. Your draft is preserved." });
 				return;
 			}
 			if (result.outcome !== "available") {
@@ -233,26 +276,26 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		}
 	}, [draft.apiFormat, draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
-	const canSave = settings !== null && validationError === null;
-	const dirty = editorOpen && (selectedProfile === undefined
-		|| JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile))
-		|| JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers))
-		|| credentialDraft.length > 0);
+	const conflict = session?.status === "conflict";
+	const canSave = settings !== null && validationError === null && !conflict;
+	const dirty = session !== null && (session.status === "dirty" || session.status === "conflict" || (session.status === "saving" && session.edited));
+	const revision = settings?.revision ?? 0;
 
 	const choosePreset = (preset: ConnectionPreset) => {
-		dispatch({ type: "choose-preset", preset });
+		dispatch({ type: "choose-preset", preset, revision });
 	};
 
 	const chooseProfile = (profile: ConnectionProfile) => {
-		dispatch({ type: "choose-profile", profile });
+		dispatch({ type: "choose-profile", profile, revision });
 	};
 
 	const duplicateProfile = (profile: ConnectionProfile) => dispatch({
 		type: "choose-preset",
+		revision,
 		preset: { id: `profile-${profile.id}`, label: profile.displayName, description: "", profile: { ...copyDraft(profile), displayName: `${profile.displayName} copy` } },
 	});
 
-	const closeEditor = () => dispatch({ type: "discard-draft" });
+	const closeEditor = () => dispatch({ type: "close-editor" });
 
 	const testDraft = async () => {
 		if (validationError !== null) {
@@ -270,7 +313,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			headers: headerOperationsFor(headerEditorData),
 		};
 		if (selectedProfileId !== null) request.profileId = selectedProfileId;
-		test.mutate({ request, editorIdentity: state.editorIdentity });
+		test.mutate({ request, editor: testedEditor(state) });
 	};
 
 	const refreshModels = async () => {
@@ -281,8 +324,11 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		refresh.mutate(selectedProfileId);
 	};
 
+	// @approved
+	//  A save sends the revision its draft started from, never the cache's
+	// latest, so a Profile changed elsewhere meanwhile conflicts instead of being overwritten.
 	const applyDraft = async () => {
-		if (settings === null) return false;
+		if (settings === null || session === null || (session.status !== "clean" && session.status !== "dirty")) return false;
 		if (validationError !== null) {
 			dispatch({ type: "set-error", message: validationError });
 			return false;
@@ -290,20 +336,18 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		let headers: ConnectionHeaderOperation[];
 		try { headers = headerOperationsFor(headerEditorData); }
 		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return false; }
-		dispatch({ type: "clear-feedback" });
+		const submitted = editIn(state);
+		const expectedRevision = session.base.revision;
+		dispatch({ type: "apply-started", submitted });
 		const commandPayload: ConnectionSettingsCommand = selectedProfileId === null
-			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
-			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
+			? { type: "create-profile", expectedRevision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
+			: { type: "apply-profile", expectedRevision, profileId: selectedProfileId, profile: draft, headers };
 		if (credentialDraft.length > 0) commandPayload.credential = credentialDraft;
-		const result = await command.mutateAsync({
-			type: "apply",
-			command: commandPayload,
-			draftDisplayName: draft.displayName,
-			submitted: { selectedProfileId, editorIdentity: state.editorIdentity },
-		});
-		return result.outcome === "available";
+		await command.mutateAsync({ type: "apply", command: commandPayload, submitted }).catch(() => null);
+		return saved.current.get(submitted) === true;
 	};
-	const discardDraft = () => selectedProfile === undefined ? dispatch({ type: "discard-draft" }) : dispatch({ type: "choose-profile", profile: selectedProfile });
+	const discardDraft = () => dispatch({ type: "discard-draft" });
+	const keepMine = () => dispatch({ type: "keep-mine" });
 
 	const requestProfileDeletion = (profile: ConnectionProfile) => {
 		dispatch({
@@ -370,6 +414,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		refreshModels,
 		applyDraft,
 		discardDraft,
+		keepMine,
 		requestProfileDeletion,
 		deletePendingProfile,
 		resetCredential,

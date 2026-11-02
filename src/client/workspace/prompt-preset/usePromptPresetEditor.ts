@@ -46,6 +46,7 @@ export function usePromptPresetEditor({
 		busy: runtime.state.busy,
 		dirtyCount: runtime.dirtyCount,
 		save,
+		discard: () => runtime.dispatch({ type: "leave-resolved" }),
 		notice: runtime.state.notice,
 		problem: runtime.state.problem,
 		leaveRequest: runtime.state.leaveRequest,

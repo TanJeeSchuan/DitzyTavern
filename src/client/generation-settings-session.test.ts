@@ -101,6 +101,48 @@ test("ABA edits during save preserve the newer draft and prevent save-and-leave 
 	expect(h.hook.current.settings?.continuationInstruction).toBe("Submitted");
 });
 
+test("discard during a save keeps the submitted draft until the save settles", async () => {
+	const response = Promise.withResolvers<Response>();
+	const h = await harness(({ init }) => init?.method === "POST" ? response.promise : Promise.resolve(Response.json(settings())));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Submitted"));
+	let save: Promise<boolean> = Promise.resolve(false);
+	await h.hook.act(async () => { save = h.hook.current.save(); });
+	await flushHook();
+	await h.hook.act(async () => { h.hook.current.discard(); });
+	expect(h.hook.current.instruction).toBe("Submitted");
+	await h.hook.act(async () => response.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })));
+	await flushHook();
+	expect(await save).toBe(true);
+	expect(h.hook.current.instruction).toBe("Submitted");
+	expect(h.hook.current.dirty).toBe(false);
+});
+
+test("a newer Conversation revision without newer settings does not move the draft's save revision", async () => {
+	const h = await harness(({ init }) => init?.method === "POST"
+		? Promise.resolve(Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 }))
+		: Promise.resolve(Response.json(settings())));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
+	h.options.conversation = summary(1, 6);
+	await h.hook.rerender();
+	await h.hook.act(async () => { await h.hook.current.save(); });
+	expect(JSON.parse(String(h.requests.find(({ init }) => init?.method === "POST")?.init?.body)).expectedRevision).toBe(5);
+});
+
+test("a conflict whose settings cannot be read again keeps the draft unsaved instead of retrying", async () => {
+	let reads = 0;
+	const h = await harness(async ({ init }) => init?.method === "POST"
+		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 })
+		: ++reads === 3 ? new Response(null, { status: 500 }) : Response.json(settings()));
+	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
+	let saved = true;
+	await h.hook.act(async () => { saved = await h.hook.current.save(); });
+	await flushHook();
+	expect(saved).toBe(false);
+	expect(h.requests.filter(({ init }) => init?.method === "POST")).toHaveLength(1);
+	expect(h.hook.current.instruction).toBe("Local");
+	expect(h.hook.current.dirty).toBe(true);
+});
+
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"
