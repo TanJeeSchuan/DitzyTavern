@@ -37,7 +37,7 @@ type AssemblyControllerOptions = {
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
-	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send is not accepted.
+	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send fails while its visit is current.
 	takeComposer: () => () => void;
 };
 
@@ -156,8 +156,8 @@ export function useAssemblyController({
 			generationStart.accepted(startId, target);
 			void refreshStory(request.conversationId, signal).catch(() => null);
 		}, (error: Error) => {
-			restoreComposer?.();
 			if (!transition({ type: "failed", visit: signal, error: error.message })) return;
+			restoreComposer?.();
 			generationStart.settle(startId);
 			dispatchStory({ type: "generation-request-failed" });
 		});

@@ -222,7 +222,7 @@ describe("assembly session", () => {
 		await flushHook();
 		expect(signal?.aborted).toBe(true);
 		expect(h.hook.current.assembly?.preview?.promptPlan).toEqual(plan("New Plan"));
-		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+		expect(h.effects).toEqual(["begin", "clear"]);
 	});
 
 	test("a direct start failing after a batched A to B to A reports nothing to the returned visit", async () => {
@@ -242,7 +242,7 @@ describe("assembly session", () => {
 		await h.hook.act(async () => response.resolve(Response.json({ outcome: "not-found" }, { status: 404 })));
 		await flushHook();
 		expect(h.hook.current.directStartError).toBeNull();
-		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+		expect(h.effects).toEqual(["begin", "clear"]);
 	});
 
 	test("a Chat deleted while a Send waits for latest opens no preview for it", async () => {
@@ -271,7 +271,7 @@ describe("assembly session", () => {
 		await h.hook.act(async () => latest.resolve(conversation()));
 		await flushHook();
 		expect(h.requests).toHaveLength(1);
-		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+		expect(h.effects).toEqual(["begin", "clear"]);
 	});
 
 	test("acceptance subscribes while the story refresh is still in flight", async () => {
@@ -299,7 +299,7 @@ describe("assembly session", () => {
 		expect(h.effects).toEqual([]);
 	});
 
-	test("acceptance settling after unmount cannot report acceptance", async () => {
+	test("acceptance settling after unmount neither reports acceptance nor restores the draft", async () => {
 		const response = Promise.withResolvers<Response>();
 		const h = await assemblyHarness(({ url }) => url.endsWith("/preview") ? Promise.resolve(Response.json(preview())) : response.promise);
 		await h.open();
@@ -308,6 +308,6 @@ describe("assembly session", () => {
 		await h.leave();
 		await h.hook.act(async () => response.resolve(Response.json(accepted)));
 		await flushHook();
-		expect(h.effects).toEqual(["begin", "clear", "restore"]);
+		expect(h.effects).toEqual(["begin", "clear"]);
 	});
 });
