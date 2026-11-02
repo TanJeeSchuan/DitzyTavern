@@ -146,7 +146,13 @@ const runDigest = async (database: Database, queue: DigestQueue, job: DigestJob)
 		if (lands()) writeAutomaticRecord(drizzle(database), job.box, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (signal.aborted) return;
-		console.error(`[box-digest] The ${job.box} digest of Variant ${job.variantId} failed.`, error);
+		// @approved
+		//  A plain Error is a failure the Box chose to report: its message and
+		//  any cause are the whole story. Anything else is unexpected and keeps
+		//  its stack.
+		const reported = error instanceof Error && error.name === "Error";
+		console.error(`[box-digest] ${job.box} digest failed · Chat ${job.conversationId} · Message ${job.messageId} · Variant ${job.variantId}:`,
+			reported ? `${error.message}${error.cause === undefined ? "" : `\n${String(error.cause)}`}` : error);
 		if (!lands()) return;
 		writeDigestError(drizzle(database), job.box, job.instance, job.variantId, job.source, error instanceof Error ? error.message : String(error));
 		if (job.catchUp !== null) job.catchUp.failed += 1;
