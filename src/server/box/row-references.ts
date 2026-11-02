@@ -2,6 +2,9 @@
 import { Kind, KindGuard, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
+import { Type } from "@sinclair/typebox";
+import type { BoxDescriptor } from "../../shared/contract/box-descriptor";
+import { boxRecordSlot } from "../../shared/contract/box-digest";
 
 type RowKind = "message" | "variant" | "participant";
 export type RowIdMaps = Record<RowKind, ReadonlyMap<number, number>>;
@@ -48,6 +51,30 @@ export function rewriteRowReferences<T extends TSchema>(schema: T, value: Static
 	};
 	// SAFETY: the walk preserves the schema shape and replaces ids with ids.
 	return walk(schema, value, "") as Static<T>;
+}
+
+/** @approved Where a Box value is stored: on the Chat, a Participant, a Message or a Variant. */
+export type BoxValueScope = "chat" | "participant" | "message" | "variant";
+
+/** @approved The schema a stored Box value is written in, which declares its Row References; undefined when the Box declares none for that key. */
+export const boxValueSchema = (descriptor: BoxDescriptor, scope: BoxValueScope, key: string): TSchema | undefined => (
+	scope === "chat" ? key === "setup" ? descriptor.setup?.schema : descriptor.values?.chat?.[key]
+	: scope === "participant" ? descriptor.values?.participant?.[key]
+	: scope === "message" ? key === "moves" && descriptor.moves ? Type.Array(descriptor.moves.schema) : undefined
+	: key.startsWith("record:") && descriptor.record ? boxRecordSlot(descriptor.record) : undefined
+) || undefined;
+
+/** @approved Records every id it is asked to map and maps it to itself, so the rewrite walk doubles as a reference scan. */
+class Recorder extends Map<number, number> {
+	readonly seen = new Set<number>();
+	override get(id: number) { this.seen.add(id); return id; }
+}
+
+/** @approved The Participant ids a Box value names, found by the same walk a fork rewrites them with. */
+export function participantReferencesOf<T extends TSchema>(schema: T, value: Static<T>): ReadonlySet<number> {
+	const participant = new Recorder();
+	rewriteRowReferences(schema, value, { participant, message: new Map(), variant: new Map() }, { keepMissing: true });
+	return participant.seen;
 }
 
 // TypeBox writes this pattern for any Integer or Number key and drops the key schema's annotations.

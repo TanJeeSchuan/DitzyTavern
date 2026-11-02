@@ -7,12 +7,13 @@ import { createCharacterLibraryModule } from "../character-library";
 import {
 	characterTable, characterPromptTable, characterDataTable, characterLorebookAttachmentTable,
 	participantTable, participantPromptTable, participantOpeningTable, participantDataTable, participantLorebookAttachmentTable,
-	conversationLorebookAttachmentTable,
+	conversationLorebookAttachmentTable, messageTable,
 } from "../database/schema";
 import { readLorebookAttachmentImpact } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 import { applyCommand, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
 import { deleteConversation } from "./delete";
+import { acceptConversationTailGeneration, forkConversation, readConversationSummary, stopConversationGeneration } from ".";
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
@@ -91,4 +92,31 @@ test("a live Character without its Prompt is rejected instead of fabricating an 
 	const { library, source } = setup();
 	drizzle(database).delete(characterPromptTable).where(eq(characterPromptTable.character_id, source.id)).run();
 	expect(() => library.get(source.id)).toThrow("has no Prompt");
+});
+
+test("tombstone collection keeps a Participant that a Box value still names", () => {
+	const chat = createConversationWithHistory(database, {
+		name: "Source Chat",
+		participants: [{ definition: definition("Writer") }, { definition: definition("Model", ["Earlier message"]) }, { definition: definition("Guest") }],
+		control: { human: 0, model: 1 },
+	});
+	const guest = chat.cast[2]!.id;
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:memory', 'labels', ?)")
+		.run(chat.id, JSON.stringify({ identities: { [guest]: { kind: "plays", person: "Alice" } }, merges: [] }));
+	const written = applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "create-message", timestamp: "2026-11-02T00:00:00Z", variantContents: ["Guest speaks"], authorParticipantId: guest } });
+	const removed = applyCommand(database, { conversationId: chat.id, expectedRevision: written.revision, action: { type: "remove-participant", participantId: guest } });
+	// The fork copies the Guest tombstone for the labels, but none of the Messages that name it.
+	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: removed.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
+	const accepted = acceptConversationTailGeneration(database, {
+		seed: "seed", conversationId: fork.id, expectedRevision: fork.revision, timestamp: "2026-11-02T00:01:00Z", humanContent: "Hello",
+		humanParticipantId: fork.cast[0]!.id, modelParticipantId: fork.cast[1]!.id, capturedModelName: "Model",
+		promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
+	});
+	stopConversationGeneration(database, { conversationId: fork.id, generationId: accepted.generationId });
+
+	expect(drizzle(database).select({ name: participantTable.name }).from(participantTable).where(eq(participantTable.conversation_id, fork.id)).all().map(({ name }) => name)).toContain("Guest");
+	const first = drizzle(database).select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, fork.id)).orderBy(messageTable.position).limit(1).get()!;
+	const again = forkConversation(database, { conversationId: fork.id, expectedRevision: readConversationSummary(database, fork.id)!.revision, at: { through: first.id }, name: "Fork again", trimVariants: false });
+	expect(again.conversation.name).toBe("Fork again");
 });
