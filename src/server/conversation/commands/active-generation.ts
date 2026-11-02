@@ -1,3 +1,4 @@
+import { collectReleasedTombstones } from "../cleanup";
 import { durableOutcome, terminalOutcome, type TerminalOutcome } from "../../../shared/contract/generation-phase";
 import { decodeStoredGenerationIntent } from "../generation-state";
 import { Value } from "@sinclair/typebox/value";
@@ -487,6 +488,7 @@ function removeActiveGenerationTargetInTransaction(
 			),
 		)
 		.run();
+	collectReleasedTombstones(db, active.conversation_id);
 	return { durableOutput: false };
 }
 

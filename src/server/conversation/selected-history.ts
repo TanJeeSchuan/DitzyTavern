@@ -1,3 +1,4 @@
+import { isActive } from "../database/is-active";
 import { loadMessageRows, toDataEntry } from "./message-rows";
 // @approved
 //  Focused selected-history read model. Generation and Macro Variable
@@ -6,7 +7,7 @@ import { loadMessageRows, toDataEntry } from "./message-rows";
 // arbitrary metadata makes those reads scale with discarded history.
 
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, isNull, like, max } from "drizzle-orm";
+import { and, asc, eq, like, max } from "drizzle-orm";
 import {
 	conversationDataTable,
 	messageTable,
@@ -127,7 +128,7 @@ const readSelectedHistoryFromConnection = (
 		.from(participantTable)
 		.where(and(
 			eq(participantTable.conversation_id, conversationId),
-			isNull(participantTable.deleted_at),
+			isActive(participantTable),
 		))
 		.all()
 		.map((participant) => participant.id));

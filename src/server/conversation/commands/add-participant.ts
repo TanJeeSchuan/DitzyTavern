@@ -1,4 +1,5 @@
-import { and, eq, isNull, max } from "drizzle-orm";
+import { isActive } from "../../database/is-active";
+import { and, eq, max } from "drizzle-orm";
 import { participantTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import {
@@ -50,7 +51,7 @@ export function addParticipant(
 		.where(
 			and(
 				eq(participantTable.conversation_id, input.conversationId),
-				isNull(participantTable.deleted_at),
+				isActive(participantTable),
 			),
 		)
 		.get()?.value;
