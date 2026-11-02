@@ -56,18 +56,17 @@ export type ConversationCommandSend<TOperation = never> = (
 ) => Promise<CommandOutcome | { outcome: "operation"; operation: TOperation }>;
 
 // What a settled command leaves for the next one queued behind it: the revision it produced when known,
-// null when it succeeded without reporting one, false when it failed or was dropped.
+// null when it succeeded without reporting one, false when it failed.
 type Settled = number | null | false;
 const queues = new Map<number, Promise<Settled>>();
 
 /**
  * Runs `command` after every command this client already queued for the Conversation. It receives the revision
- * the last of them produced, and is dropped (settling false) when that one failed, so nothing is sent on top of
- * a change the writer saw but the server refused.
+ * the last of them produced, or null after a failure so it reads its own current revision.
  */
 export function queueConversationCommand(conversationId: number, command: (revision: number | null) => Promise<Settled>): Promise<Settled> {
 	const settled = (queues.get(conversationId) ?? Promise.resolve(null))
-		.then((previous) => previous === false ? false : command(previous))
+		.then((previous) => command(previous === false ? null : previous))
 		.catch(() => false as const);
 	queues.set(conversationId, settled);
 	void settled.then(() => { if (queues.get(conversationId) === settled) queues.delete(conversationId); });

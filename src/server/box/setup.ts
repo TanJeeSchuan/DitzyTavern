@@ -50,11 +50,6 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 	return Object.fromEntries([...boxDescriptors().keys()].map((id) => [id, lifecycles[id]?.state ?? "absent"]));
 };
 
-/** @approved The Chats where the Box is enabled, as a subquery for background work that spans Chats. */
-export const enabledBoxConversations = (db: BunSQLiteDatabase, id: BoxId) =>
-	db.select({ id: conversationDataTable.conversation_id }).from(conversationDataTable)
-		.where(and(eq(conversationDataTable.namespace, boxReference(id)), eq(conversationDataTable.key, ENABLED_KEY), eq(conversationDataTable.value, "true")));
-
 export const boxSetupEntry = (id: BoxId, setup: BoxValue) =>
 	({ namespace: boxReference(id), key: SETUP_KEY, value: JSON.stringify(setup) });
 

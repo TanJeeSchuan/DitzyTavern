@@ -3,7 +3,7 @@ import { describePhoneTexts, phoneNames, stripPhoneTexts } from "./shared";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Smartphone } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createBoxLens, Button, SegmentedControl, Textarea, useBoxRead, type BoxClientDefinition, type ConversationSummary, type MoveStaging } from "@/box-sdk/client";
 import { boxMovesOf } from "@/box-sdk/shared";
 import { MAX_PHONE_MOVES, phoneMove, phoneRead, type PhoneRead } from "./contract";
@@ -16,27 +16,34 @@ const usePhone = (conversation: ConversationSummary) => useBoxRead(conversation,
 //  incoming texts this Chat's Phone has shown, kept per Chat in local storage.
 const seenKeys = Type.Array(Type.String());
 const seenStorageKey = (conversationId: number) => `ditzytavern.phone-seen.${conversationId}`;
-const readSeen = (conversationId: number): Set<string> => {
-	try {
-		const parsed: unknown = JSON.parse(window.localStorage.getItem(seenStorageKey(conversationId)) ?? "[]");
-		return new Set(Value.Check(seenKeys, parsed) ? parsed : []);
-	} catch {
-		return new Set();
-	}
+const seenChanged = "ditzytavern.phone-seen";
+const subscribeSeen = (listener: () => void) => {
+	window.addEventListener(seenChanged, listener);
+	window.addEventListener("storage", listener);
+	return () => { window.removeEventListener(seenChanged, listener); window.removeEventListener("storage", listener); };
+};
+const useSeen = (conversationId: number): Set<string> => {
+	const stored = useSyncExternalStore(subscribeSeen, () => window.localStorage.getItem(seenStorageKey(conversationId)));
+	return useMemo(() => {
+		try {
+			const parsed: unknown = JSON.parse(stored ?? "[]");
+			return new Set(Value.Check(seenKeys, parsed) ? parsed : []);
+		} catch { return new Set<string>(); }
+	}, [stored]);
 };
 const unread = (thread: PhoneRead["threads"][number], seen: Set<string>) =>
 	thread.texts.filter(({ from, key }) => from === thread.contact && !seen.has(key)).length;
 
 function PhoneStatus({ conversation }: { conversation: ConversationSummary }) {
 	const read = usePhone(conversation);
-	const seen = readSeen(conversation.id);
+	const seen = useSeen(conversation.id);
 	const count = read.data?.threads.reduce((total, thread) => total + unread(thread, seen), 0) ?? 0;
 	return <span>{read.isError ? "Unavailable" : count === 0 ? "No unread texts" : `${count} unread`}</span>;
 }
 
 function PhonePanel({ visible, conversation, disabled, staging }: { visible: boolean; conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null }) {
 	const read = usePhone(conversation);
-	const [seen, setSeen] = useState(() => readSeen(conversation.id));
+	const seen = useSeen(conversation.id);
 	const [picked, setPicked] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const threads = read.data?.threads ?? [];
@@ -52,7 +59,7 @@ function PhonePanel({ visible, conversation, disabled, staging }: { visible: boo
 		if (unread(thread, seen) === 0) return;
 		const next = new Set([...seen, ...thread.texts.map(({ key }) => key)]);
 		window.localStorage.setItem(seenStorageKey(conversation.id), JSON.stringify([...next]));
-		setSeen(next);
+		window.dispatchEvent(new Event(seenChanged));
 	}, [visible, conversation.id, thread, seen, picked]);
 
 	if (read.isError) return <p className="phone-note">The Phone could not be loaded.</p>;

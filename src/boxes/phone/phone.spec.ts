@@ -108,3 +108,19 @@ test("the Phone block's instructions are edited in the preset and sent before th
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("Theodora checks her phone.")).toBeVisible();
 });
+
+test("reading a Phone thread updates the already-mounted Box status", async ({ page, llm }) => {
+	await llm.chat({ chunks: [sms("Theodora Kline", "Night Desk", "still here?")] });
+	await page.goto("/");
+	await insertBox(page, "Phone");
+	await page.getByRole("textbox", { name: "Message draft" }).fill("Text me.");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByRole("button", { name: "Theodora Kline texted Night Desk" })).toBeVisible();
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Boxes", exact: true }).click();
+	const row = page.getByRole("group", { name: "Boxes", exact: true }).getByRole("listitem").filter({ has: page.getByRole("button", { name: "Phone", exact: true }) });
+	await expect(row).toContainText("1 unread");
+	await row.getByRole("button", { name: "Phone", exact: true }).click();
+	await expect(page.getByRole("dialog", { name: "Phone" }).getByRole("listitem")).toHaveText(["still here?"]);
+	await expect(row).toContainText("No unread texts");
+});

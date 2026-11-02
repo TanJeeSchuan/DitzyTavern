@@ -24,6 +24,7 @@ const announce = (feed: Feed) => {
 };
 
 export const watchDatabaseChanges = (database: Database, intervalMs = 100) => {
+	if (feeds.has(database)) throw new Error("Database changes are already watched.");
 	const feed: Feed = { mark: markOf(database), seq: 0, listeners: new Set() };
 	feeds.set(database, feed);
 	const timer = setInterval(() => {

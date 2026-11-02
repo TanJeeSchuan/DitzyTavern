@@ -272,7 +272,7 @@ export function ActiveWritingWorkspace({
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
 				mutationsDisabled={story.preview !== null}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
 				onOpenWindow={boxWindows.open}
 			/>
 			</CoveredLayer>
@@ -298,7 +298,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel }))}
+				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					dispatchPanel({ type: "chat-info-opened" });

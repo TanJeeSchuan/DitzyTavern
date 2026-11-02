@@ -65,6 +65,10 @@ export function createUpdateChecker(database: Database, { build = buildMetadata,
 		publish();
 		return inFlight;
 	};
+	const startSchedule = () => {
+		cancelSchedule = schedule(() => void check(), 86_400_000);
+		void check();
+	};
 	return {
 		get: () => state,
 		check,
@@ -72,8 +76,7 @@ export function createUpdateChecker(database: Database, { build = buildMetadata,
 			if (started || stopping.signal.aborted) return;
 			started = true;
 			if (build.distribution === "official" && state.automaticChecks) {
-				cancelSchedule = schedule(() => void check(), 86_400_000);
-				void check();
+				startSchedule();
 			}
 		},
 		setAutomaticChecks: (enabled: boolean) => {
@@ -84,8 +87,7 @@ export function createUpdateChecker(database: Database, { build = buildMetadata,
 			cancelSchedule = undefined;
 			publish();
 			if (started && enabled && build.distribution === "official") {
-				cancelSchedule = schedule(() => void check(), 86_400_000);
-				void check();
+				startSchedule();
 			}
 			return state;
 		},

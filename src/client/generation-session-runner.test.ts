@@ -7,6 +7,7 @@ import type {
 } from "./conversation-stream";
 import { createGenerationSessionRunner } from "./generation-session-runner";
 import { NetworkError } from "./lib/request-outcome";
+import { hasActiveGenerationSessions } from "./generation-sessions";
 import type {
 	GenerationSessionStoryEffect,
 	GenerationSessionsState,
@@ -177,20 +178,26 @@ describe("the Generation session runner", () => {
 		});
 	}
 
-	test("does not retry permanent application errors", async () => {
+	test("an application refresh failure cannot strand an interrupted Generation", async () => {
 		const stream = fakeStream();
 		let attempts = 0;
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
 			applyStoryEffect: () => {},
-			refreshConversation: async () => { attempts++; throw new Error("Invalid Conversation response"); },
+			refreshConversation: async () => {
+				if (++attempts === 1) throw new Error("Invalid Conversation response");
+				runner.dispatch(observeTargets([]));
+			},
 		});
-		runner.dispatch(observeTargets([7]));
-		stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
-		await flushSubscriptions();
-		jest.advanceTimersByTime(2_000);
-		expect(attempts).toBe(1);
-		runner.dispose();
+		try {
+			runner.dispatch(observeTargets([7]));
+			stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
+			await flushSubscriptions();
+			jest.advanceTimersByTime(250);
+			await flushSubscriptions();
+			expect(hasActiveGenerationSessions(runner.getSnapshot())).toBe(false);
+			expect(attempts).toBe(2);
+		} finally { runner.dispose(); }
 	});
 
 	test("opens subscriptions through the adapter and routes observations to story effects", () => {

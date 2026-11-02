@@ -134,3 +134,20 @@ test("selecting a Swipe taller than the screen keeps its start in view", async (
 	await page.waitForTimeout(300);
 	await expect(reply.getByText("Long take, line 0.")).toBeInViewport();
 });
+
+test("a drag with no click does not swallow assistive activation", async ({ page, llm }) => {
+	const reply = await threeTakes(page, llm);
+	await reply.getByRole("button", { name: "3 of 3, browse Swipes" }).click();
+	const fan = page.getByRole("dialog", { name: "Swipes" });
+	const card = fan.getByRole("button", { name: "Swipe 3 of 3" });
+	const box = await card.boundingBox();
+	if (box === null) throw new Error("Swipe card is not visible");
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 5 });
+	// Some pointer releases generate no click. Stop this click before React sees it.
+	await page.evaluate(() => window.addEventListener("click", (event) => event.stopImmediatePropagation(), { capture: true, once: true }));
+	await page.mouse.up();
+	await fan.locator("[data-front=true]").dispatchEvent("click", { detail: 0 });
+	await expect(fan).toBeHidden();
+});

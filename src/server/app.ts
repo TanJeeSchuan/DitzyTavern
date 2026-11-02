@@ -52,8 +52,9 @@ export async function createApp(options: AppOptions) {
 		});
 	updates.start();
 
+	let closing: Promise<void> | undefined;
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
-		shutdownApplication(database, async () => { stopChanges(); await updates.stop(); await stopHttp(); }, stopBoxDigests);
+		closing ??= shutdownApplication(database, async () => { stopChanges(); await updates.stop(); await stopHttp(); }, stopBoxDigests);
 	return { app, close };
 }
 
