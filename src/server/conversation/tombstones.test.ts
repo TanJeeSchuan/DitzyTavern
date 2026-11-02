@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { emptyPromptChannels } from "../../shared/definition";
 import { createCharacterLibraryModule } from "../character-library";
@@ -13,7 +13,7 @@ import { readLorebookAttachmentImpact } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 import { applyCommand, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
 import { deleteConversation } from "./delete";
-import { acceptConversationTailGeneration, forkConversation, readConversationSummary, stopConversationGeneration } from ".";
+import { forkConversation } from ".";
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
@@ -107,16 +107,12 @@ test("tombstone collection keeps a Participant that a Box value still names", ()
 	const removed = applyCommand(database, { conversationId: chat.id, expectedRevision: written.revision, action: { type: "remove-participant", participantId: guest } });
 	// The fork copies the Guest tombstone for the labels, but none of the Messages that name it.
 	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: removed.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
-	const accepted = acceptConversationTailGeneration(database, {
-		seed: "seed", conversationId: fork.id, expectedRevision: fork.revision, timestamp: "2026-11-02T00:01:00Z", humanContent: "Hello",
-		humanParticipantId: fork.cast[0]!.id, modelParticipantId: fork.cast[1]!.id, capturedModelName: "Model",
-		promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model",
-		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-	});
-	stopConversationGeneration(database, { conversationId: fork.id, generationId: accepted.generationId });
+	const added = applyCommand(database, { conversationId: fork.id, expectedRevision: fork.revision, action: { type: "create-message", timestamp: "2026-11-02T00:01:00Z", variantContents: ["Aside"], authorParticipantId: fork.cast[0]!.id } });
+	const aside = drizzle(database).select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, fork.id)).orderBy(desc(messageTable.position)).limit(1).get()!;
+	const deleted = applyCommand(database, { conversationId: fork.id, expectedRevision: added.revision, action: { type: "delete-message", messageId: aside.id } });
 
 	expect(drizzle(database).select({ name: participantTable.name }).from(participantTable).where(eq(participantTable.conversation_id, fork.id)).all().map(({ name }) => name)).toContain("Guest");
 	const first = drizzle(database).select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, fork.id)).orderBy(messageTable.position).limit(1).get()!;
-	const again = forkConversation(database, { conversationId: fork.id, expectedRevision: readConversationSummary(database, fork.id)!.revision, at: { through: first.id }, name: "Fork again", trimVariants: false });
+	const again = forkConversation(database, { conversationId: fork.id, expectedRevision: deleted.revision, at: { through: first.id }, name: "Fork again", trimVariants: false });
 	expect(again.conversation.name).toBe("Fork again");
 });

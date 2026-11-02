@@ -1,4 +1,3 @@
-import { collectReleasedTombstones } from "../cleanup";
 import { durableOutcome, terminalOutcome, type TerminalOutcome } from "../../../shared/contract/generation-phase";
 import { decodeStoredGenerationIntent } from "../generation-state";
 import { Value } from "@sinclair/typebox/value";
@@ -488,7 +487,10 @@ function removeActiveGenerationTargetInTransaction(
 			),
 		)
 		.run();
-	collectReleasedTombstones(db, active.conversation_id);
+	// @approved
+	//  No tombstone is collected here: a Tail or Continuation target names only
+	// the Control seats it was accepted with, and a seat holder can be neither
+	// removed nor replaced while the Generation runs.
 	return { durableOutput: false };
 }
 

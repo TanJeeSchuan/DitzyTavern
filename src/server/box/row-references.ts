@@ -17,7 +17,7 @@ export function rewriteRowReferences<T extends TSchema>(schema: T, value: Static
 		throw new Error(`Missing ${kind} ${id} at ${path || "/"}.`);
 	};
 	const walk = (node: TSchema, current: unknown, path: string): unknown => {
-		if (!needsWalk(node)) return current;
+		if (!holdsRowReferences(node)) return current;
 		const reference = node.rowReference;
 		if (reference === "message" || reference === "variant" || reference === "participant") {
 			if (typeof current === "number") return rewrite(reference, current, path);
@@ -87,7 +87,8 @@ const integerKeyPattern = "^(0|[1-9][0-9]*)$";
 // megabytes of reference-free values, and walking them leaf by leaf was most
 // of a fork's time.
 const walked = new WeakMap<TSchema, boolean>();
-const needsWalk = (node: TSchema) => {
+/** @approved Whether a value of this schema can name a row at all. */
+export const holdsRowReferences = (node: TSchema) => {
 	let needed = walked.get(node);
 	if (needed === undefined) {
 		const text = JSON.stringify(node);

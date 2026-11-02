@@ -1,7 +1,6 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, like, notInArray } from "drizzle-orm";
 import { boxDescriptors, boxIdOf } from "../../shared/contract/box";
-import { boxValueSchema, participantReferencesOf, type BoxValueScope } from "../box/row-references";
-import { isHostChatKey } from "../box/setup";
+import { boxValueSchema, holdsRowReferences, participantReferencesOf, type BoxValueScope } from "../box/row-references";
 import { parseStoredBoxJson } from "../box/stored-json";
 import { collectReleasedCharacterTombstones } from "../character-library";
 import {
@@ -14,16 +13,27 @@ import { messageReferencesParticipant, type ConversationDatabase } from "./inter
 // References, the same references a fork rewrites. Null when a value cannot
 // be read against its Box's schema (the Box is gone or the value is
 // malformed): its references are unknown, so nothing may be collected.
+// Only Box-owned keys a Box schema covers are read: Generation traces, import
+// archives and other host data run to tens of megabytes per Chat and never
+// hold a Row Reference a fork rewrites.
 const boxReferencedParticipants = (db: ConversationDatabase, conversationId: number): ReadonlySet<number> | null => {
 	const messageIds = db.select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, conversationId)).all().map(({ id }) => id);
 	const variantIds = messageIds.length === 0 ? [] : db.select({ id: messageVariantTable.id }).from(messageVariantTable).where(inArray(messageVariantTable.message_id, messageIds)).all().map(({ id }) => id);
 	const participantIds = db.select({ id: participantTable.id }).from(participantTable).where(eq(participantTable.conversation_id, conversationId)).all().map(({ id }) => id);
+	const boxOwned = like(conversationDataTable.namespace, "box:%");
+	const chatRows = db.select().from(conversationDataTable)
+		.where(and(eq(conversationDataTable.conversation_id, conversationId), boxOwned, notInArray(conversationDataTable.key, ["enabled", "instance"]))).all();
+	const participantRows = participantIds.length === 0 ? [] : db.select().from(participantDataTable)
+		.where(and(inArray(participantDataTable.participant_id, participantIds), like(participantDataTable.namespace, "box:%"))).all();
+	const messageRows = messageIds.length === 0 ? [] : db.select().from(messageDataTable)
+		.where(and(inArray(messageDataTable.message_id, messageIds), like(messageDataTable.namespace, "box:%"), eq(messageDataTable.key, "moves"))).all();
+	const variantRows = variantIds.length === 0 ? [] : db.select().from(messageVariantDataTable)
+		.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), like(messageVariantDataTable.namespace, "box:%"), like(messageVariantDataTable.key, "record:%"))).all();
 	const rows: { scope: BoxValueScope; namespace: string; key: string; value: string }[] = [
-		...db.select().from(conversationDataTable).where(eq(conversationDataTable.conversation_id, conversationId)).all()
-			.filter(({ key }) => !isHostChatKey(key) || key === "setup").map((row) => ({ ...row, scope: "chat" as const })),
-		...(participantIds.length === 0 ? [] : db.select().from(participantDataTable).where(inArray(participantDataTable.participant_id, participantIds)).all().map((row) => ({ ...row, scope: "participant" as const }))),
-		...(messageIds.length === 0 ? [] : db.select().from(messageDataTable).where(inArray(messageDataTable.message_id, messageIds)).all().map((row) => ({ ...row, scope: "message" as const }))),
-		...(variantIds.length === 0 ? [] : db.select().from(messageVariantDataTable).where(inArray(messageVariantDataTable.message_variant_id, variantIds)).all().map((row) => ({ ...row, scope: "variant" as const }))),
+		...chatRows.map((row) => ({ ...row, scope: "chat" as const })),
+		...participantRows.map((row) => ({ ...row, scope: "participant" as const })),
+		...messageRows.map((row) => ({ ...row, scope: "message" as const })),
+		...variantRows.map((row) => ({ ...row, scope: "variant" as const })),
 	];
 	const descriptors = boxDescriptors();
 	const referenced = new Set<number>();
@@ -33,7 +43,7 @@ const boxReferencedParticipants = (db: ConversationDatabase, conversationId: num
 		const descriptor = descriptors.get(id);
 		if (descriptor === undefined) return null;
 		const schema = boxValueSchema(descriptor, scope, key);
-		if (schema === undefined) continue;
+		if (schema === undefined || !holdsRowReferences(schema)) continue;
 		try {
 			for (const participantId of participantReferencesOf(schema, parseStoredBoxJson(value, schema, `${scope}/${key}`))) referenced.add(participantId);
 		} catch {
