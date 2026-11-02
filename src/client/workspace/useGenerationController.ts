@@ -1,10 +1,10 @@
 import { isStoryReady } from "../story";
 import { store } from "../lib/store";
+import { useConversationVisit } from "../lib/visit";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { shownContent } from "../story/variant-text";
 import {
 	useEffect,
-	useMemo,
 	useReducer,
 	useRef,
 	useState,
@@ -61,6 +61,8 @@ const stopCommandOutcome = (
 };
 
 type GenerationControllerOptions = {
+	/** @approved The Chat visit's signal: work it started settles nothing once the writer selects a Chat again. */
+	signal: AbortSignal;
 	conversation: ConversationSummary | null;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
@@ -81,6 +83,7 @@ const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: u
  * acceptance while this hook renders the combined state and composer actions.
  */
 export function useGenerationController({
+	signal: selection,
 	conversation,
 	story,
 	dispatchStory,
@@ -112,11 +115,7 @@ export function useGenerationController({
 		draft.set(rewind.content);
 		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
 	};
-	const stopOwner = useMemo(() => ({ cancellation: new AbortController() }), [conversation?.id]);
-	useEffect(() => {
-		if (stopOwner.cancellation.signal.aborted) stopOwner.cancellation = new AbortController();
-		return () => stopOwner.cancellation.abort();
-	}, [stopOwner]);
+	const signal = useConversationVisit(selection, conversation?.id);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -204,6 +203,7 @@ export function useGenerationController({
 	};
 
 	const assemblyController = useAssemblyController({
+		signal: selection,
 		conversation,
 		activeChatIdRef,
 		refreshStory,
@@ -249,7 +249,6 @@ export function useGenerationController({
 	};
 
 	const conversationSwitched = () => {
-		stopOwner.cancellation.abort();
 		dispatchPendingStarts({ type: "conversation-switched" });
 		assemblyController.conversationSwitched();
 		runner.dispatch({ type: "conversation-switched" });
@@ -271,17 +270,17 @@ export function useGenerationController({
 	});
 	const stopGeneration = async (generationId: number) => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || stopPending || stopOwner.cancellation.signal.aborted) return;
+		if (conversationId === undefined || stopPending || signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		await stop.mutateAsync({ conversationId, generationId, signal: stopOwner.cancellation.signal });
+		await stop.mutateAsync({ conversationId, generationId, signal });
 	};
 	const stopAllGenerations = async () => {
 		const conversationId = conversation?.id;
-		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || stopOwner.cancellation.signal.aborted) return;
+		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending || signal.aborted) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		await stopAll.mutateAsync({ conversationId, signal: stopOwner.cancellation.signal });
+		await stopAll.mutateAsync({ conversationId, signal });
 	};
 
 	const cancelGeneration = () => {

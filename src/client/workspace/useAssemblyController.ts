@@ -11,6 +11,7 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
+import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
@@ -23,6 +24,7 @@ type GenerationStartLifecycle = {
 };
 
 type AssemblyControllerOptions = {
+	signal: AbortSignal;
 	conversation: ConversationSummary | null;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number, signal?: AbortSignal) => Promise<ConversationSummary | null>;
@@ -76,6 +78,7 @@ const loadPreview = async (request: AssemblyRequest, signal: AbortSignal): Promi
  * phase is derived from their fetch, pending, and error state.
  */
 export function useAssemblyController({
+	signal: selection,
 	conversation,
 	activeChatIdRef,
 	refreshStory,
@@ -88,7 +91,8 @@ export function useAssemblyController({
 	takeComposer,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
-	const session = useRef({ cancellation: new AbortController(), starting: false });
+	const signal = useConversationVisit(selection, conversation?.id);
+	const starting = useRef(false);
 	const [assemblyRequest, setAssemblyRequest] = useState<AssemblyRequest | null>(null);
 	const [preparing, setPreparing] = useState(false);
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
@@ -149,7 +153,7 @@ export function useAssemblyController({
 	//  places its Variant.
 	const finishStart = (submission: GenerationStartSubmission, { target, sentRevision }: AcceptedStart, closeAssembly: boolean) => {
 		if (submission.signal.aborted) return;
-		session.current.starting = false;
+		starting.current = false;
 		if (closeAssembly) setAssemblyRequest(null);
 		if (submission.clearComposer) takeComposer();
 		dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
@@ -163,7 +167,7 @@ export function useAssemblyController({
 		onError: (error, submission) => {
 			submission.restoreComposer?.();
 			if (submission.signal.aborted) return;
-			session.current.starting = false;
+			starting.current = false;
 			generationStart.settle(submission.startId);
 			dispatchStory({ type: "generation-request-failed" });
 			setDirectStartError(error.message);
@@ -175,7 +179,7 @@ export function useAssemblyController({
 		onSuccess: (target, submission) => finishStart(submission, target, true),
 		onError: (error, submission) => {
 			if (submission.signal.aborted) return;
-			session.current.starting = false;
+			starting.current = false;
 			generationStart.settle(submission.startId);
 			setAcceptError(error.message);
 		},
@@ -219,14 +223,14 @@ export function useAssemblyController({
 
 	const sendPromptPlanPreview = () => {
 		const currentPreview = preview.data;
-		if (session.current.starting || assemblyRequest === null || currentPreview === undefined || (phase !== "ready" && phase !== "failed")) return;
-		session.current.starting = true;
+		if (starting.current || assemblyRequest === null || currentPreview === undefined || (phase !== "ready" && phase !== "failed")) return;
+		starting.current = true;
 		const { conversationId, seat, request } = assemblyRequest;
 		const startId = generationStart.begin();
 		setAcceptError(null);
 		setLastGeneration(assemblyRequest);
 		accept.mutate({
-			signal: session.current.cancellation.signal,
+			signal,
 			startId,
 			conversationId,
 			seat,
@@ -237,21 +241,20 @@ export function useAssemblyController({
 	};
 
 	const startWithoutPreview = (seat: number | null, request: GenerationPreviewBody) => {
-		if (session.current.starting || conversation === null || assemblyRequest !== null) return;
-		session.current.starting = true;
+		if (starting.current || conversation === null || assemblyRequest !== null) return;
+		starting.current = true;
 		const conversationId = conversation.id;
 		const startId = generationStart.begin();
 		setDirectStartError(null);
 		setLastGeneration({ conversationId, seat, request });
 		dispatchStory({ type: "generation-requested", request });
 		const restoreComposer = request.kind === "send" ? takeComposer() : undefined;
-		startDirect.mutate({ signal: session.current.cancellation.signal, startId, conversationId, seat, request, clearComposer: false, restoreComposer });
+		startDirect.mutate({ signal, startId, conversationId, seat, request, clearComposer: false, restoreComposer });
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
 		if (preparing || conversation === null) return;
 		const conversationId = conversation.id;
-		const signal = session.current.cancellation.signal;
 		setPreparing(true);
 		setDirectStartError(null);
 		void ensureLatest().then(() => {
@@ -271,8 +274,7 @@ export function useAssemblyController({
 	};
 
 	const conversationSwitched = () => {
-		session.current.cancellation.abort();
-		session.current = { cancellation: new AbortController(), starting: false };
+		starting.current = false;
 		accept.reset();
 		startDirect.reset();
 		setPreparing(false);
@@ -286,7 +288,7 @@ export function useAssemblyController({
 	const resetAccept = accept.reset;
 	const resetDirect = startDirect.reset;
 	useEffect(() => {
-		session.current = { cancellation: new AbortController(), starting: false };
+		starting.current = false;
 		setAssemblyRequest(null);
 		setAcceptError(null);
 		setDirectStartError(null);
@@ -294,7 +296,6 @@ export function useAssemblyController({
 		setLastGeneration(null);
 		resetAccept();
 		resetDirect();
-		return () => session.current.cancellation.abort();
 	}, [conversation?.id, resetAccept, resetDirect]);
 
 	const assemblyAvailable = canStartAssembly({

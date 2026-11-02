@@ -1,15 +1,12 @@
 import { skipToken, useQuery, useQueryClient, type Query, type QueryClient } from "@tanstack/react-query";
 import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
+import { foldNewer } from "./lib/visit";
 
 interface SettingsRead { revision: number; settings: ConversationGenerationSettings }
 export const generationSettingsKey = (conversationId: number | null) => ["generation-settings", conversationId] as const;
 
-export const publishGenerationSettings = (client: QueryClient, conversation: ConversationSummary, settings: ConversationGenerationSettings) => {
-	const queryKey = generationSettingsKey(conversation.id);
-	void client.cancelQueries({ queryKey });
-	return client.setQueryData<SettingsRead>(queryKey, (current) => current !== undefined && current.revision > conversation.revision
-		? current : { revision: conversation.revision, settings });
-};
+export const publishGenerationSettings = (client: QueryClient, conversation: ConversationSummary, settings: ConversationGenerationSettings) =>
+	foldNewer<SettingsRead>(client, generationSettingsKey(conversation.id), { revision: conversation.revision, settings }, (read) => read.revision);
 
 export function useGenerationSettingsQuery(conversation: ConversationSummary | null) {
 	const client = useQueryClient();

@@ -1,13 +1,11 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { loadConnectionSettings, type ConnectionSettings } from "./connection-settings";
-import { newerSettings } from "./connection-settings-state";
+import { foldNewer } from "./lib/visit";
 
 export const connectionSettingsKey = ["connection-settings", "settings"] as const;
 
-export const publishConnectionSettings = (client: QueryClient, settings: ConnectionSettings) => {
-	void client.cancelQueries({ queryKey: connectionSettingsKey });
-	return client.setQueryData<ConnectionSettings>(connectionSettingsKey, (current) => newerSettings(current ?? null, settings));
-};
+export const publishConnectionSettings = (client: QueryClient, settings: ConnectionSettings) =>
+	foldNewer(client, connectionSettingsKey, settings, (read) => read.revision);
 
 export function useConnectionSettingsQuery({ refreshOnOpen = false } = {}) {
 	return useQuery({

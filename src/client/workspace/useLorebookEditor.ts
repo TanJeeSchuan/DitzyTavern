@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
-import { useEffect, useEffectEvent, useReducer, useRef } from "react";
+import { useEffect, useEffectEvent, useReducer } from "react";
+import { foldNewer, useVisitSignal } from "../lib/visit";
 import { applyLorebookCommand, exportNativeLorebook, getLorebook, getLorebookAttachmentImpact, type Lorebook, type LorebookCommand, type LorebookCommandResult } from "../lorebook-library";
 import { splitList, type EntryListKey } from "./lorebook-entry-fields";
 import { editedSince, fieldsOf, blankEntry, initialEditorState, reduceLorebookEditor, sameEntry, type BookDeleteConfirmation, type LeaveIntent, type LorebookEditorState, type EditorAction } from "./lorebook-editor-state";
@@ -14,14 +15,10 @@ export function useLorebookEditor(bookId: number) {
 		staleTime: Infinity, refetchOnReconnect: false,
 	});
 	const [state, reduce] = useReducer(reduceLorebookEditor, undefined, initialEditorState);
-	const session = useRef(new AbortController());
-	useEffect(() => {
-		session.current = new AbortController();
-		return () => session.current.abort();
-	}, [bookId]);
+	const signal = useVisitSignal(bookId);
 	const current = useEffectEvent(() => state);
 	const dispatch = (action: EditorAction) => {
-		if (!session.current.signal.aborted) flushSync(() => reduce(action));
+		if (!signal.aborted) flushSync(() => reduce(action));
 	};
 	if (state.book !== null && state.book.id !== bookId) reduce({ type: "reset" });
 	else if (state.book === null && !detail.isFetching && detail.data) reduce({ type: "loaded", book: detail.data });
@@ -33,20 +30,18 @@ export function useLorebookEditor(bookId: number) {
 	const bookDirty = book !== null && (bookDraft.name !== book.name || bookDraft.description !== book.description);
 	const entryDirty = book !== null && !sameEntry(entryDraft, selectedEntry === undefined ? blankEntry() : fieldsOf(selectedEntry));
 	const dirty = bookDirty || entryDirty;
-	const cacheBook = async (book: Lorebook, signal: AbortSignal) => {
-		await client.cancelQueries({ queryKey: ["lorebook", book.id] });
-		if (signal.aborted) return;
-		client.setQueryData<Lorebook>(["lorebook", book.id], (current) => current && current.revision > book.revision ? current : book);
+	const cacheBook = (book: Lorebook) => {
+		foldNewer(client, ["lorebook", book.id], book, (read) => read.revision);
 		void client.invalidateQueries({ queryKey: ["lorebooks"] });
 	};
 	const command = useMutation({
 		mutationKey: ["lorebook", bookId, "command"],
 		mutationFn: ({ action }: { action: LorebookCommand; signal: AbortSignal }) => applyLorebookCommand(action),
 		onError: (error, submission) => { if (!submission.signal.aborted) setNotice(error.message); },
-		onSuccess: async (result, submission) => {
+		onSuccess: (result, submission) => {
 			if (submission.signal.aborted) return;
-			if (result.outcome === "available" && result.value.outcome === "applied") await cacheBook(result.value.book, submission.signal);
-			else if (result.outcome === "conflict") await cacheBook(result.currentBook, submission.signal);
+			if (result.outcome === "available" && result.value.outcome === "applied") cacheBook(result.value.book);
+			else if (result.outcome === "conflict") cacheBook(result.currentBook);
 			else if (result.outcome === "available" && result.value.outcome === "deleted") {
 				client.removeQueries({ queryKey: ["lorebook", result.value.bookId] });
 				void client.invalidateQueries({ queryKey: ["lorebooks"] });
@@ -104,7 +99,6 @@ export function useLorebookEditor(bookId: number) {
 	const exportFile = useMutation({ mutationFn: () => exportNativeLorebook(bookId) });
 	const setNotice = (notice: string | null) => dispatch({ type: "notice", notice });
 	const executeLorebookCommand = (action: LorebookCommand, success?: string, onOpenBook?: (id: number | null, notice?: string) => void) => {
-		const signal = session.current.signal;
 		command.mutate({ action, signal }, {
 			onSuccess: (result) => {
 				if (signal.aborted) return;
@@ -115,7 +109,6 @@ export function useLorebookEditor(bookId: number) {
 		});
 	};
 	const confirmDeleteBook = () => {
-		const signal = session.current.signal;
 		impact.mutate(undefined, {
 			onSuccess: (value) => {
 				if (signal.aborted) return;
@@ -128,7 +121,6 @@ export function useLorebookEditor(bookId: number) {
 		});
 	};
 	const exportBook = () => {
-		const signal = session.current.signal;
 		exportFile.mutate(undefined, {
 			onSuccess: (value) => {
 				if (signal.aborted) return;
@@ -153,6 +145,6 @@ export function useLorebookEditor(bookId: number) {
 		discard: () => dispatch({ type: "discard" }),
 		setBookDeleteConfirmation: (confirmation: BookDeleteConfirmation | null) => dispatch(confirmation === null ? { type: "dialog-closed" } : { type: "dialog-opened", dialog: { type: "book-delete", confirmation } }),
 		setEntryDeleteConfirmation: (open: boolean) => dispatch(open ? { type: "dialog-opened", dialog: { type: "entry-delete" } } : { type: "dialog-closed" }),
-		saveDirty: () => save.mutateAsync({ submitted: current(), signal: session.current.signal }), executeLorebookCommand, confirmDeleteBook, exportBook,
+		saveDirty: () => save.mutateAsync({ submitted: current(), signal }), executeLorebookCommand, confirmDeleteBook, exportBook,
 	};
 }

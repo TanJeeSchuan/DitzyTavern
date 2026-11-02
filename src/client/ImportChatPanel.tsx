@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldAlert, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useVisitSignal } from "./lib/visit";
 import {
 	buildResolvedParticipants,
 	canCommit,
@@ -56,15 +57,8 @@ export function ImportChatPanel({
 	onBackToList,
 	onClose,
 }: ImportChatPanelProps) {
-	const cancelledRef = useRef(false);
+	const signal = useVisitSignal();
 	const fileInputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		cancelledRef.current = false;
-		return () => {
-			cancelledRef.current = true;
-		};
-	}, []);
 
 	// @approved
 	//  The discard orchestration is the only place temporary staging data is
@@ -100,7 +94,7 @@ export function ImportChatPanel({
 
 	const runStage = async (file: File) => {
 		const outcome = await stageImport(file, file.name);
-		if (cancelledRef.current) return;
+		if (signal.aborted) return;
 		onDispatch(
 			outcome.outcome === "available"
 				? {
@@ -121,7 +115,7 @@ export function ImportChatPanel({
 		const handle = flow.handle;
 		if (handle === null) return;
 		const outcome = await previewImport(handle.token, handle.sha256);
-		if (cancelledRef.current) return;
+		if (signal.aborted) return;
 		if (outcome.outcome === "available") {
 			onDispatch({ type: "preview-succeeded", preview: outcome.value.preview });
 			return;
@@ -144,7 +138,7 @@ export function ImportChatPanel({
 			duplicateConfirmed: flow.duplicateConfirmed,
 			participants: buildResolvedParticipants(flow),
 		});
-		if (cancelledRef.current) return;
+		if (signal.aborted) return;
 		if (outcome.outcome === "available") {
 			onDispatch({ type: "commit-succeeded", receipt: outcome.value.receipt });
 			return;

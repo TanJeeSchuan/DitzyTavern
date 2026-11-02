@@ -96,6 +96,7 @@ export function ActiveWritingWorkspace({
 		connectionProfiles: connectionSettings.settings?.profiles,
 	});
 	const generation = useGenerationController({
+		signal: session.signal,
 		conversation: session.conversation,
 		story,
 		dispatchStory,

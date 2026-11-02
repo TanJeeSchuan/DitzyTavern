@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { applyLorebookCommand, importNativeLorebook, importSillyTavernLorebook, listLorebooks, parseNativeLorebook, type LoreAttachmentState, type Lorebook } from "../lorebook-library";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 import { PanelHeader } from "../PanelHeader";
+import { foldNewer } from "../lib/visit";
 import { attachmentSource, ChatLoreLoading, ChatLoreSettings, LorebookLibraryLoading, type LoreAttachment } from "./LorebookPanelEditors";
 import { useLoreMatchTester } from "./useLoreMatchTester";
 import { useLorebookAttachments } from "./useLorebookAttachments";
@@ -33,14 +34,13 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 	const attachmentController = useLorebookAttachments(conversationId);
 	const tester = useLoreMatchTester();
 	const { attachmentState, selectedPreset, loreBlockMissing, attachmentPending, updateAttachment, enableLoreSlot } = attachmentController;
-	const cacheBook = async (book: Lorebook) => {
-		await client.cancelQueries({ queryKey: ["lorebook", book.id] });
-		client.setQueryData(["lorebook", book.id], book);
+	const cacheBook = (book: Lorebook) => {
+		foldNewer(client, ["lorebook", book.id], book, (read) => read.revision);
 		void client.invalidateQueries({ queryKey: ["lorebooks"] });
 	};
 	const creation = useMutation({
 		mutationFn: () => applyLorebookCommand({ type: "create", name: "New Lorebook", description: "" }),
-		onSuccess: async (result) => { if (result.outcome === "available" && result.value.outcome === "applied") await cacheBook(result.value.book); },
+		onSuccess: async (result) => { if (result.outcome === "available" && result.value.outcome === "applied") cacheBook(result.value.book); },
 	});
 	const importing = useMutation({
 		mutationFn: async (file: File) => {
@@ -48,7 +48,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			return native !== null ? importNativeLorebook(native) : importSillyTavernLorebook(parsed);
 		},
-		onSuccess: async (result) => { if (result.outcome === "available" && result.value.outcome === "applied") await cacheBook(result.value.book); },
+		onSuccess: async (result) => { if (result.outcome === "available" && result.value.outcome === "applied") cacheBook(result.value.book); },
 	});
 	const openBook = (id: number | null, notice: string | null = null) => { creation.reset(); importing.reset(); tester.reset(); setSelectName(false); setBookId(id); setNotice(notice); };
 	const create = () => creation.mutate(undefined, {
