@@ -48,6 +48,7 @@ export const createMemorySettingsModule = (database: Database) => {
 		if (!Number.isSafeInteger(command.safetyAllowance) || command.safetyAllowance < 0 || command.safetyAllowance > 1_000_000) {
 			throw new InvalidMemoryCommandError("The safety allowance must be a non-negative whole number no greater than 1,000,000.");
 		}
+		if (command.outputReserve + command.safetyAllowance >= command.contextLimit) throw new InvalidMemoryCommandError("The output reserve plus safety allowance must be smaller than the extraction context limit.");
 		if (!(command.retainProbabilityMinimum >= 0 && command.retainProbabilityMinimum <= 1)) throw new InvalidMemoryCommandError("The retain probability minimum must be between 0 and 1.");
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidMemoryCommandError("The recall relevance minimum must be between 0 and 3.");
 		const value = Value.Clean(memorySettingsValue, { ...command, extractionModel: model, embeddingModel });

@@ -28,6 +28,9 @@ describe("Memory Settings public contract", () => {
 		const invalid = await app.handle(apply({ contextLimit: 0 }));
 		expect(invalid.status).toBe(422);
 		expect(await invalid.text()).toContain("positive whole numbers");
+		const unfittable = await app.handle(apply({ contextLimit: 8384, outputReserve: 20480 }));
+		expect(unfittable.status).toBe(422);
+		expect(await unfittable.text()).toContain("smaller than the extraction context limit");
 
 		const profile = database.query<{ id: number }, []>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter) VALUES ('Rememberer', 'chat-completions', 'https://example.test/v1/chat/completions', 'automatic', 'openai-compatible') RETURNING id").get();
 		if (!profile) throw new Error("Memory profile fixture failed.");
