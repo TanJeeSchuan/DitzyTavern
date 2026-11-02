@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxesWith, boxRecordSchema, boxReference, type BoxId } from "../../shared/contract/box";
-import type { BoxCatchUp } from "../../shared/contract/box-digest";
+import { automaticStatus, type BoxCatchUp } from "../../shared/contract/box-digest";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 import {
 	readParticipants, readConversationData, readConversationSummaryFromConnection, readSelectedPassages,
@@ -10,7 +10,7 @@ import {
 import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { effectiveRecord, hasAutomaticRecord, hasDigestError, readBoxFold, readRecordSlots, readVariantSeeds, writeAutomaticRecord, writeDigestError } from "./records";
+import { effectiveRecord, readBoxFold, readRecordSlots, readVariantSeeds, slotStatus, writeAutomaticRecord, writeDigestError } from "./records";
 import { serverBox } from "./registry";
 import { boxServices } from "./services";
 import { isHostChatKey, readBoxLifecycles } from "./setup";
@@ -222,8 +222,8 @@ const prepareLive = (database: Database, queue: DigestQueue, conversationId: num
 		//  A live job counts only live work as already queued: a catch-up job
 		//  for the same text is replaced, so live work keeps its place ahead
 		//  of a catch-up run.
-		const slot = slots.get(variant.variantId);
-		if (hasAutomaticRecord(slot, variant.content) || (!retry && hasDigestError(slot, variant.content)) || queuedFor(queue, key, source, false)) continue;
+		const { kind } = automaticStatus(slotStatus(slots.get(variant.variantId), variant.content));
+		if (kind === "fresh" || (!retry && kind === "failed") || queuedFor(queue, key, source, false)) continue;
 		jobs.push({
 			key, conversationId, messageId: variant.messageId, variantId: variant.variantId,
 			box, instance, source, catchUp: null, controller: new AbortController(),
@@ -285,7 +285,7 @@ export function startBoxCatchUp(database: Database, conversationId: number, box:
 	if (path === undefined || instance === undefined) return;
 	const variants = path.flatMap((message) => message.variant === null || message.variant.active || message.variant.content.trim() === "" ? [] : [message.variant]);
 	const slots = readRecordSlots(drizzle(database), box, boxRecordSchema(box), instance, variants.map((variant) => variant.variantId));
-	const missing = variants.filter((variant) => !hasAutomaticRecord(slots.get(variant.variantId), variant.content)
+	const missing = variants.filter((variant) => automaticStatus(slotStatus(slots.get(variant.variantId), variant.content)).kind !== "fresh"
 		&& !queuedFor(queue, keyOf(variant.variantId, box), sha256(variant.content), true));
 	if (missing.length === 0) return;
 	const run: CatchUpRun = { key, total: missing.length, members: new Set(), failed: 0 };
@@ -343,7 +343,7 @@ export function readDigest(database: Database, conversationId: number, box: BoxI
 			const slot = slots.get(variant.id);
 			return [{
 				messageId: id, variantId: variant.id, author: author?.capturedName ?? null, excerpt: excerpt(variant.content), record: effectiveRecord(slot) ?? null,
-				overridden: slot?.writer !== undefined, digested: hasAutomaticRecord(slot, variant.content), error: hasDigestError(slot, variant.content) ? slot?.error?.message ?? null : null,
+				status: slotStatus(slot, variant.content),
 			}];
 		});
 		return {

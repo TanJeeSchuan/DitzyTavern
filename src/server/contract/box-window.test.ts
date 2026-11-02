@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initialWorldClockSetup, worldClockRecord, type WorldClockSetup } from "../../boxes/world-clock/contract";
 import { digestRead } from "../../shared/contract/box-digest";
 import { generationPreview, type ConversationAction } from "../../shared/contract/conversation-schema";
-import { readRecordSlots, writeAutomaticRecord } from "../box/records";
+import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/records";
 import { sha256 } from "../hash";
 import { createContract } from ".";
 import { acceptConversationTailGeneration } from "../conversation";
@@ -68,7 +68,7 @@ test("the window read folds the selected passages and reports the dock status", 
 	).get(message.id, "*The lamp* turns.\n\nSlowly.")!;
 	const read = await readClock(app, chat.id);
 	expect(read.status).toBe("8:00 AM");
-	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, excerpt: "The lamp turns. Slowly.", record: null, overridden: false, digested: false, error: null }]);
+	expect(read.passages).toEqual([{ messageId: message.id, variantId: variant.id, author: null, excerpt: "The lamp turns. Slowly.", record: null, status: { kind: "missing" } }]);
 });
 
 test("the window read reports a missing Chat", async () => {
@@ -88,17 +88,32 @@ const addPassage = (conversationId: number, content: string) => {
 	return { messageId: message.id, variantId: variant.id };
 };
 
-test("a stale automatic result does not report the passage as digested", async () => {
+test("an edit makes the automatic result stale, and it still folds", async () => {
 	const chat = createClockChat();
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { variantId } = addPassage(chat.id, "The lamp turns.");
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
-	expect((await readClock(app, chat.id)).passages[0]?.digested).toBe(true);
+	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual({ kind: "fresh" });
 	database.run("UPDATE message_variant SET content = ? WHERE id = ?", ["The lamp goes dark.", variantId]);
 	const stale = (await readClock(app, chat.id)).passages[0];
-	expect(stale?.digested).toBe(false);
+	expect(stale?.status).toEqual({ kind: "stale" });
 	expect(stale?.record).toEqual({ minutes: 60, weather: "rain" });
+});
+
+test("a digest failure counts only for the text it failed on, and a Writer override settles it", async () => {
+	const chat = createClockChat();
+	const app = createContract(database);
+	const clock = insertBox(database, chat.id, "world-clock");
+	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
+	writeDigestError(drizzle(database), "world-clock", clock, variantId, sha256("The lamp turns."), "The model refused.");
+	const failed = { kind: "failed" as const, error: "The model refused.", stale: false };
+	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual(failed);
+	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: 5, weather: null }, expected: null });
+	expect(applied.status).toBe(200);
+	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual({ kind: "overridden", automatic: failed });
+	database.run("UPDATE message_variant SET content = ? WHERE id = ?", ["The lamp goes dark.", variantId]);
+	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual({ kind: "overridden", automatic: { kind: "missing" } });
 });
 
 test("a Writer override sets the effective value, survives a later automatic digest, and resets", async () => {
@@ -111,7 +126,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	const override = { minutes: 600, weather: "clear" as const };
 	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override, expected: { minutes: 60, weather: "rain" } });
 	expect(applied.status).toBe(200);
-	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, status: { kind: "overridden", automatic: { kind: "fresh" } } });
 	// @approved
 	//  The override changes the folded clock and never the passage's prose.
 	expect((await readClock(app, chat.id)).status).toMatch(/^6:00 PM/);
@@ -121,12 +136,12 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	//  A digest still in flight lands after the override and may only fill
 	//  `automatic`; the effective value stays the Writer's.
 	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
-	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, overridden: true });
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, status: { kind: "overridden" } });
 
 	const revision: number = (await applied.json()).conversation.revision;
 	const reset = await command(app, chat.id, revision, { type: "reset-box-record", box: "world-clock", messageId, variantId });
 	expect(reset.status).toBe(200);
-	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, overridden: false });
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: { minutes: 120, weather: "storm" }, status: { kind: "fresh" } });
 });
 
 test("an override is refused once a digest changed the record it replaces, or wrote one where it read none", async () => {
@@ -142,7 +157,7 @@ test("an override is refused once a digest changed the record it replaces, or wr
 	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: read })).json()).toEqual(refusal);
 	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: null })).json()).toEqual(refusal);
 	expect((await command(app, chat.id, chat.revision, { ...override, expected: { minutes: 120, weather: "storm" } })).status).toBe(200);
-	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override.record, overridden: true });
+	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override.record, status: { kind: "overridden" } });
 });
 
 test("a Variant still generating takes no Writer override, so its own record can land when it settles", async () => {

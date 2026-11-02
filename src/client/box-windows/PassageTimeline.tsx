@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { boxMetadata, boxRecordSchema, type BoxDescriptor, type BoxId, type BoxRecord } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
+import { automaticStatus } from "../../shared/contract/box-digest";
 import type { ConversationAction, ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import { useSaveGuard } from "../SaveGuard";
@@ -245,7 +246,7 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 			else client.setQueryData(boxDigestKey(conversation.id, box), result);
 		} catch { setNotice(CONVERSATION_UNREACHABLE_NOTICE); } finally { setBusy(false); }
 	};
-	const missing = passages.some((passage) => !passage.digested);
+	const missing = passages.some(({ status }) => automaticStatus(status).kind !== "fresh");
 
 	return <section aria-labelledby={`${box}-passages-title`} className="box-timeline">
 		<div className="box-timeline-head">
@@ -274,12 +275,12 @@ function PassageTimeline({ box, fields, summarize, conversation, disabled, onCon
 						: <div className="box-timeline-read">
 							<span className="box-timeline-summary">
 								{passage.record === null ? <em>Not read yet</em> : summarize(passage.record)}
-								{passage.overridden && <span className="box-timeline-override-mark">Overridden</span>}
-								{passage.error !== null && <span className="box-timeline-error">Digest failed: {passage.error}</span>}
+								{passage.status.kind === "overridden" && <span className="box-timeline-override-mark">Overridden</span>}
+								{passage.status.kind === "failed" && <span className="box-timeline-error">Digest failed: {passage.status.error}</span>}
 							</span>
 							<span className="box-timeline-actions">
 								<Button variant="ghost" size="sm" disabled={locked} onClick={() => setEditing({ variantId: passage.variantId, expected: passage.record })}><Pencil aria-hidden="true" />Edit</Button>
-								{passage.overridden && <Button variant="ghost" size="sm" disabled={locked} onClick={() => void reset(passage)}>Reset</Button>}
+								{passage.status.kind === "overridden" && <Button variant="ghost" size="sm" disabled={locked} onClick={() => void reset(passage)}>Reset</Button>}
 							</span>
 						</div>}
 				</li>

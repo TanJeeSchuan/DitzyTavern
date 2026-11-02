@@ -69,6 +69,20 @@ export type RaceState = Static<typeof raceState>;
 export const raceSpectatorState = Type.Object(spectatorProperties);
 export type RaceSpectatorState = Static<typeof raceSpectatorState>;
 // @approved
+//  Where a race stands: not started, a Stretch due, the field over the line
+//  with the Results Stretch due, or finished, a walkover included. `auto`
+//  says whether Auto mode advances it on a continue turn, which also turns
+//  the writer's Moves off.
+export type RacePhase<State = RaceSpectatorState> =
+	| { readonly kind: "setup" }
+	| { readonly kind: "running" | "crossed"; readonly state: State; readonly auto: boolean }
+	| { readonly kind: "finished"; readonly state: State };
+const raceSpectatorPhase = Type.Union([
+	Type.Object({ kind: Type.Literal("setup") }),
+	Type.Object({ kind: Type.Union([Type.Literal("running"), Type.Literal("crossed")]), state: raceSpectatorState, auto: Type.Boolean() }),
+	Type.Object({ kind: Type.Literal("finished"), state: raceSpectatorState }),
+]);
+// @approved
 //  A Race Move acts on one Runner: the human-seat Runner, or the Runner the
 //  writer orders when the human seat is not racing.
 export const raceMove = Type.Object({
@@ -81,7 +95,7 @@ export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: strin
 export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on" || setup.auto === "off" || setup.auto.until < setup.course.distance;
 export const raceRead = Type.Object({
 	conversationId: Type.Integer(), revision: Type.Integer(), status: Type.Union([Type.String(), Type.Null()]),
-	state: raceSpectatorState,
+	phase: raceSpectatorPhase,
 	// @approved The replay and Hidden intents stay on the server until the finish, so the window cannot spoil them.
 	replay: Type.Union([Type.Null(), Type.Object({ stretches: Type.Array(raceReplayStretch), intents: Type.Array(raceIntent) })]),
 	avatars: Type.Record(Type.String(), Type.Object({ hash: imageHash, revision: Type.Integer() })),

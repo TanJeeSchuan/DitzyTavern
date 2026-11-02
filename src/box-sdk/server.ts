@@ -6,7 +6,7 @@ export {
 	readParticipants,
 } from "../server/conversation";
 export { readMessageMoves } from "../server/box/moves";
-export { effectiveRecord, hasAutomaticRecord, hasDigestError, readRecordSlots } from "../server/box/records";
+export { effectiveRecord, readRecordSlots, slotStatus } from "../server/box/records";
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";

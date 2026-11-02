@@ -212,7 +212,7 @@ test("a Race started after the fork point starts at zero in the fork", async () 
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false });
 	expect(Value.Parse(raceSetup, fork.conversation.boxSetups.race).slots[0]!.participantId).toBe(fork.conversation.cast[0]!.id);
 	const app = createBoxWindowRoutes(database);
-	const read = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/race`))).json()).state;
+	const read = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/race`))).json()).phase.state;
 	const sourceState = await read(source.id);
 	expect(sourceState.stretch).toBe(1);
 	expect(await read(fork.conversation.id)).toMatchObject({ raceId: "race-a", stretch: 0, metres: 0 });

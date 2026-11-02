@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect, selectBoxDecisionModel, insertBox, send, story, openBoxes, closeBoxes } from "../../../e2e/fixtures";
 import type { E2eServer } from "../../../e2e/harness";
 import { hasDecisionPassage, isDecisionModelCall } from "../../../e2e/protocol";
+import { automaticStatus, type SlotStatus } from "@/box-sdk/shared";
 
 const elapsed = ["none", "~5m", "~15m", "~30m", "~1h", "~2h", "~4h", "~8h", "overnight", "~1 day", "several days"];
 const weather = ["not mentioned", "clear", "cloudy", "rain", "storm", "snow", "fog"];
@@ -222,7 +223,7 @@ test("a Writer override survives a late digest, reset restores the automatic val
 	//  digest has landed before the override is checked again.
 	await expect.poll(async () => {
 		const read = await (await request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
-		return read.catchUp === null && read.passages.every((entry: { digested: boolean }) => entry.digested);
+		return read.catchUp === null && read.passages.every(({ status }: { status: SlotStatus }) => automaticStatus(status).kind === "fresh");
 	}, { timeout: 15_000 }).toBe(true);
 	await expect(passage("Wait out the night.")).toContainText("No time passes");
 	await expect(passage("The storm breaks")).toContainText("+5m · ☀️ Clear");
@@ -301,7 +302,7 @@ test("passage override drafts survive guarded close until saved or discarded", a
 	const read = await (await request.get(`/api/conversations/${activeChatId}/boxes/world-clock`)).json();
 	const override = read.passages.find((entry: { excerpt: string }) => entry.excerpt === "You arrive as she pins a third map over the first two.");
 	expect(override.record).toMatchObject({ minutes: 125, weather: "clear" });
-	expect(override.overridden).toBe(true);
+	expect(override.status.kind).toBe("overridden");
 });
 
 test("selecting a Chat from an open panel guards a passage override draft", async ({ page }) => {

@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceSetup, type RaceState } from "./contract";
+import { isRaceAutoValid, type RaceInput, type RaceMove, type RaceRead, type RaceSetup, type RaceSpectatorState, type RaceState } from "./contract";
 import { readCharacterRevisions, readLibraryValues, type Box, type BoxWindowRead } from "@/box-sdk/server";
 import { RACE_AVATAR_PREFIX } from "./shared-data";
 import { readRaceCastStats } from "./server-cast";
 import { raceMoveCatalog } from "./shared";
-import { advanceRace, foldRace, initialRaceState, raceStatus } from "./server-engine";
+import { advanceRace, foldRace, racePhase, raceStatus } from "./server-engine";
 
 const raceBox = {
 	setupError: raceSetupError,
@@ -26,12 +26,16 @@ const raceBox = {
 } satisfies Box<RaceSetup, Pick<RaceInput, "seed" | "intent" | "withdrawn">, never, RaceState, RaceState | null, RaceMove>;
 export default raceBox;
 
-function readRace({ db, conversationId, summary, setup, state: folded }: BoxWindowRead<RaceSetup, RaceState | null>): RaceRead {
-	const { intents, replay, ...state } = folded ?? initialRaceState(setup);
+/** @approved The replay and Hidden intents stay on the server until the finish. */
+const spectatorOf = ({ intents: _intents, replay: _replay, ...state }: RaceState): RaceSpectatorState => state;
+
+function readRace({ db, conversationId, summary, setup, state }: BoxWindowRead<RaceSetup, RaceState | null>): RaceRead {
+	const phase = racePhase(setup, state);
 	const humanRunner = setup.slots.find(({ participantId }) => participantId !== undefined && participantId === summary.control.humanParticipantId)?.name;
 	return {
-		conversationId, revision: summary.revision, status: raceStatus(setup, state, humanRunner), state,
-		replay: state.finished ? { stretches: replay, intents } : null,
+		conversationId, revision: summary.revision, status: raceStatus(setup, phase, humanRunner),
+		phase: phase.kind === "setup" ? phase : { ...phase, state: spectatorOf(phase.state) },
+		replay: phase.kind === "finished" ? { stretches: phase.state.replay, intents: phase.state.intents } : null,
 		castStats: readRaceCastStats(db, summary.cast.map(({ id }) => id)),
 		avatars: Object.fromEntries(readLibraryValues(db, "race", RACE_AVATAR_PREFIX).map(({ key, value, revision }) => [key.slice(RACE_AVATAR_PREFIX.length), { hash: value, revision }])),
 		characterStatsRevisions: Object.fromEntries(readCharacterRevisions(db, "race", "stats", summary.cast.flatMap(({ sourceCharacterId }) => sourceCharacterId ?? []))

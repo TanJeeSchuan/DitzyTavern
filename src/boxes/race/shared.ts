@@ -1,4 +1,4 @@
-import type { RaceMove, RaceMoveKind, RaceRunner, RaceSetup, RaceSpectatorState } from "./contract";
+import type { RaceMove, RaceMoveKind, RacePhase, RaceRunner, RaceSetup, RaceSpectatorState } from "./contract";
 
 /** @approved Below this energy a Runner tires and loses pace, so no attack may spend into it. */
 export const FATIGUE_ENERGY = 0.35;
@@ -40,11 +40,11 @@ const notRacing = (name: string): RaceMoveCheck => ({ legal: false, reason: `${n
 const isAttack = (kind: RaceMoveKind) => kind === "overtake" || kind === "spurt";
 
 /** @approved One rule for the window's offer and the Stretch's resolution: `earlier` are the Moves staged or resolved before this one, whose costs it projects. */
-export function checkRaceMove(setup: RaceSetup, state: RaceSpectatorState, earlier: readonly RaceMove[], move: RaceMove): RaceMoveCheck {
-	const { distance } = setup.course;
-	if (setup.phase !== "running" || state.finished) return { legal: false, reason: "The race is not running." };
-	if (state.metres >= distance) return { legal: false, reason: "The field has crossed the line." };
-	if (setup.auto === "on" || (setup.auto !== "off" && state.metres < distance - setup.auto.until)) return { legal: false, reason: "Moves are off while Auto mode runs." };
+export function checkRaceMove(setup: RaceSetup, phase: RacePhase, earlier: readonly RaceMove[], move: RaceMove): RaceMoveCheck {
+	if (phase.kind === "setup" || phase.kind === "finished") return { legal: false, reason: "The race is not running." };
+	if (phase.kind === "crossed") return { legal: false, reason: "The field has crossed the line." };
+	if (phase.auto) return { legal: false, reason: "Moves are off while Auto mode runs." };
+	const { state } = phase;
 	const runner = setup.slots.find(({ name }) => name === move.runner);
 	if (runner === undefined || !state.standings.some(({ name }) => name === move.runner)) return notRacing(move.runner);
 	if (earlier.length >= MAX_RACE_MOVES) return { legal: false, reason: `A turn holds at most ${MAX_RACE_MOVES} Moves.` };

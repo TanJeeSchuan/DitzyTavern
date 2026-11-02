@@ -1,10 +1,10 @@
 import { sliceByTokens } from "tokenx";
 import {
-	cosineSimilarity, effectiveRecord, hasAutomaticRecord, hasDigestError, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
-	sha256, tokenxEstimator,
+	cosineSimilarity, effectiveRecord, largestFittingBatch, decisionRequest, readActiveVariantIds, readBoxDecision,
+	sha256, slotStatus, tokenxEstimator,
 	type BoxContext, type CaptureRead, type DecisionAnswer, type EmbeddingConfiguration,
 } from "@/box-sdk/server";
-import { projectImageAnchors } from "@/box-sdk/shared";
+import { automaticStatus, isStale, projectImageAnchors, type SlotStatus } from "@/box-sdk/shared";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord, MemoryRecord } from "./contract";
 import { renderMemoryClaim } from "./shared";
 import { isExcludedAuthor, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
@@ -153,19 +153,18 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 	const active = readActiveVariantIds(read.database, read.conversationId);
 	const labels = readMemoryLabelState(read.database, read.conversationId);
 	const messages = read.messages.filter((message) => !active.has(message.variantId) && !isExcludedAuthor(labels, message.authorId) && message.prose.trim() !== "");
-	const sources: { readonly variantId: number; readonly record: string | null; readonly digested: boolean; readonly failed: boolean }[] = [];
+	const sources: { readonly variantId: number; readonly record: string | null; readonly status: SlotStatus }[] = [];
 	const writers: { readonly variantId: number; readonly record: string }[] = [];
 	const claimed: ClaimedMemory[] = [];
 	const counts = { pendingSourceCount: 0, failedSourceCount: 0 };
 	for (const message of messages) {
 		const { slot } = message;
 		const record = effectiveRecord(slot);
-		const digested = hasAutomaticRecord(slot, message.prose);
-		const failed = slot?.writer === undefined && hasDigestError(slot, message.prose);
+		const status = slotStatus(slot, message.prose);
 		const hash = record === undefined ? null : memoryRecordFingerprint(record);
-		if (failed) counts.failedSourceCount += 1;
-		else if (slot?.writer === undefined && !digested) counts.pendingSourceCount += 1;
-		sources.push({ variantId: message.variantId, record: hash, digested, failed });
+		if (status.kind === "failed") counts.failedSourceCount += 1;
+		else if (status.kind === "missing" || status.kind === "stale") counts.pendingSourceCount += 1;
+		sources.push({ variantId: message.variantId, record: hash, status });
 		if (slot?.writer !== undefined) writers.push({ variantId: message.variantId, record: sha256(JSON.stringify(slot.writer)) });
 		if (record === undefined || hash === null) continue;
 		for (const [claimIndex, claim] of record.claims.entries()) claimed.push({
@@ -173,8 +172,8 @@ const scanMemorySources = (read: CaptureRead<MemoryRecord>) => {
 				identity: `${message.messageId}:${message.variantId}:${claimIndex}:${hash}`,
 				messageId: message.messageId,
 				variantId: message.variantId,
-				writer: slot?.writer !== undefined,
-				sourceChanged: slot?.source !== undefined && !digested,
+				writer: status.kind === "overridden",
+				sourceChanged: isStale(automaticStatus(status)),
 				claimIndex,
 				claim: claim.claim,
 				attribution: claim.attribution,

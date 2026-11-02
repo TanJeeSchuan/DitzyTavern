@@ -13,6 +13,34 @@ export const boxRecordSlot = <Record extends TSchema>(record: Record) => Type.Ob
 });
 
 // @approved
+//  What a slot's automatic record is for its passage's current text: none, a
+//  result for exactly this text, a result for an earlier text that still
+//  folds until the new one lands, or a digest that failed on this text, with
+//  whether an earlier result still folds. A failure on an earlier text is no
+//  failure of this one.
+export const boxDigestStatus = Type.Union([
+	Type.Object({ kind: Type.Literal("missing") }),
+	Type.Object({ kind: Type.Literal("fresh") }),
+	Type.Object({ kind: Type.Literal("stale") }),
+	Type.Object({ kind: Type.Literal("failed"), error: Type.String(), stale: Type.Boolean() }),
+]);
+export type DigestStatus = Static<typeof boxDigestStatus>;
+
+// @approved
+//  One record slot's status for its passage's current text. A Writer override
+//  settles the passage, so its failed digest needs no attention; the digest
+//  queue still keeps the automatic record beneath it current, so Reset
+//  restores one for this text.
+export const boxSlotStatus = Type.Union([...boxDigestStatus.anyOf, Type.Object({ kind: Type.Literal("overridden"), automatic: boxDigestStatus })]);
+export type SlotStatus = Static<typeof boxSlotStatus>;
+
+/** @approved The automatic record's status, beneath an override or not. */
+export const automaticStatus = (status: SlotStatus): DigestStatus => status.kind === "overridden" ? status.automatic : status;
+
+/** @approved Whether the automatic record that folds came from an earlier text. */
+export const isStale = (status: DigestStatus): boolean => status.kind === "stale" || (status.kind === "failed" && status.stale);
+
+// @approved
 //  A catch-up run's window progress: how many passages it set out to digest
 //  how many are still queued or in flight, and how many failed.
 export const boxCatchUp = Type.Object({
@@ -34,9 +62,7 @@ export const digestStatusRead = Type.Object({ status: Type.Union([Type.Null(), T
 //  A digesting Box's window read: its folded one-line status and the selected
 //  path's passages. Each passage carries the plain-text start of its prose,
 //  enough for the timeline's two lines, its resolved record (`writer ?? automatic`, null when not digested),
-//  whether a writer set it, whether the automatic result is the one for
-//  exactly this text, so the window knows what a catch-up run would add, and
-//  the error of a digest that failed on exactly this text.
+//  and its slot status.
 //  `digestReady` reports whether the Box's Decision Model is selected.
 export const digestRead = <Record extends TSchema>(record: Record) => Type.Object({
 	conversationId: Type.Integer(),
@@ -50,9 +76,7 @@ export const digestRead = <Record extends TSchema>(record: Record) => Type.Objec
 		author: Type.Union([Type.Null(), Type.String()]),
 		excerpt: Type.String(),
 		record: Type.Union([Type.Null(), record]),
-		overridden: Type.Boolean(),
-		digested: Type.Boolean(),
-		error: Type.Union([Type.Null(), Type.String()]),
+		status: boxSlotStatus,
 	})),
 });
 export type DigestRead<Record extends TSchema> = Static<ReturnType<typeof digestRead<Record>>>;

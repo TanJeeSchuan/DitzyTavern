@@ -1,5 +1,5 @@
 import { isNonEmpty } from "@/box-sdk/shared";
-import type { RaceDecision, RaceInput, RaceIntent, RaceMove, RaceRunner, RaceSetup, RaceSpectatorState, RaceStanding, RaceState, RunningStyle } from "./contract";
+import type { RaceDecision, RaceInput, RaceIntent, RaceMove, RacePhase, RaceRunner, RaceSetup, RaceStanding, RaceState, RunningStyle } from "./contract";
 import { raceRandom } from "./shared-data";
 import { checkRaceMove, checkRunnerMove, FATIGUE_ENERGY, MOVE_METRES, raceMoveCatalog, raceMoveLabel, spendEnergy, type RaceMoveCheck, type RunnerMoveKind } from "./shared";
 
@@ -46,17 +46,31 @@ const hiddenIntent = {
 };
 const ordinal = (rank: number) => `${rank}${rank === 1 ? "st" : rank === 2 ? "nd" : rank === 3 ? "rd" : "th"}`;
 
-// @approved The dock follows the human seat's Runner when it is racing, else the first gate.
-export const raceStatus = (setup: RaceSetup, state: RaceSpectatorState | null, follows?: string): string | null => {
-	if (setup.phase === "setup") return null;
+// @approved
+//  State from another race reads as this race's start. Auto stops `until`
+//  metres before the finish, so the writer's Moves open there; `until: 0`
+//  carries on through the Results Stretch, as `on` does.
+export const racePhase = (setup: RaceSetup, state: RaceState | null): RacePhase<RaceState> => {
+	if (setup.phase === "setup") return { kind: "setup" };
 	const current = state?.raceId === setup.raceId ? state : initialRaceState(setup);
-	if (current.finished) return `🏁 1st · ${current.standings[0]?.name ?? ""}`;
-	const followed = current.standings.some(({ name }) => name === follows) ? follows : setup.slots[0]?.name;
-	const rank = current.standings.findIndex(({ name }) => name === followed) + 1;
-	return `🏇 ${current.metres}m · ${ordinal(Math.max(rank, 1))}`;
+	if (current.finished) return { kind: "finished", state: current };
+	const { distance } = setup.course;
+	const auto = setup.auto === "on" || (setup.auto !== "off" && (setup.auto.until === 0 || current.metres < distance - setup.auto.until));
+	return { kind: current.metres >= distance ? "crossed" : "running", state: current, auto };
 };
 
-export const currentRaceState = (setup: RaceSetup, state: RaceState | null): RaceState => state?.raceId === setup.raceId ? state : initialRaceState(setup);
+/** @approved A race a Stretch or the Results Stretch can still advance. */
+type RaceUnderway = Extract<RacePhase<RaceState>, { kind: "running" | "crossed" }>;
+
+// @approved The dock follows the human seat's Runner when it is racing, else the first gate.
+export const raceStatus = (setup: RaceSetup, phase: RacePhase, follows?: string): string | null => {
+	if (phase.kind === "setup") return null;
+	const { standings, metres } = phase.state;
+	if (phase.kind === "finished") return `🏁 1st · ${standings[0]?.name ?? ""}`;
+	const followed = standings.some(({ name }) => name === follows) ? follows : setup.slots[0]?.name;
+	const rank = standings.findIndex(({ name }) => name === followed) + 1;
+	return `🏇 ${metres}m · ${ordinal(Math.max(rank, 1))}`;
+};
 
 type RaceEntrant = { slot: RaceRunner; standing: RaceStanding; position: RaceStanding };
 // @approved
@@ -91,40 +105,42 @@ const engineDecision = (setup: RaceSetup, before: RaceState, { slot, standing }:
 const settleIntents = (intents: RaceIntent[], stretch: number) => intents.map((planned) => planned.payoff === null ? { ...planned, payoff: stretch } : planned);
 
 export function advanceRace({ setup, state, seed, intent, moves, withdrawn = [] }: RaceInput): { narrative: string; record?: RaceState } | undefined {
-	const original = currentRaceState(setup, state);
+	const phase = racePhase(setup, state);
+	if (phase.kind === "setup" || phase.kind === "finished") return undefined;
+	const original = phase.state;
 	const removed = new Set(withdrawn);
 	const withdrawalLines = original.standings.flatMap(({ name }) => removed.has(name) ? [`${name} is withdrawn.`] : []);
 	setup = { ...setup, slots: setup.slots.filter(({ name }) => !removed.has(name)) };
 	const before = withdrawalLines.length === 0 ? original : {
 		...original, standings: original.standings.filter(({ name }) => !removed.has(name)), intents: original.intents.filter(({ runner }) => !removed.has(runner)),
 	};
+	const underway: RaceUnderway = { ...phase, state: before };
 	const narrate = (heading: string, lines: string[]) => [heading, ...withdrawalLines, ...lines].join("\n");
 	const unchanged = (narrative: string) => withdrawalLines.length === 0 ? { narrative }
 		: { narrative, record: before };
 	const [first] = moves;
-	if (intent === "respond" && setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold" && checkRaceMove(setup, before, [], first).legal) {
+	if (intent === "respond" && setup.slots.length >= 2 && moves.length === 1 && first?.kind === "hold" && checkRaceMove(setup, underway, [], first).legal) {
 		return unchanged(narrate(setup.course.name, [`${raceMoveLabel(first)}: ${raceMoveCatalog.hold.effect()} Do not narrate race progress past ${before.metres} m.`]));
 	}
-	if (setup.phase !== "running" || before.finished) return undefined;
 	if (withdrawalLines.length > 0 && setup.slots.length < 2) {
 		const stretch = before.stretch + 1;
 		const winner = before.standings[0];
 		const narrative = narrate(setup.course.name, [winner === undefined ? "The race is called off." : `${winner.name} wins by default.`, "Narrate the finish."]);
 		return { narrative, record: { ...before, stretch, finished: true, intents: settleIntents(before.intents, stretch) } };
 	}
-	const stopped = setup.slots.length < 2 || intent === "continue" && (setup.auto === "off" || (setup.auto !== "on" && setup.auto.until > 0 && before.metres >= setup.course.distance - setup.auto.until));
+	const stopped = setup.slots.length < 2 || (intent === "continue" && !underway.auto);
 	const paused = () => withdrawalLines.length === 0 ? undefined : unchanged(narrate(setup.course.name, ["The Stretch does not advance this turn."]));
 	if (stopped) return paused();
-	const advanced = advanceStretch({ setup, state: before, seed, intent, moves }, withdrawalLines);
+	const advanced = advanceStretch(setup, underway, seed, moves, withdrawalLines);
 	return advanced === undefined ? paused() : { narrative: advanced.narrative, record: advanced.after };
 }
 
-function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLines: string[]): { narrative: string; after: RaceState } | undefined {
-	const before = currentRaceState(setup, state);
+function advanceStretch(setup: RaceSetup, phase: RaceUnderway, seed: string, moves: readonly RaceMove[], withdrawalLines: string[]): { narrative: string; after: RaceState } | undefined {
+	const before = phase.state;
 	const field = raceField(setup, before);
 	const stretch = before.stretch + 1;
 	const course = `${setup.course.name} · ${setup.course.distance} m · ${setup.course.surface} · ${setup.course.direction}-handed`;
-	if (before.metres >= setup.course.distance) {
+	if (phase.kind === "crossed") {
 		// @approved
 		//  Standings are in finishing order once the field crosses the line, so
 		//  the fastest time is the winner's.
@@ -160,7 +176,7 @@ function advanceStretch({ setup, state, seed, moves }: RaceInput, withdrawalLine
 	const report = moves.map((move) => ({
 		move,
 		// @approved A Hold that is not alone fizzles and lets the rest resolve; a legal lone Hold has already stopped the turn.
-		fizzle: resolve(move, move.kind === "hold" && moves.length > 1 ? { legal: false, reason: "Hold must be the only Move." } : checkRaceMove(setup, before, resolved, move), true),
+		fizzle: resolve(move, move.kind === "hold" && moves.length > 1 ? { legal: false, reason: "Hold must be the only Move." } : checkRaceMove(setup, phase, resolved, move), true),
 	}));
 	/** @approved Runners the writer gave Moves this turn follow them; every other Runner is driven by the engine. */
 	const ordered = new Set(moves.map(({ runner }) => runner));
