@@ -1,134 +1,62 @@
 # Issue tracker: SimpleTracker
 
-DitzyTavern uses the SimpleTracker server at `https://tan-server.taild926e3.ts.net:8444`. The `simpletracker` executable is on `PATH`. In this repository it is a client for that remote server. Do not run `serve`, `bootstrap`, `backup`, or `restore`; those are server-operator commands.
+Issues, specs and research for this repo live in SimpleTracker, reached through its MCP server `simple-tracker` (Streamable HTTP at `/mcp`). If its tools are missing from your context, stop and ask the user to connect the server.
 
-Do not put an API key in this file, an issue, a comment, a commit, or command output. Load it into `SIMPLETRACKER_API_KEY` before using the CLI. Every client command returns JSON.
+This repo's Project slug is `ditzytavern`. Pass it wherever a tool asks for `project`; `list_projects` lists the others. Projects are created only in the UI.
 
-```powershell
-$env:SIMPLETRACKER_API_KEY = '<key>'
-simpletracker project list --server 'https://tan-server.taild926e3.ts.net:8444'
-```
+## Records
 
-Use `ditzytavern` as the DitzyTavern project slug. If it is absent from `project list`, create it once:
+- An **Issue** is work: it has a Status (`todo`, `doing`, `done`, `dropped`; the last two are closed), an optional Parent, ordered Children, Tags and Blockers. Its description holds the current truth.
+- A **Document** is knowledge: a markdown page with no Status.
+- A **Comment** is a dated, append-only entry on an Issue. Comments record history.
+- Write `#42` in any markdown to make a Reference. It renders as the target's title and shows up in the target's Backlinks. Issues and Documents share one number sequence, so `#42` is never ambiguous.
 
-```powershell
-simpletracker project create --server 'https://tan-server.taild926e3.ts.net:8444' --name 'DitzyTavern' --slug 'ditzytavern'
-```
+Skills written for other trackers say "issue", "label", "sub-issue", "assign". Here those are Issue, Tag, Child and Claim. Triage roles from `triage-labels.md` are Tags.
 
-Use `--actor <agent-name>` and `--session <run-id>` on writes. The tracker records the key, actor, session, and time. A typical write ends with:
+## Your name and Mood
 
-```text
---actor 'codex' --session '<run-id>'
-```
+Every write that records who acted takes your name: `claimant` on `claim_issue`, `author` on `add_comment` and on description or body writes. Use your session id if it's in your context; otherwise pick a short name you'd like to be called, and reuse it for the whole session.
 
-## Identity and state
+Those same tools take an optional `mood`: a kaomoji for your state at that moment. Your name stays fixed; your Mood can change from one write to the next.
 
-An issue has an opaque ID, a project-local number, and a stable reference such as `ditzytavern#12`. Use the stable reference or ID for reads and writes. Never identify an issue by its title or board position.
+## Versioned writes
 
-Issues are `open` or `closed`. There is no delete operation. Close obsolete or rejected work so its reference, discussion, and audit history remain available. Use labels for workflow meaning; see [triage-labels.md](triage-labels.md).
+`update_issue` with `description`, and `update_document` with `body`, replace the whole text and need the `version` you last read plus your `author`. Read both from the second block of `get(id)`'s result, the JSON `{ version, text }`. Never cut the text out of the markdown: a description can contain its own `## Context` or `## Comments` heading. Edit that `text` and write it back; the title sits outside it. Other sessions edit concurrently, so the write can be rejected: the error's `current` carries the latest `version` and text. Merge your change into that text and retry with that version. Titles, Status, Tags, Parent and Blockers are not versioned.
 
-SimpleTracker has native relations:
+## When a skill says "publish to the issue tracker"
 
-- A child has at most one `parent`. Parent and child must belong to the same project.
-- A blocker edge points from blocked work to its prerequisite. In `issue block --id A --parent B`, A is blocked by B.
-- Closing every open blocker makes an issue unblocked. Self-links, parent cycles, and blocker cycles are rejected.
-- `position` orders siblings. New children append. Lists break position ties by issue number, then ID.
+- A spec or feature: `create_issue(project, title, description)`, with the spec as the description.
+- Its implementation Issues: `create_issue(project, title, description, parent: <spec>, tags?)`, one per Issue, created in priority order (each lands last among its siblings, or right after `after`). Pass `blockedBy: [ids]` for Blockers that already exist, and wire later ones with `update_issue(id, blockedBy: {add: [ids]})`. Apply a triage role with `tags`.
+- Knowledge with no work attached (research, a write-up): `create_document(title, body, project, tags?)`.
 
-Do not encode `Head:` or `Blocked by:` lines in issue bodies. Those were Collattice workarounds and are obsolete.
+Every Issue's description is self-contained: another session reads only it and what it References.
 
-## Everyday commands
+## When a skill says "fetch the relevant ticket"
 
-All examples below need `--server 'https://tan-server.taild926e3.ts.net:8444'`. It is shown once per command because the client has no server environment variable.
+The user passes a number like `42` or `#42`: `get(id: 42)` returns the record as markdown: frontmatter (an Issue's Blockers are its `blockedBy`), then its Context (Parents, Children, what it Blocks, Backlinks) and, for an Issue, its Comments. Without a number, `search(query, project)` finds records by words; filter with `kind`, `status`, `tag` or `parent`.
 
-```powershell
-# Read and search
-simpletracker issue get --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12'
-simpletracker issue list --server 'https://tan-server.taild926e3.ts.net:8444' --project 'ditzytavern' --state open --label ready-for-agent
-simpletracker issue list --server 'https://tan-server.taild926e3.ts.net:8444' --project 'ditzytavern' --q 'database'
+## Claim, comment, close
 
-# Create and edit
-simpletracker issue create --server 'https://tan-server.taild926e3.ts.net:8444' --project 'ditzytavern' --title 'Title' --body 'Markdown' --labels 'ready-for-agent,enhancement'
-simpletracker issue update --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12' --body 'Revised Markdown'
-simpletracker issue comment --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12' --body 'Progress note'
+- **Claim** before any work: `claim_issue(id, claimant, mood?)` moves a `todo` Issue to `doing` under your name. Only a Claim enters `doing`. If it's rejected, someone else holds it or it is Blocked; the error says which, and you pick other work.
+- **Comment**: `add_comment(id, author, body, mood?)`.
+- **Close**: `update_issue(id, status: "done")`. Reopen with `status: "todo"`.
+- **Out of scope**: `update_issue(id, status: "dropped")`, after an `add_comment` saying why. A duplicate is dropped the same way, with a Comment Referencing the Issue it duplicates.
+- **Retag or move**: `update_issue(id, tags: {add, remove}, parent, after, project)`; `update_document` takes `tags` and `project` too.
 
-# Labels, ownership, and lifecycle
-simpletracker issue label --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12' --label needs-info
-simpletracker issue label --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12' --label needs-info --remove
-simpletracker issue assign --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12' --assignee 'codex/<run-id>'
-simpletracker issue unassign --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12'
-simpletracker issue close --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12'
-simpletracker issue reopen --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#12'
+`delete_issue` and `delete_document` are for records created by mistake. Finished or abandoned work is closed, not deleted, so its history stays.
 
-# Hierarchy, blockers, and ordering
-simpletracker issue parent --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#13' --parent 'ditzytavern#12'
-simpletracker issue parent --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#13'
-simpletracker issue block --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#13' --parent 'ditzytavern#9'
-simpletracker issue unblock --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#13' --parent 'ditzytavern#9'
-simpletracker issue order --server 'https://tan-server.taild926e3.ts.net:8444' --id 'ditzytavern#13' --position 0
-```
+## Wayfinding operations
 
-`issue get` returns the Markdown body, comments, labels, attribution, assignment, parent, children, blockers, reverse blocked issues, position, state, and derived `blocked` value. Read it before changing an issue.
+Used by `/wayfinder`.
 
-## Finding and claiming work
-
-`issue frontier` returns open, unblocked, unassigned issues in stable order. The `ready-for-agent` label expresses intent, but it does not control frontier membership.
-
-```powershell
-simpletracker issue frontier --server 'https://tan-server.taild926e3.ts.net:8444' --project 'ditzytavern'
-simpletracker issue frontier --server 'https://tan-server.taild926e3.ts.net:8444' --project 'ditzytavern' --parent 'ditzytavern#12'
-```
-
-Claiming is two requests, not an atomic operation:
-
-1. Read the frontier and choose an issue.
-2. Assign it with `issue assign` before starting work.
-3. Read it again. If another worker owns it, query the frontier and choose again.
-4. Add useful progress or resolution notes as comments, then close completed work.
-
-Assignment is not a lease and does not expire. Unassign abandoned work.
-
-`issue list` supports `--project`, `--state`, `--parent`, `--label`, `--assigned assigned|unassigned`, `--assignee`, `--q`, `--age`, `--updated-since`, and `--updated-until`. Use `--parent root` or `--parent none` for top-level issues.
-
-## Skill workflows
-
-For a spec, create one parent issue containing the accepted Markdown. For implementation tickets, create children with `--parent`, add blocker edges for real prerequisites, and apply `ready-for-agent` only to fully specified executable work. Create prerequisites before dependants so their references are available.
-
-For Wayfinder, label the parent `wayfinder:map`. Give each decision child exactly one type label: `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or `wayfinder:task`. Assign a frontier child before working it. Comment the resolution, close the child, and add a short pointer to it in the map's decisions.
-
-For triage, query the relevant labels and assignment buckets, then sort `created_at` ascending when presenting oldest first. Read each full issue before changing it. Start every triage comment with this exact line:
-
-```text
-> *This was generated by AI during triage.*
-```
-
-For code review, resolve the issue reference from the commit or spec context and read its body and comments. SimpleTracker does not synchronize pull requests, and issue tracking does not replace the repository's normal Git workflow.
-
-When a skill says "publish to the issue tracker", create or update the SimpleTracker issue, return its stable reference and canonical URL, and apply `ready-for-agent` only when another agent can start without more decisions.
-
-## Browser and HTTP API
-
-Open the server URL and sign in with the API key. Browser login creates a 30-day session. The browser lists projects, shows parent-based swimlanes, filters issues, and edits existing issues. Its columns are derived, not separate workflow states:
-
-- `Unclaimed`: open, unblocked, unassigned
-- `In progress`: open, unblocked, assigned
-- `Blocked`: open with at least one open blocker
-- `Done`: closed
-
-Dragging only reorders work inside the same lane and derived column. Create projects and issues with the CLI or API.
-
-The API root is `/api/v1`. Send `Authorization: Bearer <key>` or `X-API-Key: <key>`. Add `X-Actor-ID` and `X-Session-ID` to writes. Common routes are:
-
-| Operation | Request |
-| --- | --- |
-| Projects | `GET/POST /api/v1/projects`, `GET /api/v1/projects/<id-or-slug>` |
-| Issues | `GET /api/v1/issues`, `GET/PATCH /api/v1/issues/<ref>`, `POST /api/v1/projects/<slug>/issues` |
-| Comments | `GET/POST /api/v1/issues/<ref>/comments` |
-| Labels | `GET/POST /api/v1/issues/<ref>/labels`, `DELETE /api/v1/issues/<ref>/labels/<label>` |
-| Assignment | `POST/DELETE /api/v1/issues/<ref>/assign` |
-| Parent | `POST/DELETE /api/v1/issues/<ref>/parent` |
-| Blockers | `GET/POST /api/v1/issues/<ref>/blockers`, `DELETE /api/v1/issues/<ref>/blockers/<blocker-ref>` |
-| Order | `POST /api/v1/issues/<ref>/position` |
-| State | `POST /api/v1/issues/<ref>/close`, `POST /api/v1/issues/<ref>/reopen` |
-| Frontier | `GET /api/v1/frontier`, `GET /api/v1/projects/<slug>/frontier` |
-
-Raw HTTP URLs must encode `#` in references as `%23`; the CLI does this for you. A 4xx response has `error.code` and `error.message`. Fix the request or relation instead of switching to another issue system.
+- **Map**: an Issue tagged `wayfinder:map`, holding the map body (Destination, Notes, Decisions so far, Not yet specified, Out of scope) in its description. Create it with `create_issue(project, title, description, tags: ["wayfinder:map"])`; find existing maps with `search(project, tag: "wayfinder:map")`.
+- **Ticket**: a Child of the map tagged with its type: `create_issue(project, title, description: <the question>, parent: <map>, tags: ["wayfinder:<type>"])`, where type is `research`, `prototype`, `grilling` or `task`. Sibling order is priority.
+- **Blocking**: create every ticket first, then wire Blockers in a second pass with `update_issue(id, blockedBy: {add: [ids]})`. A ticket is Blocked until each of its Blockers is `done` or `dropped`. A cycle is rejected.
+- **Frontier**: `search(parent: <map>, frontier: true)` returns the map's `todo`, unblocked Children in priority order. Claimed tickets are `doing`, so they never appear. Take the first.
+- **Claim**: `claim_issue(id: <ticket>, claimant, mood?)`, before any work. If another session won the race, take the next Frontier ticket.
+- **Resolve**, in this order:
+  1. `add_comment(id: <ticket>, author, body: <the answer>, mood?)`.
+  2. `update_issue(id: <ticket>, status: "done")`.
+  3. `get(id: <map>)`, append `- #<ticket>: <one-line gist>` under Decisions so far, and write it back with `update_issue(id: <map>, description, version, author, mood?)`. On a version mismatch, merge and retry as in Versioned writes, until it succeeds. `#<ticket>` renders as the ticket's title, which is how the map refers to tickets by name.
+- **Out of scope**: `add_comment` saying why, `update_issue(id: <ticket>, status: "dropped")`, then a versioned append of `- #<ticket>: <gist and why>` under the map's Out of scope, retried the same way.
+- **Research findings**: `create_document(title, body: <findings>, project)`, then Reference the Document as `#<document>` in the ticket's answer Comment.
