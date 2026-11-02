@@ -1,3 +1,4 @@
+import { generationGate } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { readVariantSeeds } from "../box/records";
@@ -189,7 +190,7 @@ interface GenerationPreparationBase {
 /** @approved The Generation Target with the facts its acceptance needs, read in the capture's transaction. */
 export type CapturedTarget =
 	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId: number | undefined }
-	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: GenerationIntent }
+	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: Extract<GenerationIntent, { type: "continuation" }> }
 	| Extract<GenerationTarget, { kind: "sibling" }>;
 
 export const generationIntentOf = (target: CapturedTarget): GenerationIntent | undefined =>
@@ -311,7 +312,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const hasReasoning = (id: number) => (readVariantData(db, [id], ["reasoning"]).get(id)?.reasoning?.length ?? 0) > 0;
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
 	const messageMoves = readMessageMoves(db, selected.messages.map(({ id }) => id));
-	if (target.kind === "continuation" && summary.activeGenerations.length > 0) throw new ContinuationUnavailableError("active-generation");
+	if (target.kind === "continuation") generationGate(db, input.conversationId, { type: "accept-continuation" });
 	if (target.kind === "sibling") {
 		const eligibility = deriveMessageSwipeEligibility(summary.playable, selected.target?.historicalContext ?? null, summary.cast.map((participant) => participant.id));
 		if (!eligibility.eligible) {

@@ -1,3 +1,4 @@
+import type { StoredGenerationIntent } from "../../shared/contract/generation-intent";
 import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
@@ -309,7 +310,7 @@ export interface GenerationAcceptanceCapture {
 	/** Captured server-owned lore evidence retained with the terminal Variant. */
 	loreActivation?: LoreActivationRecord | null;
 	boxTraces?: BoxTraces;
-	generationIntent?: ConversationJsonValue | undefined;
+	generationIntent?: StoredGenerationIntent;
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
@@ -375,6 +376,7 @@ export interface StoppedGenerations {
 // The current human seat remains part of the captured historical pair, but
 // there is deliberately no Human-authored Message for this lifecycle.
 export interface AcceptContinuationGenerationInput extends GenerationAcceptanceCapture {
+	generationIntent: Extract<StoredGenerationIntent, { type: "continuation" }>;
 	expectedRevision: number;
 	precedingMessageId: number;
 	precedingVariantId: number;

@@ -1,3 +1,4 @@
+import { generationGate } from "../generation-gate";
 import type { ForkConversationBody } from "../../../shared/contract/conversation-schema";
 import type { Database } from "bun:sqlite";
 import { Type, type TSchema } from "@sinclair/typebox";
@@ -13,7 +14,7 @@ import { serverBox } from "../../box/registry";
 import { checkStoredBoxValue, parseStoredBoxJson } from "../../box/stored-json";
 import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
-import { hasActiveGenerationFromConnection, readControlAssignment, requireConversationRevision } from "../internal";
+import { readControlAssignment, requireConversationRevision } from "../internal";
 import { toHistoricalContext } from "../message-read-projection";
 import { requireConversationSummary, runConversationTransaction } from "./transaction";
 import {
@@ -27,7 +28,7 @@ export function forkConversation(database: Database, input: ForkConversationBody
 	return runConversationTransaction(database, (db, reportChange) => {
 		requireConversationRevision(db, input.conversationId, input.expectedRevision, "conversation");
 		const source = db.select().from(conversationTable).where(eq(conversationTable.id, input.conversationId)).get()!;
-		if (hasActiveGenerationFromConnection(db, input.conversationId)) throw new InvalidConversationCommandError("Cannot fork while an Active Generation exists.");
+		generationGate(db, input.conversationId, { type: "fork-conversation" });
 		if (!input.name.trim()) throw new InvalidConversationCommandError("A Chat name cannot be blank.");
 		const pointId = "rewind" in input.at ? input.at.rewind : input.at.through;
 		const point = db.select().from(messageTable).where(and(eq(messageTable.conversation_id, input.conversationId), eq(messageTable.id, pointId))).get();

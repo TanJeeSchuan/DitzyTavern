@@ -190,12 +190,12 @@ export class GenerationCoordinator {
 		}
 		// @approved
 		//  A failed checkpoint must prevent a Stop from using stale output.
-		runtime?.stop();
+		runtime?.dispatch({ type: "request-stop" });
 		try {
 			const snapshot = stopConversationGeneration(database, { conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
-			runtime?.releaseStopRequest();
+			runtime?.dispatch({ type: "release-stop" });
 			if (
 				error instanceof InvalidConversationCommandError ||
 				error instanceof ConversationNotFoundError
@@ -235,8 +235,8 @@ export class GenerationCoordinator {
 				const runtime = runtimes.get(generationId);
 				if (runtime?.state.conversationId !== conversationId) continue;
 				try {
-					runtime.stop();
-					runtime.markStopped();
+					runtime.dispatch({ type: "request-stop" });
+					runtime.dispatch({ type: "commit-stop" });
 				} catch (error) {
 					unsettled.push(generationId);
 					unsettledReason ??= error instanceof Error
@@ -270,7 +270,7 @@ export class GenerationCoordinator {
 		let unsettledReason: string | null = null;
 		if (runtime !== undefined) {
 			try {
-				runtime.markStopped();
+				runtime.dispatch({ type: "commit-stop" });
 			} catch (error) {
 				unsettledReason = error instanceof Error
 					? error.message

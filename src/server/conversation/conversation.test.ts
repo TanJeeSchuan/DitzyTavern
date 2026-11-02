@@ -844,6 +844,7 @@ describe("Conversation module", () => {
 				throw new Error("Greeting missing.");
 			}
 			return acceptConversationContinuationGeneration(module, {
+				generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
 				seed: "test-generation-seed",
 				conversationId,
 				expectedRevision: snapshot.revision,
@@ -886,7 +887,7 @@ describe("Conversation module", () => {
 					action: { type: "put-data", scope: { type: "variant", messageId: greeting.id, variantId: variant.id }, namespace: "generation", key: "reasoning", value: "Only reasoning." },
 				});
 				const before = readConversationRevision(conversation, conversationId)!;
-				const attempt = () => accept(conversation, { generationIntent: { type: "continuation", strategy, ...(strategy === "assistant-prefill" ? { suffix: "" } : { instruction: "Continue." }) } });
+				const attempt = () => accept(conversation, { generationIntent: strategy === "assistant-prefill" ? { type: "continuation", strategy, suffix: "" } : { type: "continuation", strategy, instruction: "Continue." } });
 				if (strategy === "assistant-prefill") {
 					expect(attempt).toThrow();
 					expect(readConversationRevision(conversation, conversationId)).toBe(before);

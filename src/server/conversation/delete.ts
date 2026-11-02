@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { conversationTable, messageTable, messageVariantTable } from "../database/schema";
-import { ConversationNotFoundError, InvalidConversationCommandError } from "./errors";
-import { hasActiveGenerationFromConnection } from "./internal";
+import { ConversationNotFoundError } from "./errors";
+import { generationGate } from "./generation-gate";
 import { runConversationTransaction } from "./commands/transaction";
 
 // @approved
@@ -13,9 +13,7 @@ import { runConversationTransaction } from "./commands/transaction";
 // starting between the probe and the delete cannot commit into a vanished Chat.
 export function deleteConversation(database: Database, conversationId: number) {
 	return runConversationTransaction(database, (db, reportChange) => {
-		if (hasActiveGenerationFromConnection(db, conversationId)) {
-			throw new InvalidConversationCommandError("Stop the running Generation before deleting this Chat.");
-		}
+		generationGate(db, conversationId, { type: "delete-conversation" });
 		// @approved
 		//  The Variant ids are enumerated before the cascading delete so
 		// Memory can abandon their in-flight work when the write commits.

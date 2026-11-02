@@ -53,7 +53,7 @@ describe("Resumable generation transport", () => {
 		runtime.publish({ type: "content", text: "First." });
 		runtime.publish({ type: "content", text: "Second." });
 		if (terminal === "complete") runtime.complete();
-		else if (terminal === "stopped") runtime.markStopped();
+		else if (terminal === "stopped") runtime.dispatch({ type: "commit-stop" });
 		else runtime.fail({ reason: "Provider failed." });
 		const app = new Elysia().get("/events", (context) => generationSubscriptionEvents(runtime, 1, context));
 		const body = await (await app.handle(new Request("http://localhost/events"))).text();

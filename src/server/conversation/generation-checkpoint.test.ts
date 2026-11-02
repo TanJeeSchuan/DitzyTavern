@@ -92,9 +92,15 @@ describe("Generation checkpoints", () => {
 		expect(variant?.content).toBe("<thought>Hold the line.</thought> They wait.");
 	});
 
-	test("deleting the human Message of an Active Generation leaves its output in the Variant", () => {
+	test("deleting the human Message requires Stop and retains the interrupted output", () => {
 		const generation = accept();
 		generation.checkpoint(0, "Partial reply.", 0, "Thinking", 1);
+		expect(() => executeConversationCommand(database, {
+			conversationId: generation.conversationId,
+			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
+			action: { type: "delete-message", messageId: generation.humanMessageId },
+		})).toThrow("Stop the running Generation");
+		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
 		executeConversationCommand(database, {
 			conversationId: generation.conversationId,
 			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
@@ -102,7 +108,7 @@ describe("Generation checkpoints", () => {
 		});
 		expect(readSelectedHistory(database, generation.conversationId)?.messages.map((message) => message.variant?.content)).toEqual(["Partial reply."]);
 		expect(generation.rows("generation_checkpoint")).toBe(0);
-		expect(generation.rows("generation_capture")).toBe(0);
+		expect(generation.details()).toMatchObject({ status: "interrupted", checkpoint: { content: "Partial reply.", reasoning: "Thinking" } });
 	});
 
 	test("a streaming Variant cannot be edited, and the Chat list shows its checkpointed text", () => {

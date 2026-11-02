@@ -1,3 +1,4 @@
+import { terminalOutcome } from "./contract/generation-phase";
 import { Value } from "@sinclair/typebox/value";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "./variant-data-codecs";
@@ -7,7 +8,6 @@ import {
 	generationFinish,
 	generationProvenance,
 	generationProvenanceRecord,
-	generationProvenanceStatus,
 	type GenerationProvenance,
 	type GenerationProvenanceRecord,
 } from "./contract/generation-provenance";
@@ -86,7 +86,7 @@ const terminalMetadata = (data: readonly GenerationProvenanceDataEntry[], place:
 	const outcome = entry(GENERATION_DATA_KEYS.outcome);
 	const usage = entry(GENERATION_DATA_KEYS.usage);
 	const finish = entry(GENERATION_DATA_KEYS.finish);
-	if (outcome !== undefined && !Value.Check(generationProvenanceStatus, outcome)) {
+	if (outcome !== undefined && !Value.Check(terminalOutcome, outcome)) {
 		throw new Error(`Persisted Generation outcome at ${place} is not a terminal status.`);
 	}
 	return {

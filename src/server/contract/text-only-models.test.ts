@@ -179,8 +179,8 @@ describe("Text-only Models", () => {
 			target: { kind: "send", content: formatImageReference("map", art.hash) },
 		});
 		await requested.promise;
-		started.runtime.stop();
-		started.runtime.releaseStopRequest();
+		started.runtime.dispatch({ type: "request-stop" });
+		started.runtime.dispatch({ type: "release-stop" });
 		response.resolve(stream());
 		await expect(started.result).rejects.toMatchObject({ kind: "cancelled" });
 		const state = started.runtime.state;

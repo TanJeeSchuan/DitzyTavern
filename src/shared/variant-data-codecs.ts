@@ -1,6 +1,7 @@
+import { decodeGenerationIntent } from "./contract/generation-intent";
 import { Value } from "@sinclair/typebox/value";
 import {
-	generationProvenanceCodec, generationJsonObject, parseGenerationJson,
+	generationProvenanceCodec, parseGenerationJson,
 	type GenerationJsonValue, type GenerationProvenanceDataEntry,
 } from "./generation-provenance";
 import { loreActivationRecord, type LoreActivationRecord } from "./contract/lore-activation";
@@ -64,7 +65,6 @@ export const MACRO_DATA_NAMESPACE = "prompt-macro";
 export const macroWritesKey = (presetId: number): string => `write:${presetId}`;
 
 const invalidMacroWrites = "The Active Generation has invalid persisted macro writes.";
-const invalidIntent = "The Active Generation has invalid persisted Generation intent.";
 
 const decodeMacroWrites = (serialized: string): MacroVariableWrite[] | undefined => {
 	const parsed = parseGenerationJson(serialized, null);
@@ -92,14 +92,8 @@ export const variantDataCodecs = {
 	},
 	intent: {
 		namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.intent, keys: [GENERATION_DATA_KEYS.intent],
-		decode: (serialized: string) => parseGenerationJson(serialized, {}),
-		parse: (serialized: string) => {
-			const parsed = generationJsonObject(parseGenerationJson(serialized, null));
-			if (parsed === null || (parsed.type !== "tail" && parsed.type !== "continuation" && parsed.type !== "sibling")) throw new Error(invalidIntent);
-			return parsed;
-		},
+		decode: decodeGenerationIntent,
 		encode: (value: GenerationJsonValue) => JSON.stringify(value),
-		parseError: invalidIntent,
 	},
 	loreActivation: {
 		namespace: LORE_ACTIVATION_NAMESPACE, key: LORE_ACTIVATION_KEY, keys: [LORE_ACTIVATION_KEY],

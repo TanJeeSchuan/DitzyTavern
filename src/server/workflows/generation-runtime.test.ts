@@ -39,11 +39,11 @@ describe("Generation runtime", () => {
 			},
 		});
 		runtime.publish({ type: "content", text: "Keep this." });
-		expect(() => runtime.stop()).toThrow("Checkpoint unavailable.");
+		expect(() => runtime.dispatch({ type: "request-stop" })).toThrow("Checkpoint unavailable.");
 		expect(runtime.isStopRequested).toBe(false);
 		expect(runtime.signal.aborted).toBe(false);
 		unavailable = false;
-		runtime.stop();
+		runtime.dispatch({ type: "request-stop" });
 		expect(persisted).toBe("Keep this.");
 		expect(runtime.signal.aborted).toBe(true);
 	});
@@ -263,7 +263,7 @@ describe("Generation runtime", () => {
 		});
 
 		runtime.publish({ type: "content", text: "partial" });
-		runtime.stop();
+		runtime.dispatch({ type: "request-stop" });
 
 		expect(runtime.signal.aborted).toBe(true);
 		expect(runtime.isStopRequested).toBe(true);
@@ -275,8 +275,8 @@ describe("Generation runtime", () => {
 		runtime.publish({ type: "content", text: "late" });
 		runtime.fail({ reason: "late provider failure" });
 		runtime.complete();
-		runtime.markStopped();
-		runtime.markStopped();
+		runtime.dispatch({ type: "commit-stop" });
+		runtime.dispatch({ type: "commit-stop" });
 
 		expect(runtime.state.status).toBe("stopped");
 		expect(runtime.state.content).toBe("partial");

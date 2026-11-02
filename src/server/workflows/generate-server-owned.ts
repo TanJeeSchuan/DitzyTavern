@@ -1,3 +1,4 @@
+import { durableOutcome, type TerminalOutcome } from "../../shared/contract/generation-phase";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../shared/variant-data-codecs";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { AcceptedGenerationRecord } from "./generate";
@@ -83,8 +84,6 @@ export interface ServerOwnedGenerationCallbacks {
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
-
 export type GenerationInterruptionCause =
 	| ModelClientFailureKind
 	| "server-restart"
@@ -95,7 +94,7 @@ export interface GenerationOutcome {
 	reasoning: string;
 	usage: ModelClientUsage | null;
 	finishReason: "stop" | "length" | "other" | null;
-	status: GenerationOutcomeStatus;
+	status: TerminalOutcome;
 	interruptionCause: GenerationInterruptionCause | null;
 	error: string | null;
 }
@@ -114,7 +113,7 @@ export async function runGeneration(
 		const result = await collectModelClientGeneration(modelClient, input, { onEvent });
 		return {
 			...result,
-			status: result.finishReason === "length" ? "length-limited" : "complete",
+			status: durableOutcome({ status: "complete", finishReason: result.finishReason }),
 			interruptionCause: null,
 			error: null,
 		};
@@ -129,7 +128,7 @@ export async function runGeneration(
 			reasoning,
 			usage: error.partial.usage ?? null,
 			finishReason: null,
-			status: "interrupted",
+			status: durableOutcome({ status: "failed", failure: { reason: error.message, kind: error.kind } }),
 			interruptionCause: error.kind,
 			error: error.kind === "cancelled" ? null : error.message,
 		};
@@ -237,7 +236,7 @@ export const interruptedGenerationData = (
 		reasoning,
 		usage: null,
 		finishReason: null,
-		status: "interrupted",
+		status: durableOutcome({ status: "stopped" }),
 		interruptionCause: cause,
 		error: null,
 });

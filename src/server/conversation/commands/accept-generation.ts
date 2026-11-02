@@ -7,7 +7,6 @@ import { and, eq, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	generationCaptureTable,
-	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
@@ -24,7 +23,6 @@ import {
 } from "../errors";
 import {
 	appendSelectedVariant,
-	hasActiveGenerationFromConnection,
 	insertMessage,
 	insertVariant,
 	readActiveCast,
@@ -36,7 +34,6 @@ import {
 	type ConversationDatabase,
 	type ParticipantRow,
 } from "../internal";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-settings";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,
@@ -47,7 +44,7 @@ import {
 	requireConversationSummary,
 	runConversationTransaction,
 } from "./transaction";
-import { isSiblingGenerationRow } from "./active-generation";
+import { generationGate } from "../generation-gate";
 import type {
 	AcceptedTailGeneration,
 	AcceptedSiblingGeneration,
@@ -332,11 +329,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 				"The captured model Author Stamp is no longer authoritative.",
 			);
 		}
-		if (hasActiveGenerationFromConnection(db, input.conversationId)) {
-			throw new InvalidConversationCommandError(
-				"This Conversation already has an Active Generation.",
-			);
-		}
+		generationGate(db, input.conversationId, { type: input.lifecycle === "Tail" ? "accept-tail" : "accept-continuation" });
 
 		const validation = input.validate(db, human, model);
 		const provisional = createProvisionalModelTarget(db, {
@@ -472,7 +465,7 @@ export function acceptConversationContinuationGeneration(
 	const accepted = acceptConversationGenerationTarget(database, {
 		...input,
 		lifecycle: "Continuation",
-		generationIntent: input.generationIntent ?? { type: "continuation", strategy: "instruction" },
+		generationIntent: input.generationIntent,
 		validate: (db, human, model) => {
 			const latest = db
 				.select({ id: messageTable.id, position: messageTable.position })
@@ -582,31 +575,7 @@ export function acceptConversationSiblingGeneration(
 			);
 		}
 
-		const activeRows = db
-			.select({ id: activeGenerationTable.id, messageId: activeGenerationTable.message_id, intent: activeGenerationTable.generation_intent_json })
-			.from(activeGenerationTable)
-			.where(eq(activeGenerationTable.conversation_id, input.conversationId))
-			.all();
-		if (activeRows.some((row) => !isSiblingGenerationRow({ generation_intent_json: row.intent }))) {
-			throw new InvalidConversationCommandError(
-				"A Sibling Generation cannot start while an Active Generation exists.",
-			);
-		}
-		if (activeRows.some((row) => row.messageId !== input.messageId)) {
-			throw new InvalidConversationCommandError(
-				"Sibling Generations are allowed only at the active response position.",
-			);
-		}
-		const configuredLimit = db
-			.select({ value: conversationGenerationSettingsTable.sibling_generation_limit })
-			.from(conversationGenerationSettingsTable)
-			.where(eq(conversationGenerationSettingsTable.conversation_id, input.conversationId))
-			.get()?.value ?? DEFAULT_SIBLING_GENERATION_LIMIT;
-		if (activeRows.length >= configuredLimit) {
-			throw new InvalidConversationCommandError(
-				`The Conversation already has ${configuredLimit} active Sibling Generations at this response position.`,
-			);
-		}
+		generationGate(db, input.conversationId, { type: "accept-sibling", messageId: input.messageId });
 
 		const provisional = createProvisionalSiblingVariant(
 			db,

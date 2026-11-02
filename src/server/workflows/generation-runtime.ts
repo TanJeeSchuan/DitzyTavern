@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { ModelClientGenerationError } from "../model-client";
-import type { GenerationFailure, GenerationStatus } from "../../shared/contract/generation-events";
+import { step, type GenerationPhase, type GenerationPhaseEvent, type GenerationRuntimeFailure } from "../../shared/contract/generation-phase";
+import type { GenerationStatus } from "../../shared/contract/generation-events";
 import type {
 	ModelClientEvent,
-	ModelClientFailureKind,
 } from "../model-client";
 import { GENERATION_REPLAY_RETENTION_MS } from "../conversation";
 import { processStateFor } from "../application/process-state";
@@ -103,15 +103,6 @@ type MutableRuntimeProgress = {
 	-readonly [K in keyof GenerationRuntimeProgress]: GenerationRuntimeProgress[K];
 };
 
-interface GenerationRuntimeFailure extends GenerationFailure {
-	readonly kind?: ModelClientFailureKind;
-	readonly responseBody?: string;
-}
-
-type PendingProviderTerminal =
-	| { readonly status: "complete" }
-	| { readonly status: "failed"; readonly failure: GenerationRuntimeFailure };
-
 /** @approved
  * Process-local fan-out for one database. Event history is deliberately
  * bounded: it is a reconnect aid, not a second copy of Conversation history.
@@ -126,13 +117,14 @@ export class GenerationRuntimeRegistry {
 	private readonly now: () => number;
 	private readonly pending = new Set<Promise<unknown>>();
 	private readonly shutdown = new AbortController();
+	private phase: "accepting" | "draining" | "closed" = "accepting";
 
 	constructor(scheduler: GenerationRuntimeScheduler = {}) {
 		this.now = scheduler.now ?? Date.now;
 	}
 
 	assertAccepting(): void {
-		this.shutdownSignal.throwIfAborted();
+		if (this.phase !== "accepting") throw this.shutdownSignal.reason;
 	}
 
 	get shutdownSignal(): AbortSignal {
@@ -140,6 +132,8 @@ export class GenerationRuntimeRegistry {
 	}
 
 	beginShutdown(): void {
+		if (this.phase !== "accepting") return;
+		this.phase = "draining";
 		this.shutdown.abort(new ModelClientGenerationError("cancelled", "Generation runtime is shutting down."));
 	}
 
@@ -165,11 +159,13 @@ export class GenerationRuntimeRegistry {
 
 	/** @approved Join detached work before releasing replay state. The application owns the shutdown deadline. */
 	async drain(): Promise<void> {
+		if (this.phase === "closed") return;
 		this.beginShutdown();
 		this.stopAll();
 		while (this.pending.size > 0) await Promise.allSettled(this.pending);
-		for (const runtime of this.runtimes.values()) { runtime.markStopped(); runtime.expireRetention(); }
+		for (const runtime of this.runtimes.values()) { runtime.dispatch({ type: "commit-stop" }); runtime.expireRetention(); }
 		this.runtimes.clear();
+		this.phase = "closed";
 	}
 
 	get(generationId: number): GenerationRuntime | undefined {
@@ -205,7 +201,7 @@ export class GenerationRuntimeRegistry {
 
 	stopAll(conversationId?: number): void {
 		for (const runtime of this.runtimes.values()) {
-			if (conversationId === undefined || runtime.state.conversationId === conversationId) runtime.stop();
+			if (conversationId === undefined || runtime.state.conversationId === conversationId) runtime.dispatch({ type: "request-stop" });
 		}
 	}
 }
@@ -226,11 +222,8 @@ export class GenerationRuntime {
 	private lastCheckpointAt: number;
 	private checkpointPending = false;
 	private progress: MutableRuntimeProgress;
-	private statusValue: GenerationStatus = { status: "active" };
+	private phase: GenerationPhase = { kind: "active" };
 	private readonly controller = new AbortController();
-	private stopRequested = false;
-	private pendingProviderTerminal: PendingProviderTerminal | null = null;
-	private terminalAt: number | null = null;
 
 	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
@@ -257,7 +250,11 @@ export class GenerationRuntime {
 	}
 
 	get state(): GenerationRuntimeState {
-		return { ...this.progress, ...this.statusValue };
+		const outcome = this.phase.kind === "terminal" ? this.phase.outcome : { status: "active" } as const;
+		const status: GenerationStatus = outcome.status === "failed"
+			? { status: "failed", reason: outcome.failure.reason, imageModel: outcome.failure.imageModel }
+			: { status: outcome.status };
+		return { ...this.progress, ...status };
 	}
 
 	get retainedEvents(): readonly GenerationEventEnvelope[] {
@@ -265,7 +262,7 @@ export class GenerationRuntime {
 	}
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
-		if (this.statusValue.status !== "active" || this.stopRequested) {
+		if (this.phase.kind !== "active") {
 			// @approved
 			//  A late provider frame is ignored rather than being allowed to mutate
 			// a terminal generation or appear out of order to a reconnecting client.
@@ -276,6 +273,10 @@ export class GenerationRuntime {
 			};
 		}
 
+		return this.appendEvent(event);
+	}
+
+	private appendEvent(event: ModelClientEvent): GenerationEventEnvelope {
 		if (event.type === "content") this.progress.content += event.text;
 		if (event.type === "reasoning") this.progress.reasoning += event.text;
 
@@ -308,37 +309,32 @@ export class GenerationRuntime {
 	}
 
 	complete(): void {
-		if (this.statusValue.status !== "active") return;
-		if (this.stopRequested) {
-			this.pendingProviderTerminal ??= { status: "complete" };
-			return;
-		}
-		this.flushCheckpoint();
-		this.statusValue = { status: "complete" };
-		this.terminalAt = this.checkpointNow();
-		this.notifyState();
+		this.dispatch({ type: "provider-terminal", outcome: { status: "complete" } });
 	}
 
 	fail(failure: GenerationRuntimeFailure): void {
-		const { reason, kind = "transport", responseBody, imageModel } = failure;
-		if (this.statusValue.status !== "active") return;
-		if (this.stopRequested) {
-			this.pendingProviderTerminal ??= { status: "failed", failure };
-			return;
+		this.dispatch({ type: "provider-terminal", outcome: { status: "failed", failure } });
+	}
+
+	dispatch(event: GenerationPhaseEvent): void {
+		if (event.type === "request-stop" && this.phase.kind !== "terminal") this.flushCheckpoint();
+		const next = step(this.phase, { ...event, at: this.checkpointNow() });
+		if (next === this.phase) return;
+		if (next.kind === "terminal") {
+			if (next.outcome.status === "failed" && this.events.at(-1)?.event.type !== "failed") {
+				const { reason, kind = "transport", responseBody } = next.outcome.failure;
+				const failed: Extract<ModelClientEvent, { type: "failed" }> = { type: "failed", kind, message: reason };
+				if (responseBody !== undefined) failed.responseBody = responseBody;
+				this.appendEvent(failed);
+			}
+			this.flushCheckpoint();
 		}
-		// @approved
-		//  A failure event is part of the same ordered stream. If the provider
-		// already emitted one, retain that single authoritative frame rather than
-		// duplicating it when the workflow reports its rejected Promise.
-		if (this.events.at(-1)?.event.type !== "failed") {
-			const event: Extract<ModelClientEvent, { type: "failed" }> = { type: "failed", kind, message: reason };
-			if (responseBody !== undefined) event.responseBody = responseBody;
-			this.publish(event);
+		this.phase = next;
+		if (event.type === "request-stop") {
+			try { this.onStop?.(); } catch { /* @approved provider cancellation remains best effort */ }
+			if (!this.signal.aborted) this.controller.abort();
 		}
-		this.flushCheckpoint();
-		this.statusValue = { status: "failed", reason, imageModel };
-		this.terminalAt = this.checkpointNow();
-		this.notifyState();
+		if (next.kind === "terminal") this.notifyState();
 	}
 
 	/** @approved Persist the output since the last successful checkpoint immediately, including its event position. */
@@ -360,55 +356,19 @@ export class GenerationRuntime {
 	}
 
 	get isTerminal(): boolean {
-		return this.statusValue.status !== "active";
+		return this.phase.kind === "terminal";
 	}
 
 	get terminalTime(): number | null {
-		return this.terminalAt;
+		return this.phase.kind === "terminal" ? this.phase.at : null;
 	}
 
 	expireRetention(): void {
 		try { this.onRetentionExpired?.(); } catch { /* @approved cleanup is retried by the persisted expiry boundary */ }
 	}
 
-	stop(): void {
-		if (this.statusValue.status !== "active") return;
-		// @approved
-		//  Stop is the explicit server-owned cancellation seam. Flush before
-		// aborting so the terminal Conversation transition can use every delta
-		// observed by this runtime, even when the provider ignores the abort.
-		this.flushCheckpoint();
-		this.stopRequested = true;
-		try { this.onStop?.(); } catch { /* @approved provider cancellation remains best effort */ }
-		if (!this.signal.aborted) this.controller.abort();
-	}
-
 	get isStopRequested(): boolean {
-		return this.stopRequested;
-	}
-
-	/** @approved
-	 * Return terminal ownership to the provider after the durable Stop loses
-	 * its race. A provider callback observed during cancellation is replayed;
-	 * otherwise its eventual callback can settle the still-active runtime.
-	 */
-	releaseStopRequest(): void {
-		if (this.statusValue.status !== "active" || !this.stopRequested) return;
-		this.stopRequested = false;
-		const pending = this.pendingProviderTerminal;
-		this.pendingProviderTerminal = null;
-		if (pending?.status === "complete") this.complete();
-		if (pending?.status === "failed") this.fail(pending.failure);
-	}
-
-	/** @approved Mark the runtime terminal after the durable Conversation transition. */
-	markStopped(): void {
-		if (this.statusValue.status !== "active") return;
-		this.pendingProviderTerminal = null;
-		this.flushCheckpoint();
-		this.statusValue = { status: "stopped" };
-		this.terminalAt = this.checkpointNow();
-		this.notifyState();
+		return this.phase.kind === "stopping";
 	}
 
 	subscribe(afterEventId: number, onEvent: Subscriber, onState?: StateSubscriber): GenerationRuntimeSubscription {
@@ -442,7 +402,7 @@ export class GenerationRuntime {
 				try { onEvent(envelope); } catch { /* @approved observer failure cannot stop replay */ }
 			}
 		}
-		if (this.statusValue.status !== "active" && replayAvailable) {
+		if (this.phase.kind === "terminal" && replayAvailable) {
 			try { onState?.(this.state); } catch { /* @approved observer failure cannot stop replay */ }
 		}
 

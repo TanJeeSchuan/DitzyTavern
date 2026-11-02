@@ -1,3 +1,4 @@
+import type { TerminalOutcome } from "../../shared/contract/generation-phase";
 // @approved
 //  Drizzle schema source of truth.
 // Domain modules add tables here; run `bun run db:generate` to produce migrations.
@@ -822,7 +823,7 @@ export const generationReplayTable = sqliteTable(
 		checkpoint_reasoning: text().notNull(),
 		checkpoint_event_id: int().notNull(),
 		checkpointed_at: text(),
-		terminal_status: text().notNull(),
+		terminal_status: text().$type<TerminalOutcome>().notNull(),
 		terminal_at: text().notNull(),
 		expires_at: text().notNull(),
 	},

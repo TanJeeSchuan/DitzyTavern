@@ -2,7 +2,7 @@ import { boxMovesError, type BoxMoves } from "../../../shared/contract/box-gener
 import { writeMessageMoves } from "../../box/moves";
 import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
-import { hasActiveGenerationFromConnection, readControlAssignment, requireMessage, type ConversationDatabase } from "../internal";
+import { readControlAssignment, requireMessage, type ConversationDatabase } from "../internal";
 import { toHistoricalContext } from "../message-read-projection";
 
 // @approved
@@ -12,7 +12,6 @@ export function setMessageMoves(db: ConversationDatabase, input: { conversationI
 	const invalid = boxMovesError(input.moves);
 	if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
 	const message = requireMessage(db, input.conversationId, input.messageId);
-	if (hasActiveGenerationFromConnection(db, input.conversationId)) throw new InvalidConversationCommandError("Moves cannot change while a Generation is running.");
 	const role = authorRoleOf({ author: { participantId: message.author_participant_id }, historicalContext: toHistoricalContext(message) }, readControlAssignment(db, input.conversationId));
 	if (role !== "human") throw new InvalidConversationCommandError("Only a Human-authored Message carries Moves.");
 	writeMessageMoves(db, input.messageId, input.moves);

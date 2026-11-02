@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	activeGenerationTable,
 	characterDataTable,
 	characterLorebookAttachmentTable,
 	characterTable,
@@ -153,24 +152,6 @@ export const groupVariantsByMessage = <
 	rows: readonly Row[],
 	toValue: (row: Row) => Value,
 ): Map<number, Value[]> => groupRowsByNumber(rows, (row) => row.message_id, toValue);
-
-// @approved
-//  The one Active-Generation existence probe: every gate that must
-// treat a running Generation as mutually exclusive reads this predicate, so
-// the probe query and its existence rule are written once for the module.
-// Commands inside an open transaction read the open connection so the probe
-// never reconnects mid-transaction; the public entry point keeps the
-// module's raw-Database policy — no caller, including the workflows layer,
-// ever constructs the module's Drizzle handle.
-export const hasActiveGenerationFromConnection = (
-	db: ConversationDatabase,
-	conversationId: number,
-): boolean =>
-	db
-		.select({ id: activeGenerationTable.id })
-		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.conversation_id, conversationId))
-		.get() !== undefined;
 
 // @approved
 //  Writes a complete Control assignment by deleting the Conversation's rows
