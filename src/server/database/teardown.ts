@@ -9,7 +9,8 @@
 // Prompt fields, and ordered Opening contents) after every referencing
 // Conversation is gone.
 
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { isActive } from "./is-active";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptChannelOrder } from "../../shared/definition";
 import { readCharacterSnapshot } from "../character-library/snapshot";
@@ -64,7 +65,7 @@ export function teardown(databasePath?: string) {
 				.select({ id: characterTable.id })
 				.from(characterTable)
 				.where(
-					and(eq(characterTable.name, character.name), isNull(characterTable.deleted_at)),
+					and(eq(characterTable.name, character.name), isActive(characterTable)),
 				)
 				.all();
 

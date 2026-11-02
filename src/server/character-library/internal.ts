@@ -1,5 +1,6 @@
+import { isActive } from "../database/is-active";
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { characterTable } from "../database/schema";
 import {
@@ -100,7 +101,7 @@ export const requireActiveCharacter = (
 		})
 		.from(characterTable)
 		.where(
-			and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at)),
+			and(eq(characterTable.id, characterId), isActive(characterTable)),
 		)
 		.get();
 

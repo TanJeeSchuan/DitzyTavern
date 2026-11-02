@@ -1,15 +1,14 @@
 import { generationGate } from "../generation-gate";
 import type { ForkConversationBody } from "../../../shared/contract/conversation-schema";
 import type { Database } from "bun:sqlite";
-import { Type, type TSchema } from "@sinclair/typebox";
+import type { TSchema } from "@sinclair/typebox";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { boxDescriptors, boxIdOf } from "../../../shared/contract/box";
-import { boxRecordSlot } from "../../../shared/contract/box-digest";
 import type { BoxMoves } from "../../../shared/contract/box-generation";
 import { isImportOwnedDataNamespace } from "../../../shared/import-data";
 import { variantDataCodecs } from "../../../shared/variant-data-codecs";
 import type { GenerationJsonValue } from "../../../shared/contract/json-value";
-import { rewriteRowReferences, type RowIdMaps } from "../../box/row-references";
+import { boxValueSchema, rewriteRowReferences, type BoxValueScope, type RowIdMaps } from "../../box/row-references";
 import { serverBox } from "../../box/registry";
 import { checkStoredBoxValue, parseStoredBoxJson } from "../../box/stored-json";
 import { authorRoleOf } from "../continuation";
@@ -82,17 +81,13 @@ export function forkConversation(database: Database, input: ForkConversationBody
 			// SAFETY: the value was checked against the schema, and the rewrite keeps its JSON shape, replacing ids with ids.
 			return rewriteRowReferences(checked, checkStoredBoxValue(trace, checked, place), maps, { keepMissing: true }) as GenerationJsonValue;
 		});
-		const boxValue = (namespace: string, key: string, value: string, scope: "chat" | "participant" | "message" | "variant"): string | undefined => {
+		const boxValue = (namespace: string, key: string, value: string, scope: BoxValueScope): string | undefined => {
 			const id = boxIdOf(namespace);
 			if (id === undefined) return isImportOwnedDataNamespace(namespace) ? undefined : value;
 			const descriptor = descriptors.get(id);
 			if (!descriptor) { omitted.add(id); return undefined; }
 			if (scope === "chat" && (key === "enabled" || key === "instance")) return value;
-			const schema = scope === "chat" ? key === "setup" ? descriptor.setup?.schema : descriptor.values?.chat?.[key]
-				: scope === "participant" ? descriptor.values?.participant?.[key]
-				: scope === "message" ? key === "moves" && descriptor.moves ? Type.Array(descriptor.moves.schema) : undefined
-				: key.startsWith("record:") && descriptor.record ? boxRecordSlot(descriptor.record) : undefined;
-			return rewrite(id, schema || undefined, value, `${scope}/${key}`);
+			return rewrite(id, boxValueSchema(descriptor, scope, key), value, `${scope}/${key}`);
 		};
 		for (const row of db.select().from(conversationDataTable).where(eq(conversationDataTable.conversation_id, input.conversationId)).all()) {
 			const value = boxValue(row.namespace, row.key, row.value, "chat");

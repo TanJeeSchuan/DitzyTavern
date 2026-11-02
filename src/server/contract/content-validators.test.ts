@@ -1,3 +1,5 @@
+import { emptyPromptChannels } from "../../shared/definition";
+import { createCharacterLibraryModule } from "../character-library";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -19,7 +21,7 @@ test("a read answers its own validator with an empty 304, and a changed read wit
 	const repeated = await get("/api/workspace", etag.replace(/^W\//, ""));
 	expect(repeated.status).toBe(304);
 	expect(await repeated.text()).toBe("");
-	database.run("INSERT INTO character (name) VALUES ('Maren')");
+	createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Maren", prompt: emptyPromptChannels(), openings: [] } });
 	const changed = await get("/api/workspace", etag);
 	expect(changed.status).toBe(200);
 	expect(changed.headers.get("etag")).not.toBe(etag);

@@ -1,6 +1,7 @@
+import { isActive } from "../database/is-active";
 import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
+import { and, asc, eq, inArray, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterDataTable,
@@ -120,7 +121,7 @@ export const readActiveCast = (
 		.where(
 			and(
 				eq(participantTable.conversation_id, conversationId),
-				isNull(participantTable.deleted_at),
+				isActive(participantTable),
 				...(participantIds === undefined
 					? []
 					: [inArray(participantTable.id, participantIds)]),
@@ -249,7 +250,7 @@ export const findActiveParticipant = (
 			and(
 				eq(participantTable.id, participantId),
 				eq(participantTable.conversation_id, conversationId),
-				isNull(participantTable.deleted_at),
+				isActive(participantTable),
 			),
 		)
 		.get();

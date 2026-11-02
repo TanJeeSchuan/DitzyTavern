@@ -1,8 +1,6 @@
-import { asc, eq } from "drizzle-orm";
-import {
-	emptyPromptChannels,
-	promptPreview,
-} from "../../shared/definition";
+import { isActive } from "../database/is-active";
+import { and, asc, eq } from "drizzle-orm";
+import { promptPreview } from "../../shared/definition";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -62,9 +60,9 @@ export function readCharacterSnapshot(
 	const character = db
 		.select()
 		.from(characterTable)
-		.where(eq(characterTable.id, characterId))
+		.where(and(eq(characterTable.id, characterId), isActive(characterTable)))
 		.get();
-	if (character === undefined || character.deleted_at !== null) {
+	if (character === undefined) {
 		return undefined;
 	}
 
@@ -73,6 +71,7 @@ export function readCharacterSnapshot(
 		.from(characterPromptTable)
 		.where(eq(characterPromptTable.character_id, characterId))
 		.get();
+	if (promptRow === undefined) throw new Error(`Active Character ${characterId} has no Prompt.`);
 	const openings = db
 		.select({ content: characterOpeningTable.content })
 		.from(characterOpeningTable)
@@ -86,7 +85,7 @@ export function readCharacterSnapshot(
 		name: character.name,
 		revision: character.revision,
 		pinned: character.pinned,
-		prompt: promptRow === undefined ? emptyPromptChannels() : toPromptChannels(promptRow),
+		prompt: toPromptChannels(promptRow),
 		openings,
 		portrait: fromPortraitColumns(promptRow),
 		deletionImpact: readDeletionImpact(db, characterId),
@@ -115,28 +114,27 @@ export function listCharacters(db: CharacterDatabase): CharacterLibrarySummary[]
 			name: characterTable.name,
 			revision: characterTable.revision,
 			pinned: characterTable.pinned,
-			deletedAt: characterTable.deleted_at,
 			identity: characterPromptTable.identity,
 			portrait_hash: characterPromptTable.portrait_hash,
 			portrait_focal_x: characterPromptTable.portrait_focal_x,
 			portrait_focal_y: characterPromptTable.portrait_focal_y,
 		})
 		.from(characterTable)
-		.leftJoin(
+		.innerJoin(
 			characterPromptTable,
 			eq(characterPromptTable.character_id, characterTable.id),
 		)
+		.where(isActive(characterTable))
 		.orderBy(asc(characterTable.id))
 		.all();
 
 	return rows
-		.filter((row) => row.deletedAt === null)
 		.map((row) => ({
 			id: row.id,
 			name: row.name,
 			revision: row.revision,
 			pinned: row.pinned,
-			preview: promptPreview(row.identity ?? ""),
+			preview: promptPreview(row.identity),
 			portrait: fromPortraitColumns(row),
 			provenanceReferenceCount: references.get(row.id) ?? 0,
 		}))

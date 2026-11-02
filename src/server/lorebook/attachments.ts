@@ -1,5 +1,6 @@
+import { isActive } from "../database/is-active";
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterLorebookAttachmentTable,
@@ -99,7 +100,7 @@ const readLorebookAttachmentEligibilityFrom = (
 	}
 	for (const row of db.select().from(participantLorebookAttachmentTable)
 		.innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id))
-		.where(and(eq(participantTable.conversation_id, conversationId), isNull(participantTable.deleted_at))).all()) {
+		.where(and(eq(participantTable.conversation_id, conversationId), isActive(participantTable))).all()) {
 		const attachment = row.participant_lorebook_attachment;
 		const eligible = attachment.enabled && (attachment.scope === "cast" ? cast.has(attachment.participant_id) : controlled.has(attachment.participant_id));
 		rows.push({
@@ -157,7 +158,7 @@ export const readLorebookAttachmentImpact = (
 				})
 				.from(characterLorebookAttachmentTable)
 				.innerJoin(characterTable, eq(characterTable.id, characterLorebookAttachmentTable.character_id))
-				.where(eq(characterLorebookAttachmentTable.lorebook_id, bookId))
+				.where(and(eq(characterLorebookAttachmentTable.lorebook_id, bookId), isActive(characterTable)))
 				.all()
 				.map((row) => ({ ...row, owner: "character" as const })),
 			...db
@@ -170,7 +171,7 @@ export const readLorebookAttachmentImpact = (
 				})
 				.from(participantLorebookAttachmentTable)
 				.innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id))
-				.where(eq(participantLorebookAttachmentTable.lorebook_id, bookId))
+				.where(and(eq(participantLorebookAttachmentTable.lorebook_id, bookId), isActive(participantTable)))
 				.all()
 				.map((row) => ({ ...row, owner: "participant" as const })),
 			...db
@@ -194,7 +195,7 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 	const character = db
 		.select({ id: characterTable.id, revision: characterTable.revision })
 		.from(characterTable)
-		.where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at)))
+		.where(and(eq(characterTable.id, characterId), isActive(characterTable)))
 		.get();
 	if (character === undefined) return undefined;
 	return {
@@ -216,14 +217,14 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 // when the Participant is gone, which the route presents as not-found.
 export const readParticipantConversationId = (database: Database, participantId: number): number | undefined =>
 	connect(database).select({ conversationId: participantTable.conversation_id }).from(participantTable)
-		.where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get()?.conversationId;
+		.where(and(eq(participantTable.id, participantId), isActive(participantTable))).get()?.conversationId;
 
 export const readParticipantLorebookAttachments = (database: Database, participantId: number) => {
 	const db = connect(database);
 	const participant = db
 		.select({ id: participantTable.id, conversationId: participantTable.conversation_id })
 		.from(participantTable)
-		.where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at)))
+		.where(and(eq(participantTable.id, participantId), isActive(participantTable)))
 		.get();
 	if (participant === undefined) return undefined;
 	const conversation = findConversation(db, participant.conversationId);
@@ -279,7 +280,7 @@ export const executeLorebookAttachmentCommand = (
 		const owner = db
 			.select({ revision: characterTable.revision })
 			.from(characterTable)
-			.where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at)))
+			.where(and(eq(characterTable.id, command.characterId), isActive(characterTable)))
 			.get();
 		if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
 		guardRevision("lore-attachment", command.expectedRevision, owner, () => {

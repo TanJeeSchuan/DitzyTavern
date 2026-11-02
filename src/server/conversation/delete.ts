@@ -1,6 +1,7 @@
+import { collectReleasedCharacterTombstones } from "../character-library";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
-import { conversationTable, messageTable, messageVariantTable } from "../database/schema";
+import { conversationTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
 import { ConversationNotFoundError } from "./errors";
 import { generationGate } from "./generation-gate";
 import { runConversationTransaction } from "./commands/transaction";
@@ -24,12 +25,15 @@ export function deleteConversation(database: Database, conversationId: number) {
 			.where(eq(messageTable.conversation_id, conversationId))
 			.all()
 			.map(({ id }) => id);
+		const sourceCharacterIds = db.select({ id: participantTable.source_character_id }).from(participantTable)
+			.where(eq(participantTable.conversation_id, conversationId)).all().flatMap(({ id }) => id === null ? [] : [id]);
 		const deleted = db
 			.delete(conversationTable)
 			.where(eq(conversationTable.id, conversationId))
 			.returning({ id: conversationTable.id })
 			.all();
 		if (deleted.length === 0) throw new ConversationNotFoundError(conversationId);
+		collectReleasedCharacterTombstones(db, sourceCharacterIds);
 		reportChange({
 			conversationId,
 			touchedVariantIds: [],

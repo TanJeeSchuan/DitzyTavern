@@ -487,6 +487,10 @@ function removeActiveGenerationTargetInTransaction(
 			),
 		)
 		.run();
+	// @approved
+	//  No tombstone is collected here: a Tail or Continuation target names only
+	// the Control seats it was accepted with, and a seat holder can be neither
+	// removed nor replaced while the Generation runs.
 	return { durableOutput: false };
 }
 

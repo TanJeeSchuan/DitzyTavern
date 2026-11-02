@@ -1,4 +1,5 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { isActive } from "../../database/is-active";
+import { and, eq } from "drizzle-orm";
 import type { BoxId } from "../../../shared/contract/box";
 import type { BoxDataWrite } from "../../../shared/contract/box-actions";
 import { characterTable } from "../../database/schema";
@@ -27,7 +28,7 @@ export function putBoxData(db: ConversationDatabase, input: { conversationId: nu
 			return;
 		case "character": {
 			const { characterId } = input.owner;
-			const character = db.select({ id: characterTable.id }).from(characterTable).where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at))).get();
+			const character = db.select({ id: characterTable.id }).from(characterTable).where(and(eq(characterTable.id, characterId), isActive(characterTable))).get();
 			if (character === undefined) throw new InvalidConversationCommandError(`Character ${characterId} is not available.`);
 			putCharacterValue(db, input.box, characterId, write, guardShared(input.owner.revision));
 			return;

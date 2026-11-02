@@ -8,7 +8,7 @@ import {
 } from "../database/schema";
 import { toPromptChannelRow } from "./prompt-rows";
 import { createCharacter } from "./create";
-import { deleteCharacter } from "./delete-character";
+import { tombstone } from "./tombstone";
 import {
 	CharacterNotFoundError,
 } from "./errors";
@@ -55,7 +55,7 @@ export function executeCharacterCommand(
 			// @approved
 			//  Deletion advances no further revision: a hard-deleted Character
 			// has no row left, and a tombstone is hidden and nonrestorable.
-			return deleteCharacter(db, command.characterId);
+			return tombstone(db, command.characterId);
 		}
 
 		switch (command.type) {
