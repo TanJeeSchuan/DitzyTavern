@@ -133,7 +133,7 @@ test("Moves resolve in order against projected energy and per-Runner limits, the
 const runRace = (fields: { setup: typeof setup; moves?: (state: RaceState | null) => RaceMove[] }) => {
 	let state: RaceState | null = null;
 	const outcomes: string[] = [];
-	const ordered: RaceMove[][] = [];
+	const ordered: (readonly RaceMove[])[] = [];
 	for (let i = 0; i < 30 && state?.finished !== true; i++) {
 		const input: RaceInput = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
 		const record = advanceRace(input)!;
