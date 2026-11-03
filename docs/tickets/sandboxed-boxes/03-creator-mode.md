@@ -2,7 +2,7 @@
 
 Status: TODO
 
-Blocked By: 02b
+Blocked By: 02b, 02c
 
 Source: `docs/research/deepseek-harness-creator-mode.md`, `docs/research/sandbox-box-landmark-fit.md`, ticket 00 findings.
 
@@ -26,7 +26,7 @@ A writer chooses **Create a Box** in the Box manager, describes a mechanic, and 
 
 ## Work
 
-- [ ] Host tools: `read_contract` (the agent-facing sandboxed Box contract, kept in `src/server/authoring/` because the Docker image copies `src/server` but not `docs/`, plus the sandboxed Race and Mood in `src/boxes` as examples), `write_descriptor` (including exact-version `dependencies`), `write_logic`, `write_ui` (`ui.js` and optional `ui.css`; save the candidate), `run_scenario({ moves, swipes, prose?, decisions? })` (build the candidate through ticket 01b's build step, then run its hooks in QuickJS against a scripted history and return folded state, prompt items and `read` output; `decisions` scripts the answers `decide` returns during digests, so a scenario costs no model calls and gives the same result every time), `ask_writer`. The contract tells the agent that records hold snapshots or deltas, never logs that copy earlier records. `run_scenario` also reports total record bytes after a long scripted history, so the agent sees growth before the writer does.
+- [ ] Host tools: `read_contract` (the agent-facing sandboxed Box contract, kept in `src/server/authoring/` because the Docker image copies `src/server` but not `docs/`, plus the sandboxed Race and Mood in `src/boxes` as examples), `write_descriptor` (including exact-version `dependencies`), `write_logic`, `write_ui` (`ui.js` and optional `ui.css`; save the candidate), `run_scenario({ moves, swipes, prose?, decisions? })` (build the candidate through ticket 02c's build step, then run its hooks in QuickJS against a scripted history and return folded state, prompt items and `read` output; `decisions` scripts the answers `decide` returns during digests, so a scenario costs no model calls and gives the same result every time), `ask_writer`. The contract tells the agent that records hold snapshots or deltas, never logs that copy earlier records. `run_scenario` also reports total record bytes after a long scripted history, so the agent sees growth before the writer does.
 - [ ] Agent: `createFxAgent` with those tools, the authoring instructions, `provider`/`credentials` from the chosen profile, and events streamed to the client. Support cancel and steer.
 - [ ] Sessions: store the libfx checkpoint per authoring session; sessions whose checkpoint no longer loads after a libfx upgrade are discarded.
 - [ ] Panel: **Create a Box** in `BoxManager`, a chat view of the agent, the candidate's live frame and prompt items, and **Install**.
