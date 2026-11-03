@@ -126,6 +126,21 @@ test("an import that reaches outside the Box's sources, or a macro, fails the bu
 	});
 });
 
+// @approved
+//  Built as a script, Bun turns a used static `sqlite` import into a
+// `require` call no import scan sees; `ui.js` builds as a module, so the
+// import stays literal and is refused.
+test("a ui.js whose static sqlite import skips the plugin is refused, not passed on as a require call", async () => {
+	const { box } = boxIn({ "logic.js": "export default {};", "ui.js": 'import secret from "../secret.js" with { type: "sqlite" };\nhost.render(secret);' });
+	await expect(sources(box, true)).rejects.toThrow("The probe Box's ui.js still imports ../secret.js once built.");
+	expect(existsSync(join(box, "ui.bundle.js"))).toBe(false);
+});
+
+test("a part with no imports still answers to its cap", async () => {
+	const { box } = boxIn({ "logic.js": `export default ${JSON.stringify("x".repeat(2 * 1024 * 1024))};` });
+	await expect(sources(box, false)).rejects.toThrow("The probe Box's logic.js builds to more than its 1 MiB cap.");
+});
+
 test("a bundle over its cap is refused, naming the Box and the part", async () => {
 	const { box } = boxIn({ "logic.js": 'import big from "big";\nexport default { moves: { render: () => big } };', "deps/.keep": "" });
 	pin(box, "big@1.0.0", `export default ${JSON.stringify("x".repeat(1024 * 1024))};`);

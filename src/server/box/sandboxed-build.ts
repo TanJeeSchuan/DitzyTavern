@@ -47,10 +47,11 @@ const confined = (files: SandboxedFiles, entry: string, packages: ReadonlyMap<st
 	},
 });
 
-/** @approved Refuses a bundle, built or cached, that still imports anything or is over its part's cap. */
+/** @approved Refuses a part, as written, built or cached, that still imports anything, that exports anything when it is `ui.js`, or that is over its part's cap. */
 const checkedBundle = (id: BoxId, part: Part, code: string) => {
-	const [left] = transpiler.scanImports(code);
+	const { imports: [left], exports } = transpiler.scan(code);
 	if (left !== undefined) throw new Error(`The ${id} Box's ${part}.js still imports ${left.path} once built.`);
+	if (part === "ui" && exports.length > 0) throw new Error(`The ${id} Box's ui.js exports ${exports.join(", ")}; it runs as a script.`);
 	if (Buffer.byteLength(code) > SANDBOXED_BUNDLE_BYTES[part]) throw new Error(`The ${id} Box's ${part}.js builds to more than its ${SANDBOXED_BUNDLE_BYTES[part] / 1024 / 1024} MiB cap.`);
 	return code;
 };
@@ -58,20 +59,27 @@ const checkedBundle = (id: BoxId, part: Part, code: string) => {
 // @approved
 //  Builds one part from the folder's snapshot. Build settings come only from
 // these options: guest macros would run on the host, so they are off, and no
-// environment variable is inlined. `logic.js` becomes the ES module QuickJS
-// evaluates, `ui.js` the script the frame's Worker runs. Computed imports
-// stay in the output and fail inside the sandbox.
+// environment variable is inlined. Both parts build as ES modules, so an
+// import the plugin never saw (a `sqlite` import attribute) stays a literal
+// import the check refuses; built as a script, Bun would turn it into a
+// `require` call no import scan sees. `logic.js` is the module QuickJS
+// evaluates; `ui.js`, which may not export, runs in the frame's Worker
+// wrapped in a function. Computed imports stay in the output and fail inside
+// the sandbox.
 const build = async (files: SandboxedFiles, id: BoxId, part: Part, packages: ReadonlyMap<string, string>) => {
 	const refuse = (reason: string) => new Error(`The ${id} Box's ${part}.js ${reason}`);
 	// @approved
 	// bun-types does not declare `macros`, which Bun.build reads; spread from a variable, it passes the type check.
 	const untyped = { macros: false };
-	const result = await Bun.build({ ...untyped, entrypoints: [`${part}.js`], target: "browser", format: part === "logic" ? "esm" : "iife", minify: true, env: "disable", throw: false, plugins: [confined(files, `${part}.js`, packages)] });
+	const result = await Bun.build({ ...untyped, entrypoints: [`${part}.js`], target: "browser", format: "esm", minify: true, env: "disable", throw: false, plugins: [confined(files, `${part}.js`, packages)] });
 	if (!result.success) throw refuse(`did not build: ${result.logs.map(({ message }) => message).join("; ")}`);
 	const [output, ...more] = result.outputs;
 	if (output === undefined || more.length > 0) throw refuse(`built ${result.outputs.length} files; a sandboxed Box's ${part}.js builds into one.`);
 	return await output.text();
 };
+
+/** @approved A built `ui.js` runs as a script, in a function so its top-level names cannot meet the Worker prelude's; a built `logic.js` stays the module it is. */
+const script = (part: Part, code: string) => part === "ui" ? `(() => {\n${code}\n})();` : code;
 
 /** @approved The hash of everything a build reads: the Box's own modules and each pinned package, by name. */
 const inputsHash = (files: SandboxedFiles, packages: ReadonlyMap<string, string>) => {
@@ -95,14 +103,14 @@ export const sandboxedSources = async (folder: string, id: BoxId, withUi: boolea
 	const source = async (part: Part) => {
 		const written = files.get(`${part}.js`);
 		if (written === undefined) throw new Error(`The ${id} Box has no ${part}.js.`);
-		if (transpiler.scanImports(written).length === 0) return written;
+		if (transpiler.scanImports(written).length === 0) return checkedBundle(id, part, written);
 		const { packages, hash } = await prepare();
 		const stamp = `// inputs ${hash}\n`;
 		const cached = files.get(`${part}.bundle.js`);
-		if (cached?.startsWith(stamp)) return checkedBundle(id, part, cached.slice(stamp.length));
+		if (cached?.startsWith(stamp)) return script(part, checkedBundle(id, part, cached.slice(stamp.length)));
 		const code = checkedBundle(id, part, await build(files, id, part, packages));
 		await replaceFile(join(folder, `${part}.bundle.js`), stamp + code);
-		return code;
+		return script(part, code);
 	};
 	return { logic: await source("logic"), ui: withUi ? await source("ui") : undefined };
 };

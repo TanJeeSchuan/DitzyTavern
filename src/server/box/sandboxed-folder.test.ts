@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { discoverBoxes } from "./registry";
-import { replaceFile } from "./sandboxed-folder";
+import { replaceFile, SANDBOXED_FOLDER, sandboxedFolder } from "./sandboxed-folder";
 
 const parents: string[] = [];
 afterEach(() => { for (const made of parents.splice(0)) rmSync(made, { recursive: true, force: true }); });
@@ -62,6 +62,27 @@ test("a sandboxed Box whose folder holds a link anywhere is refused before the l
 	]);
 	expect(readFileSync(join(outside, "sentinel.js"), "utf8")).toBe("host file");
 	expect(readdirSync(outside).sort()).toEqual(["@scope", "dice@1.0.0.js", "sentinel.js"]);
+});
+
+// @approved
+//  The big file is sparse, so the test allocates nothing; the walk refuses it
+// by its size before reading it.
+test("a sandboxed Box's folder past its bytes, entries or depth is refused while it is walked", async () => {
+	const parent = mkdtempSync(join(tmpdir(), "ditzy-limits-"));
+	parents.push(parent);
+	const box = (name: string) => { const path = join(parent, name); mkdirSync(path); return path; };
+	const big = box("big");
+	writeFileSync(join(big, "asset.bin"), "");
+	truncateSync(join(big, "asset.bin"), SANDBOXED_FOLDER.bytes + 1);
+	const many = box("many");
+	for (let index = 0; index <= SANDBOXED_FOLDER.entries; index++) writeFileSync(join(many, `${index}.js`), "");
+	const deep = join(box("deep"), ...Array.from({ length: SANDBOXED_FOLDER.depth + 1 }, (_, index) => `${index}`));
+	mkdirSync(deep, { recursive: true });
+	expect(await Promise.all(["big", "many", "deep"].map((name) => sandboxedFolder(join(parent, name), name).then(() => "read", (error: Error) => error.message)))).toEqual([
+		"The big Box's folder holds more than 16 MiB.",
+		"The many Box's folder holds more than 256 files and folders.",
+		"The deep Box's folder holds more than 8 levels of folders.",
+	]);
 });
 
 test("a file the loader replaces is written as a new file, never through a link at its name", async () => {
