@@ -1,6 +1,6 @@
 # Sandboxed Box loader
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 00
 
@@ -53,8 +53,8 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.js` (plus op
 - [x] Contract tests (server): an infinite loop in `fold`, a runaway allocation and an oversized payload fail the hook with an error naming the Box; an `async` hook that loops forever before returning is stopped.
 - [x] Isolation e2e: a fixture `ui.js` attempts every escape in the research note's table (fetch, WebSocket, EventSource, importScripts, nested Workers, FontFace, WebTransport, `RTCPeerConnection`) and renders markup that tries `<a href>`, `<img src>` and `srcset`, a CSS background and a `<video poster>` (on another origin and on the app's own image route), `<form action>`, inline handlers, `javascript:` URLs, `<meta http-equiv="refresh">` and CSS `url()`. The test server records zero requests from it, and clicking every rendered element navigates nothing. A message posted to the frame on another port is ignored.
 - [x] Document sandboxed Boxes in `docs/box-system/README.md` and `docs/docker.md` (both kinds on the volume; a sandboxed Box needs no build), and record the decision as an ADR.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
