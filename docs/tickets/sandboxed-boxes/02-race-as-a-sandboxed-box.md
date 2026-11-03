@@ -2,7 +2,7 @@
 
 Status: TODO
 
-Blocked By: 01
+Blocked By: 01b
 
 Source: `docs/research/sandbox-box-landmark-fit.md` (Race dependency inventory, E2E impact, performance).
 
@@ -29,8 +29,8 @@ Race runs as a sandboxed Box with the same simulation, hidden-state behavior and
 - [ ] Hooks: `setup` + `setupError` (sync, inside the command transaction), `dependencies` (seed, intent, withdrawn Cast), `read` with an expanded projection covering setup, seats, portraits and staged Moves. `spectatorOf` still strips intents and replay until the finish.
 - [ ] Records stop copying the replay. Today each record is the full `RaceState`, so it repeats every earlier Stretch (`server-engine.ts:260`), and total record bytes grow with the square of the Stretch count (17.7 MB at 200 Stretches in ticket 00). Each record keeps standings and intents and adds zero or one new replay entry: a Stretch adds one, while a withdrawal during Hold, a walkover and the Results record add none (`server-engine.ts:119`, `:125`, `:143`). `fold` takes the snapshot fields from the last matching record, whether or not it adds an entry, and appends the entries, starting fresh when `raceId` changes. A writer override of an earlier record still leaves later standings unchanged. Existing stored Race records are cleared, not migrated.
 - [ ] Replace `node:util` `isDeepStrictEqual` with key-order-independent JSON equality.
-- [ ] Rewrite the window (oval, replay, setup, stats, avatars) as `ui.html` using the token stylesheet.
-- [ ] Build: Race's logic stays TypeScript in `src/boxes/race/logic.ts`. The registry bundles a built-in sandboxed Box's `logic.ts` with `Bun.build` at server startup into a JS string, the same in development, production and Docker (which copies `src/boxes`), so there is no build artifact to go stale or missing; a plugin's `logic.js` is read as is. The guest only ever receives JS. The Vite build skips `buildBoxClient` for Boxes without `client.tsx` (`vite.config.ts:45`, `scripts/build-box-client.ts:57`). Check that the development server restarts when `logic.ts` changes; if `bun --watch` doesn't see it, the dev script watches `src/boxes`.
+- [ ] Rewrite the window (oval, replay, setup, stats, avatars) as `ui.js` rendering markup with the token stylesheet; the oval as SVG markup or on a canvas through ticket 01b's bridge. Avatars are `<img>` on the host image route, which the sanitizer allows.
+- [ ] Build: Race's logic stays TypeScript in `src/boxes/race/logic.ts`. The registry bundles a built-in sandboxed Box's `logic.ts` and `ui.ts` at server startup through ticket 01b's build step, the same in development, production and Docker (which copies `src/boxes`), so there is no build artifact to go stale or missing. The guest only ever receives JS. The Vite build skips `buildBoxClient` for Boxes without `client.tsx` (`vite.config.ts:45`, `scripts/build-box-client.ts:57`). Check that the development server restarts when `logic.ts` changes; if `bun --watch` doesn't see it, the dev script watches `src/boxes`.
 - [ ] Adapt the five Race specs: frame locators everywhere; `moves.spec.ts` read interception and `cast.spec.ts` direct reads move to the new transport. Prompt Plan, Stretch text, Swipe equality and model request assertions stay unchanged.
 - [ ] With ticket 01's limits on, time a fold of the longest real race (3,200 m at 100 m per Stretch) and a 200-Stretch synthetic one with the compact records, and record whether they fit the 100 ms sync deadline. Change the limits in ticket 01's code if they don't.
 - [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
