@@ -30,10 +30,12 @@ test("Escape cannot dismiss a prompt save that is still running", async ({ page 
 	await editor.getByRole("button", { name: "Done" }).click();
 	await page.getByRole("button", { name: "Close Prompt Presets" }).click();
 	const dialog = page.getByRole("dialog", { name: "Unsaved block edit" });
+	const held = Promise.withResolvers<void>();
 	const release = Promise.withResolvers<void>();
-	await page.route("**/api/**/commands", async (route) => { await release.promise; await route.continue(); });
+	await page.route("**/api/prompt-presets/*/blocks/patches", async (route) => { held.resolve(); await release.promise; await route.continue(); });
 	try {
 		await dialog.getByRole("button", { name: "Save and close" }).click();
+		await held.promise;
 		await expect(dialog.getByRole("button", { name: "Keep editing" })).toBeDisabled();
 		await page.keyboard.press("Escape");
 		await expect(dialog).toBeVisible();
