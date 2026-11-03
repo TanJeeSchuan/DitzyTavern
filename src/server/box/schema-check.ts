@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Kind, KindGuard, type TSchema } from "@sinclair/typebox";
+import { eq } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { BoxId } from "../../shared/contract/box";
 import { checkBoxValuesInChats } from "../conversation";
@@ -17,26 +18,29 @@ const schemaFingerprint = ({ descriptor, box }: CheckedBox) => sha256(JSON.strin
 	setup: descriptor.setup?.schema, values: descriptor.values, record: descriptor.record,
 	moves: descriptor.moves && { schema: descriptor.moves.schema, max: descriptor.moves.max }, trace: box.advance?.trace,
 }, withKinds));
-const recordFingerprint = (db: BunSQLiteDatabase, checked: CheckedBox) => {
-	const fingerprint = schemaFingerprint(checked);
+const recordFingerprint = (db: BunSQLiteDatabase, checked: CheckedBox, fingerprint = schemaFingerprint(checked)) => {
 	db.insert(boxSchemaTable).values({ box_id: checked.id, fingerprint }).onConflictDoUpdate({ target: boxSchemaTable.box_id, set: { fingerprint } }).run();
 };
 
 // @approved
 //  At load, before the server serves, each Box whose schemas changed has its
-// stored values checked in every Chat. Its fingerprint is recorded only once
-// nothing is held, so a Box with held values is checked again next load.
-// A Box whose schemas throw, such as one naming a missing `$id`, is logged
-// and left unchecked, so it cannot stop the server. Returns each Box's held
-// places.
+// stored values checked in every Chat. The check may rewrite values, so the
+// old fingerprint is forgotten first, and the new one recorded only once
+// nothing is held: a Box with held values, or whose check stopped partway,
+// is checked again next load. A Box whose schemas throw, such as one naming a
+// missing `$id`, is logged and left unchecked, so it cannot stop the server.
+// Returns each Box's held places.
 export const checkStoredBoxValues = (database: Database, boxes: readonly CheckedBox[]): ReadonlyMap<BoxId, readonly string[]> => {
 	const db = drizzle(database);
 	const recorded = new Map(db.select().from(boxSchemaTable).all().map((row) => [row.box_id, row.fingerprint]));
 	const held = new Map<BoxId, readonly string[]>();
-	for (const checked of boxes.filter((checked) => recorded.get(checked.id) !== schemaFingerprint(checked))) {
+	for (const checked of boxes) {
 		try {
+			const fingerprint = schemaFingerprint(checked);
+			if (recorded.get(checked.id) === fingerprint) continue;
+			db.delete(boxSchemaTable).where(eq(boxSchemaTable.box_id, checked.id)).run();
 			const places = checkBoxValuesInChats(database, checked, false);
-			if (places.length === 0) recordFingerprint(db, checked);
+			if (places.length === 0) recordFingerprint(db, checked, fingerprint);
 			else held.set(checked.id, places);
 		} catch (error) {
 			console.error(`[boxes] Could not check the ${checked.id} Box's stored values: ${error instanceof Error ? error.message : String(error)}`);

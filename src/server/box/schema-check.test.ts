@@ -106,3 +106,19 @@ test("schemas differing only in their custom kind fingerprint apart", () => {
 	expect(checkStoredBoxValues(database, [counting("Even")]).get("lamp")).not.toContain("Chat 1 setup");
 	expect(checkStoredBoxValues(database, [counting("Odd")]).get("lamp")).toContain("Chat 1 setup");
 });
+
+test("returning to a Box's earlier schemas checks again after a check that held values", () => {
+	const earlier: CheckedBox = {
+		id: "lamp",
+		descriptor: {
+			...lamp.descriptor,
+			setup: { schema: Type.Object({ on: Type.Boolean() }), initial: { on: false } },
+			record: Type.Object({ brightness: Type.Number() }),
+			moves: { schema: Type.Object({}), max: 2, label: () => "Flick" },
+		},
+		box: { advance: { trace: Type.Object({ brightness: Type.Number() }), run: async () => ({ items: [] }) } },
+	};
+	expect(checkStoredBoxValues(database, [earlier])).toEqual(new Map());
+	checkStoredBoxValues(database, [lamp]);
+	expect(checkStoredBoxValues(database, [earlier]).get("lamp")).toContain("Chat 1 setup");
+});
