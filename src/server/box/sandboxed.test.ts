@@ -40,9 +40,10 @@ test("an async advance that loops before it returns is stopped, and one that nev
 
 test("logic has no clock and no randomness of its own", async () => {
 	const attempt = (code: string) => `(() => { try { return String(${code}); } catch (error) { return error.message; } })()`;
-	const box = await load(`export default { read: () => [typeof Math.random, typeof Date.now, ${attempt("new Date()")}, ${attempt("new RealDate().getTime()")}, ${attempt("new (new Date(0).constructor)()")}, new Date(0).toISOString()] };`);
+	const escapes = ["new Date()", "new RealDate().getTime()", "new (new Date(0).constructor)()", "(Reflect.construct = (target) => target, new (new Date(0))())"];
+	const box = await load(`export default { read: () => [typeof Math.random, typeof Date.now, ${escapes.map(attempt).join(", ")}, new Date(0).toISOString()] };`);
 	expect(box.read?.({ setup: undefined, state: undefined })).toEqual([
-		"undefined", "undefined", "Sandboxed logic has no clock.", "'RealDate' is not defined", "Sandboxed logic has no clock.", "1970-01-01T00:00:00.000Z",
+		"undefined", "undefined", "Sandboxed logic has no clock.", "'RealDate' is not defined", "Sandboxed logic has no clock.", "not a constructor", "1970-01-01T00:00:00.000Z",
 	]);
 });
 

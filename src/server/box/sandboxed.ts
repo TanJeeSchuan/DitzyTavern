@@ -27,8 +27,9 @@ const supportedHooks = ["moves.render", "records.initial", "records.fold", "adva
 const determinism = `(() => {
 	delete Math.random;
 	const RealDate = Date;
+	const construct = Reflect.construct;
 	const NoClock = new Proxy(RealDate, {
-		construct: (target, args, newTarget) => { if (args.length === 0) throw new TypeError("Sandboxed logic has no clock."); return Reflect.construct(target, args, newTarget); },
+		construct: (target, args, newTarget) => { if (args.length === 0) throw new TypeError("Sandboxed logic has no clock."); return construct(target, args, newTarget); },
 		apply: () => { throw new TypeError("Sandboxed logic has no clock."); },
 	});
 	delete RealDate.now;
