@@ -80,3 +80,13 @@ test("an upgrade that changes its input in place still lands, and one returning 
 	expect(value("SELECT value FROM conversation_data WHERE key = 'setup'")).toBe('{"on":true,"lit":true}');
 	expect(JSON.parse(value("SELECT value FROM message_variant_data WHERE key = 'record:a'")!)).toEqual({ writer: { brightness: 5 } });
 });
+
+test("an interrupted Generation's pending record that no longer fits is dropped before recovery can write it", () => {
+	database.exec(`
+		INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
+		INSERT INTO active_generation (id, conversation_id, message_id, variant_id, human_participant_id, model_participant_id, captured_model_name, started_at, box_records_json)
+		VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-11-03', '{"lamp":{"instance":"a","record":{"brightness":3}},"other":{"instance":"b","record":{"kept":true}}}');
+	`);
+	checkStoredBoxValues(database, [lamp]);
+	expect(JSON.parse(value("SELECT box_records_json AS value FROM active_generation")!)).toEqual({ other: { instance: "b", record: { kept: true } } });
+});

@@ -28,12 +28,14 @@ const isObject = (value: GenerationJsonValue | undefined): value is { [key: stri
 // else undefined. A Box declines a value by throwing or returning it as is.
 // The upgrade gets a copy, so changing it in place cannot change what the
 // row is compared with, and its result must be JSON as well as pass, as
-// every hook output must.
+// every hook output must. An async upgrade upgrades nothing, and its
+// rejection is caught here so it cannot escape the hook boundary.
 const settle = ({ box }: CheckedBox, schema: TSchema, stored: StoredBoxValue): GenerationJsonValue | undefined => {
 	if (Value.Check(schema, stored.value)) return stored.value;
 	if (box.upgrade === undefined) return undefined;
 	try {
 		const upgraded = box.upgrade({ ...stored, value: structuredClone(stored.value) });
+		if (upgraded instanceof Promise) upgraded.catch(() => undefined);
 		return Value.Check(boxValue, upgraded) && Value.Check(schema, upgraded) ? upgraded : undefined;
 	} catch {
 		return undefined;
@@ -51,7 +53,6 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 	const { descriptor, box } = checked;
 	const namespace = boxReference(checked.id);
 	const held: string[] = [];
-	const touchedVariantIds = new Set<number>();
 	let changed = false;
 	const authored = (next: GenerationJsonValue | undefined, place: string): GenerationJsonValue | undefined | typeof HELD => {
 		if (next !== undefined || clear) return next;
@@ -113,7 +114,6 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 		and(eq(messageVariantDataTable.namespace, BOX_TRACES_NAMESPACE), eq(messageVariantDataTable.key, BOX_TRACES_KEY), named(messageVariantDataTable.value)),
 	))).all();
 	const writeVariantRow = (row: (typeof variantRows)[number]) => (next: string | undefined) => {
-		touchedVariantIds.add(row.message_variant_id);
 		if (next === undefined) db.delete(messageVariantDataTable).where(eq(messageVariantDataTable.id, row.id)).run();
 		else db.update(messageVariantDataTable).set({ value: next }).where(eq(messageVariantDataTable.id, row.id)).run();
 	};
@@ -153,20 +153,32 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 		}
 	}
 
+	// @approved
+	//  An interrupted Generation's pending record is an automatic record that
+	// recovery writes to its Variant after the load, so it is upgraded or
+	// dropped here too.
+	const pending = record === undefined ? [] : db.select({ id: activeGenerationTable.id, records: activeGenerationTable.box_records_json }).from(activeGenerationTable)
+		.where(and(eq(activeGenerationTable.conversation_id, conversationId), sql`instr(${activeGenerationTable.box_records_json}, ${JSON.stringify(checked.id)}) > 0`)).all();
+	for (const row of pending) {
+		const records = parsed(row.records);
+		const entry = isObject(records) ? records[checked.id] : undefined;
+		if (!isObject(records) || !isObject(entry) || entry.record === undefined || record === undefined) continue;
+		const settled = settle(checked, record, { kind: "record", value: entry.record });
+		const next = JSON.stringify(Object.fromEntries(Object.entries({ ...records, [checked.id]: settled === undefined ? undefined : { ...entry, record: settled } })
+			.filter((pair): pair is [string, GenerationJsonValue] => pair[1] !== undefined)));
+		if (next !== JSON.stringify(records)) { db.update(activeGenerationTable).set({ box_records_json: next }).where(eq(activeGenerationTable.id, row.id)).run(); changed = true; }
+	}
+
 	if (changed) db.update(conversationTable).set({ revision: sql`${conversationTable.revision} + 1` }).where(eq(conversationTable.id, conversationId)).run();
-	return { held, changed, touchedVariantIds: [...touchedVariantIds] };
+	return held;
 };
 
 
 // @approved
 //  Checks a Box's stored values in every Chat, one Chat write each, and
-// returns the places it held. Nothing observes writes while the server
-// loads, so only a clear reports its Chats' changes, which lets the digest
-// queue see the records it dropped.
+// returns the places it held. It reports no change: the digest queue would
+// read every digesting Box's records on the Variants, and another Box's held
+// record there would fail the write. A catch-up digests dropped records.
 export const checkBoxValuesInChats = (database: Database, checked: CheckedBox, clear: boolean): string[] =>
 	connectConversationDatabase(database).select({ id: conversationTable.id }).from(conversationTable).all().flatMap(({ id: conversationId }) =>
-		runConversationTransaction(database, (db, reportChange) => {
-			const { held, changed, touchedVariantIds } = checkChat(db, conversationId, checked, clear);
-			if (changed && clear) reportChange({ conversationId, touchedVariantIds, removedVariantIds: [] });
-			return held;
-		}));
+		runConversationTransaction(database, (db) => checkChat(db, conversationId, checked, clear)));
