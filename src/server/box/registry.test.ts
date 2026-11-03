@@ -295,7 +295,7 @@ test("a plugin's routes are served as the loader built them, its client module a
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins], database);
-		const app = createBoxRoutes();
+		const app = createBoxRoutes(database);
 		const served = async (path: string) => {
 			const response = await app.handle(new Request(`http://localhost${path}`));
 			return [response.status, response.status === 200 ? await response.text() : ""];

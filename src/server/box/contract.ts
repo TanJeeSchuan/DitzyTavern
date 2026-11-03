@@ -2,6 +2,7 @@ import type { TSchema } from "@sinclair/typebox";
 import type { Database } from "bun:sqlite";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { AnyElysia } from "elysia";
+import type { BoxDescriptor } from "../../shared/contract/box-descriptor";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { ConversationSummary, SelectedHistoryRead } from "../conversation";
@@ -54,7 +55,17 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 	read?(read: BoxWindowRead<Setup, State>): GenerationJsonValue;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
 	routes?(database: Database): AnyElysia;
+	/** @approved Rewrites a stored value that fails the Box's current schema, when the Box's schemas changed since it was written. Only failing values reach it; the host keeps the result only if it passes. */
+	upgrade?(stored: StoredBoxValue): GenerationJsonValue;
 }
+
+/** @approved A loaded Box as the host checks its stored values: its id, descriptor and hooks. */
+export type CheckedBox = { readonly id: string; readonly descriptor: BoxDescriptor; readonly box: HostBox };
+
+/** @approved A stored value the host found failing its Box's current schema: a setup, a declared Chat or Participant value by key, one Move, one record (automatic or Writer) or a trace. */
+export type StoredBoxValue =
+	| { readonly kind: "setup" | "move" | "record" | "trace"; readonly value: GenerationJsonValue }
+	| { readonly kind: "chat" | "participant"; readonly key: string; readonly value: GenerationJsonValue };
 
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that

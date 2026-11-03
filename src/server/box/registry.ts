@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptor, boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
@@ -13,6 +13,7 @@ import type { BoxFolds } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
+import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 
 // @approved
 //  Once each hook has the shape the host calls, the descriptor decides which
@@ -70,6 +71,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
 		read: host.read?.bind(host),
 		routes: host.routes?.bind(host),
+		upgrade: host.upgrade?.bind(host),
 	};
 };
 
@@ -126,13 +128,15 @@ export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
 /** @approved A loaded Box as the server holds it beside its descriptor: its checked hooks, its mounted routes and the folder its built client module is served from. */
 type LoadedBox = { readonly box: HostBox; readonly routes: AnyElysia | undefined; readonly clientFolder: string };
 let loaded: ReadonlyMap<BoxId, LoadedBox> = new Map();
+let held = new Map<BoxId, readonly string[]>();
 // @approved
 //  Builds the registry from `folders` at startup, before anything reads it,
 // logging each refused Box. A server passes the database it serves, and loads
 // again for each database it opens, since a Box's routes are built for one;
 // a caller that mounts no routes passes none. The client build writes a
 // built-in's client module into `dist/boxes/<id>`, and `box:build` a plugin's
-// into its own `dist`.
+// into its own `dist`. With a database, each Box's stored values are checked
+// against its schemas before anything reads them.
 export const loadBoxes = async (folders: readonly string[] = boxFolders, database?: Database): Promise<void> => {
 	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
@@ -141,6 +145,19 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders, databas
 		clientFolder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist"),
 	}]));
 	installBoxes(boxes.map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
+	held = database === undefined ? new Map() : new Map(checkStoredBoxValues(database, boxes.map(({ descriptor, box }) => ({ id: descriptor.id, descriptor, box }))));
+	for (const [id, places] of held) console.error(`[boxes] The ${id} Box holds ${places.length} stored values its schemas no longer accept, first at ${places[0]}.`);
+};
+
+/** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place, until they are cleared. */
+export const heldBoxValues = (): ReadonlyMap<BoxId, readonly string[]> => held;
+
+/** @approved Deletes a loaded Box's held values. */
+export const clearHeldValues = (database: Database, id: BoxId): void => {
+	const box = loaded.get(id)?.box;
+	if (box === undefined) throw new Error(`There is no loaded Box ${id}.`);
+	clearHeldBoxValues(database, { id, descriptor: boxDescriptor(id), box });
+	held.delete(id);
 };
 
 /** @approved Where a loaded Box's built client module is served from. */

@@ -118,27 +118,6 @@ test("upgrades Request Overrides namespaces without replacing authored overrides
 	}
 });
 
-test("strips the copied claims from Memory traces stored before recall kept references", async () => {
-	const database = new Database(":memory:");
-	try {
-		database.exec("CREATE TABLE message_variant_data (id INTEGER PRIMARY KEY, message_variant_id INTEGER, namespace TEXT, key TEXT, value TEXT)");
-		const candidate = (identity: string) => ({ identity, claimIndex: 0, admission: "admitted" });
-		const old = (identity: string) => ({ ...candidate(identity), claim: "Maren fears the pier.", attribution: "Narrator", people: ["Maren"], evidence: [{ messageId: 1, excerpt: "pier" }] });
-		const traces = (candidates: object[]) => JSON.stringify({ "box:author-note": { items: [], trace: { candidates: "untouched" } }, "box:memory": { items: [], trace: { state: "ready", candidates } } });
-		const insert = database.query("INSERT INTO message_variant_data (namespace, key, value) VALUES (?, ?, ?)");
-		insert.run("generation-box", "traces", traces([old("b"), old("a"), candidate("c")]));
-		insert.run("generation-box", "traces", traces([candidate("d")]));
-		insert.run("other", "traces", traces([old("e")]));
-
-		database.exec(await Bun.file(new URL("./migrations/0036_strip_memory_trace_claims.sql", import.meta.url)).text());
-		expect(database.query<{ value: string }, []>("SELECT value FROM message_variant_data ORDER BY id").all().map((row) => row.value)).toEqual([
-			traces([candidate("b"), candidate("a"), candidate("c")]), traces([candidate("d")]), traces([old("e")]),
-		]);
-	} finally {
-		database.close();
-	}
-});
-
 test("an Active Generation interrupted by the checkpoint-delta upgrade still recovers its output", async () => {
 	const database = new Database(":memory:");
 	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));

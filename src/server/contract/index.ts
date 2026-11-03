@@ -46,7 +46,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createSemanticTriggerSettingsRoutes(database))
 	.use(createBoxDecisionSettingsRoutes(database))
 	.use(createBoxWindowRoutes(database))
-	.use(createBoxRoutes())
+	.use(createBoxRoutes(database))
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));
 
