@@ -100,23 +100,23 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			},
 		});
 	};
-	const routes = new Elysia({ prefix: "/api/authoring/sessions" })
-		.post("/", ({ body }) => start(body), { body: codingModel, response: authoringStart })
-		.post("/:session/prompts", ({ params, body, status }) => {
+	const routes = new Elysia()
+		.post("/api/authoring/sessions", ({ body }) => start(body), { body: codingModel, response: authoringStart })
+		.post("/api/authoring/sessions/:session/prompts", ({ params, body, status }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
 			if (session.running) return status(409, { outcome: "refused", reason: "A turn is still running." } as const);
 			return new Response(prompt(session, body.text), { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 		}, { params: authoringSessionParams, body: authoringPromptBody })
-		.post("/:session/cancel", async ({ params }) => {
+		.post("/api/authoring/sessions/:session/cancel", async ({ params }) => {
 			await sessions.get(params.session)?.fx.cancel();
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams })
-		.delete("/:session", async ({ params }) => {
+		.delete("/api/authoring/sessions/:session", async ({ params }) => {
 			await close(params.session);
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams })
-		.post("/:session/install", async ({ params }) => {
+		.post("/api/authoring/sessions/:session/install", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
 			return await installCandidate(database, session.candidate, folders.plugins);

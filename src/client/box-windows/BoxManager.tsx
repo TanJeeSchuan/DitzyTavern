@@ -10,7 +10,8 @@ import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxOpening, loadedBoxes, type LoadedBox } from "./registry";
+import { CreateBox } from "./CreateBox";
+import { boxOpening, loadBoxClients, loadedBoxes, type LoadedBox } from "./registry";
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
@@ -24,6 +25,8 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	const [notice, setNotice] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
 	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | null>(null);
+	const [creating, setCreating] = useState(false);
+	const [, setRegistry] = useState(0);
 	const requestNavigation = useNavigationRequest();
 	const client = useQueryClient();
 	// @approved
@@ -40,6 +43,15 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		void sendBoxState(surface, client, requested.box, requested.state).finally(() => setPending(false));
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
+	// @approved
+	//  An installed Box joins every Chat as absent: the Chats are read again
+	// first, so no row renders before its Chat knows the Box, then the Box
+	// definitions, so the manager lists it to add.
+	const refreshBoxes = async () => {
+		await client.invalidateQueries({ queryKey: ["conversation"] });
+		await loadBoxClients();
+		setRegistry((count) => count + 1);
+	};
 
 	const stateOf = (box: BoxId) => {
 		const state = conversation.boxes[box];
@@ -94,7 +106,9 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				<ul>{toAdd.map(row)}</ul>
 			</section>}
 			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
+			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating(true)}>Create a Box</Button>
 		</div>
+		{creating && <CreateBox open onOpenChange={setCreating} onInstalled={refreshBoxes} />}
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

@@ -1,6 +1,6 @@
 # Creator Mode
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: 02b, 02c
 
@@ -54,21 +54,21 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
 
 ## Work
 
-- [ ] Extract the candidate check (walk, descriptor, sources, checked hooks) from the registry into one shared function, and separate the guest `read` invocation from the production snapshot provider.
-- [ ] Candidate folders under `data/authoring/`, with the content-only write tools, byte caps and the write lock during checks.
-- [ ] `read_contract`: the agent-facing sandboxed Box contract in `src/server/authoring/`, since Docker copies `src/server` but not `docs/`. It includes the guest UI API, the canvas bridge, dependencies and their limits, and the rule that records hold snapshots or deltas, never logs that copy earlier records. Add the sandboxed Race and Mood sources as examples.
-- [ ] `run_scenario` with the contract above.
-- [ ] The agent: `createFxAgent` with these tools, the profile mapping, events streamed to the client, and cancel.
-- [ ] Install, adding one Box to the running registry and refreshing the client's Box definitions.
-- [ ] The panel: **Create a Box** in `BoxManager`, the coding-model picker, the agent chat, scenario results (diagnostics, folded state, prompt items), and **Install**.
-- [ ] The e2e fixture: a localhost Chat Completions route for libfx, backed by the fixture's scripting and logging. It supports tool-call deltas, `finish_reason: "tool_calls"` and tool-result messages, fails unscripted authoring requests, and stays separate from story requests.
-- [ ] e2e: the fixture scripts the agent's tool calls to write an inventory Box, `run_scenario` returns the expected prompt items, Install makes it available without a restart, and adding it to a Chat and staging a Move produces the expected Prompt Plan. No esm.sh and no external network.
-- [ ] Contract tests:
+- [x] Extract the candidate check (walk, descriptor, sources, checked hooks) from the registry into one shared function, and separate the guest `read` invocation from the production snapshot provider.
+- [x] Candidate folders under `data/authoring/`, with the content-only write tools, byte caps and the write lock during checks.
+- [x] `read_contract`: the agent-facing sandboxed Box contract in `src/server/authoring/`, since Docker copies `src/server` but not `docs/`. It includes the guest UI API, the canvas bridge, dependencies and their limits, and the rule that records hold snapshots or deltas, never logs that copy earlier records. Add the sandboxed Race and Mood sources as examples.
+- [x] `run_scenario` with the contract above.
+- [x] The agent: `createFxAgent` with these tools, the profile mapping, events streamed to the client, and cancel.
+- [x] Install, adding one Box to the running registry and refreshing the client's Box definitions.
+- [x] The panel: **Create a Box** in `BoxManager`, the coding-model picker, the agent chat, scenario results (diagnostics, folded state, prompt items), and **Install**.
+- [x] The e2e fixture: a localhost Chat Completions route for libfx, backed by the fixture's scripting and logging. It supports tool-call deltas, `finish_reason: "tool_calls"` and tool-result messages, fails unscripted authoring requests, and stays separate from story requests.
+- [x] e2e: the fixture scripts the agent's tool calls to write an inventory Box, `run_scenario` returns the expected prompt items, Install makes it available without a restart, and adding it to a Chat and staging a Move produces the expected Prompt Plan. No esm.sh and no external network.
+- [x] Contract tests:
   - a tool argument naming a path or an oversized body is refused
   - Install refuses an existing id
   - Install leaves the other Boxes' runtimes untouched
   - a candidate the loader would refuse fails `run_scenario` with the loader's diagnostic
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 - [ ] Set this ticket to DONE and commit.
 
 ## Acceptance
@@ -80,3 +80,14 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
 
 - [Ticket 00 measured](../../research/sandboxed-box-spike.md) libfx 0.0.16 native and WASM agent loops under Bun 1.4.4 on Linux x86_64, without flags. Other platforms are unmeasured. `libfx` is experimental.
 - Generated Boxes can use `decide` inside `digest`. `complete` and `embed` arrive with the Memory capability work in #69.
+
+## Implementation notes
+
+- **Files.** `src/server/authoring/`: `candidate.ts` (folders, capped content-only writes, the hold), `tools.ts`, `scenario.ts`, `install.ts`, `provider.ts` (profile to libfx), `contract.md` (`read_contract`), `index.ts` (sessions and routes). `checkSandboxedFolder` and `addBox` are in `src/server/box/registry.ts`; `sandboxedBox` now returns `guestRead(input, snapshot)` beside the production `read`. The panel is `src/client/box-windows/CreateBox.tsx`, opened from the Box manager. Wire schemas are in `src/shared/contract/authoring.ts`.
+- **The id.** The candidate's folder is named `authored-<8 hex>`, and `write_descriptor` writes the agent's object with that `id`, so the loader's folder-name check passes and the agent never names an id. Install publishes under it.
+- **The hold.** Writes and checks go through one queue per candidate, so a write during a scenario or Install waits for it to end rather than failing. Each tool is `writes: true`, so libfx runs one call at a time.
+- **Install** copies the candidate's walked snapshot into `<plugins>/../.box-install-<uuid>/<id>/`, runs `checkSandboxedFolder` there (which writes any `deps/`, lock and bundles beside it), and renames that folder into the plugin folder. What is registered is the runtime that check built, so nothing is checked twice. The client re-reads the Chats before `loadBoxClients`, so no Box manager row renders before its Chat knows the Box.
+- **Scenario.** One turn is a Human Message (its Moves rendered) and the passage answering it. Each turn's seed is `boxSeed("<seed>:<index>", id)`. `dependencies` and the digest get an in-memory SQLite handle nobody reads, rather than a cast. Scripted answers go through `checkedDecisionAnswers`, extracted from `requestDecisions`, so they're checked as a provider's are.
+- **Mapping, verified against a localhost fake** (`provider.test.ts`, real libfx): libfx sends `{baseUrl}/chat/completions` with `max_tokens` = the output limit. Its `fetch` option carries the app's `authenticatedHeaders` (custom headers, a custom `Authorization` wins) and the profile's inactivity timeout. It refuses non-Chat-Completions profiles, a URL that doesn't end in `/chat/completions` or carries a query, HTTP to a host other than localhost (libfx's own rule), `max_completion_tokens`/`omit`, an unreadable key, and an output limit not below the context window.
+- **Backend.** Wasm, explicitly: it runs anywhere Bun does, while the native addon ships for four platforms.
+- **Found while testing.** A sandboxed Box without `ui.css` makes its frame log a 404 for `/boxes/<id>/ui.css` (`BoxFrame.tsx` always fetches it), which fails e2e's browser-error check. The e2e script writes a `ui.css`; the frame's behaviour is unchanged here.
