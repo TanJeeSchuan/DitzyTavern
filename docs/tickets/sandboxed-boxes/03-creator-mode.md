@@ -42,7 +42,7 @@ A writer chooses **Create a Box** in the Box manager, describes a mechanic, and 
 
 ## Open risks
 
-- Whether `libfx` loads natively under Bun or needs the WASM backend (ticket 00).
+- [Ticket 00 measured](../../research/sandboxed-box-spike.md) libfx 0.0.16 native and WASM agent loops under Bun 1.4.4 on Linux x86_64, without flags. Other platforms remain unmeasured.
 - `libfx` is experimental; pin the version.
-- The e2e fake provider must answer tool-call requests in the shape `libfx` sends.
+- The spike exercised the Chat Completions SSE tool-call shape with a localhost fake, including `tool_start`, `tool_end`, `text_delta` and cancellation. Integrating that shape with the e2e fixture remains work. Checkpoints were 1,269 bytes native and 1,270 bytes WASM for one tiny tool loop; restore and growth remain unmeasured.
 - Generated Boxes can use `decide` inside `digest` (ticket 02b). `complete` and `embed` arrive with the Memory capability work in #69.
