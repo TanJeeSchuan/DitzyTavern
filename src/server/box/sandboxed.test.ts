@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
+import type { DecisionAnswer } from "../../shared/contract/decision-model";
+import type { DigestContext } from "./contract";
 import { readBoxWindow } from "./window";
 import { SANDBOX_JSON_BYTES, sandboxedBox } from "./sandboxed";
 
@@ -56,7 +58,7 @@ test("a guest throw crosses as the host's error, naming the Box and hook", async
 });
 
 test("logic.js may declare only the hooks a sandboxed Box supports", async () => {
-	await expect(load("export default { status: () => null };")).rejects.toThrow("The probe Box's logic.js declares status, which a sandboxed Box cannot.");
+	await expect(load("export default { routes: () => null };")).rejects.toThrow("The probe Box's logic.js declares routes, which a sandboxed Box cannot.");
 	await expect(load("export default { read: 1 };")).rejects.toThrow("The probe Box's logic.js declares read, which must be functions.");
 });
 
@@ -80,4 +82,58 @@ test("a read's snapshot reads only the Box's own values, takes no other query, a
 	const sneaky = await load(`export default { read: (_, { snapshot }) => ({ view: snapshot({ scope: "library", prefix: "", namespace: "box:other" }) }) };`);
 	expect(() => readBoxWindow(database, chat.id, "probe", {}, (window) => sneaky.read?.(window))).toThrow("snapshot query");
 	database.close();
+});
+
+const passage = { messageId: 1, speaker: "Ann", authorId: 1, content: "The storm breaks." };
+const digestWindow = { passage, preceding: [], seed: "seed", cast: [], data: {} };
+const tense: DecisionAnswer = { type: "choice", choice: "tense", probabilities: { tense: 1 } };
+const contextDatabase = openInitializedDatabase({ path: ":memory:" });
+const digestContext = (decide: DigestContext["decide"], signal = new AbortController().signal): DigestContext =>
+	({ decide, signal, llm: () => undefined, embed: async () => [], database: contextDatabase });
+
+test("decide answers a digest with entries, once per call, and a refused answer fails the digest", async () => {
+	const box = await load(`export default { records: { digest: { window: 0, run: async (_, { decide }) => {
+		const answers = await decide({ passage: "p" }, { mood: { type: "choice" } });
+		try { await decide({}, {}); } catch (error) { return { answers, again: error.message }; }
+	} } } };`);
+	const asked: unknown[] = [];
+	const answered = digestContext(async (state, questions) => { asked.push([state, questions]); return new Map([["mood", tense]]); });
+	expect(await box.records?.digest?.run(digestWindow, answered)).toEqual({ answers: [["mood", tense]], again: "decide may be called once per digest." });
+	expect(asked).toEqual([[{ passage: "p" }, { mood: { type: "choice" } }]]);
+	const refused = digestContext(() => Promise.reject(new Error("Decision Model request failed with HTTP 500.")));
+	await expect(box.records?.digest?.run(digestWindow, refused)).rejects.toThrow("The probe Box's records.digest.run threw Error: Decision Model request failed with HTTP 500.");
+});
+
+test("a decide pending when its job is cancelled rejects in the guest, and its late answer is dropped", async () => {
+	const box = await load(`export default { records: { digest: { window: 0, run: async (_, { decide }) => {
+		try { return await decide({}, { mood: { type: "choice" } }); } catch (error) { throw new Error("the guest saw: " + error.message); }
+	} } } };`);
+	const held = Promise.withResolvers<ReadonlyMap<string, DecisionAnswer>>();
+	const job = new AbortController();
+	const run = box.records?.digest?.run(digestWindow, digestContext(() => held.promise, job.signal));
+	job.abort();
+	await expect(run).rejects.toThrow("The probe Box's records.digest.run threw Error: the guest saw: The probe Box's digest was cancelled.");
+	held.resolve(new Map([["mood", tense]]));
+	await held.promise;
+});
+
+// @approved
+//  Each digest runs in its own context, created with its `decide`, so a
+// guest that keeps `decide` in a global while its request is pending has
+// left it nowhere `advance` or another digest runs.
+test("a digest that keeps decide in a global while it is pending leaves it undefined for a concurrent advance and a concurrent second digest", async () => {
+	const box = await load(`export default {
+		records: { digest: { window: 0, run: async ({ seed }, { decide }) => {
+			if (seed !== "keeper") return { saw: typeof globalThis.saved };
+			globalThis.saved = decide;
+			return await decide({}, { mood: { type: "choice" } });
+		} } },
+		advance: { run: async () => ({ items: [{ text: typeof globalThis.saved, priority: 1 }] }) },
+	};`);
+	const keeper = new AbortController();
+	const kept = box.records?.digest?.run({ ...digestWindow, seed: "keeper" }, digestContext(() => new Promise(() => {}), keeper.signal));
+	expect(await box.advance?.run({ setup: undefined, dependencies: undefined, state: undefined, moves: [] })).toEqual({ items: [{ text: "undefined", priority: 1 }] });
+	expect(await box.records?.digest?.run(digestWindow, digestContext(async () => new Map()))).toEqual({ saw: "undefined" });
+	keeper.abort();
+	await expect(kept).rejects.toThrow("The probe Box's digest was cancelled.");
 });

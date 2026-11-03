@@ -12,6 +12,7 @@ import memoryBox from "../../boxes/memory/server";
 import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
+import { boxRecordSchema } from "../../shared/contract/box";
 import { subscribeDatabaseChanges, watchDatabaseChanges } from "../database/changes";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -36,15 +37,18 @@ const decisionResponse = (request: StubDecisionRequest): Response => {
 const heldDecisionFetch = () => {
 	const releases: ((fail: boolean) => void)[] = [];
 	const contents: string[] = [];
+	const signals: (AbortSignal | null | undefined)[] = [];
 	return {
 		fetch: ((_input, init) => new Promise<Response>((resolve) => {
 			const request: StubDecisionRequest = JSON.parse(String(init?.body));
 			contents.push(String(init?.body));
+			signals.push(init?.signal);
 			releases.push((fail) => resolve(fail ? new Response("", { status: 500 }) : decisionResponse(request)));
 		})) satisfies ModelFetch,
 		release: (fail = false) => { releases.shift()?.(fail); },
 		pending: () => releases.length,
 		contents: () => contents,
+		signals: () => signals,
 	};
 };
 
@@ -177,6 +181,24 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 	await stopDigests();
 	stopDigests = undefined;
 	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
+});
+
+test("a sandboxed Box dropped while its decide is pending aborts the request and writes nothing", async () => {
+	const chat = createChat();
+	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+	const mood = insertBox(database, chat.id, "mood");
+	enableDecision();
+	const stub = heldDecisionFetch();
+	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
+	await waitFor(() => stub.pending() === 1);
+	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "mood" })();
+	expect(stub.signals()[0]?.aborted).toBe(true);
+	stub.release();
+	await stopDigests();
+	stopDigests = undefined;
+	expect(readRecordSlots(drizzle(database), "mood", boxRecordSchema("mood"), mood, [passage]).size).toBe(0);
 });
 
 test("a cancelled run can be restarted for the same Variants before the aborted job settles", async () => {
