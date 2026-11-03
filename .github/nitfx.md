@@ -1,1 +1,2 @@
-Review this pull request diff for bugs, regressions, security issues and needless complexity, citing file and line for each finding and skipping style nits.
+Review this PR diff. Read surrounding code if needed.
+Report real bugs and CODING_STANDARDS.md violations, each with file:line. If nothing is wrong, say LGTM.
