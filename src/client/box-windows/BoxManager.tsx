@@ -10,7 +10,6 @@ import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { BoxHeldNotice } from "./BoxHeldNotice";
 import { boxOpening, loadedBoxes, type LoadedBox } from "./registry";
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
@@ -66,7 +65,6 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				<span className="box-manager-status" title={state === "absent" ? undefined : summary}>{statusLine}</span>
 				{"failure" in loaded && <span className="box-manager-status box-failure">Did not load: {loaded.failure}</span>}
 				<BoxBlockNotice conversation={conversation} box={box} disabled={locked} className="mt-1" />
-				<BoxHeldNotice conversation={conversation} box={box} disabled={locked} onConversationChange={onConversationChange} />
 			</div>
 			{state === "absent"
 				? <Button type="button" variant="outline" size="xs" aria-label={`Add ${label}`} disabled={locked} onClick={() => setState(box, "enabled")}>Add</Button>

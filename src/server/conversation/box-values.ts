@@ -4,6 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { boxReference } from "../../shared/contract/box";
+import { boxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { BOX_TRACES_KEY, BOX_TRACES_NAMESPACE } from "../../shared/variant-data-codecs";
 import type { CheckedBox, StoredBoxValue } from "../box/contract";
@@ -25,12 +26,15 @@ const isObject = (value: GenerationJsonValue | undefined): value is { [key: stri
 // @approved
 //  The value when it passes, else the Box's upgrade of it when that passes,
 // else undefined. A Box declines a value by throwing or returning it as is.
+// The upgrade gets a copy, so changing it in place cannot change what the
+// row is compared with, and its result must be JSON as well as pass, as
+// every hook output must.
 const settle = ({ box }: CheckedBox, schema: TSchema, stored: StoredBoxValue): GenerationJsonValue | undefined => {
 	if (Value.Check(schema, stored.value)) return stored.value;
 	if (box.upgrade === undefined) return undefined;
 	try {
-		const upgraded = box.upgrade(stored);
-		return Value.Check(schema, upgraded) ? upgraded : undefined;
+		const upgraded = box.upgrade({ ...stored, value: structuredClone(stored.value) });
+		return Value.Check(boxValue, upgraded) && Value.Check(schema, upgraded) ? upgraded : undefined;
 	} catch {
 		return undefined;
 	}

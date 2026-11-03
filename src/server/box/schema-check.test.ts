@@ -69,3 +69,14 @@ test("clearing deletes the held values, after which the Box's values are not che
 	checkStoredBoxValues(database, [changed]);
 	expect(value("SELECT value FROM conversation_data WHERE key = 'setup'")).toBe('{"lit":false}');
 });
+
+test("an upgrade that changes its input in place still lands, and one returning a cycle neither lands nor stops the load", () => {
+	const careless: CheckedBox = { ...lamp, box: { ...lamp.box, upgrade: (stored) => {
+		if (stored.kind === "setup" && Value.Check(Type.Object({ on: Type.Boolean() }), stored.value)) return Object.assign(stored.value, { lit: stored.value.on });
+		const looped = { glow: 1 };
+		return Object.assign(looped, { self: looped });
+	} } };
+	expect(checkStoredBoxValues(database, [careless])).toEqual(new Map([["lamp", ["Message 1 Moves", "Variant 1 record writer"]]]));
+	expect(value("SELECT value FROM conversation_data WHERE key = 'setup'")).toBe('{"on":true,"lit":true}');
+	expect(JSON.parse(value("SELECT value FROM message_variant_data WHERE key = 'record:a'")!)).toEqual({ writer: { brightness: 5 } });
+});
