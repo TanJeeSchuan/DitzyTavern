@@ -11,8 +11,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: TanJeeSchuan/NitFX/.github/workflows/review.yml@main
+    uses: TanJeeSchuan/NitFX/.github/workflows/review.yml@reviewer-setup
     with:
+      setup: |
+        curl -fsSL https://bun.sh/install | bash -s "bun-v$(jq -r '.packageManager | ltrimstr("bun@")' package.json)"
+        echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+        ~/.bun/bin/bun install --frozen-lockfile
       base_url: https://api.tanjs.dev/v1
       model: gpt-6.1-sol
       effort: high
