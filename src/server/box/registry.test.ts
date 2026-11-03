@@ -143,7 +143,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
 		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
 		["fetching", "The fetching Box's ui.js did not build: ui.js imports https://example.com/tip.js; a sandboxed Box imports its own files by relative path and the packages its descriptor.json declares."],
-		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file inside the Box's folder."],
+		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file of the Box's own."],
 		["keyed", "Its record at /record keys by ^(a+)+$; a sandboxed Box keys a record by any string or by ParticipantKey."],
 		["labelled", "Its descriptor.json is invalid at /moves/render: Unexpected property."],
 		["unhooked", "The unhooked Box must declare a Move render exactly when it declares Moves."],

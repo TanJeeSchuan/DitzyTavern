@@ -17,6 +17,7 @@ import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./service
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
 import { sandboxedSources } from "./sandboxed-build";
+import { sandboxedFolder } from "./sandboxed-folder";
 import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 
 // @approved
@@ -135,14 +136,17 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 		const client = { kind: "module", folder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist") } as const;
 		return { descriptor, box, client, dispose: undefined };
 	}
-	const file: unknown = await Bun.file(join(folder, "descriptor.json")).json();
+	const files = typed ? undefined : await sandboxedFolder(folder, name);
+	const read = async (path: string) => files === undefined ? await Bun.file(join(folder, path)).text().catch(() => undefined) : files.get(path);
+	const text = await read("descriptor.json");
+	if (text === undefined) throw new Error("It has no descriptor.json.");
+	const file: unknown = JSON.parse(text);
 	assertChecked(sandboxedDescriptorFile, file, "Its descriptor.json");
 	const descriptor = named(sandboxedDescriptor(file));
 	const withUi = file.window.kind !== "digest";
-	const { logic, ui } = typed ? { logic: await bundled(folder, "logic"), ui: withUi ? await bundled(folder, "ui") : undefined } : await sandboxedSources(folder, descriptor.id, withUi, file.dependencies);
-	const css = Bun.file(join(folder, "ui.css"));
+	const { logic, ui } = files === undefined ? { logic: await bundled(folder, "logic"), ui: withUi ? await bundled(folder, "ui") : undefined } : await sandboxedSources(folder, descriptor.id, withUi, files, file.dependencies);
 	const { box, dispose } = await sandboxedBox(descriptor.id, logic);
-	return { descriptor, box, client: { kind: "sandboxed", file, ui, css: await css.exists() ? await css.text() : undefined } as const, dispose };
+	return { descriptor, box, client: { kind: "sandboxed", file, ui, css: await read("ui.css") } as const, dispose };
 };
 
 // @approved
