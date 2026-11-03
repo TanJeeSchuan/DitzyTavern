@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import type { BoxLens } from "./lens";
+import { sandboxedClient } from "./BoxFrame";
+import { boxList } from "../../shared/contract/box-sandboxed";
 import type { CastParticipant, ConversationSummary } from "../conversation";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
-import { boxList, boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxMetadata, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
+import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxMetadata, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxClient } from "../../shared/contract/box-descriptor";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
@@ -115,15 +117,16 @@ const withinDeadline = async <T>(load: Promise<T>): Promise<T> => {
 };
 
 // @approved
-//  Startup imports every loaded Box's client module, in parallel, before the
-// host renders any Box surface, and installs each Box with its metadata and
-// its client module. A module that fails to import, misses its deadline, or
-// whose descriptor the host refuses keeps its reason for the Box manager,
-// which still manages the Box: the server owns which Boxes exist, and a Box
-// runs there whether or not its client loads.
+//  Startup imports every trusted Box's client module, in parallel, and builds
+// every sandboxed Box's client from its descriptor, before the host renders
+// any Box surface, and installs each Box with its metadata and its client. A
+// client that fails to import, misses its deadline, or whose descriptor the
+// host refuses keeps its reason for the Box manager, which still manages the
+// Box: the server owns which Boxes exist, and a Box runs there whether or not
+// its client loads.
 export const loadBoxClients = async (): Promise<void> => {
 	const boxes = await requestData(api.api.boxes.get(), boxList);
-	const settled = await Promise.allSettled(boxes.map(({ id, client }) => withinDeadline(loadBoxClient(id, client))));
+	const settled = await Promise.allSettled(boxes.map(async (listed) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client)) : sandboxedClient(listed.id, listed.sandboxed)));
 	loaded = new Map(boxes.map((listed, index) => {
 		const result = settled[index]!; // @approved allSettled answers each Box, in order.
 		const metadata = boxMetadataFrom(listed);

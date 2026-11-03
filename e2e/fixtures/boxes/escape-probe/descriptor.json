@@ -1,0 +1,14 @@
+{
+	"id": "escape-probe",
+	"sdk": 2,
+	"label": "Escape Probe",
+	"summary": "Tries every way out of its frame and reports what happened.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "",
+	"setup": {
+		"schema": { "type": "object", "properties": { "app": { "type": "string" }, "other": { "type": "string" }, "round": { "type": "integer" } }, "required": ["app", "other", "round"] },
+		"initial": { "app": "", "other": "", "round": 0 }
+	},
+	"window": { "icon": "flag", "size": { "width": 24, "height": 30 } }
+}

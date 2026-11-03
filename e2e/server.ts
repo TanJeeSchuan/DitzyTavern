@@ -44,6 +44,8 @@ let unscripted: string[] = [];
 let held = Promise.withResolvers<void>();
 let updateScenario: UpdateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
 let registryCalls: string[] = [];
+/** @approved Every request whose URL names `sandbox-escape`, which only the escape-probe fixture's guest code requests. */
+let probes: string[] = [];
 let updateDirectory: string;
 const fakeRegistryFetch = async (url: string, init?: RequestInit) => {
 	registryCalls.push(url);
@@ -206,6 +208,7 @@ const reset = async () => {
 	unscripted = [];
 	updateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
 	registryCalls = [];
+	probes = [];
 	held = Promise.withResolvers();
 	rmSync(pluginFolder, { recursive: true, force: true });
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
@@ -247,6 +250,7 @@ const server = Bun.serve({
 	port: Number(process.env.E2E_PORT ?? 0),
 	idleTimeout: 0,
 	async fetch(request) {
+		if (request.url.includes("sandbox-escape")) probes.push(request.url);
 		switch (new URL(request.url).pathname) {
 			case "/__e2e/reset": await reset(); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
@@ -277,7 +281,7 @@ const server = Bun.serve({
 				break;
 			}
 			case "/__e2e/directory": return Response.json(current!.directory);
-			case "/__e2e/log": return Response.json({ calls, registryCalls, unscripted, unsentPlans: await unsentPlans() });
+			case "/__e2e/log": return Response.json({ calls, registryCalls, unscripted, probes, unsentPlans: await unsentPlans() });
 			case "/__e2e/shutdown": setTimeout(() => { void shutdown(); }, 0); break;
 			default: return current!.app.handle(request);
 		}
