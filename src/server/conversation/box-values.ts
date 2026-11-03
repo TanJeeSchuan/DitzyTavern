@@ -97,11 +97,17 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 		for (const row of db.select().from(messageDataTable).where(and(inArray(messageDataTable.message_id, messages), eq(messageDataTable.namespace, namespace), eq(messageDataTable.key, "moves"))).all()) {
 			const value = parsed(row.value);
 			const place = `Message ${row.message_id} Moves`;
-			const each = Array.isArray(value) ? value.map((move) => settle(checked, moves.schema, { kind: "move", value: move })) : [];
-			const settled = each.filter((move) => move !== undefined);
-			store(value, authored(settled.length === each.length && Value.Check(list, settled) ? settled : undefined, place), (written) => written === undefined
+			const write = (written: string | undefined) => written === undefined
 				? db.delete(messageDataTable).where(eq(messageDataTable.id, row.id)).run()
-				: db.update(messageDataTable).set({ value: written }).where(eq(messageDataTable.id, row.id)).run());
+				: db.update(messageDataTable).set({ value: written }).where(eq(messageDataTable.id, row.id)).run();
+			if (!Array.isArray(value)) { store(value, authored(undefined, place), write); continue; }
+			// @approved
+			//  Each Move stands alone: passing and upgraded Moves are written, and
+			// only the rejected ones are held, or dropped by a clear.
+			const settled = value.map((move) => settle(checked, moves.schema, { kind: "move", value: move }));
+			const kept: GenerationJsonValue[] = value.flatMap((move, index) => { const next = settled[index]; return next === undefined ? clear ? [] : [move] : [next]; });
+			if (!clear && settled.includes(undefined)) { held.push(place); store(value, kept, write); continue; }
+			store(value, kept.length === 0 ? undefined : authored(Value.Check(list, kept) ? kept : undefined, place), write);
 		}
 	}
 
