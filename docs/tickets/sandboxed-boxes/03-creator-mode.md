@@ -26,7 +26,7 @@ A writer chooses **Create a Box** in the Box manager, describes a mechanic, and 
 
 ## Work
 
-- [ ] Host tools: `read_contract` (sandboxed Box contract and examples from `docs/box-system/README.md`), `write_descriptor`, `write_logic`, `write_ui` (save the candidate), `run_scenario({ moves, swipes, prose? })` (run the candidate's hooks in QuickJS against a scripted history and return folded state, prompt items and `read` output), `ask_writer`.
+- [ ] Host tools: `read_contract` (sandboxed Box contract and examples from `docs/box-system/README.md`), `write_descriptor`, `write_logic`, `write_ui` (save the candidate), `run_scenario({ moves, swipes, prose? })` (run the candidate's hooks in QuickJS against a scripted history and return folded state, prompt items and `read` output), `ask_writer`. The contract tells the agent that records hold snapshots or deltas, never logs that copy earlier records. `run_scenario` also reports total record bytes after a long scripted history, so the agent sees growth before the writer does.
 - [ ] Agent: `createFxAgent` with those tools, the authoring instructions, `provider`/`credentials` from the chosen profile, and events streamed to the client. Support cancel and steer.
 - [ ] Sessions: store the libfx checkpoint per authoring session; sessions whose checkpoint no longer loads after a libfx upgrade are discarded.
 - [ ] Panel: **Create a Box** in `BoxManager`, a chat view of the agent, the candidate's live frame and prompt items, and **Install**.

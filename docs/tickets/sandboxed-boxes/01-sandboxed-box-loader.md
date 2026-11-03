@@ -30,6 +30,7 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.html`, with 
 
 - [ ] Descriptor: `descriptor.json` declares the same fields as `BoxDescriptor` with schemas as JSON Schema. The loader rebuilds TypeBox kinds, keeps Row Reference annotations, and refuses executable fields (Move labels become templates).
 - [ ] Adapter: `sandboxedBox(id, descriptor, source)` returns an ordinary `Box` whose hooks call into one QuickJS runtime per Box version, with memory and interrupt limits from ticket 00. `fold` runs the whole batch inside the VM and serializes the result once.
+- [ ] Bounds: the host caps the JSON bytes it sends into and accepts out of each hook call and refuses an oversized payload before allocating guest strings, failing the hook with an error naming the Box and hook. Set the cap and the heap and deadline budgets from ticket 00's numbers. A Box whose records grow without limit fails loudly instead of slowing capture.
 - [ ] Determinism: the guest gets no `Date.now` or `Math.random`; randomness comes only from the host seed.
 - [ ] Errors: guest throws and outcomes cross as a typed JSON envelope that the host maps to its native errors.
 - [ ] Registry: discover a folder holding `logic.js` and load it through the adapter. A folder with both `server.ts` and `logic.js` is refused.
