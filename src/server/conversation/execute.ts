@@ -17,7 +17,7 @@ import {
 	replaceParticipantPrompt,
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
-import { putBoxData } from "./commands/put-box-data";
+import { commitBox } from "./commands/commit-box";
 import { removeParticipant } from "./commands/remove-participant";
 import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
 import { setBoxSetup } from "./commands/set-box-setup";
@@ -82,7 +82,7 @@ const handlers = {
 	"assign-control": assignControl,
 	"remove-participant": removeParticipant,
 	"put-data": putData,
-	"put-box-data": putBoxData,
+	"commit-box": commitBox,
 	"delete-data": deleteData,
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },

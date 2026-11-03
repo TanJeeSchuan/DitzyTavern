@@ -9,7 +9,7 @@ import {
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
-import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
+import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
 import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
 import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -627,7 +627,7 @@ const conversationCommandAction = Type.Union([
 	setBoxStateAction,
 	setBoxRecordAction,
 	resetBoxRecordAction,
-	putBoxDataAction,
+	commitBoxAction,
 	Type.Object({ type: Type.Literal("unlink-fork") }),
 ]);
 

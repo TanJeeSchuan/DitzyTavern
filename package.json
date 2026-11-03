@@ -4,7 +4,7 @@
 	"type": "module",
 	"packageManager": "bun@1.4.4",
 	"scripts": {
-		"dev:server": "bun --watch src/server/index.ts",
+		"dev:server": "bun scripts/dev-server.ts",
 		"dev:client": "vite",
 		"dev:stop": "bun -e \"process.exit(Bun.spawnSync(process.platform === 'win32' ? ['powershell', '-c', 'Stop-Process -Force -Id (Get-NetTCPConnection -State Listen -LocalPort 3000,5173).OwningProcess'] : ['fuser', '-k', '3000/tcp', '5173/tcp'], { stdio: ['inherit', 'inherit', 'inherit'] }).exitCode)\"",
 		"build": "vite build",
@@ -61,6 +61,7 @@
 		"elysia": "^1.4.30",
 		"eventsource-parser": "^4.1.1",
 		"flare-redact": "^1.6.1",
+		"idiomorph": "0.7.4",
 		"json-edit-react": "^1.0.0",
 		"lucide-react": "^1.31.0",
 		"markdown-it": "^15.0.3",

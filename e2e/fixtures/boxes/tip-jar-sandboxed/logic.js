@@ -1,7 +1,7 @@
 export default {
 	moves: { render: ({ coins }, author) => `(${author} drops ${coins} coin in the tip jar.)` },
 	records: { initial: 0, fold: (total, { coins }) => total + coins },
-	read: ({ state }) => ({ coins: state }),
+	read: ({ state }) => ({ view: { coins: state } }),
 	advance: {
 		run: async ({ state, moves }) => {
 			const coins = moves.reduce((sum, move) => sum + move.coins, 0);

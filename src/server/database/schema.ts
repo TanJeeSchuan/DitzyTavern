@@ -276,6 +276,15 @@ export const boxSchemaTable = sqliteTable("box_schema", {
 	fingerprint: text().notNull(),
 });
 
+// @approved
+//  The Images a sandboxed Box uploaded through its frame, which its frames may
+// display in any Chat. A grant owns nothing: the orphan sweep skips this
+// table, so an upload no stored value references is swept, its grant with it.
+export const boxImageGrantTable = sqliteTable("box_image_grant", {
+	box_id: text().notNull(),
+	hash: text().notNull().references(() => imageTable.hash, { onDelete: "cascade" }),
+}, (table) => [primaryKey({ columns: [table.box_id, table.hash] })]);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

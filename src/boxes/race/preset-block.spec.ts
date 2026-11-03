@@ -14,9 +14,10 @@ const attachPreset = async (page: Page, request: APIRequestContext, slots: unkno
 const startRace = async (page: Page) => {
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Race", exact: true });
-	await window.getByRole("button", { name: "Fill field" }).click();
-	await window.getByRole("button", { name: "Start race" }).click();
-	await expect(window.getByRole("button", { name: "New race" })).toBeVisible();
+	const ui = window.frameLocator("iframe");
+	await ui.getByRole("button", { name: "Fill field" }).click();
+	await ui.getByRole("button", { name: "Start race" }).click();
+	await expect(ui.getByRole("button", { name: "New race" })).toBeVisible();
 	return window;
 };
 

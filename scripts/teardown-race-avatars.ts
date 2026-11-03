@@ -2,7 +2,8 @@
 //  Removes the avatars `db:seed:race-avatars` set. Run with
 // `bun run db:teardown:race-avatars`. A row goes only when it still holds the
 // exact Image its folder file produces, so an avatar the writer replaced
-// stays. The Images themselves are left to the orphan sweep.
+// stays, and the Race's grant for each file's Image goes. The Images
+// themselves are left to the orphan sweep.
 
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -10,7 +11,7 @@ import { boxReference } from "../src/shared/contract/box";
 import { RACE_AVATAR_PREFIX } from "../src/boxes/race/shared-data";
 import { ingestImage } from "../src/server/image/ingest";
 import { openInitializedDatabase } from "../src/server/database/database";
-import { libraryDataTable } from "../src/server/database/schema";
+import { boxImageGrantTable, libraryDataTable } from "../src/server/database/schema";
 import { RACE_AVATAR_FOLDER, raceAvatarFiles } from "./seed-race-avatars";
 
 export async function teardownRaceAvatars(databasePath?: string, folder?: string) {
@@ -22,6 +23,7 @@ export async function teardownRaceAvatars(databasePath?: string, folder?: string
 			removed += drizzle(database).delete(libraryDataTable).where(and(
 				eq(libraryDataTable.namespace, boxReference("race")), eq(libraryDataTable.key, `${RACE_AVATAR_PREFIX}${name}`), eq(libraryDataTable.value, hash),
 			)).returning().all().length;
+			drizzle(database).delete(boxImageGrantTable).where(and(eq(boxImageGrantTable.box_id, "race"), eq(boxImageGrantTable.hash, hash))).run();
 		}
 		console.log(`[teardown:race-avatars] removed ${removed} avatars matching ${folder ?? RACE_AVATAR_FOLDER}/`);
 	} finally {

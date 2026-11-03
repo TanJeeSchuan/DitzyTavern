@@ -20,15 +20,15 @@ test("removing the Race after a Stretch keeps the story and its Moves, which rea
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Race", exact: true });
-	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
-	await window.getByRole("button", { name: "Fill field" }).click();
-	await window.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "Off" }).click();
-	await window.getByRole("button", { name: "Start race" }).click();
-	await window.getByRole("combobox", { name: "Order Runner" }).click();
-	const option = page.getByRole("option").nth(1);
-	const runner = await option.innerText();
-	await option.click();
-	await window.getByRole("region", { name: "Race Moves" }).getByRole("button", { name: /Overtake/ }).click();
+	const ui = window.frameLocator("iframe");
+	await ui.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
+	await ui.getByRole("button", { name: "Fill field" }).click();
+	await ui.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "Off" }).click();
+	await ui.getByRole("button", { name: "Start race" }).click();
+	const order = ui.getByRole("combobox", { name: "Order Runner" });
+	const runner = (await order.locator("option").nth(1).textContent())!; // @approved The field has eight gates, so the second option exists.
+	await order.selectOption({ index: 1 });
+	await ui.getByRole("region", { name: "Race Moves" }).getByRole("button", { name: /Overtake/ }).click();
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await sendPlan(page, "Race passage 1.");
 	const human = story(page).locator("article").nth(-2);

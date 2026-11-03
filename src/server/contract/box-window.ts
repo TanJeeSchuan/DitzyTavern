@@ -1,11 +1,15 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationBoxParams as params, isDigestBox, type BoxId } from "../../shared/contract/box";
 import { boxValue } from "../../shared/contract/box-value";
+import { boxFrameOpened } from "../../shared/contract/box-sandboxed";
 import { digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, queueBoxDigest, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
-import { serverBox } from "../box/registry";
+import { boxClientSource, serverBox } from "../box/registry";
+import { openBoxFrame } from "../box/frame";
+import { readBoxLifecycles } from "../box/setup";
 import { readBoxWindow } from "../box/window";
 import { notFoundResponse } from "./responses";
 
@@ -20,6 +24,15 @@ const readBox = (database: Database, conversationId: number, id: BoxId) => {
 export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/boxes/:box", ({ params }) => readBox(database, params.id, params.box) ?? notFoundResponse(),
 		{ params, response: readResponse })
+	// @approved
+	//  The app opens a frame for a sandboxed Box present in the Chat, and the
+	// token it gets back binds that frame to the Box, the Chat and the Box's
+	// instance there.
+	.post("/api/conversations/:id/boxes/:box/frame", ({ params }) => {
+		const instance = readBoxLifecycles(drizzle(database), params.id)[params.box]?.instance;
+		return boxClientSource(params.box)?.kind === "sandboxed" && instance !== undefined
+			? { token: openBoxFrame({ box: params.box, conversationId: params.id, instance }) } : notFoundResponse();
+	}, { params, response: { 200: boxFrameOpened, 404: notFoundOutcome } })
 	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => (isDigestBox(params.box) ? readDigestStatus(database, params.id, params.box) : undefined) ?? notFoundResponse(),
 		{ params, response: { 200: digestStatusRead, 404: notFoundOutcome } })
 	// @approved

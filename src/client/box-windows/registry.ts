@@ -9,7 +9,6 @@ import { requestData } from "../lib/request-outcome";
 import type { BoxMoves, BoxTrace } from "../../shared/contract/box-generation";
 import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxMetadata, type BoxStates, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxClient } from "../../shared/contract/box-descriptor";
-import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
 /** @approved The composer's staged Moves, which a Box window adds to. */
 export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves): void };
@@ -20,10 +19,6 @@ export type MoveStaging = { readonly moves: BoxMoves; onChange(moves: BoxMoves):
 // configure it while its Moves, digests and catch-up wait.
 export const boxPresent = ({ boxes }: { readonly boxes: BoxStates }, box: BoxId): boolean => boxes[box] === "enabled" || boxes[box] === "disabled";
 
-type PutBoxData = Extract<ConversationAction, { type: "put-box-data" }>;
-/** @approved Builds a `put-box-data` command for the window's own Box id, so a window names no namespace. */
-export type BoxDataAction = (owner: PutBoxData["owner"], key: string, value: string) => PutBoxData;
-
 
 /** @approved Hidden windows stay mounted; `visible` gates effects that require viewing. `staging` is null while the Box is not enabled. */
 type Panel = ComponentType<{
@@ -31,7 +26,6 @@ type Panel = ComponentType<{
 	conversation: ConversationSummary;
 	disabled: boolean;
 	staging: MoveStaging | null;
-	boxData: BoxDataAction;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }>;
 /** A Box's one-line status, which the dock, the header item and the Box manager show. */

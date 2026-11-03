@@ -36,7 +36,7 @@ const policies = {
 	"replace-participant-openings": { rule: "allowed" },
 	"remove-participant": { rule: "allowed" },
 	"put-data": { rule: "allowed" },
-	"put-box-data": { rule: "allowed" },
+	"commit-box": { rule: "allowed" },
 	"delete-data": { rule: "allowed" },
 	"update-generation-settings": { rule: "allowed" },
 	"set-generation-model": { rule: "allowed" },

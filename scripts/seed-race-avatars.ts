@@ -3,6 +3,8 @@
 // The repository ships no Runner art, so the images come from the gitignored
 // `race-avatars/` folder, one file per roster Runner named after it, such as
 // `race-avatars/Gold Ship.png`. A Runner that already has an avatar keeps it.
+// Each Image is granted to the Race, as an upload through its window is, so
+// its frame may display it.
 
 import { existsSync, readdirSync } from "node:fs";
 import { join, parse } from "node:path";
@@ -11,7 +13,7 @@ import { boxReference } from "../src/shared/contract/box";
 import { RACE_AVATAR_PREFIX, raceRoster } from "../src/boxes/race/shared-data";
 import { uploadImage } from "../src/server/image";
 import { openInitializedDatabase } from "../src/server/database/database";
-import { libraryDataTable } from "../src/server/database/schema";
+import { boxImageGrantTable, libraryDataTable } from "../src/server/database/schema";
 
 export const RACE_AVATAR_FOLDER = "race-avatars";
 
@@ -25,6 +27,7 @@ export async function seedRaceAvatars(databasePath?: string, folder?: string) {
 		let loaded = 0;
 		for (const { name, path } of raceAvatarFiles(folder)) {
 			const { hash } = await uploadImage(database, await Bun.file(path).bytes());
+			drizzle(database).insert(boxImageGrantTable).values({ box_id: "race", hash }).onConflictDoNothing().run();
 			loaded += drizzle(database).insert(libraryDataTable).values({ namespace: boxReference("race"), key: `${RACE_AVATAR_PREFIX}${name}`, value: hash }).onConflictDoNothing().returning().all().length;
 		}
 		console.log(`[seed:race-avatars] loaded ${loaded} avatars from ${folder ?? RACE_AVATAR_FOLDER}/`);

@@ -9,8 +9,7 @@ import { installedBoxes, installBoxes } from "../../shared/contract/box";
 import { VariantId } from "../../shared/contract/box-row-reference";
 import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contract";
 import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
-import { raceSetup } from "../../boxes/race/contract";
-import { advanceRace } from "../../boxes/race/server-engine";
+import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 import { createBoxWindowRoutes } from "./box-window";
 import { createConversationRoutes } from "./conversation";
@@ -210,9 +209,10 @@ test("a Race started after the fork point starts at zero in the fork", async () 
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })!.record;
 	database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:race', ?, ?)").run(later.id, `record:${race}`, JSON.stringify({ writer: record }));
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false });
-	expect(Value.Parse(raceSetup, fork.conversation.boxSetups.race).slots[0]!.participantId).toBe(fork.conversation.cast[0]!.id);
+	/** @approved SAFETY: the fork copied the setup written above, its references rewritten. */
+	expect((fork.conversation.boxSetups.race as typeof setup).slots[0]!.participantId).toBe(fork.conversation.cast[0]!.id);
 	const app = createBoxWindowRoutes(database);
-	const read = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/race`))).json()).phase.state;
+	const read = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/boxes/race`))).json()).view.phase.state;
 	const sourceState = await read(source.id);
 	expect(sourceState.stretch).toBe(1);
 	expect(await read(fork.conversation.id)).toMatchObject({ raceId: "race-a", stretch: 0, metres: 0 });
