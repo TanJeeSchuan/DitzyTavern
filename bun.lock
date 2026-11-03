@@ -32,6 +32,7 @@
         "flare-redact": "^1.6.1",
         "idiomorph": "0.7.4",
         "json-edit-react": "^1.0.0",
+        "libfx": "0.0.16",
         "lucide-react": "^1.31.0",
         "markdown-it": "^15.0.3",
         "quickjs-emscripten-core": "0.32.0",
@@ -251,6 +252,14 @@
     "@lezer/highlight": ["@lezer/highlight@1.2.5", "", { "dependencies": { "@lezer/common": "^1.3.0" } }, "sha512-O1GMVKgtf5YspFaRzpmqkVgMtIk2HG9uMAbH6wdAIdNh3TVzCsch/+cRi+6l2//UGDKe6NB9BW3cvuR5ezMQ0w=="],
 
     "@lezer/lr": ["@lezer/lr@1.4.10", "", { "dependencies": { "@lezer/common": "^1.0.0" } }, "sha512-rnCpTIBafOx4mRp43xOxDJbFipJm/c0cia/V5TiGlhmMa+wsSdoGmUN3w5Bqrks/09Q/D4tNAmWaT8p6NRi77A=="],
+
+    "@libfx/libfx-darwin-arm64": ["@libfx/libfx-darwin-arm64@0.0.16", "", { "os": "darwin", "cpu": "arm64" }, "sha512-u4kmCFbVpOE9JdMDCi04c7LeOH6uKIJKpkDUxq1RyhW81Rx4MiI/5XtSXw702WIbxX57R5csOFvOp8uPDwzTEQ=="],
+
+    "@libfx/libfx-darwin-x64": ["@libfx/libfx-darwin-x64@0.0.16", "", { "os": "darwin", "cpu": "x64" }, "sha512-LsbtrtH+Qnk4hCOw03SvYxNlyBtU+aIGr2CHjsogbNI2lfN4QZLp5eP3l84EFouVAgJzwFrMzJGlUGmyIc/zkw=="],
+
+    "@libfx/libfx-linux-arm64-gnu": ["@libfx/libfx-linux-arm64-gnu@0.0.16", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-8OeEF5y9mzGcG4eLmCYbaVO5jnVMF9GTdTLpu3ftSixhlt/nvxNjMJl6/+TGzHSQtUewNxR6aM820Hl4NW2PIw=="],
+
+    "@libfx/libfx-linux-x64-gnu": ["@libfx/libfx-linux-x64-gnu@0.0.16", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-JAz5lUwGTTVqmVDT6p0a2o4m7lOFBPU+i3sYYYw3r+FQUPY+cV0r/AnXY40edA1ICf00EHlH9Okna5gWBr/Zyg=="],
 
     "@marijn/find-cluster-break": ["@marijn/find-cluster-break@1.0.4", "", {}, "sha512-Wy0V7+SGUjnF9/TkiM1hKVDPj7jKXduPNboMVtHTA8dySMURWqfg/JZ9E2Sq8JgSJmkl7k7Qe9FLeMSrSraWmQ=="],
 
@@ -887,6 +896,8 @@
     "jsonfile": ["jsonfile@6.2.1", "", { "dependencies": { "universalify": "^2.0.0" }, "optionalDependencies": { "graceful-fs": "^4.1.6" } }, "sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q=="],
 
     "kleur": ["kleur@4.1.5", "", {}, "sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ=="],
+
+    "libfx": ["libfx@0.0.16", "", { "optionalDependencies": { "@libfx/libfx-darwin-arm64": "0.0.16", "@libfx/libfx-darwin-x64": "0.0.16", "@libfx/libfx-linux-arm64-gnu": "0.0.16", "@libfx/libfx-linux-x64-gnu": "0.0.16" } }, "sha512-qA/b37rsJ8DNJXkg1+iyQCmzBbiXO+2lCXtdZzP6GjVPcStJEb3QkmhXEpOURb+VCfNc7L9gB6TiTXeS3/CPXQ=="],
 
     "lightningcss": ["lightningcss@1.33.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.33.0", "lightningcss-darwin-arm64": "1.33.0", "lightningcss-darwin-x64": "1.33.0", "lightningcss-freebsd-x64": "1.33.0", "lightningcss-linux-arm-gnueabihf": "1.33.0", "lightningcss-linux-arm64-gnu": "1.33.0", "lightningcss-linux-arm64-musl": "1.33.0", "lightningcss-linux-x64-gnu": "1.33.0", "lightningcss-linux-x64-musl": "1.33.0", "lightningcss-win32-arm64-msvc": "1.33.0", "lightningcss-win32-x64-msvc": "1.33.0" } }, "sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA=="],
 
