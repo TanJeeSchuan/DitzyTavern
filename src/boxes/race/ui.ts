@@ -76,7 +76,7 @@ const settle = () => { if (draft === null && sheet === null) base = null; };
 //  shows nothing, while one from the previous Stretch keeps the oval.
 const currentRace = (raceId: string) => view === undefined || view.phase.kind === "setup" || view.phase.state.raceId !== raceId ? null : { ...view, phase: view.phase };
 
-/** @approved Runs one commit with the form locked; a commit that does not land shows its reason and adopts the current read it returns. Only a conflict on the unsaved work's own save moves its revisions; an avatar's conflict or any refusal leaves them, so the next save is still checked against what the work started from. */
+/** @approved Runs one commit with the form locked; a commit that does not land shows its reason and adopts the current read it returns. Only the unsaved work's own save moves its revisions: a Chat conflict moves the setup's, and any refusal moves the sheet's Character revision, since a stale Character revision is refused rather than conflicted. An avatar's commit leaves both, so the next save is still checked against what the work started from. */
 const commit = async (request: Commit, conflict: string, savesWork = false): Promise<boolean> => {
 	busy = true;
 	notice = null;
@@ -88,8 +88,8 @@ const commit = async (request: Commit, conflict: string, savesWork = false): Pro
 		if (result.current !== null) {
 			view = result.current.view;
 			frame = { ...frame, snapshot: result.current.snapshot };
-			if (savesWork && result.outcome === "conflict") {
-				if (base !== null) base = result.current.snapshot;
+			if (savesWork) {
+				if (base !== null && result.outcome === "conflict") base = result.current.snapshot;
 				if (sheet?.character) sheet = { ...sheet, characterRevision: view.characterStatsRevisions[sheet.character.id] ?? 0 };
 			}
 		}
