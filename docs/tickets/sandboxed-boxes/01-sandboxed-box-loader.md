@@ -66,6 +66,8 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.js` (plus op
 
 - The heap limit is a `WebAssembly.Memory` with a 64 MiB `maximum`, one QuickJS module instance per Box. `runtime.setMemoryLimit` did not bound this build's heap: under a 64 MiB limit a guest grew past 2 GiB of strings, arrays or ArrayBuffers (about 23 s of `'x'.repeat(1 << 20)` pushes) before failing. With the capped memory the same guests fail in under 2 s and the Box answers its next call.
 - No hook in this ticket receives a capability, so every hook shares the Box's one long-lived context; ticket 02b adds the fresh per-call context with `decide`.
+- `frame-ancestors` is `'self'`, the frame route's own origin, which is the app's. A value built from the Host header broke under the Vite dev proxy, which rewrites Host.
+- A schema in `descriptor.json` may use no pattern of its own: the host runs patterns outside every guest limit, so only `^(.*)$` and `ParticipantKey`'s pattern are accepted.
 - The interrupt deadline is polled while guest bytecode runs, not inside one built-in call; the heap cap bounds how long such a call can run.
 - `host.onRead(fn)` calls `fn(read, { moves, disabled })`, and `host.onEvent` events carry the DOM event `type` beside `name`, `data` and `value`, so a guest can tell a click from input on the same element.
 

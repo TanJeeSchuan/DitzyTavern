@@ -29,7 +29,7 @@ export const createBoxRoutes = (database: Database) => {
 			const source = boxClientSource(metadata.id);
 			return source?.kind === "sandboxed" ? { ...metadata, sandboxed: source.file } : { ...metadata, client: `/boxes/${metadata.id}/client.js` };
 		}), { response: boxList })
-		.get(boxFrameRoute, ({ request }) => boxFrameResponse(request.headers.get("host") ?? new URL(request.url).host))
+		.get(boxFrameRoute, () => boxFrameResponse())
 		.get("/api/box-held-values", () => Object.fromEntries([...held()].map(([id, places]) => [id, [...places]])), { response: heldBoxValues })
 		.post("/api/boxes/:box/held-values/clear", ({ params: { box } }) => {
 			if (!held().has(box)) return notFoundResponse();

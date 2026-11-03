@@ -17,7 +17,7 @@ test("a sandboxed Box's UI reaches no network, navigates nothing, and ignores a 
 	await page.getByRole("button", { name: "Escape Probe", exact: true }).click();
 	const frame = page.getByRole("dialog", { name: "Escape Probe" }).frameLocator("iframe");
 	const escapes = frame.getByRole("status", { name: "Escapes" });
-	await expect(escapes).toContainText('["RTCPeerConnection","undefined"],["webkitRTCPeerConnection","undefined"]', { timeout: 30_000 });
+	await expect(escapes).toContainText('["WebTransport","undefined"],["RTCPeerConnection","undefined"],["webkitRTCPeerConnection","undefined"]', { timeout: 30_000 });
 
 	const appPage = page.url();
 	for (const element of await frame.locator("body *").all()) await element.click({ force: true, timeout: 500 }).catch(() => undefined);

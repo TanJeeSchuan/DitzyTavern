@@ -1,3 +1,4 @@
+/* eslint-disable anti-slop/no-unknown-parameters -- Moves a guest stages arrive as whatever it posted, which stagedMoves parses. */
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
@@ -20,6 +21,23 @@ const icons = {
 } satisfies Record<SandboxedBoxIcon, LucideIcon>;
 
 const noMoves: readonly BoxValue[] = [];
+
+// @approved
+//  Moves a guest staged, as this Box's composer may take them: a JSON copy
+// that passes the Box's Move schema and count, or why they were refused. A
+// cyclic or other non-JSON value never reaches the composer, whose query
+// keys hash its Moves.
+export const stagedMoves = (descriptor: BoxDescriptor, staged: unknown): { readonly moves: readonly BoxValue[] } | { readonly refused: string } => {
+	const declared = descriptor.moves;
+	if (declared === undefined) return { refused: "It staged Moves, but it takes none." };
+	let copy: unknown;
+	try {
+		copy = JSON.parse(JSON.stringify(staged));
+	} catch {
+		return { refused: "It staged Moves that are not JSON." };
+	}
+	return Value.Check(Type.Array(Type.Unsafe<BoxValue>(declared.schema), { maxItems: declared.max }), copy) ? { moves: copy } : { refused: "It staged Moves that do not match its Move schema." };
+};
 
 const uiFile = async (box: BoxId, file: string, required: boolean) => {
 	const response = await fetch(`/boxes/${box}/${file}`);
@@ -47,7 +65,7 @@ function BoxFrame({ box, descriptor, conversation, disabled, staging }: {
 	const [port, setPort] = useState<MessagePort>();
 	const [failure, setFailure] = useState<string>();
 	const ui = useQuery({ queryKey: [box, "ui"], queryFn: async () => ({ ui: await uiFile(box, "ui.js", true), css: await uiFile(box, "ui.css", false) }), staleTime: Infinity });
-	const read = useBoxRead(conversation, box, boxValue).data;
+	const read = useBoxRead(conversation, box, boxValue);
 	const staged = staging === null ? null : staging.moves[box] ?? noMoves;
 	const connect = () => {
 		const channel = new MessageChannel();
@@ -59,19 +77,25 @@ function BoxFrame({ box, descriptor, conversation, disabled, staging }: {
 		if (ui.data !== undefined) port?.postMessage({ type: "start", ...ui.data } satisfies AppToFrame);
 	}, [port, ui.data]);
 	useEffect(() => {
-		if (ui.data !== undefined && read !== undefined && read !== null) port?.postMessage({ type: "read", read, moves: staged, disabled } satisfies AppToFrame);
-	}, [port, ui.data, read, staged, disabled]);
+		if (ui.data !== undefined && read.data !== undefined && read.data !== null) port?.postMessage({ type: "read", read: read.data, moves: staged, disabled } satisfies AppToFrame);
+	}, [port, ui.data, read.data, staged, disabled]);
 	useEffect(() => {
 		if (port === undefined) return;
-		const moves = descriptor.moves && Type.Array(Type.Unsafe<BoxValue>(descriptor.moves.schema), { maxItems: descriptor.moves.max });
 		port.onmessage = ({ data }: MessageEvent<FrameToApp>) => {
-			if (data.type === "error") setFailure(data.message);
-			else if (staging === null || moves === undefined) setFailure("It staged Moves while it cannot take them.");
-			else if (!Value.Check(moves, data.moves)) setFailure("It staged Moves that do not match its Move schema.");
-			else staging.onChange(replaceMoves(staging.moves, box, data.moves));
+			if (data.type === "error") {
+				setFailure(data.message);
+				return;
+			}
+			if (staging === null || disabled) {
+				setFailure(disabled ? "It staged Moves while its controls are off." : "It staged Moves while it cannot take them.");
+				return;
+			}
+			const accepted = stagedMoves(descriptor, data.moves);
+			if ("refused" in accepted) setFailure(accepted.refused);
+			else staging.onChange(replaceMoves(staging.moves, box, accepted.moves));
 		};
-	}, [port, staging, descriptor, box]);
-	const shown = ui.error?.message ?? failure;
+	}, [port, staging, disabled, descriptor, box]);
+	const shown = ui.error?.message ?? read.error?.message ?? failure;
 	return <>
 		{shown !== undefined && <BoxFailure box={box} message={shown} />}
 		<iframe ref={frame} className="box-frame" title={boxMetadata(box).label} sandbox="allow-scripts" src={boxFrameRoute} onLoad={connect} />

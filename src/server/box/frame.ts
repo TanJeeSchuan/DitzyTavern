@@ -23,12 +23,13 @@ const frameParts = () => parts ??= (async () => {
 //  The frame document runs only host code: its script carries this response's
 // nonce, and the guest's own code runs in a Worker the script starts from a
 // blob, under the policy the Worker inherits. Nothing loads from the network;
-// guest CSS is inline, images arrive with ticket 02, and only the app's own
-// page may embed the frame.
-export const boxFrameResponse = async (host: string) => {
+// guest CSS is inline, images arrive with ticket 02, and only a page on the
+// frame route's own origin, the app's, may embed the frame. `'self'` matches
+// that origin even behind a proxy that rewrites Host, as the dev server's does.
+export const boxFrameResponse = async () => {
 	const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64");
 	const { script, style } = await frameParts();
-	const policy = ["default-src 'none'", `script-src 'nonce-${nonce}'`, "worker-src blob:", "style-src 'unsafe-inline'", "img-src 'none'", "form-action 'none'", "base-uri 'none'", `frame-ancestors ${host}`].join("; ");
+	const policy = ["default-src 'none'", `script-src 'nonce-${nonce}'`, "worker-src blob:", "style-src 'unsafe-inline'", "img-src 'none'", "form-action 'none'", "base-uri 'none'", "frame-ancestors 'self'"].join("; ");
 	const body = `<!doctype html><html><head><meta charset="utf-8"><style>${style}</style><script nonce="${nonce}">${script}</script></head><body></body></html>`;
 	return new Response(body, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store", "content-security-policy": policy } });
 };

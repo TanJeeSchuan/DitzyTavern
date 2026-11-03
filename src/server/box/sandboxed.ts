@@ -22,18 +22,19 @@ const supportedHooks = ["moves.render", "records.initial", "records.fold", "adva
 // @approved
 //  Runs in the guest context before `logic.js`: logic has no clock and no
 // randomness of its own, so equal inputs give equal outcomes. A Date with
-// arguments still works, so a Box can format a time it was given.
-const determinism = `
-delete Math.random;
-const RealDate = Date;
-const NoClock = new Proxy(RealDate, {
-	construct: (target, args, newTarget) => { if (args.length === 0) throw new TypeError("Sandboxed logic has no clock."); return Reflect.construct(target, args, newTarget); },
-	apply: () => { throw new TypeError("Sandboxed logic has no clock."); },
-});
-delete RealDate.now;
-RealDate.prototype.constructor = NoClock;
-globalThis.Date = NoClock;
-`;
+// arguments still works, so a Box can format a time it was given. The real
+// constructor stays inside the function, out of the guest's reach.
+const determinism = `(() => {
+	delete Math.random;
+	const RealDate = Date;
+	const NoClock = new Proxy(RealDate, {
+		construct: (target, args, newTarget) => { if (args.length === 0) throw new TypeError("Sandboxed logic has no clock."); return Reflect.construct(target, args, newTarget); },
+		apply: () => { throw new TypeError("Sandboxed logic has no clock."); },
+	});
+	delete RealDate.now;
+	RealDate.prototype.constructor = NoClock;
+	globalThis.Date = NoClock;
+})();`;
 
 // @approved
 //  Called with the module's default export: it returns which hooks the

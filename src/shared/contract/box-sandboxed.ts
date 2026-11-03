@@ -3,6 +3,7 @@ import { Type, type SchemaOptions, type Static, type TSchema } from "@sinclair/t
 import { boxValue, type BoxValue } from "./box-value";
 import { assertBoxDescriptor, boxDescriptorSchema, type BoxDescriptor } from "./box-descriptor";
 import { boxMetadataSchema } from "./box-metadata";
+import { ParticipantKey } from "./box-row-reference";
 
 /** @approved The icons a sandboxed Box may name for its window, its launcher and its dock button. */
 export const sandboxedBoxIcon = Type.Union([
@@ -38,6 +39,12 @@ export const boxList = Type.Array(Type.Union([
 ]));
 
 const annotations = ["title", "description", "rowReference"];
+// @approved
+//  The host runs a schema's patterns itself, outside any guest limit, so a
+// pattern a Box wrote could backtrack for as long as it likes. Only the
+// fixed patterns of the supported forms are accepted: `Type.Record` keyed by
+// any string, and ParticipantKey's digits.
+const anyKey = "^(.*)$";
 const numeric = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"];
 
 type JsonObject = { readonly [key: string]: BoxValue };
@@ -48,7 +55,8 @@ const isObject = (value: BoxValue | undefined): value is JsonObject => typeof va
 // walker and editors read it as they read a built-in Box's. Only the forms
 // the Fork walker handles (objects, records, arrays and unions) and the
 // primitives and literals inside them are accepted, each with the keywords
-// listed for it; anything else is refused with its path.
+// listed for it and no pattern of the Box's own; anything else is refused
+// with its path.
 export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSchema => {
 	if (!isObject(schema)) throw new Error(`Its schema at ${path} is not a schema object.`);
 	const options = (structure: readonly string[], keywords: readonly string[] = []): SchemaOptions => {
@@ -71,7 +79,9 @@ export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSc
 		const entries = isObject(schema.patternProperties) ? Object.entries(schema.patternProperties) : [];
 		const [entry] = entries;
 		if (entry === undefined || entries.length > 1) throw new Error(`Its record at ${path} must have exactly one key pattern.`);
-		return Type.Record(Type.String({ pattern: entry[0] }), sandboxedSchema(entry[1], `${path}/patternProperties/${entry[0]}`), options(["type", "patternProperties"]));
+		const key = entry[0] === ParticipantKey.pattern ? ParticipantKey : entry[0] === anyKey ? Type.String() : undefined;
+		if (key === undefined) throw new Error(`Its record at ${path} keys by ${entry[0]}; a sandboxed Box keys a record by any string or by ParticipantKey.`);
+		return Type.Record(key, sandboxedSchema(entry[1], `${path}/patternProperties/${entry[0]}`), options(["type", "patternProperties"]));
 	}
 	if (type === "object") {
 		const properties = isObject(schema.properties) ? schema.properties : {};
@@ -84,6 +94,7 @@ export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSc
 		}));
 		return Type.Object(built, options(["type", "properties", "required"], ["additionalProperties"]));
 	}
+	if (type === "string" && schema.pattern !== undefined && schema.pattern !== ParticipantKey.pattern) throw new Error(`Its string at ${path} has a pattern; a sandboxed Box may only use ParticipantKey's.`);
 	if (type === "string") return Type.String(options(["type"], ["minLength", "maxLength", "pattern"]));
 	if (type === "integer") return Type.Integer(options(["type"], numeric));
 	if (type === "number") return Type.Number(options(["type"], numeric));

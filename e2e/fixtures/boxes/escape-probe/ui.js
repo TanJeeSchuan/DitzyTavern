@@ -19,7 +19,6 @@ const escapes = async (base) => {
 	await attempt("Worker", () => settles(new Worker(`${base}-worker`)));
 	await attempt("blob Worker", () => settles(new Worker(URL.createObjectURL(new Blob([`fetch("${base}-blob-worker").catch(() => {})`], { type: "text/javascript" })))));
 	await attempt("FontFace", () => new FontFace("probe", `url(${base}-fontface)`).load());
-	await attempt("WebTransport", () => typeof WebTransport === "undefined" ? "undefined" : new WebTransport(`${base.replace(/^http:/, "https:")}-webtransport`).ready);
 	await attempt("sendBeacon", () => typeof navigator.sendBeacon === "undefined" ? "undefined" : navigator.sendBeacon(`${base}-beacon`));
 };
 const markup = (base) => `
@@ -64,7 +63,9 @@ host.onRead(async (read) => {
 	if (setup.app !== "" && !started) {
 		started = true;
 		for (const base of [`${setup.other}/sandbox-escape`, `${setup.app}/api/images/sandbox-escape`]) await escapes(base);
-		tried.push(["RTCPeerConnection", typeof RTCPeerConnection], ["webkitRTCPeerConnection", typeof webkitRTCPeerConnection]);
+		// @approved
+		// The test server speaks no HTTP/3, so a WebTransport attempt fails whether or not anything blocks it; the row reports whether the Worker has it at all.
+		tried.push(["WebTransport", typeof WebTransport], ["RTCPeerConnection", typeof RTCPeerConnection], ["webkitRTCPeerConnection", typeof webkitRTCPeerConnection]);
 	}
 	draw();
 });
