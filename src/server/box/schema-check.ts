@@ -39,7 +39,7 @@ export const checkStoredBoxValues = (database: Database, boxes: readonly Checked
 			const fingerprint = schemaFingerprint(checked);
 			if (recorded.get(checked.id) === fingerprint) continue;
 			db.delete(boxSchemaTable).where(eq(boxSchemaTable.box_id, checked.id)).run();
-			const places = checkBoxValuesInChats(database, checked, false);
+			const places = checkBoxValuesInChats(database, checked, false).held;
 			if (places.length === 0) recordFingerprint(db, checked, fingerprint);
 			else held.set(checked.id, places);
 		} catch (error) {
@@ -49,8 +49,9 @@ export const checkStoredBoxValues = (database: Database, boxes: readonly Checked
 	return held;
 };
 
-/** @approved Deletes every value of the Box that still fails its schemas and does not upgrade, then records its fingerprint. */
-export const clearHeldBoxValues = (database: Database, checked: CheckedBox): void => {
-	checkBoxValuesInChats(database, checked, true);
+/** @approved Deletes every value of the Box that still fails its schemas and does not upgrade, then records its fingerprint. Returns the Chats whose setup it deleted. */
+export const clearHeldBoxValues = (database: Database, checked: CheckedBox): readonly number[] => {
+	const { setupsCleared } = checkBoxValuesInChats(database, checked, true);
 	recordFingerprint(drizzle(database), checked);
+	return setupsCleared;
 };

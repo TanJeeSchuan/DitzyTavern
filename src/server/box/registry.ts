@@ -152,12 +152,13 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders, databas
 /** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place, until they are cleared. */
 export const heldBoxValues = (): ReadonlyMap<BoxId, readonly string[]> => held;
 
-/** @approved Deletes a loaded Box's held values. */
-export const clearHeldValues = (database: Database, id: BoxId): void => {
+/** @approved Deletes a loaded Box's held values; returns the Chats whose setup it deleted. */
+export const clearHeldValues = (database: Database, id: BoxId): readonly number[] => {
 	const box = loaded.get(id)?.box;
 	if (box === undefined) throw new Error(`There is no loaded Box ${id}.`);
-	clearHeldBoxValues(database, { id, descriptor: boxDescriptor(id), box });
+	const setupsCleared = clearHeldBoxValues(database, { id, descriptor: boxDescriptor(id), box });
 	held.delete(id);
+	return setupsCleared;
 };
 
 /** @approved Where a loaded Box's built client module is served from. */

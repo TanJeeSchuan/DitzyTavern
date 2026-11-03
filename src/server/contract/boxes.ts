@@ -5,6 +5,7 @@ import { boxClientFolder, boxRoutes, clearHeldValues, heldBoxValues as held } fr
 import { boxList, boxParams as params, heldBoxValues, heldBoxValuesCleared, installedBoxes } from "../../shared/contract/box";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { notFoundResponse } from "./responses";
+import { recoverActiveGenerations } from "../workflows";
 import { revalidatedFile } from "./content-validators";
 
 // @approved
@@ -20,7 +21,13 @@ export const createBoxRoutes = (database: Database) => {
 		.get("/api/box-held-values", () => Object.fromEntries([...held()].map(([id, places]) => [id, [...places]])), { response: heldBoxValues })
 		.post("/api/boxes/:box/held-values/clear", ({ params: { box } }) => {
 			if (!held().has(box)) return notFoundResponse();
-			clearHeldValues(database, box);
+			// @approved
+			//  A held setup fails every capture in its Chat, so an Active
+			// Generation there predates the load and startup recovery failed on
+			// it. Once the setup is gone it is recovered, in this same turn,
+			// before any new Generation could start there.
+			const conversationIds = clearHeldValues(database, box);
+			if (conversationIds.length > 0) recoverActiveGenerations(database, { conversationIds });
 			return { outcome: "cleared" as const };
 		}, { params, response: { 200: heldBoxValuesCleared, 404: notFoundOutcome } })
 		.get("/boxes/:box/:file", async ({ params: { box, file }, request, status }) => {

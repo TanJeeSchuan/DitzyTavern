@@ -54,6 +54,7 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 	const namespace = boxReference(checked.id);
 	const held: string[] = [];
 	let changed = false;
+	let setupCleared = false;
 	const authored = (next: GenerationJsonValue | undefined, place: string): GenerationJsonValue | undefined | typeof HELD => {
 		if (next !== undefined || clear) return next;
 		held.push(place);
@@ -72,9 +73,11 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 		const value = parsed(row.value);
 		const place = setup ? `Chat ${conversationId} setup` : `Chat ${conversationId} value ${row.key}`;
 		const stored: StoredBoxValue | undefined = value === undefined ? undefined : setup ? { kind: "setup", value } : { kind: "chat", key: row.key, value };
-		store(value, authored(stored && settle(checked, schema, stored), place), (next) => next === undefined
+		const next = authored(stored && settle(checked, schema, stored), place);
+		if (setup && next === undefined) setupCleared = true;
+		store(value, next, (written) => written === undefined
 			? db.delete(conversationDataTable).where(eq(conversationDataTable.id, row.id)).run()
-			: db.update(conversationDataTable).set({ value: next, revision: sql`${conversationDataTable.revision} + 1` }).where(eq(conversationDataTable.id, row.id)).run());
+			: db.update(conversationDataTable).set({ value: written, revision: sql`${conversationDataTable.revision} + 1` }).where(eq(conversationDataTable.id, row.id)).run());
 	}
 
 	const participants = db.select({ id: participantTable.id }).from(participantTable).where(eq(participantTable.conversation_id, conversationId)).all().map(({ id }) => id);
@@ -176,15 +179,18 @@ const checkChat = (db: ConversationDatabase, conversationId: number, checked: Ch
 	}
 
 	if (changed) db.update(conversationTable).set({ revision: sql`${conversationTable.revision} + 1` }).where(eq(conversationTable.id, conversationId)).run();
-	return held;
+	return { held, setupCleared };
 };
 
 
 // @approved
 //  Checks a Box's stored values in every Chat, one Chat write each, and
-// returns the places it held. It reports no change: the digest queue would
-// read every digesting Box's records on the Variants, and another Box's held
-// record there would fail the write. A catch-up digests dropped records.
-export const checkBoxValuesInChats = (database: Database, checked: CheckedBox, clear: boolean): string[] =>
-	connectConversationDatabase(database).select({ id: conversationTable.id }).from(conversationTable).all().flatMap(({ id: conversationId }) =>
-		runConversationTransaction(database, (db) => checkChat(db, conversationId, checked, clear)));
+// returns the places it held and the Chats whose setup it deleted. It reports
+// no change: the digest queue would read every digesting Box's records on the
+// Variants, and another Box's held record there would fail the write. A
+// catch-up digests dropped records.
+export const checkBoxValuesInChats = (database: Database, checked: CheckedBox, clear: boolean) => {
+	const chats = connectConversationDatabase(database).select({ id: conversationTable.id }).from(conversationTable).all()
+		.map(({ id: conversationId }) => ({ conversationId, ...runConversationTransaction(database, (db) => checkChat(db, conversationId, checked, clear)) }));
+	return { held: chats.flatMap(({ held }) => held), setupsCleared: chats.flatMap(({ conversationId, setupCleared }) => setupCleared ? [conversationId] : []) };
+};
