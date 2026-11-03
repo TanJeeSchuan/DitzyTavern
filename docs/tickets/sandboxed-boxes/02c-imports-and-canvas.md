@@ -1,6 +1,6 @@
 # Imports and canvas for sandboxed Boxes
 
-Status: TODO
+Status: DONE
 
 Blocked By: 01 (scheduled after 02b; blocks 03)
 
@@ -38,7 +38,7 @@ The sandbox, not the code inside it, is the boundary. An imported package is mor
 - [x] Contract tests: a guest macro, a `../` import, an absolute import, an `@/` alias import and a `with { type: "text" }` import of a host file each fail the build and read nothing outside the Box's sources; every refused specifier form fails the version check; a tampered `deps/` file fails its hash.
 - [x] Document dependencies and the canvas bridge in `docs/box-system/README.md`.
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
