@@ -111,6 +111,7 @@ export const boxServerSchema = Type.Object({
 	importSillyTavernNote: Type.Optional(hook),
 	read: Type.Optional(hook),
 	routes: Type.Optional(hook),
+	upgrade: Type.Optional(hook),
 });
 
 // @approved

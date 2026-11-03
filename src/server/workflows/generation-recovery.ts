@@ -27,11 +27,11 @@ export interface GenerationRecoverySummary {
  */
 export function recoverActiveGenerations(
 	database: Database,
-	options: { readonly cause?: GenerationRecoveryCause } = {},
+	options: { readonly cause?: GenerationRecoveryCause; readonly conversationIds?: readonly number[] } = {},
 ): GenerationRecoverySummary {
 	const cause = options.cause ?? "server-restart";
 	cleanupRetainedGenerationInspections(database);
-	const rows = readActiveGenerationsForRecovery(database);
+	const rows = readActiveGenerationsForRecovery(database).filter((row) => options.conversationIds?.includes(row.conversationId) ?? true);
 	let interrupted = 0;
 	let removed = 0;
 	let failed = 0;

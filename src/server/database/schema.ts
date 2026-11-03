@@ -267,6 +267,15 @@ export const libraryDataTable = sqliteTable("library_data", {
 	revision: int().notNull().default(0),
 }, (table) => [primaryKey({ columns: [table.namespace, table.key] })]);
 
+// @approved
+//  The fingerprint of the schemas each Box's stored values last fully matched.
+// A Box whose loaded schemas fingerprint differently has its values checked
+// again at load.
+export const boxSchemaTable = sqliteTable("box_schema", {
+	box_id: text().primaryKey(),
+	fingerprint: text().notNull(),
+});
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

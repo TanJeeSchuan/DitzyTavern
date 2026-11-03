@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { boxIdOf, boxMetadata, type BoxId, type PromptBoxReference } from "../../shared/contract/box";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
 import { BoxManager } from "../box-windows/BoxManager";
+import { BoxHeldNotices } from "../box-windows/BoxHeldNotices";
 import { boxClient, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
@@ -143,6 +144,7 @@ export function PrimaryPanelView({
 							/>
 						</div>
 					)}
+					{panel === "boxes" && <BoxHeldNotices disabled={mutationsDisabled} />}
 					{panel === "boxes" && conversation !== null && (
 						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange}
 							onOpenPanel={onOpenPanel} onOpenWindow={onOpenWindow} />

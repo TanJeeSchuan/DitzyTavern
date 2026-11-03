@@ -112,6 +112,9 @@ export type BoxSetups = Static<typeof boxSetups>;
 export const boxList = Type.Array(Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]));
 
 export const boxParams = Type.Object({ box: Type.String() });
+/** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place; a Box with none is absent. */
+export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()));
+export const heldBoxValuesCleared = Type.Object({ outcome: Type.Literal("cleared") });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });
 
 export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);

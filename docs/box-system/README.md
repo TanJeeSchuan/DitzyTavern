@@ -44,6 +44,7 @@ const exampleBox = {
   read({ db, summary, history, setup, state }) { … }, // the window's JSON; non-digesting Boxes only
   importSillyTavernNote(note) { … },                 // the setup a SillyTavern chat's Author's Note imports as
   routes(database) { … },                            // an Elysia app of the Box's own routes, served under /api/boxes/<id>
+  upgrade(stored) { … },                             // a stored value its changed schemas reject, rewritten; see Checking stored values
 } satisfies Box<Setup, Dependencies, Trace, Rec, State, Move>;
 export default exampleBox;
 
@@ -335,7 +336,18 @@ A Box's server code reads and writes its data through the server SDK. Each Box-s
 
 A record slot is `{ automatic?, writer?, source?, error? }`, keyed by the instance that wrote it. A slot with no automatic record, Writer override or error has no row. `source` hashes the digested text, so an edit is digested again and a reselection is not. `error` is `{ source, message }`, the last failed digest and the hash of the text it failed on. `slotStatus(slot, content)`, from the server SDK, classifies a slot against its passage's current text: `missing`, `fresh`, `stale` (a result for an earlier text, which still folds) or `failed` (a digest failed on this text), or `overridden` around one of those. A Writer override settles the passage, so a failure beneath it needs no attention; the digest queue still digests beneath it, so Reset restores a result for the current text. The timeline and Memory reads send this status, so no client classifies a slot. Each Variant also holds one Generation seed shared by every Box, under namespace `box`, key `seed`. A Box's stream hashes it with the Box id. A Variant with no seed, such as an imported one, uses `variant:<id>`.
 
-Setups, records, Moves and Decision Model selections are decoded against their schemas on every read, and commands check them before they land. There is no migration path: a stored value that fails to decode after a schema change is an error naming the namespace or key to clear. A feature that needs relational queries stays in-tree code that owns its tables, like Lorebooks and the `embed` service's cache.
+Setups, records, Moves and Decision Model selections are decoded against their schemas on every read, and commands check them before they land. A value that fails to decode is an error naming the namespace or key; [checking stored values](#checking-stored-values) at load keeps a schema change from leaving one behind.
+
+### Checking stored values
+
+At load, before the server serves, the host fingerprints each Box's stored-value schemas: its setup, declared Chat and Participant values, record, Moves and `advance.trace`. The fingerprint its values last all passed under is kept in `box_schema`. When it changed, every Chat's values for the Box are checked against the new schemas, one Chat write each, in `src/server/conversation/box-values.ts`:
+
+- A value that passes is left alone.
+- One that fails goes to the Box's `upgrade(stored)`, if it declares one. `stored` is `{ kind, value }`, `kind` one of `setup`, `chat`, `participant`, `move`, `record` or `trace`, with `key` for a Chat or Participant value; each Move and each record (automatic and Writer alike) is upgraded on its own. The host writes the result when it passes and ignores it otherwise; an upgrade declines a value by throwing.
+- One that still fails is deleted when it is derived: an automatic record (with its `source`, so a catch-up digests the passage again), an interrupted Generation's pending record, or a trace (the Generation keeps its budget evidence).
+- Anything else a person wrote, so it is held: left as it was, so reads of it still fail, and listed by place at `GET /api/box-held-values`. The Boxes panel names each Box's count above the Box manager, even when a held setup keeps the Chat from loading, and offers **Clear**, which posts to `/api/boxes/<id>/held-values/clear`, deletes them and reloads the Chats.
+
+A Chat whose values changed advances its revision. The fingerprint is recorded only once nothing is held, so a Box with held values is checked again at the next load. Library and Character values are read with the schema the Box passes at the time, so the host cannot check them; a Box that changes one handles its own old values. A feature that needs relational queries stays in-tree code that owns its tables, like Lorebooks and the `embed` service's cache.
 
 ### Lifecycle per Chat
 

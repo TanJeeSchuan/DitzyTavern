@@ -144,5 +144,6 @@ export { readVariantData } from "./variant-data";
 export type { VariantDataRecords } from "./variant-data";
 
 export { forkConversation } from "./commands/fork-conversation";
+export { checkBoxValuesInChats } from "./box-values";
 
 export { generationGate } from "./generation-gate";
