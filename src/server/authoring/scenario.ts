@@ -90,13 +90,13 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 			selected[swipe.turn] = selection;
 			result.swipes.push(ran);
 		}
-		result.records = selected.flatMap((record) => record === undefined ? [] : [record]);
-		result.recordBytes = Buffer.byteLength(JSON.stringify(result.records));
-		result.state = fold(result.records);
-		if (box.status !== undefined) result.status = box.status(setup, result.state);
+		const records = selected.flatMap((record) => record === undefined ? [] : [record]);
+		const state = fold(records);
+		Object.assign(result, { records, recordBytes: Buffer.byteLength(JSON.stringify(records)), state });
+		if (box.status !== undefined) result.status = box.status(setup, state);
 		if (guestRead !== undefined) {
 			const scripted = input.snapshot ?? [];
-			result.read = guestRead({ setup, state: result.state, human: human.id, cast: cast.map((member) => ({ ...member, portrait: null, character: null })) }, (json) => {
+			result.read = guestRead({ setup, state, human: human.id, cast: cast.map((member) => ({ ...member, portrait: null, character: null })) }, (json) => {
 				const query: unknown = JSON.parse(json);
 				assertChecked(snapshotQuery, query, `The ${id} Box's snapshot query`);
 				const answer = scripted.find((entry) => Value.Equal(entry.query, query))?.answer;

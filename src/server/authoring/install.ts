@@ -17,7 +17,7 @@ import type { Candidate } from "./candidate";
 // refused.
 export const installCandidate = (database: Database, candidate: Candidate, plugins: string) => candidate.check(async () => {
 	const { id } = candidate;
-	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused", reason, diagnostics: [...diagnostics] } as const);
+	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
 	const seen = new Set(serverBoxes().keys());
 	const target = join(plugins, id);
 	if (seen.has(id) || existsSync(target) || existsSync(join(builtInBoxes, id))) return refused(`A Box folder already uses the id ${id}.`);
@@ -42,7 +42,7 @@ export const installCandidate = (database: Database, candidate: Candidate, plugi
 			checked.dispose();
 			throw error;
 		}
-		return { outcome: "installed", id, label: checked.descriptor.label } as const;
+		return { outcome: "installed" as const, id, label: checked.descriptor.label };
 	} finally {
 		await rm(staging, { recursive: true, force: true });
 	}

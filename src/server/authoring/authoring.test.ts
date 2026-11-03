@@ -108,10 +108,10 @@ test("a swipe keeps its turn's seed and Moves, and replaces only that turn's rec
 	});
 	const choice = (mood: string) => ({ mood: { type: "choice" as const, choice: mood, probabilities: { calm: 0, tense: 0, eerie: 0, [mood]: 1 } } });
 	const result = await scenario({ cast: ["Ann", "Bard"], seed: "s", turns: [{ prose: "Rain.", decisions: choice("calm") }, { prose: "A knock.", decisions: choice("tense") }], swipes: [{ turn: 0, decisions: choice("eerie") }] });
-	const [first, second] = result.turns.map(({ record }) => JSON.stringify(record));
+	const [first = "", second = ""] = result.turns.map(({ record }) => JSON.stringify(record));
 	expect(result).toMatchObject({ ok: true, records: [result.swipes[0]?.record, result.turns[1]?.record], state: ["eerie", "tense"], status: "eerie then tense" });
-	expect(JSON.stringify(result.swipes[0]?.record)).toBe(first?.replace('"calm"', '"eerie"'));
-	expect(first?.replace('"calm"', '"tense"')).not.toBe(second);
+	expect(JSON.stringify(result.swipes[0]?.record)).toBe(first.replace('"calm"', '"eerie"'));
+	expect(first.replace('"calm"', '"tense"')).not.toBe(second);
 	expect((await scenario({ cast: ["Ann"], seed: "s", turns: [{ prose: "Rain." }] })).diagnostics).toEqual([`The ${candidate.id} Box's records.digest.run threw Error: Turn 0 scripts no answer for the mood question.`]);
 });
 

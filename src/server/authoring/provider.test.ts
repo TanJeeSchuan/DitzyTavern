@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createFxAgent, memory } from "libfx";
+import { createFxAgent, memory } from "libfx/node";
 import { blankConnectionProfileDraft, type ConnectionProfilePayload } from "../../shared/contract/connection-settings";
 import { libfxProvider } from "./provider";
 

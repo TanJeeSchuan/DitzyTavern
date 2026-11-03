@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx";
+import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx/node";
 import { authoringInstall, authoringPromptBody, authoringSessionParams, authoringStart, codingModel } from "../../shared/contract/authoring";
 import type { AuthoringEvent, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
