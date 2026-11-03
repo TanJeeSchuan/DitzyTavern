@@ -1,0 +1,34 @@
+{
+	"id": "mood",
+	"sdk": 2,
+	"label": "Mood",
+	"summary": "Follows the scene's mood from what passages say.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "Scene mood:",
+	"record": {
+		"type": "object",
+		"properties": {
+			"mood": {
+				"title": "Mood",
+				"anyOf": [
+					{ "const": "not clear", "type": "string", "title": "❔ Not clear" },
+					{ "const": "calm", "type": "string", "title": "😌 Calm" },
+					{ "const": "warm", "type": "string", "title": "🥰 Warm" },
+					{ "const": "playful", "type": "string", "title": "😜 Playful" },
+					{ "const": "tense", "type": "string", "title": "😬 Tense" },
+					{ "const": "sad", "type": "string", "title": "😢 Sad" },
+					{ "const": "eerie", "type": "string", "title": "👻 Eerie" }
+				]
+			}
+		},
+		"required": ["mood"]
+	},
+	"decision": {
+		"summary": "Reads the mood each passage leaves the scene in.",
+		"description": "Choose a Decision Model to follow each Chat's mood from what its passages say. Without one, the mood stays where it is.",
+		"off": "The mood stays where it is",
+		"context": "Each passage is read with the Message before it."
+	},
+	"window": { "kind": "digest", "icon": "drama", "size": { "width": 22, "height": 26 } }
+}

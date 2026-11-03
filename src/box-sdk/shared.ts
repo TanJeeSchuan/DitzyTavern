@@ -4,6 +4,7 @@
 // `ditzy/no-box-boundary-imports` lint enforces.
 export { automaticStatus, boxCatchUp, boxSlotStatus, isStale, type DigestStatus, type SlotStatus } from "../shared/contract/box-digest";
 export { boxMovesOf, boxSetupOf } from "../shared/contract/box-value";
+export type { DecisionAnswer } from "../shared/contract/decision-model";
 export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from "../shared/contract/box-descriptor";
 export { invalidOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";

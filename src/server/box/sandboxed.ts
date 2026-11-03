@@ -1,12 +1,13 @@
 import { Value } from "@sinclair/typebox/value";
 import variant from "@jitl/quickjs-wasmfile-release-sync";
-import { newQuickJSWASMModuleFromVariant, newVariant, type QuickJSHandle } from "quickjs-emscripten-core";
+import { newQuickJSWASMModuleFromVariant, newVariant, type QuickJSDeferredPromise, type QuickJSHandle } from "quickjs-emscripten-core";
 import type { BoxId } from "../../shared/contract/box";
 import { assertChecked } from "../../shared/contract/box-descriptor";
-import { sandboxedDeclaration, sandboxedFailure, sandboxedOutcome, sandboxedReadOutput, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
+import { sandboxedDeclaration, sandboxedDecideInput, sandboxedFailure, sandboxedOutcome, sandboxedReadOutput, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import type { AdvanceInput, BoxWindowRead, CaptureRead } from "./contract";
+import type { DecisionJson, DecisionQuestions } from "../decision-model";
+import type { AdvanceInput, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "./contract";
 import { boxSnapshot } from "./snapshot";
 
 /** @approved The JSON a hook call may carry in each direction, checked before the host allocates a guest string. */
@@ -18,7 +19,7 @@ const WASM_PAGE_BYTES = 64 * 1024;
 export const SANDBOX_ENTRY_MS = 100;
 
 /** @approved The hooks a sandboxed Box may declare in this SDK; any other key its `logic.js` exports is refused. */
-const supportedHooks = ["setupError", "dependencies", "moves.render", "records.initial", "records.fold", "advance.run", "read"];
+const supportedHooks = ["setupError", "dependencies", "moves.render", "records.initial", "records.fold", "records.digest.window", "records.digest.run", "advance.run", "read", "status"];
 
 // @approved
 //  Runs in the guest context before `logic.js`: logic has no clock and no
@@ -40,16 +41,19 @@ const determinism = `(() => {
 
 // @approved
 //  Called with the module's default export: it returns which hooks the
-// module declares and its initial state, as JSON, and the dispatcher every
-// hook call enters through. Each call's input crosses as a JSON string, and
-// each outcome returns as a JSON envelope, `{ kind: "ok", value }` or
-// `{ kind: "error", name, message }`, so only strings cross the boundary.
-// `read` also receives the host's `snapshot`, which takes and returns JSON
-// strings too. `advance.run` may be async; every other hook must return its
+// module declares, its initial state and its digest window, as JSON, and the
+// dispatcher every hook call enters through. Each call's input crosses as a
+// JSON string, and each outcome returns as a JSON envelope,
+// `{ kind: "ok", value }` or `{ kind: "error", name, message }`, so only
+// strings cross the boundary. `read` also receives the host's `snapshot`,
+// which takes and returns JSON strings too, and a digest the host's
+// `decide`, which takes a JSON string and returns a Promise of one.
+// `advance.run` and a digest may be async; every other hook must return its
 // value.
 const bridge = `(box) => {
-	const declared = box !== null && typeof box === "object" ? Object.entries(box).flatMap(([key, value]) =>
-		value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value).map(([inner, hook]) => [key + "." + inner, typeof hook]) : [[key, typeof value]]) : [];
+	const walk = (path, value) => path !== "records.initial" && value !== null && typeof value === "object" && !Array.isArray(value)
+		? Object.entries(value).flatMap(([key, inner]) => walk(path === "" ? key : path + "." + key, inner)) : [[path, typeof value]];
+	const declared = box !== null && typeof box === "object" ? walk("", box) : [];
 	const ok = (value) => JSON.stringify({ kind: "ok", value });
 	const fail = (error) => {
 		try { return JSON.stringify({ kind: "error", name: String(error?.name ?? "Error"), message: String(error?.message ?? error) }); }
@@ -61,19 +65,21 @@ const bridge = `(box) => {
 		"moves.render": ([move, author]) => box.moves.render(move, author),
 		"records.fold": ({ state, records, setup }) => records.reduce((folded, record) => box.records.fold(folded, record, setup), state),
 		"advance.run": (input) => box.advance.run(input),
+		"records.digest.run": (window, decide) => box.records.digest.run(window, { decide: (state, questions) => decide(JSON.stringify([state, questions])).then(JSON.parse) }),
 		read: (read, snapshot) => box.read(read, { snapshot: (query) => JSON.parse(snapshot(JSON.stringify(query))) }),
+		status: ([setup, state]) => box.status(setup, state),
 	};
 	const dispatch = (hook, json, capability) => {
-		if (hook === "advance.run") {
-			try { return Promise.resolve(hooks[hook](JSON.parse(json))).then(ok, fail); } catch (error) { return Promise.resolve(fail(error)); }
+		if (hook === "advance.run" || hook === "records.digest.run") {
+			try { return Promise.resolve(hooks[hook](JSON.parse(json), capability)).then(ok, fail); } catch (error) { return Promise.resolve(fail(error)); }
 		}
 		try {
 			const value = hooks[hook](JSON.parse(json), capability);
-			if (typeof value?.then === "function") throw new TypeError(hook + " returned a Promise; only advance.run may be async.");
+			if (typeof value?.then === "function") throw new TypeError(hook + " returned a Promise; only advance.run and records.digest.run may be async.");
 			return ok(value);
 		} catch (error) { return fail(error); }
 	};
-	return [JSON.stringify({ declared, initial: box?.records?.initial }), dispatch];
+	return [JSON.stringify({ declared, initial: box?.records?.initial, window: box?.records?.digest?.window }), dispatch];
 }`;
 
 // @approved
@@ -89,6 +95,15 @@ const quickjs = async () => newQuickJSWASMModuleFromVariant(newVariant(variant, 
 }));
 const mebibytes = (bytes: number) => `${bytes / 1024 / 1024} MiB`;
 
+/** @approved A QuickJS runtime on its own module instance and capped memory, with the deadline each entry into its guest arms. */
+const guestRuntime = async () => {
+	const runtime = (await quickjs()).newRuntime();
+	let deadline = 0;
+	runtime.setInterruptHandler(() => performance.now() > deadline);
+	return { runtime, enter: () => { deadline = performance.now() + SANDBOX_ENTRY_MS; } };
+};
+type GuestRuntime = Awaited<ReturnType<typeof guestRuntime>>;
+
 /** @approved A guest failure as the host words it, naming the Box and the hook it stopped. */
 const guestError = (id: BoxId, hook: string, { name, message }: SandboxedFailure) =>
 	new Error(name === "InternalError" && message === "interrupted" ? `The ${id} Box's ${hook} ran past its ${SANDBOX_ENTRY_MS} ms limit.`
@@ -102,19 +117,19 @@ const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => ne
 // its own QuickJS runtime, behind the hooks the host calls on any Box. Hooks
 // that receive no capability share one long-lived context. `read` receives
 // `snapshot`, bound to the Chat it reads, so each read evaluates `logic.js`
-// in a fresh context that is disposed when the read returns: no global keeps
-// the capability for a later call. Each entry into the guest arms the
+// in a fresh context that is disposed when it returns, and a digest receives
+// `decide`, bound to its job, so each digest evaluates it in a runtime of its
+// own, thrown away whole once the digest settles: no global keeps the
+// capability for a later or concurrent call, and a digest that fails halfway
+// leaves nothing behind for the next. Each entry into the guest arms the
 // interrupt deadline, and the byte limit refuses a call's JSON before the
 // guest sees it and its reply before the host copies it. `dispose` frees the
 // runtime once the registry drops it.
 export const sandboxedBox = async (id: BoxId, source: string) => {
-	const runtime = (await quickjs()).newRuntime();
-	let deadline = 0;
-	runtime.setInterruptHandler(() => performance.now() > deadline);
-	const enter = () => { deadline = performance.now() + SANDBOX_ENTRY_MS; };
+	const long = await guestRuntime();
 
-	/** @approved One guest context with `logic.js` evaluated in it, and the calls into its dispatcher. */
-	const open = () => {
+	/** @approved One guest context on `runtime` with `logic.js` evaluated in it, and the calls into its dispatcher. */
+	const open = ({ runtime, enter }: GuestRuntime) => {
 		const vm = runtime.newContext();
 		let dispatch: QuickJSHandle | undefined;
 		const dispose = () => {
@@ -136,20 +151,40 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		};
 		// @approved
 		//  Pumps the guest's jobs until `promise` settles, each pump under a fresh
-		// deadline, and returns its value's handle. With no host operation in
-		// flight, a promise still pending once no job is left never settles.
+		// deadline, and returns its value's handle, or undefined once no job is
+		// left and it is still pending.
+		const pumped = (hook: string, promise: QuickJSHandle): QuickJSHandle | undefined => {
+			for (let idle = false; ; ) {
+				const state = vm.getPromiseState(promise);
+				// @approved
+				// A module without top-level await evaluates to its namespace, which reads as already fulfilled with the same handle.
+				if (state.type === "fulfilled") return state.notAPromise === true ? promise.dup() : state.value;
+				if (state.type === "rejected") throw guestError(id, hook, failure(state.error));
+				if (idle) return undefined;
+				enter();
+				const jobs = runtime.executePendingJobs();
+				if (jobs.error !== undefined) throw guestError(id, hook, failure(jobs.error));
+				idle = jobs.value === 0;
+			}
+		};
+		const neverSettled = (hook: string) => new Error(`The ${id} Box's ${hook} never settled.`);
+		/** @approved With no host operation in flight, a promise still pending once no job is left never settles. */
 		const settled = (hook: string, promise: QuickJSHandle): QuickJSHandle => {
 			try {
+				const value = pumped(hook, promise);
+				if (value === undefined) throw neverSettled(hook);
+				return value;
+			} finally { promise.dispose(); }
+		};
+		/** @approved Settles `promise` while host operations answer it: `waiting` hands over the next one in flight, which the pump awaits before it pumps again. */
+		const settledAsync = async (hook: string, promise: QuickJSHandle, waiting: () => Promise<void> | undefined): Promise<QuickJSHandle> => {
+			try {
 				for (;;) {
-					const state = vm.getPromiseState(promise);
-					// @approved
-					// A module without top-level await evaluates to its namespace, which reads as already fulfilled with the same handle.
-					if (state.type === "fulfilled") return state.notAPromise === true ? promise.dup() : state.value;
-					if (state.type === "rejected") throw guestError(id, hook, failure(state.error));
-					enter();
-					const jobs = runtime.executePendingJobs();
-					if (jobs.error !== undefined) throw guestError(id, hook, failure(jobs.error));
-					if (jobs.value === 0 && vm.getPromiseState(promise).type === "pending") throw new Error(`The ${id} Box's ${hook} never settled.`);
+					const value = pumped(hook, promise);
+					if (value !== undefined) return value;
+					const next = waiting();
+					if (next === undefined) throw neverSettled(hook);
+					await next;
 				}
 			} finally { promise.dispose(); }
 		};
@@ -188,27 +223,33 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			assertChecked(sandboxedDeclaration, declaration, `The ${id} Box's logic.js declaration`);
 			const enterHook = dispatch;
 			// @approved
-			//  One call into the dispatcher. A capability is a host function that
-			// takes and returns a JSON string, each held to the byte limit.
-			const call = (hook: string, json: string, capability?: (json: string) => string) => {
-				if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, hook, "input");
-				const name = vm.newString(hook);
-				const argument = vm.newString(json);
-				const host = capability && vm.newFunction("snapshot", (query) => {
-					const request = vm.getString(query);
-					if (Buffer.byteLength(request) > SANDBOX_JSON_BYTES) throw overLimit(id, "snapshot", "input");
-					const reply = capability(request);
-					if (Buffer.byteLength(reply) > SANDBOX_JSON_BYTES) throw overLimit(id, "snapshot", "result");
-					return vm.newString(reply);
-				});
-				enter();
-				const result = vm.callFunction(enterHook, vm.undefined, name, argument, ...host === undefined ? [] : [host]);
-				name.dispose();
-				argument.dispose();
-				host?.dispose();
-				return unwrap(hook, result);
+			//  A capability: a host function the guest calls with a JSON string,
+			// held to the byte limit. `answer` returns the guest's handle on its
+			// reply, a JSON string built with `reply` or a Promise the host
+			// settles later.
+			const capability = (name: string, answer: (json: string) => QuickJSHandle) => vm.newFunction(name, (argument) => {
+				const json = vm.getString(argument);
+				if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, name, "input");
+				return answer(json);
+			});
+			const reply = (name: string, json: string) => {
+				if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, name, "result");
+				return vm.newString(json);
 			};
-			return { declaration, call, text, settled, dispose };
+			/** @approved One call into the dispatcher, handing over `capability`, which the call frees. */
+			const call = (hook: string, json: string, capability?: QuickJSHandle) => {
+				try {
+					if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, hook, "input");
+					const name = vm.newString(hook);
+					const argument = vm.newString(json);
+					enter();
+					const result = vm.callFunction(enterHook, vm.undefined, name, argument, ...capability === undefined ? [] : [capability]);
+					name.dispose();
+					argument.dispose();
+					return unwrap(hook, result);
+				} finally { capability?.dispose(); }
+			};
+			return { vm, declaration, call, capability, reply, text, settled, settledAsync, dispose };
 		} catch (error) {
 			dispose();
 			throw error;
@@ -218,16 +259,16 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 	let shared: ReturnType<typeof open> | undefined;
 	const dispose = () => {
 		shared?.dispose();
-		runtime.dispose();
+		long.runtime.dispose();
 	};
 	try {
-		shared = open();
+		shared = open(long);
 		const { declaration, call, text, settled } = shared;
 		if (declaration.declared.length === 0) throw new Error(`The ${id} Box's logic.js must default-export an object of hooks.`);
 		const declared = new Map(declaration.declared.map(([key, kind]) => [key, kind] as const));
 		const unsupported = [...declared.keys()].filter((key) => !supportedHooks.includes(key));
 		if (unsupported.length > 0) throw new Error(`The ${id} Box's logic.js declares ${unsupported.join(", ")}, which a sandboxed Box cannot.`);
-		const notFunctions = [...declared].filter(([key, kind]) => key !== "records.initial" && kind !== "function").map(([key]) => key);
+		const notFunctions = [...declared].filter(([key, kind]) => key !== "records.initial" && key !== "records.digest.window" && kind !== "function").map(([key]) => key);
 		if (notFunctions.length > 0) throw new Error(`The ${id} Box's logic.js declares ${notFunctions.join(", ")}, which must be functions.`);
 
 		const outcome = (hook: string, reply: string): GenerationJsonValue | undefined => {
@@ -254,20 +295,106 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 					id: participantId, name, portrait: portrait ?? null, character: sourceCharacterId === null ? null : { id: sourceCharacterId, name: sourceCharacterName },
 				})),
 			};
-			const fresh = open();
+			const fresh = open(long);
+			const snapshot = boxSnapshot(db, id, conversationId);
 			try {
-				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), boxSnapshot(db, id, conversationId))));
+				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), fresh.capability("snapshot", (query) => fresh.reply("snapshot", snapshot(query))))));
 				assertChecked(sandboxedReadOutput, output, `The ${id} Box's read result`);
 				return { snapshot: summary.revision, status: output.status ?? null, view: output.view };
 			} finally { fresh.dispose(); }
 		};
+		// @approved
+		//  A digest runs in a runtime of its own, created for this call with
+		// `decide` bound to its job and dropped once it settles, so neither
+		// `advance` nor a concurrent digest can reach `decide`, and a digest
+		// stopped halfway, its promise chains and heap included, cannot poison
+		// a later one. `decide` asks the Box's own Decision Model selection
+		// through the job's context, once per call, and answers with the
+		// answers as entries. When the job is superseded or dropped, its signal
+		// aborts the request, the pending `decide` rejects in the guest, a late
+		// answer is dropped, and the digest fails, so nothing lands. However the
+		// call ends, its request is aborted with it, so no request outlives
+		// the digest that made it.
+		const digest = async (window: DigestWindow, ctx: DigestContext) => {
+			const fresh = open(await guestRuntime());
+			// @approved
+			// A job dropped while its runtime was created never runs: from here to the listener below nothing yields, so no abort goes unseen.
+			ctx.signal.throwIfAborted();
+			const invocation = new AbortController();
+			let asked = false;
+			let deferred: QuickJSDeferredPromise | undefined;
+			let wake: Promise<void> | undefined;
+			let woken = () => {};
+			const answer = (settle: (pending: QuickJSDeferredPromise) => void) => {
+				const pending = deferred;
+				deferred = undefined;
+				if (pending === undefined) return;
+				settle(pending);
+				pending.dispose();
+				woken();
+			};
+			const reject = ({ name, message }: Error) => answer((pending) => {
+				const handle = fresh.vm.newError({ name, message });
+				pending.reject(handle);
+				handle.dispose();
+			});
+			const cancel = () => reject(new Error(`The ${id} Box's digest was cancelled.`));
+			ctx.signal.addEventListener("abort", cancel);
+			const decide = fresh.capability("decide", (json) => {
+				if (asked) throw new Error("decide may be called once per digest.");
+				asked = true;
+				const input: unknown = JSON.parse(json);
+				assertChecked(sandboxedDecideInput, input, `The ${id} Box's decide input`);
+				const pending = fresh.vm.newPromise();
+				const handle = pending.handle.dup();
+				deferred = pending;
+				wake = new Promise((resolve) => { woken = resolve; });
+				void (async () => {
+					try {
+						// @approved
+						// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
+						const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
+						const json = JSON.stringify([...answers]);
+						if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
+						answer((settling) => {
+							const text = fresh.vm.newString(json);
+							settling.resolve(text);
+							text.dispose();
+						});
+					} catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+				})();
+				return handle;
+			});
+			try {
+				const run = fresh.call("records.digest.run", JSON.stringify(window), decide);
+				const settledRun = await fresh.settledAsync("records.digest.run", run, () => {
+					const next = wake;
+					wake = undefined;
+					return next;
+				});
+				const value = outcome("records.digest.run", fresh.text("records.digest.run", settledRun));
+				ctx.signal.throwIfAborted();
+				return value;
+			} finally {
+				ctx.signal.removeEventListener("abort", cancel);
+				invocation.abort();
+				// @approved
+				//  The runtime is dropped, not disposed: freeing one stopped inside a
+				// promise chain fails QuickJS's leak assertion, and nothing else
+				// holds its module instance, so the garbage collector reclaims its
+				// memory whole.
+				deferred = undefined;
+			}
+		};
 		const box = {
+			...declared.has("status") && { status: (setup: Setup, state: State) => sync("status", JSON.stringify([setup, state])) },
 			...declared.has("setupError") && { setupError: (setup: Setup, previous: Setup) => sync("setupError", JSON.stringify([setup, previous])) },
 			...declared.has("dependencies") && { dependencies: ({ seed, intent, cast }: Pick<CaptureRead, "seed" | "intent" | "cast">, setup: Setup) => sync("dependencies", JSON.stringify([{ seed, intent, cast }, setup])) },
 			...declared.has("moves.render") && { moves: { render: (move: BoxValue, author: string) => sync("moves.render", JSON.stringify([move, author])) } },
-			...(declared.has("records.initial") || declared.has("records.fold")) && { records: {
+			...(declared.has("records.initial") || declared.has("records.fold") || declared.has("records.digest.run")) && { records: {
 				...declared.has("records.initial") && { initial: declaration.initial },
 				...declared.has("records.fold") && { fold: (state: State, record: GenerationJsonValue, setup: Setup) => foldAll(state, [record], setup), foldAll },
+				...declared.has("records.digest.run") && { digest: { window: declaration.window, run: digest } },
 			} },
 			...declared.has("advance.run") && { advance: {
 				run: async ({ setup, dependencies, state, moves }: AdvanceInput<Setup, unknown, State, BoxValue>) =>
