@@ -72,7 +72,7 @@ test("a tampered deps/ file fails its hash, and a fetch that differs from the lo
 });
 
 test("a package that does not end in one import-free module on esm.sh's origin is refused, naming the Box and the package", async () => {
-	const refused = async (name: string) => (await pinnedPackages(folder(), "dice-box", { [name]: name === "jwt" ? "9.0.2" : "1.0.0" }, origin).catch((error: Error) => error))?.message;
+	const refused = async (name: string) => await pinnedPackages(folder(), "dice-box", { [name]: name === "jwt" ? "9.0.2" : "1.0.0" }, origin).then(() => "pinned", (error: Error) => error.message);
 	expect(await refused("jwt")).toBe("The dice-box Box's dependency jwt@9.0.2 imports /node/crypto.mjs; a package must bundle into one module with no imports.");
 	expect(await refused("chained")).toBe("The dice-box Box's dependency chained@1.0.0 imports /helper@1.0.0/es2022/helper.mjs; a package must bundle into one module with no imports.");
 	expect(await refused("elsewhere")).toBe("The dice-box Box's dependency elsewhere@1.0.0 imports https://cdn.example.com/elsewhere.mjs; a package must bundle into one module with no imports.");
