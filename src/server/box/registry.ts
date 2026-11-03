@@ -16,6 +16,7 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
+import { sandboxedSources } from "./sandboxed-build";
 import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 
 // @approved
@@ -93,13 +94,6 @@ const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia |
 /** @approved Where a Box's client comes from: a trusted Box's built module, or a sandboxed Box's `descriptor.json` and the `ui.js` and `ui.css` the loader read or built; a Box whose window is the passage timeline has no `ui.js`. */
 export type BoxClientSource = { readonly kind: "module"; readonly folder: string } | { readonly kind: "sandboxed"; readonly file: SandboxedDescriptorFile; readonly ui: string | undefined; readonly css: string | undefined };
 
-/** @approved A sandboxed Box's source is one file with no imports; ticket 02c adds dependencies. */
-const assertNoImports = (name: string, source: string) => {
-	const [first] = new Bun.Transpiler({ loader: "js" }).scanImports(source);
-	if (first !== undefined) throw new Error(`Its ${name} imports ${first.path}; a sandboxed Box's ${name} is one file with no imports.`);
-	return source;
-};
-
 // @approved
 //  A built-in sandboxed Box is our own TypeScript, so its `logic.ts` and
 // `ui.ts` are bundled at load with the repository's own resolution and
@@ -144,10 +138,10 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 	const file: unknown = await Bun.file(join(folder, "descriptor.json")).json();
 	assertChecked(sandboxedDescriptorFile, file, "Its descriptor.json");
 	const descriptor = named(sandboxedDescriptor(file));
-	const source = async (part: "logic" | "ui") => assertNoImports(`${part}.js`, typed ? await bundled(folder, part) : await Bun.file(join(folder, `${part}.js`)).text());
-	const ui = file.window.kind === "digest" ? undefined : await source("ui");
+	const withUi = file.window.kind !== "digest";
+	const { logic, ui } = typed ? { logic: await bundled(folder, "logic"), ui: withUi ? await bundled(folder, "ui") : undefined } : await sandboxedSources(folder, descriptor.id, withUi, file.dependencies);
 	const css = Bun.file(join(folder, "ui.css"));
-	const { box, dispose } = await sandboxedBox(descriptor.id, await source("logic"));
+	const { box, dispose } = await sandboxedBox(descriptor.id, logic);
 	return { descriptor, box, client: { kind: "sandboxed", file, ui, css: await css.exists() ? await css.text() : undefined } as const, dispose };
 };
 
