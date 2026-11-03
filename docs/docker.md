@@ -80,7 +80,7 @@ The app has no login or user isolation. Restrict access through your network or 
 
 Chrome and Edge only offer to install DitzyTavern as an app over HTTPS or on `localhost`. To install it on a phone, serve it through an HTTPS proxy such as `tailscale serve`; a plain `http://` LAN address still works in a browser tab.
 
-Plugin Boxes go in the data volume's `boxes` folder, one folder per Box at `/app/data/boxes/<id>/`, laid out like a built-in Box in `src/boxes/`, with its client built into `dist/` ([Install a plugin Box](box-system/README.md#install-a-plugin-box)). The server loads them at startup, so restart the container after adding or removing one. The log names each Box it refuses and why; the other Boxes still load. A plugin cannot replace a built-in Box.
+Plugin Boxes go in the data volume's `boxes` folder, one folder per Box at `/app/data/boxes/<id>/`. A trusted plugin is laid out like a built-in Box in `src/boxes/`, with its client built into `dist/` ([Install a plugin Box](box-system/README.md#install-a-plugin-box)); a sandboxed one is its `descriptor.json`, `logic.js`, `ui.js` and optional `ui.css`, and needs no build ([Sandboxed Boxes](box-system/README.md#sandboxed-boxes)). The server loads them at startup, so restart the container after adding or removing one. The log names each Box it refuses and why; the other Boxes still load. A plugin cannot replace a built-in Box.
 
 Provider URLs are resolved from inside the container. `127.0.0.1` in a connection profile means this container, so use the reachable address of your model service.
 
@@ -112,4 +112,4 @@ Back up all of `/app/data` and the encryption key. Stop the container before cop
 docker build -t ditzytavern:local .
 ```
 
-Use `ditzytavern:local` in the reference run command to test before publishing. The Docker build context admits only build inputs; `.env`, local databases, tooling credentials, and generated files are excluded. The final image contains production dependencies, the built frontend, server/shared source with database migrations, the built-in Boxes and Box SDK, and `tsconfig.json`, whose `@/` path is how a Box, built-in or plugin, imports the SDK.
+Use `ditzytavern:local` in the reference run command to test before publishing. The Docker build context admits only build inputs; `.env`, local databases, tooling credentials, and generated files are excluded. The final image contains production dependencies, the built frontend, server/shared source with database migrations, the built-in Boxes and Box SDK, the Box frame's host script and stylesheets (`src/client/box-windows/frame.{ts,css}` and `src/styles/theme.css`, which the server bundles when it first serves a sandboxed Box's frame), and `tsconfig.json`, whose `@/` path is how a Box, built-in or plugin, imports the SDK.

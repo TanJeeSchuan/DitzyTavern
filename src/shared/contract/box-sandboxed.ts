@@ -5,7 +5,11 @@ import { assertBoxDescriptor, boxDescriptorSchema, type BoxDescriptor } from "./
 import { boxMetadataSchema } from "./box-metadata";
 
 /** @approved The icons a sandboxed Box may name for its window, its launcher and its dock button. */
-export const sandboxedBoxIcons = ["box", "coins", "dice", "flag", "gauge", "heart", "map", "scroll", "sparkles", "star"] as const;
+export const sandboxedBoxIcon = Type.Union([
+	Type.Literal("box"), Type.Literal("coins"), Type.Literal("dice"), Type.Literal("flag"), Type.Literal("gauge"),
+	Type.Literal("heart"), Type.Literal("map"), Type.Literal("scroll"), Type.Literal("sparkles"), Type.Literal("star"),
+]);
+export type SandboxedBoxIcon = Static<typeof sandboxedBoxIcon>;
 
 // @approved
 //  A sandboxed Box's `descriptor.json`: the fields of a descriptor, with every
@@ -21,7 +25,7 @@ export const sandboxedDescriptorFile = Type.Object({
 	record: Type.Optional(json),
 	moves: Type.Optional(Type.Object({ schema: json, max: Type.Integer({ minimum: 1 }), label: Type.String(), seatBound: Type.Optional(Type.Literal(true)) }, { additionalProperties: false })),
 	window: Type.Object({
-		icon: Type.Union(sandboxedBoxIcons.map((icon) => Type.Literal(icon))),
+		icon: sandboxedBoxIcon,
 		size: Type.Object({ width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }) }, { additionalProperties: false }),
 	}, { additionalProperties: false }),
 }, { additionalProperties: false });
@@ -37,7 +41,7 @@ const annotations = ["title", "description", "rowReference"];
 const numeric = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"];
 
 type JsonObject = { readonly [key: string]: BoxValue };
-const isObject = (value: BoxValue): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value);
+const isObject = (value: BoxValue | undefined): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value);
 
 // @approved
 //  Rebuilds a schema from its JSON with TypeBox, so the host's checks, Fork
@@ -45,7 +49,7 @@ const isObject = (value: BoxValue): value is JsonObject => typeof value === "obj
 // the Fork walker handles (objects, records, arrays and unions) and the
 // primitives and literals inside them are accepted, each with the keywords
 // listed for it; anything else is refused with its path.
-export const sandboxedSchema = (schema: BoxValue, path: string): TSchema => {
+export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSchema => {
 	if (!isObject(schema)) throw new Error(`Its schema at ${path} is not a schema object.`);
 	const options = (structure: readonly string[], keywords: readonly string[] = []): SchemaOptions => {
 		const unknown = Object.keys(schema).filter((key) => ![...structure, ...keywords, ...annotations].includes(key));

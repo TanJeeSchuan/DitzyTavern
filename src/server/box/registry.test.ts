@@ -129,7 +129,9 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 	const { boxes, refused } = await discoverBoxes([root]);
 	const [jar] = boxes;
 	expect(boxes.map(({ descriptor: { id } }) => id)).toEqual(["jar"]);
-	expect(jar?.descriptor.moves?.label({ coins: 2 })).toBe("Tip 2");
+	// SAFETY: the jar's Move schema accepts `{ coins: 2 }`, which its label takes.
+	const label = jar?.descriptor.moves?.label as ((move: BoxValue) => string) | undefined;
+	expect(label?.({ coins: 2 })).toBe("Tip 2");
 	expect(jar?.box.moves?.render({ coins: 2 }, "Ann")).toBe("Ann tips 2.");
 	jar?.dispose?.();
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([

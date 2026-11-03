@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Box, Coins, Dices, Flag, Gauge, Heart, Map, Scroll, Sparkles, Star, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { boxMetadata, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
-import { sandboxedDescriptor, type SandboxedDescriptorFile, sandboxedBoxIcons } from "../../shared/contract/box-sandboxed";
+import { sandboxedDescriptor, type SandboxedBoxIcon, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 import { boxValue, type BoxValue } from "../../shared/contract/box-value";
 import { replaceMoves } from "../../shared/contract/box-generation";
 import { boxFrameRoute } from "../../shared/box-frame";
@@ -17,7 +17,7 @@ import { useBoxRead } from "./useBoxRead";
 /** @approved The icon each name a sandboxed Box may give in its descriptor stands for. */
 const icons = {
 	box: Box, coins: Coins, dice: Dices, flag: Flag, gauge: Gauge, heart: Heart, map: Map, scroll: Scroll, sparkles: Sparkles, star: Star,
-} satisfies Record<(typeof sandboxedBoxIcons)[number], LucideIcon>;
+} satisfies Record<SandboxedBoxIcon, LucideIcon>;
 
 const noMoves: readonly BoxValue[] = [];
 
