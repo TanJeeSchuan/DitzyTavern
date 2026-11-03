@@ -17,6 +17,7 @@ import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./service
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
 import { sandboxedSources } from "./sandboxed-build";
+import { esmOrigin } from "./sandboxed-deps";
 import { sandboxedFolder } from "./sandboxed-folder";
 import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 
@@ -141,12 +142,14 @@ const sandboxedLoaded = async (descriptor: BoxDescriptor, file: SandboxedDescrip
 // the walk and its snapshot, the descriptor, the confined build of its
 // sources, then its logic behind the checked hooks. The loader runs it for
 // each plugin folder, and Creator Mode for each scenario and Install, so a
-// candidate passes exactly the checks a plugin does. The caller owns the
-// returned runtime and frees it with `dispose`.
-export const checkSandboxedFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>) => {
+// candidate passes exactly the checks a plugin does. `signal` stops a
+// check whose caller gave up, its package fetches included. The caller owns
+// the returned runtime and frees it with `dispose`.
+export const checkSandboxedFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>, signal?: AbortSignal) => {
 	const files = await sandboxedFolder(folder, name);
 	const { file, descriptor } = sandboxedDescriptorOf(files.get("descriptor.json"), name, seen);
-	const { logic, ui } = await sandboxedSources(folder, descriptor.id, file.window.kind !== "digest", files, file.dependencies);
+	const { logic, ui } = await sandboxedSources(folder, descriptor.id, file.window.kind !== "digest", files, file.dependencies, esmOrigin, signal);
+	signal?.throwIfAborted();
 	return await sandboxedLoaded(descriptor, file, logic, ui, files.get("ui.css"));
 };
 export type CheckedSandboxedBox = Awaited<ReturnType<typeof checkSandboxedFolder>>;

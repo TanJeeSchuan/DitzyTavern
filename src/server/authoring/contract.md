@@ -153,11 +153,11 @@ Markup loses scripts, frames, forms, links, `meta`, `base`, inline event handler
 - `cast`: names; the first is the human, the second speaks each passage.
 - `seed`: any string; each turn draws its own seed from it.
 - `setup`: the Box's setup, when it has one; `setup.initial` otherwise.
-- `turns`: each `{ moves?, prose?, decisions? }`: the human's Moves, the passage that answers them, and the digest's `decide` answers keyed by question id, each a full answer such as `{ "type": "choice", "choice": "tense", "probabilities": { "calm": 0.1, "tense": 0.9 } }`.
+- `turns`: each `{ moves?, prose?, decisions? }`: the human's Moves, the passage that answers them, and the digest's `decide` answers keyed by question id. As in the app, a digest reads each Message's prose and never its rendered Moves, and a turn without prose is not digested, each a full answer such as `{ "type": "choice", "choice": "tense", "probabilities": { "calm": 0.1, "tense": 0.9 } }`.
 - `swipes`: each `{ turn, prose?, decisions? }`: a new Variant for that turn, with its seed and Moves.
 - `snapshot`: each `{ query, answer }` that `read` may ask for, as the table above answers it.
 
-It returns `diagnostics` (every refusal and failure; the scenario stops at the first), each turn's rendered Moves, prompt items and record, the selected `records` and their `recordBytes`, the folded `state`, and `read` or `status`. Run one after every change, and fix every diagnostic before you tell the writer the Box is ready.
+It returns `diagnostics` (every refusal and failure; the scenario stops at the first), each turn's rendered Moves, prompt items and record, the selected `records` and their `recordBytes`, the folded `state`, and `read` or `status`. Run one after every change, and fix every diagnostic before you tell the writer the Box is ready. Each writer message allows 40 tool calls; past that the turn stops, so work in few, whole writes.
 
 ## Working with the writer
 

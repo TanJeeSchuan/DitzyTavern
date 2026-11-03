@@ -23,8 +23,12 @@ const instructions = (id: string) => [
 	"When something about the mechanic is unclear, ask the writer in your reply. When a scenario passes, say what the Box does and that the writer can install it. Installing is the writer's action, never yours.",
 ];
 
-/** @approved One open authoring panel: its candidate, its libfx agent and session, the turn that is running, and each scenario result not yet streamed. */
-type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly scenarios: Map<string, ScenarioResult> };
+/** @approved The most tool calls one writer message may cost; the agent makes at most one model request more. */
+export const TOOL_CALLS_PER_MESSAGE = 40;
+const budgetSpent = `The agent used the ${TOOL_CALLS_PER_MESSAGE} tool calls one message allows, so its turn stopped. Send another message to let it continue.`;
+
+/** @approved One open authoring panel: its candidate, its libfx agent and session, the turn that is running, the tool calls its message has cost, and each scenario result not yet streamed. */
+type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly budget: { calls: number; spent: boolean }; readonly scenarios: Map<string, ScenarioResult> };
 
 // @approved
 //  Creator Mode's authoring sessions, in memory: one per open panel, each an
@@ -55,20 +59,33 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		if (mapped.outcome === "refused") return mapped;
 		const candidate = await createCandidate(folders.root);
 		const scenarios = new Map<string, ScenarioResult>();
+		const budget = { calls: 0, spent: false };
+		// @approved
+		//  A model that never stops calling tools would spend without end, so
+		// each writer message buys a fixed number of calls; the next one past
+		// it cancels the turn and fails, and the turn ends saying why.
+		const spend = () => {
+			if (++budget.calls <= TOOL_CALLS_PER_MESSAGE) return;
+			budget.spent = true;
+			void fx.cancel();
+			throw new Error(budgetSpent);
+		};
 		// @approved
 		//  The Wasm backend, chosen explicitly: it runs wherever Bun does, the
 		// Docker image's architectures and Windows included, where the native
 		// addon ships for four platforms only.
 		const agent = createFxAgent({
 			backend: "wasm", durability: memory(), name: "creator", instructions: instructions(candidate.id),
-			tools: authoringTools(candidate, (call, result) => scenarios.set(call, result)), ...mapped.options,
+			tools: authoringTools(candidate, { spend, onScenario: (call, result) => scenarios.set(call, result) }), ...mapped.options,
 		});
-		sessions.set(candidate.session, { candidate, agent, fx: agent.session(), running: false, scenarios });
+		const fx = agent.session();
+		sessions.set(candidate.session, { candidate, agent, fx, running: false, budget, scenarios });
 		return { outcome: "started", session: candidate.session, candidate: candidate.id } as const;
 	};
 	const prompt = (session: Session, text: string) => {
 		const encoder = new TextEncoder();
 		session.running = true;
+		Object.assign(session.budget, { calls: 0, spent: false });
 		const turn = session.fx.prompt(text);
 		let open = true;
 		return new ReadableStream<Uint8Array>({
@@ -86,7 +103,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 						}
 					}
 					const { stopReason, error } = await turn.result;
-					send({ type: "end", stopReason, ...error !== undefined && { error: error.message } });
+					send(session.budget.spent ? { type: "end", stopReason: "budget", error: budgetSpent } : { type: "end", stopReason, ...error !== undefined && { error: error.message } });
 				} catch (error) {
 					send({ type: "end", stopReason: "error", error: error instanceof Error ? error.message : String(error) });
 				} finally {

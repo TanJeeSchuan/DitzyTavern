@@ -23,14 +23,17 @@ type Turn = ScenarioResult["turns"][number];
 // before it, runs `dependencies` and `advance` with its Moves and its own
 // seed, and digests its passage; a swipe runs its turn again with that
 // turn's seed and Moves and selects the new record without touching later
-// ones. The first refusal or failure ends the scenario with its diagnostic.
-export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<BoxId>, input: ScenarioInput): Promise<ScenarioResult> => {
+// ones. A digest reads what production's reads: each Message's raw prose,
+// never its rendered Moves, and only a passage that holds some. The first
+// refusal or failure ends the scenario with its diagnostic, and so does
+// `signal`, when the turn that asked for it is cancelled.
+export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<BoxId>, input: ScenarioInput, signal: AbortSignal): Promise<ScenarioResult> => {
 	const result: ScenarioResult = { ok: false, diagnostics: [], turns: [], swipes: [], records: [], recordBytes: 0 };
 	let checked: Awaited<ReturnType<typeof checkSandboxedFolder>>;
 	try {
-		checked = await checkSandboxedFolder(folder, id, seen);
+		checked = await checkSandboxedFolder(folder, id, seen, signal);
 	} catch (error) {
-		return { ...result, diagnostics: [`The candidate did not load: ${error instanceof Error ? error.message : String(error)}`] };
+		return { ...result, diagnostics: [signal.aborted ? "The scenario was cancelled." : `The candidate did not load: ${error instanceof Error ? error.message : String(error)}`] };
 	}
 	const database = new Database(":memory:");
 	const controller = new AbortController();
@@ -48,10 +51,11 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 		}
 		const fold = (records: readonly GenerationJsonValue[]) => box.records?.foldAll?.(box.records.initial, records, setup);
 		const unavailable = (service: string) => () => { throw new Error(`A scenario has no ${service}.`); };
-		const context: BoxContext = { signal: controller.signal, llm: () => undefined, decide: unavailable("decide outside a digest"), embed: unavailable("embed") };
+		const context: BoxContext = { signal: AbortSignal.any([signal, controller.signal]), llm: () => undefined, decide: unavailable("decide outside a digest"), embed: unavailable("embed") };
 		const history: DigestPassage[] = [];
 		const selected: (GenerationJsonValue | undefined)[] = [];
 		const run = async (index: number, moves: readonly BoxValue[], prose: string | undefined, scripted: Readonly<Record<string, DecisionAnswer>> | undefined): Promise<Turn & { readonly selection: GenerationJsonValue | undefined }> => {
+			signal.throwIfAborted();
 			if (moves.length > 0 && descriptor.moves === undefined) throw new Error(`Turn ${index} has Moves, but the ${id} Box declares none.`);
 			if (descriptor.moves !== undefined) {
 				if (moves.length > descriptor.moves.max) throw new Error(`Turn ${index} has ${moves.length} Moves; the ${id} Box allows ${descriptor.moves.max}.`);
@@ -63,10 +67,10 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 			const dependencies = box.dependencies?.({ database, conversationId: 0, seed, intent: "respond", human, cast, messages: [], pending: undefined }, setup);
 			const advanced = await box.advance?.run({ setup, dependencies, state, moves }, context) ?? { items: [] };
 			const digest = box.records?.digest;
-			const asked = { messageId: index * 2 + 1, speaker: human.name, authorId: human.id, content: rendered.join("\n") };
+			const asked = { messageId: index * 2 + 1, speaker: human.name, authorId: human.id, content: "" };
 			const passage = { messageId: index * 2 + 2, speaker: speaker.name, authorId: speaker.id, content: prose ?? "" };
 			const earlier = [...history.slice(0, index * 2), asked];
-			const record = digest === undefined ? advanced.record : await digest.run({
+			const record = digest === undefined ? advanced.record : passage.content.trim() === "" ? undefined : await digest.run({
 				passage, preceding: digest.window === 0 ? [] : earlier.slice(-digest.window), seed,
 				cast: cast.map((member) => ({ ...member, removed: false })), data: {},
 			}, { ...context, database, decide: async (_state, questions) => {
@@ -106,7 +110,7 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 		}
 		return { ...result, ok: true };
 	} catch (error) {
-		return { ...result, diagnostics: [error instanceof Error ? error.message : String(error)] };
+		return { ...result, diagnostics: [signal.aborted ? "The scenario was cancelled." : error instanceof Error ? error.message : String(error)] };
 	} finally {
 		controller.abort();
 		checked.dispose();

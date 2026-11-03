@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect, insertBox, openBoxes, send, story } from "./fixtures";
 import { firstCall, isAuthoringModelCall, isChatModelCall } from "./protocol";
 
@@ -35,13 +37,17 @@ test("a Box written and checked by the coding agent installs without a restart, 
 			{ name: "write_descriptor", arguments: { content: JSON.stringify(descriptor) } },
 			{ name: "write_logic", arguments: { content: logic } },
 			{ name: "write_ui", arguments: { content: ui } },
-			{ name: "write_css", arguments: { content: "ul { margin: 0; }" } },
 			{ name: "run_scenario", arguments: scenario },
 		] },
 		{ text: "The Inventory Box keeps what you pack. The scenario passed, so you can install it." },
 	);
 	await llm.chat({ chunks: ["The bard eyes the lantern."] });
 	await page.goto("/");
+	await insertBox(page, "Race");
+	await page.getByRole("button", { name: "Race", exact: true }).click();
+	const race = page.getByRole("dialog", { name: "Race", exact: true }).locator("iframe");
+	await expect(race.contentFrame().locator("body")).not.toBeEmpty();
+	await race.evaluate((frame) => frame.setAttribute("data-before-install", ""));
 
 	const boxes = await openBoxes(page);
 	await boxes.getByRole("button", { name: "Create a Box" }).click();
@@ -68,6 +74,8 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	await expect(panel.getByRole("status")).toHaveText("Inventory is installed. Add it to a Chat from the Box manager.");
 	await page.keyboard.press("Escape");
 	await expect(panel).toBeHidden();
+	const authoring = join(await llm.directory(), "authoring");
+	await expect.poll(() => readdirSync(authoring)).toEqual([]);
 
 	await insertBox(page, "Inventory");
 	await page.getByRole("button", { name: "Inventory", exact: true }).click();
@@ -80,4 +88,6 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	const prompt = firstCall((await llm.log()).calls, isChatModelCall).body.messages.map(({ content }) => content).join("\n");
 	expect(prompt).toContain("(Night Desk packs a lantern.)\nInto the night.");
 	expect(prompt).toContain("The pack holds: lantern.");
+	// The Race frame opened before Install is still the same element: installing a Box rebuilt no other Box's window.
+	await expect(race).toHaveAttribute("data-before-install", "");
 });

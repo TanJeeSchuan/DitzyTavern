@@ -95,6 +95,7 @@ export const startE2eServer = async () => {
 		release: () => call("release"),
 		corruptSecrets: () => call("corrupt-secrets"),
 		installBox: (id: string) => call("install-box", id),
+		directory: (): Promise<string> => call("directory"),
 		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; probes: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (mode: "crash" | "graceful") => {

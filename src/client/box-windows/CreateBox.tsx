@@ -1,5 +1,5 @@
 import { Value } from "@sinclair/typebox/value";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -47,7 +47,7 @@ function ScenarioResults({ result }: { result: ScenarioResult }) {
 export function CreateBox({ open, onOpenChange, onInstalled }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onInstalled: () => Promise<void>;
+	onInstalled: (box: string) => Promise<void>;
 }) {
 	const [model, setModel] = useState<ProfileModelChoice | null>(null);
 	const [contextWindow, setContextWindow] = useState("128000");
@@ -61,22 +61,27 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	const [scenario, setScenario] = useState<ScenarioResult | null>(null);
 	const [installed, setInstalled] = useState<string | null>(null);
 	const sequence = useRef(0);
+	// @approved
+	//  The open session, held where an unmount can reach it: closing the panel
+	// unmounts it, which ends the session, and a Start answered after the
+	// panel closed ends the session it started at once.
+	const live = useRef<{ mounted: boolean; session: string | null }>({ mounted: true, session: null });
+	const end = (session: string) => void api.api.authoring.sessions({ session }).delete();
+	useEffect(() => {
+		live.current.mounted = true;
+		return () => {
+			live.current.mounted = false;
+			if (live.current.session !== null) end(live.current.session);
+			live.current.session = null;
+		};
+	}, []);
 	const add = (kind: Entry["kind"], text: string) => setEntries((current) => [...current, { id: String(sequence.current++), kind, text }]);
 	const appendAgent = (delta: string) => setEntries((current) => {
 		const last = current.at(-1);
 		return last?.kind === "agent" ? [...current.slice(0, -1), { ...last, text: last.text + delta }] : [...current, { id: String(sequence.current++), kind: "agent", text: delta }];
 	});
 
-	const close = () => {
-		if (session !== null) void api.api.authoring.sessions({ session: session.session }).delete();
-		setSession(null);
-		setEntries([]);
-		setScenario(null);
-		setInstalled(null);
-		setNotice(null);
-		setRunning(false);
-		onOpenChange(false);
-	};
+	const close = () => onOpenChange(false);
 
 	const start = async () => {
 		if (model === null || model.connectionProfileId === null) return;
@@ -85,7 +90,11 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		try {
 			const started = await requestData(api.api.authoring.sessions.post({ profileId: model.connectionProfileId, model: model.modelId, contextWindow: Number(contextWindow), maxOutputTokens: Number(maxOutputTokens) }), authoringStart);
 			if (started.outcome === "refused") setNotice({ text: started.reason, error: true });
-			else setSession({ session: started.session, candidate: started.candidate });
+			else if (!live.current.mounted) end(started.session);
+			else {
+				live.current.session = started.session;
+				setSession({ session: started.session, candidate: started.candidate });
+			}
 		} catch (error) {
 			setNotice({ text: error instanceof Error ? error.message : String(error), error: true });
 		} finally {
@@ -114,7 +123,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					if (event.type === "text") appendAgent(event.delta);
 					else if (event.type === "tool-end") add(event.isError ? "error" : "tool", event.isError ? `${event.name} failed: ${event.content}` : toolLines.get(event.name) ?? event.name);
 					else if (event.type === "scenario") setScenario(event.result);
-					else if (event.type === "end" && event.stopReason !== "end_turn") add("error", event.stopReason === "cancelled" ? "Stopped." : `The turn ended: ${event.error ?? event.stopReason}`);
+					else if (event.type === "end" && event.stopReason !== "end_turn") add("error", event.error ?? (event.stopReason === "cancelled" ? "Stopped." : `The turn ended: ${event.stopReason}`));
 				}
 			}
 		} catch (error) {
@@ -132,7 +141,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 			const result = await requestData(api.api.authoring.sessions({ session: session.session }).install.post(), authoringInstall);
 			if (result.outcome === "refused") setNotice({ text: [result.reason, ...result.diagnostics].join(" "), error: true });
 			else {
-				await onInstalled();
+				await onInstalled(result.id);
 				setInstalled(result.label);
 				setNotice({ text: `${result.label} is installed. Add it to a Chat from the Box manager.`, error: false });
 			}

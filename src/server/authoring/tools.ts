@@ -31,24 +31,28 @@ const writes = {
 // write per fixed file, and a scenario. No tool takes a path or an id, and
 // every argument is checked against its schema before anything runs, since
 // the arguments come from a model reading the writer's prose. Each runs
-// after the previous one ends. `onScenario` hears each scenario's result
-// under its tool call's id, for the panel.
-export const authoringTools = (candidate: Candidate, onScenario: (call: string, result: ScenarioResult) => void) => {
-	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string) => unknown) => ({
+// after the previous one ends, and each call is first `spent` against the
+// turn's budget, which throws once the turn has used it. libfx's signal
+// aborts when the turn is cancelled: a write still waiting is dropped, and a
+// scenario stops, its package fetches included. `onScenario` hears each
+// scenario's result under its tool call's id, for the panel.
+export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: () => void; readonly onScenario: (call: string, result: ScenarioResult) => void }) => {
+	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string, signal: AbortSignal) => unknown) => ({
 		name, description, idempotent: true, writes: true,
 		inputSchema: JSON.parse(JSON.stringify(schema)),
-		execute: (input: unknown, { executionId }: { readonly executionId: string }) => {
+		execute: (input: unknown, { executionId, signal }: { readonly executionId: string; readonly signal: AbortSignal }) => {
+			spend();
 			assertChecked(schema, input, `The ${name} arguments`);
-			return execute(input, executionId);
+			return execute(input, executionId, signal);
 		},
 	});
 	return [
 		tool("read_contract", "Returns the sandboxed Box contract. Read it before writing any file. With `example`, returns that built-in Box's sources instead.",
 			readContractInput, readContract),
-		...Object.entries(writes).map(([name, [file, description]]) => tool(name, description, content(file), ({ content: text }) => candidate.write(file, text))),
+		...Object.entries(writes).map(([name, [file, description]]) => tool(name, description, content(file), ({ content: text }, _, signal) => candidate.write(file, text, signal))),
 		tool("run_scenario", "Loads the Box from its files as the app would and plays the scenario against it, returning its diagnostics, prompt items, records, state and read or status.",
-			scenarioInput, async (input, call) => {
-				const result = await candidate.check(() => runScenario(candidate.folder, candidate.id, new Set(serverBoxes().keys()), input));
+			scenarioInput, async (input, call, signal) => {
+				const result = await candidate.check(() => runScenario(candidate.folder, candidate.id, new Set(serverBoxes().keys()), input, signal), signal);
 				onScenario(call, result);
 				return result;
 			}),
