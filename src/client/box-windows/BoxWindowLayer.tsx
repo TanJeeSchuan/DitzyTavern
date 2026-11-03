@@ -200,8 +200,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				<BoxBoundary box={id}>
 					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}
-						staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange}
-						boxData={(owner, key, value) => ({ type: "put-box-data", box: id, owner, key, value })} />
+						staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange} />
 				</BoxBoundary>
 			</FloatingWindow>;
 		})}

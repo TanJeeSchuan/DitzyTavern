@@ -2,33 +2,37 @@ import { Type, type Static } from "@sinclair/typebox";
 import { boxState } from "./box";
 import { boxValue } from "./box-value";
 
-// @approved
-//  A Box window writes one value into its own namespace. The Box id owns the
-//  namespace (`box:<id>`), so a window can never address another Box's data,
-//  and the owner names the Library, Character or Participant row the value
-//  belongs to. The value is the Box's own stored string; the Box decodes it
-//  on read. Library and Character values are shared across Chats, so the
-//  Chat revision cannot guard them: a write carries the value's own revision
-//  as last read, 0 when it was absent.
-const sharedRevision = Type.Integer({ minimum: 0 });
-const boxDataWrite = Type.Object({
-	owner: Type.Union([
-		Type.Object({ type: Type.Literal("library"), revision: sharedRevision }),
-		Type.Object({ type: Type.Literal("character"), characterId: Type.Integer(), revision: sharedRevision }),
-		Type.Object({ type: Type.Literal("participant"), participantId: Type.Integer() }),
-	]),
-	key: Type.String({ minLength: 1, maxLength: 100 }),
-	value: Type.String(),
-});
+const library = Type.Object({ type: Type.Literal("library") }, { additionalProperties: false });
+const character = Type.Object({ type: Type.Literal("character"), characterId: Type.Integer() }, { additionalProperties: false });
+const participant = Type.Object({ type: Type.Literal("participant"), participantId: Type.Integer() }, { additionalProperties: false });
+const key = Type.String({ minLength: 1, maxLength: 100 });
+const boxDataWrite = Type.Object({ owner: Type.Union([library, character, participant]), key, value: Type.String() }, { additionalProperties: false });
+const boxDataExpectation = Type.Object({ owner: Type.Union([library, character]), key, revision: Type.Integer({ minimum: 0 }) }, { additionalProperties: false });
 export type BoxDataWrite = Static<typeof boxDataWrite>;
+export type BoxDataExpectation = Static<typeof boxDataExpectation>;
 
 // @approved
 //  Replaces one Box's whole setup. The command checks the setup against that
 // Box's schema before anything is written, so storage only ever holds
-// decodable values. `writes` are the Box's own data writes that land in the
-// same transaction, so a setup that depends on them never commits without
-// them.
-export const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup"), box: Type.String(), setup: boxValue, writes: Type.Optional(Type.Array(boxDataWrite)) });
+// decodable values.
+export const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup"), box: Type.String(), setup: boxValue });
+
+// @approved
+//  One atomic batch of a Box's own values, with its setup when it carries
+// one. The Box id owns the namespace (`box:<id>`), so a commit never addresses
+// another Box's data, and each write names the Library, a Character this
+// Chat's Cast was seeded from, or a Participant of this Chat. Values are the
+// Box's own stored strings, which it decodes on read. The Chat revision
+// guards the setup and Participant values; Library and Character values are
+// shared across Chats, so `expected` names each one's revision as last read,
+// 0 when it was absent, and every Library or Character write needs its own.
+export const commitBoxAction = Type.Object({
+	type: Type.Literal("commit-box"),
+	box: Type.String(),
+	setup: Type.Optional(boxValue),
+	writes: Type.Optional(Type.Array(boxDataWrite, { maxItems: 100 })),
+	expected: Type.Optional(Type.Array(boxDataExpectation, { maxItems: 100 })),
+});
 
 // @approved
 //  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
@@ -58,5 +62,3 @@ export const resetBoxRecordAction = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 });
-
-export const putBoxDataAction = Type.Object({ type: Type.Literal("put-box-data"), box: Type.String(), ...boxDataWrite.properties });

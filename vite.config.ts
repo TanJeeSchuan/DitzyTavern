@@ -37,7 +37,7 @@ const importMap: Plugin = {
 	transformIndexHtml: () => [{ tag: "script", attrs: { type: "importmap" }, children: JSON.stringify({ imports: hostModules }), injectTo: "head" }],
 };
 
-/** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host. */
+/** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host; a sandboxed one has none. */
 const builtInBoxClients: Plugin = {
 	name: "built-in-box-clients",
 	apply: "build",
