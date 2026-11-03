@@ -1,4 +1,5 @@
 import type { Request } from "@playwright/test";
+import type { ConversationAction } from "../src/shared/contract/conversation-schema";
 import { test, expect, insertBox } from "./fixtures";
 
 // The frame's policy refuses every escape the probe tries, and the browser logs each refusal; a restart cuts the open change stream.
@@ -92,5 +93,40 @@ test.describe("a sandboxed Box's images", () => {
 		expect([await loaded("image:forged img"), await loaded("image:forged srcset"), await loaded("image:forged app route")]).toEqual([false, false, false]);
 		/** @approved The probe's stylesheet also asks the app's image route; the frame's policy refuses those before any request goes out. */
 		expect(answers.filter(({ path, outcome }) => path.startsWith("/api/images/") && outcome !== "csp")).toEqual([]);
+	});
+
+	// @approved
+	//  A Cast Portrait displays while its Participant is in the Chat. Image
+	// answers are never cached, so once the Participant leaves, the frame's
+	// document loaded again asks the host for the same URL and is refused. A
+	// document already showing the image keeps it in its own list of
+	// available images, which no response header reaches, so the check is
+	// made on the frame's next document.
+	test("its frame stops displaying a Cast Portrait once that Participant leaves the Chat", async ({ page, llm, request }) => {
+		await llm.installBox("escape-probe");
+		await llm.restart("graceful");
+		await page.goto("/");
+		await insertBox(page, "Escape Probe");
+		const { hash } = await (await request.post("/api/images", { data: { data: ownImage.buffer.toString("base64") } })).json();
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		const command = async (action: ConversationAction) => {
+			const { revision } = await (await request.get(`/api/conversations/${activeChatId}`)).json();
+			return (await (await request.post(`/api/conversations/${activeChatId}/commands`, { data: { expectedRevision: revision, action } })).json()).conversation;
+		};
+		const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+		const added = await command({ type: "add-participant", definition: { name: "Lantern Keeper", prompt, openings: [], portrait: { hash, focalX: 0.5, focalY: 0.5 } } });
+		const keeper = added.cast.find(({ name }: { name: string }) => name === "Lantern Keeper");
+
+		await page.getByRole("button", { name: "Escape Probe", exact: true }).click();
+		const frame = page.getByRole("dialog", { name: "Escape Probe" }).frameLocator("iframe");
+		const shown = frame.getByAltText("portrait Lantern Keeper");
+		const width = () => shown.evaluate((image: HTMLImageElement) => image.complete ? image.naturalWidth : -1);
+		await expect.poll(width).toBeGreaterThan(0);
+		const src = await shown.getAttribute("src");
+
+		await command({ type: "remove-participant", participantId: keeper.id });
+		await frame.locator("body").evaluate(() => location.reload());
+		await expect(shown).toHaveAttribute("src", src!);
+		await expect.poll(width).toBe(0);
 	});
 });

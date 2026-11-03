@@ -50,7 +50,12 @@ Race runs as a sandboxed Box with the same simulation, hidden-state behavior and
 - **Move labels.** A template's `{key}` now shows the literal's `title` when the Move schema gives one. Without it the Race's chip would read `overtake · …`. This is general: any enum field gets a display name the way the passage timeline already shows one.
 - **Morphing renders.** Typing into a re-rendered input lost focus, so `render` now morphs with idiomorph instead of replacing the document. Focus, caret and typed value survive, and the oval's markers glide with a CSS transition, honouring reduced motion. The markers move in a straight line rather than along the track.
 - **Read transport unchanged.** The window read stays at `/api/conversations/:id/boxes/race`, wrapped as `{ snapshot, status, view }`. So `moves.spec.ts` intercepts the same URL, and `cast.spec.ts` reads `view`.
-- **Old records.** Stored Race records fail the new record schema (`entries` is required), so the schema check at load deletes them as derived values.
+- **Old records.** Migration `0038_clear_race_records` deletes every stored Race record slot, Writer overrides included, and pending Race records on Active Generations. The schema check alone deleted only automatic records and held old Writer overrides, which made every Race read throw.
+- **Review round 1.**
+  - Uploads: a frame runs one at a time and refuses the rest meanwhile. The server refuses past 200 granted Images or 100 MiB per Box.
+  - Tokens: a token is bound to the Box's insertion instance, and the app closes it when the frame is torn down.
+  - Images: image answers are `no-store`. A document already showing an image keeps it in its own list of available images, which no header reaches, so the e2e checks the frame's next document.
+  - Drafts: the window's draft and stat sheet keep the revision, and the Character revision, they started from, until saved, discarded or refused as a conflict.
 - **Deferred.** The `ui` close event has no consumer in the Race, so it is not built. Chat values in `commit` are not built either: Race writes none, and `snapshot`'s closed set has no Chat query to read them back.
 - **Dev server.** `bun --watch` does not see files the registry only bundles, so `dev:server` runs `scripts/dev-server.ts`, which also restarts the server on any change under `src/boxes`.
 

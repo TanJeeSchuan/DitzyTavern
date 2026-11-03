@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, sum } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { join } from "node:path";
 import type { BoxId } from "../../shared/contract/box";
 import { boxFrameRoute } from "../../shared/box-frame";
-import { boxImageGrantTable } from "../database/schema";
+import { boxImageGrantTable, imageTable } from "../database/schema";
 import { readActiveCast } from "../conversation";
 import { readImage, uploadImage } from "../image";
+import { InvalidImageError } from "../image/errors";
 import { readBoxLifecycles } from "./setup";
 
 const client = join(import.meta.dir, "../../client");
@@ -30,10 +31,13 @@ const frameParts = () => parts ??= (async () => {
 
 // @approved
 //  Each frame instance the app opens gets its own token, bound here to one
-// Box and one Chat: its document, its image URLs and its uploads all name
-// the token, so a guest can address no other Box or Chat. Tokens live in
-// memory, the oldest dropped past the cap.
-type FrameBinding = { readonly box: BoxId; readonly conversationId: number };
+// Box, one Chat and the Box's insertion instance there: its document, its
+// image URLs and its uploads all name the token, so a guest can address no
+// other Box or Chat. The app closes the token when it tears the frame down,
+// and removing the Box ends the instance, so a token never outlives its
+// frame or comes back with a reinserted Box. Tokens live in memory, the
+// oldest dropped past the cap.
+type FrameBinding = { readonly box: BoxId; readonly conversationId: number; readonly instance: string };
 const frames = new Map<string, FrameBinding>();
 const MAX_FRAMES = 1000;
 export const openBoxFrame = (binding: FrameBinding) => {
@@ -42,10 +46,11 @@ export const openBoxFrame = (binding: FrameBinding) => {
 	for (const oldest of frames.keys()) if (frames.size > MAX_FRAMES) frames.delete(oldest); else break;
 	return token;
 };
-/** @approved The binding of a frame whose Box is still present in its Chat. */
+export const closeBoxFrame = (token: string) => frames.delete(token);
+/** @approved The binding of a frame whose Box is still the instance it was opened for in its Chat. */
 const frameOf = (db: BunSQLiteDatabase, token: string) => {
 	const binding = frames.get(token);
-	return binding !== undefined && readBoxLifecycles(db, binding.conversationId)[binding.box] !== undefined ? binding : undefined;
+	return binding !== undefined && readBoxLifecycles(db, binding.conversationId)[binding.box]?.instance === binding.instance ? binding : undefined;
 };
 const imagePath = (token: string) => `${boxFrameRoute}/${token}/images/`;
 
@@ -71,7 +76,8 @@ export const boxFrameResponse = async (database: Database, token: string, host: 
 //  A frame displays an Image only when the host says its Box owns it: the Box
 // uploaded it through a frame, which recorded a grant, or it is the Portrait
 // of someone in the frame's Chat's Cast. A hash the Box wrote into its own
-// values grants nothing.
+// values grants nothing. The answer is never cached, so every load passes
+// this check again: a Portrait stops showing once its Participant leaves.
 export const boxFrameImage = (database: Database, token: string, hash: string) => {
 	const db = drizzle(database);
 	const frame = frameOf(db, token);
@@ -79,13 +85,25 @@ export const boxFrameImage = (database: Database, token: string, hash: string) =
 	const granted = db.select().from(boxImageGrantTable).where(and(eq(boxImageGrantTable.box_id, frame.box), eq(boxImageGrantTable.hash, hash))).get() !== undefined;
 	if (!granted && !readActiveCast(db, frame.conversationId).some(({ portrait }) => portrait?.hash === hash)) return undefined;
 	const image = readImage(db, hash);
-	return image && new Response(new Uint8Array(image.bytes), { headers: { "content-type": image.media_type, "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" } });
+	return image && new Response(new Uint8Array(image.bytes), { headers: { "content-type": image.media_type, "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 };
 
-/** @approved An Image a frame's Box uploads, stored as any upload is and granted to that Box. */
+/** @approved The most Images, and image bytes, a Box may hold through its frames' uploads. */
+export const BOX_IMAGE_COUNT = 200;
+export const BOX_IMAGE_BYTES = 100 * 1024 * 1024;
+
+// @approved
+//  An Image a frame's Box uploads, stored as any upload is and granted to that
+// Box, while the Box's granted Images stay within its quota: an upload that
+// would pass the count or the byte total is refused before it is stored.
 export const uploadBoxFrameImage = async (database: Database, token: string, bytes: Uint8Array) => {
 	const frame = frameOf(drizzle(database), token);
 	if (frame === undefined) return undefined;
+	const held = drizzle(database).select({ count: count(), bytes: sum(imageTable.byte_size).mapWith(Number) }).from(boxImageGrantTable)
+		.innerJoin(imageTable, eq(imageTable.hash, boxImageGrantTable.hash)).where(eq(boxImageGrantTable.box_id, frame.box)).get();
+	if ((held?.count ?? 0) >= BOX_IMAGE_COUNT || (held?.bytes ?? 0) + bytes.byteLength > BOX_IMAGE_BYTES) {
+		throw new InvalidImageError(`The ${frame.box} Box already holds its ${BOX_IMAGE_COUNT} images or ${BOX_IMAGE_BYTES / 1024 / 1024} MiB of uploads.`);
+	}
 	const { hash } = await uploadImage(database, bytes);
 	drizzle(database).insert(boxImageGrantTable).values({ box_id: frame.box, hash }).onConflictDoNothing().run();
 	return { hash };

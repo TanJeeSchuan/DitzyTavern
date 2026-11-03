@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { Elysia } from "elysia";
 import { boxClientSource, boxRoutes, clearHeldValues, heldBoxValues as held } from "../box/registry";
-import { boxFrameImage, boxFrameResponse, uploadBoxFrameImage } from "../box/frame";
+import { boxFrameImage, boxFrameResponse, closeBoxFrame, uploadBoxFrameImage } from "../box/frame";
 import { boxFrameRoute } from "../../shared/box-frame";
 import { boxFrameImageParams, boxFrameParams, boxList } from "../../shared/contract/box-sandboxed";
 import { boxParams as params, heldBoxValues, heldBoxValuesCleared, installedBoxes } from "../../shared/contract/box";
@@ -37,6 +37,7 @@ export const createBoxRoutes = (database: Database) => {
 		}), { response: boxList })
 		.get(`${boxFrameRoute}/:token`, async ({ params: { token }, request }) => await boxFrameResponse(database, token, requestHost(request)) ?? notFoundResponse(),
 			{ params: boxFrameParams })
+		.delete(`${boxFrameRoute}/:token`, ({ params: { token } }) => { closeBoxFrame(token); return new Response(null, { status: 204 }); }, { params: boxFrameParams })
 		.get(`${boxFrameRoute}/:token/images/:hash`, ({ params: { token, hash } }) => boxFrameImage(database, token, hash) ?? notFoundResponse(),
 			{ params: boxFrameImageParams })
 		.post(`${boxFrameRoute}/:token/images`, async ({ params: { token }, body }) => {

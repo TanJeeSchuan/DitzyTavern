@@ -26,10 +26,13 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		{ params, response: readResponse })
 	// @approved
 	//  The app opens a frame for a sandboxed Box present in the Chat, and the
-	// token it gets back binds that frame to the Box and the Chat.
-	.post("/api/conversations/:id/boxes/:box/frame", ({ params }) => boxClientSource(params.box)?.kind === "sandboxed" && readBoxLifecycles(drizzle(database), params.id)[params.box] !== undefined
-		? { token: openBoxFrame({ box: params.box, conversationId: params.id }) } : notFoundResponse(),
-		{ params, response: { 200: boxFrameOpened, 404: notFoundOutcome } })
+	// token it gets back binds that frame to the Box, the Chat and the Box's
+	// instance there.
+	.post("/api/conversations/:id/boxes/:box/frame", ({ params }) => {
+		const instance = readBoxLifecycles(drizzle(database), params.id)[params.box]?.instance;
+		return boxClientSource(params.box)?.kind === "sandboxed" && instance !== undefined
+			? { token: openBoxFrame({ box: params.box, conversationId: params.id, instance }) } : notFoundResponse();
+	}, { params, response: { 200: boxFrameOpened, 404: notFoundOutcome } })
 	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => (isDigestBox(params.box) ? readDigestStatus(database, params.id, params.box) : undefined) ?? notFoundResponse(),
 		{ params, response: { 200: digestStatusRead, 404: notFoundOutcome } })
 	// @approved

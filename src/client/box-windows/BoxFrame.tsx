@@ -53,6 +53,18 @@ const uiFile = async (box: BoxId, file: string, required: boolean) => {
 	return "";
 };
 
+// @approved
+//  Runs `task` unless an earlier run of it is still in flight, which answers
+// `busy` at once instead of queuing: a frame uploads one image at a time.
+export const oneAtATime = <Input, Output>(task: (input: Input) => Promise<Output>, busy: () => Output) => {
+	let running = false;
+	return async (input: Input): Promise<Output> => {
+		if (running) return busy();
+		running = true;
+		try { return await task(input); } finally { running = false; }
+	};
+};
+
 const useSandboxedRead = (conversation: ConversationSummary, box: BoxId) => useBoxRead(conversation, box, sandboxedRead);
 const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 
@@ -68,9 +80,9 @@ type FrameProps = { box: BoxId; descriptor: BoxDescriptor; conversation: Convers
 // for, the app does for this Box and Chat only: staged Moves replace this
 // Box's own under its schema, count and enabled rules; a commit runs as
 // `commit-box` at the snapshot it names, and one that does not land answers
-// with the current read; an upload is stored and granted to this Box; and
-// its unsaved work joins the window's save guard. A Worker failure shows in
-// the window.
+// with the current read; an upload, one at a time, is stored and granted to
+// this Box; and its unsaved work joins the window's save guard. A Worker
+// failure shows in the window. Tearing the frame down closes its token.
 function BoxFrame(props: FrameProps) {
 	const { box, conversation } = props;
 	const frame = useRef<HTMLIFrameElement>(null);
@@ -87,9 +99,18 @@ function BoxFrame(props: FrameProps) {
 	const nextSave = useRef(0);
 	useEffect(() => {
 		let current = true;
+		let opened: string | undefined;
+		const close = (closing: string) => void api.api["box-frame"]({ token: closing }).delete();
 		setToken(undefined);
-		void api.api.conversations({ id: conversation.id }).boxes({ box }).frame.post().then(({ data }) => { if (current) data === null ? setFailure("Its frame could not be opened.") : setToken(data.token); });
-		return () => { current = false; };
+		void api.api.conversations({ id: conversation.id }).boxes({ box }).frame.post().then(({ data }) => {
+			if (data === null) setFailure("Its frame could not be opened.");
+			else if (current) setToken(opened = data.token);
+			else close(data.token);
+		});
+		return () => {
+			current = false;
+			if (opened !== undefined) close(opened);
+		};
 	}, [box, conversation.id]);
 	const connect = () => {
 		const channel = new MessageChannel();
@@ -125,7 +146,7 @@ function BoxFrame(props: FrameProps) {
 			if (data.type === "dirty") setDirty(data.dirty === true);
 			if (data.type === "saved" && typeof data.id === "number") saves.current.get(data.id)?.(data.saved === true);
 			if (data.type === "commit") void commit(data.commit).then((result) => reply(data.id, result));
-			if (data.type === "upload") void upload(data.file, frameToken).then((result) => reply(data.id, result));
+			if (data.type === "upload") void upload({ file: data.file, frameToken }).then((result) => reply(data.id, result));
 			if (data.type !== "stage") return;
 			if (staging === null || disabled) {
 				setFailure(disabled ? "It staged Moves while its controls are off." : "It staged Moves while it cannot take them.");
@@ -152,13 +173,13 @@ function BoxFrame(props: FrameProps) {
 		const current = await latest.current.read.refetch();
 		return { outcome: conflict ? "conflict" : "refused", reason, current: current.data ?? null } as const;
 	};
-	const upload = async (file: unknown, frameToken: string | undefined) => {
+	const upload = useRef(oneAtATime(async ({ file, frameToken }: { file: unknown; frameToken: string | undefined }) => {
 		if (!(file instanceof Blob)) return refused("It uploaded something that is not a file.");
 		if (file.size > MAX_IMAGE_BYTES) return refused(`The image is over ${MAX_IMAGE_BYTES / 1024 / 1024} MiB.`);
 		if (frameToken === undefined) return refused("Its frame is not open.");
 		const { data, error } = await api.api["box-frame"]({ token: frameToken }).images.post({ data: await encodeImage(file) });
 		return error === null ? { outcome: "uploaded", hash: data.hash } as const : refused(error.status === 422 ? error.value.reason : "The image could not be saved.");
-	};
+	}, () => refused("It is already uploading an image."))).current;
 	const shown = ui.error?.message ?? read.error?.message ?? failure;
 	return <>
 		{shown !== undefined && <BoxFailure box={box} message={shown} />}

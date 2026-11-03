@@ -58,6 +58,7 @@ let started = false;
 let pings = 0;
 let setup = { app: "", other: "", round: 0 };
 let stored = [];
+let cast = [];
 let snapshot = 0;
 let uploaded = "none";
 const draw = () => host.render(`<div class="probe-sheet">
@@ -67,6 +68,7 @@ const draw = () => host.render(`<div class="probe-sheet">
 	<input type="file" aria-label="Upload image" data-on="upload">
 	<output aria-label="Upload">${uploaded}</output>
 	${images(stored)}
+	${cast.flatMap(({ name, portrait }) => portrait === null ? [] : [`<img src="${host.image(portrait.hash)}" alt="portrait ${name}">`]).join("")}
 	<output aria-label="Escapes">${started ? JSON.stringify(tried) : "waiting"}</output>
 	${setup.app === "" ? "" : [`${setup.other}/sandbox-escape`, `${setup.app}/api/images/sandbox-escape`].map(markup).join("")}
 </div>`);
@@ -83,7 +85,7 @@ host.onEvent(({ type, name, files }) => {
 	draw();
 });
 host.onRead(async (read, view) => {
-	({ setup, images: stored } = read);
+	({ setup, images: stored, cast } = read);
 	snapshot = view.snapshot;
 	if (setup.app !== "" && !started) {
 		started = true;

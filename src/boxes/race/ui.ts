@@ -40,13 +40,20 @@ const integerIn = (value: number, minimum: number, maximum: number) => Number.is
 const isValid = (setup: RaceSetup) => setup.course.name.length >= 1 && setup.course.name.length <= 100 && integerIn(setup.course.distance, 400, 10000)
 	&& integerIn(setup.metresPerStretch, 100, 2000) && (setup.auto === "off" || setup.auto === "on" || integerIn(setup.auto.until, 0, 10000)) && isRaceAutoValid(setup);
 
-/** @approved The open Cast stat sheet: the Participant being slotted, the stats it starts from, and whether saving also writes its Character. */
-type Sheet = { participantId: number; name: string; character: { id: number; name: string | null } | null; stats: RaceStats; saveToCharacter: boolean };
+/** @approved The open Cast stat sheet: the Participant being slotted, the stats it starts from, whether saving also writes its Character, and that Character's stats revision when the sheet opened. */
+type Sheet = { participantId: number; name: string; character: { id: number; name: string | null } | null; characterRevision: number; stats: RaceStats; saveToCharacter: boolean };
 
 let view: RaceView | undefined;
 let frame: Frame = { moves: null, disabled: true, stale: false, snapshot: 0 };
 /** @approved The edited setup; null follows the saved one. */
 let draft: RaceSetup | null = null;
+// @approved
+//  The revision the unsaved work, the draft or an open stat sheet, started
+// from: a later read never moves it, so a save made over another window's
+// change is refused as a conflict instead of undoing it. A conflict moves
+// it to the current revision, so saving again replaces that change, as the
+// conflict notice says.
+let base: number | null = null;
 let sheet: Sheet | null = null;
 let ordered: string | undefined;
 let notice: string | null = null;
@@ -57,7 +64,12 @@ let replayRace: string | undefined;
 const current = () => draft ?? view?.setup ?? initialRaceSetup;
 const dirty = () => (draft !== null && view !== undefined && !jsonEqual(draft, view.setup)) || sheet !== null;
 const locked = () => busy || frame.disabled;
-const edit = (patch: Partial<RaceSetup>) => { draft = { ...current(), ...patch }; };
+const edit = (patch: Partial<RaceSetup>) => {
+	base ??= frame.snapshot;
+	draft = { ...current(), ...patch };
+};
+/** @approved Ends the unsaved work's hold on its revision once neither a draft nor a sheet is left. */
+const settle = () => { if (draft === null && sheet === null) base = null; };
 // @approved
 //  The read when it shows the race `raceId` names under way or finished. A
 //  stale read from before a New race or Start race names another race and
@@ -65,17 +77,19 @@ const edit = (patch: Partial<RaceSetup>) => { draft = { ...current(), ...patch }
 const currentRace = (raceId: string) => view === undefined || view.phase.kind === "setup" || view.phase.state.raceId !== raceId ? null : { ...view, phase: view.phase };
 
 /** @approved Runs one commit with the form locked; a commit that does not land shows its reason and adopts the current read it returns. */
-const commit = async (request: Omit<Commit, "snapshot">, conflict: string): Promise<boolean> => {
+const commit = async (request: Commit, conflict: string): Promise<boolean> => {
 	busy = true;
 	notice = null;
 	draw();
 	try {
-		const result = await host.commit({ snapshot: frame.snapshot, ...request });
+		const result = await host.commit(request);
 		if (result.outcome === "applied") return true;
 		notice = result.outcome === "conflict" ? conflict : result.reason;
 		if (result.current !== null) {
 			view = result.current.view;
 			frame = { ...frame, snapshot: result.current.snapshot };
+			if (base !== null) base = result.current.snapshot;
+			if (sheet?.character) sheet = { ...sheet, characterRevision: view.characterStatsRevisions[sheet.character.id] ?? 0 };
 		}
 		return false;
 	} finally {
@@ -85,8 +99,11 @@ const commit = async (request: Omit<Commit, "snapshot">, conflict: string): Prom
 };
 const saveSetup = async (setup = current(), writes?: Commit["writes"], expected?: Commit["expected"]) => {
 	if (locked() || !isValid(setup)) return false;
-	const saved = await commit({ setup, writes, expected }, "The Chat changed. Review your setup and save again.");
-	if (saved) draft = null;
+	const saved = await commit({ snapshot: base ?? frame.snapshot, setup, writes, expected }, "The Chat changed. Review your setup and save again.");
+	if (saved) {
+		draft = null;
+		settle();
+	}
 	draw();
 	return saved;
 };
@@ -97,13 +114,16 @@ const saveSetup = async (setup = current(), writes?: Commit["writes"], expected?
 //  edits and commits none of them.
 const addToField = async (): Promise<boolean> => {
 	if (sheet === null || locked() || view === undefined || frame.stale) return false;
-	const { participantId, name, stats, character, saveToCharacter } = sheet;
+	const { participantId, name, stats, character, characterRevision, saveToCharacter } = sheet;
 	const value = JSON.stringify(stats);
 	const toCharacter = saveToCharacter && character !== null;
 	const added = await saveSetup({ ...current(), slots: addRaceRunner(current().slots, { name, participantId, ...stats }) },
 		[{ owner: { type: "participant", participantId }, key: "stats", value }, ...toCharacter ? [{ owner: { type: "character", characterId: character.id } as const, key: "stats", value }] : []],
-		toCharacter ? [{ owner: { type: "character", characterId: character.id }, key: "stats", revision: view.characterStatsRevisions[character.id] ?? 0 }] : []);
-	if (added) sheet = null;
+		toCharacter ? [{ owner: { type: "character", characterId: character.id }, key: "stats", revision: characterRevision }] : []);
+	if (added) {
+		sheet = null;
+		settle();
+	}
 	draw();
 	return added;
 };
@@ -120,7 +140,7 @@ const setAvatar = async (name: string, file: File) => {
 		return;
 	}
 	const key = `${RACE_AVATAR_PREFIX}${name}`;
-	await commit({ writes: [{ owner: { type: "library" }, key, value: uploaded.hash }], expected: [{ owner: { type: "library" }, key, revision: view.avatars[name]?.revision ?? 0 }] }, "The Chat changed. Set the avatar again.");
+	await commit({ snapshot: frame.snapshot, writes: [{ owner: { type: "library" }, key, value: uploaded.hash }], expected: [{ owner: { type: "library" }, key, revision: view.avatars[name]?.revision ?? 0 }] }, "The Chat changed. Set the avatar again.");
 };
 
 const openSheet = (participantId: number) => {
@@ -128,7 +148,8 @@ const openSheet = (participantId: number) => {
 	if (member === undefined || view === undefined) return;
 	notice = null;
 	const stored = view.castStats.find((entry) => entry.participantId === participantId)?.stats;
-	sheet = { participantId, name: member.name, character: member.character, stats: stored ?? rollRaceStats("Pace Chaser", raceRandom(seed())), saveToCharacter: false };
+	base ??= frame.snapshot;
+	sheet = { participantId, name: member.name, character: member.character, characterRevision: member.character === null ? 0 : view.characterStatsRevisions[member.character.id] ?? 0, stats: stored ?? rollRaceStats("Pace Chaser", raceRandom(seed())), saveToCharacter: false };
 };
 
 const disabledIf = (condition: boolean) => condition ? " disabled" : "";
@@ -246,6 +267,7 @@ host.onRead((read, next) => {
 	view = read;
 	frame = next;
 	if (draft !== null && jsonEqual(draft, read.setup)) draft = null;
+	settle();
 	draw();
 });
 host.onEvent(({ type, name, data, value, files }) => {
@@ -259,7 +281,10 @@ host.onEvent(({ type, name, data, value, files }) => {
 		if (name === "cast") openSheet(Number(data.id));
 		if (name === "roll" && sheet !== null) sheet = { ...sheet, stats: rollRaceStats(sheet.stats.style, raceRandom(seed())) };
 		if (name === "add") void addToField();
-		if (name === "cancel") sheet = null;
+		if (name === "cancel") {
+			sheet = null;
+			settle();
+		}
 		if (name === "new-race") void saveSetup({ ...initialRaceSetup, raceId: seed() });
 		if (name === "start" && sheet === null && setup.slots.length >= 2) void saveSetup({ ...setup, raceId: seed(), phase: "running" });
 		if (name === "save") void saveSetup();
@@ -292,6 +317,7 @@ host.onSave(async () => sheet !== null ? await addToField() : await saveSetup())
 host.onDiscard(() => {
 	draft = null;
 	sheet = null;
+	settle();
 	notice = null;
 	draw();
 });
