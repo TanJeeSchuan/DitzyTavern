@@ -1,6 +1,6 @@
 # Race as a sandboxed Box
 
-Status: TODO
+Status: DONE
 
 Blocked By: 01
 
@@ -33,8 +33,8 @@ Race runs as a sandboxed Box with the same simulation, hidden-state behavior and
 - [x] Build: Race's logic stays TypeScript in `src/boxes/race/logic.ts`. The registry bundles a built-in sandboxed Box's `logic.ts` and `ui.ts` with `Bun.build` at server startup, using the repository's normal resolution and packages (built-in source is ours, so it doesn't go through ticket 02c's confined build for guest Boxes), the same in development, production and Docker (which copies `src/boxes`), so there is no build artifact to go stale or missing. The guest only ever receives JS. The Vite build skips `buildBoxClient` for Boxes without `client.tsx` (`vite.config.ts:45`, `scripts/build-box-client.ts:57`). Check that the development server restarts when `logic.ts` changes; if `bun --watch` doesn't see it, the dev script watches `src/boxes`.
 - [x] Adapt the five Race specs: frame locators everywhere; `moves.spec.ts` read interception and `cast.spec.ts` direct reads move to the new transport. Prompt Plan, Stretch text, Swipe equality and model request assertions stay unchanged.
 - [x] With ticket 01's limits on, time a fold of the longest real race (3,200 m at 100 m per Stretch) and a 200-Stretch synthetic one with the compact records, and record whether they fit the 100 ms sync deadline. Change the limits in ticket 01's code if they don't.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
