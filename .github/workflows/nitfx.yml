@@ -1,0 +1,20 @@
+name: NitFX
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: TanJeeSchuan/NitFX/.github/workflows/review.yml@main
+    with:
+      base_url: https://api.tanjs.dev/v1
+      model: gpt-6.1-sol
+      effort: high
+    secrets:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
