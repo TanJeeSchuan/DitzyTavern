@@ -1,7 +1,7 @@
 /* eslint-disable ditzy/no-contract-definition-outside-contract -- The lamp is a test Box with its own schemas. */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { Type } from "@sinclair/typebox";
+import { Kind, Type, TypeRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { BoxDescriptor } from "../../shared/contract/box";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -89,4 +89,20 @@ test("an interrupted Generation's pending record that no longer fits is dropped 
 	`);
 	checkStoredBoxValues(database, [lamp]);
 	expect(JSON.parse(value("SELECT box_records_json AS value FROM active_generation")!)).toEqual({ other: { instance: "b", record: { kept: true } } });
+});
+
+test("a Box whose schema throws is left unchecked without stopping the others", () => {
+	const broken: CheckedBox = { ...lamp, id: "broken", descriptor: { ...lamp.descriptor, id: "broken", record: Type.Object({ glow: Type.Ref("missing") }) } };
+	database.exec(`INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'box:broken', 'record:a', '{"automatic":{"glow":1}}')`);
+	expect(checkStoredBoxValues(database, [broken, lamp]).get("lamp")).toEqual(["Message 1 Moves", "Variant 1 record writer"]);
+	expect(database.query("SELECT box_id FROM box_schema").all()).toEqual([]);
+});
+
+test("schemas differing only in their custom kind fingerprint apart", () => {
+	TypeRegistry.Set("Even", (_, value) => Number.isInteger(value) && Number(value) % 2 === 0);
+	TypeRegistry.Set("Odd", (_, value) => Number.isInteger(value) && Number(value) % 2 === 1);
+	const counting = (kind: string): CheckedBox => ({ ...lamp, descriptor: { ...lamp.descriptor, setup: { schema: Type.Unsafe({ [Kind]: kind }), initial: 0 } } });
+	database.exec(`UPDATE conversation_data SET value = '2' WHERE key = 'setup'`);
+	expect(checkStoredBoxValues(database, [counting("Even")]).get("lamp")).not.toContain("Chat 1 setup");
+	expect(checkStoredBoxValues(database, [counting("Odd")]).get("lamp")).toContain("Chat 1 setup");
 });
