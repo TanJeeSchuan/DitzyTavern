@@ -1,0 +1,13 @@
+{
+	"id": "dice-3d",
+	"sdk": 2,
+	"label": "Dice",
+	"summary": "Rolls a die the writer clicks, drawn in 3D.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "",
+	"record": { "type": "object", "properties": { "face": { "type": "integer", "minimum": 1 } }, "required": ["face"] },
+	"moves": { "schema": { "type": "object", "properties": { "sides": { "type": "integer", "minimum": 2 } }, "required": ["sides"] }, "max": 1, "label": "Roll d{sides}" },
+	"window": { "icon": "dice", "size": { "width": 18, "height": 16 } },
+	"dependencies": { "three": "0.170.0" }
+}

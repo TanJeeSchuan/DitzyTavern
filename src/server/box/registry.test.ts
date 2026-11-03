@@ -128,7 +128,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 	sandboxed("keyed", { "descriptor.json": descriptor("keyed", { record: { type: "object", patternProperties: { "^(a+)+$": { type: "number" } } } }) });
 	sandboxed("labelled", { "descriptor.json": descriptor("labelled", { moves: { schema: tip, max: 1, label: "Tip {coins}", render: "x" } }) });
 	sandboxed("importing", { "logic.js": `import { tip } from "./tip.js"; ${logic}` });
-	sandboxed("fetching", { "ui.js": "const { tip } = await import('https://example.com/tip.js');" });
+	sandboxed("fetching", { "ui.js": "import('https://example.com/tip.js').then(({ tip }) => host.render(tip));" });
 	sandboxed("unhooked", { "logic.js": "export default { read: () => 1 };" });
 	const { boxes, refused } = await discoverBoxes([root]);
 	const [jar] = boxes;
@@ -142,8 +142,8 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 		["backtracking", "Its string at /setup/schema/anyOf/0 has a pattern; a sandboxed Box may only use ParticipantKey's."],
 		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
 		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
-		["fetching", "Its ui.js imports https://example.com/tip.js; a sandboxed Box's ui.js is one file with no imports."],
-		["importing", "Its logic.js imports ./tip.js; a sandboxed Box's logic.js is one file with no imports."],
+		["fetching", "The fetching Box's ui.js did not build: ui.js imports https://example.com/tip.js; a sandboxed Box imports its own files by relative path and the packages its descriptor.json declares."],
+		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file of the Box's own."],
 		["keyed", "Its record at /record keys by ^(a+)+$; a sandboxed Box keys a record by any string or by ParticipantKey."],
 		["labelled", "Its descriptor.json is invalid at /moves/render: Unexpected property."],
 		["unhooked", "The unhooked Box must declare a Move render exactly when it declares Moves."],

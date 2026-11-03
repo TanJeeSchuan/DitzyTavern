@@ -62,7 +62,7 @@ export const createBoxRoutes = (database: Database) => {
 		.get("/boxes/:box/:file", async ({ params: { box, file }, request, status }) => {
 			const source = boxClientSource(box);
 			if (source?.kind === "sandboxed") {
-				const text = file === "ui.js" ? source.ui : file === "ui.css" ? source.css : undefined;
+				const text = file === "ui.js" ? source.ui : file === "ui.css" ? source.css ?? "" : undefined;
 				return text === undefined ? status(404, "There is no such Box client file.") : revalidatedText(request, text, { "content-type": file === "ui.js" ? "text/javascript;charset=utf-8" : "text/css;charset=utf-8" });
 			}
 			const served = source === undefined || (file !== "client.js" && file !== "client.css") ? undefined : Bun.file(join(source.folder, file));
