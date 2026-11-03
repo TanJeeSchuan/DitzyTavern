@@ -80,7 +80,11 @@ const send = (message: FrameToApp) => port?.postMessage(message);
 // @approved
 //  Each render morphs the document into the sanitized markup, so elements the
 // markup keeps stay in place: an input keeps its focus, caret and the value
-// being typed into it, and a CSS transition runs between two renders.
+// being typed into it, and a CSS transition runs between two renders. The
+// morph keeps the value only while a text field has focus, since it also
+// leaves the focused element's children alone: a focused button must still
+// take its new label.
+const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 const start = (ui: string, css: string) => {
 	guestStyle.textContent = css;
 	const url = URL.createObjectURL(new Blob([`const host = (${String(workerPrelude)})(${JSON.stringify(images)});\n${ui}`], { type: "text/javascript" }));
@@ -89,7 +93,7 @@ const start = (ui: string, css: string) => {
 	worker.onerror = (event) => send({ type: "error", message: event.message || "Its UI script failed." });
 	worker.onmessageerror = () => send({ type: "error", message: "Its UI sent a message the frame could not read." });
 	worker.onmessage = ({ data }: MessageEvent<{ type?: unknown; html?: unknown; moves?: unknown; id?: unknown; commit?: unknown; file?: unknown; dirty?: unknown; saved?: unknown }>) => {
-		if (data.type === "render" && typeof data.html === "string") Idiomorph.morph(document.body, sanitized(data.html), { morphStyle: "innerHTML", ignoreActiveValue: true });
+		if (data.type === "render" && typeof data.html === "string") Idiomorph.morph(document.body, sanitized(data.html), { morphStyle: "innerHTML", ignoreActiveValue: typing() });
 		if (data.type === "stage") send({ type: "stage", moves: data.moves });
 		if (data.type === "commit") send({ type: "commit", id: data.id, commit: data.commit });
 		if (data.type === "upload") send({ type: "upload", id: data.id, file: data.file });
@@ -129,6 +133,6 @@ for (const type of ["click", "input", "change"]) {
 			: element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement ? element.value : undefined;
 		const files = file && type === "change" ? [...element.files ?? []] : undefined;
 		worker?.postMessage({ type: "event", event: { type, name: element.dataset.on, data: { ...element.dataset }, value, ...files && { files } } });
-		if (files !== undefined) element.value = "";
+		if (files !== undefined && element instanceof HTMLInputElement) element.value = "";
 	});
 }

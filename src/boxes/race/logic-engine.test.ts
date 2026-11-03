@@ -135,7 +135,7 @@ const runRace = (fields: { setup: typeof setup; moves?: (state: RaceState | null
 	const outcomes: string[] = [];
 	const ordered: RaceMove[][] = [];
 	for (let i = 0; i < 30 && state?.finished !== true; i++) {
-		const input = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
+		const input: RaceInput = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
 		const record = advanceRace(input)!;
 		state = record.after;
 		outcomes.push(record.outcome);

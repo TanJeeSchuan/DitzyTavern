@@ -1,3 +1,4 @@
+import type { Request } from "@playwright/test";
 import { test, expect, insertBox } from "./fixtures";
 
 // The frame's policy refuses every escape the probe tries, and the browser logs each refusal; a restart cuts the open change stream.
@@ -51,7 +52,10 @@ const otherImage = png("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4
 //  The host decides what a frame may display: the Image the Box uploaded
 // through its frame shows on every surface, while an Image it does not own,
 // even with its hash written into the Box's own Library values, loads on
-// none of them, and the app's own image route is never asked.
+// none of them, and the app's own image route is never asked. The server
+// refuses such an Image with a JSON 404, whose body the browser's Opaque
+// Response Blocking then drops for the opaque-origin frame, so a refused
+// surface reports a failed request rather than a response.
 test.describe("a sandboxed Box's images", () => {
 	test.use({ allowedBrowserErrors: /Content Security Policy|ERR_BLOCKED_BY_CSP|status of 404/ });
 
@@ -66,23 +70,27 @@ test.describe("a sandboxed Box's images", () => {
 		const library = { type: "library" } as const;
 		const commit = { type: "commit-box", box: "escape-probe", writes: [{ owner: library, key: "image:forged", value: forged }], expected: [{ owner: library, key: "image:forged", revision: 0 }] };
 		expect((await request.post(`/api/conversations/${activeChatId}/commands`, { data: { expectedRevision: revision, action: commit } })).ok()).toBe(true);
-		const answers: { path: string; status: number }[] = [];
-		page.on("response", (response) => {
-			const url = new URL(response.url());
-			if (response.frame().url().includes("/api/box-frame/") && url.pathname.includes("/images/")) answers.push({ path: url.pathname.replace(/\/api\/box-frame\/[^/]+/, "frame") + url.search, status: response.status() });
-		});
+		const answers: { path: string; outcome: number | string }[] = [];
+		const record = (request: Request, outcome: number | string) => {
+			const url = new URL(request.url());
+			if (request.frame().url().includes("/api/box-frame/") && url.pathname.includes("/images/")) answers.push({ path: url.pathname.replace(/\/api\/box-frame\/[^/]+/, "frame") + url.search, outcome });
+		};
+		page.on("response", (response) => record(response.request(), response.status()));
+		page.on("requestfailed", (request) => record(request, request.failure()?.errorText ?? "failed"));
 
 		await page.getByRole("button", { name: "Escape Probe", exact: true }).click();
 		const frame = page.getByRole("dialog", { name: "Escape Probe" }).frameLocator("iframe");
 		await frame.getByLabel("Upload image").setInputFiles(ownImage);
 		const owned = await frame.getByRole("status", { name: "Upload" }).filter({ hasText: /^[0-9a-f]{64}$/ }).textContent();
 		const surfaces = ["img", "srcset", "background", "poster"];
-		const answered = (hash: string | null) => surfaces.map((surface) => answers.find(({ path }) => path === `frame/images/${hash}?${surface}`)?.status);
-		await expect.poll(() => answered(owned)).toEqual([200, 200, 200, 200]);
-		await expect.poll(() => answered(forged)).toEqual([404, 404, 404, 404]);
+		const answered = (hash: string | null) => surfaces.map((surface) => answers.filter(({ path }) => path === `frame/images/${hash}?${surface}`).map(({ outcome }) => outcome));
+		await expect.poll(() => answered(owned).map((outcomes) => outcomes[0])).toEqual([200, 200, 200, 200]);
+		await expect.poll(() => answered(forged).map((outcomes) => outcomes.length > 0)).toEqual([true, true, true, true]);
+		expect(answered(forged).flat()).not.toContain(200);
 		const loaded = (alt: string) => frame.getByAltText(alt).evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0);
 		expect([await loaded("image:owned img"), await loaded("image:owned srcset")]).toEqual([true, true]);
 		expect([await loaded("image:forged img"), await loaded("image:forged srcset"), await loaded("image:forged app route")]).toEqual([false, false, false]);
-		expect(answers.filter(({ path }) => path.startsWith("/api/images/"))).toEqual([]);
+		/** @approved The probe's stylesheet also asks the app's image route; the frame's policy refuses those before any request goes out. */
+		expect(answers.filter(({ path, outcome }) => path.startsWith("/api/images/") && outcome !== "csp")).toEqual([]);
 	});
 });

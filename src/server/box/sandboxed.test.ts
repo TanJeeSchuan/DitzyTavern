@@ -74,10 +74,10 @@ test("a read's snapshot reads only the Box's own values, takes no other query, a
 		moves: { render: () => typeof globalThis.kept },
 		dependencies: () => { try { return globalThis.kept({ scope: "library", prefix: "" }); } catch (error) { return error.message; } },
 	};`);
-	expect(readBoxWindow(database, chat.id, "probe", box, (window) => box.read?.(window))).toEqual({ snapshot: chat.revision, status: "ok", view: [{ key: "avatar:Ann", value: "box:probe", revision: 3 }] });
+	expect(readBoxWindow(database, chat.id, "probe", {}, (window) => box.read?.(window))).toEqual({ snapshot: chat.revision, status: "ok", view: [{ key: "avatar:Ann", value: "box:probe", revision: 3 }] });
 	expect(box.moves?.render({}, "Ann")).toBe("undefined");
 	expect(box.dependencies?.({ seed: "", intent: "respond", cast: [] }, undefined)).toBe("not a function");
 	const sneaky = await load(`export default { read: (_, { snapshot }) => ({ view: snapshot({ scope: "library", prefix: "", namespace: "box:other" }) }) };`);
-	expect(() => readBoxWindow(database, chat.id, "probe", sneaky, (window) => sneaky.read?.(window))).toThrow("snapshot query");
+	expect(() => readBoxWindow(database, chat.id, "probe", {}, (window) => sneaky.read?.(window))).toThrow("snapshot query");
 	database.close();
 });

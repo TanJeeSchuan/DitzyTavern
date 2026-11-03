@@ -224,7 +224,7 @@ function draw() {
 	const valid = isValid(setup);
 	host.render(`<div class="race-window">
 		<p role="status">${esc(view === undefined ? "Reading the race…" : status ?? "Choose a course and fill the field.")}</p>
-		${running && race !== null ? ovalMarkup(host.image, setup, race.phase.state, setup.slots.map(({ name }) => name), pictures) : ""}
+		${running && race !== null ? ovalMarkup(host.image, setup.course, race.phase.state, setup.slots.map(({ name }) => name), pictures) : ""}
 		${running && race !== null && race.replay !== null ? replayMarkup(host.image, race.replay, replayIndex, pictures) : ""}
 		${running ? "" : setupMarkup(setup, pictures)}
 		${sheet === null ? "" : sheetMarkup(sheet)}
