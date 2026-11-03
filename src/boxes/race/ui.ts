@@ -33,7 +33,8 @@ type StatKey = typeof statKeys[number];
 const statLabels = { speed: "Speed", stamina: "Stamina", power: "Power", guts: "Guts", wit: "Wit" } satisfies Record<StatKey, string>;
 /** @approved SAFETY: Object.keys of the literal catalog returns exactly its keys. */
 const kinds = Object.keys(raceMoveCatalog) as RaceMoveKind[];
-const seed = () => crypto.randomUUID();
+/** @approved A fresh race id or draw seed; an opaque-origin frame is no secure context, so its Worker has no `crypto.randomUUID`. */
+const seed = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 const integerIn = (value: number, minimum: number, maximum: number) => Number.isInteger(value) && value >= minimum && value <= maximum;
 /** @approved The checks the setup schema makes on what the form edits, so Save and Start stay off until the host would take the draft. */
 const isValid = (setup: RaceSetup) => setup.course.name.length >= 1 && setup.course.name.length <= 100 && integerIn(setup.course.distance, 400, 10000)

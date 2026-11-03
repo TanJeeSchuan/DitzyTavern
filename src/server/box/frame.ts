@@ -77,7 +77,7 @@ export const boxFrameImage = (database: Database, token: string, hash: string) =
 	const frame = frameOf(db, token);
 	if (frame === undefined) return undefined;
 	const granted = db.select().from(boxImageGrantTable).where(and(eq(boxImageGrantTable.box_id, frame.box), eq(boxImageGrantTable.hash, hash))).get() !== undefined;
-	if (!granted && !readActiveCast(db, frame.conversationId).some(({ portrait }) => portrait.portrait_hash === hash)) return undefined;
+	if (!granted && !readActiveCast(db, frame.conversationId).some(({ portrait }) => portrait?.portrait_hash === hash)) return undefined;
 	const image = readImage(db, hash);
 	return image && new Response(new Uint8Array(image.bytes), { headers: { "content-type": image.media_type, "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" } });
 };
