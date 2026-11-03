@@ -253,6 +253,13 @@
       "when": 1793513168589,
       "tag": "0035_drop_unread_generation_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1793667455316,
+      "tag": "0036_strip_memory_trace_claims",
+      "breakpoints": true
     }
   ]
 }
