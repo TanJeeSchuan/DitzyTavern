@@ -1,6 +1,6 @@
 # Creator Mode
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 02b, 02c
 
@@ -69,7 +69,7 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
   - Install leaves the other Boxes' runtimes untouched
   - a candidate the loader would refuse fails `run_scenario` with the loader's diagnostic
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
