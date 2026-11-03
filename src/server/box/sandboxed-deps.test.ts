@@ -75,6 +75,22 @@ test("a package is fetched once through esm.sh's stub to its import-free bundle,
 	expect(requests).toEqual([]);
 });
 
+// @approved
+//  The shipped package and its hash need no fetch, and the lock's compact
+// form differs from the one the pinning writes, so only the cancellation
+// stands between the pinning and a write.
+test("a cancelled pinning writes nothing, even when everything it needs is already at hand", async () => {
+	const box = folder();
+	const bundle = modules.get("/dice@1.0.0/es2022/dice.bundle.mjs")!;
+	const lock = JSON.stringify({ "dice@1.0.0": new Bun.CryptoHasher("sha256").update(bundle).digest("hex") });
+	mkdirSync(join(box, "deps"));
+	writeFileSync(join(box, "deps", "dice@1.0.0.js"), bundle);
+	writeFileSync(join(box, "deps.lock.json"), lock);
+	const cancelled = AbortSignal.abort();
+	await expect(pinnedPackages(box, "dice-box", await sandboxedFolder(box, "dice-box"), { dice: "1.0.0" }, origin, cancelled)).rejects.toThrow();
+	expect([readFileSync(join(box, "deps.lock.json"), "utf8"), requests]).toEqual([lock, []]);
+});
+
 test("a tampered deps/ file fails its hash, and a fetch that differs from the lock is refused too", async () => {
 	const box = folder();
 	await pin(box, { dice: "1.0.0" });

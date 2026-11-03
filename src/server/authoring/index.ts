@@ -23,12 +23,13 @@ const instructions = (id: string) => [
 	"When something about the mechanic is unclear, ask the writer in your reply. When a scenario passes, say what the Box does and that the writer can install it. Installing is the writer's action, never yours.",
 ];
 
-/** @approved The most tool calls one writer message may cost; the agent makes at most one model request more. */
-export const TOOL_CALLS_PER_MESSAGE = 40;
-const budgetSpent = `The agent used the ${TOOL_CALLS_PER_MESSAGE} tool calls one message allows, so its turn stopped. Send another message to let it continue.`;
+/** @approved The most model requests and tool calls one writer message may cost. Requests are counted where they leave for the provider, so a model looping on tools it does not have, or on text, is held to the same limit. */
+export const PER_MESSAGE = { "model requests": 40, "tool calls": 40 } as const;
+type Spending = keyof typeof PER_MESSAGE;
+export const budgetSpent = (kind: Spending) => `The agent used the ${PER_MESSAGE[kind]} ${kind} one message allows, so its turn stopped. Send another message to let it continue.`;
 
-/** @approved One open authoring panel: its candidate, its libfx agent and session, the turn that is running, the tool calls its message has cost, and each scenario result not yet streamed. */
-type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly budget: { calls: number; spent: boolean }; readonly scenarios: Map<string, ScenarioResult> };
+/** @approved One open authoring panel: its candidate, its libfx agent and session, the turn that is running, what its message has cost, and each scenario result not yet streamed. */
+type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly budget: Record<Spending, number> & { spent: string | null }; readonly scenarios: Map<string, ScenarioResult> };
 
 // @approved
 //  Creator Mode's authoring sessions, in memory: one per open panel, each an
@@ -59,24 +60,27 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		if (mapped.outcome === "refused") return mapped;
 		const candidate = await createCandidate(folders.root);
 		const scenarios = new Map<string, ScenarioResult>();
-		const budget = { calls: 0, spent: false };
+		const budget: Session["budget"] = { "model requests": 0, "tool calls": 0, spent: null };
 		// @approved
-		//  A model that never stops calling tools would spend without end, so
-		// each writer message buys a fixed number of calls; the next one past
-		// it cancels the turn and fails, and the turn ends saying why.
-		const spend = () => {
-			if (++budget.calls <= TOOL_CALLS_PER_MESSAGE) return;
-			budget.spent = true;
+		//  A model that never stops would spend without end, so each writer
+		// message buys a fixed number of model requests and tool calls; the
+		// next one past either cancels the turn and fails, and the turn ends
+		// saying why.
+		const spend = (kind: Spending) => {
+			if (++budget[kind] <= PER_MESSAGE[kind]) return;
+			budget.spent ??= budgetSpent(kind);
 			void fx.cancel();
-			throw new Error(budgetSpent);
+			throw new Error(budget.spent);
 		};
+		const send = mapped.options.fetch;
 		// @approved
 		//  The Wasm backend, chosen explicitly: it runs wherever Bun does, the
 		// Docker image's architectures and Windows included, where the native
 		// addon ships for four platforms only.
 		const agent = createFxAgent({
 			backend: "wasm", durability: memory(), name: "creator", instructions: instructions(candidate.id),
-			tools: authoringTools(candidate, { spend, onScenario: (call, result) => scenarios.set(call, result) }), ...mapped.options,
+			tools: authoringTools(candidate, { spend: () => spend("tool calls"), onScenario: (call, result) => scenarios.set(call, result) }),
+			...mapped.options, fetch: (input: string, init: RequestInit) => { spend("model requests"); return send(input, init); },
 		});
 		const fx = agent.session();
 		sessions.set(candidate.session, { candidate, agent, fx, running: false, budget, scenarios });
@@ -85,7 +89,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	const prompt = (session: Session, text: string) => {
 		const encoder = new TextEncoder();
 		session.running = true;
-		Object.assign(session.budget, { calls: 0, spent: false });
+		Object.assign(session.budget, { "model requests": 0, "tool calls": 0, spent: null });
 		const turn = session.fx.prompt(text);
 		let open = true;
 		return new ReadableStream<Uint8Array>({
@@ -103,7 +107,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 						}
 					}
 					const { stopReason, error } = await turn.result;
-					send(session.budget.spent ? { type: "end", stopReason: "budget", error: budgetSpent } : { type: "end", stopReason, ...error !== undefined && { error: error.message } });
+					send(session.budget.spent !== null ? { type: "end", stopReason: "budget", error: session.budget.spent } : { type: "end", stopReason, ...error !== undefined && { error: error.message } });
 				} catch (error) {
 					send({ type: "end", stopReason: "error", error: error instanceof Error ? error.message : String(error) });
 				} finally {

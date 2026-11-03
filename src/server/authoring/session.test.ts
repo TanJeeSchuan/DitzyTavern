@@ -8,9 +8,10 @@ import { blankConnectionProfileDraft } from "../../shared/contract/connection-se
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { openInitializedDatabase } from "../database/database";
-import { createAuthoring, TOOL_CALLS_PER_MESSAGE } from "./index";
+import { budgetSpent, createAuthoring, PER_MESSAGE } from "./index";
 
-test("a model that never stops calling tools is cancelled at the message's budget, and the turn says why", async () => {
+/** @approved Runs one writer message against a fake model that answers every request with `calls` calls to `tool`, and returns the turn's events and how many requests reached the fake. */
+const loop = async (tool: string, calls: number) => {
 	let requests = 0;
 	const server = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
@@ -18,9 +19,11 @@ test("a model that never stops calling tools is cancelled at the message's budge
 			await request.json();
 			requests += 1;
 			// @approved A safety stop far past the budget, so a missing budget fails on the count instead of hanging.
-			const delta = requests > 200 ? { role: "assistant", content: "Done." } : { role: "assistant", tool_calls: [{ index: 0, id: `call_${requests}`, type: "function", function: { name: "write_css", arguments: JSON.stringify({ content: "p { margin: 0; }" }) } }] };
+			const done = requests > 200;
+			const toolCalls = Array.from({ length: calls }, (_, index) => ({ index, id: `call_${requests}_${index}`, type: "function", function: { name: tool, arguments: JSON.stringify({ content: "p { margin: 0; }" }) } }));
+			const delta = done ? { role: "assistant", content: "Done." } : { role: "assistant", tool_calls: toolCalls };
 			const chunk = (body: { readonly delta: typeof delta | Record<string, never>; readonly finish_reason: string | null }) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "coder-1", choices: [{ index: 0, ...body }] })}\n\n`;
-			return new Response(`${chunk({ delta, finish_reason: null })}${chunk({ delta: {}, finish_reason: requests > 200 ? "stop" : "tool_calls" })}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+			return new Response(`${chunk({ delta, finish_reason: null })}${chunk({ delta: {}, finish_reason: done ? "stop" : "tool_calls" })}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 		},
 	});
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.alloc(32, 7).toString("base64") } });
@@ -40,14 +43,31 @@ test("a model that never stops calling tools is cancelled at the message's budge
 			if (!Value.Check(authoringEvent, event)) throw new Error(`Not an authoring event: ${line}`);
 			return event;
 		});
-		expect(events.filter((event) => event.type === "tool-end" && !event.isError)).toHaveLength(TOOL_CALLS_PER_MESSAGE);
-		expect(events.at(-1)).toEqual({ type: "end", stopReason: "budget", error: `The agent used the ${TOOL_CALLS_PER_MESSAGE} tool calls one message allows, so its turn stopped. Send another message to let it continue.` });
-		expect(requests).toBeGreaterThan(TOOL_CALLS_PER_MESSAGE);
-		expect(requests).toBeLessThanOrEqual(TOOL_CALLS_PER_MESSAGE + 2);
+		return { events, requests, ran: events.filter((event) => event.type === "tool-end" && !event.isError).length };
 	} finally {
 		await authoring.close();
 		await server.stop(true);
 		database.close();
 		rmSync(root, { recursive: true, force: true });
 	}
+};
+
+// @approved
+//  Requests are counted before they leave for the provider, so a model
+// calling a tool the agent does not have, which no tool ever counts, stops at
+// the same limit as one calling a real tool.
+test.each([["a real tool", "write_css", PER_MESSAGE["model requests"]], ["a tool the agent does not have", "no_such_tool", 0]] as const)(
+	"a model that never stops calling %s is cancelled at the message's model requests, and the turn says why",
+	async (_, tool, ran) => {
+		const { events, requests, ran: tools } = await loop(tool, 1);
+		expect(requests).toBe(PER_MESSAGE["model requests"]);
+		expect(tools).toBe(ran);
+		expect(events.at(-1)).toEqual({ type: "end", stopReason: "budget", error: budgetSpent("model requests") });
+	},
+);
+
+test("one response asking for more tool calls than a message allows runs only as many as it allows", async () => {
+	const { events, ran } = await loop("write_css", PER_MESSAGE["tool calls"] + 5);
+	expect(ran).toBe(PER_MESSAGE["tool calls"]);
+	expect(events.at(-1)).toEqual({ type: "end", stopReason: "budget", error: budgetSpent("tool calls") });
 });

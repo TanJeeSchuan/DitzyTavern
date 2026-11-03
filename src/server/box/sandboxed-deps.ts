@@ -113,12 +113,14 @@ export const pinnedPackages = async (folder: string, id: BoxId, files: Sandboxed
 		if (source !== stored) {
 			const path = join(folder, "deps", `${key}.js`);
 			await mkdir(dirname(path), { recursive: true });
+			signal?.throwIfAborted();
 			await replaceFile(path, source);
 		}
 		pinned.set(name, source);
 		hashes[key] = hash;
 	}
 	const written = `${JSON.stringify(hashes, null, "\t")}\n`;
+	signal?.throwIfAborted();
 	if (written !== held && (declared.length > 0 || held !== "{}")) await replaceFile(join(folder, "deps.lock.json"), written);
 	return pinned;
 };

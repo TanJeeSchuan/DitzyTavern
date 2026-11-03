@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { addBox, builtInBoxes, checkSandboxedFolder, serverBoxes } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
@@ -11,9 +11,11 @@ import type { Candidate } from "./candidate";
 // the candidate, it copies the candidate's files into a staging folder
 // beside the plugin folder, runs the loader's own check there, which writes
 // any packages, lock and bundles beside them, then publishes what passed,
-// complete with `deps/`: it creates the target folder exclusively, so a
-// folder that appeared meanwhile refuses the Install and is left alone, and
-// moves the checked files into it. The checked Box joins the running
+// complete with `deps/`: it claims the target by creating it exclusively,
+// so a folder that appeared meanwhile refuses the Install and is left alone,
+// then renames the whole checked folder over its own empty claim, so the
+// target is never seen half filled. If that rename fails, the claim is
+// removed only while it is still empty. The checked Box joins the running
 // registry without touching the Boxes already loaded. An id any loaded Box
 // or folder already uses is refused.
 export const installCandidate = (database: Database, candidate: Candidate, plugins: string) => candidate.check(async () => {
@@ -43,7 +45,12 @@ export const installCandidate = (database: Database, candidate: Candidate, plugi
 				checked.dispose();
 				return taken;
 			}
-			for (const entry of await readdir(folder)) await rename(join(folder, entry), join(target, entry));
+			try {
+				await rename(folder, target);
+			} catch (error) {
+				await rmdir(target).catch(() => undefined);
+				throw error;
+			}
 			addBox(database, checked);
 		} catch (error) {
 			checked.dispose();

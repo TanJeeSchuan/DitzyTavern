@@ -109,6 +109,7 @@ export const sandboxedSources = async (folder: string, id: BoxId, withUi: boolea
 		const cached = files.get(`${part}.bundle.js`);
 		if (cached?.startsWith(stamp)) return script(part, checkedBundle(id, part, cached.slice(stamp.length)));
 		const code = checkedBundle(id, part, await build(files, id, part, packages));
+		signal?.throwIfAborted();
 		await replaceFile(join(folder, `${part}.bundle.js`), stamp + code);
 		return script(part, code);
 	};

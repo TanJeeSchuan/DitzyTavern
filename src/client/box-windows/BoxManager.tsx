@@ -11,7 +11,7 @@ import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { CreateBox } from "./CreateBox";
-import { addBoxClient, boxOpening, loadedBoxes, type LoadedBox } from "./registry";
+import { addBoxClients, boxOpening, loadedBoxes, type LoadedBox } from "./registry";
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
@@ -47,9 +47,9 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	//  An installed Box joins every Chat as absent: the Chats are read again
 	// first, so no row renders before its Chat knows the Box, then its client
 	// definition, so the manager lists it to add.
-	const addInstalled = async (box: BoxId) => {
+	const addInstalled = async () => {
 		await client.invalidateQueries({ queryKey: ["conversation"] });
-		await addBoxClient(box);
+		await addBoxClients();
 		setRegistry((count) => count + 1);
 	};
 

@@ -135,15 +135,16 @@ const loadedFrom = (listed: ListedBox, result: PromiseSettledResult<BoxClientDef
 const installLoaded = () => installBoxes([...loaded.values()].map((box) => ({ metadata: box.metadata, descriptor: "client" in box ? box.client.descriptor : undefined })));
 
 // @approved
-//  A Box the server installed while the app ran joins the registry after the
-// rest. Every Box already loaded keeps its client definition as it is: a
-// rebuilt sandboxed client's window would be a new component, and React
-// would replace each open frame, its Worker and its unsaved guest state.
-export const addBoxClient = async (id: BoxId): Promise<void> => {
-	const listed = (await requestData(api.api.boxes.get(), boxList)).find((box) => box.id === id);
-	if (listed === undefined) throw new Error(`The server lists no ${id} Box.`);
-	const [result] = await Promise.allSettled([clientOf(listed)]);
-	loaded = new Map([...loaded, [id, loadedFrom(listed, result!)]]); // @approved allSettled answers its one Box.
+//  Boxes the server installed while the app ran join the registry after the
+// rest: every one it lists that this client has not loaded, so a Box another
+// writer installed meanwhile joins too. Every Box already loaded keeps its
+// client definition as it is: a rebuilt sandboxed client's window would be a
+// new component, and React would replace each open frame, its Worker and its
+// unsaved guest state.
+export const addBoxClients = async (): Promise<void> => {
+	const added = (await requestData(api.api.boxes.get(), boxList)).filter(({ id }) => !loaded.has(id));
+	const settled = await Promise.allSettled(added.map(clientOf));
+	loaded = new Map([...loaded, ...added.map((listed, index) => [listed.id, loadedFrom(listed, settled[index]!)] as const)]); // @approved allSettled answers each Box, in order.
 	installLoaded();
 };
 
