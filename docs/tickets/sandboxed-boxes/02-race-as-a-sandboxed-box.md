@@ -44,4 +44,4 @@ Race runs as a sandboxed Box with the same simulation, hidden-state behavior and
 
 ## Open risks
 
-- Cumulative replay in each record makes fold payloads grow with Stretch count; ticket 00 measures it.
+- [Ticket 00 measured](../../research/sandboxed-box-spike.md) 17.7 MB of cumulative records at 200 Stretches. Batched fold took 562 ms versus 1,765 ms per-call; a transfer-only last-record probe took 552 ms. Batching is insufficient to establish an acceptable synchronous capture budget. Bound payloads and choose an explicit latency/heap budget before porting long histories.

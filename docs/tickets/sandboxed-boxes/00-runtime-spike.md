@@ -1,6 +1,6 @@
 # Runtime spike: QuickJS and libfx under Bun
 
-Status: TODO
+Status: DONE
 
 Blocked By: None
 
@@ -20,18 +20,20 @@ No dependency is added to the root `package.json` or `bun.lock`. No source under
 
 ## Work
 
-- [ ] QuickJS loads: in `.scratch/spike/quickjs/`, install a pinned `quickjs-emscripten` and run the normal (not asyncify) build under Bun 1.4.4. Record versions and any flags.
-- [ ] Limits: a memory limit stops a runaway allocation and an interrupt handler stops an infinite loop. Record what the host sees in each case and whether the context is reusable afterwards.
-- [ ] Sync inside SQLite: call a guest function synchronously from inside a `bun:sqlite` `db.transaction()` callback. This is how capture calls `fold`, `dependencies` and `read`.
-- [ ] Promise bridge: a host function returns a QuickJS promise that the host resolves later and pumps with `executePendingJobs`. Inside the guest, `Promise.all` over two such calls: confirm they overlap (wall time) and that cancelling one through a host abort handle rejects it without leaking the handle.
-- [ ] Race cost: bundle `src/boxes/race/server-engine.ts` and its local deps to one plain JS file with `bun build` (no Node imports; replace `isNonEmpty` if needed). Generate synthetic races (8 runners; 10, 50 and 200 Stretches). Time `foldRace` and `advanceRace` natively and inside QuickJS, comparing one JSON round trip per fold call with the whole fold batch run inside the VM and serialized once.
-- [ ] libfx loads: in `.scratch/spike/libfx/`, install pinned `libfx@0.0.16` (note any newer version on npm). Does the native backend load under Bun 1.4.4? If not, does `backend: 'wasm'` work, and does it need a JSPI flag?
-- [ ] libfx agent loop: `createFxAgent` with only host tools (stub `read_contract`, stub `run_scenario`), `provider: { name, baseUrl, models }` pointing at a local `Bun.serve` fake `/chat/completions` scripted to return one tool call, then a final message. Record the events seen (`text_delta`, `tool_start`, `tool_end`), that `session.cancel()` stops a turn, and the checkpoint size.
-- [ ] Write `docs/research/sandboxed-box-spike.md`: each question, its answer, numbers, versions and the exact commands. Keep measured results separate from inference.
-- [ ] Update the "Open risks" sections of tickets 01–03 where results change them.
-- [ ] Set this ticket to DONE and commit.
+- [x] QuickJS loads: in `.scratch/spike/quickjs/`, install a pinned `quickjs-emscripten` and run the normal (not asyncify) build under Bun 1.4.4. Record versions and any flags.
+- [x] Limits: a memory limit stops a runaway allocation and an interrupt handler stops an infinite loop. Record what the host sees in each case and whether the context is reusable afterwards.
+- [x] Sync inside SQLite: call a guest function synchronously from inside a `bun:sqlite` `db.transaction()` callback. This is how capture calls `fold`, `dependencies` and `read`.
+- [x] Promise bridge: a host function returns a QuickJS promise that the host resolves later and pumps with `executePendingJobs`. Inside the guest, `Promise.all` over two such calls: confirm they overlap (wall time) and that cancelling one through a host abort handle rejects it without leaking the handle.
+- [x] Race cost: bundle `src/boxes/race/server-engine.ts` and its local deps to one plain JS file with `bun build` (no Node imports; replace `isNonEmpty` if needed). Generate synthetic races (8 runners; 10, 50 and 200 Stretches). Time `foldRace` and `advanceRace` natively and inside QuickJS, comparing one JSON round trip per fold call with the whole fold batch run inside the VM and serialized once.
+- [x] libfx loads: in `.scratch/spike/libfx/`, install pinned `libfx@0.0.16` (note any newer version on npm). Does the native backend load under Bun 1.4.4? If not, does `backend: 'wasm'` work, and does it need a JSPI flag?
+- [x] libfx agent loop: `createFxAgent` with only host tools (stub `read_contract`, stub `run_scenario`), `provider: { name, baseUrl, models }` pointing at a local `Bun.serve` fake `/chat/completions` scripted to return one tool call, then a final message. Record the events seen (`text_delta`, `tool_start`, `tool_end`), that `session.cancel()` stops a turn, and the checkpoint size.
+- [x] Write `docs/research/sandboxed-box-spike.md`: each question, its answer, numbers, versions and the exact commands. Keep measured results separate from inference.
+- [x] Update the "Open risks" sections of tickets 01–03 where results change them.
+- [x] Set this ticket to DONE and commit.
 
 Wrap any non-trivial command in `flock /tmp/ditzy-heavy.lock <cmd>`. Do not run the full test suite, typecheck or e2e.
+
+Findings: [sandboxed Box runtime spike](../../research/sandboxed-box-spike.md).
 
 ## Acceptance
 

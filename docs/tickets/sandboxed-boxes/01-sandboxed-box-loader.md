@@ -55,4 +55,4 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.html`, with 
 
 ## Open risks
 
-- Ticket 00 answers whether QuickJS loads under Bun and what limits cost.
+- [Ticket 00 measured](../../research/sandboxed-box-spike.md) normal QuickJS loading under Bun 1.4.4, reusable contexts after memory/interrupt errors, synchronous SQLite calls and overlapping Promise bridges. Production heap/deadline budgets, host byte limits and bounded job pumping still need implementation; the 200-Stretch batch took about 562 ms with a 512 MiB VM limit.
