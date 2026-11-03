@@ -3,7 +3,7 @@ import { initialRaceSetup } from "./shared-data";
 import type { RaceView } from "./shared";
 
 type Commit = { snapshot: number; setup?: typeof initialRaceSetup; expected?: { revision: number }[] };
-type Event = { type: string; name: string; data: Record<string, string>; value?: string | boolean };
+type Event = { type: string; name: string; data: Record<string, string>; value?: string | boolean; files?: File[] };
 type Frame = { moves: null; disabled: boolean; stale: boolean; snapshot: number };
 
 // @approved
@@ -19,7 +19,7 @@ Object.assign(globalThis, {
 		onRead: (handler: typeof onRead) => { onRead = handler; },
 		onEvent: (handler: typeof onEvent) => { onEvent = handler; },
 		render: () => undefined, stageMoves: () => undefined, image: (hash: string) => hash, setDirty: () => undefined, onSave: () => undefined, onDiscard: () => undefined,
-		uploadImage: () => Promise.reject(new Error("No upload in this test.")),
+		uploadImage: async () => ({ outcome: "uploaded", hash: "a".repeat(64) }),
 		commit: async (commit: Commit) => { commits.push(commit); return answers.shift()?.() ?? { outcome: "applied" }; },
 	},
 });
@@ -65,4 +65,22 @@ test("a stat sheet's save names the revisions from when it opened", async () => 
 	click("add");
 	await settled();
 	expect(commits.map(({ snapshot, expected }) => [snapshot, expected?.map(({ revision }) => revision)])).toEqual([[20, [1]]]);
+});
+
+// @approved
+//  An avatar's conflict says nothing about the setup draft: the draft started
+// at 30 still saves against 30 after another window's change at 31 and an
+// avatar refused at 32, so that change is refused rather than overwritten.
+test("an avatar's conflict leaves the setup draft's revision alone", async () => {
+	commits.length = 0;
+	read(30, "turf");
+	onEvent({ type: "input", name: "distance", data: {}, value: "1800" });
+	read(31, "dirt");
+	answers.push(() => ({ outcome: "conflict", reason: "", current: { snapshot: 32, view: view("dirt", 1) } }));
+	onEvent({ type: "change", name: "avatar", data: { name: "Maren Voss" }, files: [new File(["x"], "a.png")] });
+	await settled();
+	await settled();
+	click("save");
+	await settled();
+	expect(commits.map(({ snapshot, setup }) => [snapshot, setup?.course.surface])).toEqual([[31, undefined], [30, "turf"]]);
 });

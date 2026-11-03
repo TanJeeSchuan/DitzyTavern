@@ -6,7 +6,7 @@ import type { BoxId } from "../../shared/contract/box";
 import { boxFrameRoute } from "../../shared/box-frame";
 import { boxImageGrantTable, imageTable } from "../database/schema";
 import { readActiveCast } from "../conversation";
-import { readImage, uploadImage } from "../image";
+import { ingestImage, readImage, storeImage } from "../image";
 import { InvalidImageError } from "../image/errors";
 import { readBoxLifecycles } from "./setup";
 
@@ -95,16 +95,25 @@ export const BOX_IMAGE_BYTES = 100 * 1024 * 1024;
 // @approved
 //  An Image a frame's Box uploads, stored as any upload is and granted to that
 // Box, while the Box's granted Images stay within its quota: an upload that
-// would pass the count or the byte total is refused before it is stored.
+// would pass the count or the byte total is refused before it is stored. The
+// check, the frame's validity and the write happen in one transaction after
+// the image is ingested, so concurrent uploads from the Box's other frames
+// cannot both pass it, and a frame closed during ingestion stores nothing.
 export const uploadBoxFrameImage = async (database: Database, token: string, bytes: Uint8Array) => {
-	const frame = frameOf(drizzle(database), token);
-	if (frame === undefined) return undefined;
-	const held = drizzle(database).select({ count: count(), bytes: sum(imageTable.byte_size).mapWith(Number) }).from(boxImageGrantTable)
-		.innerJoin(imageTable, eq(imageTable.hash, boxImageGrantTable.hash)).where(eq(boxImageGrantTable.box_id, frame.box)).get();
-	if ((held?.count ?? 0) >= BOX_IMAGE_COUNT || (held?.bytes ?? 0) + bytes.byteLength > BOX_IMAGE_BYTES) {
-		throw new InvalidImageError(`The ${frame.box} Box already holds its ${BOX_IMAGE_COUNT} images or ${BOX_IMAGE_BYTES / 1024 / 1024} MiB of uploads.`);
-	}
-	const { hash } = await uploadImage(database, bytes);
-	drizzle(database).insert(boxImageGrantTable).values({ box_id: frame.box, hash }).onConflictDoNothing().run();
-	return { hash };
+	if (frameOf(drizzle(database), token) === undefined) return undefined;
+	const image = await ingestImage(bytes);
+	return database.transaction(() => {
+		const db = drizzle(database);
+		const frame = frameOf(db, token);
+		if (frame === undefined) return undefined;
+		const granted = db.select().from(boxImageGrantTable).where(and(eq(boxImageGrantTable.box_id, frame.box), eq(boxImageGrantTable.hash, image.hash))).get() !== undefined;
+		const held = db.select({ count: count(), bytes: sum(imageTable.byte_size).mapWith(Number) }).from(boxImageGrantTable)
+			.innerJoin(imageTable, eq(imageTable.hash, boxImageGrantTable.hash)).where(eq(boxImageGrantTable.box_id, frame.box)).get();
+		if (!granted && ((held?.count ?? 0) >= BOX_IMAGE_COUNT || (held?.bytes ?? 0) + image.bytes.byteLength > BOX_IMAGE_BYTES)) {
+			throw new InvalidImageError(`The ${frame.box} Box already holds its ${BOX_IMAGE_COUNT} images or ${BOX_IMAGE_BYTES / 1024 / 1024} MiB of uploads.`);
+		}
+		storeImage(database, image);
+		db.insert(boxImageGrantTable).values({ box_id: frame.box, hash: image.hash }).onConflictDoNothing().run();
+		return { hash: image.hash };
+	}).immediate();
 };

@@ -76,8 +76,8 @@ const settle = () => { if (draft === null && sheet === null) base = null; };
 //  shows nothing, while one from the previous Stretch keeps the oval.
 const currentRace = (raceId: string) => view === undefined || view.phase.kind === "setup" || view.phase.state.raceId !== raceId ? null : { ...view, phase: view.phase };
 
-/** @approved Runs one commit with the form locked; a commit that does not land shows its reason and adopts the current read it returns. */
-const commit = async (request: Commit, conflict: string): Promise<boolean> => {
+/** @approved Runs one commit with the form locked; a commit that does not land shows its reason and adopts the current read it returns. Only a conflict on the unsaved work's own save moves its revisions; an avatar's conflict or any refusal leaves them, so the next save is still checked against what the work started from. */
+const commit = async (request: Commit, conflict: string, savesWork = false): Promise<boolean> => {
 	busy = true;
 	notice = null;
 	draw();
@@ -88,8 +88,10 @@ const commit = async (request: Commit, conflict: string): Promise<boolean> => {
 		if (result.current !== null) {
 			view = result.current.view;
 			frame = { ...frame, snapshot: result.current.snapshot };
-			if (base !== null) base = result.current.snapshot;
-			if (sheet?.character) sheet = { ...sheet, characterRevision: view.characterStatsRevisions[sheet.character.id] ?? 0 };
+			if (savesWork && result.outcome === "conflict") {
+				if (base !== null) base = result.current.snapshot;
+				if (sheet?.character) sheet = { ...sheet, characterRevision: view.characterStatsRevisions[sheet.character.id] ?? 0 };
+			}
 		}
 		return false;
 	} finally {
@@ -99,7 +101,7 @@ const commit = async (request: Commit, conflict: string): Promise<boolean> => {
 };
 const saveSetup = async (setup = current(), writes?: Commit["writes"], expected?: Commit["expected"]) => {
 	if (locked() || !isValid(setup)) return false;
-	const saved = await commit({ snapshot: base ?? frame.snapshot, setup, writes, expected }, "The Chat changed. Review your setup and save again.");
+	const saved = await commit({ snapshot: base ?? frame.snapshot, setup, writes, expected }, "The Chat changed. Review your setup and save again.", true);
 	if (saved) {
 		draft = null;
 		settle();

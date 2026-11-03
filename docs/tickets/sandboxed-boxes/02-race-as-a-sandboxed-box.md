@@ -62,3 +62,4 @@ Race runs as a sandboxed Box with the same simulation, hidden-state behavior and
 ## Open risks
 
 - [Ticket 00 measured](../../research/sandboxed-box-spike.md) 17.7 MB of cumulative records at 200 Stretches. Batched fold took 562 ms versus 1,765 ms per-call; a transfer-only last-record probe took 552 ms. Batching is insufficient to establish an acceptable synchronous capture budget. Bound payloads and choose an explicit latency/heap budget before porting long histories.
+- A frame token is revoked when the client tears the frame down. A tab that crashes or closes without that cleanup leaves its token valid until the server restarts, the token is evicted (1,000 live tokens), or the Box is removed. That token only displays this Box's own granted images and this Chat's Cast Portraits, and no guest path exports it past the frame's network restrictions, so there is no server-side expiry. Add one if tokens ever authorize more than display.

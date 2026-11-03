@@ -9,8 +9,10 @@ import { InvalidImageError } from "./errors";
 
 type ImageDatabase = BunSQLiteDatabase<Record<string, never>>;
 
-export const uploadImage = async (database: Database, bytes: Uint8Array) => {
-	const image = await ingestImage(bytes);
+export const uploadImage = async (database: Database, bytes: Uint8Array) => storeImage(database, await ingestImage(bytes));
+
+/** @approved Stores an ingested Image synchronously, so a caller can do it inside its own transaction. */
+export const storeImage = (database: Database, image: Awaited<ReturnType<typeof ingestImage>>) => {
 	drizzle(database).insert(imageTable).values({
 		hash: image.hash, bytes: image.bytes, media_type: image.mediaType,
 		byte_size: image.bytes.byteLength, width: image.width, height: image.height, orphaned_at: Date.now(),

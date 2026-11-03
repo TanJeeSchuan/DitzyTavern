@@ -76,3 +76,24 @@ test.each([
 	expect(database.query("SELECT count(*) AS images FROM image").get()).toEqual(stored);
 	database.close();
 });
+
+test("concurrent uploads from two of a Box's frames cannot both pass its quota, and a frame closed mid-upload stores nothing", async () => {
+	const database = openInitializedDatabase({ path: ":memory:" });
+	const [first, second] = [frameIn(database), frameIn(database)];
+	for (let index = 0; index < BOX_IMAGE_COUNT - 1; index++) {
+		const hash = index.toString(16).padStart(64, "0");
+		database.query("INSERT INTO image (hash, bytes, media_type, byte_size, width, height) VALUES (?, x'00', 'image/png', 1, 1, 1)").run(hash);
+		database.query("INSERT INTO box_image_grant (box_id, hash) VALUES ('race', ?)").run(hash);
+	}
+	const results = await Promise.allSettled([uploadBoxFrameImage(database, first.token, pngFixture({ width: 7 })), uploadBoxFrameImage(database, second.token, pngFixture({ width: 8 }))]);
+	expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+	expect(database.query("SELECT count(*) AS grants FROM box_image_grant WHERE box_id = 'race'").get()).toEqual({ grants: BOX_IMAGE_COUNT });
+	const third = frameIn(database);
+	database.query("DELETE FROM box_image_grant").run();
+	const stored = database.query("SELECT count(*) AS images FROM image").get();
+	const upload = uploadBoxFrameImage(database, third.token, pngFixture({ width: 9 }));
+	closeBoxFrame(third.token);
+	expect(await upload).toBeUndefined();
+	expect(database.query("SELECT count(*) AS images FROM image").get()).toEqual(stored);
+	database.close();
+});
