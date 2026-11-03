@@ -95,6 +95,15 @@ const quickjs = async () => newQuickJSWASMModuleFromVariant(newVariant(variant, 
 }));
 const mebibytes = (bytes: number) => `${bytes / 1024 / 1024} MiB`;
 
+/** @approved A QuickJS runtime on its own module instance and capped memory, with the deadline each entry into its guest arms. */
+const guestRuntime = async () => {
+	const runtime = (await quickjs()).newRuntime();
+	let deadline = 0;
+	runtime.setInterruptHandler(() => performance.now() > deadline);
+	return { runtime, enter: () => { deadline = performance.now() + SANDBOX_ENTRY_MS; } };
+};
+type GuestRuntime = Awaited<ReturnType<typeof guestRuntime>>;
+
 /** @approved A guest failure as the host words it, naming the Box and the hook it stopped. */
 const guestError = (id: BoxId, hook: string, { name, message }: SandboxedFailure) =>
 	new Error(name === "InternalError" && message === "interrupted" ? `The ${id} Box's ${hook} ran past its ${SANDBOX_ENTRY_MS} ms limit.`
@@ -107,21 +116,20 @@ const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => ne
 //  A sandboxed Box: its `logic.js`, an ES module with no imports, evaluated in
 // its own QuickJS runtime, behind the hooks the host calls on any Box. Hooks
 // that receive no capability share one long-lived context. `read` receives
-// `snapshot`, bound to the Chat it reads, and a digest receives `decide`,
-// bound to its job, so each read and each digest evaluates `logic.js` in a
-// fresh context that is disposed when the call settles: no global keeps the
-// capability for a later or concurrent call. Each entry into the guest arms the
+// `snapshot`, bound to the Chat it reads, so each read evaluates `logic.js`
+// in a fresh context that is disposed when it returns, and a digest receives
+// `decide`, bound to its job, so each digest evaluates it in a runtime of its
+// own, thrown away whole once the digest settles: no global keeps the
+// capability for a later or concurrent call, and a digest that fails halfway
+// leaves nothing behind for the next. Each entry into the guest arms the
 // interrupt deadline, and the byte limit refuses a call's JSON before the
 // guest sees it and its reply before the host copies it. `dispose` frees the
 // runtime once the registry drops it.
 export const sandboxedBox = async (id: BoxId, source: string) => {
-	const runtime = (await quickjs()).newRuntime();
-	let deadline = 0;
-	runtime.setInterruptHandler(() => performance.now() > deadline);
-	const enter = () => { deadline = performance.now() + SANDBOX_ENTRY_MS; };
+	const long = await guestRuntime();
 
-	/** @approved One guest context with `logic.js` evaluated in it, and the calls into its dispatcher. */
-	const open = () => {
+	/** @approved One guest context on `runtime` with `logic.js` evaluated in it, and the calls into its dispatcher. */
+	const open = ({ runtime, enter }: GuestRuntime) => {
 		const vm = runtime.newContext();
 		let dispatch: QuickJSHandle | undefined;
 		const dispose = () => {
@@ -251,10 +259,10 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 	let shared: ReturnType<typeof open> | undefined;
 	const dispose = () => {
 		shared?.dispose();
-		runtime.dispose();
+		long.runtime.dispose();
 	};
 	try {
-		shared = open();
+		shared = open(long);
 		const { declaration, call, text, settled } = shared;
 		if (declaration.declared.length === 0) throw new Error(`The ${id} Box's logic.js must default-export an object of hooks.`);
 		const declared = new Map(declaration.declared.map(([key, kind]) => [key, kind] as const));
@@ -287,7 +295,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 					id: participantId, name, portrait: portrait ?? null, character: sourceCharacterId === null ? null : { id: sourceCharacterId, name: sourceCharacterName },
 				})),
 			};
-			const fresh = open();
+			const fresh = open(long);
 			const snapshot = boxSnapshot(db, id, conversationId);
 			try {
 				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), fresh.capability("snapshot", (query) => fresh.reply("snapshot", snapshot(query))))));
@@ -296,16 +304,23 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			} finally { fresh.dispose(); }
 		};
 		// @approved
-		//  A digest runs in a fresh context of its own, created for this call
-		// with `decide` bound to its job and disposed once it settles, so neither
-		// `advance` nor a concurrent digest can reach `decide`. `decide` asks the
-		// Box's own Decision Model selection through the job's context, once per
-		// call, and answers with the answers as entries. When the job is
-		// superseded or dropped, its signal aborts the request, the pending
-		// `decide` rejects in the guest, a late answer is dropped, and the
-		// digest fails, so nothing lands.
+		//  A digest runs in a runtime of its own, created for this call with
+		// `decide` bound to its job and dropped once it settles, so neither
+		// `advance` nor a concurrent digest can reach `decide`, and a digest
+		// stopped halfway, its promise chains and heap included, cannot poison
+		// a later one. `decide` asks the Box's own Decision Model selection
+		// through the job's context, once per call, and answers with the
+		// answers as entries. When the job is superseded or dropped, its signal
+		// aborts the request, the pending `decide` rejects in the guest, a late
+		// answer is dropped, and the digest fails, so nothing lands. However the
+		// call ends, its request is aborted with it, so no request outlives
+		// the digest that made it.
 		const digest = async (window: DigestWindow, ctx: DigestContext) => {
-			const fresh = open();
+			const fresh = open(await guestRuntime());
+			// @approved
+			// A job dropped while its runtime was created never runs: from here to the listener below nothing yields, so no abort goes unseen.
+			ctx.signal.throwIfAborted();
+			const invocation = new AbortController();
 			let asked = false;
 			let deferred: QuickJSDeferredPromise | undefined;
 			let wake: Promise<void> | undefined;
@@ -338,7 +353,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 					try {
 						// @approved
 						// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
-						const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions);
+						const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
 						const json = JSON.stringify([...answers]);
 						if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
 						answer((settling) => {
@@ -362,9 +377,13 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 				return value;
 			} finally {
 				ctx.signal.removeEventListener("abort", cancel);
-				deferred?.dispose();
+				invocation.abort();
+				// @approved
+				//  The runtime is dropped, not disposed: freeing one stopped inside a
+				// promise chain fails QuickJS's leak assertion, and nothing else
+				// holds its module instance, so the garbage collector reclaims its
+				// memory whole.
 				deferred = undefined;
-				fresh.dispose();
 			}
 		};
 		const box = {

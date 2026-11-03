@@ -109,12 +109,43 @@ test("a decide pending when its job is cancelled rejects in the guest, and its l
 		try { return await decide({}, { mood: { type: "choice" } }); } catch (error) { throw new Error("the guest saw: " + error.message); }
 	} } } };`);
 	const held = Promise.withResolvers<ReadonlyMap<string, DecisionAnswer>>();
+	const asked = Promise.withResolvers<void>();
 	const job = new AbortController();
-	const run = box.records?.digest?.run(digestWindow, digestContext(() => held.promise, job.signal));
+	const run = box.records?.digest?.run(digestWindow, digestContext(() => { asked.resolve(); return held.promise; }, job.signal));
+	await asked.promise;
 	job.abort();
 	await expect(run).rejects.toThrow("The probe Box's records.digest.run threw Error: the guest saw: The probe Box's digest was cancelled.");
 	held.resolve(new Map([["mood", tense]]));
 	await held.promise;
+});
+
+test("a digest that leaves its decide unawaited and returns aborts that request as it ends", async () => {
+	const box = await load(`export default { records: { digest: { window: 0, run: async (_, { decide }) => {
+		void decide({}, { mood: { type: "choice" } });
+		return { mood: "tense" };
+	} } } };`);
+	const signals: (AbortSignal | undefined)[] = [];
+	const forgotten = digestContext((_state, _questions, options) => { signals.push(options?.signal); return new Promise(() => {}); });
+	expect(await box.records?.digest?.run(digestWindow, forgotten)).toEqual({ mood: "tense" });
+	expect(signals.map((signal) => signal?.aborted)).toEqual([true]);
+});
+
+// @approved
+//  A digest stopped inside an endless promise chain, while its module holds
+// 8 MiB, would leave that heap behind in a shared runtime until loading
+// `logic.js` ran out of it; each digest's runtime is its own, so the next one
+// starts clean.
+test("digests stopped inside an endless promise chain leave nothing that fails a later digest", async () => {
+	const box = await load(`const kept = new Uint8Array(8 * 1024 * 1024).fill(1);
+	export default { records: { digest: { window: 0, run: async ({ seed }, { decide }) => {
+		await decide({}, {});
+		if (seed === "valid") return { kept: kept.length };
+		const spin = () => Promise.resolve().then(spin);
+		return spin();
+	} } } };`);
+	const answered = digestContext(async () => new Map());
+	for (let attempt = 0; attempt < 6; attempt += 1) await expect(box.records?.digest?.run(digestWindow, answered)).rejects.toThrow("The probe Box's records.digest.run");
+	expect(await box.records?.digest?.run({ ...digestWindow, seed: "valid" }, answered)).toEqual({ kept: 8 * 1024 * 1024 });
 });
 
 // @approved
@@ -131,7 +162,9 @@ test("a digest that keeps decide in a global while it is pending leaves it undef
 		advance: { run: async () => ({ items: [{ text: typeof globalThis.saved, priority: 1 }] }) },
 	};`);
 	const keeper = new AbortController();
-	const kept = box.records?.digest?.run({ ...digestWindow, seed: "keeper" }, digestContext(() => new Promise(() => {}), keeper.signal));
+	const asked = Promise.withResolvers<void>();
+	const kept = box.records?.digest?.run({ ...digestWindow, seed: "keeper" }, digestContext(() => { asked.resolve(); return new Promise(() => {}); }, keeper.signal));
+	await asked.promise;
 	expect(await box.advance?.run({ setup: undefined, dependencies: undefined, state: undefined, moves: [] })).toEqual({ items: [{ text: "undefined", priority: 1 }] });
 	expect(await box.records?.digest?.run(digestWindow, digestContext(async () => new Map()))).toEqual({ saw: "undefined" });
 	keeper.abort();

@@ -24,7 +24,7 @@ interface StubDecisionRequest { readonly questions: Readonly<Record<string, Stub
 const decisionResponse = (request: StubDecisionRequest): Response => {
 	const answers = Object.fromEntries(Object.entries(request.questions).map(([id, question]) => {
 		const options = Object.keys(question.criteria ?? {});
-		const choice = id === "elapsed" ? "overnight" : "storm";
+		const choice = id === "elapsed" ? "overnight" : id === "mood" ? "tense" : "storm";
 		return [id, { type: "choice", choice, probabilities: Object.fromEntries(options.map((option) => [option, option === choice ? 0.9 : 0.1 / (options.length - 1)])) }];
 	}));
 	return Response.json({ answers });
@@ -183,23 +183,30 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
 });
 
-test("a sandboxed Box dropped while its decide is pending aborts the request and writes nothing", async () => {
-	const chat = createChat();
-	const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
-	const mood = insertBox(database, chat.id, "mood");
-	enableDecision();
-	const stub = heldDecisionFetch();
-	stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+// @approved
+//  The same valid Mood answer lands when its job runs to the end, and is
+// dropped when the job is dropped while its request is pending.
+for (const dropped of [false, true]) {
+	test(`a sandboxed Box's pending decide ${dropped ? "aborts and writes nothing once its job is dropped" : "lands its answer when its job is not dropped"}`, async () => {
+		const chat = createChat();
+		const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+		const mood = insertBox(database, chat.id, "mood");
+		enableDecision();
+		const stub = heldDecisionFetch();
+		stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+		const record = () => readRecordSlots(drizzle(database), "mood", boxRecordSchema("mood"), mood, [passage]).get(passage)?.automatic;
 
-	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
-	await waitFor(() => stub.pending() === 1);
-	prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "mood" })();
-	expect(stub.signals()[0]?.aborted).toBe(true);
-	stub.release();
-	await stopDigests();
-	stopDigests = undefined;
-	expect(readRecordSlots(drizzle(database), "mood", boxRecordSchema("mood"), mood, [passage]).size).toBe(0);
-});
+		prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
+		await waitFor(() => stub.pending() === 1);
+		if (dropped) prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "mood" })();
+		expect(stub.signals()[0]?.aborted).toBe(dropped);
+		stub.release();
+		if (!dropped) await waitFor(() => record() !== undefined);
+		await stopDigests();
+		stopDigests = undefined;
+		expect(record()).toEqual(dropped ? undefined : { mood: "tense" });
+	});
+}
 
 test("a cancelled run can be restarted for the same Variants before the aborted job settles", async () => {
 	const chat = createChat();
