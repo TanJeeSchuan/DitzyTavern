@@ -1,6 +1,6 @@
 # Mood as a sandboxed Box
 
-Status: TODO
+Status: DONE
 
 Blocked By: 02
 
@@ -39,8 +39,8 @@ This is what lets Creator Mode build Boxes that track prose (mood, relationships
 - [x] `mood.spec.ts` passes with its story assertions unchanged.
 - [x] Contract tests: a digest whose `decide` is pending when its job is superseded rejects in the guest and writes nothing; a second `decide` in one digest is refused; a digest that assigns `globalThis.saved = decide` and stays pending leaves `saved` undefined in a concurrent `advance` and in a concurrent second digest.
 - [x] Document the sandboxed digest path in `docs/box-system/README.md`.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
