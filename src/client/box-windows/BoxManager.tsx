@@ -46,11 +46,12 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
 	// @approved
-	//  An installed Box joins every Chat as absent: the Chats are read again
-	// first, so no row renders before its Chat knows the Box, then its client
-	// definition, so the manager lists it to add.
+	//  An installed Box joins every Chat as absent: every cached Chat is read
+	// again first, inactive ones included, so no Chat renders a summary that
+	// predates the Box once its client definition is added and the manager
+	// lists it to add.
 	const addInstalled = async () => {
-		await client.invalidateQueries({ queryKey: ["conversation"] });
+		await client.invalidateQueries({ queryKey: ["conversation"], refetchType: "all" });
 		await addBoxClients();
 		setRegistry((count) => count + 1);
 	};
