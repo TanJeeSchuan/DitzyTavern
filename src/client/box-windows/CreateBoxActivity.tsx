@@ -7,13 +7,15 @@ type ToolStart = Extract<AuthoringEvent, { type: "tool" }>;
 type ToolEnd = Extract<AuthoringEvent, { type: "tool-end" }>;
 /** @approved One step of the agent's turn: its reasoning, or a tool call with its input and, once it ends, its result. */
 export type Step =
-	| { readonly kind: "reasoning"; readonly id: string; readonly text: string }
+	| { readonly kind: "reasoning"; readonly id: string; readonly text: string; readonly truncated: boolean }
 	| { readonly kind: "tool"; readonly id: string; readonly start: ToolStart; readonly end?: ToolEnd };
 
 /** @approved The activity after one streamed event: reasoning runs into the reasoning before it, and a tool call's end joins its start. */
 export const withEvent = (steps: readonly Step[], event: AuthoringEvent, id: string): readonly Step[] => {
 	const last = steps.at(-1);
-	if (event.type === "reasoning") return last?.kind === "reasoning" ? [...steps.slice(0, -1), { ...last, text: last.text + event.delta }] : [...steps, { kind: "reasoning", id, text: event.delta }];
+	if (event.type === "reasoning") return last?.kind === "reasoning"
+		? [...steps.slice(0, -1), { ...last, text: last.text + event.delta, truncated: last.truncated || event.truncated }]
+		: [...steps, { kind: "reasoning", id, text: event.delta, truncated: event.truncated }];
 	if (event.type === "tool") return [...steps, { kind: "tool", id, start: event }];
 	if (event.type === "tool-end") return steps.map((step) => step.kind === "tool" && step.start.id === event.id ? { ...step, end: event } : step);
 	return steps;
@@ -74,7 +76,7 @@ export function Activity({ steps }: { steps: readonly Step[] }) {
 		{steps.length === 0 ? <p className="create-box-note">The agent's tool calls show here.</p> : <ol>
 			{steps.map((step) => <li key={step.id}>{step.kind === "tool"
 				? <ToolStep start={step.start} end={step.end} />
-				: <Disclosure className="create-box-step is-reasoning" summary={<span className="create-box-step-name">Reasoning</span>}>{() => <p className="create-box-reasoning">{step.text}</p>}</Disclosure>}
+				: <Disclosure className="create-box-step is-reasoning" summary={<span className="create-box-step-name">Reasoning{step.truncated ? " (cut short)" : ""}</span>}>{() => <p className="create-box-reasoning">{step.text}</p>}</Disclosure>}
 			</li>)}
 		</ol>}
 	</section>;

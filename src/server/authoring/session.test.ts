@@ -25,6 +25,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 	readonly settle: () => Promise<void>;
 	readonly events: readonly AuthoringEvent[];
 	readonly post: (action: "cancel" | "continue") => Promise<Response>;
+	readonly setSteps: (steps: AuthoringSteps) => Promise<Response>;
 	readonly close: () => Promise<Response>;
 }) => Promise<void>) => {
 	let requests = 0;
@@ -88,7 +89,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 			for (let chunk = await read(150); chunk !== null && !chunk.done; chunk = await read(150)) buffered += chunk.value;
 			while (parsed() !== undefined);
 		};
-		await act({ requests: () => requests, until, settle, events, post: (action) => request("POST", `${path}/${action}`), close: () => request("DELETE", path) });
+		await act({ requests: () => requests, until, settle, events, post: (action) => request("POST", `${path}/${action}`), setSteps: (steps) => request("PUT", `${path}/steps`, { steps }), close: () => request("DELETE", path) });
 	} finally {
 		await authoring.close();
 		await server.stop(true);
@@ -138,4 +139,12 @@ test("one response asking for more tool calls than the message's steps pauses at
 	expect(await until("paused")).toEqual({ type: "paused", steps: 40 });
 	await settle();
 	expect([requests(), toolsRan(events)]).toEqual([1, 40]);
+}));
+
+test("steps per message change only between turns: refused while a turn runs or waits, accepted once it ends", () => withTurn({ steps: 40 }, async ({ until, post, setSteps }) => {
+	await until("paused");
+	expect((await setSteps(100)).status).toBe(409);
+	await post("cancel");
+	await until("end");
+	expect((await setSteps(100)).status).toBe(204);
 }));

@@ -126,3 +126,11 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
   - **Files** lists the candidate's fixed files from `GET …/files`, which reads `descriptor.json`, `logic.js`, `ui.js` and `ui.css` when present. The panel refreshes it after each successful write and when the turn ends.
 - **Code.** A read-only CodeMirror view (`EditorState.readOnly`, `EditorView.editable.of(false)`) highlights JavaScript and JSON with `classHighlighter`, whose `tok-*` classes take theme colours. `ui.css` shows as plain text. Pinned exactly: `@codemirror/lang-javascript` 6.2.5 and `@codemirror/lang-json` 6.0.2, plus `@codemirror/language` 6.12.4 and `@lezer/highlight` 1.2.5, which highlighting imports directly, at the versions already in the lockfile. The panel is lazy-loaded from the Box manager, so none of this joins the main bundle.
 - **Scenario setup.** A scenario now falls back to `setup.initial` only when `setup` is absent, so an explicit `null` reaches the Box or is refused by its schema (tested both ways).
+
+### Fix round 1 for the step cap and Activity (Astra review of 7c27f4d..f25232d)
+
+- **Continue and Stop** keep the pause on screen until the server takes the answer; one that fails shows why and leaves both controls.
+- **Steps** change only between turns: `PUT …/steps` answers 409 while a turn runs or is paused (`session.test.ts`).
+- **Reasoning** is held to `SHOWN_BYTES` per entry, as the panel's entries run between tool calls (`reasoningEntry` in `activity.ts`). The delta that reaches the cap is cut and marked `truncated`, nothing more is sent until the next tool call, and the panel shows the entry as cut short (`activity.test.ts`).
+- **A lazy-load failure** of the panel shows "Create a Box did not load: … Reload the page to try again." with Dismiss, in place of the panel.
+- **Files** shows only the latest read: each read takes a sequence number, and an earlier answer arriving last is dropped.

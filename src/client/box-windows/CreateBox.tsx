@@ -67,6 +67,8 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	const [installed, setInstalled] = useState<string | null>(null);
 	const [steps, setSteps] = useState<StepChoice>("40");
 	const [paused, setPaused] = useState<number | null>(null);
+	const [resuming, setResuming] = useState(false);
+	const filesRead = useRef(0);
 	const [activity, setActivity] = useState<readonly Step[]>([]);
 	const [files, setFiles] = useState<Static<typeof authoringFiles>["files"]>([]);
 	const sequence = useRef(0);
@@ -111,9 +113,13 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		}
 	};
 
+	// @approved
+	//  Each write and each turn's end reads the files again; only the latest
+	// read is shown, so an earlier answer arriving last never replaces it.
 	const refreshFiles = async (id: string) => {
-		const read = await requestData(api.api.authoring.sessions({ session: id }).files.get(), authoringFiles).catch(() => undefined);
-		if (read !== undefined && live.current.mounted) setFiles(read.files);
+		const read = ++filesRead.current;
+		const answer = await requestData(api.api.authoring.sessions({ session: id }).files.get(), authoringFiles).catch(() => undefined);
+		if (answer !== undefined && live.current.mounted && read === filesRead.current) setFiles(answer.files);
 	};
 
 	const send = async () => {
@@ -160,10 +166,23 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		setSteps(next);
 		if (session !== null) void api.api.authoring.sessions({ session: session.session }).steps.put({ steps: stepChoices[next] });
 	};
-	const resume = (action: "continue" | "cancel") => {
+	// @approved
+	//  The pause stays on screen until the server took the writer's answer, so
+	// a Continue or Stop that fails leaves its controls, with why, to try again.
+	const resume = async (action: "continue" | "cancel", steps: number) => {
 		if (session === null) return;
-		setPaused(null);
-		void (action === "continue" ? api.api.authoring.sessions({ session: session.session }).continue.post() : api.api.authoring.sessions({ session: session.session }).cancel.post());
+		const routes = api.api.authoring.sessions({ session: session.session });
+		setResuming(true);
+		setNotice(null);
+		try {
+			const { error } = await (action === "continue" ? routes.continue.post() : routes.cancel.post());
+			if (error !== null) throw new Error(`the server answered ${error.status}`);
+			setPaused((current) => current === steps ? null : current);
+		} catch (error) {
+			setNotice({ text: `${action === "continue" ? "Continue" : "Stop"} did not go through: ${error instanceof Error ? error.message : String(error)}. Try again.`, error: true });
+		} finally {
+			setResuming(false);
+		}
 	};
 	const stepsField = <Field label="Steps per message">
 		<SegmentedControl label="Steps per message" value={steps} onValueChange={chooseSteps} options={stepOptions} disabled={running} />
@@ -215,8 +234,8 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					{paused !== null && <div className="create-box-paused" role="group" aria-label="Paused">
 						<p>The agent has taken {paused} steps on this message.</p>
 						<div className="create-box-paused-actions">
-							<Button type="button" size="sm" onClick={() => resume("continue")}>Continue for {CONTINUE_STEPS} more</Button>
-							<Button type="button" size="sm" variant="outline" onClick={() => resume("cancel")}>Stop</Button>
+							<Button type="button" size="sm" disabled={resuming} onClick={() => void resume("continue", paused)}>Continue for {CONTINUE_STEPS} more</Button>
+							<Button type="button" size="sm" variant="outline" disabled={resuming} onClick={() => void resume("cancel", paused)}>Stop</Button>
 						</div>
 					</div>}
 					{scenario !== null && <ScenarioResults result={scenario} />}

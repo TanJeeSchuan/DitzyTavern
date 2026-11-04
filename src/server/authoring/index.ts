@@ -8,7 +8,7 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { boxFolders } from "../box/registry";
 import { notFoundResponse } from "../contract/responses";
 import { createCandidate, defaultAuthoringFolder, sweepCandidates, type Candidate } from "./candidate";
-import { toolInput, shown } from "./activity";
+import { reasoningEntry, shown, toolInput } from "./activity";
 import { installCandidate } from "./install";
 import { libfxProvider } from "./provider";
 import { authoringTools } from "./tools";
@@ -136,13 +136,18 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		let send = (_: AuthoringEvent) => {};
 		Object.assign(session.budget, { limit: session.budget.steps, "model requests": 0, "tool calls": 0, spent: null, pause: null, paused: (steps: number) => send({ type: "paused", steps }) });
 		const turn = session.fx.prompt(text);
+		const reasoning = reasoningEntry();
 		return new ReadableStream<Uint8Array>({
 			async start(controller) {
 				send = (event) => { if (open) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
 				try {
 					for await (const event of turn) {
+						if (event.type === "tool_start" || event.type === "tool_end") reasoning.reset();
 						if (event.type === "text_delta") send({ type: "text", delta: event.delta });
-						else if (event.type === "reasoning_delta") send({ type: "reasoning", delta: event.delta });
+						else if (event.type === "reasoning_delta") {
+							const part = reasoning.next(event.delta);
+							if (part !== undefined) send({ type: "reasoning", delta: part.text, truncated: part.truncated });
+						}
 						else if (event.type === "tool_start") {
 							const { text, truncated } = toolInput(event);
 							send({ type: "tool", id: event.id, name: event.name, input: text, truncated });
@@ -187,9 +192,10 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			if (session !== undefined) grant(session);
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams })
-		.put("/api/authoring/sessions/:session/steps", ({ params, body }) => {
+		.put("/api/authoring/sessions/:session/steps", ({ params, body, status }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
+			if (session.running) return status(409, { outcome: "refused", reason: "Steps per message change between turns, not during one." } as const);
 			session.budget.steps = body.steps;
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams, body: authoringStepsBody })

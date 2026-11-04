@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Ellipsis } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -10,10 +10,20 @@ import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { addBoxClients, boxOpening, loadedBoxes, type LoadedBox } from "./registry";
+import type { CreateBox as Panel } from "./CreateBox";
+import { addBoxClients, boxOpening, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
 
-/** Creator Mode loads when it is first opened, with its code highlighting. */
-const CreateBox = lazy(() => import("./CreateBox").then(({ CreateBox: panel }) => ({ default: panel })));
+// @approved
+//  Creator Mode loads when it is first opened, with its code highlighting. A
+// load that fails, such as an old tab asking for a chunk a deploy removed,
+// shows why in place of the panel and dismisses like it; the rest of the Box
+// manager keeps working.
+const CreateBox = lazy(() => import("./CreateBox").then(({ CreateBox: panel }) => ({ default: panel }), (cause) => ({
+	default: ({ onOpenChange }: ComponentProps<typeof Panel>) => <p className="composer-control-note is-error mx-3" role="alert">
+		Create a Box did not load: {errorMessage(cause)} Reload the page to try again.{" "}
+		<Button type="button" variant="ghost" size="xs" onClick={() => onOpenChange(false)}>Dismiss</Button>
+	</p>,
+})));
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {

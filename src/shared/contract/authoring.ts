@@ -107,7 +107,7 @@ export const authoredDescriptor = Type.Record(Type.String(), Type.Unknown());
 // `truncated`.
 export const authoringEvent = Type.Union([
 	Type.Object({ type: Type.Literal("text"), delta: Type.String() }),
-	Type.Object({ type: Type.Literal("reasoning"), delta: Type.String() }),
+	Type.Object({ type: Type.Literal("reasoning"), delta: Type.String(), truncated: Type.Boolean() }),
 	Type.Object({ type: Type.Literal("tool"), id: Type.String(), name: Type.String(), input: Type.String(), truncated: Type.Boolean() }),
 	Type.Object({ type: Type.Literal("tool-end"), id: Type.String(), name: Type.String(), isError: Type.Boolean(), content: Type.String(), truncated: Type.Boolean() }),
 	Type.Object({ type: Type.Literal("scenario"), id: Type.String(), result: scenarioResult }),
