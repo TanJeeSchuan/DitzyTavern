@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx/node";
-import { authoringInstall, authoringPromptBody, authoringSessionParams, authoringStart, codingModel } from "../../shared/contract/authoring";
-import type { AuthoringEvent, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
+import { authoringInstall, authoringPromptBody, CONTINUE_STEPS, authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
+import type { AuthoringEvent, AuthoringSteps, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { boxFolders } from "../box/registry";
@@ -23,13 +23,27 @@ const instructions = (id: string) => [
 	"When something about the mechanic is unclear, ask the writer in your reply. When a scenario passes, say what the Box does and that the writer can install it. Installing is the writer's action, never yours.",
 ];
 
-/** @approved The most model requests and tool calls one writer message may cost. Requests are counted where they leave for the provider, so a model looping on tools it does not have, or on text, is held to the same limit. */
-export const PER_MESSAGE = { "model requests": 40, "tool calls": 40 } as const;
-type Spending = keyof typeof PER_MESSAGE;
-export const budgetSpent = (kind: Spending) => `The agent used the ${PER_MESSAGE[kind]} ${kind} one message allows, so its turn stopped. Send another message to let it continue.`;
+export const budgetSpent = (steps: number) => `The agent stopped after ${steps} steps on this message. Send another message to let it continue.`;
+type Spending = "model requests" | "tool calls";
+
+// @approved
+//  What one writer message has cost: its model requests and tool calls, each
+// counted against `limit`, which starts at the session's `steps` and grows by
+// each Continue. While a request or call waits past the limit, `pause` holds
+// it; Continue resolves it, and Stop or closing rejects it. `spent` is the
+// reason a stopped message gives.
+type Budget = { steps: AuthoringSteps; limit: number | null; "model requests": number; "tool calls": number; spent: string | null; pause: PromiseWithResolvers<void> | null; paused: (steps: number) => void };
 
 /** @approved One open authoring panel: its candidate, its libfx agent and session, the turn that is running, what its message has cost, and each scenario result not yet streamed. */
-type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly budget: Record<Spending, number> & { spent: string | null }; readonly scenarios: Map<string, ScenarioResult> };
+type Session = { readonly candidate: Candidate; readonly agent: FxAgent; readonly fx: FxSession; running: boolean; readonly budget: Budget; readonly scenarios: Map<string, ScenarioResult> };
+
+/** @approved Settles with `promise`, or rejects once `signal` aborts first, so a cancelled turn never waits on a pause. */
+const unlessAborted = (promise: Promise<void>, signal: AbortSignal | null | undefined) => new Promise<void>((resolve, reject) => {
+	if (signal?.aborted === true) return reject(signal.reason);
+	const abort = () => reject(signal?.reason);
+	signal?.addEventListener("abort", abort, { once: true });
+	void promise.then(resolve, reject).finally(() => signal?.removeEventListener("abort", abort));
+});
 
 // @approved
 //  Creator Mode's authoring sessions, in memory: one per open panel, each an
@@ -49,7 +63,26 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		await session.agent.close().catch(() => undefined);
 		await session.candidate.remove();
 	};
-	const start = async (choice: CodingModel) => {
+	// @approved
+	//  Stopping a paused message ends it for its budget, with the reason the
+	// panel shows; stopping a running one cancels it.
+	const stop = (session: Session) => {
+		const { budget } = session;
+		if (budget.pause !== null && budget.limit !== null) {
+			budget.spent = budgetSpent(budget.limit);
+			budget.pause.reject(new Error(budget.spent));
+			budget.pause = null;
+		}
+		return session.fx.cancel();
+	};
+	/** @approved Continue: the paused message may take more steps, and whatever waited goes on. */
+	const grant = ({ budget }: Session) => {
+		if (budget.pause === null || budget.limit === null) return;
+		budget.limit += CONTINUE_STEPS;
+		budget.pause.resolve();
+		budget.pause = null;
+	};
+	const start = async ({ steps, ...choice }: CodingModel & { readonly steps: AuthoringSteps }) => {
 		const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 		const connections = createConnectionSettingsModule(database);
 		const profile = connections.get().profiles.find(({ id }) => id === choice.profileId);
@@ -60,17 +93,23 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		if (mapped.outcome === "refused") return mapped;
 		const candidate = await createCandidate(folders.root);
 		const scenarios = new Map<string, ScenarioResult>();
-		const budget: Session["budget"] = { "model requests": 0, "tool calls": 0, spent: null };
+		const budget: Budget = { steps, limit: steps, "model requests": 0, "tool calls": 0, spent: null, pause: null, paused: () => {} };
 		// @approved
 		//  A model that never stops would spend without end, so each writer
-		// message buys a fixed number of model requests and tool calls; the
-		// next one past either cancels the turn and fails, and the turn ends
-		// saying why.
-		const spend = (kind: Spending) => {
-			if (++budget[kind] <= PER_MESSAGE[kind]) return;
-			budget.spent ??= budgetSpent(kind);
-			void fx.cancel();
-			throw new Error(budget.spent);
+		// message takes a number of steps: each model request and each tool
+		// call counts against it. The next one past it waits, and the panel
+		// asks the writer to continue or stop; without a limit nothing waits.
+		const spend = async (kind: Spending, signal: AbortSignal | null | undefined) => {
+			budget[kind] += 1;
+			for (;;) {
+				if (budget.spent !== null) throw new Error(budget.spent);
+				if (budget.limit === null || budget[kind] <= budget.limit) return;
+				if (budget.pause === null) {
+					budget.pause = Promise.withResolvers<void>();
+					budget.paused(budget.limit);
+				}
+				await unlessAborted(budget.pause.promise, signal);
+			}
 		};
 		const send = mapped.options.fetch;
 		// @approved
@@ -79,8 +118,11 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		// addon ships for four platforms only.
 		const agent = createFxAgent({
 			backend: "wasm", durability: memory(), name: "creator", instructions: instructions(candidate.id),
-			tools: authoringTools(candidate, { spend: () => spend("tool calls"), onScenario: (call, result) => scenarios.set(call, result) }),
-			...mapped.options, fetch: (input: string, init: RequestInit) => { spend("model requests"); return send(input, init); },
+			tools: authoringTools(candidate, { spend: (signal) => spend("tool calls", signal), onScenario: (call, result) => scenarios.set(call, result) }),
+			...mapped.options, fetch: async (input: string, init: RequestInit) => {
+				await spend("model requests", init.signal);
+				return await send(input, init);
+			},
 		});
 		const fx = agent.session();
 		sessions.set(candidate.session, { candidate, agent, fx, running: false, budget, scenarios });
@@ -89,12 +131,13 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	const prompt = (session: Session, text: string) => {
 		const encoder = new TextEncoder();
 		session.running = true;
-		Object.assign(session.budget, { "model requests": 0, "tool calls": 0, spent: null });
-		const turn = session.fx.prompt(text);
 		let open = true;
+		let send = (_: AuthoringEvent) => {};
+		Object.assign(session.budget, { limit: session.budget.steps, "model requests": 0, "tool calls": 0, spent: null, pause: null, paused: (steps: number) => send({ type: "paused", steps }) });
+		const turn = session.fx.prompt(text);
 		return new ReadableStream<Uint8Array>({
 			async start(controller) {
-				const send = (event: AuthoringEvent) => { if (open) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
+				send = (event) => { if (open) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
 				try {
 					for await (const event of turn) {
 						if (event.type === "text_delta") send({ type: "text", delta: event.delta });
@@ -117,12 +160,12 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			},
 			cancel() {
 				open = false;
-				void session.fx.cancel();
+				void stop(session);
 			},
 		});
 	};
 	const routes = new Elysia()
-		.post("/api/authoring/sessions", ({ body }) => start(body), { body: codingModel, response: authoringStart })
+		.post("/api/authoring/sessions", ({ body }) => start(body), { body: authoringStartBody, response: authoringStart })
 		.post("/api/authoring/sessions/:session/prompts", ({ params, body, status }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
@@ -130,9 +173,21 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			return new Response(prompt(session, body.text), { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 		}, { params: authoringSessionParams, body: authoringPromptBody })
 		.post("/api/authoring/sessions/:session/cancel", async ({ params }) => {
-			await sessions.get(params.session)?.fx.cancel();
+			const session = sessions.get(params.session);
+			if (session !== undefined) await stop(session);
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams })
+		.post("/api/authoring/sessions/:session/continue", ({ params }) => {
+			const session = sessions.get(params.session);
+			if (session !== undefined) grant(session);
+			return new Response(null, { status: 204 });
+		}, { params: authoringSessionParams })
+		.put("/api/authoring/sessions/:session/steps", ({ params, body }) => {
+			const session = sessions.get(params.session);
+			if (session === undefined) return notFoundResponse();
+			session.budget.steps = body.steps;
+			return new Response(null, { status: 204 });
+		}, { params: authoringSessionParams, body: authoringStepsBody })
 		.delete("/api/authoring/sessions/:session", async ({ params }) => {
 			await close(params.session);
 			return new Response(null, { status: 204 });

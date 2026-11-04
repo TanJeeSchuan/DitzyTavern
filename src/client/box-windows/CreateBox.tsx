@@ -4,14 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
-import { authoringEvent, authoringInstall, authoringStart, type ScenarioResult } from "../../shared/contract/authoring";
+import { authoringEvent, authoringInstall, authoringStart, CONTINUE_STEPS, type AuthoringSteps, type ScenarioResult } from "../../shared/contract/authoring";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import { ProfileModelPicker, type ProfileModelChoice } from "../ProfileModelPicker";
 
 type Entry = { readonly id: string; readonly kind: "writer" | "agent" | "tool" | "error"; readonly text: string };
 type Session = { readonly session: string; readonly candidate: string };
+
+const stepChoices = { "40": 40, "100": 100, none: null } as const satisfies Record<string, AuthoringSteps>;
+type StepChoice = keyof typeof stepChoices;
+const stepOptions = [{ value: "40", label: "40" }, { value: "100", label: "100" }, { value: "none", label: "No limit" }] as const satisfies readonly { value: StepChoice; label: string }[];
 
 const toolLines = new Map([
 	["read_contract", "Read the Box contract"], ["write_descriptor", "Wrote descriptor.json"], ["write_logic", "Wrote logic.js"],
@@ -60,6 +65,8 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	const [notice, setNotice] = useState<{ readonly text: string; readonly error: boolean } | null>(null);
 	const [scenario, setScenario] = useState<ScenarioResult | null>(null);
 	const [installed, setInstalled] = useState<string | null>(null);
+	const [steps, setSteps] = useState<StepChoice>("40");
+	const [paused, setPaused] = useState<number | null>(null);
 	const sequence = useRef(0);
 	// @approved
 	//  The open session, held where an unmount can reach it: closing the panel
@@ -88,7 +95,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		setPending(true);
 		setNotice(null);
 		try {
-			const started = await requestData(api.api.authoring.sessions.post({ profileId: model.connectionProfileId, model: model.modelId, contextWindow: Number(contextWindow), maxOutputTokens: Number(maxOutputTokens) }), authoringStart);
+			const started = await requestData(api.api.authoring.sessions.post({ profileId: model.connectionProfileId, model: model.modelId, contextWindow: Number(contextWindow), maxOutputTokens: Number(maxOutputTokens), steps: stepChoices[steps] }), authoringStart);
 			if (started.outcome === "refused") setNotice({ text: started.reason, error: true });
 			else if (!live.current.mounted) end(started.session);
 			else {
@@ -123,6 +130,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					if (event.type === "text") appendAgent(event.delta);
 					else if (event.type === "tool-end") add(event.isError ? "error" : "tool", event.isError ? `${event.name} failed: ${event.content}` : toolLines.get(event.name) ?? event.name);
 					else if (event.type === "scenario") setScenario(event.result);
+					else if (event.type === "paused") setPaused(event.steps);
 					else if (event.type === "end" && event.stopReason !== "end_turn") add("error", event.error ?? (event.stopReason === "cancelled" ? "Stopped." : `The turn ended: ${event.stopReason}`));
 				}
 			}
@@ -130,8 +138,26 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 			add("error", error instanceof Error ? error.message : String(error));
 		} finally {
 			setRunning(false);
+			setPaused(null);
 		}
 	};
+
+	// @approved
+	//  Steps per message is the session's own setting, chosen with the model
+	// and changed between turns; a paused message goes on for more steps, or
+	// stops, only when the writer says so.
+	const chooseSteps = (next: StepChoice) => {
+		setSteps(next);
+		if (session !== null) void api.api.authoring.sessions({ session: session.session }).steps.put({ steps: stepChoices[next] });
+	};
+	const resume = (action: "continue" | "cancel") => {
+		if (session === null) return;
+		setPaused(null);
+		void (action === "continue" ? api.api.authoring.sessions({ session: session.session }).continue.post() : api.api.authoring.sessions({ session: session.session }).cancel.post());
+	};
+	const stepsField = <Field label="Steps per message">
+		<SegmentedControl label="Steps per message" value={steps} onValueChange={chooseSteps} options={stepOptions} disabled={running} />
+	</Field>;
 
 	const install = async () => {
 		if (session === null) return;
@@ -163,6 +189,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					<Field label="Coding model">
 						<ProfileModelPicker label="Coding model" selected={model} onSelect={(profile, modelId) => setModel({ connectionProfileId: profile.id, modelId })} emptyLabel="Add a Chat Completions connection in Connections." />
 					</Field>
+					{stepsField}
 					<Field label="Context window" htmlFor="create-box-context">
 						<Input id="create-box-context" inputMode="numeric" value={contextWindow} onChange={(event) => setContextWindow(event.target.value)} />
 					</Field>
@@ -174,7 +201,15 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					<ol className="create-box-transcript" aria-label="Authoring conversation" aria-live="polite">
 						{entries.map((entry) => <li key={entry.id} data-kind={entry.kind}>{entry.text}</li>)}
 					</ol>
+					{paused !== null && <div className="create-box-paused" role="group" aria-label="Paused">
+						<p>The agent has taken {paused} steps on this message.</p>
+						<div className="create-box-paused-actions">
+							<Button type="button" size="sm" onClick={() => resume("continue")}>Continue for {CONTINUE_STEPS} more</Button>
+							<Button type="button" size="sm" variant="outline" onClick={() => resume("cancel")}>Stop</Button>
+						</div>
+					</div>}
 					{scenario !== null && <ScenarioResults result={scenario} />}
+					{stepsField}
 					<Textarea aria-label="Message to the coding agent" value={draft} disabled={running} placeholder="An inventory the writer adds items to…"
 						onChange={(event) => setDraft(event.target.value)}
 						onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void send(); }} />

@@ -32,18 +32,19 @@ const writes = {
 // every argument is checked against its schema before anything runs, since
 // the arguments come from a model reading the writer's prose. Each runs
 // after the previous one ends, and each call is first `spent` against the
-// turn's budget, which throws once the turn has used it. libfx's signal
+// message's steps, which waits while the message is paused and throws once
+// it is stopped. libfx's signal
 // aborts when the turn is cancelled: a write still waiting is dropped, and a
 // scenario stops, its package fetches included. `onScenario` hears each
 // scenario's result under its tool call's id, for the panel.
-export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: () => void; readonly onScenario: (call: string, result: ScenarioResult) => void }) => {
+export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, result: ScenarioResult) => void }) => {
 	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string, signal: AbortSignal) => unknown) => ({
 		name, description, idempotent: true, writes: true,
 		inputSchema: JSON.parse(JSON.stringify(schema)),
-		execute: (input: unknown, { executionId, signal }: { readonly executionId: string; readonly signal: AbortSignal }) => {
-			spend();
+		execute: async (input: unknown, { executionId, signal }: { readonly executionId: string; readonly signal: AbortSignal }) => {
+			await spend(signal);
 			assertChecked(schema, input, `The ${name} arguments`);
-			return execute(input, executionId, signal);
+			return await execute(input, executionId, signal);
 		},
 	});
 	return [

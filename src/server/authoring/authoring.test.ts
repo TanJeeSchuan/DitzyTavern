@@ -42,12 +42,12 @@ const call = (tools: Tools, name: string, input: Parameters<Tools[number]["execu
 	if (tool === undefined) throw new Error(`There is no ${name} tool.`);
 	return tool.execute(input, { executionId: "call", signal });
 };
-const unbudgeted = { spend: () => {}, onScenario: () => {} };
+const unbudgeted = { spend: async () => {}, onScenario: () => {} };
 /** @approved A candidate written through its tools, as the agent writes one. */
 const authored = async (files: { descriptor: object; logic: string; ui?: string }) => {
 	const candidate = await createCandidate(scratch());
 	const scenarios: ScenarioResult[] = [];
-	const tools = authoringTools(candidate, { spend: () => {}, onScenario: (_, result) => scenarios.push(result) });
+	const tools = authoringTools(candidate, { spend: async () => {}, onScenario: (_, result) => scenarios.push(result) });
 	await call(tools, "write_descriptor", { content: JSON.stringify(files.descriptor) });
 	await call(tools, "write_logic", { content: files.logic });
 	await call(tools, "write_ui", { content: files.ui ?? "host.render('');" });
@@ -64,9 +64,9 @@ test("a tool argument naming a path, or a body over its file's cap, is refused a
 	const candidate = await createCandidate(scratch());
 	const tools = authoringTools(candidate, unbudgeted);
 	const outside = join(dirname(candidate.folder), "escape.js");
-	expect(() => call(tools, "write_logic", { content: "export default {};", path: "../escape.js" })).toThrow("The write_logic arguments is invalid");
-	expect(() => call(tools, "write_ui", { content: "x".repeat(512 * 1024 + 1) })).toThrow("ui.js may hold at most 512 KiB");
-	expect(() => call(tools, "run_scenario", { cast: ["Ann"], seed: "s", turns: [{}], folder: "/" })).toThrow("The run_scenario arguments is invalid");
+	await expect(call(tools, "write_logic", { content: "export default {};", path: "../escape.js" })).rejects.toThrow("The write_logic arguments is invalid");
+	await expect(call(tools, "write_ui", { content: "x".repeat(512 * 1024 + 1) })).rejects.toThrow("ui.js may hold at most 512 KiB");
+	await expect(call(tools, "run_scenario", { cast: ["Ann"], seed: "s", turns: [{}], folder: "/" })).rejects.toThrow("The run_scenario arguments is invalid");
 	expect([existsSync(outside), readdirSync(candidate.folder)]).toEqual([false, []]);
 });
 
@@ -84,7 +84,7 @@ test("descriptor.json's cap holds for the exact text written: deep nesting is no
 	expect(await written.text()).toBe(JSON.stringify({ ...JSON.parse(nested), id: candidate.id }));
 	const full = `{"x":"${"a".repeat(64 * 1024 - 8)}"}`;
 	expect(Buffer.byteLength(full)).toBe(64 * 1024);
-	expect(() => call(tools, "write_descriptor", { content: full })).toThrow("descriptor.json may hold at most 64 KiB");
+	await expect(call(tools, "write_descriptor", { content: full })).rejects.toThrow("descriptor.json may hold at most 64 KiB");
 	expect(await written.text()).toStartWith('{"deep":');
 });
 

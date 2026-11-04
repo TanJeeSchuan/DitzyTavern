@@ -157,7 +157,7 @@ Markup loses scripts, frames, forms, links, `meta`, `base`, inline event handler
 - `swipes`: each `{ turn, prose?, decisions? }`: a new Variant for that turn, with its seed and Moves.
 - `snapshot`: each `{ query, answer }` that `read` may ask for, as the table above answers it.
 
-It returns `diagnostics` (every refusal and failure; the scenario stops at the first), each turn's rendered Moves, prompt items and record, the selected `records` and their `recordBytes`, the folded `state`, and `read` or `status`. Run one after every change, and fix every diagnostic before you tell the writer the Box is ready. Each writer message allows 40 model requests and 40 tool calls; past either the turn stops, so work in few, whole writes.
+It returns `diagnostics` (every refusal and failure; the scenario stops at the first), each turn's rendered Moves, prompt items and record, the selected `records` and their `recordBytes`, the folded `state`, and `read` or `status`. Run one after every change, and fix every diagnostic before you tell the writer the Box is ready. Each writer message has a number of steps, which the writer chooses: every model request and every tool call counts as one. At the limit you pause until the writer lets you go on or stops you, so work in few, whole writes.
 
 ## Working with the writer
 

@@ -576,3 +576,21 @@
 	overflow: auto;
 	font-size: 0.78rem;
 }
+
+.create-box-paused {
+	display: grid;
+	gap: 0.5rem;
+	padding: 0.6rem 0.75rem;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-md);
+	background: var(--surface-muted);
+}
+
+.create-box-paused p {
+	margin: 0;
+}
+
+.create-box-paused-actions {
+	display: flex;
+	gap: 0.5rem;
+}

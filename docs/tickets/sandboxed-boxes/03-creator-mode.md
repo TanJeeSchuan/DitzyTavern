@@ -104,3 +104,16 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
 - **Client refresh.** After Install the client registers only the new Box (`addBoxClient`). Every other definition keeps its identity, so open frames and Workers survive; the e2e keeps a Race window open across Install and the next Generation.
 - **Panel lifecycle.** Closing the panel unmounts it, which deletes its session. A Start answered after the panel closed deletes the session it started. The e2e checks that the authoring folder is empty after close. The Start race itself has no test, since Start answers without a network call.
 - **e2e.** The scripted agent no longer writes `ui.css`, so the spec covers #202's empty-stylesheet path.
+
+### Soft step cap (follow-up)
+
+- **Steps per message** is a per-session setting: `40` (the default), `100` or no limit (`null`). It is sent when the session starts and changed between turns with `PUT /api/authoring/sessions/:session/steps`. It isn't stored anywhere but the in-memory session. Model requests and tool calls each count against it separately.
+- **A pause, not a cancel.** The next request (in the provider `fetch` wrapper) or tool call (in `spend`) past the limit awaits the message's pause, and the stream sends `{ type: "paused", steps }`. `POST …/continue` raises this message's limit by `CONTINUE_STEPS` (20, in the shared contract so the panel's label matches), and whatever waited goes on mid-turn. `POST …/cancel` on a paused message ends it with `stopReason: "budget"` and `budgetSpent(steps)`; on a running message it cancels as before. A waiter also gives up when its libfx signal aborts, and closing the session rejects the pause, so a paused turn never hangs. With no limit nothing pauses.
+- **Tests.** `session.test.ts` drives the real routes and libfx against looping fakes:
+  - a pause at the limit with nothing more reaching the fake (a real tool and an unknown one);
+  - Continue lets exactly 20 more through, then Stop ends the turn with `budget`;
+  - closing a paused session cancels its turn;
+  - no limit runs to the fake's own stop at 60;
+  - 45 parallel calls pause at 40.
+
+  A `settle` helper reads events that arrive just after `paused`: libfx delivers the last `tool_end` after the next request's pause is already streamed.

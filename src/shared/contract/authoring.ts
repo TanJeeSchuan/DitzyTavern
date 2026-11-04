@@ -71,6 +71,14 @@ export const codingModel = Type.Object({
 }, { additionalProperties: false });
 export type CodingModel = Static<typeof codingModel>;
 
+/** @approved Steps per writer message: model requests and tool calls each count against it, and `null` sets no limit. */
+export const authoringSteps = Type.Union([Type.Literal(40), Type.Literal(100), Type.Null()]);
+export type AuthoringSteps = Static<typeof authoringSteps>;
+/** @approved How many more steps Continue gives a paused message. */
+export const CONTINUE_STEPS = 20;
+export const authoringStartBody = Type.Object({ ...codingModel.properties, steps: authoringSteps }, { additionalProperties: false });
+export const authoringStepsBody = Type.Object({ steps: authoringSteps }, { additionalProperties: false });
+
 export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
 export const authoringRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String() });
 export const authoringSessionParams = Type.Object({ session: Type.String() });
@@ -90,12 +98,14 @@ export const authoredDescriptor = Type.Record(Type.String(), Type.Unknown());
 // @approved
 //  What one authoring turn streams, as NDJSON: the agent's reply text, each
 // tool call as it starts and ends, each scenario's result beside its tool
-// call, and how the turn ended. The tool's own text is what the agent read.
+// call, a pause once the message has taken its steps, and how the turn
+// ended. The tool's own text is what the agent read.
 export const authoringEvent = Type.Union([
 	Type.Object({ type: Type.Literal("text"), delta: Type.String() }),
 	Type.Object({ type: Type.Literal("tool"), id: Type.String(), name: Type.String() }),
 	Type.Object({ type: Type.Literal("tool-end"), id: Type.String(), name: Type.String(), isError: Type.Boolean(), content: Type.String() }),
 	Type.Object({ type: Type.Literal("scenario"), id: Type.String(), result: scenarioResult }),
+	Type.Object({ type: Type.Literal("paused"), steps: Type.Integer({ minimum: 1 }) }),
 	Type.Object({ type: Type.Literal("end"), stopReason: Type.String(), error: Type.Optional(Type.String()) }),
 ]);
 export type AuthoringEvent = Static<typeof authoringEvent>;
