@@ -58,7 +58,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 		const reader = body.pipeThrough(new TextDecoderStream()).getReader();
 		const events: AuthoringEvent[] = [];
 		let buffered = "";
-		let pending: Promise<ReadableStreamReadResult<string>> | null = null;
+		let pending: ReturnType<typeof reader.read> | null = null;
 		const read = async (within?: number) => {
 			const chunk = await Promise.race([pending ??= reader.read(), ...within === undefined ? [] : [Bun.sleep(within).then(() => null)]]);
 			if (chunk !== null) pending = null;
