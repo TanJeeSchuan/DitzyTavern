@@ -11,13 +11,18 @@ import type { Candidate } from "./candidate";
 // the candidate, it copies the candidate's files into a staging folder
 // beside the plugin folder, runs the loader's own check there, which writes
 // any packages, lock and bundles beside them, then publishes what passed,
-// complete with `deps/`: it claims the target by creating it exclusively,
-// so a folder that appeared meanwhile refuses the Install and is left alone,
-// then renames the whole checked folder over its own empty claim, so the
-// target is never seen half filled. If that rename fails, the claim is
-// removed only while it is still empty. The checked Box joins the running
+// complete with `deps/`, by renaming the whole checked folder to the target,
+// so the target is never seen half filled, and never in place of a folder
+// that appeared meanwhile, which refuses the Install and is left alone. A
+// POSIX rename replaces an empty folder, so there the target is first claimed
+// by creating it exclusively and the rename lands on that claim, which is
+// removed again, while empty, if the rename fails. Windows refuses to rename
+// onto any folder, so there the rename itself is the claim. The checked Box joins the running
 // registry without touching the Boxes already loaded. An id any loaded Box
 // or folder already uses is refused.
+/** @approved Whether `rename` replaces an existing empty folder: POSIX does, Windows refuses any existing folder. */
+const renameReplaces = process.platform !== "win32";
+
 export const installCandidate = (database: Database, candidate: Candidate, plugins: string) => candidate.check(async () => {
 	const { id } = candidate;
 	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
@@ -40,16 +45,15 @@ export const installCandidate = (database: Database, candidate: Candidate, plugi
 		}
 		try {
 			await mkdir(plugins, { recursive: true });
-			const claimed = await mkdir(target).then(() => true, (error: NodeJS.ErrnoException) => error.code === "EEXIST" ? false : Promise.reject(error));
-			if (!claimed) {
+			const claimed = renameReplaces ? await mkdir(target).then(() => true, (error: NodeJS.ErrnoException) => error.code === "EEXIST" ? false : Promise.reject(error)) : true;
+			const published = claimed && await rename(folder, target).then(() => true, async (error: NodeJS.ErrnoException) => {
+				if (renameReplaces) await rmdir(target).catch(() => undefined);
+				else if (existsSync(target)) return false;
+				throw error;
+			});
+			if (!published) {
 				checked.dispose();
 				return taken;
-			}
-			try {
-				await rename(folder, target);
-			} catch (error) {
-				await rmdir(target).catch(() => undefined);
-				throw error;
 			}
 			addBox(database, checked);
 		} catch (error) {
