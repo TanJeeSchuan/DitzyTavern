@@ -31,7 +31,7 @@ test("every built-in example's listing and files reach the agent through libfx",
 	});
 	const agent = createFxAgent({
 		backend: "wasm", durability: memory(), name: "probe", instructions: "Read the examples.", tools: await tools(), model: "coder-1",
-		provider: { name: "fake", baseUrl: `http://127.0.0.1:${server.port}/v1`, models: { "coder-1": { contextWindow: 400_000, maxOutputTokens: 2_048, supportsToolUse: true } } },
+		provider: { name: "fake", baseUrl: `http://127.0.0.1:${server.port}/v1`, models: { "coder-1": { supportsToolUse: true } } },
 		credentials: async () => ({ apiKey: "key" }),
 	});
 	try {

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import { authoringEvent, authoringFiles, authoringInstall, authoringStart, CONTINUE_STEPS, type AuthoringSteps, type ScenarioResult } from "../../shared/contract/authoring";
@@ -55,8 +54,6 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	onInstalled: (box: string) => Promise<void>;
 }) {
 	const [model, setModel] = useState<ProfileModelChoice | null>(null);
-	const [contextWindow, setContextWindow] = useState("128000");
-	const [maxOutputTokens, setMaxOutputTokens] = useState("8192");
 	const [session, setSession] = useState<Session | null>(null);
 	const [entries, setEntries] = useState<readonly Entry[]>([]);
 	const [draft, setDraft] = useState("");
@@ -99,7 +96,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		setPending(true);
 		setNotice(null);
 		try {
-			const started = await requestData(api.api.authoring.sessions.post({ profileId: model.connectionProfileId, model: model.modelId, contextWindow: Number(contextWindow), maxOutputTokens: Number(maxOutputTokens), steps: stepChoices[steps] }), authoringStart);
+			const started = await requestData(api.api.authoring.sessions.post({ profileId: model.connectionProfileId, model: model.modelId, steps: stepChoices[steps] }), authoringStart);
 			if (started.outcome === "refused") setNotice({ text: started.reason, error: true });
 			else if (!live.current.mounted) end(started.session);
 			else {
@@ -219,12 +216,6 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 						<ProfileModelPicker label="Coding model" selected={model} onSelect={(profile, modelId) => setModel({ connectionProfileId: profile.id, modelId })} emptyLabel="Add a Chat Completions connection in Connections." />
 					</Field>
 					{stepsField}
-					<Field label="Context window" htmlFor="create-box-context">
-						<Input id="create-box-context" inputMode="numeric" value={contextWindow} onChange={(event) => setContextWindow(event.target.value)} />
-					</Field>
-					<Field label="Output limit" htmlFor="create-box-output">
-						<Input id="create-box-output" inputMode="numeric" value={maxOutputTokens} onChange={(event) => setMaxOutputTokens(event.target.value)} />
-					</Field>
 				</div>
 				: <div className="create-box-columns">
 				<div className="create-box-work">

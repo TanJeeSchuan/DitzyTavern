@@ -52,7 +52,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 		const profileId = connections.get().profiles[0]?.id ?? 0;
 		const request = (method: string, path: string, body?: Readonly<Record<string, string | number | null>>) =>
 			authoring.routes.handle(new Request(`http://localhost${path}`, { method, headers: { "content-type": "application/json" }, ...body !== undefined && { body: JSON.stringify(body) } }));
-		const started: unknown = await (await request("POST", "/api/authoring/sessions", { profileId, model: "coder-1", contextWindow: 32_000, maxOutputTokens: 2_048, steps: options.steps })).json();
+		const started: unknown = await (await request("POST", "/api/authoring/sessions", { profileId, model: "coder-1", steps: options.steps })).json();
 		if (!Value.Check(authoringStart, started) || started.outcome !== "started") throw new Error(`The session did not start: ${JSON.stringify(started)}`);
 		const path = `/api/authoring/sessions/${started.session}`;
 		const body = (await request("POST", `${path}/prompts`, { text: "Write a Box." })).body;

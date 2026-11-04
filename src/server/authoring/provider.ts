@@ -35,9 +35,9 @@ const inactive = async (input: string, init: RequestInit, ms: number) => {
 //    own requests carry them, a custom `Authorization` winning over the key;
 //  - the timeout is the app's: a response that sends nothing for that long
 //    is aborted;
-//  - the writer's context window and output limit describe the model, and
-//    libfx sends the output limit as `max_tokens`, so a profile that sends
-//    it otherwise is refused;
+//  - no context window or output limit is declared, so libfx sends no
+//    output limit and the provider's own default applies, whatever field
+//    the profile names for it;
 //  - the adapter, system placement and model backend shape the app's own
 //    Prompt Plans, which the agent does not use, and libfx speaks plain Chat
 //    Completions to OpenAI-compatible, DeepSeek and OpenRouter alike.
@@ -46,9 +46,7 @@ export const libfxProvider = (profile: ConnectionProfile, secrets: ConnectionPro
 	const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 	const name = profile.displayName;
 	if (profile.apiFormat !== "chat-completions") return refused(`${name} is not a Chat Completions connection; the coding agent needs one.`);
-	if (profile.outputTokenRepresentation === "max_completion_tokens" || profile.outputTokenRepresentation === "omit") return refused(`${name} sends the output limit as ${profile.outputTokenRepresentation === "omit" ? "nothing" : "max_completion_tokens"}; the coding agent sends max_tokens.`);
 	if (profile.credentialState === "unreadable") return refused(`${name}'s saved API key cannot be read. Save it again in Connections.`);
-	if (choice.maxOutputTokens >= choice.contextWindow) return refused("The output limit must be smaller than the context window.");
 	let url: URL;
 	try { url = new URL(resolveRequestUrl(profile.requestUrl, "chat-completions")); } catch (error) { return refused(`${name}'s request URL is not usable: ${error instanceof Error ? error.message : String(error)}`); }
 	if (!url.pathname.endsWith(requestPath)) return refused(`${name}'s request URL must end in ${requestPath} for the coding agent.`);
@@ -61,7 +59,7 @@ export const libfxProvider = (profile: ConnectionProfile, secrets: ConnectionPro
 		outcome: "mapped",
 		options: {
 			model: choice.model,
-			provider: { name: "connection", baseUrl: url.href.slice(0, -requestPath.length), models: { [choice.model]: { contextWindow: choice.contextWindow, maxOutputTokens: choice.maxOutputTokens, supportsToolUse: true } } },
+			provider: { name: "connection", baseUrl: url.href.slice(0, -requestPath.length), models: { [choice.model]: { supportsToolUse: true } } },
 			fetch: (input: string, init: RequestInit) => {
 				const authorized = { ...init, headers: authenticatedHeaders(init.headers, credential, headers) };
 				return timeout === null || timeout <= 0 ? fetch(input, authorized) : inactive(input, authorized, timeout);
