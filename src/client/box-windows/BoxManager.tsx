@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Ellipsis } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -10,8 +10,10 @@ import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { CreateBox } from "./CreateBox";
 import { addBoxClients, boxOpening, loadedBoxes, type LoadedBox } from "./registry";
+
+/** Creator Mode loads when it is first opened, with its code highlighting. */
+const CreateBox = lazy(() => import("./CreateBox").then(({ CreateBox: panel }) => ({ default: panel })));
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
@@ -108,7 +110,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
 			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating(true)}>Create a Box</Button>
 		</div>
-		{creating && <CreateBox open onOpenChange={setCreating} onInstalled={addInstalled} />}
+		{creating && <Suspense fallback={null}><CreateBox open onOpenChange={setCreating} onInstalled={addInstalled} /></Suspense>}
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

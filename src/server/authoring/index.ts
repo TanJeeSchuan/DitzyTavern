@@ -1,13 +1,14 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx/node";
-import { authoringInstall, authoringPromptBody, CONTINUE_STEPS, authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
+import { authoringFiles, authoringInstall, authoringPromptBody, CONTINUE_STEPS, authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
 import type { AuthoringEvent, AuthoringSteps, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { boxFolders } from "../box/registry";
 import { notFoundResponse } from "../contract/responses";
 import { createCandidate, defaultAuthoringFolder, sweepCandidates, type Candidate } from "./candidate";
+import { toolInput, shown } from "./activity";
 import { installCandidate } from "./install";
 import { libfxProvider } from "./provider";
 import { authoringTools } from "./tools";
@@ -141,9 +142,13 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 				try {
 					for await (const event of turn) {
 						if (event.type === "text_delta") send({ type: "text", delta: event.delta });
-						else if (event.type === "tool_start") send({ type: "tool", id: event.id, name: event.name });
-						else if (event.type === "tool_end") {
-							send({ type: "tool-end", id: event.id, name: event.name, isError: event.isError, content: event.content ?? "" });
+						else if (event.type === "reasoning_delta") send({ type: "reasoning", delta: event.delta });
+						else if (event.type === "tool_start") {
+							const { text, truncated } = toolInput(event);
+							send({ type: "tool", id: event.id, name: event.name, input: text, truncated });
+						} else if (event.type === "tool_end") {
+							const { text, truncated } = shown(event.content ?? "");
+							send({ type: "tool-end", id: event.id, name: event.name, isError: event.isError, content: text, truncated });
 							const result = session.scenarios.get(event.id);
 							session.scenarios.delete(event.id);
 							if (result !== undefined) send({ type: "scenario", id: event.id, result });
@@ -192,6 +197,11 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			await close(params.session);
 			return new Response(null, { status: 204 });
 		}, { params: authoringSessionParams })
+		.get("/api/authoring/sessions/:session/files", async ({ params }) => {
+			const session = sessions.get(params.session);
+			if (session === undefined) return notFoundResponse();
+			return { files: await session.candidate.files() };
+		}, { params: authoringSessionParams, response: { 200: authoringFiles, 404: notFoundOutcome } })
 		.post("/api/authoring/sessions/:session/install", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();

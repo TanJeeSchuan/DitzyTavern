@@ -50,7 +50,11 @@ export const createCandidate = async (root: string) => {
 			return { written: file, bytes };
 		}, signal);
 	};
-	return { session, id, folder, write, check: exclusive, remove: () => exclusive(() => rm(join(root, session), { recursive: true, force: true })) };
+	const files = async () => (await Promise.all(Object.keys(AUTHORED_FILES).map(async (name) => {
+		const file = Bun.file(join(folder, name));
+		return await file.exists() ? [{ name, content: await file.text() }] : [];
+	}))).flat();
+	return { session, id, folder, write, files, check: exclusive, remove: () => exclusive(() => rm(join(root, session), { recursive: true, force: true })) };
 };
 export type Candidate = Awaited<ReturnType<typeof createCandidate>>;
 

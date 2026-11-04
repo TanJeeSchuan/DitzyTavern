@@ -1,3 +1,4 @@
+import type { Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -6,22 +7,18 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
-import { authoringEvent, authoringInstall, authoringStart, CONTINUE_STEPS, type AuthoringSteps, type ScenarioResult } from "../../shared/contract/authoring";
+import { authoringEvent, authoringFiles, authoringInstall, authoringStart, CONTINUE_STEPS, type AuthoringSteps, type ScenarioResult } from "../../shared/contract/authoring";
 import { api } from "../lib/eden";
 import { requestData } from "../lib/request-outcome";
 import { ProfileModelPicker, type ProfileModelChoice } from "../ProfileModelPicker";
+import { Activity, FilesStrip, withEvent, type Step } from "./CreateBoxActivity";
 
-type Entry = { readonly id: string; readonly kind: "writer" | "agent" | "tool" | "error"; readonly text: string };
+type Entry = { readonly id: string; readonly kind: "writer" | "agent" | "error"; readonly text: string };
 type Session = { readonly session: string; readonly candidate: string };
 
 const stepChoices = { "40": 40, "100": 100, none: null } as const satisfies Record<string, AuthoringSteps>;
 type StepChoice = keyof typeof stepChoices;
 const stepOptions = [{ value: "40", label: "40" }, { value: "100", label: "100" }, { value: "none", label: "No limit" }] as const satisfies readonly { value: StepChoice; label: string }[];
-
-const toolLines = new Map([
-	["read_contract", "Read the Box contract"], ["write_descriptor", "Wrote descriptor.json"], ["write_logic", "Wrote logic.js"],
-	["write_ui", "Wrote ui.js"], ["write_css", "Wrote ui.css"], ["run_scenario", "Ran a scenario"],
-]);
 
 /** The latest scenario's diagnostics, each turn's prompt items, and the folded state. */
 function ScenarioResults({ result }: { result: ScenarioResult }) {
@@ -45,7 +42,10 @@ function ScenarioResults({ result }: { result: ScenarioResult }) {
 // @approved
 //  Creator Mode: the writer picks a coding model, describes a mechanic, and
 // an embedded agent writes and checks a sandboxed Box. Each turn streams the
-// agent's reply and tool calls; each scenario's results replace the last.
+// agent's reply into the conversation, and each tool call, with its input
+// and result, and the agent's reasoning into the Activity beside it, over
+// the candidate's files as they stand; each scenario's results replace the
+// last.
 // Install publishes the Box app-wide, after which the Box manager lists it
 // to add to this Chat. Closing the panel ends the session and drops its
 // candidate.
@@ -67,6 +67,8 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	const [installed, setInstalled] = useState<string | null>(null);
 	const [steps, setSteps] = useState<StepChoice>("40");
 	const [paused, setPaused] = useState<number | null>(null);
+	const [activity, setActivity] = useState<readonly Step[]>([]);
+	const [files, setFiles] = useState<Static<typeof authoringFiles>["files"]>([]);
 	const sequence = useRef(0);
 	// @approved
 	//  The open session, held where an unmount can reach it: closing the panel
@@ -109,6 +111,11 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		}
 	};
 
+	const refreshFiles = async (id: string) => {
+		const read = await requestData(api.api.authoring.sessions({ session: id }).files.get(), authoringFiles).catch(() => undefined);
+		if (read !== undefined && live.current.mounted) setFiles(read.files);
+	};
+
 	const send = async () => {
 		const text = draft.trim();
 		if (session === null || text === "" || running) return;
@@ -127,8 +134,10 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 				for (const line of lines.filter((entry) => entry !== "")) {
 					const event: unknown = JSON.parse(line);
 					if (!Value.Check(authoringEvent, event)) continue;
+					const step = String(sequence.current++);
+					setActivity((current) => withEvent(current, event, step));
 					if (event.type === "text") appendAgent(event.delta);
-					else if (event.type === "tool-end") add(event.isError ? "error" : "tool", event.isError ? `${event.name} failed: ${event.content}` : toolLines.get(event.name) ?? event.name);
+					else if (event.type === "tool-end" && !event.isError && event.name.startsWith("write_")) void refreshFiles(session.session);
 					else if (event.type === "scenario") setScenario(event.result);
 					else if (event.type === "paused") setPaused(event.steps);
 					else if (event.type === "end" && event.stopReason !== "end_turn") add("error", event.error ?? (event.stopReason === "cancelled" ? "Stopped." : `The turn ended: ${event.stopReason}`));
@@ -139,6 +148,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 		} finally {
 			setRunning(false);
 			setPaused(null);
+			void refreshFiles(session.session);
 		}
 	};
 
@@ -179,7 +189,7 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 	};
 
 	return <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
-		<DialogContent className="create-box sm:max-w-3xl">
+		<DialogContent className="create-box sm:max-w-5xl">
 			<DialogHeader>
 				<DialogTitle>Create a Box</DialogTitle>
 				<DialogDescription>{session === null ? "Choose the coding model that writes the Box." : "Describe the mechanic. The agent writes the Box and checks it with scenarios."}</DialogDescription>
@@ -197,7 +207,8 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 						<Input id="create-box-output" inputMode="numeric" value={maxOutputTokens} onChange={(event) => setMaxOutputTokens(event.target.value)} />
 					</Field>
 				</div>
-				: <div className="create-box-work">
+				: <div className="create-box-columns">
+				<div className="create-box-work">
 					<ol className="create-box-transcript" aria-label="Authoring conversation" aria-live="polite">
 						{entries.map((entry) => <li key={entry.id} data-kind={entry.kind}>{entry.text}</li>)}
 					</ol>
@@ -213,6 +224,11 @@ export function CreateBox({ open, onOpenChange, onInstalled }: {
 					<Textarea aria-label="Message to the coding agent" value={draft} disabled={running} placeholder="An inventory the writer adds items to…"
 						onChange={(event) => setDraft(event.target.value)}
 						onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void send(); }} />
+				</div>
+				<div className="create-box-work">
+					<Activity steps={activity} />
+					<FilesStrip files={files} />
+				</div>
 				</div>}
 			{notice !== null && <p className={notice.error ? "composer-control-note is-error" : "composer-control-note"} role={notice.error ? "alert" : "status"}>{notice.text}</p>}
 			<DialogFooter>

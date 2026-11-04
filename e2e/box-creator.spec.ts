@@ -63,6 +63,13 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	await expect(results.getByRole("list", { name: "Turn 1 prompt items" })).toHaveText("The pack holds: rope.");
 	await expect(results.getByRole("list", { name: "Turn 2 prompt items" })).toHaveText("The pack holds: rope, lantern.");
 	await expect(panel.getByRole("list", { name: "Authoring conversation" })).toContainText("The scenario passed, so you can install it.");
+	const activity = panel.getByRole("region", { name: "Activity" });
+	await activity.locator("summary", { hasText: "write_logic" }).click();
+	await expect(activity.getByLabel("logic.js as written")).toContainText('" packs a " + item');
+	const files = panel.getByRole("region", { name: "Files" });
+	await expect(files.locator("summary")).toHaveText([/^descriptor\.json/, /^logic\.js/, /^ui\.js/]);
+	await files.locator("summary", { hasText: "logic.js" }).click();
+	await expect(files.getByLabel("logic.js", { exact: true })).toContainText('" packs a " + item');
 	const { calls } = await llm.log();
 	const authored = calls.filter(isAuthoringModelCall);
 	expect(authored.map(({ body }) => body.model)).toEqual(["e2e-coder", "e2e-coder"]);

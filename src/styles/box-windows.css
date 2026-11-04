@@ -594,3 +594,152 @@
 	display: flex;
 	gap: 0.5rem;
 }
+
+.create-box-columns {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 1rem;
+}
+
+@media (max-width: 48rem) {
+	.create-box-columns {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+.create-box-activity,
+.create-box-files {
+	display: grid;
+	gap: 0.4rem;
+}
+
+.create-box-activity h3,
+.create-box-files h3 {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	font-weight: 640;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.create-box-activity ol,
+.create-box-files ul {
+	display: grid;
+	gap: 0.25rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.create-box-step {
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+}
+
+.create-box-step summary {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	padding: 0.3rem 0.55rem;
+	cursor: pointer;
+	font-size: 0.82rem;
+}
+
+.create-box-step summary:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+}
+
+.create-box-step-name {
+	font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+	font-size: 0.78rem;
+}
+
+.create-box-step-detail {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.create-box-step-status {
+	margin-left: auto;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+}
+
+.create-box-step-status[data-status="failed"] {
+	color: var(--destructive);
+}
+
+.create-box-step-body {
+	display: grid;
+	gap: 0.35rem;
+	padding: 0 0.55rem 0.55rem;
+}
+
+.create-box-step-body h4 {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.create-box-step.is-reasoning {
+	border-style: dashed;
+	color: var(--text-muted);
+}
+
+.create-box-reasoning {
+	margin: 0;
+	padding: 0 0.55rem 0.55rem;
+	font-size: 0.82rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.create-box-code .cm-editor {
+	max-height: 20rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--surface-deep);
+	color: var(--foreground);
+	font-size: 0.78rem;
+}
+
+.create-box-code .cm-scroller {
+	font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+}
+
+.create-box-code .cm-gutters {
+	border-right: 1px solid var(--border);
+	background: var(--surface-muted);
+	color: var(--text-faint);
+}
+
+.create-box-code .tok-keyword,
+.create-box-code .tok-operatorKeyword {
+	color: var(--primary);
+}
+
+.create-box-code .tok-string,
+.create-box-code .tok-string2 {
+	color: var(--accent-action);
+}
+
+.create-box-code .tok-number,
+.create-box-code .tok-bool,
+.create-box-code .tok-atom {
+	color: var(--accent);
+}
+
+.create-box-code .tok-comment {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+.create-box-code .tok-propertyName {
+	color: var(--text-muted);
+}

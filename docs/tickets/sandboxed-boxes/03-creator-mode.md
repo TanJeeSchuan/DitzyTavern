@@ -117,3 +117,12 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
   - 45 parallel calls pause at 40.
 
   A `settle` helper reads events that arrive just after `paused`: libfx delivers the last `tool_end` after the next request's pause is already streamed.
+
+### Activity window (follow-up)
+
+- **Stream.** `tool` events now carry the call's input as JSON text, and `tool-end` its result, each cut at `SHOWN_BYTES` (64 KiB) on a UTF-8 boundary and marked `truncated`. libfx's own `inputPreview` stays marked even when it is short (`activity.ts`, `activity.test.ts`). `reasoning_delta` streams as `reasoning`.
+- **Panel.** The conversation keeps the left column: writer and agent text and errors. On the right:
+  - **Activity** lists each step as a native `<details>`: the tool name, a short summary (the file and its size, the scenario's turns, the contract or example), and running/ok/failed. Opened, it shows the input as written and the result. Reasoning shows as a dashed, dimmed entry. A step's body is built only when it is opened.
+  - **Files** lists the candidate's fixed files from `GET …/files`, which reads `descriptor.json`, `logic.js`, `ui.js` and `ui.css` when present. The panel refreshes it after each successful write and when the turn ends.
+- **Code.** A read-only CodeMirror view (`EditorState.readOnly`, `EditorView.editable.of(false)`) highlights JavaScript and JSON with `classHighlighter`, whose `tok-*` classes take theme colours. `ui.css` shows as plain text. Pinned exactly: `@codemirror/lang-javascript` 6.2.5 and `@codemirror/lang-json` 6.0.2, plus `@codemirror/language` 6.12.4 and `@lezer/highlight` 1.2.5, which highlighting imports directly, at the versions already in the lockfile. The panel is lazy-loaded from the Box manager, so none of this joins the main bundle.
+- **Scenario setup.** A scenario now falls back to `setup.initial` only when `setup` is absent, so an explicit `null` reaches the Box or is refused by its schema (tested both ways).

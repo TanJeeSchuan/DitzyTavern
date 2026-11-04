@@ -132,6 +132,17 @@ test("a scenario runs each turn's Moves through the Box, folds the records, and 
 	expect((await scenario({ cast: ["Ann"], seed: "s", turns })).diagnostics).toEqual([`The ${candidate.id} Box's read threw Error: The scenario scripts no snapshot answer for {"scope":"library","key":"note"}.`]);
 });
 
+test.each([
+	["reaches the Box when its schema allows it", { anyOf: [{ type: "string" }, { type: "null" }] }, { ok: true, read: { view: null } }],
+	["is refused when its schema does not", { type: "string" }, { ok: false, diagnostics: [expect.stringContaining("The scenario's setup is invalid")] }],
+] as const)("an explicit null setup %s, rather than falling back to the default", async (_, schema, expected) => {
+	const { scenario } = await authored({
+		descriptor: { ...tipJar.descriptor, record: undefined, moves: undefined, setup: { schema, initial: "default" } },
+		logic: "export default { read: ({ setup }) => ({ view: setup }) };",
+	});
+	expect(await scenario({ cast: ["Ann"], seed: "s", setup: null, turns: [{}] })).toMatchObject(expected);
+});
+
 const packing = {
 	descriptor: { ...tipJar.descriptor, label: "Mood", decision: { summary: "s", description: "d", off: "o", context: "c" },
 		moves: { schema: { type: "object", properties: { item: { type: "string" } }, required: ["item"] }, max: 1, label: "Pack {item}" },

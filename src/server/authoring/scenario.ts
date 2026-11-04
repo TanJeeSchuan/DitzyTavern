@@ -43,7 +43,7 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 		const human = cast[0]!; // @approved The input schema requires at least one Cast member.
 		const speaker = cast[1] ?? human;
 		if (descriptor.setup === undefined && input.setup !== undefined) throw new Error(`The ${id} Box declares no setup.`);
-		const setup = input.setup ?? descriptor.setup?.initial;
+		const setup = input.setup === undefined ? descriptor.setup?.initial : input.setup;
 		if (descriptor.setup !== undefined) {
 			assertChecked(descriptor.setup.schema, setup, "The scenario's setup");
 			const refused = box.setupError?.(setup, descriptor.setup.initial);

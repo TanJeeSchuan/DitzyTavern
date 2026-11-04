@@ -88,6 +88,9 @@ const authoringInstalled = Type.Object({ outcome: Type.Literal("installed"), id:
 const authoringInstallRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
 export const authoringInstall = Type.Union([authoringInstalled, authoringInstallRefused]);
 
+/** @approved A candidate's fixed files as they stand, for the panel to show; a file the agent has not written is absent. */
+export const authoringFiles = Type.Object({ files: Type.Array(Type.Object({ name: Type.String(), content: Type.String() })) });
+
 /** @approved `read_contract`'s arguments: nothing for the contract, or the built-in Box whose sources it returns. */
 export const readContractInput = Type.Object({ example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])) }, { additionalProperties: false });
 /** @approved A write tool's arguments: the whole of its one file, and nothing else. */
@@ -96,14 +99,17 @@ export const authoredContent = (description: string) => Type.Object({ content: T
 export const authoredDescriptor = Type.Record(Type.String(), Type.Unknown());
 
 // @approved
-//  What one authoring turn streams, as NDJSON: the agent's reply text, each
-// tool call as it starts and ends, each scenario's result beside its tool
-// call, a pause once the message has taken its steps, and how the turn
-// ended. The tool's own text is what the agent read.
+//  What one authoring turn streams, as NDJSON: the agent's reply text and its
+// reasoning, each tool call as it starts, with its input as JSON text, and as
+// it ends, with the text the agent read, each scenario's result beside its
+// tool call, a pause once the message has taken its steps, and how the turn
+// ended. An input or result over the host's cap arrives cut short, marked
+// `truncated`.
 export const authoringEvent = Type.Union([
 	Type.Object({ type: Type.Literal("text"), delta: Type.String() }),
-	Type.Object({ type: Type.Literal("tool"), id: Type.String(), name: Type.String() }),
-	Type.Object({ type: Type.Literal("tool-end"), id: Type.String(), name: Type.String(), isError: Type.Boolean(), content: Type.String() }),
+	Type.Object({ type: Type.Literal("reasoning"), delta: Type.String() }),
+	Type.Object({ type: Type.Literal("tool"), id: Type.String(), name: Type.String(), input: Type.String(), truncated: Type.Boolean() }),
+	Type.Object({ type: Type.Literal("tool-end"), id: Type.String(), name: Type.String(), isError: Type.Boolean(), content: Type.String(), truncated: Type.Boolean() }),
 	Type.Object({ type: Type.Literal("scenario"), id: Type.String(), result: scenarioResult }),
 	Type.Object({ type: Type.Literal("paused"), steps: Type.Integer({ minimum: 1 }) }),
 	Type.Object({ type: Type.Literal("end"), stopReason: Type.String(), error: Type.Optional(Type.String()) }),
