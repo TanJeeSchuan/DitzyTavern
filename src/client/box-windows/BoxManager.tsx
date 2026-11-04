@@ -59,9 +59,13 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	//  An installed Box joins every Chat as absent: every cached Chat is read
 	// again first, inactive ones included, so no Chat renders a summary that
 	// predates the Box once its client definition is added and the manager
-	// lists it to add.
+	// lists it to add. A Chat that fails to refresh stops it there, before the
+	// definition is added, since that Chat would render without the Box; the
+	// Box is installed all the same, and a reload shows it.
 	const addInstalled = async () => {
-		await client.invalidateQueries({ queryKey: ["conversation"], refetchType: "all" });
+		await client.invalidateQueries({ queryKey: ["conversation"], refetchType: "all" }, { throwOnError: true }).catch((cause: Error) => {
+			throw new Error(`The Box is installed, but the Chats did not refresh (${cause.message}). Reload the page to add it.`);
+		});
 		await addBoxClients();
 		setRegistry((count) => count + 1);
 	};
