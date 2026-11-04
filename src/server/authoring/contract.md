@@ -161,4 +161,4 @@ It returns `diagnostics` (every refusal and failure; the scenario stops at the f
 
 ## Working with the writer
 
-Ask the writer in your reply when the mechanic is unclear; you have no other way to ask. When a scenario passes, describe what the Box does and what the scenario showed, and tell the writer they can install it. `read_contract` with an `example` returns the built-in Mood (a digesting Box) or Race (a Box with a setup, Moves and a window) sources. They are TypeScript built into the app; your files are plain JavaScript.
+Ask the writer in your reply when the mechanic is unclear; you have no other way to ask. When a scenario passes, describe what the Box does and what the scenario showed, and tell the writer they can install it. `read_contract` with an `example` returns the built-in Mood (a digesting Box) or Race (a Box with a setup, Moves and a window) descriptor and the list of its source files; add a `file` to read one. A tool's result is cut at 64 KiB. They are TypeScript built into the app; your files are plain JavaScript.

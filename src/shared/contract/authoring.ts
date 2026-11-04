@@ -92,7 +92,10 @@ export const authoringInstall = Type.Union([authoringInstalled, authoringInstall
 export const authoringFiles = Type.Object({ files: Type.Array(Type.Object({ name: Type.String(), content: Type.String() })) });
 
 /** @approved `read_contract`'s arguments: nothing for the contract, or the built-in Box whose sources it returns. */
-export const readContractInput = Type.Object({ example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])) }, { additionalProperties: false });
+export const readContractInput = Type.Object({
+	example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])),
+	file: Type.Optional(Type.String({ description: "One of the example's files, as its listing names them." })),
+}, { additionalProperties: false });
 /** @approved A write tool's arguments: the whole of its one file, and nothing else. */
 export const authoredContent = (description: string) => Type.Object({ content: Type.String({ description }) }, { additionalProperties: false });
 /** @approved The JSON a `descriptor.json` write must hold: one object, whose id the host sets. */
