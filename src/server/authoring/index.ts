@@ -24,6 +24,9 @@ const instructions = (id: string) => [
 	"When something about the mechanic is unclear, ask the writer in your reply. When a scenario passes, say what the Box does and that the writer can install it. Installing is the writer's action, never yours.",
 ];
 
+/** @approved How often a turn's stream sends a blank line, well inside the server's 30-second idle timeout. */
+export const AUTHORING_HEARTBEAT_MS = 5_000;
+
 export const budgetSpent = (steps: number) => `The agent stopped after ${steps} steps on this message. Send another message to let it continue.`;
 type Spending = "model requests" | "tool calls";
 
@@ -137,9 +140,16 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		Object.assign(session.budget, { limit: session.budget.steps, "model requests": 0, "tool calls": 0, spent: null, pause: null, paused: (steps: number) => send({ type: "paused", steps }) });
 		const turn = session.fx.prompt(text);
 		const reasoning = reasoningEntry();
+		let heartbeat: ReturnType<typeof setInterval> | undefined;
 		return new ReadableStream<Uint8Array>({
 			async start(controller) {
 				send = (event) => { if (open) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
+				// @approved
+				//  A turn can sit paused on its steps, or wait on a slow provider,
+				// longer than the server's idle timeout, which would close the
+				// stream and so cancel the turn. A blank line, which the panel
+				// skips, keeps it open, as the change and update streams do.
+				heartbeat = setInterval(() => { if (open) controller.enqueue(encoder.encode("\n")); }, AUTHORING_HEARTBEAT_MS);
 				try {
 					for await (const event of turn) {
 						if (event.type === "tool_start" || event.type === "tool_end") reasoning.reset();
@@ -164,11 +174,13 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 				} catch (error) {
 					send({ type: "end", stopReason: "error", error: error instanceof Error ? error.message : String(error) });
 				} finally {
+					clearInterval(heartbeat);
 					session.running = false;
 					if (open) controller.close();
 				}
 			},
 			cancel() {
+				clearInterval(heartbeat);
 				open = false;
 				void stop(session);
 			},

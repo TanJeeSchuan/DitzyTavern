@@ -8,7 +8,7 @@ import { blankConnectionProfileDraft } from "../../shared/contract/connection-se
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { openInitializedDatabase } from "../database/database";
-import { budgetSpent, createAuthoring } from "./index";
+import { AUTHORING_HEARTBEAT_MS, budgetSpent, createAuthoring } from "./index";
 
 /** @approved A fake model's safety stop: past this many requests it answers with text, so a turn with no limit ends instead of looping forever. */
 const SAFETY_STOP = 60;
@@ -21,6 +21,7 @@ const SAFETY_STOP = 60;
 // requests reached the fake so far.
 const withTurn = async (options: { readonly tool?: string; readonly calls?: number; readonly steps: AuthoringSteps }, act: (turn: {
 	readonly requests: () => number;
+	readonly heartbeats: () => number;
 	readonly until: (type: AuthoringEvent["type"]) => Promise<AuthoringEvent>;
 	readonly settle: () => Promise<void>;
 	readonly events: readonly AuthoringEvent[];
@@ -65,11 +66,16 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 			if (chunk !== null) pending = null;
 			return chunk;
 		};
-		const parsed = () => {
+		let heartbeats = 0;
+		const parsed = (): AuthoringEvent | undefined => {
 			const end = buffered.indexOf("\n");
 			if (end < 0) return undefined;
 			const line = buffered.slice(0, end);
 			buffered = buffered.slice(end + 1);
+			if (line === "") {
+				heartbeats += 1;
+				return parsed();
+			}
 			const event: unknown = JSON.parse(line);
 			if (!Value.Check(authoringEvent, event)) throw new Error(`Not an authoring event: ${line}`);
 			events.push(event);
@@ -89,7 +95,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 			for (let chunk = await read(150); chunk !== null && !chunk.done; chunk = await read(150)) buffered += chunk.value;
 			while (parsed() !== undefined);
 		};
-		await act({ requests: () => requests, until, settle, events, post: (action) => request("POST", `${path}/${action}`), setSteps: (steps) => request("PUT", `${path}/steps`, { steps }), close: () => request("DELETE", path) });
+		await act({ requests: () => requests, heartbeats: () => heartbeats, until, settle, events, post: (action) => request("POST", `${path}/${action}`), setSteps: (steps) => request("PUT", `${path}/steps`, { steps }), close: () => request("DELETE", path) });
 	} finally {
 		await authoring.close();
 		await server.stop(true);
@@ -122,6 +128,19 @@ test("Continue lets exactly 20 more steps through before the next pause, and Sto
 	expect(await until("end")).toEqual({ type: "end", stopReason: "budget", error: budgetSpent(40 + CONTINUE_STEPS) });
 	expect(requests()).toBe(40 + CONTINUE_STEPS);
 }));
+
+// @approved
+//  The server closes a connection idle for 30 seconds, which would cancel a
+// paused turn; a turn's stream sends a blank line every few seconds, so a
+// writer who takes longer than that to answer still has a turn to continue.
+test("a paused turn's stream keeps sending heartbeats, and Continue still reaches it afterwards", () => withTurn({ steps: 40 }, async ({ until, settle, heartbeats, post }) => {
+	await until("paused");
+	await Bun.sleep(AUTHORING_HEARTBEAT_MS + 500);
+	await settle();
+	expect(heartbeats()).toBeGreaterThan(0);
+	await post("continue");
+	expect(await until("paused")).toEqual({ type: "paused", steps: 40 + CONTINUE_STEPS });
+}), AUTHORING_HEARTBEAT_MS * 3);
 
 test("closing a paused session cancels its turn instead of leaving it waiting", () => withTurn({ steps: 40 }, async ({ requests, until, close }) => {
 	await until("paused");
