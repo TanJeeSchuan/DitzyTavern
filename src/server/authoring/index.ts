@@ -203,13 +203,15 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	// @approved
 	//  Opens a saved session on the coding model the writer chose now, from its
 	// checkpoint when a turn ever ended. A session another panel holds is
-	// released first, so the last panel to open it has it.
+	// released first, so the last panel to open it has it, and its meta is
+	// read only after, since an Install as a new Box it was running may have
+	// changed the Box id.
 	const open = async (id: string, { steps, ...choice }: CodingModel & { readonly steps: AuthoringSteps }) => {
-		const saved = await readMeta(id);
-		if (saved === undefined) return refused("That session no longer exists.");
 		const mapped = connect(choice);
 		if (mapped.outcome === "refused") return mapped;
 		await release(id);
+		const saved = await readMeta(id);
+		if (saved === undefined) return refused("That session no longer exists.");
 		const file = Bun.file(join(folderOf(id), CHECKPOINT));
 		const checkpoint = await file.exists() ? new Uint8Array(await file.arrayBuffer()) : undefined;
 		const meta = { ...saved, ...choice, steps, updated: now() };
@@ -305,11 +307,18 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	// scenarios Install replays, and a renewed id would move the folder under
 	// its writes. So neither starts while a turn runs, and each holds
 	// `running` until it ends, which refuses a new message, a steps change or
-	// another Install meanwhile.
+	// another Install meanwhile. It is the session's `turn` too, so closing,
+	// reopening, discarding or stopping the session waits for it to end.
 	const running = () => ({ outcome: "refused" as const, reason: "Wait for the message to finish.", diagnostics: [] });
 	const alone = async <T>(session: Session, action: () => Promise<T>) => {
+		const ended = Promise.withResolvers<void>();
 		session.running = true;
-		try { return await action(); } finally { session.running = false; }
+		session.turn = ended.promise;
+		try { return await action(); } finally {
+			session.running = false;
+			session.turn = null;
+			ended.resolve();
+		}
 	};
 	const install = async (session: Session) => {
 		const installed = await installCandidate(session.candidate, folders.plugins, await savedScenarios(session));

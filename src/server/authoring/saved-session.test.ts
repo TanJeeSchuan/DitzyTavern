@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs/promises";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { authoringSessions, authoringStart, type AuthoringMeta } from "../../shared/contract/authoring";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -191,4 +192,34 @@ test("a message sent while Install as a new Box runs is refused", () => withAuth
 	const sent = await request("POST", `/api/authoring/sessions/${session}/prompts`, { text: "Second." });
 	await renewing;
 	expect(sent.status).toBe(409);
+}));
+
+// @approved
+//  Closing the panel releases the session; if that didn't wait for an
+// Install as a new Box still renewing the id, a reopen would start from the
+// old id while the folder moved to the new one.
+test("reopening a session waits for its Install as a new Box, and reopens on the id it gave the candidate", () => withAuthoring(async ({ root, request, start, prompt, profileId }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const gate = Promise.withResolvers<void>();
+	const move = fs.rename;
+	// Only the candidate folder's own move waits; the atomic writes' renames of their temporary files go through.
+	const spy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+		if (basename(String(to)).startsWith("authored-")) await gate.promise;
+		return await move(from, to);
+	});
+	let reopened: { readonly candidate: string };
+	try {
+		const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+		await Bun.sleep(20);
+		const reopening = request("POST", `/api/authoring/sessions/${session}/open`, { profileId, model: "coder-1", steps: 40 });
+		await Bun.sleep(20);
+		gate.resolve();
+		const [, answer] = await Promise.all([renewing, reopening]);
+		reopened = await answer.json();
+	} finally {
+		spy.mockRestore();
+	}
+	const meta: { readonly box: string } = await Bun.file(join(root, session, "meta.json")).json();
+	expect([reopened.candidate, existsSync(join(root, session, reopened.candidate))]).toEqual([meta.box, true]);
 }));
