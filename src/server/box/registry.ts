@@ -247,7 +247,8 @@ let homes = new Map<BoxId, string>();
 const loading = new Map<string, Promise<LoadedBox>>();
 let held = new Map<BoxId, readonly string[]>();
 const versionKey = (id: BoxId, version: string) => `${id}@${version}`;
-const installCatalog = () => installBoxes([...loaded.values()].map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
+/** @approved Installs the shared registry from the loaded catalog, which it mirrors. */
+export const installCatalog = () => installBoxes([...loaded.values()].map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
 // @approved
 //  Builds the registry from `folders` at startup, before anything reads it,
 // logging each refused Box. A server passes the database it serves, and loads
