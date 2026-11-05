@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { boxDescriptor, boxMetadataFrom, boxReference, installBoxes, installedBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
@@ -17,6 +17,7 @@ import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./service
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
 import { sandboxedSources } from "./sandboxed-build";
+import { esmOrigin } from "./sandboxed-deps";
 import { sandboxedFolder } from "./sandboxed-folder";
 import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 
@@ -109,6 +110,50 @@ const bundled = async (folder: string, name: "logic" | "ui") => {
 	return await output.text();
 };
 
+/** @approved Refuses a descriptor whose id is not its folder's name, or is already loaded. */
+const named = (descriptor: BoxDescriptor, name: string, seen: ReadonlySet<BoxId>) => {
+	if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
+	if (seen.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
+	return descriptor;
+};
+
+/** @approved A sandboxed Box's `descriptor.json`, checked as a file and as a descriptor, and named for its folder. */
+const sandboxedDescriptorOf = (text: string | undefined, name: string, seen: ReadonlySet<BoxId>) => {
+	if (text === undefined) throw new Error("It has no descriptor.json.");
+	const file: unknown = JSON.parse(text);
+	assertChecked(sandboxedDescriptorFile, file, "Its descriptor.json");
+	return { file, descriptor: named(sandboxedDescriptor(file), name, seen) };
+};
+
+/** @approved A sandboxed Box's logic evaluated in its runtime behind checked hooks; a check that fails frees the runtime. */
+const sandboxedLoaded = async (descriptor: BoxDescriptor, file: SandboxedDescriptorFile, logic: string, ui: string | undefined, css: string | undefined) => {
+	const { box, guestRead, dispose } = await sandboxedBox(descriptor.id, logic);
+	try {
+		assertBoxServer(box);
+		return { descriptor, box: checkedHooks(descriptor.id, descriptor, box), guestRead, client: { kind: "sandboxed", file, ui, css } as const, dispose };
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+};
+
+// @approved
+//  How a sandboxed plugin's folder loads, the one path every caller takes:
+// the walk and its snapshot, the descriptor, the confined build of its
+// sources, then its logic behind the checked hooks. The loader runs it for
+// each plugin folder, and Creator Mode for each scenario and Install, so a
+// candidate passes exactly the checks a plugin does. `signal` stops a
+// check whose caller gave up, its package fetches included. The caller owns
+// the returned runtime and frees it with `dispose`.
+export const checkSandboxedFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>, signal?: AbortSignal) => {
+	const files = await sandboxedFolder(folder, name);
+	const { file, descriptor } = sandboxedDescriptorOf(files.get("descriptor.json"), name, seen);
+	const { logic, ui } = await sandboxedSources(folder, descriptor.id, file.window.kind !== "digest", files, file.dependencies, esmOrigin, signal);
+	signal?.throwIfAborted();
+	return await sandboxedLoaded(descriptor, file, logic, ui, files.get("ui.css"));
+};
+export type CheckedSandboxedBox = Awaited<ReturnType<typeof checkSandboxedFolder>>;
+
 // @approved
 //  A trusted Box folder holds its descriptor in `shared-descriptor.ts` and
 // its server module in `server.ts`, each as its default export; a sandboxed
@@ -122,31 +167,21 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 	const typed = dirname(folder) === builtInBoxes && existsSync(join(folder, "logic.ts"));
 	const sandboxed = typed || existsSync(join(folder, "logic.js"));
 	if (sandboxed && existsSync(join(folder, "server.ts"))) throw new Error("It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both.");
-	const named = (descriptor: BoxDescriptor) => {
-		if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
-		if (seen.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
-		return descriptor;
-	};
 	if (!sandboxed) {
 		const { default: imported }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
 		assertBoxDescriptor(imported);
-		const descriptor = named(imported);
+		const descriptor = named(imported, name, seen);
 		const { default: box }: { default: unknown } = await import(join(folder, "server.ts"));
 		if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
 		const client = { kind: "module", folder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist") } as const;
-		return { descriptor, box, client, dispose: undefined };
+		assertBoxServer(box);
+		return { descriptor, box: checkedHooks(descriptor.id, descriptor, box), client, dispose: undefined };
 	}
-	const files = typed ? undefined : await sandboxedFolder(folder, name);
-	const read = async (path: string) => files === undefined ? await Bun.file(join(folder, path)).text().catch(() => undefined) : files.get(path);
-	const text = await read("descriptor.json");
-	if (text === undefined) throw new Error("It has no descriptor.json.");
-	const file: unknown = JSON.parse(text);
-	assertChecked(sandboxedDescriptorFile, file, "Its descriptor.json");
-	const descriptor = named(sandboxedDescriptor(file));
+	if (!typed) return await checkSandboxedFolder(folder, name, seen);
+	const read = (path: string) => Bun.file(join(folder, path)).text().catch(() => undefined);
+	const { file, descriptor } = sandboxedDescriptorOf(await read("descriptor.json"), name, seen);
 	const withUi = file.window.kind !== "digest";
-	const { logic, ui } = files === undefined ? { logic: await bundled(folder, "logic"), ui: withUi ? await bundled(folder, "ui") : undefined } : await sandboxedSources(folder, descriptor.id, withUi, files, file.dependencies);
-	const { box, dispose } = await sandboxedBox(descriptor.id, logic);
-	return { descriptor, box, client: { kind: "sandboxed", file, ui, css: await read("ui.css") } as const, dispose };
+	return await sandboxedLoaded(descriptor, file, await bundled(folder, "logic"), withUi ? await bundled(folder, "ui") : undefined, await read("ui.css"));
 };
 
 // @approved
@@ -166,11 +201,9 @@ export const discoverBoxes = async (folders: readonly string[], database?: Datab
 			const folder = join(parent, name);
 			let dispose: (() => void) | undefined;
 			try {
-				const loaded = await loadFolder(folder, name, new Set(boxes.keys()));
+				const { descriptor, box, client, ...loaded } = await loadFolder(folder, name, new Set(boxes.keys()));
 				dispose = loaded.dispose;
-				assertBoxServer(loaded.box);
-				const checked = checkedHooks(loaded.descriptor.id, loaded.descriptor, loaded.box);
-				boxes.set(loaded.descriptor.id, { descriptor: loaded.descriptor, box: checked, client: loaded.client, dispose, routes: database === undefined ? undefined : mountedRoutes(loaded.descriptor.id, checked, database) });
+				boxes.set(descriptor.id, { descriptor, box, client, dispose, routes: database === undefined ? undefined : mountedRoutes(descriptor.id, box, database) });
 			} catch (error) {
 				dispose?.();
 				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
@@ -205,6 +238,19 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders, databas
 	installBoxes(boxes.map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
 	held = database === undefined ? new Map() : new Map(checkStoredBoxValues(database, boxes.map(({ descriptor, box }) => ({ id: descriptor.id, descriptor, box }))));
 	for (const [id, places] of held) console.error(`[boxes] The ${id} Box holds ${places.length} stored values its schemas no longer accept, first at ${places[0]}.`);
+};
+
+// @approved
+//  Adds one checked sandboxed Box to the running registry, after every loaded
+// Box, and checks its stored values as a load would. Every Box already loaded
+// keeps its hooks and its runtime: nothing is reloaded or freed. A sandboxed
+// Box has no routes, so none are mounted. A restart lists it among the
+// plugins by name.
+export const addBox = (database: Database, { descriptor, box, client, dispose }: CheckedSandboxedBox): void => {
+	if (loaded.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
+	loaded = new Map([...loaded, [descriptor.id, { box, routes: undefined, client, dispose }]]);
+	installBoxes([...installedBoxes().values(), { metadata: boxMetadataFrom(descriptor), descriptor }]);
+	for (const [id, places] of checkStoredBoxValues(database, [{ id: descriptor.id, descriptor, box }])) held.set(id, places);
 };
 
 /** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place, until they are cleared. */

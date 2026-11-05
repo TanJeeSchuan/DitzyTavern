@@ -13,11 +13,13 @@ import { bootIndex } from "./boot-index";
 import { revalidatedText } from "./contract/content-validators";
 import { watchDatabaseChanges } from "./database/changes";
 import { appPagePolicy } from "../shared/box-frame";
+import { createAuthoring, type AuthoringFolders } from "./authoring";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
 	artifactDirectory?: string;
 	updates?: UpdateCheckerOptions;
+	authoring?: AuthoringFolders;
 }
 
 export async function createApp(options: AppOptions) {
@@ -42,12 +44,14 @@ export async function createApp(options: AppOptions) {
 		"content-security-policy": appPagePolicy(request.headers.get("host") ?? new URL(request.url).host),
 	});
 	const updates = createUpdateChecker(database, options.updates);
+	const authoring = createAuthoring(database, options.authoring);
+	await authoring.sweep();
 	// @approved
 	//  Hashed assets are cached for a day. The host chunks keep their names
 	// across builds, as Box client modules do, so a browser revalidates them
 	// rather than run a stale one against a newer host. The Box routes serve
 	// the Box client modules.
-	const app = createContract(database, options, artifactDirectory, updates)
+	const app = createContract(database, options, artifactDirectory, updates, authoring)
 		.get("/", ({ request }) => serveIndex(request))
 		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true, ignorePatterns: [/[\\/]dist[\\/](?:host|boxes)[\\/]/] }))
 		.use(await staticPlugin({ assets: "dist/host", prefix: "/host", alwaysStatic: true, directive: "no-cache", maxAge: null }))
@@ -58,7 +62,7 @@ export async function createApp(options: AppOptions) {
 
 	let closing: Promise<void> | undefined;
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
-		closing ??= shutdownApplication(database, async () => { stopChanges(); await updates.stop(); await stopHttp(); }, stopBoxDigests);
+		closing ??= shutdownApplication(database, async () => { stopChanges(); await Promise.all([updates.stop(), authoring.close()]); await stopHttp(); }, stopBoxDigests);
 	return { app, close };
 }
 
