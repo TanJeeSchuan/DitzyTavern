@@ -12,6 +12,8 @@ import { openInitializedDatabase } from "../database/database";
 import { createAuthoring } from "./index";
 
 type Message = { readonly role: string; readonly content: unknown };
+/** @approved A scenario whose input passes the 64 KiB the panel is sent of a tool call's input: five turns of 15,000 characters of prose. */
+const longScenario = { cast: ["Writer", "Mara"], seed: "long", turns: Array.from({ length: 5 }, (_, index) => ({ prose: String(index).repeat(15_000) })) };
 type Body = Readonly<Record<string, string | number | null>>;
 type Delta = { readonly role?: string; readonly content?: string; readonly tool_calls?: readonly { readonly index: number; readonly id: string; readonly type: string; readonly function: { readonly name: string; readonly arguments: string } }[] };
 
@@ -36,10 +38,13 @@ const withAuthoring = async (act: (server: {
 		async fetch(request) {
 			const body: { readonly messages: readonly Message[] } = await request.json();
 			sent.push(body.messages);
-			const css = body.messages.at(-1)?.content === "Write CSS.";
+			const asked = body.messages.at(-1)?.content;
+			const css = asked === "Write CSS.";
+			const scenario = asked === "Run a long scenario.";
 			const chunk = (delta: Delta, finish: string | null) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "coder-1", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 			const call = { index: 0, id: `call_${sent.length}`, type: "function", function: { name: "write_css", arguments: JSON.stringify({ content: "p { margin: 0; }" }) } };
-			const answer = css ? chunk({ role: "assistant", tool_calls: [call] }, null) + chunk({}, "tool_calls") : chunk({ role: "assistant", content: `Answer ${sent.length}.` }, null) + chunk({}, "stop");
+			const long = { index: 0, id: `call_${sent.length}`, type: "function", function: { name: "run_scenario", arguments: JSON.stringify(longScenario) } };
+			const answer = css || scenario ? chunk({ role: "assistant", tool_calls: [css ? call : long] }, null) + chunk({}, "tool_calls") : chunk({ role: "assistant", content: `Answer ${sent.length}.` }, null) + chunk({}, "stop");
 			return new Response(`${answer}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 		},
 	});
@@ -143,4 +148,15 @@ test("a session lists its Box as installed only while that Box is loaded", () =>
 	save(loadedSession, "mood");
 	save(goneSession, "authored-gone");
 	expect((await listed(request)).map(({ session, installed }) => [session, installed])).toEqual([[loadedSession, true], [goneSession, false]]);
+}));
+
+// @approved
+//  The panel's tool event cuts an input past 64 KiB short, so a log that
+// kept only that would lose the scenario; the log keeps the whole input.
+test("a scenario's whole input is logged, though the tool event the panel sees is cut short", () => withAuthoring(async ({ request, start, prompt }) => {
+	const session = await start();
+	await prompt(session, "Run a long scenario.");
+	const lines: { readonly type: string; readonly truncated?: boolean; readonly input?: unknown }[] = (await (await request("GET", `/api/authoring/sessions/${session}/log`)).text())
+		.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line));
+	expect([lines.find(({ type }) => type === "tool")?.truncated, lines.find(({ type }) => type === "scenario-input")?.input]).toEqual([true, longScenario]);
 }));

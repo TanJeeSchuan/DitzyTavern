@@ -152,6 +152,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	const boot = (candidate: Candidate, meta: AuthoringMeta, options: Extract<ReturnType<typeof libfxProvider>, { outcome: "mapped" }>["options"], checkpoint?: Uint8Array) => {
 		const { steps } = meta;
 		const scenarios = new Map<string, ScenarioResult>();
+		let session: Session | undefined;
 		const budget: Budget = { steps, limit: steps, "model requests": 0, "tool calls": 0, spent: null, pause: null, paused: () => {} };
 		// @approved
 		//  A model that never stops would spend without end, so each writer
@@ -177,14 +178,18 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		// addon ships for four platforms only.
 		const agent = createFxAgent({
 			backend: "wasm", durability: memory(), name: "creator", instructions: instructions(candidate.id), ...checkpoint !== undefined && { checkpoint },
-			tools: authoringTools(candidate, { spend: (signal) => spend("tool calls", signal), onScenario: (call, result) => scenarios.set(call, result) }),
+			tools: authoringTools(candidate, { spend: (signal) => spend("tool calls", signal), onScenario: (call, input, result) => {
+				scenarios.set(call, result);
+				if (session !== undefined) record(session, { type: "scenario-input", id: call, input });
+			} }),
 			...options, fetch: async (input: string, init: RequestInit) => {
 				await spend("model requests", init.signal);
 				return await send(input, init);
 			},
 		});
 		const fx = agent.session();
-		sessions.set(candidate.session, { candidate, agent, fx, running: false, turn: null, budget, scenarios, meta, saving: Promise.resolve() });
+		session = { candidate, agent, fx, running: false, turn: null, budget, scenarios, meta, saving: Promise.resolve() };
+		sessions.set(candidate.session, session);
 	};
 	const start = async ({ steps, ...choice }: CodingModel & { readonly steps: AuthoringSteps }) => {
 		const mapped = connect(choice);
