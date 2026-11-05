@@ -12,7 +12,7 @@ An author learns that a new version can't read the old one's data before Install
 
 ## Design decisions already made
 
-- **Records and Moves are a permanent log.** A new version may add shapes, never change what an old shape means. State is never stored, so its shape, `read`, `ui.js` and prompt text change freely. `contract.md` says this, with the translate-on-read pattern: the record schema is `anyOf` the old and new shapes, and the fold converts old records through one adapter function.
+- **Records and Moves are a permanent log.** A new version may add shapes, never change what an old shape means. State is never stored, so its shape, `read`, `ui.js` and prompt text change freely. `contract.md` says this, with the translate-on-read pattern. A record schema must be an object (`src/shared/contract/box-descriptor.ts:15,46`; the contract keeps an absent record distinct from a record's value), so a version cannot declare `anyOf` the old and new shapes. Instead it keeps one object schema: the old fields stay as declared but become optional, the new fields are added as optional, and an optional `v` tags records the new version writes. The fold converts any record without `v` through one adapter function. Nothing in the contract changes.
 - **`run_scenario({ ..., from: <version> })`** runs turns `1..k` on the earlier version, applies ticket 04's upgrade check to the data they left, then runs the remaining turns on the candidate, folding the earlier records. A refusal reads exactly as the writer's Update would.
 - **State diff.** The same run also folds the earlier version's records with both versions' folds and reports the difference. It is information, not a failure: a version may change state on purpose. It surfaces the changes no schema can see, such as a field that meant "3 more" now read as "3 total".
 - **Install checks against `latest`.** When the Box already has a version, Install replays the session's saved scenarios from `latest` to the candidate. If the upgrade check refuses, Install doesn't move `latest`; it offers **Install as a new Box** (a new id, so existing Chats stay on the old Box) or going back to the agent.
@@ -24,7 +24,7 @@ An author learns that a new version can't read the old one's data before Install
 - [ ] The state diff in `scenarioResult`, shown in the Scenario panel.
 - [ ] Install's check against `latest`, and **Install as a new Box**.
 - [ ] `contract.md`: the permanent-log rule and the translate-on-read pattern.
-- [ ] Tests: a v2 whose record schema drops a v1 field is refused by `from`; a v2 with an adapter passes and its fold reads v1 records; a same-shape change in meaning passes the check and shows in the state diff; Install of an incompatible v2 leaves `latest` unchanged and offers a new Box.
+- [ ] Tests: a v2 that keeps v1's fields as optional and adds a tagged shape loads and passes `from`; a v2 whose record schema drops a v1 field is refused by `from`; a v2 with an adapter passes and its fold reads v1 records; a same-shape change in meaning passes the check and shows in the state diff; Install of an incompatible v2 leaves `latest` unchanged and offers a new Box.
 - [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 
 ## Acceptance
