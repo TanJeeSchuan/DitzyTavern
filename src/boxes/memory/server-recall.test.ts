@@ -1,3 +1,4 @@
+import { boxDescriptor } from "../../shared/contract/box";
 import { readTestConversationSnapshot } from "../../server/test-fixtures/conversation";
 import { openObservedDatabase, setBoxState } from "../../server/test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -71,13 +72,13 @@ const contentOf = (database: Database, variantId: number) => database.query<{ co
 //  What Memory's digest leaves for one Variant: its automatic record for the
 //  current text, with the claims it kept already embedded.
 const remember = async (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) => {
-	writeAutomaticRecord(drizzle(database), "memory", instanceOf(database, conversationId), variantId, { claims }, sha256(contentOf(database, variantId)));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("memory"), instanceOf(database, conversationId), variantId, { claims }, sha256(contentOf(database, variantId)));
 	const embedding = readMemoryEmbedding(database);
 	if (embedding !== undefined) await embedTexts(database, claims.map(renderMemoryClaim), embedding, { cache: true, fetch: async () => Response.json({ data: claims.map(() => ({ embedding: [1, 0] })) }) });
 };
 
 const correct = (database: Database, conversationId: number, variantId: number, claims: MemoryCandidateJudgment[]) =>
-	writeWriterRecord(drizzle(database), "memory", instanceOf(database, conversationId), variantId, { claims });
+	writeWriterRecord(drizzle(database), boxDescriptor("memory"), instanceOf(database, conversationId), variantId, { claims });
 
 /** @approved The embedding batches and Decision Model requests recall sent. */
 type RecallCounts = { embedding: string[][]; decisions: number };
@@ -214,7 +215,7 @@ describe("Memory recall in Generation preparation", () => {
 			setMemoryAllowance(database, conversation.id, { expectedRevision: readMemoryChatSettings(database, conversation.id).revision, allowance: 1024 });
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: readConversationMemories(database, conversation.id).labelRevision, labels: ["Maren"], destination: "Mary" });
 		else if (change === "correction") correct(database, conversation.id, source.variantId, claims);
-		else resetWriterRecord(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId);
+		else resetWriterRecord(drizzle(database), boxDescriptor("memory"), instanceOf(database, conversation.id), source.variantId);
 		const accepted = await app.handle(post(`/api/conversations/${conversation.id}/generations`, { kind: "send", expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }));
 		expect(accepted.status).toBe(422);
 		expect(await accepted.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
@@ -465,7 +466,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await preview()).toMatchObject({ state: "empty", candidates: [] });
 		const source = insertSelectedSource(database, conversation.id);
 		expect(await preview()).toMatchObject({ state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] });
-		writeDigestError(drizzle(database), "memory", instanceOf(database, conversation.id), source.variantId, sha256(contentOf(database, source.variantId)), "Memory extraction unavailable.");
+		writeDigestError(drizzle(database), boxDescriptor("memory"), instanceOf(database, conversation.id), source.variantId, sha256(contentOf(database, source.variantId)), "Memory extraction unavailable.");
 		expect(await preview()).toMatchObject({ state: "source-failed", readyRecordCount: 0, pendingSourceCount: 0, failedSourceCount: 1, candidates: [] });
 		correct(database, conversation.id, source.variantId, []);
 		expect(await preview()).toMatchObject({ state: "empty", pendingSourceCount: 0, failedSourceCount: 0, candidates: [] });

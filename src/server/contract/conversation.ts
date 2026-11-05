@@ -1,4 +1,5 @@
 import { forkConversation } from "../conversation";
+import { loadBoxVersion } from "../box/registry";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -559,13 +560,16 @@ export const createConversationRoutes = (
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
-			({ params, body }) => {
+			async ({ params, body }) => {
 				try {
 					// @approved
 					//  SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
+					// @approved
+					// An upgrade checks the Chat against a version that may not be loaded yet.
+					if (action.type === "upgrade-box") await loadBoxVersion(action.box, action.version).catch(() => undefined);
 					const conversation = executeConversationCommand(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,

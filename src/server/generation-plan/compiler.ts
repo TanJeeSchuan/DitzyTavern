@@ -148,6 +148,7 @@ export const compileGenerationPlan = (
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
 		throw new Error("Lore allowance must be a non-negative whole number.");
 	}
+	const alwaysRender = new Set(Object.entries(input.boxes).flatMap(([reference, result]) => result?.alwaysRender === true ? [reference] : []));
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
@@ -155,6 +156,7 @@ export const compileGenerationPlan = (
 	): PromptPlan => {
 		const compiled = compilePrompt({
 			boxes,
+			alwaysRender,
 			human: input.human,
 			model: input.model,
 			context,

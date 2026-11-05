@@ -96,7 +96,8 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	await panel.getByRole("button", { name: "Open" }).click();
 	await expect(panel.getByRole("list", { name: "Authoring conversation" })).toContainText("The scenario passed, so you can install it.");
 	await expect(panel.getByRole("region", { name: "Scenario" }).getByRole("list", { name: "Turn 2 prompt items" })).toHaveText("The pack holds: rope, lantern.0");
-	await expect(panel.getByRole("button", { name: "Install" })).toBeDisabled();
+	// Reopening never assumes the last run is the installed one: a session may hold a checked but uninstalled revision, and installing the current version again is a no-op.
+	await expect(panel.getByRole("button", { name: "Install" })).toBeEnabled();
 	await page.keyboard.press("Escape");
 	await expect(panel).toBeHidden();
 	expect((await llm.log()).calls.filter(isAuthoringModelCall)).toHaveLength(2);

@@ -1,67 +1,51 @@
-import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { addBox, builtInBoxes, checkSandboxedFolder, serverBoxes } from "../box/registry";
+import { join } from "node:path";
+import { boxAt, builtInBoxes, installVersion, unversionedBoxIds } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
+import { createVersion, isVersioned, passedCheck, versionHash, writeLatest } from "../box/versions";
 import type { Candidate } from "./candidate";
 
 // @approved
-//  Installs a candidate as a plugin under its id, a writer's action. Holding
-// the candidate, it copies the candidate's files into a staging folder
-// beside the plugin folder, runs the loader's own check there, which writes
-// any packages, lock and bundles beside them, then publishes what passed,
-// complete with `deps/`, by renaming the whole checked folder to the target,
-// so the target is never seen half filled, and never in place of a folder
-// that appeared meanwhile, which refuses the Install and is left alone. A
-// POSIX rename replaces an empty folder, so there the target is first claimed
-// by creating it exclusively and the rename lands on that claim, which is
-// removed again, while empty, if the rename fails. Windows refuses to rename
-// onto any folder, so there the rename itself is the claim. The checked Box joins the running
-// registry without touching the Boxes already loaded. An id any loaded Box
-// or folder already uses is refused.
-/** @approved Whether `rename` replaces an existing empty folder: POSIX does, Windows refuses any existing folder. */
-const renameReplaces = process.platform !== "win32";
-
-export const installCandidate = (database: Database, candidate: Candidate, plugins: string) => candidate.check(async () => {
+//  Installs a candidate, a writer's action: holding the candidate, it creates
+// a version of the Box from the candidate's files and moves `latest` to it,
+// so the catalog and new insertions run it while every Chat already holding
+// the Box stays on the version it pins. Only a version a scenario passed on
+// installs: the cached check is looked up by the candidate's exact hash
+// before anything is built, and the built version must keep that hash. An id
+// a built-in or unversioned Box uses, or an id folder without `versions/`
+// (a trusted plugin, or a sandboxed folder made by hand), refuses Install.
+// A version that drops `decision` while `latest` digests is refused too:
+// Chats pinned to a digesting version keep needing its Decision Model
+// settings, which the catalog lists only while `latest` digests, so once a
+// Box digests every later `latest` must; dropping it means a new Box.
+export const installCandidate = (candidate: Candidate, plugins: string) => candidate.check(async () => {
 	const { id } = candidate;
 	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
-	const seen = new Set(serverBoxes().keys());
-	const target = join(plugins, id);
-	const taken = refused(`A Box folder already uses the id ${id}.`);
-	if (seen.has(id) || existsSync(target) || existsSync(join(builtInBoxes, id))) return taken;
-	const staging = join(dirname(plugins), `.box-install-${crypto.randomUUID()}`);
-	const folder = join(staging, id);
+	const home = join(plugins, id);
+	if (unversionedBoxIds().has(id) || existsSync(join(builtInBoxes, id)) || (existsSync(home) && !isVersioned(home))) return refused(`A Box folder already uses the id ${id}.`);
+	const version = versionHash(await sandboxedFolder(candidate.folder, id));
+	if (!await passedCheck(home, version)) return refused("Run a scenario that passes on the Box as it is now, then install it.");
+	let created: Awaited<ReturnType<typeof createVersion>>;
 	try {
-		for (const [path, text] of await sandboxedFolder(candidate.folder, id)) {
-			await mkdir(dirname(join(folder, path)), { recursive: true });
-			await writeFile(join(folder, path), text, { flag: "wx" });
-		}
-		let checked: Awaited<ReturnType<typeof checkSandboxedFolder>>;
-		try {
-			checked = await checkSandboxedFolder(folder, id, seen);
-		} catch (error) {
-			return refused("The Box did not pass the loader's check.", [error instanceof Error ? error.message : String(error)]);
-		}
-		try {
-			await mkdir(plugins, { recursive: true });
-			const claimed = renameReplaces ? await mkdir(target).then(() => true, (error: NodeJS.ErrnoException) => error.code === "EEXIST" ? false : Promise.reject(error)) : true;
-			const published = claimed && await rename(folder, target).then(() => true, async (error: NodeJS.ErrnoException) => {
-				if (renameReplaces) await rmdir(target).catch(() => undefined);
-				else if (existsSync(target)) return false;
-				throw error;
-			});
-			if (!published) {
-				checked.dispose();
-				return taken;
-			}
-			addBox(database, checked);
-		} catch (error) {
-			checked.dispose();
-			throw error;
-		}
-		return { outcome: "installed" as const, id, label: checked.descriptor.label };
-	} finally {
-		await rm(staging, { recursive: true, force: true });
+		created = await createVersion(home, candidate.folder, id, unversionedBoxIds());
+	} catch (error) {
+		return refused("The Box did not pass the loader's check.", [error instanceof Error ? error.message : String(error)]);
 	}
+	const { checked } = created;
+	try {
+		if (created.version !== version) {
+			checked.dispose();
+			return refused("The Box changed while it was built. Run a scenario on it again, then install it.");
+		}
+		if (boxAt(id, undefined)?.descriptor.decision !== undefined && checked.descriptor.decision === undefined) {
+			checked.dispose();
+			return refused("This Box digests passages in Chats on its earlier versions, so a later version must keep its Decision Model setting (`decision`). To drop it, make a new Box instead.");
+		}
+		await writeLatest(home, version);
+		installVersion(id, home, version, checked);
+	} catch (error) {
+		checked.dispose();
+		throw error;
+	}
+	return { outcome: "installed" as const, id, label: checked.descriptor.label };
 });

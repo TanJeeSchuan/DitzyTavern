@@ -178,7 +178,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		// addon ships for four platforms only.
 		const agent = createFxAgent({
 			backend: "wasm", durability: memory(), name: "creator", instructions: instructions(candidate.id), ...checkpoint !== undefined && { checkpoint },
-			tools: authoringTools(candidate, { spend: (signal) => spend("tool calls", signal), onScenario: (call, input, result) => {
+			tools: authoringTools(candidate, folders.plugins, { spend: (signal) => spend("tool calls", signal), onScenario: (call, input, result) => {
 				scenarios.set(call, result);
 				if (session !== undefined) record(session, { type: "scenario-input", id: call, input });
 			} }),
@@ -339,7 +339,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/install", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
-			const installed = await installCandidate(database, session.candidate, folders.plugins);
+			const installed = await installCandidate(session.candidate, folders.plugins);
 			if (installed.outcome === "installed") {
 				session.meta = { ...session.meta, installed: true, updated: now() };
 				save(session, () => writeMeta(params.session, session.meta));

@@ -7,7 +7,7 @@ import { useNarrow } from "../lib/use-media";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxClients, boxPresent, type MoveStaging } from "./registry";
+import { boxPresent, chatBoxClients, chatBoxVersion, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
@@ -140,7 +140,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 	const [slots, setSlots] = useState<ReadonlyMap<BoxId, number>>(new Map());
 	const narrow = useNarrow();
 	if (conversation === null) return null;
-	const present = boxClients().flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
+	const present = chatBoxClients(conversation).flatMap(([id, client]) => client.Window !== undefined && boxPresent(conversation, id) ? [[id, client, client.Window] as const] : []);
 	const minimized = present.filter(([id]) => controller.layouts[id]?.minimized === true);
 	const opened = present.filter(([id]) => controller.layouts[id]?.open === true);
 	const visible = opened.filter(([id]) => controller.layouts[id]?.minimized !== true);
@@ -198,7 +198,10 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			>
 				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
-				<BoxBoundary box={id}>
+				{/* @approved
+				  The window's content is keyed by the version its Chat runs, so an
+				  upgrade remounts it, frame and Worker included, on the new version. */}
+				<BoxBoundary key={chatBoxVersion(conversation, id) ?? id} box={id}>
 					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}
 						staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange} />
 				</BoxBoundary>

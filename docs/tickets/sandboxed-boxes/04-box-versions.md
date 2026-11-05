@@ -1,6 +1,6 @@
 # Box versions
 
-Status: TODO
+Status: Done
 
 Blocked By: 03 (Creator Mode), 03b's saved sessions (PR #204)
 
@@ -63,23 +63,24 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
 - **The client keys everything by version.** The client registry key is `<id>@<hash>`, the UI source is served at an immutable URL per version and cached forever, and the frame key includes the version. An upgrade that would discard a window's unsaved draft asks first, through the window's existing save guard.
 - **Install is "create a version, then move `latest`".** It no longer copies into staging and claims the target. An id folder without `versions/` (a trusted plugin, or a sandboxed folder made by hand) refuses Install. Moving `latest` changes only the catalog and what new insertions pin; existing Chats show "Update available".
 - **Install is gated on the server** by a passing `run_scenario` result cached for that exact version. The panel's gate stays as a hint.
+- **Once a Box digests, every later `latest` keeps `decision`.** Decision Model settings are listed from the catalog, and Chats pinned to a digesting version keep needing them, so Install refuses a version that drops `decision` while `latest` has it (found by the Sol review on #208). Dropping it means a new Box.
 - **Loading.** A version loads the first time anything needs it (a Chat opens or generates, a digest runs, an upgrade checks it) and stays loaded until restart. No eviction, and no garbage collection of version folders in this ticket: queued digests resolve their runtime late (`digest.ts:115`), and history needs its pinned version even after the Box is removed.
 
 ## Work
 
-- [ ] Version folders: create from a candidate (hash, staging build, rename), read, list. Tests: identical sources give the same hash and a second create is a no-op; a changed `deps.lock.json` gives a new hash.
-- [ ] Registry: catalog entries from `latest`; Chat-resolved lookups through the pin. The PR lists every call site with its kind.
-- [ ] The pin: written on first insertion, kept on removal, used on reinsertion, copied by Fork.
-- [ ] The upgrade check and command. Tests, one per rule: a writer record on an unselected Variant that the new record schema refuses; a Move list over the new `max`; a version that drops `record` while records exist; a `setupError` that refuses the stored setup; a changed `rowReference`; a `ParticipantKey` Record turned into a string-keyed one, which accepts the same values but would stop Fork remapping its keys. Each is refused and leaves every row unchanged. A passing upgrade writes only the pin and advances the revision.
-- [ ] Version in the pending record envelope and in digest jobs; completion compares. Tests: a digest started under v1 that ends after the Chat moved to v2 writes nothing; a Generation that captured v1 completes its prose but not its v1 record once the Chat is on v2; a preview made under v1 is stale under v2.
-- [ ] Window commits, stages and uploads carry the version and are refused on a mismatch. Test: an old window's commit after an upgrade is refused even at the current revision.
-- [ ] Install creates a version and moves `latest`, gated on a cached passing check; remove the staging copy and target-claim code it replaces from `install.ts`.
-- [ ] Startup: load `latest` and the versions Chats pin on demand; skip `schema-check.ts` for versioned Boxes.
-- [ ] Client: registry, UI URL and frame keyed by version; "Update available" and **Update** in the Box manager, with refusals listing their places.
-- [ ] `contract.md`: versions must read shared values another version wrote, and must keep every row reference: `rowReference` annotations and `ParticipantKey` Records.
-- [ ] e2e: install v1, add it to a Chat, revise and install v2 from the same Creator Mode session. The Chat stays on v1 with v1's window; a new Chat starts on v2; **Update** moves the first Chat to v2, its window remounts, its v1 records still fold, and the next Generation's Prompt Plan has v2's prompt items.
-- [ ] Update `docs/box-system/README.md` (loading, Creator Mode) and ticket 03's "never side by side" line.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Version folders: create from a candidate (hash, staging build, rename), read, list. Tests: identical sources give the same hash and a second create is a no-op; a changed `deps.lock.json` gives a new hash.
+- [x] Registry: catalog entries from `latest`; Chat-resolved lookups through the pin. The PR lists every call site with its kind.
+- [x] The pin: written on first insertion, kept on removal, used on reinsertion, copied by Fork.
+- [x] The upgrade check and command. Tests, one per rule: a writer record on an unselected Variant that the new record schema refuses; a Move list over the new `max`; a version that drops `record` while records exist; a `setupError` that refuses the stored setup; a changed `rowReference`; a `ParticipantKey` Record turned into a string-keyed one, which accepts the same values but would stop Fork remapping its keys. Each is refused and leaves every row unchanged. A passing upgrade writes only the pin and advances the revision.
+- [x] Version in the pending record envelope and in digest jobs; completion compares. Tests: a digest started under v1 that ends after the Chat moved to v2 writes nothing; a Generation that captured v1 completes its prose but not its v1 record once the Chat is on v2; a preview made under v1 is stale under v2.
+- [x] Window commits, stages and uploads carry the version and are refused on a mismatch. Test: an old window's commit after an upgrade is refused even at the current revision.
+- [x] Install creates a version and moves `latest`, gated on a cached passing check; remove the staging copy and target-claim code it replaces from `install.ts`.
+- [x] Startup: load `latest` and the versions Chats pin on demand; skip `schema-check.ts` for versioned Boxes.
+- [x] Client: registry, UI URL and frame keyed by version; "Update available" and **Update** in the Box manager, with refusals listing their places.
+- [x] `contract.md`: versions must read shared values another version wrote, and must keep every row reference: `rowReference` annotations and `ParticipantKey` Records.
+- [x] e2e: install v1, add it to a Chat, revise and install v2 from the same Creator Mode session. The Chat stays on v1 with v1's window; a new Chat starts on v2; **Update** moves the first Chat to v2, its window remounts, its v1 records still fold, and the next Generation's Prompt Plan has v2's prompt items.
+- [x] Update `docs/box-system/README.md` (loading, Creator Mode) and ticket 03's "never side by side" line.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 
 ## Acceptance
 

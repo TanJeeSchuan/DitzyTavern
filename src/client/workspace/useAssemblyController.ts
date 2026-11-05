@@ -14,6 +14,7 @@ import { canStartAssembly } from "../assembly";
 import { store } from "../lib/store";
 import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
+import { chatBoxDescriptor } from "../box-windows/registry";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
@@ -109,8 +110,13 @@ export function useAssemblyController({
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
 		// @approved
 		//  A seat change queued ahead of this start applied first: its seat-bound Moves would be sent as the new seat's.
-		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, seatBound))) {
+		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
 			throw new Error("The writer changed before this Send went out, so it was not sent.");
+		}
+		// @approved
+		//  An upgrade applied first: Moves staged for the version the Chat left would be sent to the one it moved to.
+		if (submission.request.kind === "send" && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
+			throw new Error("A Box in this Chat was updated before this Send went out, so it was not sent.");
 		}
 		const revision = Math.max(latest.revision, previous ?? 0);
 		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
@@ -198,9 +204,12 @@ export function useAssemblyController({
 		launch(inspecting.request, { previewId: current.previewId, promptPlan: current.promptPlan });
 	};
 
-	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
+	// @approved
+	//  A request keeps the seat and Box pins it was made under, so a Retry
+	// after an upgrade is refused by the version guard, not sent to v2.
+	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null, versions = conversation?.boxVersions ?? {}) => {
 		if (conversation === null) return;
-		const requested = { conversationId: conversation.id, seat, request };
+		const requested = { conversationId: conversation.id, seat, versions, request };
 		if (!transition({ type: "requested", visit: signal, request: requested })) return;
 		const inspect = inspectPromptPlanBeforeGenerating;
 		void ensureLatest().then(() => {
@@ -228,6 +237,6 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
-		retryGeneration: retry === null ? null : () => requestGeneration(retry.request, retry.seat),
+		retryGeneration: retry === null ? null : () => requestGeneration(retry.request, retry.seat, retry.versions),
 	};
 }

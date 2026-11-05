@@ -3,7 +3,8 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { DigestContext } from "./contract";
-import { readBoxWindow } from "./window";
+import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
+import type { BoxWindowRead } from "./contract";
 import { SANDBOX_JSON_BYTES, sandboxedBox } from "./sandboxed";
 
 const loaded: (() => void)[] = [];
@@ -76,11 +77,15 @@ test("a read's snapshot reads only the Box's own values, takes no other query, a
 		moves: { render: () => typeof globalThis.kept },
 		dependencies: () => { try { return globalThis.kept({ scope: "library", prefix: "" }); } catch (error) { return error.message; } },
 	};`);
-	expect(readBoxWindow(database, chat.id, "probe", {}, (window) => box.read?.(window))).toEqual({ snapshot: chat.revision, status: "ok", view: [{ key: "avatar:Ann", value: "box:probe", revision: 3 }] });
+	const read = <T>(run: (window: BoxWindowRead<undefined, undefined>) => T) => runConversationReadTransaction(database, (db) => run({
+		db, conversationId: chat.id, summary: readConversationSummaryFromConnection(db, chat.id)!, // @approved The Chat was just created.
+		history: readSelectedHistoryFromConnection(db, chat.id, { conversationData: false })!, setup: undefined, state: undefined, // @approved The Chat was just created.
+	}));
+	expect(read((window) => box.read?.(window))).toEqual({ snapshot: chat.revision, status: "ok", view: [{ key: "avatar:Ann", value: "box:probe", revision: 3 }] });
 	expect(box.moves?.render({}, "Ann")).toBe("undefined");
 	expect(box.dependencies?.({ seed: "", intent: "respond", cast: [] }, undefined)).toBe("not a function");
 	const sneaky = await load(`export default { read: (_, { snapshot }) => ({ view: snapshot({ scope: "library", prefix: "", namespace: "box:other" }) }) };`);
-	expect(() => readBoxWindow(database, chat.id, "probe", {}, (window) => sneaky.read?.(window))).toThrow("snapshot query");
+	expect(() => read((window) => sneaky.read?.(window))).toThrow("snapshot query");
 	database.close();
 });
 

@@ -9,7 +9,7 @@ import {
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
-import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
+import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction, upgradeBoxAction } from "./box-actions";
 import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
 import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -199,6 +199,8 @@ const activeGenerations = Type.Array(Type.Object({
 export const conversationSummary = Type.Object({
 	boxSetups,
 	boxes: boxStates,
+	/** @approved The version of each versioned Box this Chat ever held, by Box id. */
+	boxVersions: Type.Record(Type.String(), Type.String()),
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -628,6 +630,7 @@ const conversationCommandAction = Type.Union([
 	setBoxRecordAction,
 	resetBoxRecordAction,
 	commitBoxAction,
+	upgradeBoxAction,
 	Type.Object({ type: Type.Literal("unlink-fork") }),
 ]);
 
