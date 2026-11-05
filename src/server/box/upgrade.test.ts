@@ -176,6 +176,23 @@ test("a row reference moved between a key holding / and the nested field it spel
 });
 
 // @approved
+//  Fork picks a union's branch by which one the stored value matches, so
+// swapping which branch carries the reference changes what Fork remaps while
+// every branch-indexed place stays the same.
+test("a union holding a row reference whose branches were reordered is refused", async () => {
+	const host = (first: BoxValue, second: BoxValue) => ({ anyOf: [first, second] });
+	const v1Host = host({ type: "integer", rowReference: "participant" }, { type: "string" });
+	const v2Host = host({ type: "string", rowReference: "participant" }, integer);
+	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: v1Host } } }), tally({ values: { ...v1.values, chat: { host: v2Host } } })]);
+	removes.push(box.remove);
+	await loadBoxes([builtInBoxes, box.plugins]);
+	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
+	const chat = createChat();
+	setBoxState(database, chat.id, "tally", "enabled");
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow(/Row reference at chat value host \(union [0-9a-f]{12}\): this version no longer has it/); // @approved Two versions were written.
+});
+
+// @approved
 //  The control run, with no upgrade, lands the same record, so only the
 // version comparison drops it.
 for (const upgraded of [false, true]) {

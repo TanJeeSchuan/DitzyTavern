@@ -125,21 +125,22 @@ export const chatBoxClients = (conversation: Pinned): (readonly [BoxId, BoxClien
 		const client = chatBoxClient(conversation, id);
 		return client === undefined ? [] : [[id, client] as const];
 	});
-/** @approved Whether this client has built every version the Chat pins. */
-export const boxVersionsBuilt = ({ boxVersions }: Pinned): boolean =>
-	Object.entries(boxVersions).every(([id, version]) => loaded.get(id)?.version === undefined || versions.has(boxVersionKey(id, version)));
+/** @approved Whether every Box the Chat pins resolves here: a Box missing from this client's catalog, such as one another tab installed, does not. */
+export const boxVersionsBuilt = (pinned: Pinned): boolean => Object.keys(pinned.boxVersions).every((id) => chatEntry(pinned, id) !== undefined);
 // @approved
 //  Builds the client of each version a Chat pins that this client lacks,
 // from the descriptor the server serves for it, before the Chat's summary is
 // used. Concurrent callers share one request per version. A pin this client
-// never saw may be a `latest` another tab installed, so the catalog is read
-// again with it, and Update never offers an older version as the newer one.
+// never saw may be a Box or a `latest` another tab installed, so the catalog
+// is read again first; only then is each pin still unresolved built, and
+// Update never offers an older version as the newer one.
 export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> => {
 	if (boxVersionsBuilt({ boxVersions })) return;
-	await Promise.all([addBoxClients(), ...Object.entries(boxVersions).flatMap(([id, version]) => {
+	await addBoxClients();
+	await Promise.all(Object.entries(boxVersions).flatMap(([id, version]) => {
 		const latest = loaded.get(id);
 		const key = boxVersionKey(id, version);
-		if (latest?.version === undefined || versions.has(key)) return [];
+		if (latest?.version === undefined || version === latest.version || versions.has(key)) return [];
 		const pending = loadingVersions.get(key) ?? requestData(api.api.boxes({ box: id }).versions({ version }).get(), boxVersionListing)
 			.then(({ sandboxed }) => sandboxedClient(id, sandboxed, version))
 			.then((client) => ({ client }), (error: Error) => ({ failure: error.message }))
@@ -147,7 +148,7 @@ export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> =>
 			.finally(() => loadingVersions.delete(key));
 		loadingVersions.set(key, pending);
 		return [pending];
-	})]);
+	}));
 };
 
 const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinition> => {

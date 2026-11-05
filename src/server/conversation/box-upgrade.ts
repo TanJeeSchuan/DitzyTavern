@@ -10,6 +10,7 @@ import { conversationDataTable, messageDataTable, messageTable, messageVariantDa
 import type { LoadedBox } from "../box/registry";
 import { holdsRowReferences } from "../box/row-references";
 import { isHostChatKey } from "../box/setup";
+import { sha256 } from "../hash";
 
 const parsed = (text: string): BoxValue | undefined => {
 	try { return JSON.parse(text); } catch { return undefined; }
@@ -23,12 +24,15 @@ const rowKinds: ReadonlySet<string> = new Set(["message", "variant", "participan
 // keys Fork remaps though TypeBox keeps no annotation on them. The walk
 // follows the one Fork's rewrite takes (`row-references.ts`), so two schemas
 // with the same places have their ids remapped alike. Keys are encoded, so a
-// key holding `/` cannot name another field's path.
+// key holding `/` cannot name another field's path. Fork picks a union's
+// branch by which one the stored value matches, not by position, so a union
+// holding row references is also a place named by its whole schema: any
+// change to it, reordering its branches included, refuses the upgrade.
 const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => {
 	if (schema === undefined || !holdsRowReferences(schema)) return [];
 	const reference = schema.rowReference;
 	const here = typeof reference === "string" && rowKinds.has(reference) ? [`${path} (${reference})`] : [];
-	if (KindGuard.IsUnion(schema)) return [...here, ...schema.anyOf.flatMap((branch, index) => remappedPlaces(branch, `${path}|${index}`))];
+	if (KindGuard.IsUnion(schema)) return [...here, `${path} (union ${sha256(JSON.stringify(schema.anyOf)).slice(0, 12)})`, ...schema.anyOf.flatMap((branch, index) => remappedPlaces(branch, `${path}|${index}`))];
 	if (KindGuard.IsArray(schema)) return [...here, ...remappedPlaces(schema.items, `${path}/*`)];
 	if (KindGuard.IsObject(schema)) {
 		const rest = KindGuard.IsSchema(schema.additionalProperties) ? remappedPlaces(schema.additionalProperties, `${path}/*`) : [];
