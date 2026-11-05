@@ -100,8 +100,6 @@ test("a write waiting behind a check is dropped once its turn is cancelled", asy
 	await check;
 	await expect(write).rejects.toThrow("aborted");
 	expect(readdirSync(candidate.folder)).toEqual([]);
-	await candidate.remove();
-	expect(existsSync(dirname(candidate.folder))).toBe(false);
 });
 
 test("a scenario whose turn was cancelled stops and says so", async () => {

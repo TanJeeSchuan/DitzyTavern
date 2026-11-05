@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { authoringSessions } from "../../shared/contract/authoring";
 import { boxMetadata, type BoxId, type BoxState, type PromptBoxReference } from "../../shared/contract/box";
+import { api } from "../lib/eden";
+import { requestData } from "../lib/request-outcome";
 import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
@@ -37,7 +40,19 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	const [notice, setNotice] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
 	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [creating, setCreating] = useState<{ readonly reopen?: string } | null>(null);
+	const [authored, setAuthored] = useState<ReadonlyMap<string, string>>(new Map());
+	// @approved
+	//  A Box installed from Creator Mode links back to the session that made
+	// it only through that session's saved meta: the newest session that
+	// installed each Box id, read when the manager opens, offers to open it.
+	// A Box with no session, or a manager that cannot read them, offers
+	// nothing more.
+	useEffect(() => {
+		requestData(api.api.authoring.sessions.get(), authoringSessions).then(({ sessions }) => {
+			setAuthored(new Map(sessions.filter(({ installed }) => installed).toReversed().map(({ box, session }) => [box, session])));
+		}, () => undefined);
+	}, []);
 	const [, setRegistry] = useState(0);
 	const requestNavigation = useNavigationRequest();
 	const client = useQueryClient();
@@ -104,6 +119,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-44">
 							{open !== undefined && <DropdownMenuItem onSelect={open}>Open {label}</DropdownMenuItem>}
+							{authored.has(box) && <DropdownMenuItem onSelect={() => setCreating({ reopen: authored.get(box) })}>Open its session</DropdownMenuItem>}
 							<DropdownMenuItem variant="destructive" onSelect={() => setRemoving(box)}>Remove from Chat…</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -123,9 +139,9 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				<ul>{toAdd.map(row)}</ul>
 			</section>}
 			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
-			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating(true)}>Create a Box</Button>
+			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating({})}>Create a Box</Button>
 		</div>
-		{creating && <Suspense fallback={null}><CreateBox open onOpenChange={setCreating} onInstalled={addInstalled} /></Suspense>}
+		{creating !== null && <Suspense fallback={null}><CreateBox open reopen={creating.reopen} onOpenChange={(next) => { if (!next) setCreating(null); }} onInstalled={addInstalled} /></Suspense>}
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

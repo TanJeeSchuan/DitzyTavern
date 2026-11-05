@@ -77,11 +77,10 @@ export const CONTINUE_STEPS = 20;
 export const authoringStartBody = Type.Object({ ...codingModel.properties, steps: authoringSteps }, { additionalProperties: false });
 export const authoringStepsBody = Type.Object({ steps: authoringSteps }, { additionalProperties: false });
 
-export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
 export const authoringRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String() });
-export const authoringSessionParams = Type.Object({ session: Type.String() });
+/** @approved A session id names its folder, so it is only ever the UUID the host made. */
+export const authoringSessionParams = Type.Object({ session: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }) });
 export const authoringPromptBody = Type.Object({ text: Type.String({ minLength: 1, maxLength: 32 * 1024 }) });
-export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
 const authoringInstalled = Type.Object({ outcome: Type.Literal("installed"), id: Type.String(), label: Type.String() });
 const authoringInstallRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
 export const authoringInstall = Type.Union([authoringInstalled, authoringInstallRefused]);
@@ -98,6 +97,8 @@ export const readContractInput = Type.Object({
 export const authoredContent = (description: string) => Type.Object({ content: Type.String({ description }) }, { additionalProperties: false });
 /** @approved The JSON a `descriptor.json` write must hold: one object, whose id the host sets. */
 export const authoredDescriptor = Type.Record(Type.String(), Type.Unknown());
+/** @approved The part of a written descriptor a saved session is listed by. */
+export const authoredLabel = Type.Object({ label: Type.String() });
 
 // @approved
 //  What one authoring turn streams, as NDJSON: the agent's reply text and its
@@ -116,3 +117,28 @@ export const authoringEvent = Type.Union([
 	Type.Object({ type: Type.Literal("end"), stopReason: Type.String(), error: Type.Optional(Type.String()) }),
 ]);
 export type AuthoringEvent = Static<typeof authoringEvent>;
+
+/** @approved One line of a session's saved log: the writer's message, or an event the panel was streamed. */
+export const authoringLogEntry = Type.Union([Type.Object({ type: Type.Literal("prompt"), text: Type.String() }), authoringEvent]);
+export type AuthoringLogEntry = Static<typeof authoringLogEntry>;
+export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
+export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
+
+// @approved
+//  What a session keeps in its folder's meta.json beside its checkpoint, log
+// and candidate: the Box id its candidate has, the coding model and steps it
+// last ran with, whether it installed its Box, and when it last changed.
+export const authoringMeta = Type.Object({
+	box: Type.String(),
+	...codingModel.properties,
+	steps: authoringSteps,
+	installed: Type.Boolean(),
+	updated: Type.String(),
+}, { additionalProperties: false });
+export type AuthoringMeta = Static<typeof authoringMeta>;
+/** @approved A saved session as the panel lists it: its label once descriptor.json has one, and `installed` only while the Box it installed is still loaded. */
+export const authoringSessions = Type.Object({ sessions: Type.Array(Type.Object({
+	session: Type.String(),
+	...authoringMeta.properties,
+	label: Type.Union([Type.String(), Type.Null()]),
+})) });
