@@ -42,7 +42,8 @@ const latestRefusals = async (home: string, latest: string, candidate: CheckedSa
 // A version that drops `decision` while `latest` digests is refused too:
 // Chats pinned to a digesting version keep needing its Decision Model
 // settings, which the catalog lists only while `latest` digests, so once a
-// Box digests every later `latest` must; dropping it means a new Box. When
+// Box digests every later `latest` must; dropping it means a new Box, so
+// that outcome is `incompatible` too. When
 // the session's saved `scenarios`, replayed on `latest`, leave data the
 // candidate's Update check refuses, `latest` stays and the outcome is
 // `incompatible`, which the panel answers with Install as a new Box.
@@ -68,7 +69,7 @@ export const installCandidate = (candidate: Candidate, plugins: string, scenario
 		}
 		if (boxAt(id, undefined)?.descriptor.decision !== undefined && checked.descriptor.decision === undefined) {
 			checked.dispose();
-			return refused("This Box digests passages in Chats on its earlier versions, so a later version must keep its Decision Model setting (`decision`). To drop it, make a new Box instead.");
+			return { outcome: "incompatible" as const, reason: "This Box digests passages in Chats on its earlier versions, so a later version must keep its Decision Model setting (`decision`). Install it as a new Box to drop it, or ask the agent to keep `decision`.", diagnostics: [] };
 		}
 		const incompatible = latest === undefined || latest === version ? [] : await latestRefusals(home, latest, checked, scenarios);
 		if (incompatible.length > 0) {

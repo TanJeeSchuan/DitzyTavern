@@ -191,7 +191,7 @@ const turn = { cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }], sna
 // @approved
 //  Chats pinned to the digesting version still need its Decision Model
 // settings, which the catalog lists only while latest digests.
-test("Install refuses a version that drops decision while latest digests, and latest stays", () => restored(async () => {
+test("Install answers a version that drops decision while latest digests as incompatible, so the panel offers a new Box, and latest stays", () => restored(async () => {
 	const { candidate, plugins, tools, scenario } = await authored(packing);
 	expect((await scenario({ cast: ["Ann", "Bard"], seed: "s", turns: [{ moves: [{ item: "rope" }], prose: "Rain.", decisions: choice("calm") }] })).ok).toBe(true);
 	expect((await installCandidate(candidate, plugins, [])).outcome).toBe("installed");
@@ -199,7 +199,7 @@ test("Install refuses a version that drops decision while latest digests, and la
 	await call(tools, "write_descriptor", { content: JSON.stringify(tipJar.descriptor) });
 	await call(tools, "write_logic", { content: tipJar.logic });
 	expect((await scenario(turn)).ok).toBe(true);
-	expect(await installCandidate(candidate, plugins, [])).toMatchObject({ outcome: "refused", reason: expect.stringContaining("must keep its Decision Model setting") });
+	expect(await installCandidate(candidate, plugins, [])).toMatchObject({ outcome: "incompatible", reason: expect.stringContaining("must keep its Decision Model setting") });
 	expect([await readLatest(join(plugins, candidate.id)), isDigestBox(candidate.id)]).toEqual([digesting, true]);
 }));
 

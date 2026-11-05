@@ -22,15 +22,16 @@ const stepsOf = (input: ScenarioInput): Step[] => [...input.turns.map((_, index)
 // @approved
 //  One version as a scenario runs it: its hooks, the scenario's setup checked
 // against it, and its fold. A version without a stored setup reads its own
-// `initial`, as a Chat does. `setupError` sees `initial` as the previous
-// setup, as a new Chat's first save does, unless the setup is one an Update
+// `initial`, as a Chat does, and `setupError` never sees it, since no Chat
+// saved it. A stored setup goes through `setupError` with `initial` as the
+// previous setup, as a new Chat's first save does, unless it is one an Update
 // check already accepted, which checks it against itself.
 const runnerOf = (id: BoxId, { descriptor, box }: Pick<CheckedSandboxedBox, "descriptor" | "box">, input: ScenarioInput, upgraded = false) => {
 	if (descriptor.setup === undefined && input.setup !== undefined) throw new Error(`The ${id} Box declares no setup.`);
 	const setup = input.setup === undefined ? descriptor.setup?.initial : input.setup;
 	if (descriptor.setup !== undefined) {
 		assertChecked(descriptor.setup.schema, setup, "The scenario's setup");
-		const refused = box.setupError?.(setup, upgraded ? setup : descriptor.setup.initial);
+		const refused = input.setup === undefined ? undefined : box.setupError?.(setup, upgraded ? setup : descriptor.setup.initial);
 		if (refused !== undefined) throw new Error(`The ${id} Box refuses the scenario's setup: ${refused}`);
 	}
 	return { descriptor, box, setup, fold: (records: readonly GenerationJsonValue[]) => box.records?.foldAll?.(box.records.initial, records, setup) };

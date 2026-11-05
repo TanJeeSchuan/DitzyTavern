@@ -127,6 +127,15 @@ const counted = (refuse: string) => {
 };
 
 // @approved
+//  No Chat saved a default setup, so neither a real Update nor a Chat's
+// reads run setupError on it; a scenario that stores none must not either.
+test("a from run with no stored setup never asks the candidate's setupError, as a real Update doesn't", async () => {
+	const { revise, run } = await installed(counted("undefined"), tips(1));
+	await revise(counted("'Saving setup is disabled.'"));
+	expect(await run({ ...tips(1, 1), from: { version: "latest", turns: 1 } })).toMatchObject({ ok: true, state: 2 });
+});
+
+// @approved
 //  A real Update checks a stored setup against itself, so the candidate's
 // turns after it must not check it again as a first save from `initial`.
 test("a from run keeps the setup the Update check accepted, though a transition-sensitive setupError would refuse it from initial", async () => {

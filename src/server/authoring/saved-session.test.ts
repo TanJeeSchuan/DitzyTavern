@@ -179,3 +179,16 @@ test("Install and Install as a new Box are refused while a turn runs, and leave 
 	release();
 	await turn.text();
 }));
+
+// @approved
+//  Install as a new Box renews the candidate's id and replays the session's
+// saved scenarios; a message that started meanwhile could log a scenario the
+// replay misses, or write under the id being moved.
+test("a message sent while Install as a new Box runs is refused", () => withAuthoring(async ({ request, start, prompt }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+	const sent = await request("POST", `/api/authoring/sessions/${session}/prompts`, { text: "Second." });
+	await renewing;
+	expect(sent.status).toBe(409);
+}));

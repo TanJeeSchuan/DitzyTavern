@@ -300,10 +300,17 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		});
 	};
 	// @approved
-	//  Install, and Install as a new Box, wait for no turn: a scenario the
-	// running turn has yet to log would be missing from the saved scenarios
-	// Install replays, and a renewed id would move the folder under its writes.
+	//  Install, and Install as a new Box, run with the session to themselves:
+	// a scenario a running turn has yet to log would be missing from the saved
+	// scenarios Install replays, and a renewed id would move the folder under
+	// its writes. So neither starts while a turn runs, and each holds
+	// `running` until it ends, which refuses a new message, a steps change or
+	// another Install meanwhile.
 	const running = () => ({ outcome: "refused" as const, reason: "Wait for the message to finish.", diagnostics: [] });
+	const alone = async <T>(session: Session, action: () => Promise<T>) => {
+		session.running = true;
+		try { return await action(); } finally { session.running = false; }
+	};
 	const install = async (session: Session) => {
 		const installed = await installCandidate(session.candidate, folders.plugins, await savedScenarios(session));
 		if (installed.outcome === "installed") {
@@ -328,7 +335,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/prompts", ({ params, body, status }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
-			if (session.running) return status(409, { outcome: "refused", reason: "A turn is still running." } as const);
+			if (session.running) return status(409, { outcome: "refused", reason: "A turn or an Install is still running." } as const);
 			return new Response(prompt(session, body.text), { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 		}, { params: authoringSessionParams, body: authoringPromptBody })
 		.post("/api/authoring/sessions/:session/cancel", async ({ params }) => {
@@ -363,7 +370,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
 			if (session.running) return running();
-			return await install(session);
+			return await alone(session, () => install(session));
 		}, { params: authoringSessionParams, response: { 200: authoringInstall, 404: notFoundOutcome } })
 		// @approved
 		//  Install as a new Box: the session's candidate takes a new id, so
@@ -375,13 +382,15 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
 			if (session.running) return running();
-			const { candidate } = session;
-			await candidate.renew();
-			session.meta = { ...session.meta, box: candidate.id, installed: false, updated: now() };
-			save(session, () => writeMeta(params.session, session.meta));
-			const latest = (await savedScenarios(session)).at(-1);
-			if (latest !== undefined) await candidate.check(() => checkScenario(candidate, folders.plugins, { ...latest, from: undefined }, new AbortController().signal));
-			return await install(session);
+			return await alone(session, async () => {
+				const { candidate } = session;
+				await candidate.renew();
+				session.meta = { ...session.meta, box: candidate.id, installed: false, updated: now() };
+				save(session, () => writeMeta(params.session, session.meta));
+				const latest = (await savedScenarios(session)).at(-1);
+				if (latest !== undefined) await candidate.check(() => checkScenario(candidate, folders.plugins, { ...latest, from: undefined }, new AbortController().signal));
+				return await install(session);
+			});
 		}, { params: authoringSessionParams, response: { 200: authoringInstall, 404: notFoundOutcome } });
 	return {
 		routes,
