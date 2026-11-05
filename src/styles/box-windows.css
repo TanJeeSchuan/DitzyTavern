@@ -520,6 +520,41 @@
 	margin-right: auto;
 }
 
+.create-box-saved {
+	display: grid;
+	gap: 0.25rem;
+	max-height: 14rem;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+}
+
+.create-box-saved button {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.75rem;
+	width: 100%;
+	padding: 0.45rem 0.65rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	text-align: left;
+}
+
+.create-box-saved button:hover {
+	background: var(--surface-muted);
+}
+
+.create-box-saved button:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+}
+
+.create-box-saved button[aria-pressed="true"] {
+	border-color: var(--primary);
+	background: var(--accent-softer);
+}
+
 .create-box-columns {
 	display: grid;
 	grid-template-columns: minmax(18rem, 2fr) minmax(0, 3fr);
