@@ -55,18 +55,22 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	await panel.getByRole("button", { name: "Coding model: Choose a model" }).click();
 	await page.getByRole("option", { name: "e2e-coder", exact: true }).click();
 	await panel.getByRole("button", { name: "Start" }).click();
-	await panel.getByRole("textbox", { name: "Message to the coding agent" }).fill("An inventory the writer packs items into.");
-	await panel.getByRole("button", { name: "Send" }).click();
+	const message = panel.getByRole("textbox", { name: "Message to the coding agent" });
+	await message.fill("An inventory the writer packs items into.");
+	await message.press("Enter");
 
-	const results = panel.getByRole("region", { name: "Scenario results" });
-	await expect(results.getByRole("heading", { name: "Scenario passed" })).toBeVisible();
-	await expect(results.getByRole("list", { name: "Turn 1 prompt items" })).toHaveText("The pack holds: rope.");
-	await expect(results.getByRole("list", { name: "Turn 2 prompt items" })).toHaveText("The pack holds: rope, lantern.");
-	await expect(panel.getByRole("list", { name: "Authoring conversation" })).toContainText("The scenario passed, so you can install it.");
-	const activity = panel.getByRole("region", { name: "Activity" });
-	await activity.locator("summary", { hasText: "write_logic" }).click();
-	await expect(activity.getByLabel("logic.js as written")).toContainText('" packs a " + item');
-	const files = panel.getByRole("region", { name: "Files" });
+	const results = panel.getByRole("region", { name: "Scenario" });
+	await expect(results.getByText("Passed", { exact: true })).toBeVisible();
+	await expect(results.getByRole("list", { name: "Turn 1 prompt items" })).toHaveText("The pack holds: rope.0");
+	await expect(results.getByRole("list", { name: "Turn 2 prompt items" })).toHaveText("The pack holds: rope, lantern.0");
+	await expect(results.getByLabel("Window view")).toContainText('"lantern"');
+	const log = panel.getByRole("list", { name: "Authoring conversation" });
+	await expect(log).toContainText("The scenario passed, so you can install it.");
+	await log.locator("summary", { hasText: "write_logic" }).click();
+	await expect(log.getByLabel("logic.js as written")).toContainText('" packs a " + item');
+	await message.fill("/files");
+	await message.press("Enter");
+	const files = log.getByRole("list", { name: "Files" });
 	await expect(files.locator("summary")).toHaveText([/^descriptor\.json/, /^logic\.js/, /^ui\.js/]);
 	await files.locator("summary", { hasText: "logic.js" }).click();
 	await expect(files.getByLabel("logic.js", { exact: true })).toContainText('" packs a " + item');
@@ -78,7 +82,7 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	expect(calls.filter(isChatModelCall)).toEqual([]);
 
 	await panel.getByRole("button", { name: "Install" }).click();
-	await expect(panel.getByRole("status")).toHaveText("Inventory is installed. Add it to a Chat from the Box manager.");
+	await expect(log).toContainText("Inventory is installed. Add it to a Chat from the Box manager.");
 	await page.keyboard.press("Escape");
 	await expect(panel).toBeHidden();
 	const authoring = join(await llm.directory(), "authoring");
