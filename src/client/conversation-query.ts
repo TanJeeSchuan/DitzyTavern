@@ -1,7 +1,7 @@
 import { skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { loadConversation, type ConversationSummary } from "./conversation";
 import { variantTextKey } from "./story/variant-text";
-import { boxVersionsBuilt, loadBoxVersions } from "./box-windows/registry";
+import { boxVersionsBuilt, loadBoxVersions, loadedBoxes } from "./box-windows/registry";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
 
@@ -36,6 +36,20 @@ const adoptConversation = (client: QueryClient, incoming: ConversationSummary | 
 };
 
 // @approved
+//  A pin naming a Box this client doesn't list means another tab installed
+// it, and building the pin adds the Box to the catalog. Every other cached
+// Chat is read again first, as Install does, so none renders a summary
+// without that Box's state once the catalog lists it.
+export const refreshChatsBeforeNewBoxes = async (client: QueryClient, conversation: ConversationSummary): Promise<void> => {
+	if (Object.keys(conversation.boxVersions).every((id) => loadedBoxes().has(id))) return;
+	await client.invalidateQueries({ queryKey: ["conversation"], predicate: ({ queryKey }) => queryKey[1] !== conversation.id, refetchType: "all" });
+};
+const loadPinned = async (client: QueryClient, conversation: ConversationSummary) => {
+	await refreshChatsBeforeNewBoxes(client, conversation);
+	await loadBoxVersions(conversation);
+};
+
+// @approved
 //  A summary is published once this client has built every Box version the
 // Chat pins, so no surface reads it before its versions resolve; one that
 // needs a version built waits for it, and the revision check keeps a newer
@@ -47,7 +61,7 @@ export const publishConversation = (client: QueryClient, conversation: Conversat
 		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
 	};
 	if (boxVersionsBuilt(conversation)) publish();
-	else void loadBoxVersions(conversation).then(publish);
+	else void loadPinned(client, conversation).then(publish);
 };
 
 export const conversationQuery = (client: QueryClient, id: number, owner?: AbortSignal) => ({
@@ -57,7 +71,7 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
 		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
-		if (incoming !== null) await loadBoxVersions(incoming);
+		if (incoming !== null) await loadPinned(client, incoming);
 		return adoptConversation(client, incoming, id);
 	},
 });
