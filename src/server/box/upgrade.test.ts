@@ -13,6 +13,7 @@ import type { BoxValue } from "../../shared/contract/box-value";
 import { captureModelFetch, key, readConversation, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
+import { createCharacterLibraryModule } from "../character-library";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const integer = { type: "integer" };
@@ -173,6 +174,26 @@ test("a row reference moved between a key holding / and the nested field it spel
 	const chat = createChat();
 	setBoxState(database, chat.id, "tally", "enabled");
 	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at chat value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
+});
+
+// @approved
+//  Character data is shared by every version of a Box, so a newer version
+// may have written a shape the Chat's pinned one refuses; copied as is, it
+// would break that Chat's reads and Forks.
+test("seeding a Participant from a Character copies only the values the Chat's pinned version accepts", async () => {
+	await versioned(same);
+	const chat = createChat();
+	setBoxState(database, chat.id, "tally", "enabled");
+	const characters = createCharacterLibraryModule(database);
+	const seeded = (name: string, odds: string) => {
+		const characterId = characters.execute({ type: "create", definition: { name, prompt, openings: [] } }).id;
+		database.query("INSERT INTO character_data (character_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', ?)").run(characterId, odds);
+		command(chat.id, { type: "add-participant", definition: { name, prompt, openings: [] }, sourceCharacterId: characterId });
+		const participant = readConversationSummary(database, chat.id)!.cast.at(-1)!.id; // @approved The Participant was just added.
+		return database.query<{ value: string }, [number]>("SELECT value FROM participant_data WHERE participant_id = ? AND namespace = 'box:tally' AND key = 'odds'").all(participant).map(({ value }) => value);
+	};
+	expect(seeded("Ada", JSON.stringify({ 1: 2 }))).toEqual([JSON.stringify({ 1: 2 })]);
+	expect(seeded("Bram", JSON.stringify("new-format"))).toEqual([]);
 });
 
 // @approved

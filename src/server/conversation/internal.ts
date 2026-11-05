@@ -1,3 +1,4 @@
+import type { TSchema } from "@sinclair/typebox";
 import { isActive } from "../database/is-active";
 import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
@@ -29,6 +30,7 @@ import { chatBox, chatBoxes, type LoadedBox } from "../box/registry";
 import { BOX_VERSION_NAMESPACE } from "../box/version-pin";
 import { readBoxLifecycles } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
+import { parseStoredBoxJson } from "../box/stored-json";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -537,15 +539,22 @@ export const insertParticipant = (
 		// @approved
 		//  The seed copy: every Character Box-data row becomes the new
 		//  Participant's own row at this moment, except keys a loaded Box, at
-		//  the version this Chat runs, does not declare for Participants. The
-		//  two are independent afterwards, so a later Character edit never
-		//  reaches this Participant.
+		//  the version this Chat runs, does not declare for Participants, and
+		//  values that version's schema refuses: Character data is shared by
+		//  every version of a Box, so a newer one may have written a shape an
+		//  older pinned one can't read. The two are independent afterwards, so
+		//  a later Character edit never reaches this Participant.
 		const boxes = chatBoxes(db, conversationId);
+		const readable = (schema: TSchema, value: string) => {
+			try { parseStoredBoxJson(value, schema, "the seed copy"); return true; } catch { return false; }
+		};
 		const data = db.select().from(characterDataTable)
-			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key }) => {
+			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key, value }) => {
 				const box = boxIdOf(namespace);
 				const descriptor = box === undefined ? undefined : boxes.get(box)?.descriptor;
-				return descriptor === undefined || Object.hasOwn(descriptor.values?.participant ?? {}, key);
+				if (descriptor === undefined) return true;
+				const participant = descriptor.values?.participant ?? {};
+				return Object.hasOwn(participant, key) && readable(participant[key]!, value); // @approved hasOwn checked the key.
 			});
 		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
 			participant_id: inserted.id,
