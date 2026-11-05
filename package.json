@@ -9,6 +9,7 @@
 		"dev:stop": "bun -e \"process.exit(Bun.spawnSync(process.platform === 'win32' ? ['powershell', '-c', 'Stop-Process -Force -Id (Get-NetTCPConnection -State Listen -LocalPort 3000,5173).OwningProcess'] : ['fuser', '-k', '3000/tcp', '5173/tcp'], { stdio: ['inherit', 'inherit', 'inherit'] }).exitCode)\"",
 		"build": "vite build",
 		"box:build": "bun scripts/build-box-client.ts",
+		"box:scenario": "bun scripts/box-scenario.ts",
 		"start": "bun src/server/index.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:seed": "bun src/server/database/seed.ts",
