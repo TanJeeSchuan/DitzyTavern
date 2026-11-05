@@ -39,8 +39,8 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
   - **Chat-resolved:** hooks, schemas, Moves, records, read, digest, window. These resolve the Chat's pin first.
 
   The PR lists every call site and which kind it is. Existing preset block text is authored and shared, and never changes with a version.
-- **The pin outlives presence.** A Chat's Box lifecycle lives in `conversation_data` under `box:<id>` (`enabled`, `instance`; `src/server/box/setup.ts:25-45`), and removing the Box deletes that namespace while its Moves and records stay (`set-box-state.ts:10`). The pin is stored outside that namespace, so it survives removal: it says which version interprets the Chat's history. Inserting the Box again uses the pinned version, or goes through the upgrade check to reach `latest`. Fork copies the pin.
-- **The insertion instance is kept on upgrade.** Records are keyed `record:<instance>` and only the current instance's fold (`src/server/box/records.ts:14-32`), so a new instance would hide the whole history. Instead, frame tokens bind to the version as well as the instance, which is what remounts an open window.
+- **The pin outlives presence.** Removing a Box clears its lifecycle and keeps its Moves and records ([Lifecycle per Chat](../../box-system/README.md#lifecycle-per-chat), [Storage](../../box-system/README.md#storage)). The pin is stored outside the Box's lifecycle namespace, so it survives removal: it says which version interprets the Chat's history. Inserting the Box again uses the pinned version, or goes through the upgrade check to reach `latest`. Fork copies the pin.
+- **The insertion instance is kept on upgrade.** Only the current instance's records fold ([Storage](../../box-system/README.md#storage)), so a new instance would hide the whole history. Instead, frame tokens bind to the version as well as the instance, which is what remounts an open window.
 - **Upgrade is per Chat, explicit, atomic, and read-only until it passes.**
 
   ```text
