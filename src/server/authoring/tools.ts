@@ -2,7 +2,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
 import { join } from "node:path";
 import { assertChecked } from "../../shared/contract/box-descriptor";
-import { authoredContent, readContractInput, scenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
+import { authoredContent, readContractInput, scenarioInput, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
 import { builtInBoxes, serverBoxes } from "../box/registry";
 import { AUTHORED_FILES, type AuthoredFile, type Candidate } from "./candidate";
 import { runScenario } from "./scenario";
@@ -55,8 +55,9 @@ const writes = {
 // it is stopped. libfx's signal
 // aborts when the turn is cancelled: a write still waiting is dropped, and a
 // scenario stops, its package fetches included. `onScenario` hears each
-// scenario's result under its tool call's id, for the panel.
-export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, result: ScenarioResult) => void }) => {
+// scenario's whole input and its result under its tool call's id, for the
+// panel and the session's log.
+export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, input: ScenarioInput, result: ScenarioResult) => void }) => {
 	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string, signal: AbortSignal) => unknown) => ({
 		name, description, idempotent: true, writes: true,
 		inputSchema: JSON.parse(JSON.stringify(schema)),
@@ -73,7 +74,7 @@ export const authoringTools = (candidate: Candidate, { spend, onScenario }: { re
 		tool("run_scenario", "Loads the Box from its files as the app would and plays the scenario against it, returning its diagnostics, prompt items, records, state and read or status.",
 			scenarioInput, async (input, call, signal) => {
 				const result = await candidate.check(() => runScenario(candidate.folder, candidate.id, new Set(serverBoxes().keys()), input, signal), signal);
-				onScenario(call, result);
+				onScenario(call, input, result);
 				return result;
 			}),
 	];

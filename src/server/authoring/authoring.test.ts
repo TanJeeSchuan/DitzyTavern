@@ -47,7 +47,7 @@ const unbudgeted = { spend: async () => {}, onScenario: () => {} };
 const authored = async (files: { descriptor: object; logic: string; ui?: string }) => {
 	const candidate = await createCandidate(scratch());
 	const scenarios: ScenarioResult[] = [];
-	const tools = authoringTools(candidate, { spend: async () => {}, onScenario: (_, result) => scenarios.push(result) });
+	const tools = authoringTools(candidate, { spend: async () => {}, onScenario: (_, __, result) => scenarios.push(result) });
 	await call(tools, "write_descriptor", { content: JSON.stringify(files.descriptor) });
 	await call(tools, "write_logic", { content: files.logic });
 	await call(tools, "write_ui", { content: files.ui ?? "host.render('');" });
