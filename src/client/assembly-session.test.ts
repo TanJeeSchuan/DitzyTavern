@@ -160,6 +160,24 @@ describe("assembly session", () => {
 		expect(h.requests.filter(({ url }) => !url.endsWith("/preview"))).toHaveLength(0);
 	});
 
+	test("a Retry after the Chat moved a Box to another version is refused, not sent with the old version's Moves", async () => {
+		const h = await assemblyHarness(async ({ url }) => url.endsWith("/preview") ? Response.json(preview()) : Response.json({ outcome: "invalid", reason: "Start failed." }, { status: 422 }));
+		const pinned = (version: string): ConversationSummary => ({ ...conversation(), boxVersions: { jar: version } });
+		await h.hook.act(async () => { h.options.inspectPromptPlanBeforeGenerating = false; h.options.conversation = pinned("v1"); });
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { jar: [{ coins: 1 }] } }));
+		await flushHook();
+		await flushHook();
+		const starts = () => h.requests.filter(({ url }) => !url.endsWith("/preview")).length;
+		expect([starts(), h.hook.current.directStartError]).toEqual([1, "Start failed."]);
+		await h.hook.act(async () => { h.options.conversation = pinned("v2"); });
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.retryGeneration?.());
+		await flushHook();
+		await flushHook();
+		expect([starts(), h.hook.current.directStartError]).toEqual([1, "A Box in this Chat was updated before this Send went out, so it was not sent."]);
+	});
+
 	test("an edited plan survives acceptance failure and is sent again on retry", async () => {
 		let starts = 0;
 		const h = await assemblyHarness(async ({ url }) => url.endsWith("/preview") ? Response.json(preview())

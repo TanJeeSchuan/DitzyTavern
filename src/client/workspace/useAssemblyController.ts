@@ -204,9 +204,12 @@ export function useAssemblyController({
 		launch(inspecting.request, { previewId: current.previewId, promptPlan: current.promptPlan });
 	};
 
-	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
+	// @approved
+	//  A request keeps the seat and Box pins it was made under, so a Retry
+	// after an upgrade is refused by the version guard, not sent to v2.
+	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null, versions = conversation?.boxVersions ?? {}) => {
 		if (conversation === null) return;
-		const requested = { conversationId: conversation.id, seat, versions: conversation.boxVersions, request };
+		const requested = { conversationId: conversation.id, seat, versions, request };
 		if (!transition({ type: "requested", visit: signal, request: requested })) return;
 		const inspect = inspectPromptPlanBeforeGenerating;
 		void ensureLatest().then(() => {
@@ -234,6 +237,6 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
-		retryGeneration: retry === null ? null : () => requestGeneration(retry.request, retry.seat),
+		retryGeneration: retry === null ? null : () => requestGeneration(retry.request, retry.seat, retry.versions),
 	};
 }
