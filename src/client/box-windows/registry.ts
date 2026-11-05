@@ -194,12 +194,20 @@ export const loadBoxClients = async (): Promise<void> => {
 type ListedBox = Static<typeof boxList>[number];
 const listedVersion = (listed: ListedBox) => "sandboxed" in listed ? listed.version : undefined;
 const clientOf = async (listed: ListedBox) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client)) : sandboxedClient(listed.id, listed.sandboxed, listed.version);
-/** @approved A listed Box with its client or failure; a version this client already built keeps that client. */
+// @approved
+//  A listed Box with its client or failure. A version this client already
+// built keeps that client, so its open windows stay mounted, but takes its
+// metadata from the listing: a version built while another was `latest` was
+// cached with that one's label and summary.
 const loadedFrom = (listed: ListedBox, result: PromiseSettledResult<BoxClientDefinition>): LoadedBox => {
 	const metadata = boxMetadataFrom(listed);
 	const version = listedVersion(listed);
 	const built = version === undefined ? undefined : versions.get(boxVersionKey(listed.id, version));
-	if (built !== undefined) return built;
+	if (built !== undefined && version !== undefined) {
+		const relisted = { ...built, metadata };
+		versions.set(boxVersionKey(listed.id, version), relisted);
+		return relisted;
+	}
 	const box: LoadedBox = result.status === "fulfilled" ? { metadata, ...version !== undefined && { version }, client: result.value } : { metadata, ...version !== undefined && { version }, failure: errorMessage(result.reason) };
 	if (version !== undefined) versions.set(boxVersionKey(listed.id, version), box);
 	return box;
