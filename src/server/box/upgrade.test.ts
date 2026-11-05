@@ -197,6 +197,25 @@ test("seeding a Participant from a Character copies only the values the Chat's p
 });
 
 // @approved
+//  Characters seed a Box's Participant values while it is absent, unchecked,
+// so the version the first insertion pins may refuse them; kept, they would
+// break that Chat's reads and Forks.
+test("inserting a Box drops Participant values seeded while it was absent that the version it pins refuses", async () => {
+	const box = await versioned(tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": { type: "string" } } } } } }));
+	const chat = createChat();
+	const seed = (participant: number, odds: BoxValue) => database.query("INSERT INTO participant_data (participant_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', ?)").run(participant, JSON.stringify(odds));
+	// SAFETY: createChat makes a Chat with exactly two Participants.
+	const [writer, maren] = chat.cast.map(({ id }) => id) as [number, number];
+	seed(writer, { [maren]: 2 });
+	seed(maren, { [writer]: "even" });
+	await writeLatest(box.home, box.v2);
+	installVersion("tally", box.home, box.v2, await checkSandboxedFolder(versionFolder(box.home, box.v2), "tally", unversionedBoxIds()));
+	setBoxState(database, chat.id, "tally", "enabled");
+	expect(readConversationSummary(database, chat.id)?.boxVersions).toEqual({ tally: box.v2 });
+	expect(database.query("SELECT participant_id, value FROM participant_data WHERE namespace = 'box:tally' ORDER BY id").all()).toEqual([{ participant_id: maren, value: JSON.stringify({ [writer]: "even" }) }]);
+});
+
+// @approved
 //  Fork picks a union's branch by which one the stored value matches, so
 // swapping which branch carries the reference changes what Fork remaps while
 // every branch-indexed place stays the same.

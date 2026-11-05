@@ -1,4 +1,3 @@
-import type { TSchema } from "@sinclair/typebox";
 import { isActive } from "../database/is-active";
 import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
@@ -25,7 +24,7 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { boxIdOf, type BoxId } from "../../shared/contract/box";
+import { boxIdOf, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { chatBox, chatBoxes, type LoadedBox } from "../box/registry";
 import { BOX_VERSION_NAMESPACE } from "../box/version-pin";
 import { readBoxLifecycles } from "../box/setup";
@@ -431,6 +430,16 @@ export const requireMessage = (
 };
 
 /** @approved A registered Box as this Chat runs it; an unknown id fails the command. */
+/** @approved Whether a Box at one version declares a Participant value under `key` and its schema accepts the stored `value`. */
+export const participantValueAccepted = (descriptor: BoxDescriptor, key: string, value: string): boolean => {
+	const participant = descriptor.values?.participant ?? {};
+	if (!Object.hasOwn(participant, key)) return false;
+	try {
+		parseStoredBoxJson(value, participant[key]!, `participant/${key}`); // @approved hasOwn checked the key.
+		return true;
+	} catch { return false; }
+};
+
 export const requireBox = (db: ConversationDatabase, conversationId: number, box: BoxId): LoadedBox => {
 	const loaded = chatBox(db, conversationId, box);
 	if (loaded === undefined) throw new InvalidConversationCommandError(`There is no ${box} Box.`);
@@ -545,16 +554,11 @@ export const insertParticipant = (
 		//  older pinned one can't read. The two are independent afterwards, so
 		//  a later Character edit never reaches this Participant.
 		const boxes = chatBoxes(db, conversationId);
-		const readable = (schema: TSchema, value: string) => {
-			try { parseStoredBoxJson(value, schema, "the seed copy"); return true; } catch { return false; }
-		};
 		const data = db.select().from(characterDataTable)
 			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key, value }) => {
 				const box = boxIdOf(namespace);
 				const descriptor = box === undefined ? undefined : boxes.get(box)?.descriptor;
-				if (descriptor === undefined) return true;
-				const participant = descriptor.values?.participant ?? {};
-				return Object.hasOwn(participant, key) && readable(participant[key]!, value); // @approved hasOwn checked the key.
+				return descriptor === undefined || participantValueAccepted(descriptor, key, value);
 			});
 		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
 			participant_id: inserted.id,
