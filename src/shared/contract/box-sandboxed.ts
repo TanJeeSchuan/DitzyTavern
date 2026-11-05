@@ -60,6 +60,7 @@ export const boxList = Type.Array(Type.Union([
 /** @approved One version of a versioned Box, for a Chat that pins one the catalog does not list. */
 export const boxVersionParams = Type.Object({ box: Type.String(), version: boxVersion });
 export const boxVersionListing = Type.Object({ sandboxed: sandboxedDescriptorFile });
+export const boxVersionFileParams = Type.Object({ ...boxVersionParams.properties, file: Type.String() });
 
 const annotations = ["title", "description", "rowReference"];
 // @approved

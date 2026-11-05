@@ -9,13 +9,14 @@ import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { boxAt, builtInBoxes, chatBox, checkSandboxedFolder, installVersion, loadBoxes, loadBoxVersion, unversionedBoxIds } from "./registry";
 import { readBoxLifecycles } from "./setup";
 import { versionFolder, writeLatest } from "./versions";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { captureModelFetch, key, readConversation, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const integer = { type: "integer" };
-const object = (properties: Record<string, unknown>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+const object = (properties: Readonly<Record<string, BoxValue>>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const v1 = {
 	setup: { schema: object({ goal: { type: "integer", minimum: 1 } }), initial: { goal: 3 } },
 	values: { chat: { host: { type: "integer", rowReference: "participant" } }, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": integer } } } },
@@ -28,7 +29,7 @@ const hooks = {
 	advance: "advance: { run: async ({ state }) => ({ items: [{ text: \"The jar holds \" + state + \".\", priority: 0, pinned: true }], record: { coins: 1 } }) },",
 };
 /** @approved The Tally Box at one version: v1's descriptor with `fields` replaced, and its hooks with `logic` replaced. */
-const tally = (fields: Record<string, unknown> = {}, logic: Partial<Record<keyof typeof hooks | "extra", string>> = {}): BoxFiles => ({
+const tally = (fields: Readonly<Record<string, BoxValue | undefined>> = {}, logic: Partial<Record<keyof typeof hooks | "extra", string>> = {}): BoxFiles => ({
 	"descriptor.json": JSON.stringify({ id: "tally", sdk: 2, label: "Tally", summary: "Counts tips.", role: "system", startsEnabled: false, instructions: "", window: { icon: "coins", size: { width: 10, height: 10 } }, ...v1, ...fields }),
 	"logic.js": `export default { ${Object.values({ ...hooks, ...logic }).join(" ")} };`,
 	"ui.js": "host.render('');",
@@ -61,7 +62,7 @@ const command = (conversationId: number, action: ConversationAction) =>
 const instanceOf = (conversationId: number) => readBoxLifecycles(drizzle(database), conversationId).tally!.instance; // @approved Each test inserts the Tally first.
 const rows = (conversationId: number) => ({
 	revision: readConversationSummary(database, conversationId)?.revision,
-	chat: database.query("SELECT namespace, key, value, revision FROM conversation_data WHERE conversation_id = ? ORDER BY id").all(conversationId),
+	chat: database.query<{ namespace: string; key: string; value: string; revision: number }, [number]>("SELECT namespace, key, value, revision FROM conversation_data WHERE conversation_id = ? ORDER BY id").all(conversationId),
 	messages: database.query("SELECT message_id, namespace, key, value FROM messages_data ORDER BY id").all(),
 	variants: database.query("SELECT message_variant_id, namespace, key, value FROM message_variant_data ORDER BY id").all(),
 	participants: database.query("SELECT participant_id, namespace, key, value FROM participant_data ORDER BY id").all(),
@@ -73,10 +74,11 @@ const tippedChat = () => {
 	const message = chat.messages[0]!; // @approved The model's opening is the first Message.
 	const selected = message.variants[0]!.id; // @approved The opening has one Variant.
 	const unselected = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 2, 'A second jar.', '2026-01-01', 0) RETURNING id").get(message.id)!.id;
-	const slot = (variant: number, value: unknown) => database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:tally', ?, ?)").run(variant, `record:${instanceOf(chat.id)}`, JSON.stringify(value));
+	const slot = (variant: number, value: BoxValue) => database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:tally', ?, ?)").run(variant, `record:${instanceOf(chat.id)}`, JSON.stringify(value));
 	slot(selected, { automatic: { coins: 2 } });
 	return { chat, message, selected, unselected, slot };
 };
+type Tipped = ReturnType<typeof tippedChat>;
 const upgrade = (conversationId: number, version: string) => command(conversationId, { type: "upgrade-box", box: "tally", version });
 
 test("the pin is written on first insertion, kept on removal, used on reinsertion and copied by Fork", async () => {
@@ -104,7 +106,7 @@ test("a passing upgrade writes only the pin and advances the revision, keeping t
 	const before = rows(chat.id);
 	upgrade(chat.id, box.v2);
 	const after = rows(chat.id);
-	const pinOf = (state: typeof before) => state.chat.map((row) => (row as { namespace: string }).namespace === "box-version" ? { ...row as object, value: "pin" } : row);
+	const pinOf = (state: typeof before) => state.chat.map((row) => row.namespace === "box-version" ? { ...row, value: "pin" } : row);
 	expect({ ...after, revision: undefined, chat: pinOf(after) }).toEqual({ ...before, revision: undefined, chat: pinOf(before) });
 	expect([after.revision, readConversationSummary(database, chat.id)?.boxVersions.tally]).toEqual([before.revision! + 1, box.v2]); // @approved The Chat exists.
 	expect(boxAt("tally", box.v2)?.box.records?.foldAll?.(0, [{ coins: 2 }], undefined)).toBe(2);
@@ -115,21 +117,21 @@ test("a passing upgrade writes only the pin and advances the revision, keeping t
 // and leaves every row as it was.
 test.each([
 	["a writer record on an unselected Variant that the new record schema refuses", tally({ record: object({ coins: { type: "integer", minimum: 0, maximum: 5 } }) }),
-		({ unselected, slot }: ReturnType<typeof tippedChat>) => { slot(unselected, { writer: { coins: 9 } }); return `Variant ${unselected} writer record`; }],
+		({ unselected, slot }: Tipped): string => { slot(unselected, { writer: { coins: 9 } }); return `Variant ${unselected} writer record`; }],
 	["a Move list over the new max", tally({ moves: { ...v1.moves, max: 1 } }),
-		({ chat }: ReturnType<typeof tippedChat>) => {
-			const human = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp, author_participant_id) VALUES (?, 5, '2026-01-01', ?) RETURNING id").get(chat.id, chat.cast[0]!.id)!.id; // @approved The Chat has its Writer.
+		({ chat }: Tipped): string => {
+			const human = database.query<{ id: number }, [number, number]>("INSERT INTO messages (conversation_id, position, timestamp, author_participant_id) VALUES (?, 5, '2026-01-01', ?) RETURNING id").get(chat.id, chat.cast[0]!.id)!.id; // @approved The Chat has its Writer.
 			database.query("INSERT INTO messages_data (message_id, namespace, key, value) VALUES (?, 'box:tally', 'moves', ?)").run(human, JSON.stringify([{ coins: 1 }, { coins: 2 }]));
 			return `Message ${human} Moves`;
 		}],
 	["a version that drops record while records exist", tally({ record: undefined }, { records: "", advance: hooks.advance.replace(", record: { coins: 1 }", "") }),
-		() => "The Chat holds 1 record slots, and this version declares no record."],
+		(): string => "The Chat holds 1 record slots, and this version declares no record."],
 	["a setupError that refuses the stored setup", tally({}, { extra: "setupError: ({ goal }) => goal > 5 ? \"That goal is out of reach.\" : undefined," }),
-		({ chat }: ReturnType<typeof tippedChat>) => { command(chat.id, { type: "set-box-setup", box: "tally", setup: { goal: 9 } }); return "Setup: That goal is out of reach."; }],
+		({ chat }: Tipped): string => { command(chat.id, { type: "set-box-setup", box: "tally", setup: { goal: 9 } }); return "Setup: That goal is out of reach."; }],
 	["a changed rowReference", tally({ values: { ...v1.values, chat: { host: integer } } }),
-		() => "Row reference at chat value host (participant): this version no longer has it, so Fork would stop remapping it"],
+		(): string => "Row reference at chat value host (participant): this version no longer has it, so Fork would stop remapping it"],
 	["a ParticipantKey Record turned into a string-keyed one, which accepts the same values", tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(.*)$": integer } } } } }),
-		({ chat }: ReturnType<typeof tippedChat>) => {
+		({ chat }: Tipped): string => {
 			command(chat.id, { type: "commit-box", box: "tally", version: readConversationSummary(database, chat.id)!.boxVersions.tally, writes: [{ owner: { type: "participant", participantId: chat.cast[1]!.id }, key: "odds", value: JSON.stringify({ [chat.cast[0]!.id]: 2 }) }] }); // @approved The Chat and its Cast exist.
 			return "Row reference at participant value odds/{key} (participant key): this version no longer has it, so Fork would stop remapping it";
 		}],
@@ -187,7 +189,7 @@ for (const upgraded of [false, true]) {
 		setBoxState(database, chat.id, "tally", "enabled");
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: object) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+		const post = async (path: string, body: Readonly<Record<string, BoxValue | undefined>>) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Tip it.", ...body }),
 		}));
 		const { previewId, promptPlan } = await (await post("/preview", {})).json();

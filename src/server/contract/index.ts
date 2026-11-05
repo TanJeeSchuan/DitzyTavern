@@ -42,7 +42,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	// is logged, and the Chat's lookups of that Box fail where they happen.
 	.onRequest(async ({ request }) => {
 		const chat = chatPath.exec(new URL(request.url).pathname)?.[1];
-		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: unknown) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
+		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: Error) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
 	})
 	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })

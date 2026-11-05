@@ -3,15 +3,13 @@ import { staticPlugin } from "@elysiajs/static";
 import { createContract } from "./contract";
 import type { ConversationRouteOptions } from "./contract/conversation";
 import { defaultArtifactDirectory } from "./artifact";
-import { observeConversationWrites } from "./conversation";
+import { observeConversationWrites, readActiveGenerationsForRecovery } from "./conversation";
 import { shutdownApplication } from "./application/shutdown";
 import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
 import { prepareBoxDigests, startBoxDigests } from "./box/digest";
 import { loadChatVersions } from "./box/registry";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { activeGenerationTable } from "./database/schema";
 import { bootIndex } from "./boot-index";
 import { revalidatedText } from "./contract/content-validators";
 import { watchDatabaseChanges } from "./database/changes";
@@ -41,8 +39,8 @@ export async function createApp(options: AppOptions) {
 	// a Reference can straddle two checkpoint deltas.
 	// @approved
 	// Recovery settles Chats through their summaries, which read each Box at the version its Chat pins.
-	for (const { conversationId } of drizzle(database).selectDistinct({ conversationId: activeGenerationTable.conversation_id }).from(activeGenerationTable).all()) {
-		await loadChatVersions(database, conversationId).catch((error: unknown) => console.error(`[boxes] Chat ${conversationId}'s Box versions did not load:`, error));
+	for (const conversationId of new Set(readActiveGenerationsForRecovery(database).map((row) => row.conversationId))) {
+		await loadChatVersions(database, conversationId).catch((error: Error) => console.error(`[boxes] Chat ${conversationId}'s Box versions did not load:`, error));
 	}
 	reportRecovery("Startup", recoverActiveGenerations(database));
 	sweepOrphanedImages(database);

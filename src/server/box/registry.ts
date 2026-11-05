@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
-import { boxDescriptor, boxMetadataFrom, boxReference, installBoxes, installedBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
+import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
@@ -263,7 +263,7 @@ export const loadBoxes = async (folders: readonly string[] = boxFolders, databas
 	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
 	for (const { dispose } of new Set([...loaded.values(), ...versions.values()])) dispose?.();
-	const entries = boxes.map(({ home: _, ...box }) => box);
+	const entries = boxes.map(({ descriptor, box, client, dispose, version, routes }): LoadedBox => ({ descriptor, box, client, dispose, version, routes }));
 	loaded = new Map(entries.map((box) => [box.descriptor.id, box]));
 	versions = new Map(entries.flatMap((box) => box.version === undefined ? [] : [[versionKey(box.descriptor.id, box.version), box]]));
 	homes = new Map(boxes.flatMap(({ descriptor, home }) => home === undefined ? [] : [[descriptor.id, home]]));

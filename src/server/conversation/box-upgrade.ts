@@ -1,20 +1,21 @@
-/* eslint-disable anti-slop/no-unknown-parameters, anti-slop/no-runtime-typeof -- The check reads stored Box values as whatever JSON they hold and walks TypeBox schemas. */
+/* eslint-disable anti-slop/no-runtime-typeof -- The check reads stored Box values as whatever JSON they hold and walks TypeBox schemas. */
 import { KindGuard, Type, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray, like } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, type BoxDescriptor } from "../../shared/contract/box";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
 import { conversationDataTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
-import type { LoadedBox } from "./registry";
-import { holdsRowReferences } from "./row-references";
-import { isHostChatKey } from "./setup";
+import type { LoadedBox } from "../box/registry";
+import { holdsRowReferences } from "../box/row-references";
+import { isHostChatKey } from "../box/setup";
 
-const parsed = (text: string): unknown => {
+const parsed = (text: string): BoxValue | undefined => {
 	try { return JSON.parse(text); } catch { return undefined; }
 };
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const rowKinds: ReadonlySet<unknown> = new Set(["message", "variant", "participant"]);
+const isObject = (value: BoxValue | undefined): value is { readonly [key: string]: BoxValue } => typeof value === "object" && value !== null && !Array.isArray(value);
+const rowKinds: ReadonlySet<string> = new Set(["message", "variant", "participant"]);
 
 // @approved
 //  Every place in a schema where Fork remaps a row id, by path: each
@@ -24,7 +25,8 @@ const rowKinds: ReadonlySet<unknown> = new Set(["message", "variant", "participa
 // with the same places have their ids remapped alike.
 const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => {
 	if (schema === undefined || !holdsRowReferences(schema)) return [];
-	const here = rowKinds.has(schema.rowReference) ? [`${path} (${String(schema.rowReference)})`] : [];
+	const reference = schema.rowReference;
+	const here = typeof reference === "string" && rowKinds.has(reference) ? [`${path} (${reference})`] : [];
 	if (KindGuard.IsUnion(schema)) return [...here, ...schema.anyOf.flatMap((branch, index) => remappedPlaces(branch, `${path}|${index}`))];
 	if (KindGuard.IsArray(schema)) return [...here, ...remappedPlaces(schema.items, `${path}/*`)];
 	if (KindGuard.IsObject(schema)) {
@@ -87,9 +89,7 @@ export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, f
 			else if (!Value.Check(descriptor.setup.schema, stored)) refusals.push("Setup");
 			else {
 				let error: string | undefined;
-				// @approved
-				// SAFETY: the stored setup passed this version's setup schema just above.
-				try { error = box.setupError?.(stored as never, stored as never); } catch (thrown) { error = thrown instanceof Error ? thrown.message : String(thrown); }
+				try { error = box.setupError?.(stored, stored); } catch (thrown) { error = thrown instanceof Error ? thrown.message : String(thrown); }
 				if (error !== undefined) refusals.push(`Setup: ${error}`);
 			}
 		} else if (!isHostChatKey(key)) {

@@ -1,11 +1,10 @@
-import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxId } from "../../shared/contract/box";
-import type { ScenarioInput, ScenarioResult } from "../../shared/contract/authoring";
+import { cachedScenarioCheck, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
 import { checkSandboxedFolder } from "./registry";
 import { isBuildOutput } from "./sandboxed-build";
 import { replaceFile, sandboxedFolder, type SandboxedFiles } from "./sandboxed-folder";
@@ -62,7 +61,7 @@ export const createVersion = async (home: string, source: string, id: BoxId, see
 		try {
 			const version = versionHash(await sandboxedFolder(staging, id));
 			const target = versionFolder(home, version);
-			if (!existsSync(target)) await rename(staging, target).catch((error: unknown) => existsSync(target) ? undefined : Promise.reject(error));
+			if (!existsSync(target)) await rename(staging, target).catch((error: Error) => existsSync(target) ? undefined : Promise.reject(error));
 			return { version, checked };
 		} catch (error) {
 			checked.dispose();
@@ -73,7 +72,6 @@ export const createVersion = async (home: string, source: string, id: BoxId, see
 	}
 };
 
-const checkFile = Type.Object({ result: Type.Object({ ok: Type.Boolean() }) });
 const scenarioHash = (input: ScenarioInput) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
 /** @approved Caches one scenario's result for the version it ran on; the id folder gets its `versions/`, so it is a managed folder from then on. */
@@ -88,7 +86,7 @@ export const passedCheck = async (home: string, version: string): Promise<boolea
 	const names = (await readdir(join(home, "checks")).catch(() => [])).filter((name) => name.startsWith(`${version}-`));
 	for (const name of names) {
 		const parsed: unknown = await Bun.file(join(home, "checks", name)).json().catch(() => undefined);
-		if (Value.Check(checkFile, parsed) && parsed.result.ok) return true;
+		if (Value.Check(cachedScenarioCheck, parsed) && parsed.result.ok) return true;
 	}
 	return false;
 };

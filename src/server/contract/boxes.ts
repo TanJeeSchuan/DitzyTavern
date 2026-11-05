@@ -1,11 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { Elysia } from "elysia";
-import { Type } from "@sinclair/typebox";
 import { boxClientSource, boxRoutes, clearHeldValues, heldBoxValues as held, loadBoxVersion, serverBoxes, type BoxClientSource } from "../box/registry";
 import { boxFrameImage, boxFrameResponse, closeBoxFrame, uploadBoxFrameImage } from "../box/frame";
 import { boxFrameRoute } from "../../shared/box-frame";
-import { boxFrameImageParams, boxFrameParams, boxList, boxVersionListing, boxVersionParams } from "../../shared/contract/box-sandboxed";
+import { boxFrameImageParams, boxFrameParams, boxList, boxVersionFileParams, boxVersionListing, boxVersionParams } from "../../shared/contract/box-sandboxed";
 import { boxParams as params, heldBoxValues, heldBoxValuesCleared, installedBoxes } from "../../shared/contract/box";
 import { imageUploadBody, imageUploadResponse } from "../../shared/contract/image";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -56,7 +55,7 @@ export const createBoxRoutes = (database: Database) => {
 			const text = client?.kind === "sandboxed" ? uiText(client, params.file) : undefined;
 			return text === undefined ? status(404, "There is no such Box client file.")
 				: new Response(text, { headers: { "content-type": uiType(params.file), "cache-control": "public, max-age=31536000, immutable" } });
-		}, { params: Type.Object({ ...boxVersionParams.properties, file: Type.String() }) })
+		}, { params: boxVersionFileParams })
 		.get(`${boxFrameRoute}/:token`, async ({ params: { token }, request }) => await boxFrameResponse(database, token, requestHost(request)) ?? notFoundResponse(),
 			{ params: boxFrameParams })
 		.delete(`${boxFrameRoute}/:token`, ({ params: { token } }) => { closeBoxFrame(token); return new Response(null, { status: 204 }); }, { params: boxFrameParams })

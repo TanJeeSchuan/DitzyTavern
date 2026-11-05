@@ -61,6 +61,8 @@ export const scenarioResult = Type.Object({
 	status: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type ScenarioResult = Static<typeof scenarioResult>;
+/** @approved A `run_scenario` result as Install's gate caches it, beside the input it ran. */
+export const cachedScenarioCheck = Type.Object({ input: scenarioInput, result: scenarioResult });
 
 /** @approved The coding model for one authoring session: a chat Connection Profile and its model. No limits are declared, so libfx sends no output limit and the provider's own default applies. */
 export const codingModel = Type.Object({

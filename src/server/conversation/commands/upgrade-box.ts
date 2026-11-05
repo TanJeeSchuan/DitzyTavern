@@ -1,7 +1,7 @@
 import type { BoxId } from "../../../shared/contract/box";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import { boxAt } from "../../box/registry";
-import { upgradeRefusals } from "../../box/upgrade";
+import { upgradeRefusals } from "../box-upgrade";
 import { pinBoxVersion } from "../../box/version-pin";
 import { InvalidConversationCommandError } from "../errors";
 import { requireBox, type ConversationDatabase } from "../internal";

@@ -139,7 +139,7 @@ export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> =>
 		if (latest?.version === undefined || versions.has(key)) return [];
 		const pending = loadingVersions.get(key) ?? requestData(api.api.boxes({ box: id }).versions({ version }).get(), boxVersionListing)
 			.then(({ sandboxed }) => sandboxedClient(id, sandboxed, version))
-			.then((client) => ({ client }), (error: unknown) => ({ failure: errorMessage(error) }))
+			.then((client) => ({ client }), (error: Error) => ({ failure: error.message }))
 			.then((built) => { versions.set(key, { metadata: latest.metadata, version, ...built }); })
 			.finally(() => loadingVersions.delete(key));
 		loadingVersions.set(key, pending);
