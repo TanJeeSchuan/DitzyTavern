@@ -82,6 +82,10 @@ test("a revised Box installs as a new version: Chats keep theirs until Update, w
 	await expect(story(page).getByText("Coins clink into the jar.")).toBeVisible();
 	await expect(jar(page).getByText("First jar: 1 coins")).toBeVisible();
 	await jar(page).locator("body").evaluate((body) => body.setAttribute("data-first", ""));
+	// A second tab on the same Chat loads while v1 is latest.
+	const other = await page.context().newPage();
+	await other.goto("/");
+	await expect(story(other).getByRole("heading", { name: first })).toBeVisible();
 
 	await (await openBoxes(page)).getByRole("button", { name: "Create a Box" }).click();
 	await panel.getByRole("list", { name: "Saved sessions" }).getByRole("button").click();
@@ -101,6 +105,9 @@ test("a revised Box installs as a new version: Chats keep theirs until Update, w
 	await expect(jar(page).getByText("First jar: 1 coins")).toBeVisible();
 	const row = (await openBoxes(page)).getByRole("listitem").filter({ hasText: "Coin Jar" });
 	await expect(row).toContainText("Update available");
+	// The other tab learns of v2 when its Box manager opens, though its Chat's pin resolved all along.
+	await expect((await openBoxes(other)).getByRole("listitem").filter({ hasText: "Coin Jar" })).toContainText("Update available");
+	await other.close();
 
 	// A new Chat starts on v2.
 	const emptyPrompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };

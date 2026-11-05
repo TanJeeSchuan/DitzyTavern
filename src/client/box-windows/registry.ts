@@ -213,14 +213,18 @@ const installLoaded = () => installBoxes([...loaded.values()].map((box) => ({ me
 // installed meanwhile joins too. Every version already built keeps its
 // client definition as it is: a rebuilt sandboxed client's window would be a
 // new component, and React would replace each open frame, its Worker and its
-// unsaved guest state.
-export const addBoxClients = async (): Promise<void> => {
-	const changed = (await requestData(api.api.boxes.get(), boxList)).filter((listed) => !loaded.has(listed.id) || loaded.get(listed.id)?.version !== listedVersion(listed));
+// unsaved guest state. `refreshLatest` takes only the moved `latest` of
+// Boxes already listed: a Box new to this client needs the Chats read again
+// first, which `addBoxClients`' callers do.
+const refreshCatalog = async (includeNew: boolean): Promise<void> => {
+	const changed = (await requestData(api.api.boxes.get(), boxList)).filter((listed) => loaded.has(listed.id) ? loaded.get(listed.id)?.version !== listedVersion(listed) : includeNew);
 	const settled = await Promise.allSettled(changed.map(clientOf));
 	const updates = new Map(changed.map((listed, index) => [listed.id, loadedFrom(listed, settled[index]!)] as const)); // @approved allSettled answers each Box, in order.
 	loaded = new Map([...[...loaded].map(([id, box]) => [id, updates.get(id) ?? box] as const), ...[...updates].filter(([id]) => !loaded.has(id))]);
 	installLoaded();
 };
+export const addBoxClients = () => refreshCatalog(true);
+export const refreshLatest = () => refreshCatalog(false);
 
 /** How a Box opens, or undefined when it has no client surface to open: its primary panel when it has one, otherwise its window. */
 export const boxOpening = (box: BoxId, open: { readonly panel: (panel: PromptBoxReference) => void; readonly window: (box: BoxId) => void }): (() => void) | undefined => {

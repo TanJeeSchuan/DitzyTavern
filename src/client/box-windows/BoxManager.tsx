@@ -14,7 +14,7 @@ import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import type { CreateBox as Panel } from "./CreateBox";
-import { addBoxClients, boxOpening, chatBoxClient, chatBoxVersion, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
+import { addBoxClients, boxOpening, refreshLatest, chatBoxClient, chatBoxVersion, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 
 // @approved
@@ -49,12 +49,16 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	// installed each Box id, read when the manager opens, offers to open it.
 	// A Box with no session, or a manager that cannot read them, offers
 	// nothing more.
+	const [, setRegistry] = useState(0);
+	// @approved
+	//  Opening the manager also reads each listed Box's `latest` again, so a
+	// version another tab installed shows here as "Update available".
 	useEffect(() => {
 		requestData(api.api.authoring.sessions.get(), authoringSessions).then(({ sessions }) => {
 			setAuthored(new Map(sessions.filter(({ installed }) => installed).toReversed().map(({ box, session }) => [box, session])));
 		}, () => undefined);
+		refreshLatest().then(() => setRegistry((count) => count + 1), () => undefined);
 	}, []);
-	const [, setRegistry] = useState(0);
 	const requestNavigation = useNavigationRequest();
 	const client = useQueryClient();
 	// @approved
