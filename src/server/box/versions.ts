@@ -1,7 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxId } from "../../shared/contract/box";
 import { cachedScenarioCheck, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
@@ -18,6 +18,25 @@ import { replaceFile, sandboxedFolder, type SandboxedFiles } from "./sandboxed-f
 // plugin or a sandboxed folder made by hand, which keeps one version.
 export const VERSION_PATTERN = /^[0-9a-f]{64}$/;
 export const isVersioned = (home: string): boolean => existsSync(join(home, "versions"));
+// @approved
+//  A versioned Box's folder can arrive unpacked from an archive like any
+// plugin's, and the host reads and writes `versions/`, `checks/` and
+// `latest` in it before a version's own walk (`sandboxedFolder`) runs, which
+// checks only inside that version. So each of them, and the folder itself,
+// must be a plain folder or file where it exists, never a link, or a path the
+// host builds through them could lead out of the plugin folder.
+export const assertPlainHome = async (home: string): Promise<void> => {
+	const plain = async (path: string, name: string, kind: "folder" | "file") => {
+		const stats = await lstat(path).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+		if (stats === undefined) return;
+		const ok = !stats.isSymbolicLink() && (kind === "folder" ? stats.isDirectory() : stats.isFile() && stats.nlink === 1);
+		if (!ok) throw new Error(`A versioned Box's ${name} is not a plain ${kind}; a link or anything else could lead out of its folder.`);
+	};
+	await plain(home, "folder", "folder");
+	await plain(join(home, "versions"), "versions/", "folder");
+	await plain(join(home, "checks"), "checks/", "folder");
+	await plain(join(home, "latest"), "latest", "file");
+};
 export const versionFolder = (home: string, version: string): string => join(home, "versions", version);
 
 /** @approved A version's name: the sha256 of its source files and `deps.lock.json`, by sorted path; packages and bundles are built from them. */
@@ -29,13 +48,17 @@ export const versionHash = (files: SandboxedFiles): string => {
 
 /** @approved The version `latest` names, or undefined before the first Install; a `latest` that names no version refuses the Box. */
 export const readLatest = async (home: string): Promise<string | undefined> => {
+	await assertPlainHome(home);
 	const file = Bun.file(join(home, "latest"));
 	if (!await file.exists()) return undefined;
 	const version = (await file.text()).trim();
 	if (!VERSION_PATTERN.test(version)) throw new Error("Its latest file names no version.");
 	return version;
 };
-export const writeLatest = (home: string, version: string): Promise<void> => replaceFile(join(home, "latest"), `${version}\n`);
+export const writeLatest = async (home: string, version: string): Promise<void> => {
+	await assertPlainHome(home);
+	await replaceFile(join(home, "latest"), `${version}\n`);
+};
 
 /** @approved Every version folder the Box holds, by hash. */
 export const listVersions = async (home: string): Promise<string[]> =>
@@ -50,6 +73,7 @@ export const listVersions = async (home: string): Promise<string[]> =>
 // creating it again leaves it alone. The caller owns the checked runtime.
 export const createVersion = async (home: string, source: string, id: BoxId, seen: ReadonlySet<BoxId>) => {
 	const files = await sandboxedFolder(source, id);
+	await assertPlainHome(home);
 	await mkdir(join(home, "versions"), { recursive: true });
 	const staging = join(home, "versions", `.staging-${crypto.randomUUID()}`);
 	try {
@@ -77,6 +101,7 @@ const scenarioHash = (input: ScenarioInput) => createHash("sha256").update(JSON.
 /** @approved Caches one scenario's result for the version it ran on; a new id folder gets its `versions/`, so it is a managed folder from then on, and a folder made by hand is left alone, since Install refuses it. */
 export const recordCheck = async (home: string, version: string, input: ScenarioInput, result: ScenarioResult): Promise<void> => {
 	if (existsSync(home) && !isVersioned(home)) return;
+	await assertPlainHome(home);
 	await mkdir(join(home, "versions"), { recursive: true });
 	await mkdir(join(home, "checks"), { recursive: true });
 	await replaceFile(join(home, "checks", `${version}-${scenarioHash(input)}.json`), JSON.stringify({ input, result }));
@@ -84,6 +109,7 @@ export const recordCheck = async (home: string, version: string, input: Scenario
 
 /** @approved Whether any scenario's cached result passed on exactly this version. */
 export const passedCheck = async (home: string, version: string): Promise<boolean> => {
+	await assertPlainHome(home);
 	const names = (await readdir(join(home, "checks")).catch(() => [])).filter((name) => name.startsWith(`${version}-`));
 	for (const name of names) {
 		const parsed: unknown = await Bun.file(join(home, "checks", name)).json().catch(() => undefined);

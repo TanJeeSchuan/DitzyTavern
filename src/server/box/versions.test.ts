@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { readdirSync, rmSync } from "node:fs";
+import { readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { writeBoxFiles } from "../test-fixtures/versioned-box";
-import { unversionedBoxIds } from "./registry";
+import { writeBoxFiles, writeVersionedBox } from "../test-fixtures/versioned-box";
+import { discoverBoxes, unversionedBoxIds } from "./registry";
 import { createVersion, listVersions, versionFolder } from "./versions";
 
 const root = join(".scratch", `versions-${crypto.randomUUID()}`);
@@ -31,4 +31,22 @@ test("a changed deps.lock.json makes a new version, though no package changed", 
 	const second = await create("b", { ...files, "deps.lock.json": "{ }\n" });
 	expect(second).not.toBe(first);
 	expect(await listVersions(join(root, "plugins", "jar"))).toEqual([first, second].sort());
+});
+
+// @approved
+//  A version's own walk checks only inside that version, so a `versions/`
+// that links elsewhere would let an unpacked plugin make the loader read and
+// build outside its folder.
+test("a versioned Box whose versions/ is a link is refused before anything in it is read", async () => {
+	const box = await writeVersionedBox("jar", [files]);
+	try {
+		const outside = join(box.plugins, "..", "outside");
+		renameSync(join(box.home, "versions"), outside);
+		symlinkSync(join(process.cwd(), outside), join(box.home, "versions"));
+		const { boxes, refused } = await discoverBoxes([box.plugins]);
+		expect(boxes.map(({ descriptor }) => descriptor.id)).toEqual([]);
+		expect(refused.map(({ reason }) => reason)).toEqual([expect.stringContaining("versions/ is not a plain folder")]);
+	} finally {
+		box.remove();
+	}
 });

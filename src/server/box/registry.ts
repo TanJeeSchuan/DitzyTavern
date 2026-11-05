@@ -21,7 +21,7 @@ import { esmOrigin } from "./sandboxed-deps";
 import { sandboxedFolder } from "./sandboxed-folder";
 import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 import { readBoxVersions } from "./version-pin";
-import { isVersioned, readLatest, VERSION_PATTERN, versionFolder } from "./versions";
+import { assertPlainHome, isVersioned, readLatest, VERSION_PATTERN, versionFolder } from "./versions";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 
@@ -305,6 +305,7 @@ export const loadBoxVersion = (id: BoxId, version: string): Promise<LoadedBox> =
 	const home = homes.get(id);
 	if (home === undefined || !VERSION_PATTERN.test(version)) return Promise.reject(new Error(`The ${id} Box has no version ${version}.`));
 	const pending = loading.get(key) ?? (async () => {
+		await assertPlainHome(home);
 		const checked = await checkSandboxedFolder(versionFolder(home, version), id, unversionedBoxIds());
 		const entry = { descriptor: checked.descriptor, box: checked.box, client: checked.client, dispose: checked.dispose, version, routes: undefined };
 		versions.set(key, entry);
