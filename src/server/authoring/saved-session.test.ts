@@ -223,3 +223,35 @@ test("reopening a session waits for its Install as a new Box, and reopens on the
 	const meta: { readonly box: string } = await Bun.file(join(root, session, "meta.json")).json();
 	expect([reopened.candidate, existsSync(join(root, session, reopened.candidate))]).toEqual([meta.box, true]);
 }));
+
+// @approved
+//  Closing removes the session from the open ones before its release ends,
+// so a reopen after a close must find and wait for that release, not start
+// from the old Box id while Install as a new Box is still moving the folder.
+test("closing then reopening a session waits for its Install as a new Box, and reopens on the id it gave the candidate", () => withAuthoring(async ({ root, request, start, prompt, profileId }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const gate = Promise.withResolvers<void>();
+	const move = fs.rename;
+	// Only the candidate folder's own move waits; the atomic writes' renames of their temporary files go through.
+	const spy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+		if (basename(String(to)).startsWith("authored-")) await gate.promise;
+		return await move(from, to);
+	});
+	let reopened: { readonly candidate: string };
+	try {
+		const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+		await Bun.sleep(20);
+		const closing = request("POST", `/api/authoring/sessions/${session}/close`);
+		await Bun.sleep(20);
+		const reopening = request("POST", `/api/authoring/sessions/${session}/open`, { profileId, model: "coder-1", steps: 40 });
+		await Bun.sleep(20);
+		gate.resolve();
+		const [, , answer] = await Promise.all([renewing, closing, reopening]);
+		reopened = await answer.json();
+	} finally {
+		spy.mockRestore();
+	}
+	const meta: { readonly box: string } = await Bun.file(join(root, session, "meta.json")).json();
+	expect([reopened.candidate, existsSync(join(root, session, reopened.candidate))]).toEqual([meta.box, true]);
+}));

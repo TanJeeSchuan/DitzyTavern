@@ -95,16 +95,26 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	//  Releasing a session cancels its turn, waits for it to end and for its
 	// checkpoint and log to be written, then closes its agent. Its folder
 	// stays, unless the writer never sent it a message: a session started and
-	// left at once is not worth listing.
-	const release = async (id: string) => {
+	// left at once is not worth listing. A release in progress stays in
+	// `releasing` until it settles, so a later close, reopen, discard or
+	// shutdown of the same session waits for that release, and with it for
+	// the turn or Install it waits on.
+	const releasing = new Map<string, Promise<void>>();
+	const release = (id: string): Promise<void> => {
+		const pending = releasing.get(id);
+		if (pending !== undefined) return pending;
 		const session = sessions.get(id);
-		if (session === undefined) return;
+		if (session === undefined) return Promise.resolve();
 		sessions.delete(id);
-		await session.fx.cancel().catch(() => undefined);
-		await session.turn;
-		await session.saving;
-		await session.agent.close().catch(() => undefined);
-		if (!await Bun.file(join(folderOf(id), LOG)).exists()) await rm(folderOf(id), { recursive: true, force: true });
+		const released = (async () => {
+			await session.fx.cancel().catch(() => undefined);
+			await session.turn;
+			await session.saving;
+			await session.agent.close().catch(() => undefined);
+			if (!await Bun.file(join(folderOf(id), LOG)).exists()) await rm(folderOf(id), { recursive: true, force: true });
+		})().finally(() => releasing.delete(id));
+		releasing.set(id, released);
+		return released;
 	};
 	const discard = async (id: string) => {
 		await release(id);
@@ -404,6 +414,6 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	return {
 		routes,
 		sweep: () => sweepCandidates(folders.root),
-		close: () => Promise.all([...sessions.keys()].map(release)),
+		close: () => Promise.all([...[...sessions.keys()].map(release), ...releasing.values()]),
 	};
 };
