@@ -50,7 +50,8 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
     the Chat has records or Moves but to declares no record or moves → refused
     setup → passes to.setup.schema and to.setupError
     chat and participant values → pass to.values
-    every rowReference annotation the old version's schemas carry is identical in to's   // Fork remaps by them
+    every place Fork remaps an id is identical, by path, in to's schemas:              // row-references.ts:38-46
+      each rowReference annotation, and each Record keyed by ParticipantKey (no annotation)
     any failure → refused, listing each failing place; nothing written
     pass → write the pin, advance the Chat's revision
   ```
@@ -69,13 +70,13 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
 - [ ] Version folders: create from a candidate (hash, staging build, rename), read, list. Tests: identical sources give the same hash and a second create is a no-op; a changed `deps.lock.json` gives a new hash.
 - [ ] Registry: catalog entries from `latest`; Chat-resolved lookups through the pin. The PR lists every call site with its kind.
 - [ ] The pin: written on first insertion, kept on removal, used on reinsertion, copied by Fork.
-- [ ] The upgrade check and command. Tests, one per rule: a writer record on an unselected Variant that the new record schema refuses; a Move list over the new `max`; a version that drops `record` while records exist; a `setupError` that refuses the stored setup; a changed `rowReference`. Each is refused and leaves every row unchanged. A passing upgrade writes only the pin and advances the revision.
+- [ ] The upgrade check and command. Tests, one per rule: a writer record on an unselected Variant that the new record schema refuses; a Move list over the new `max`; a version that drops `record` while records exist; a `setupError` that refuses the stored setup; a changed `rowReference`; a `ParticipantKey` Record turned into a string-keyed one, which accepts the same values but would stop Fork remapping its keys. Each is refused and leaves every row unchanged. A passing upgrade writes only the pin and advances the revision.
 - [ ] Version in the pending record envelope and in digest jobs; completion compares. Tests: a digest started under v1 that ends after the Chat moved to v2 writes nothing; a Generation that captured v1 completes its prose but not its v1 record once the Chat is on v2; a preview made under v1 is stale under v2.
 - [ ] Window commits, stages and uploads carry the version and are refused on a mismatch. Test: an old window's commit after an upgrade is refused even at the current revision.
 - [ ] Install creates a version and moves `latest`, gated on a cached passing check; remove the staging copy and target-claim code it replaces from `install.ts`.
 - [ ] Startup: load `latest` and the versions Chats pin on demand; skip `schema-check.ts` for versioned Boxes.
 - [ ] Client: registry, UI URL and frame keyed by version; "Update available" and **Update** in the Box manager, with refusals listing their places.
-- [ ] `contract.md`: versions must read shared values another version wrote, and must keep `rowReference` meanings.
+- [ ] `contract.md`: versions must read shared values another version wrote, and must keep every row reference: `rowReference` annotations and `ParticipantKey` Records.
 - [ ] e2e: install v1, add it to a Chat, revise and install v2 from the same Creator Mode session. The Chat stays on v1 with v1's window; a new Chat starts on v2; **Update** moves the first Chat to v2, its window remounts, its v1 records still fold, and the next Generation's Prompt Plan has v2's prompt items.
 - [ ] Update `docs/box-system/README.md` (loading, Creator Mode) and ticket 03's "never side by side" line.
 - [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
