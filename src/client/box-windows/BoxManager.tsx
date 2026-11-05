@@ -100,12 +100,12 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		setRegistry((count) => count + 1);
 	};
 
-	const stateOf = (box: BoxId) => {
-		const state = conversation.boxes[box];
-		if (state === undefined) throw new Error(`Chat ${conversation.id} has no state for Box ${box}.`);
-		return state;
-	};
-	const rows = [...loadedBoxes()].map(([box, loaded]) => ({ box, loaded, state: stateOf(box) }));
+	// @approved
+	//  A summary read before this client listed a Box, such as one another tab
+	// installed, has no state for it; the Chat cannot have held a Box its
+	// summary never saw, so it is absent there. Adding it then runs against the
+	// Chat's revision like any other change.
+	const rows = [...loadedBoxes()].map(([box, loaded]) => ({ box, loaded, state: conversation.boxes[box] ?? "absent" }));
 	const inChat = rows.filter(({ state }) => state !== "absent");
 	const toAdd = rows.filter(({ state }) => state === "absent");
 
