@@ -299,6 +299,11 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			return Value.Check(authoringLogEntry, entry) && entry.type === "scenario-input" ? [entry.input] : [];
 		});
 	};
+	// @approved
+	//  Install, and Install as a new Box, wait for no turn: a scenario the
+	// running turn has yet to log would be missing from the saved scenarios
+	// Install replays, and a renewed id would move the folder under its writes.
+	const running = () => ({ outcome: "refused" as const, reason: "Wait for the message to finish.", diagnostics: [] });
 	const install = async (session: Session) => {
 		const installed = await installCandidate(session.candidate, folders.plugins, await savedScenarios(session));
 		if (installed.outcome === "installed") {
@@ -357,6 +362,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/install", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
+			if (session.running) return running();
 			return await install(session);
 		}, { params: authoringSessionParams, response: { 200: authoringInstall, 404: notFoundOutcome } })
 		// @approved
@@ -368,6 +374,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/new-box", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
+			if (session.running) return running();
 			const { candidate } = session;
 			await candidate.renew();
 			session.meta = { ...session.meta, box: candidate.id, installed: false, updated: now() };

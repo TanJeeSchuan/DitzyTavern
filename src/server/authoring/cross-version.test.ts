@@ -12,6 +12,7 @@ import { readLatest } from "../box/versions";
 import { refusedUpgrade } from "../conversation";
 import { createCandidate } from "./candidate";
 import { installCandidate } from "./install";
+import { stateChanges } from "./scenario";
 import { authoringTools, checkScenario } from "./tools";
 
 const roots: string[] = [];
@@ -98,8 +99,55 @@ test("a same-shape change in meaning passes the Update check and shows in the st
 		advance: { run: async ({ state, moves }) => ({ items: [], record: { coins: state + moves.length } }) },`));
 	const result = await run({ ...tips(3, 4), from: { version: "latest" } });
 	expect(result).toMatchObject({ ok: true, state: 4, upgrade: { turns: 2, changes: [{ path: "", earlier: 7, candidate: 4 }] } });
+	expect(await run({ ...tips(3, 4), swipes: [{ turn: 0 }], from: { version: "latest" } })).toMatchObject({ ok: true, upgrade: { turns: 2, swipes: 1 } });
 });
 
+test("a from run that stops on the installed version counts only the turns that ran there", async () => {
+	const { revise, run } = await installed(v1, tips(1));
+	await revise(translated);
+	const result = await run({ cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }, { moves: [{ coins: 1 }, { coins: 1 }] }, {}], from: { version: "latest", turns: 2 } });
+	expect(result).toMatchObject({ ok: false, diagnostics: [expect.stringContaining("Turn 1 has 2 Moves")], upgrade: { turns: 1, swipes: 0 } });
+});
+
+test("the state diff names each changed place by an escaped JSON pointer, and an object that becomes null as one change", () => {
+	expect(stateChanges({ "a/b": 1, "c~d": [1, 2], same: { x: 1 } }, { "a/b": 2, "c~d": [1], same: { x: 1 } })).toEqual([
+		{ path: "/a~1b", earlier: 1, candidate: 2 },
+		{ path: "/c~0d/1", earlier: 2, candidate: undefined },
+	]);
+	expect(stateChanges({ a: 1 }, null)).toEqual([{ path: "", earlier: { a: 1 }, candidate: null }]);
+	expect(stateChanges([1], { 0: 1 })).toEqual([{ path: "", earlier: [1], candidate: { 0: 1 } }]);
+});
+
+/** @approved The Tip Jar with an integer setup, whose `setupError(setup, previous)` returns `refuse`. */
+const counted = (refuse: string) => {
+	const files = jar(coins, `setupError: (setup, previous) => ${refuse},
+		records: { initial: 0, fold: (total, { coins }) => total + coins },
+		advance: { run: async ({ moves }) => ({ items: [], record: { coins: moves.length } }) },`);
+	return { ...files, descriptor: { ...files.descriptor, setup: { schema: { type: "integer" }, initial: 0 } } };
+};
+
+// @approved
+//  A real Update checks a stored setup against itself, so the candidate's
+// turns after it must not check it again as a first save from `initial`.
+test("a from run keeps the setup the Update check accepted, though a transition-sensitive setupError would refuse it from initial", async () => {
+	const { revise, run } = await installed(counted("undefined"), { ...tips(1), setup: 2 });
+	await revise(counted("Math.abs(setup - previous) > 1 ? 'too far' : undefined"));
+	expect(await run({ ...tips(1, 1), setup: 2, from: { version: "latest", turns: 1 } })).toMatchObject({ ok: true, state: 2 });
+});
+
+test("Install skips a saved scenario whose setup the installed version refused, since it left no Chat behind", async () => {
+	const { candidate, plugins, revise, run } = await installed(counted("setup > 5 ? 'too big' : undefined"), { ...tips(1), setup: 1 });
+	await revise(counted("setup > 3 ? 'too big' : undefined"));
+	const revised = { ...tips(1), setup: 1 };
+	expect((await run(revised)).ok).toBe(true);
+	expect(await installCandidate(candidate, plugins, [{ ...tips(1), setup: 7 }, revised])).toMatchObject({ outcome: "installed" });
+});
+
+const packing = (maxLength: number) => {
+	const files = mood(["calm", "tense"]);
+	return { descriptor: { ...files.descriptor, moves: { schema: { type: "object", properties: { item: { type: "string", maxLength } }, required: ["item"] }, max: 1, label: "Pack {item}" } },
+		logic: files.logic.replace("records:", "moves: { render: ({ item }, author) => author + \" packs a \" + item + \".\" },\n\t\trecords:") };
+};
 const mood = (moods: readonly string[], extra: Schema = {}): Files => ({
 	descriptor: { sdk: 2, label: "Mood", summary: "Reads the mood.", role: "system", startsEnabled: false, instructions: "",
 		decision: { summary: "s", description: "d", off: "o", context: "c" },
@@ -153,4 +201,28 @@ test("Install of a v2 its saved scenarios' data cannot Update to leaves latest a
 	expect((await run(revised)).ok).toBe(true);
 	expect(await installCandidate(candidate, plugins, [saved, revised])).toEqual({ outcome: "installed", id: candidate.id, label: "Tip Jar" });
 	expect([await readLatest(join(plugins, first)), [...installedBoxes().keys()].slice(-2)]).toEqual([latest, [first, candidate.id]]);
+});
+
+// @approved
+//  A Send stores its Moves before the digest reads the passage, so a saved
+// scenario whose digest fails on latest still leaves its Moves in a Chat.
+test("Install checks the Moves a saved scenario left on latest even when its digest failed there", async () => {
+	const { candidate, plugins, revise, run } = await installed(packing(20), { cast: ["Ann", "Bard"], seed: "s", turns: [felt("calm", "tense")] });
+	await revise(packing(3));
+	const revised = { cast: ["Ann", "Bard"], seed: "s", turns: [{ moves: [{ item: "map" }], ...felt("tense", "calm") }] };
+	expect((await run(revised)).ok).toBe(true);
+	const undigested = { cast: ["Ann", "Bard"], seed: "s", turns: [{ moves: [{ item: "lantern" }], prose: "A passage." }] };
+	expect(await installCandidate(candidate, plugins, [undigested, revised])).toMatchObject({ outcome: "incompatible", diagnostics: [`Saved scenario 1: ${refusedUpgrade("Mood", ["Message 1 Moves"])}`] });
+});
+
+test("a descriptor write queued behind a new id takes the new id", async () => {
+	const candidate = await createCandidate(scratch());
+	await candidate.write("descriptor.json", "{}");
+	const release = Promise.withResolvers<void>();
+	const held = candidate.check(() => release.promise);
+	const renewed = candidate.renew();
+	const written = candidate.write("descriptor.json", JSON.stringify({ label: "Jar" }));
+	release.resolve();
+	await Promise.all([held, renewed, written]);
+	expect(await Bun.file(join(candidate.folder, "descriptor.json")).json()).toEqual({ label: "Jar", id: candidate.id });
 });

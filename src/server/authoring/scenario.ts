@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { Value, ValuePointer } from "@sinclair/typebox/value";
+import { Value } from "@sinclair/typebox/value";
 import type { BoxId } from "../../shared/contract/box";
 import { assertChecked } from "../../shared/contract/box-descriptor";
 import { snapshotQuery } from "../../shared/contract/box-sandboxed";
@@ -19,13 +19,18 @@ type Turn = ScenarioResult["turns"][number];
 type Step = { readonly kind: "turn" | "swipe"; readonly index: number };
 const stepsOf = (input: ScenarioInput): Step[] => [...input.turns.map((_, index) => ({ kind: "turn" as const, index })), ...(input.swipes ?? []).map((_, index) => ({ kind: "swipe" as const, index }))];
 
-/** @approved One version as a scenario runs it: its hooks, the scenario's setup checked against it, and its fold. A version without a stored setup reads its own `initial`, as a Chat does. */
-const runnerOf = (id: BoxId, { descriptor, box }: Pick<CheckedSandboxedBox, "descriptor" | "box">, input: ScenarioInput) => {
+// @approved
+//  One version as a scenario runs it: its hooks, the scenario's setup checked
+// against it, and its fold. A version without a stored setup reads its own
+// `initial`, as a Chat does. `setupError` sees `initial` as the previous
+// setup, as a new Chat's first save does, unless the setup is one an Update
+// check already accepted, which checks it against itself.
+const runnerOf = (id: BoxId, { descriptor, box }: Pick<CheckedSandboxedBox, "descriptor" | "box">, input: ScenarioInput, upgraded = false) => {
 	if (descriptor.setup === undefined && input.setup !== undefined) throw new Error(`The ${id} Box declares no setup.`);
 	const setup = input.setup === undefined ? descriptor.setup?.initial : input.setup;
 	if (descriptor.setup !== undefined) {
 		assertChecked(descriptor.setup.schema, setup, "The scenario's setup");
-		const refused = box.setupError?.(setup, descriptor.setup.initial);
+		const refused = box.setupError?.(setup, upgraded ? setup : descriptor.setup.initial);
 		if (refused !== undefined) throw new Error(`The ${id} Box refuses the scenario's setup: ${refused}`);
 	}
 	return { descriptor, box, setup, fold: (records: readonly GenerationJsonValue[]) => box.records?.foldAll?.(box.records.initial, records, setup) };
@@ -70,6 +75,12 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 		const asked = { messageId: index * 2 + 1, speaker: human.name, authorId: human.id, content: "" };
 		const passage = { messageId: index * 2 + 2, speaker: speaker.name, authorId: speaker.id, content: prose ?? "" };
 		const earlier = [...history.slice(0, index * 2), asked];
+		// @approved
+		//  The Message and its Variant are stored once `advance` returns, as a
+		// Send stores them; a digest only fills the Variant's record later, so
+		// one that fails still leaves the Moves and an empty Variant behind.
+		const variants = (played[index] ??= { moves, records: [] }).records;
+		const at = variants.push(undefined) - 1;
 		const record = digest === undefined ? advanced.record : passage.content.trim() === "" ? undefined : await digest.run({
 			passage, preceding: digest.window === 0 ? [] : earlier.slice(-digest.window), seed,
 			cast: cast.map((member) => ({ ...member, removed: false })), data: {},
@@ -81,7 +92,7 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 		} });
 		history.splice(index * 2, 2, asked, passage);
 		selected[index] = record;
-		(played[index] ??= { moves, records: [] }).records.push(record);
+		variants[at] = record;
 		return { moves: rendered, items: [...advanced.items], ...record !== undefined && { record } };
 	};
 	const play = async (runner: Runner, steps: readonly Step[], into: Pick<ScenarioResult, "turns" | "swipes">) => {
@@ -116,9 +127,22 @@ const loadVersion = async (home: string | undefined, id: BoxId, seen: ReadonlySe
 	return { version: hash, checked: await checkSandboxedFolder(versionFolder(home, hash), id, seen, signal) };
 };
 
-/** @approved Each place where the candidate's fold of the same records differs from the earlier version's, by JSON pointer: information, since a version may change state on purpose. */
-const stateChanges = (earlier: GenerationJsonValue | undefined, candidate: GenerationJsonValue | undefined) => Value.Diff(earlier, candidate)
-	.map(({ path }) => ({ path, earlier: ValuePointer.Get(earlier, path), candidate: ValuePointer.Get(candidate, path) }));
+type StateChange = { readonly path: string; readonly earlier: BoxValue | undefined; readonly candidate: BoxValue | undefined };
+const container = (value: BoxValue | undefined): value is { readonly [key: string]: BoxValue } | readonly BoxValue[] => value !== null && typeof value === "object";
+const pointerKey = (key: string) => key.replaceAll("~", "~0").replaceAll("/", "~1");
+// @approved
+//  Each place where the candidate's fold of the same records differs from
+// the earlier version's, as an RFC 6901 pointer: two objects, or two
+// arrays, differ key by key, and anything else that is not equal is one
+// change in place. Information, since a version may change state on purpose.
+export const stateChanges = (earlier: BoxValue | undefined, candidate: BoxValue | undefined, path = ""): StateChange[] => {
+	if (container(earlier) && container(candidate) && Array.isArray(earlier) === Array.isArray(candidate)) {
+		const before = new Map<string, BoxValue>(Object.entries(earlier));
+		const after = new Map<string, BoxValue>(Object.entries(candidate));
+		return [...new Set([...before.keys(), ...after.keys()])].flatMap((key) => stateChanges(before.get(key), after.get(key), `${path}/${pointerKey(key)}`));
+	}
+	return Value.Equal(earlier, candidate) ? [] : [{ path, earlier, candidate }];
+};
 
 // @approved
 //  Runs one scenario on a candidate exactly as the loader would load it: the
@@ -146,20 +170,24 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 	try {
 		let steps = stepsOf(input);
 		if (input.from !== undefined) {
-			const handover = input.from.turns ?? steps.length;
-			if (handover > input.turns.length) throw new Error(`from names ${handover} turns; the scenario has ${input.turns.length}.`);
+			const { turns } = input.from;
+			if (turns !== undefined && turns > input.turns.length) throw new Error(`from names ${turns} turns; the scenario has ${input.turns.length}.`);
+			const handover = turns ?? steps.length;
 			const loaded = await loadVersion(home, id, seen, input.from.version, signal);
 			earlier = loaded.checked;
 			const before = runnerOf(id, earlier, input);
-			const ran = steps.slice(0, handover);
-			result.upgrade = { version: loaded.version, turns: ran.filter(({ kind }) => kind === "turn").length, swipes: ran.filter(({ kind }) => kind === "swipe").length };
-			await player.play(before, ran, result);
+			const upgrade: NonNullable<ScenarioResult["upgrade"]> = result.upgrade = { version: loaded.version, turns: 0, swipes: 0 };
+			try {
+				await player.play(before, steps.slice(0, handover), result);
+			} finally {
+				Object.assign(upgrade, { turns: result.turns.length, swipes: result.swipes.length });
+			}
 			const refusals = playedRefusals(id, player.cast, input.setup, player.played, earlier, checked);
 			if (refusals.length > 0) throw new Error(refusedUpgrade(earlier.descriptor.label, refusals));
-			result.upgrade.changes = stateChanges(before.fold(player.records()), runnerOf(id, checked, input).fold(player.records()));
+			upgrade.changes = stateChanges(before.fold(player.records()), runnerOf(id, checked, input, true).fold(player.records()));
 			steps = steps.slice(handover);
 		}
-		const candidate = runnerOf(id, checked, input);
+		const candidate = runnerOf(id, checked, input, input.from !== undefined);
 		await player.play(candidate, steps, result);
 		const records = player.records();
 		const state = candidate.fold(records);
@@ -190,12 +218,15 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 // installed version `earlier`, as far as that version gets, since a
 // scenario written for the candidate may stop partway on it and what it
 // played is still data a Chat could hold, then returns the writer's Update
-// check's refusals for that data against the candidate. It ignores the
-// scenario's own `from`.
+// check's refusals for that data against the candidate. A scenario whose
+// setup the installed version refuses leaves no Chat behind, so it has
+// nothing to check. It ignores the scenario's own `from`.
 export const replayRefusals = async (id: BoxId, earlier: CheckedSandboxedBox, candidate: Pick<LoadedBox, "descriptor" | "box">, input: ScenarioInput): Promise<string[]> => {
+	let runner: Runner;
+	try { runner = runnerOf(id, earlier, input); } catch { return []; }
 	const player = scenarioPlayer(id, input, new AbortController().signal);
 	try {
-		await Promise.resolve().then(() => player.play(runnerOf(id, earlier, input), stepsOf(input), { turns: [], swipes: [] })).catch(() => undefined);
+		await player.play(runner, stepsOf(input), { turns: [], swipes: [] }).catch(() => undefined);
 		return playedRefusals(id, player.cast, input.setup, player.played, earlier, candidate);
 	} finally {
 		player.close();

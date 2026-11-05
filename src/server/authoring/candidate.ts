@@ -45,9 +45,9 @@ export const createCandidate = async (root: string, saved?: { readonly session: 
 	};
 	const write = (file: AuthoredFile, content: string, signal?: AbortSignal) => {
 		capped(file, content);
-		const text = file === "descriptor.json" ? withId(content, id) : content;
-		const bytes = capped(file, text);
 		return exclusive(async () => {
+			const text = file === "descriptor.json" ? withId(content, id) : content;
+			const bytes = capped(file, text);
 			await replaceFile(join(folder, file), text);
 			return { written: file, bytes };
 		}, signal);

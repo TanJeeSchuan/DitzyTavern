@@ -20,7 +20,8 @@ type Delta = { readonly role?: string; readonly content?: string; readonly tool_
 // @approved
 //  Runs `act` against an authoring server whose fake model answers each
 // request with "Answer <n>.", except "Write CSS.", which it answers by
-// calling write_css, and records the messages each request sent.
+// calling write_css, and "Hold.", which it answers once `release` is
+// called, and records the messages each request sent.
 // `restart` stops the server's sessions and builds a new one on the same
 // folder, sweeping it as the app does at startup.
 const withAuthoring = async (act: (server: {
@@ -31,14 +32,17 @@ const withAuthoring = async (act: (server: {
 	readonly prompt: (session: string, text: string) => Promise<string>;
 	readonly restart: () => Promise<void>;
 	readonly profileId: number;
+	readonly release: () => void;
 }) => Promise<void>) => {
 	const sent: (readonly Message[])[] = [];
+	const hold = Promise.withResolvers<void>();
 	const model = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		async fetch(request) {
 			const body: { readonly messages: readonly Message[] } = await request.json();
 			sent.push(body.messages);
 			const asked = body.messages.at(-1)?.content;
+			if (asked === "Hold.") await hold.promise;
 			const css = asked === "Write CSS.";
 			const scenario = asked === "Run a long scenario.";
 			const chunk = (delta: Delta, finish: string | null) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "coder-1", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -66,7 +70,7 @@ const withAuthoring = async (act: (server: {
 			return answer.session;
 		};
 		await act({
-			root: folders.root, sent, request, profileId,
+			root: folders.root, sent, request, profileId, release: () => hold.resolve(),
 			start: async () => await started(await request("POST", "/api/authoring/sessions", choice)),
 			prompt: async (session, text) => await (await request("POST", `/api/authoring/sessions/${session}/prompts`, { text })).text(),
 			restart: async () => {
@@ -159,4 +163,19 @@ test("a scenario's whole input is logged, though the tool event the panel sees i
 	const lines: { readonly type: string; readonly truncated?: boolean; readonly input?: unknown }[] = (await (await request("GET", `/api/authoring/sessions/${session}/log`)).text())
 		.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line));
 	expect([lines.find(({ type }) => type === "tool")?.truncated, lines.find(({ type }) => type === "scenario-input")?.input]).toEqual([true, longScenario]);
+}));
+
+// @approved
+//  A scenario the running turn has not logged yet would be missing from the
+// saved scenarios Install replays, and a new id would move the folder under
+// the turn's writes, so both wait for the turn to end.
+test("Install and Install as a new Box are refused while a turn runs, and leave the candidate's id alone", () => withAuthoring(async ({ root, request, start, release }) => {
+	const session = await start();
+	const ids = () => readdirSync(join(root, session)).filter((name) => name.startsWith("authored-"));
+	const before = ids();
+	const turn = await request("POST", `/api/authoring/sessions/${session}/prompts`, { text: "Hold." });
+	for (const route of ["install", "new-box"]) expect(await (await request("POST", `/api/authoring/sessions/${session}/${route}`)).json()).toEqual({ outcome: "refused", reason: "Wait for the message to finish.", diagnostics: [] });
+	expect(ids()).toEqual(before);
+	release();
+	await turn.text();
 }));
