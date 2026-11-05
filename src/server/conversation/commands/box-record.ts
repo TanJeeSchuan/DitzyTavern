@@ -6,11 +6,11 @@ import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireBox, requireBoxInstance, requireVariant } from "../internal";
 
-/** @approved The record schema of a registered Box that keeps records; any other id fails the command. */
-const requireRecord = (box: BoxId) => {
-	const { label, record } = requireBox(box);
-	if (record === undefined) throw new InvalidConversationCommandError(`The ${label} Box keeps no records.`);
-	return { label, record };
+/** @approved The record schema of a registered Box that keeps records, at the version this Chat runs; any other id fails the command. */
+const requireRecord = (db: ConversationDatabase, conversationId: number, box: BoxId) => {
+	const { descriptor } = requireBox(db, conversationId, box);
+	if (descriptor.record === undefined) throw new InvalidConversationCommandError(`The ${descriptor.label} Box keeps no records.`);
+	return { descriptor, label: descriptor.label, record: descriptor.record };
 };
 
 // @approved
@@ -19,7 +19,7 @@ const requireRecord = (box: BoxId) => {
 //  anything is written, so storage only ever holds decodable records, and the
 //  Variant is checked to belong to this Conversation before anything lands.
 export function setBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: BoxId; messageId: number; variantId: number; record: BoxValue; expected: BoxValue }): void {
-	const { label, record } = requireRecord(input.box);
+	const { descriptor, label, record } = requireRecord(db, input.conversationId, input.box);
 	if (!fitsBoxSchema(record, input.record) || !(input.expected === null || fitsBoxSchema(record, input.expected))) {
 		throw new InvalidConversationCommandError(`The ${label} record does not match its schema.`);
 	}
@@ -28,12 +28,12 @@ export function setBoxRecord(db: ConversationDatabase, input: { conversationId: 
 	if (!Value.Equal(effectiveRecord(readRecordSlots(db, input.box, record, instance, [input.variantId]).get(input.variantId)) ?? null, input.expected)) {
 		throw new InvalidConversationCommandError("This record changed since you read it. Review it before changing it again.");
 	}
-	writeWriterRecord(db, input.box, instance, input.variantId, input.record);
+	writeWriterRecord(db, descriptor, instance, input.variantId, input.record);
 }
 
 /** @approved Reset drops the override and leaves the automatic record, if any, in place. */
 export function resetBoxRecord(db: ConversationDatabase, input: { conversationId: number; box: BoxId; messageId: number; variantId: number }): void {
-	requireRecord(input.box);
+	const { descriptor } = requireRecord(db, input.conversationId, input.box);
 	requireVariant(db, input.conversationId, input.messageId, input.variantId);
-	resetWriterRecord(db, input.box, requireBoxInstance(db, input.conversationId, input.box), input.variantId);
+	resetWriterRecord(db, descriptor, requireBoxInstance(db, input.conversationId, input.box), input.variantId);
 }

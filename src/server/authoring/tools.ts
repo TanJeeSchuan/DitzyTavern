@@ -3,7 +3,9 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import { join } from "node:path";
 import { assertChecked } from "../../shared/contract/box-descriptor";
 import { authoredContent, readContractInput, scenarioInput, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
-import { builtInBoxes, serverBoxes } from "../box/registry";
+import { builtInBoxes, unversionedBoxIds } from "../box/registry";
+import { sandboxedFolder } from "../box/sandboxed-folder";
+import { recordCheck, versionHash } from "../box/versions";
 import { AUTHORED_FILES, type AuthoredFile, type Candidate } from "./candidate";
 import { runScenario } from "./scenario";
 
@@ -56,8 +58,10 @@ const writes = {
 // aborts when the turn is cancelled: a write still waiting is dropped, and a
 // scenario stops, its package fetches included. `onScenario` hears each
 // scenario's whole input and its result under its tool call's id, for the
-// panel and the session's log.
-export const authoringTools = (candidate: Candidate, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, input: ScenarioInput, result: ScenarioResult) => void }) => {
+// panel and the session's log. Each scenario's result is also cached under
+// the Box's id folder in `plugins`, for the version the candidate's files
+// make once its build has run, which is what Install is gated on.
+export const authoringTools = (candidate: Candidate, plugins: string, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, input: ScenarioInput, result: ScenarioResult) => void }) => {
 	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string, signal: AbortSignal) => unknown) => ({
 		name, description, idempotent: true, writes: true,
 		inputSchema: JSON.parse(JSON.stringify(schema)),
@@ -73,7 +77,12 @@ export const authoringTools = (candidate: Candidate, { spend, onScenario }: { re
 		...Object.entries(writes).map(([name, [file, description]]) => tool(name, description, content(file), ({ content: text }, _, signal) => candidate.write(file, text, signal))),
 		tool("run_scenario", "Loads the Box from its files as the app would and plays the scenario against it, returning its diagnostics, prompt items, records, state and read or status.",
 			scenarioInput, async (input, call, signal) => {
-				const result = await candidate.check(() => runScenario(candidate.folder, candidate.id, new Set(serverBoxes().keys()), input, signal), signal);
+				const result = await candidate.check(async () => {
+					const ran = await runScenario(candidate.folder, candidate.id, unversionedBoxIds(), input, signal);
+					const files = await sandboxedFolder(candidate.folder, candidate.id).catch(() => undefined);
+					if (files !== undefined) await recordCheck(join(plugins, candidate.id), versionHash(files), input, ran);
+					return ran;
+				}, signal);
 				onScenario(call, input, result);
 				return result;
 			}),

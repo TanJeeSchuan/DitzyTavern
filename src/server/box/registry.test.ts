@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors } from "../../shared/contract/box";
+import { boxDescriptor, boxDescriptors } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { readBoxFolds, writeAutomaticRecord } from "./records";
@@ -21,7 +21,7 @@ import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
-import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
+import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes, serverBoxes } from "./registry";
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -30,7 +30,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 		const selection = configureDecisionModels(database, key, "model-a");
 		const human = { id: 1, name: "Ann" };
 		const capture = () => fingerprintBoxes(captureBoxes(
-			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
+			participatingBoxes(serverBoxes(), [{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
 			{},
 			{},
 			{},
@@ -266,10 +266,10 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		} })]);
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
-		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
+		const boxes = participatingBoxes(serverBoxes(), [{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
-		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
+		writeAutomaticRecord(drizzle(database), boxDescriptor("lantern"), instance, variant.id, {}, sha256("Lit it."));
 		expect(() => readBoxFolds(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
 		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 1 } } }, {}, read)))
@@ -361,7 +361,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
 			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { ${field === "trace" ? `trace: ${valueObject}, ` : ""}run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
-		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
+		const inputs = captureBoxes(participatingBoxes(serverBoxes(), [{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));

@@ -9,7 +9,7 @@ import { authoringTools, fitted, TOOL_RESULT_BYTES } from "./tools";
 const root = mkdtempSync(join(tmpdir(), "ditzy-tools-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 /** @approved The tools, bound to a fresh candidate no call here writes or checks. */
-const tools = async () => authoringTools(await createCandidate(join(root, "authoring")), { spend: async () => undefined, onScenario: () => undefined });
+const tools = async () => authoringTools(await createCandidate(join(root, "authoring")), join(root, "plugins"), { spend: async () => undefined, onScenario: () => undefined });
 
 // @approved
 //  libfx refuses a host tool result past 64 KiB with "Host tool result

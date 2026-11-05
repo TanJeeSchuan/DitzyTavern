@@ -22,6 +22,7 @@ import { removeParticipant } from "./commands/remove-participant";
 import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
 import { setBoxSetup } from "./commands/set-box-setup";
 import { setBoxState } from "./commands/set-box-state";
+import { upgradeBox } from "./commands/upgrade-box";
 import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
 import { setBackground } from "./commands/set-background";
@@ -89,6 +90,7 @@ const handlers = {
 	"select-prompt-preset": selectPromptPreset,
 	"set-box-setup": setBoxSetup,
 	"set-box-state": setBoxState,
+	"upgrade-box": upgradeBox,
 	"set-box-record": setBoxRecord,
 	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,

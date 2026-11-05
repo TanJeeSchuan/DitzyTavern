@@ -14,7 +14,8 @@ import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import type { CreateBox as Panel } from "./CreateBox";
-import { addBoxClients, boxOpening, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
+import { addBoxClients, boxOpening, chatBoxClient, chatBoxVersion, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
+import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 
 // @approved
 //  Creator Mode loads when it is first opened, with its code highlighting. A
@@ -39,7 +40,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
-	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | null>(null);
+	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | { box: BoxId; version: string } | null>(null);
 	const [creating, setCreating] = useState<{ readonly reopen?: string } | null>(null);
 	const [authored, setAuthored] = useState<ReadonlyMap<string, string>>(new Map());
 	// @approved
@@ -67,9 +68,19 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		setPending(true);
 		setNotice(null);
 		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice };
-		void sendBoxState(surface, client, requested.box, requested.state).finally(() => setPending(false));
+		const sent = "state" in requested ? sendBoxState(surface, client, requested.box, requested.state)
+			: runConversationCommand(surface, { type: "upgrade-box", box: requested.box, version: requested.version }, {
+				notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
+			});
+		void sent.finally(() => setPending(false));
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
+	// @approved
+	//  Update moves this Chat to the Box's `latest` through the upgrade check.
+	// It remounts the Box's window on the new version, so it asks the save
+	// guard first, as leaving would; a refusal lists each place that no longer
+	// fits, and nothing changes.
+	const update = (box: BoxId, version: string) => requestNavigation(() => setRequested({ box, version }));
 	// @approved
 	//  An installed Box joins every Chat as absent: every cached Chat is read
 	// again first, inactive ones included, so no Chat renders a summary that
@@ -96,7 +107,8 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 
 	const row = ({ box, loaded, state }: { readonly box: BoxId; readonly loaded: LoadedBox; readonly state: BoxState }) => {
 		const { label, summary } = loaded.metadata;
-		const clientModule = "client" in loaded ? loaded.client : undefined;
+		const clientModule = chatBoxClient(conversation, box);
+		const updateTo = conversation.boxVersions[box] !== undefined && chatBoxVersion(conversation, box) !== loaded.version ? loaded.version : undefined;
 		const Status = clientModule?.Status;
 		const locked = disabled || pending;
 		const open = state === "absent" ? undefined : boxOpening(box, { panel: onOpenPanel, window: onOpenWindow });
@@ -108,8 +120,10 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				{open === undefined ? <strong>{label}</strong> : <button type="button" className="box-manager-name" onClick={open}>{label}</button>}
 				<span className="box-manager-status" title={state === "absent" ? undefined : summary}>{statusLine}</span>
 				{"failure" in loaded && <span className="box-manager-status box-failure">Did not load: {loaded.failure}</span>}
+				{updateTo !== undefined && <span className="box-manager-status">Update available</span>}
 				<BoxBlockNotice conversation={conversation} box={box} disabled={locked} className="mt-1" />
 			</div>
+			{updateTo !== undefined && <Button type="button" variant="outline" size="xs" aria-label={`Update ${label}`} disabled={locked} onClick={() => update(box, updateTo)}>Update</Button>}
 			{state === "absent"
 				? <Button type="button" variant="outline" size="xs" aria-label={`Add ${label}`} disabled={locked} onClick={() => setState(box, "enabled")}>Add</Button>
 				: <>
@@ -138,7 +152,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				<h3 id="box-manager-add">Add to this Chat</h3>
 				<ul>{toAdd.map(row)}</ul>
 			</section>}
-			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
+			{notice !== null && <p className="composer-control-note is-error whitespace-pre-line" role="alert">{notice}</p>}
 			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating({})}>Create a Box</Button>
 		</div>
 		{creating !== null && <Suspense fallback={null}><CreateBox open reopen={creating.reopen} onOpenChange={(next) => { if (!next) setCreating(null); }} onInstalled={addInstalled} /></Suspense>}

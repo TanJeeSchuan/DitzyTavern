@@ -65,9 +65,8 @@ export const boxDescriptors = (): ReadonlyMap<BoxId, BoxDescriptor> =>
 
 /** @approved A Box record as the host holds it: an object of the Box's own values. */
 export type BoxRecord = { readonly [key: string]: BoxValue };
-/** @approved Box `id`'s record schema, typed as the record the host holds; a Box that keeps no records has none. */
-export const boxRecordSchema = (id: BoxId) => {
-	const { record } = boxDescriptor(id);
+/** @approved A Box version's record schema, typed as the record the host holds; a Box that keeps no records has none. */
+export const boxRecordSchema = ({ id, record }: BoxDescriptor) => {
 	if (record === undefined) throw new Error(`The ${id} Box keeps no records.`);
 	return Type.Unsafe<BoxRecord>(record);
 };

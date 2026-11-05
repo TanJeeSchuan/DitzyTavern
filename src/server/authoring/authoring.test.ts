@@ -1,12 +1,12 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installedBoxes } from "../../shared/contract/box";
 import type { ScenarioInput, ScenarioResult } from "../../shared/contract/authoring";
-import { openInitializedDatabase } from "../database/database";
-import * as registry from "../box/registry";
-import { builtInBoxes, discoverBoxes, loadBoxes, serverBox } from "../box/registry";
+import { boxAt, builtInBoxes, discoverBoxes, loadBoxes, serverBoxes } from "../box/registry";
+import { readLatest, versionHash } from "../box/versions";
+import { sandboxedFolder } from "../box/sandboxed-folder";
 import { createCandidate } from "./candidate";
 import { installCandidate } from "./install";
 import { runScenario } from "./scenario";
@@ -46,8 +46,9 @@ const unbudgeted = { spend: async () => {}, onScenario: () => {} };
 /** @approved A candidate written through its tools, as the agent writes one. */
 const authored = async (files: { descriptor: object; logic: string; ui?: string }) => {
 	const candidate = await createCandidate(scratch());
+	const plugins = scratch();
 	const scenarios: ScenarioResult[] = [];
-	const tools = authoringTools(candidate, { spend: async () => {}, onScenario: (_, __, result) => scenarios.push(result) });
+	const tools = authoringTools(candidate, plugins, { spend: async () => {}, onScenario: (_, __, result) => scenarios.push(result) });
 	await call(tools, "write_descriptor", { content: JSON.stringify(files.descriptor) });
 	await call(tools, "write_logic", { content: files.logic });
 	await call(tools, "write_ui", { content: files.ui ?? "host.render('');" });
@@ -57,12 +58,12 @@ const authored = async (files: { descriptor: object; logic: string; ui?: string 
 		if (result === undefined) throw new Error("The scenario reported no result.");
 		return result;
 	};
-	return { candidate, tools, scenario };
+	return { candidate, plugins, tools, scenario };
 };
 
 test("a tool argument naming a path, or a body over its file's cap, is refused and writes nothing", async () => {
 	const candidate = await createCandidate(scratch());
-	const tools = authoringTools(candidate, unbudgeted);
+	const tools = authoringTools(candidate, scratch(), unbudgeted);
 	const outside = join(dirname(candidate.folder), "escape.js");
 	await expect(call(tools, "write_logic", { content: "export default {};", path: "../escape.js" })).rejects.toThrow("The write_logic arguments is invalid");
 	await expect(call(tools, "write_ui", { content: "x".repeat(512 * 1024 + 1) })).rejects.toThrow("ui.js may hold at most 512 KiB");
@@ -77,7 +78,7 @@ test("descriptor.json always carries the candidate's id, whatever id the agent w
 
 test("descriptor.json's cap holds for the exact text written: deep nesting is not inflated, and the id cannot push it past the cap", async () => {
 	const candidate = await createCandidate(scratch());
-	const tools = authoringTools(candidate, unbudgeted);
+	const tools = authoringTools(candidate, scratch(), unbudgeted);
 	const nested = `{"deep":${"[".repeat(1_400)}${"]".repeat(1_400)}}`;
 	await call(tools, "write_descriptor", { content: nested });
 	const written = Bun.file(join(candidate.folder, "descriptor.json"));
@@ -90,7 +91,7 @@ test("descriptor.json's cap holds for the exact text written: deep nesting is no
 
 test("a write waiting behind a check is dropped once its turn is cancelled", async () => {
 	const candidate = await createCandidate(scratch());
-	const tools = authoringTools(candidate, unbudgeted);
+	const tools = authoringTools(candidate, scratch(), unbudgeted);
 	const release = Promise.withResolvers<void>();
 	const check = candidate.check(() => release.promise);
 	const stop = new AbortController();
@@ -185,51 +186,48 @@ const restored = async (run: () => Promise<void>) => {
 	try { await run(); } finally { await loadBoxes([builtInBoxes]); }
 };
 
-test("Install refuses an id a folder already uses, and installs nothing", () => restored(async () => {
-	const database = openInitializedDatabase({ path: ":memory:" });
-	const { candidate } = await authored(tipJar);
-	const plugins = scratch();
+const turn = { cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }], snapshot: [{ query: { scope: "library" as const, key: "note" }, answer: [] }] };
+
+test("Install refuses an id folder made by hand, without versions/, and installs nothing", () => restored(async () => {
+	const { candidate, plugins, scenario } = await authored(tipJar);
+	await scenario(turn);
+	rmSync(join(plugins, candidate.id), { recursive: true });
 	mkdirSync(join(plugins, candidate.id));
-	expect(await installCandidate(database, candidate, plugins)).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
+	expect(await installCandidate(candidate, plugins)).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
 	expect([readdirSync(join(plugins, candidate.id)), installedBoxes().has(candidate.id)]).toEqual([[], false]);
-	database.close();
 }));
 
-test("Install refuses a target folder created while it validated, and leaves that folder alone", () => restored(async () => {
-	const database = openInitializedDatabase({ path: ":memory:" });
-	const { candidate } = await authored(tipJar);
-	const plugins = scratch();
-	const target = join(plugins, candidate.id);
-	const check = registry.checkSandboxedFolder;
-	const spy = spyOn(registry, "checkSandboxedFolder").mockImplementation(async (...args) => {
-		mkdirSync(target);
-		return await check(...args);
-	});
-	try {
-		expect(await installCandidate(database, candidate, plugins)).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
-		expect([spy.mock.calls.length, readdirSync(target), installedBoxes().has(candidate.id)]).toEqual([1, [], false]);
-	} finally {
-		spy.mockRestore();
-		database.close();
-	}
+test("Install refuses a version no scenario passed on, even after an earlier version passed", () => restored(async () => {
+	const { candidate, plugins, tools, scenario } = await authored(tipJar);
+	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused", reason: "Run a scenario that passes on the Box as it is now, then install it." });
+	expect((await scenario(turn)).ok).toBe(true);
+	await call(tools, "write_logic", { content: tipJar.logic.replace("The jar holds", "The jar has") });
+	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused" });
+	expect([await readLatest(join(plugins, candidate.id)), installedBoxes().has(candidate.id)]).toEqual([undefined, false]);
 }));
 
-test("Install publishes the checked folder with its packages, lock and bundle, and adds the Box beside the loaded ones without reloading them", () => restored(async () => {
-	const database = openInitializedDatabase({ path: ":memory:" });
-	const { candidate } = await authored({ descriptor: { ...tipJar.descriptor, dependencies: { tally: "1.0.0" } }, logic: `import tally from "tally";\n${tipJar.logic.replace("total + coins", "tally(total, coins)")}` });
+test("Install creates a version with its packages, lock and bundle, moves latest, and keeps every loaded Box and version", () => restored(async () => {
+	const { candidate, plugins, tools, scenario } = await authored({ descriptor: { ...tipJar.descriptor, dependencies: { tally: "1.0.0" } }, logic: `import tally from "tally";\n${tipJar.logic.replace("total + coins", "tally(total, coins)")}` });
 	const tally = "var tally = (a, b) => a + b; export { tally as default };";
 	mkdirSync(join(candidate.folder, "deps"));
 	writeFileSync(join(candidate.folder, "deps", "tally@1.0.0.js"), tally);
 	writeFileSync(join(candidate.folder, "deps.lock.json"), JSON.stringify({ "tally@1.0.0": new Bun.CryptoHasher("sha256").update(tally).digest("hex") }));
-	const mood = serverBox("mood");
-	const plugins = scratch();
-	expect(await installCandidate(database, candidate, plugins)).toEqual({ outcome: "installed", id: candidate.id, label: "Tip Jar" });
-	expect(readdirSync(join(plugins, candidate.id)).sort()).toEqual(["deps", "deps.lock.json", "descriptor.json", "logic.bundle.js", "logic.js", "ui.js"]);
-	expect(readdirSync(dirname(plugins)).some((name) => name.startsWith(".box-install-"))).toBe(false);
-	expect(serverBox("mood")).toBe(mood);
-	expect(mood?.records?.foldAll?.(null, [{ mood: "calm" }], undefined)).toBe("calm");
-	expect(serverBox(candidate.id)?.records?.foldAll?.(0, [{ coins: 2 }, { coins: 3 }], undefined)).toBe(5);
+	const mood = serverBoxes().get("mood");
+	expect((await scenario(turn)).ok).toBe(true);
+	expect(await installCandidate(candidate, plugins)).toEqual({ outcome: "installed", id: candidate.id, label: "Tip Jar" });
+	const home = join(plugins, candidate.id);
+	const first = await readLatest(home);
+	expect(first).toBe(versionHash(await sandboxedFolder(candidate.folder, candidate.id)));
+	expect(readdirSync(join(home, "versions", first!)).sort()).toEqual(["deps", "deps.lock.json", "descriptor.json", "logic.bundle.js", "logic.js", "ui.js"]); // @approved Read just above.
+	expect(readdirSync(join(home, "versions")).filter((name) => name.startsWith("."))).toEqual([]);
+	expect(serverBoxes().get("mood")).toBe(mood);
+	expect(serverBoxes().get(candidate.id)?.box.records?.foldAll?.(0, [{ coins: 2 }, { coins: 3 }], undefined)).toBe(5);
 	expect([...installedBoxes().keys()].at(-1)).toBe(candidate.id);
-	expect((await installCandidate(database, candidate, plugins)).outcome).toBe("refused");
-	database.close();
+	await call(tools, "write_logic", { content: `import tally from "tally";\n${tipJar.logic.replace("total + coins", "tally(total, coins) * 10")}` });
+	expect((await scenario(turn)).ok).toBe(true);
+	expect((await installCandidate(candidate, plugins)).outcome).toBe("installed");
+	const second = await readLatest(home);
+	expect([second === first, readdirSync(join(home, "versions")).length, [...installedBoxes().keys()].filter((id) => id === candidate.id).length]).toEqual([false, 2, 1]);
+	expect(serverBoxes().get(candidate.id)?.box.records?.foldAll?.(0, [{ coins: 2 }], undefined)).toBe(20);
+	expect(boxAt(candidate.id, first)?.box.records?.foldAll?.(0, [{ coins: 2 }], undefined)).toBe(2);
 }));

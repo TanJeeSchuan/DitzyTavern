@@ -12,8 +12,11 @@ import memoryBox from "../../boxes/memory/server";
 import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
-import { boxRecordSchema } from "../../shared/contract/box";
+import { boxRecordSchema, boxDescriptor } from "../../shared/contract/box";
 import { subscribeDatabaseChanges, watchDatabaseChanges } from "../database/changes";
+import { writeVersionedBox } from "../test-fixtures/versioned-box";
+import { builtInBoxes, loadBoxes, loadBoxVersion } from "./registry";
+import { pinBoxVersion } from "./version-pin";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
@@ -194,7 +197,7 @@ for (const dropped of [false, true]) {
 		enableDecision();
 		const stub = heldDecisionFetch();
 		stopDigests = startBoxDigests(database, { fetch: stub.fetch });
-		const record = () => readRecordSlots(drizzle(database), "mood", boxRecordSchema("mood"), mood, [passage]).get(passage)?.automatic;
+		const record = () => readRecordSlots(drizzle(database), "mood", boxRecordSchema(boxDescriptor("mood")), mood, [passage]).get(passage)?.automatic;
 
 		prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
 		await waitFor(() => stub.pending() === 1);
@@ -405,3 +408,45 @@ test("a rejected edit leaves the running Memory catch-up intact", async () => {
 		run.mockRestore();
 	}
 });
+
+const omen = (marker: string) => ({
+	"descriptor.json": JSON.stringify({ id: "omen", sdk: 2, label: "Omen", summary: "Reads the scene's mood.", role: "system", startsEnabled: false, instructions: "",
+		decision: { summary: "s", description: "d", off: "o", context: "c" },
+		record: { type: "object", properties: { mood: { type: "string" } }, required: ["mood"], additionalProperties: false },
+		window: { kind: "digest", icon: "drama", size: { width: 10, height: 10 } } }),
+	"logic.js": `export default { records: { initial: null, fold: (_, { mood }) => mood, digest: { window: 0, run: async ({ passage }, { decide }) =>
+		({ mood: new Map(await decide({ passage }, { mood: { type: "choice", criteria: { calm: "", tense: "" } } })).get("mood").choice }) } } }; /* ${marker} */`,
+});
+
+// @approved
+//  Only the pin moves, as no command does, so the queue's own abandon on an
+// upgrade cannot drop the job: what drops it is the version comparison. The
+// control run lands the same answer.
+for (const moved of [false, true]) {
+	test(`a digest started under v1 ${moved ? "writes nothing once the Chat moved to v2 before it ended" : "lands while the Chat stays on v1"}`, async () => {
+		const box = await writeVersionedBox("omen", [omen("v1"), omen("v2")]);
+		try {
+			await loadBoxes([builtInBoxes, box.plugins]);
+			await loadBoxVersion("omen", box.versions[1]!); // @approved Two versions were written.
+			const chat = createChat();
+			const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+			setBoxState(database, chat.id, "omen", "enabled");
+			enableDecision();
+			const stub = heldDecisionFetch();
+			stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+			const lifecycle = database.query<{ value: string }, [number]>("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:omen' AND key = 'instance'").get(chat.id)!.value;
+			const record = () => readRecordSlots(drizzle(database), "omen", boxRecordSchema(boxDescriptor("omen")), lifecycle, [passage]).get(passage)?.automatic;
+			prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
+			await waitFor(() => stub.pending() === 1);
+			if (moved) pinBoxVersion(drizzle(database), chat.id, "omen", box.versions[1]!); // @approved Two versions were written.
+			stub.release();
+			if (!moved) await waitFor(() => record() !== undefined);
+			await stopDigests();
+			stopDigests = undefined;
+			expect(record()).toEqual(moved ? undefined : { mood: "tense" });
+		} finally {
+			await loadBoxes([builtInBoxes]);
+			box.remove();
+		}
+	});
+}

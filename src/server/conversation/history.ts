@@ -204,7 +204,7 @@ export function readChatHistory(
 	).valid;
 
 	const selectedByMessage = new Map(variantRows.filter((variant) => variant.selected).map((variant) => [variant.message_id, variant]));
-	const moves = readMessageMoves(db, messageRows.map(({ id }) => id));
+	const moves = readMessageMoves(db, conversationId, messageRows.map(({ id }) => id));
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);

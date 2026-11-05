@@ -730,7 +730,7 @@ describe("Box blocks", () => {
 		{ reference: "box:mood", enabled: true, role: "system", content: "Scene mood for {{other}}:" },
 		{ reference: "box:thought", enabled: true, role: "system", content: "Write thoughts as <thought>…</thought>." },
 	];
-	const contents = (boxes: CompilePromptInput["boxes"]) => compilePrompt(source({ recipe, boxes })).blocks.map((block) => block.content);
+	const contents = (boxes: CompilePromptInput["boxes"]) => compilePrompt(source({ recipe, boxes, alwaysRender: new Set(["box:thought"]) })).blocks.map((block) => block.content);
 
 	test("renders the expanded instructions, then the Box's items", () => {
 		expect(contents({ "box:mood": [{ text: "tense", priority: 100, pinned: true, index: 0 }] })).toEqual(["Scene mood for Maren Voss:\ntense"]);

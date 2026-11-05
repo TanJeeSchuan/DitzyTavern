@@ -25,6 +25,7 @@ export const toConversationSummary = (
 	id: conversation.id,
 	boxSetups: conversation.boxSetups,
 	boxes: conversation.boxes,
+	boxVersions: conversation.boxVersions,
 	name: conversation.name,
 	revision: conversation.revision,
 	background: conversation.background,

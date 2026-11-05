@@ -44,6 +44,7 @@ import {
 	type StoryState,
 } from "../story";
 import { hasMoves, pickMoves, seatBound, type BoxMoves } from "../../shared/contract/box-generation";
+import { chatBoxDescriptor } from "../box-windows/registry";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -105,7 +106,7 @@ export function useGenerationController({
 	// @approved
 	//  A Box that stops being enabled, and a seat-bound Box after a seat
 	//  change, drop their staged Moves for good.
-	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !seatBound(id)));
+	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !seatBound(chatBoxDescriptor(conversation, id))));
 	if (conversation !== null && staged.conversationId === conversation.id && (!sameSeat || Object.keys(kept).length !== Object.keys(staged.moves).length)) {
 		setStaged({ ...staged, humanParticipantId: conversation.control.humanParticipantId, moves: kept });
 	}

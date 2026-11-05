@@ -14,6 +14,7 @@ import { canStartAssembly } from "../assembly";
 import { store } from "../lib/store";
 import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
+import { chatBoxDescriptor } from "../box-windows/registry";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
@@ -109,7 +110,7 @@ export function useAssemblyController({
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
 		// @approved
 		//  A seat change queued ahead of this start applied first: its seat-bound Moves would be sent as the new seat's.
-		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, seatBound))) {
+		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
 			throw new Error("The writer changed before this Send went out, so it was not sent.");
 		}
 		const revision = Math.max(latest.revision, previous ?? 0);

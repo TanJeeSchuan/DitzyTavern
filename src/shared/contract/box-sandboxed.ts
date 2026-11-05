@@ -47,10 +47,19 @@ export const sandboxedDescriptorFile = Type.Object({
 export type SandboxedDescriptorFile = Static<typeof sandboxedDescriptorFile>;
 
 /** @approved The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and, for a trusted Box, the URL its client module loads from, or, for a sandboxed one, its descriptor file. */
+/** @approved A version of a versioned Box: the sha256 its folder is named for. */
+export const boxVersion = Type.String({ pattern: "^[0-9a-f]{64}$" });
+// @approved
+//  The catalog: each Box with its metadata and its client module's URL, or a
+// sandboxed Box's descriptor file; a versioned Box's entry is its `latest`,
+// named by `version`.
 export const boxList = Type.Array(Type.Union([
 	Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]),
-	Type.Composite([boxMetadataSchema, Type.Object({ sandboxed: sandboxedDescriptorFile })]),
+	Type.Composite([boxMetadataSchema, Type.Object({ sandboxed: sandboxedDescriptorFile, version: Type.Optional(boxVersion) })]),
 ]));
+/** @approved One version of a versioned Box, for a Chat that pins one the catalog does not list. */
+export const boxVersionParams = Type.Object({ box: Type.String(), version: boxVersion });
+export const boxVersionListing = Type.Object({ sandboxed: sandboxedDescriptorFile });
 
 const annotations = ["title", "description", "rowReference"];
 // @approved
@@ -197,10 +206,12 @@ export const sandboxedDecideInput = Type.Tuple([Type.Unknown(), Type.Record(Type
 
 /** @approved A Box frame's token, which binds the frame's document, images and uploads to one Box and Chat on the server. */
 const boxFrameToken = Type.String({ pattern: "^[A-Za-z0-9_-]{24}$" });
+/** @approved The version a window's frame runs, which must be the version its Chat pins; an unversioned Box sends none. */
+export const boxFrameOpen = Type.Object({ version: Type.Optional(boxVersion) });
 export const boxFrameOpened = Type.Object({ token: boxFrameToken });
 export const boxFrameParams = boxFrameOpened;
 export const boxFrameImageParams = Type.Object({ token: boxFrameToken, hash: imageHash });
 
 /** @approved One commit from a sandboxed Box's window: what the host turns into `commit-box` for that Box at `snapshot`. */
-export const sandboxedCommit = Type.Object({ snapshot: Type.Integer({ minimum: 0 }), ...Type.Omit(commitBoxAction, ["type", "box"]).properties }, { additionalProperties: false });
+export const sandboxedCommit = Type.Object({ snapshot: Type.Integer({ minimum: 0 }), ...Type.Omit(commitBoxAction, ["type", "box", "version"]).properties }, { additionalProperties: false });
 export type SandboxedCommit = Static<typeof sandboxedCommit>;

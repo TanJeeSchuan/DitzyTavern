@@ -47,9 +47,9 @@ export const stagedMoves = (descriptor: BoxDescriptor, staged: unknown): { reado
 	return Value.Check(Type.Array(Type.Unsafe<BoxValue>(declared.schema), { maxItems: declared.max }), copy) ? { moves: copy } : { refused: "It staged Moves that do not match its Move schema." };
 };
 
-/** @approved A sandboxed Box's `ui.js` or `ui.css`; the server answers an absent `ui.css` with an empty stylesheet. */
-const uiFile = async (box: BoxId, file: string) => {
-	const response = await fetch(`/boxes/${box}/${file}`);
+/** @approved A sandboxed Box's `ui.js` or `ui.css`, a version's at its own URL; the server answers an absent `ui.css` with an empty stylesheet. */
+const uiFile = async (box: BoxId, version: string | undefined, file: string) => {
+	const response = await fetch(version === undefined ? `/boxes/${box}/${file}` : `/boxes/${box}/versions/${version}/${file}`);
 	if (!response.ok) throw new Error(`Its ${file} did not load: ${response.status}.`);
 	return await response.text();
 };
@@ -69,7 +69,7 @@ export const oneAtATime = <Input, Output>(task: (input: Input) => Promise<Output
 const useSandboxedRead = (conversation: ConversationSummary, box: BoxId) => useBoxRead(conversation, box, sandboxedRead);
 const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 
-type FrameProps = { box: BoxId; descriptor: BoxDescriptor; conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null; onConversationChange: (conversation: ConversationSummary) => void };
+type FrameProps = { box: BoxId; version: string | undefined; descriptor: BoxDescriptor; conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null; onConversationChange: (conversation: ConversationSummary) => void };
 
 // @approved
 //  A sandboxed Box's window: a frame with no privileges whose document only
@@ -83,15 +83,18 @@ type FrameProps = { box: BoxId; descriptor: BoxDescriptor; conversation: Convers
 // `commit-box` at the snapshot it names, and one that does not land answers
 // with the current read; an upload, one at a time, is stored and granted to
 // this Box; and its unsaved work joins the window's save guard. A Worker
-// failure shows in the window. Tearing the frame down closes its token.
+// failure shows in the window. Tearing the frame down closes its token. A
+// versioned Box's frame runs one version: its token, its commits and its
+// uploads name it, the server refuses them once the Chat pins another, and
+// it stages no Moves for a Chat that moved on.
 function BoxFrame(props: FrameProps) {
-	const { box, conversation } = props;
+	const { box, version, conversation } = props;
 	const frame = useRef<HTMLIFrameElement>(null);
 	const [token, setToken] = useState<string>();
 	const [port, setPort] = useState<MessagePort>();
 	const [failure, setFailure] = useState<string>();
 	const [dirty, setDirty] = useState(false);
-	const ui = useQuery({ queryKey: [box, "ui"], queryFn: async () => ({ ui: await uiFile(box, "ui.js"), css: await uiFile(box, "ui.css") }), staleTime: Infinity });
+	const ui = useQuery({ queryKey: [box, "ui", version ?? null], queryFn: async () => ({ ui: await uiFile(box, version, "ui.js"), css: await uiFile(box, version, "ui.css") }), staleTime: Infinity });
 	const read = useSandboxedRead(conversation, box);
 	const staged = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
 	const latest = useRef({ props, read, token });
@@ -103,7 +106,7 @@ function BoxFrame(props: FrameProps) {
 		let opened: string | undefined;
 		const close = (closing: string) => void api.api["box-frame"]({ token: closing }).delete();
 		setToken(undefined);
-		void api.api.conversations({ id: conversation.id }).boxes({ box }).frame.post().then(({ data }) => {
+		void api.api.conversations({ id: conversation.id }).boxes({ box }).frame.post({ version }).then(({ data }) => {
 			if (data === null) setFailure("Its frame could not be opened.");
 			else if (current) setToken(opened = data.token);
 			else close(data.token);
@@ -112,7 +115,7 @@ function BoxFrame(props: FrameProps) {
 			current = false;
 			if (opened !== undefined) close(opened);
 		};
-	}, [box, conversation.id]);
+	}, [box, version, conversation.id]);
 	const connect = () => {
 		const channel = new MessageChannel();
 		frame.current?.contentWindow?.postMessage(null, "*", [channel.port2]);
@@ -142,13 +145,17 @@ function BoxFrame(props: FrameProps) {
 		if (port === undefined) return;
 		const reply = (id: unknown, result: unknown) => { if (typeof id === "number") port.postMessage({ type: "reply", id, result } satisfies AppToFrame); };
 		port.onmessage = ({ data }: MessageEvent<FrameToApp>) => {
-			const { props: { descriptor, staging, disabled }, token: frameToken } = latest.current;
+			const { props: { descriptor, staging, disabled, conversation: current }, token: frameToken } = latest.current;
 			if (data.type === "error") setFailure(data.message);
 			if (data.type === "dirty") setDirty(data.dirty === true);
 			if (data.type === "saved" && typeof data.id === "number") saves.current.get(data.id)?.(data.saved === true);
 			if (data.type === "commit") void commit(data.commit).then((result) => reply(data.id, result));
 			if (data.type === "upload") void upload({ file: data.file, frameToken }).then((result) => reply(data.id, result));
 			if (data.type !== "stage") return;
+			if (current.boxVersions[box] !== version) {
+				setFailure("It staged Moves for a version this Chat no longer runs.");
+				return;
+			}
 			if (staging === null || disabled) {
 				setFailure(disabled ? "It staged Moves while its controls are off." : "It staged Moves while it cannot take them.");
 				return;
@@ -167,7 +174,7 @@ function BoxFrame(props: FrameProps) {
 		let conflict = false;
 		const applied = await runConversationCommand(
 			{ conversationId, revision: () => snapshot, exact: true, onConversationChange, setNotice: (notice) => { reason = notice; } },
-			{ type: "commit-box", box, ...action },
+			{ type: "commit-box", box, ...latest.current.props.version !== undefined && { version: latest.current.props.version }, ...action },
 			{ notices: { conflict: "The Chat changed since this window read it." }, onConflict: () => { conflict = true; } },
 		);
 		if (applied) return { outcome: "applied" } as const;
@@ -195,7 +202,7 @@ function SandboxedStatus({ box, conversation }: { box: BoxId; conversation: Conv
 }
 
 /** @approved A sandboxed Box's client surfaces, built in host code from its descriptor file: its icon, its Status and a window that mounts its frame, or, for a digesting Box, the host's passage timeline. */
-export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile): BoxClientDefinition => {
+export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile, version?: string): BoxClientDefinition => {
 	const descriptor = sandboxedDescriptor(file);
 	if (descriptor.id !== box) throw new Error(`Its descriptor is the ${descriptor.id} Box's.`);
 	if (file.window.kind === "digest") return { descriptor, ...digestWindow(descriptor, { icon: icons[file.window.icon], size: file.window.size }) };
@@ -204,6 +211,6 @@ export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile): BoxC
 		icon: icons[file.window.icon],
 		Status: ({ conversation }) => <SandboxedStatus box={box} conversation={conversation} />,
 		Window: { size: file.window.size, Panel: ({ conversation, disabled, staging, onConversationChange }) =>
-			<BoxFrame box={box} descriptor={descriptor} conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange} /> },
+			<BoxFrame box={box} version={version} descriptor={descriptor} conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange} /> },
 	};
 };

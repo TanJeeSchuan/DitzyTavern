@@ -3,13 +3,13 @@ import type { ForkConversationBody } from "../../../shared/contract/conversation
 import type { Database } from "bun:sqlite";
 import type { TSchema } from "@sinclair/typebox";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { boxDescriptors, boxIdOf } from "../../../shared/contract/box";
+import { boxIdOf } from "../../../shared/contract/box";
 import type { BoxMoves } from "../../../shared/contract/box-generation";
 import { isImportOwnedDataNamespace } from "../../../shared/import-data";
 import { variantDataCodecs } from "../../../shared/variant-data-codecs";
 import type { GenerationJsonValue } from "../../../shared/contract/json-value";
 import { boxValueSchema, rewriteRowReferences, type BoxValueScope, type RowIdMaps } from "../../box/row-references";
-import { serverBox } from "../../box/registry";
+import { chatBoxes } from "../../box/registry";
 import { checkStoredBoxValue, parseStoredBoxJson } from "../../box/stored-json";
 import { authorRoleOf } from "../continuation";
 import { InvalidConversationCommandError } from "../errors";
@@ -66,7 +66,12 @@ export function forkConversation(database: Database, input: ForkConversationBody
 			}
 		}
 		const omitted = new Set<string>();
-		const descriptors = boxDescriptors();
+		// @approved
+		//  Each Box value is rewritten with the schemas of the version the source
+		// Chat runs, and the fork copies the pins with the rest of the Chat's
+		// data, so it runs those same versions.
+		const boxes = chatBoxes(db, input.conversationId);
+		const descriptors = new Map([...boxes].map(([id, { descriptor }]) => [id, descriptor]));
 		const inBox = <T>(id: string, schema: TSchema | undefined, place: string, run: (schema: TSchema) => T): T => {
 			if (!schema) throw new InvalidConversationCommandError(`The ${id} Box has no schema for ${place}.`);
 			try { return run(schema); }
@@ -126,7 +131,7 @@ export function forkConversation(database: Database, input: ForkConversationBody
 				for (const [reference, entry] of Object.entries(traces)) {
 					const id = boxIdOf(reference);
 					if (id === undefined || !descriptors.has(id)) { if (id !== undefined) omitted.add(id); delete traces[reference]; continue; }
-					const schema = serverBox(id)?.advance?.trace;
+					const schema = boxes.get(id)?.box.advance?.trace;
 					if (entry.trace !== undefined) entry.trace = rewriteTrace(id, schema, entry.trace, `trace/${reference}`);
 				}
 				value = JSON.stringify(traces);

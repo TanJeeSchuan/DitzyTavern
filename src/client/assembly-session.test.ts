@@ -22,8 +22,8 @@ const preview = (conversationId = 7, content = "Expanded"): GenerationPreview =>
 	budget: { tokenEstimate: 1, responseBudget: 1, safetyAllowance: 1, contextLimit: 10, totalRequiredTokens: 3, budgetFits: true },
 });
 const conversation = (id = 7, humanParticipantId = 1) => {
-	// SAFETY: the assembly hook only reads id, revision, playable, and the human seat; the fixture supplies that boundary.
-	return { id, revision: 2, playable: true, control: { humanParticipantId, modelParticipantId: 2 } } as ConversationSummary;
+	// SAFETY: the assembly hook only reads id, revision, playable, the human seat and the Box pins; the fixture supplies that boundary.
+	return { id, revision: 2, playable: true, boxVersions: {}, control: { humanParticipantId, modelParticipantId: 2 } } as ConversationSummary;
 };
 const accepted = { outcome: "accepted", conversationId: 7, generationId: 10, messageId: 20, variantId: 30 } as const;
 

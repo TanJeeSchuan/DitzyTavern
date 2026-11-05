@@ -26,9 +26,12 @@ export const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup
 // guards the setup and Participant values; Library and Character values are
 // shared across Chats, so `expected` names each one's revision as last read,
 // 0 when it was absent, and every Library or Character write needs its own.
+// A versioned Box's window sends the version its frame runs, and the command
+// refuses one that is not the version the Chat pins.
 export const commitBoxAction = Type.Object({
 	type: Type.Literal("commit-box"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	setup: Type.Optional(boxValue),
 	writes: Type.Optional(Type.Array(boxDataWrite, { maxItems: 100 })),
 	expected: Type.Optional(Type.Array(boxDataExpectation, { maxItems: 100 })),
@@ -37,6 +40,11 @@ export const commitBoxAction = Type.Object({
 // @approved
 //  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
 export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: Type.String(), state: boxState });
+
+// @approved
+//  Moves this Chat's pin of a versioned Box to `version`, `latest` or an
+// earlier one, once the upgrade check passes on the Chat's stored data.
+export const upgradeBoxAction = Type.Object({ type: Type.Literal("upgrade-box"), box: Type.String(), version: Type.String({ pattern: "^[0-9a-f]{64}$" }) });
 
 // @approved
 //  Sets one Variant's Writer override for a Box record. The command checks
