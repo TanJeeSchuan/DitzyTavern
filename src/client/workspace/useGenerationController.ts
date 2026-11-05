@@ -73,8 +73,8 @@ type GenerationControllerOptions = {
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
-type StagedMoves = { conversationId: number | undefined; humanParticipantId: number | null | undefined; moves: BoxMoves };
-const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: undefined, moves: {} };
+type StagedMoves = { conversationId: number | undefined; humanParticipantId: number | null | undefined; versions: Readonly<Record<string, string>>; moves: BoxMoves };
+const UNSTAGED: StagedMoves = { conversationId: undefined, humanParticipantId: undefined, versions: {}, moves: {} };
 
 /** @approved
  * Thin wiring between the view, the Generation session machine, and the
@@ -104,17 +104,18 @@ export function useGenerationController({
 	const [staged, setStaged] = useState<StagedMoves>(UNSTAGED);
 	const sameSeat = staged.humanParticipantId === conversation?.control.humanParticipantId;
 	// @approved
-	//  A Box that stops being enabled, and a seat-bound Box after a seat
-	//  change, drop their staged Moves for good.
-	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && (sameSeat || !seatBound(chatBoxDescriptor(conversation, id))));
+	//  A Box that stops being enabled, a seat-bound Box after a seat change,
+	//  and a versioned Box whose pin moved since its Moves were staged, drop
+	//  their staged Moves for good.
+	const kept = pickMoves(staged.moves, (id) => conversation?.boxes[id] === "enabled" && staged.versions[id] === conversation.boxVersions[id] && (sameSeat || !seatBound(chatBoxDescriptor(conversation, id))));
 	if (conversation !== null && staged.conversationId === conversation.id && (!sameSeat || Object.keys(kept).length !== Object.keys(staged.moves).length)) {
 		setStaged({ ...staged, humanParticipantId: conversation.control.humanParticipantId, moves: kept });
 	}
 	const moves: BoxMoves = staged.conversationId !== conversation?.id ? {} : kept;
-	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, moves: next });
+	const setMoves = (next: BoxMoves) => setStaged({ conversationId: conversation?.id, humanParticipantId: conversation?.control.humanParticipantId, versions: conversation?.boxVersions ?? {}, moves: next });
 	const restoreRewind = (target: ConversationSummary, rewind: { content: string; moves: BoxMoves }) => {
 		draft.set(rewind.content);
-		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, moves: rewind.moves });
+		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, versions: target.boxVersions, moves: rewind.moves });
 	};
 	const signal = useConversationVisit(selection, conversation?.id);
 	const [pendingStarts, dispatchPendingStarts] = useReducer(

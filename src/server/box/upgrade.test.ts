@@ -145,13 +145,34 @@ test.each([
 	expect(readConversationSummary(database, tipped.chat.id)?.boxVersions.tally).toBe(box.v1);
 });
 
-test("an old window's commit is refused after an upgrade, even at the current revision", async () => {
+test("an old window's commit or record override is refused after an upgrade, even at the current revision", async () => {
 	const box = await versioned(same);
-	const { chat } = tippedChat();
+	const { chat, message, selected } = tippedChat();
 	upgrade(chat.id, box.v2);
 	const write = { owner: { type: "participant" as const, participantId: chat.cast[1]!.id }, key: "odds", value: "{}" }; // @approved The Chat has its Cast.
 	expect(() => command(chat.id, { type: "commit-box", box: "tally", version: box.v1, writes: [write] })).toThrow("runs a version this Chat no longer uses");
+	const override = { type: "set-box-record" as const, box: "tally", messageId: message.id, variantId: selected, record: { coins: 5 }, expected: { coins: 2 } };
+	expect(() => command(chat.id, { ...override, version: box.v1 })).toThrow("runs a version this Chat no longer uses");
+	expect(() => command(chat.id, { type: "reset-box-record", box: "tally", version: box.v1, messageId: message.id, variantId: selected })).toThrow("runs a version this Chat no longer uses");
 	expect(() => command(chat.id, { type: "commit-box", box: "tally", version: box.v2, writes: [write] })).not.toThrow();
+	expect(() => command(chat.id, { ...override, version: box.v2 })).not.toThrow();
+});
+
+// @approved
+//  A key holding `/` once spelled the same path as a nested field, so moving
+// the annotation between the two passed the check.
+test("a row reference moved between a key holding / and the nested field it spells is refused", async () => {
+	const host = (annotated: "flat" | "nested") => object({
+		"a/b": annotated === "flat" ? { type: "integer", rowReference: "participant" } : integer,
+		a: object({ b: annotated === "nested" ? { type: "integer", rowReference: "participant" } : integer }),
+	});
+	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: host("flat") } } }), tally({ values: { ...v1.values, chat: { host: host("nested") } } })]);
+	removes.push(box.remove);
+	await loadBoxes([builtInBoxes, box.plugins]);
+	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
+	const chat = createChat();
+	setBoxState(database, chat.id, "tally", "enabled");
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at chat value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
 });
 
 // @approved

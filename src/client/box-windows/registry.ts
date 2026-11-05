@@ -131,9 +131,12 @@ export const boxVersionsBuilt = ({ boxVersions }: Pinned): boolean =>
 // @approved
 //  Builds the client of each version a Chat pins that this client lacks,
 // from the descriptor the server serves for it, before the Chat's summary is
-// used. Concurrent callers share one request per version.
+// used. Concurrent callers share one request per version. A pin this client
+// never saw may be a `latest` another tab installed, so the catalog is read
+// again with it, and Update never offers an older version as the newer one.
 export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> => {
-	await Promise.all(Object.entries(boxVersions).flatMap(([id, version]) => {
+	if (boxVersionsBuilt({ boxVersions })) return;
+	await Promise.all([addBoxClients(), ...Object.entries(boxVersions).flatMap(([id, version]) => {
 		const latest = loaded.get(id);
 		const key = boxVersionKey(id, version);
 		if (latest?.version === undefined || versions.has(key)) return [];
@@ -144,7 +147,7 @@ export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> =>
 			.finally(() => loadingVersions.delete(key));
 		loadingVersions.set(key, pending);
 		return [pending];
-	}));
+	})]);
 };
 
 const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinition> => {

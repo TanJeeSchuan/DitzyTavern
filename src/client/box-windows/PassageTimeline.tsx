@@ -79,11 +79,13 @@ const recordFields = ({ id, record }: BoxDescriptor): readonly RecordField[] => 
 // a record on the timeline in place of the generic summary. The override
 // editor is built from the record schema here, so a schema the timeline
 // cannot edit fails the Box's client module as it loads, not when it opens.
-export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel, describe }: {
+export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel, describe, version }: {
 	icon: LucideIcon;
 	size: BoxWindowDefinition["size"];
 	Panel?: BoxWindowDefinition["Panel"];
 	describe?(record: Rec): string;
+	/** @approved The version of a versioned Box this window runs, which its record overrides name. */
+	version?: string;
 }) {
 	const { id: box } = descriptor;
 	const fields = recordFields(descriptor);
@@ -98,7 +100,7 @@ export function digestWindow<Rec>(descriptor: BoxDescriptor, { icon, size, Panel
 			size,
 			Panel: (props: ComponentProps<BoxWindowDefinition["Panel"]>) => <>
 				{Panel !== undefined && <Panel {...props} />}
-				<PassageTimeline descriptor={descriptor} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
+				<PassageTimeline descriptor={descriptor} version={version} fields={fields} summarize={summarize} conversation={props.conversation} disabled={props.disabled} onConversationChange={props.onConversationChange} />
 			</>,
 		},
 	};
@@ -190,8 +192,9 @@ const commandNotices = { conflict: "The Chat changed elsewhere. Review the passa
 /** @approved Every digesting Box's window ends with this timeline of the
  *  Selected path's passages: each one's record, a Writer override editor
  *  built from the record schema, reset, and a catch-up run with its progress. */
-function PassageTimeline({ descriptor, fields, summarize, conversation, disabled, onConversationChange }: {
+function PassageTimeline({ descriptor, version, fields, summarize, conversation, disabled, onConversationChange }: {
 	descriptor: BoxDescriptor;
+	version: string | undefined;
 	fields: readonly RecordField[];
 	summarize: (record: RecordValue) => string;
 	conversation: ConversationSummary;
@@ -228,7 +231,7 @@ function PassageTimeline({ descriptor, fields, summarize, conversation, disabled
 	// there, which the editor shows, so saving again overrides it knowingly.
 	const save = async (passage: BoxDigestPassage, expected: RecordValue | null, record: RecordValue): Promise<boolean> => {
 		if (locked) return false;
-		if (await apply({ type: "set-box-record", box, messageId: passage.messageId, variantId: passage.variantId, record, expected })) {
+		if (await apply({ type: "set-box-record", box, ...version !== undefined && { version }, messageId: passage.messageId, variantId: passage.variantId, record, expected })) {
 			setEditing(null);
 			return true;
 		}
@@ -236,7 +239,7 @@ function PassageTimeline({ descriptor, fields, summarize, conversation, disabled
 		if (current !== undefined) setEditing((open) => open?.variantId === passage.variantId ? { ...open, expected: current.record } : open);
 		return false;
 	};
-	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, messageId: passage.messageId, variantId: passage.variantId });
+	const reset = (passage: BoxDigestPassage) => apply({ type: "reset-box-record", box, ...version !== undefined && { version }, messageId: passage.messageId, variantId: passage.variantId });
 
 	const runCatchUp = async (task: () => Promise<BoxDigest | null>) => {
 		setBusy(true);

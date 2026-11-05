@@ -113,6 +113,11 @@ export function useAssemblyController({
 		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
 			throw new Error("The writer changed before this Send went out, so it was not sent.");
 		}
+		// @approved
+		//  An upgrade applied first: Moves staged for the version the Chat left would be sent to the one it moved to.
+		if (submission.request.kind === "send" && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
+			throw new Error("A Box in this Chat was updated before this Send went out, so it was not sent.");
+		}
 		const revision = Math.max(latest.revision, previous ?? 0);
 		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
 		const outcome = submission.request.kind === "send"
@@ -201,7 +206,7 @@ export function useAssemblyController({
 
 	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null) => {
 		if (conversation === null) return;
-		const requested = { conversationId: conversation.id, seat, request };
+		const requested = { conversationId: conversation.id, seat, versions: conversation.boxVersions, request };
 		if (!transition({ type: "requested", visit: signal, request: requested })) return;
 		const inspect = inspectPromptPlanBeforeGenerating;
 		void ensureLatest().then(() => {

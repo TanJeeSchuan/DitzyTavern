@@ -205,7 +205,7 @@ function SandboxedStatus({ box, conversation }: { box: BoxId; conversation: Conv
 export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile, version?: string): BoxClientDefinition => {
 	const descriptor = sandboxedDescriptor(file);
 	if (descriptor.id !== box) throw new Error(`Its descriptor is the ${descriptor.id} Box's.`);
-	if (file.window.kind === "digest") return { descriptor, ...digestWindow(descriptor, { icon: icons[file.window.icon], size: file.window.size }) };
+	if (file.window.kind === "digest") return { descriptor, ...digestWindow(descriptor, { icon: icons[file.window.icon], size: file.window.size, ...version !== undefined && { version } }) };
 	return {
 		descriptor,
 		icon: icons[file.window.icon],

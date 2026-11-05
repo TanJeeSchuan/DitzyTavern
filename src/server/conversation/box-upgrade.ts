@@ -22,7 +22,8 @@ const rowKinds: ReadonlySet<string> = new Set(["message", "variant", "participan
 // `rowReference` annotation, and each Record keyed by `ParticipantKey`, whose
 // keys Fork remaps though TypeBox keeps no annotation on them. The walk
 // follows the one Fork's rewrite takes (`row-references.ts`), so two schemas
-// with the same places have their ids remapped alike.
+// with the same places have their ids remapped alike. Keys are encoded, so a
+// key holding `/` cannot name another field's path.
 const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => {
 	if (schema === undefined || !holdsRowReferences(schema)) return [];
 	const reference = schema.rowReference;
@@ -31,7 +32,7 @@ const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => 
 	if (KindGuard.IsArray(schema)) return [...here, ...remappedPlaces(schema.items, `${path}/*`)];
 	if (KindGuard.IsObject(schema)) {
 		const rest = KindGuard.IsSchema(schema.additionalProperties) ? remappedPlaces(schema.additionalProperties, `${path}/*`) : [];
-		return [...here, ...Object.entries(schema.properties).flatMap(([key, property]) => remappedPlaces(property, `${path}/${key}`)), ...rest];
+		return [...here, ...Object.entries(schema.properties).flatMap(([key, property]) => remappedPlaces(property, `${path}/${encodeURIComponent(key)}`)), ...rest];
 	}
 	if (KindGuard.IsRecord(schema)) {
 		const [pattern, item] = Object.entries(schema.patternProperties)[0] ?? [];
@@ -42,8 +43,8 @@ const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => 
 /** @approved Every place a version's schemas name a row Fork remaps. */
 export const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescriptor): string[] => [
 	...remappedPlaces(setup?.schema, "setup"),
-	...Object.entries(values?.chat ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `chat value ${key}`)),
-	...Object.entries(values?.participant ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `participant value ${key}`)),
+	...Object.entries(values?.chat ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `chat value ${encodeURIComponent(key)}`)),
+	...Object.entries(values?.participant ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `participant value ${encodeURIComponent(key)}`)),
 	...remappedPlaces(record, "record"),
 	...remappedPlaces(moves?.schema, "Move"),
 ];

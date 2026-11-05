@@ -188,11 +188,10 @@ const restored = async (run: () => Promise<void>) => {
 
 const turn = { cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }], snapshot: [{ query: { scope: "library" as const, key: "note" }, answer: [] }] };
 
-test("Install refuses an id folder made by hand, without versions/, and installs nothing", () => restored(async () => {
+test("a folder made by hand under the candidate's id stays unmanaged through a passing scenario, and Install refuses it", () => restored(async () => {
 	const { candidate, plugins, scenario } = await authored(tipJar);
-	await scenario(turn);
-	rmSync(join(plugins, candidate.id), { recursive: true });
 	mkdirSync(join(plugins, candidate.id));
+	expect((await scenario(turn)).ok).toBe(true);
 	expect(await installCandidate(candidate, plugins)).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
 	expect([readdirSync(join(plugins, candidate.id)), installedBoxes().has(candidate.id)]).toEqual([[], false]);
 }));

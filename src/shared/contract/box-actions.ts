@@ -54,10 +54,12 @@ export const upgradeBoxAction = Type.Object({ type: Type.Literal("upgrade-box"),
 //  records without a Conversation revision, so the command refuses an
 //  override once the slot no longer holds it.
 //  Reset removes the override and leaves the automatic record, if any, as the
-//  effective value.
+//  effective value. A versioned Box's timeline names the version it runs, and
+//  the command refuses one the Chat no longer pins.
 export const setBoxRecordAction = Type.Object({
 	type: Type.Literal("set-box-record"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	record: boxValue,
@@ -67,6 +69,7 @@ export const setBoxRecordAction = Type.Object({
 export const resetBoxRecordAction = Type.Object({
 	type: Type.Literal("reset-box-record"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 });

@@ -74,8 +74,9 @@ export const createVersion = async (home: string, source: string, id: BoxId, see
 
 const scenarioHash = (input: ScenarioInput) => createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
-/** @approved Caches one scenario's result for the version it ran on; the id folder gets its `versions/`, so it is a managed folder from then on. */
+/** @approved Caches one scenario's result for the version it ran on; a new id folder gets its `versions/`, so it is a managed folder from then on, and a folder made by hand is left alone, since Install refuses it. */
 export const recordCheck = async (home: string, version: string, input: ScenarioInput, result: ScenarioResult): Promise<void> => {
+	if (existsSync(home) && !isVersioned(home)) return;
 	await mkdir(join(home, "versions"), { recursive: true });
 	await mkdir(join(home, "checks"), { recursive: true });
 	await replaceFile(join(home, "checks", `${version}-${scenarioHash(input)}.json`), JSON.stringify({ input, result }));
