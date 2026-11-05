@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { builtInBoxes, installVersion, unversionedBoxIds } from "../box/registry";
+import { boxAt, builtInBoxes, installVersion, unversionedBoxIds } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
 import { createVersion, isVersioned, passedCheck, versionHash, writeLatest } from "../box/versions";
 import type { Candidate } from "./candidate";
@@ -14,6 +14,10 @@ import type { Candidate } from "./candidate";
 // before anything is built, and the built version must keep that hash. An id
 // a built-in or unversioned Box uses, or an id folder without `versions/`
 // (a trusted plugin, or a sandboxed folder made by hand), refuses Install.
+// A version that drops `decision` while `latest` digests is refused too:
+// Chats pinned to a digesting version keep needing its Decision Model
+// settings, which the catalog lists only while `latest` digests, so once a
+// Box digests every later `latest` must; dropping it means a new Box.
 export const installCandidate = (candidate: Candidate, plugins: string) => candidate.check(async () => {
 	const { id } = candidate;
 	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
@@ -32,6 +36,10 @@ export const installCandidate = (candidate: Candidate, plugins: string) => candi
 		if (created.version !== version) {
 			checked.dispose();
 			return refused("The Box changed while it was built. Run a scenario on it again, then install it.");
+		}
+		if (boxAt(id, undefined)?.descriptor.decision !== undefined && checked.descriptor.decision === undefined) {
+			checked.dispose();
+			return refused("This Box digests passages in Chats on its earlier versions, so a later version must keep its Decision Model setting (`decision`). To drop it, make a new Box instead.");
 		}
 		await writeLatest(home, version);
 		installVersion(id, home, version, checked);

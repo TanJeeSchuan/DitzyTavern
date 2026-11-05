@@ -142,13 +142,11 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 				const response = await fetch(`/api/authoring/sessions/${encodeURIComponent(started.session)}/log`);
 				if (!response.ok || response.body === null) throw new Error(`The session's log could not be read (HTTP ${response.status}).`);
 				let replayed: readonly Entry[] = [];
-				let lastRun: string | undefined;
 				await readLines(response.body, (entry) => {
 					replayed = withEvent(replayed, entry, String(sequence.current++));
-					if (entry.type === "scenario") setSelected(lastRun = entry.id);
+					if (entry.type === "scenario") setSelected(entry.id);
 				});
 				setEntries(replayed);
-				if (chosen.installed) setInstalled({ label: chosen.label ?? chosen.box, run: lastRun });
 			}
 			setSession({ session: started.session, candidate: started.candidate });
 		} catch (error) {

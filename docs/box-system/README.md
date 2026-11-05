@@ -379,6 +379,8 @@ data/boxes/<id>/
 
 `<hash>` is the sha256 of the version's source files and `deps.lock.json`, sorted by path; packages and bundles are built from them, once, in staging. Nothing writes into a version folder after it is created, and creating one that exists leaves it alone (`src/server/box/versions.ts`). No version folder is removed.
 
+**Install** refuses a version that drops `decision` while `latest` digests: Decision Model settings are listed from the catalog, and Chats pinned to a digesting version keep needing them. A union holding a row reference must stay exactly as it is, since Fork picks a branch by the stored value.
+
 **Two kinds of lookup.** The catalog is `latest`: the registry's `serverBoxes()`, the shared `installedBoxes()` and the client's `loadedBoxes()` list it, and a Box's label, summary, icon, `startsEnabled`, and the instructions and role a new preset block starts with come from it. Everything a Chat runs, its hooks, schemas, Moves, records, read, digest and window, resolves the version the Chat pins first: `chatBoxes(db, conversationId)` on the server, `chatBoxClient(conversation, id)` on the client, which keys each version `<id>@<hash>`. A pinned version that is not loaded throws rather than reading `latest`.
 
 **The pin.** Each Chat pins one version of each versioned Box it ever held, in `conversation_data` under the host's `box-version` namespace, keyed by the Box id, outside the Box's [lifecycle](#lifecycle-per-chat) namespace. The first insertion pins `latest`; removal keeps the pin, since it says which version reads the Chat's history; inserting the Box again runs the pinned version; Fork copies it. The Chat summary carries the pins as `boxVersions`.

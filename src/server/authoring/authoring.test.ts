@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { installedBoxes } from "../../shared/contract/box";
+import { installedBoxes, isDigestBox } from "../../shared/contract/box";
 import type { ScenarioInput, ScenarioResult } from "../../shared/contract/authoring";
 import { boxAt, builtInBoxes, discoverBoxes, loadBoxes, serverBoxes } from "../box/registry";
 import { readLatest, versionHash } from "../box/versions";
@@ -187,6 +187,21 @@ const restored = async (run: () => Promise<void>) => {
 };
 
 const turn = { cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }], snapshot: [{ query: { scope: "library" as const, key: "note" }, answer: [] }] };
+
+// @approved
+//  Chats pinned to the digesting version still need its Decision Model
+// settings, which the catalog lists only while latest digests.
+test("Install refuses a version that drops decision while latest digests, and latest stays", () => restored(async () => {
+	const { candidate, plugins, tools, scenario } = await authored(packing);
+	expect((await scenario({ cast: ["Ann", "Bard"], seed: "s", turns: [{ moves: [{ item: "rope" }], prose: "Rain.", decisions: choice("calm") }] })).ok).toBe(true);
+	expect((await installCandidate(candidate, plugins)).outcome).toBe("installed");
+	const digesting = await readLatest(join(plugins, candidate.id));
+	await call(tools, "write_descriptor", { content: JSON.stringify(tipJar.descriptor) });
+	await call(tools, "write_logic", { content: tipJar.logic });
+	expect((await scenario(turn)).ok).toBe(true);
+	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused", reason: expect.stringContaining("must keep its Decision Model setting") });
+	expect([await readLatest(join(plugins, candidate.id)), isDigestBox(candidate.id)]).toEqual([digesting, true]);
+}));
 
 test("a folder made by hand under the candidate's id stays unmanaged through a passing scenario, and Install refuses it", () => restored(async () => {
 	const { candidate, plugins, scenario } = await authored(tipJar);

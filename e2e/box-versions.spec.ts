@@ -86,7 +86,7 @@ test("a revised Box installs as a new version: Chats keep theirs until Update, w
 	await (await openBoxes(page)).getByRole("button", { name: "Create a Box" }).click();
 	await panel.getByRole("list", { name: "Saved sessions" }).getByRole("button").click();
 	await panel.getByRole("button", { name: "Open" }).click();
-	await expect(panel.getByRole("button", { name: "Install" })).toBeDisabled();
+	await expect(panel.getByRole("button", { name: "Install" })).toBeEnabled();
 	await message.fill("Call it the second jar.");
 	await message.press("Enter");
 	await expect(log).toContainText("The jar is revised.");

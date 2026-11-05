@@ -63,6 +63,7 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
 - **The client keys everything by version.** The client registry key is `<id>@<hash>`, the UI source is served at an immutable URL per version and cached forever, and the frame key includes the version. An upgrade that would discard a window's unsaved draft asks first, through the window's existing save guard.
 - **Install is "create a version, then move `latest`".** It no longer copies into staging and claims the target. An id folder without `versions/` (a trusted plugin, or a sandboxed folder made by hand) refuses Install. Moving `latest` changes only the catalog and what new insertions pin; existing Chats show "Update available".
 - **Install is gated on the server** by a passing `run_scenario` result cached for that exact version. The panel's gate stays as a hint.
+- **Once a Box digests, every later `latest` keeps `decision`.** Decision Model settings are listed from the catalog, and Chats pinned to a digesting version keep needing them, so Install refuses a version that drops `decision` while `latest` has it (found by the Sol review on #208). Dropping it means a new Box.
 - **Loading.** A version loads the first time anything needs it (a Chat opens or generates, a digest runs, an upgrade checks it) and stays loaded until restart. No eviction, and no garbage collection of version folders in this ticket: queued digests resolve their runtime late (`digest.ts:115`), and history needs its pinned version even after the Box is removed.
 
 ## Work

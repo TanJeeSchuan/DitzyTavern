@@ -164,7 +164,8 @@ It returns `diagnostics` (every refusal and failure; the scenario stops at the f
 Each Install of your Box is a new version. Chats that already hold the Box keep the version they hold until the writer updates them, and an update is refused when the Chat's stored setup, values, records or Moves fail your new schemas. So a revision must:
 
 - read Library and Character values any other version wrote. They are shared across Chats and stored without a check, so a value may come from an older or a newer version of your Box at any time: parse them defensively.
-- keep every row reference where it is: each `rowReference` annotation, and each record keyed by the Participant id pattern `"^(?:[0-9])+$"`, at the same path in the same schema. Adding, removing or moving one refuses every Chat's update, since copying a Chat remaps exactly those places.
+- keep every row reference where it is: each `rowReference` annotation, and each record keyed by the Participant id pattern `"^(?:[0-9])+$"`, at the same path in the same schema. Adding, removing or moving one refuses every Chat's update, since copying a Chat remaps exactly those places. A union holding a row reference must stay exactly as it is, branch order included.
+- keep `decision` once a version declared it. Chats still on that version digest with the writer's Decision Model setting, so Install refuses a later version without it. To stop digesting, make a new Box.
 
 ## Working with the writer
 
