@@ -48,6 +48,19 @@ const writes = {
 } as const satisfies Record<string, readonly [AuthoredFile, string]>;
 
 // @approved
+//  Runs one scenario on the candidate, which the caller holds, and caches its
+// result under the Box's id folder in `plugins`, for the version the
+// candidate's files make once its build has run, which is what Install is
+// gated on. A `from` scenario finds its installed versions in that folder.
+export const checkScenario = async (candidate: Candidate, plugins: string, input: ScenarioInput, signal: AbortSignal): Promise<ScenarioResult> => {
+	const home = join(plugins, candidate.id);
+	const ran = await runScenario(candidate.folder, candidate.id, unversionedBoxIds(), input, signal, home);
+	const files = await sandboxedFolder(candidate.folder, candidate.id).catch(() => undefined);
+	if (files !== undefined) await recordCheck(home, versionHash(files), input, ran);
+	return ran;
+};
+
+// @approved
 //  The agent's tools, bound to one candidate: the contract, one content-only
 // write per fixed file, and a scenario. No tool takes a path or an id, and
 // every argument is checked against its schema before anything runs, since
@@ -58,9 +71,7 @@ const writes = {
 // aborts when the turn is cancelled: a write still waiting is dropped, and a
 // scenario stops, its package fetches included. `onScenario` hears each
 // scenario's whole input and its result under its tool call's id, for the
-// panel and the session's log. Each scenario's result is also cached under
-// the Box's id folder in `plugins`, for the version the candidate's files
-// make once its build has run, which is what Install is gated on.
+// panel and the session's log, and `checkScenario` caches each result.
 export const authoringTools = (candidate: Candidate, plugins: string, { spend, onScenario }: { readonly spend: (signal: AbortSignal) => Promise<void>; readonly onScenario: (call: string, input: ScenarioInput, result: ScenarioResult) => void }) => {
 	const tool = <Schema extends TSchema>(name: string, description: string, schema: Schema, execute: (input: Static<Schema>, call: string, signal: AbortSignal) => unknown) => ({
 		name, description, idempotent: true, writes: true,
@@ -77,12 +88,7 @@ export const authoringTools = (candidate: Candidate, plugins: string, { spend, o
 		...Object.entries(writes).map(([name, [file, description]]) => tool(name, description, content(file), ({ content: text }, _, signal) => candidate.write(file, text, signal))),
 		tool("run_scenario", "Loads the Box from its files as the app would and plays the scenario against it, returning its diagnostics, prompt items, records, state and read or status.",
 			scenarioInput, async (input, call, signal) => {
-				const result = await candidate.check(async () => {
-					const ran = await runScenario(candidate.folder, candidate.id, unversionedBoxIds(), input, signal);
-					const files = await sandboxedFolder(candidate.folder, candidate.id).catch(() => undefined);
-					if (files !== undefined) await recordCheck(join(plugins, candidate.id), versionHash(files), input, ran);
-					return ran;
-				}, signal);
+				const result = await candidate.check(() => checkScenario(candidate, plugins, input, signal), signal);
 				onScenario(call, input, result);
 				return result;
 			}),

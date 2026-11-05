@@ -1,6 +1,6 @@
 # Cross-version checks
 
-Status: TODO
+Status: Done
 
 Blocked By: 04 (Box versions), and saving each full `run_scenario` input in the session log
 
@@ -20,12 +20,12 @@ An author learns, before Install, of the incompatibilities its own scenarios can
 
 ## Work
 
-- [ ] `from` in `scenarioInput` and `runScenario`; the upgrade check reused, not copied.
-- [ ] The state diff in `scenarioResult`, shown in the Scenario panel.
-- [ ] Install's check against `latest`, and **Install as a new Box**.
-- [ ] `contract.md`: the permanent-log rule and the translate-on-read pattern.
-- [ ] Tests: a v2 that keeps v1's fields as optional and adds a tagged shape loads and passes `from`; a digesting v2 that widens a choice keeps its passage timeline; a v2 whose record schema drops a v1 field is refused by `from`; a v2 with an adapter passes and its fold reads v1 records; a same-shape change in meaning passes the check and shows in the state diff; Install of an incompatible v2 leaves `latest` unchanged and offers a new Box.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] `from` in `scenarioInput` and `runScenario`; the upgrade check reused, not copied.
+- [x] The state diff in `scenarioResult`, shown in the Scenario panel.
+- [x] Install's check against `latest`, and **Install as a new Box**.
+- [x] `contract.md`: the permanent-log rule and the translate-on-read pattern.
+- [x] Tests: a v2 that keeps v1's fields as optional and adds a tagged shape loads and passes `from`; a digesting v2 that widens a choice keeps its passage timeline; a v2 whose record schema drops a v1 field is refused by `from`; a v2 with an adapter passes and its fold reads v1 records; a same-shape change in meaning passes the check and shows in the state diff; Install of an incompatible v2 leaves `latest` unchanged and offers a new Box.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 
 ## Acceptance
 

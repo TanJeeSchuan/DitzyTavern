@@ -16,9 +16,15 @@ const [participantQuery, libraryKeyQuery, libraryPrefixQuery, characterQuery] = 
 // turns, each a Human Message's Moves, the passage that answers it and the
 // digest's scripted `decide` answers. Each swipe replaces an earlier turn's
 // Variant, keeping that turn's seed and Moves. `snapshot` scripts each
-// answer `read` may ask for, so a scenario never reads the database. Every
-// list is bounded, since the arguments come from a model.
+// answer `read` may ask for, so a scenario never reads the database. `from`
+// plays its first turns on an installed version, then moves to the candidate
+// through the writer's Update check. Every list is bounded, since the
+// arguments come from a model.
 export const scenarioInput = Type.Object({
+	from: Type.Optional(Type.Object({
+		version: Type.Union([Type.Literal("latest"), Type.String({ pattern: "^[0-9a-f]{64}$" })], { description: "The installed version the first turns run on: latest, or a version's hash." }),
+		turns: Type.Optional(Type.Integer({ minimum: 0, description: "How many turns run on that version; the rest, and every swipe, run on the candidate. Without it, every turn and swipe runs on that version." })),
+	}, { additionalProperties: false })),
 	setup: Type.Optional(boxValue),
 	cast: Type.Array(Type.String({ minLength: 1, maxLength: 100 }), { minItems: 1, maxItems: 8 }),
 	seed: Type.String({ maxLength: 200 }),
@@ -48,7 +54,10 @@ const scenarioTurn = Type.Object({ moves: Type.Array(Type.String()), items: Type
 // loader or a hook raised; a scenario stops at the first, keeping what ran.
 // `records` are the selected Variants' records in order, folded into `state`,
 // and `recordBytes` their JSON size. A Box with a window reports its `read`,
-// and a digesting Box its `status`.
+// and a digesting Box its `status`. A run `from` an installed version says
+// which version, how many turns and swipes ran on it, and, once the Update
+// check passed, each place where the candidate's fold of those records
+// differs from that version's.
 export const scenarioResult = Type.Object({
 	ok: Type.Boolean(),
 	diagnostics: Type.Array(Type.String()),
@@ -59,6 +68,12 @@ export const scenarioResult = Type.Object({
 	recordBytes: Type.Integer({ minimum: 0 }),
 	read: Type.Optional(Type.Object({ view: Type.Unknown(), status: Type.Optional(Type.Union([Type.String(), Type.Null()])) })),
 	status: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+	upgrade: Type.Optional(Type.Object({
+		version: Type.String(),
+		turns: Type.Integer({ minimum: 0 }),
+		swipes: Type.Integer({ minimum: 0 }),
+		changes: Type.Optional(Type.Array(Type.Object({ path: Type.String(), earlier: Type.Optional(boxValue), candidate: Type.Optional(boxValue) }))),
+	})),
 });
 export type ScenarioResult = Static<typeof scenarioResult>;
 /** @approved A `run_scenario` result as Install's gate caches it, beside the input it ran. */
@@ -85,7 +100,9 @@ export const authoringSessionParams = Type.Object({ session: Type.String({ patte
 export const authoringPromptBody = Type.Object({ text: Type.String({ minLength: 1, maxLength: 32 * 1024 }) });
 const authoringInstalled = Type.Object({ outcome: Type.Literal("installed"), id: Type.String(), label: Type.String() });
 const authoringInstallRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
-export const authoringInstall = Type.Union([authoringInstalled, authoringInstallRefused]);
+/** @approved Install found that Chats on `latest` could not Update to the candidate, from the data the session's saved scenarios leave; the panel offers Install as a new Box. */
+const authoringInstallIncompatible = Type.Object({ outcome: Type.Literal("incompatible"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
+export const authoringInstall = Type.Union([authoringInstalled, authoringInstallRefused, authoringInstallIncompatible]);
 
 /** @approved A candidate's fixed files as they stand, for the panel to show; a file the agent has not written is absent. */
 export const authoringFiles = Type.Object({ files: Type.Array(Type.Object({ name: Type.String(), content: Type.String() })) });

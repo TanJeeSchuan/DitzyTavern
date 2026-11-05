@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { Elysia } from "elysia";
 import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx/node";
-import { authoredLabel, authoringFiles, authoringInstall, authoringMeta, authoringPromptBody, authoringSessions, CONTINUE_STEPS } from "../../shared/contract/authoring";
+import { authoredLabel, authoringFiles, authoringInstall, authoringLogEntry, authoringMeta, authoringPromptBody, authoringSessions, CONTINUE_STEPS } from "../../shared/contract/authoring";
 import { authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
 import type { AuthoringEvent, AuthoringLogEntry, AuthoringMeta, AuthoringSteps, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
@@ -16,7 +16,7 @@ import { createCandidate, defaultAuthoringFolder, SESSION_META, sweepCandidates,
 import { reasoningEntry, shown, toolInput } from "./activity";
 import { installCandidate } from "./install";
 import { libfxProvider } from "./provider";
-import { authoringTools } from "./tools";
+import { authoringTools, checkScenario } from "./tools";
 
 /** @approved Where candidates are made, and the plugin folder Install publishes into. */
 export type AuthoringFolders = { readonly root: string; readonly plugins: string };
@@ -289,6 +289,24 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			},
 		});
 	};
+	/** @approved Every scenario the session's agent ran, whole, from its log, oldest first. */
+	const savedScenarios = async (session: Session) => {
+		await session.saving;
+		const log = await Bun.file(join(folderOf(session.candidate.session), LOG)).text().catch(() => "");
+		return log.split("\n").flatMap((line) => {
+			let entry: unknown;
+			try { entry = JSON.parse(line); } catch { return []; }
+			return Value.Check(authoringLogEntry, entry) && entry.type === "scenario-input" ? [entry.input] : [];
+		});
+	};
+	const install = async (session: Session) => {
+		const installed = await installCandidate(session.candidate, folders.plugins, await savedScenarios(session));
+		if (installed.outcome === "installed") {
+			session.meta = { ...session.meta, installed: true, updated: now() };
+			save(session, () => writeMeta(session.candidate.session, session.meta));
+		}
+		return installed;
+	};
 	const routes = new Elysia()
 		.get("/api/authoring/sessions", () => list(), { response: authoringSessions })
 		.post("/api/authoring/sessions", ({ body }) => start(body), { body: authoringStartBody, response: authoringStart })
@@ -339,12 +357,24 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/install", async ({ params }) => {
 			const session = sessions.get(params.session);
 			if (session === undefined) return notFoundResponse();
-			const installed = await installCandidate(session.candidate, folders.plugins);
-			if (installed.outcome === "installed") {
-				session.meta = { ...session.meta, installed: true, updated: now() };
-				save(session, () => writeMeta(params.session, session.meta));
-			}
-			return installed;
+			return await install(session);
+		}, { params: authoringSessionParams, response: { 200: authoringInstall, 404: notFoundOutcome } })
+		// @approved
+		//  Install as a new Box: the session's candidate takes a new id, so
+		// Chats holding the Box it installed keep that Box, and its saved meta
+		// follows. A new id makes a new version hash, which no scenario passed
+		// on yet, so the session's latest saved scenario runs again on it,
+		// without its `from`, before the Install that creates the new Box.
+		.post("/api/authoring/sessions/:session/new-box", async ({ params }) => {
+			const session = sessions.get(params.session);
+			if (session === undefined) return notFoundResponse();
+			const { candidate } = session;
+			await candidate.renew();
+			session.meta = { ...session.meta, box: candidate.id, installed: false, updated: now() };
+			save(session, () => writeMeta(params.session, session.meta));
+			const latest = (await savedScenarios(session)).at(-1);
+			if (latest !== undefined) await candidate.check(() => checkScenario(candidate, folders.plugins, { ...latest, from: undefined }, new AbortController().signal));
+			return await install(session);
 		}, { params: authoringSessionParams, response: { 200: authoringInstall, 404: notFoundOutcome } });
 	return {
 		routes,

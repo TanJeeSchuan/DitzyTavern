@@ -194,12 +194,12 @@ const turn = { cast: ["Ann"], seed: "s", turns: [{ moves: [{ coins: 1 }] }], sna
 test("Install refuses a version that drops decision while latest digests, and latest stays", () => restored(async () => {
 	const { candidate, plugins, tools, scenario } = await authored(packing);
 	expect((await scenario({ cast: ["Ann", "Bard"], seed: "s", turns: [{ moves: [{ item: "rope" }], prose: "Rain.", decisions: choice("calm") }] })).ok).toBe(true);
-	expect((await installCandidate(candidate, plugins)).outcome).toBe("installed");
+	expect((await installCandidate(candidate, plugins, [])).outcome).toBe("installed");
 	const digesting = await readLatest(join(plugins, candidate.id));
 	await call(tools, "write_descriptor", { content: JSON.stringify(tipJar.descriptor) });
 	await call(tools, "write_logic", { content: tipJar.logic });
 	expect((await scenario(turn)).ok).toBe(true);
-	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused", reason: expect.stringContaining("must keep its Decision Model setting") });
+	expect(await installCandidate(candidate, plugins, [])).toMatchObject({ outcome: "refused", reason: expect.stringContaining("must keep its Decision Model setting") });
 	expect([await readLatest(join(plugins, candidate.id)), isDigestBox(candidate.id)]).toEqual([digesting, true]);
 }));
 
@@ -207,16 +207,16 @@ test("a folder made by hand under the candidate's id stays unmanaged through a p
 	const { candidate, plugins, scenario } = await authored(tipJar);
 	mkdirSync(join(plugins, candidate.id));
 	expect((await scenario(turn)).ok).toBe(true);
-	expect(await installCandidate(candidate, plugins)).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
+	expect(await installCandidate(candidate, plugins, [])).toEqual({ outcome: "refused", reason: `A Box folder already uses the id ${candidate.id}.`, diagnostics: [] });
 	expect([readdirSync(join(plugins, candidate.id)), installedBoxes().has(candidate.id)]).toEqual([[], false]);
 }));
 
 test("Install refuses a version no scenario passed on, even after an earlier version passed", () => restored(async () => {
 	const { candidate, plugins, tools, scenario } = await authored(tipJar);
-	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused", reason: "Run a scenario that passes on the Box as it is now, then install it." });
+	expect(await installCandidate(candidate, plugins, [])).toMatchObject({ outcome: "refused", reason: "Run a scenario that passes on the Box as it is now, then install it." });
 	expect((await scenario(turn)).ok).toBe(true);
 	await call(tools, "write_logic", { content: tipJar.logic.replace("The jar holds", "The jar has") });
-	expect(await installCandidate(candidate, plugins)).toMatchObject({ outcome: "refused" });
+	expect(await installCandidate(candidate, plugins, [])).toMatchObject({ outcome: "refused" });
 	expect([await readLatest(join(plugins, candidate.id)), installedBoxes().has(candidate.id)]).toEqual([undefined, false]);
 }));
 
@@ -228,7 +228,7 @@ test("Install creates a version with its packages, lock and bundle, moves latest
 	writeFileSync(join(candidate.folder, "deps.lock.json"), JSON.stringify({ "tally@1.0.0": new Bun.CryptoHasher("sha256").update(tally).digest("hex") }));
 	const mood = serverBoxes().get("mood");
 	expect((await scenario(turn)).ok).toBe(true);
-	expect(await installCandidate(candidate, plugins)).toEqual({ outcome: "installed", id: candidate.id, label: "Tip Jar" });
+	expect(await installCandidate(candidate, plugins, [])).toEqual({ outcome: "installed", id: candidate.id, label: "Tip Jar" });
 	const home = join(plugins, candidate.id);
 	const first = await readLatest(home);
 	expect(first).toBe(versionHash(await sandboxedFolder(candidate.folder, candidate.id)));
@@ -239,7 +239,7 @@ test("Install creates a version with its packages, lock and bundle, moves latest
 	expect([...installedBoxes().keys()].at(-1)).toBe(candidate.id);
 	await call(tools, "write_logic", { content: `import tally from "tally";\n${tipJar.logic.replace("total + coins", "tally(total, coins) * 10")}` });
 	expect((await scenario(turn)).ok).toBe(true);
-	expect((await installCandidate(candidate, plugins)).outcome).toBe("installed");
+	expect((await installCandidate(candidate, plugins, [])).outcome).toBe("installed");
 	const second = await readLatest(home);
 	expect([second === first, readdirSync(join(home, "versions")).length, [...installedBoxes().keys()].filter((id) => id === candidate.id).length]).toEqual([false, 2, 1]);
 	expect(serverBoxes().get(candidate.id)?.box.records?.foldAll?.(0, [{ coins: 2 }], undefined)).toBe(20);

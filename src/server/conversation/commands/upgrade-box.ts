@@ -1,7 +1,7 @@
 import type { BoxId } from "../../../shared/contract/box";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import { boxAt } from "../../box/registry";
-import { upgradeRefusals } from "../box-upgrade";
+import { refusedUpgrade, upgradeRefusals } from "../box-upgrade";
 import { pinBoxVersion } from "../../box/version-pin";
 import { InvalidConversationCommandError } from "../errors";
 import { requireBox, type ConversationDatabase } from "../internal";
@@ -22,7 +22,7 @@ export function upgradeBox(db: ConversationDatabase, input: { conversationId: nu
 	const to = boxAt(input.box, input.version);
 	if (to === undefined) throw new InvalidConversationCommandError(`The ${label} Box has no version ${input.version}.`);
 	const refusals = upgradeRefusals(db, input.conversationId, from, to);
-	if (refusals.length > 0) throw new InvalidConversationCommandError(`The ${label} Box cannot move to that version. These no longer fit:\n${refusals.join("\n")}`);
+	if (refusals.length > 0) throw new InvalidConversationCommandError(refusedUpgrade(label, refusals));
 	pinBoxVersion(db, input.conversationId, input.box, input.version);
 	return { conversationId: input.conversationId, touchedVariantIds: [], removedVariantIds: [], stoppedBox: input.box };
 }

@@ -1,9 +1,34 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { boxAt, builtInBoxes, installVersion, unversionedBoxIds } from "../box/registry";
+import type { ScenarioInput } from "../../shared/contract/authoring";
+import { boxAt, builtInBoxes, checkSandboxedFolder, installVersion, unversionedBoxIds, type CheckedSandboxedBox } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
-import { createVersion, isVersioned, passedCheck, versionHash, writeLatest } from "../box/versions";
+import { createVersion, isVersioned, passedCheck, readLatest, versionFolder, versionHash, writeLatest } from "../box/versions";
+import { refusedUpgrade } from "../conversation";
 import type { Candidate } from "./candidate";
+import { replayRefusals } from "./scenario";
+
+// @approved
+//  Whether Chats on `latest` could Update to the candidate, judged on the
+// data the session's saved scenarios leave when each is replayed on
+// `latest`: one refusal per scenario that leaves data the candidate
+// refuses, each reading as the writer's Update would. A Chat holding data
+// no scenario reached is still guarded by the Update check itself.
+const latestRefusals = async (home: string, latest: string, candidate: CheckedSandboxedBox, scenarios: readonly ScenarioInput[]) => {
+	const { id } = candidate.descriptor;
+	const earlier = await checkSandboxedFolder(versionFolder(home, latest), id, unversionedBoxIds());
+	try {
+		const unique = [...new Map(scenarios.map((input) => [JSON.stringify({ ...input, from: undefined }), input])).values()];
+		const refused: string[] = [];
+		for (const [index, input] of unique.entries()) {
+			const refusals = await replayRefusals(id, earlier, candidate, input);
+			if (refusals.length > 0) refused.push(`Saved scenario ${index + 1}: ${refusedUpgrade(earlier.descriptor.label, refusals)}`);
+		}
+		return refused;
+	} finally {
+		earlier.dispose();
+	}
+};
 
 // @approved
 //  Installs a candidate, a writer's action: holding the candidate, it creates
@@ -17,14 +42,18 @@ import type { Candidate } from "./candidate";
 // A version that drops `decision` while `latest` digests is refused too:
 // Chats pinned to a digesting version keep needing its Decision Model
 // settings, which the catalog lists only while `latest` digests, so once a
-// Box digests every later `latest` must; dropping it means a new Box.
-export const installCandidate = (candidate: Candidate, plugins: string) => candidate.check(async () => {
+// Box digests every later `latest` must; dropping it means a new Box. When
+// the session's saved `scenarios`, replayed on `latest`, leave data the
+// candidate's Update check refuses, `latest` stays and the outcome is
+// `incompatible`, which the panel answers with Install as a new Box.
+export const installCandidate = (candidate: Candidate, plugins: string, scenarios: readonly ScenarioInput[]) => candidate.check(async () => {
 	const { id } = candidate;
 	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
 	const home = join(plugins, id);
 	if (unversionedBoxIds().has(id) || existsSync(join(builtInBoxes, id)) || (existsSync(home) && !isVersioned(home))) return refused(`A Box folder already uses the id ${id}.`);
 	const version = versionHash(await sandboxedFolder(candidate.folder, id));
 	if (!await passedCheck(home, version)) return refused("Run a scenario that passes on the Box as it is now, then install it.");
+	const latest = await readLatest(home);
 	let created: Awaited<ReturnType<typeof createVersion>>;
 	try {
 		created = await createVersion(home, candidate.folder, id, unversionedBoxIds());
@@ -40,6 +69,11 @@ export const installCandidate = (candidate: Candidate, plugins: string) => candi
 		if (boxAt(id, undefined)?.descriptor.decision !== undefined && checked.descriptor.decision === undefined) {
 			checked.dispose();
 			return refused("This Box digests passages in Chats on its earlier versions, so a later version must keep its Decision Model setting (`decision`). To drop it, make a new Box instead.");
+		}
+		const incompatible = latest === undefined || latest === version ? [] : await latestRefusals(home, latest, checked, scenarios);
+		if (incompatible.length > 0) {
+			checked.dispose();
+			return { outcome: "incompatible" as const, reason: `Chats on the installed ${checked.descriptor.label} could not Update to this version. Install it as a new Box, so those Chats keep the old one, or ask the agent to keep the old records readable.`, diagnostics: incompatible };
 		}
 		await writeLatest(home, version);
 		installVersion(id, home, version, checked);
