@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { Static } from "@sinclair/typebox";
 import { createContext, type ComponentType } from "react";
-import type { BoxLens } from "./lens";
+import { delegateLens, type BoxLens } from "./lens";
 import { sandboxedClient } from "./BoxFrame";
 import { boxList, boxVersionListing } from "../../shared/contract/box-sandboxed";
 import type { CastParticipant, ConversationSummary } from "../conversation";
@@ -159,7 +159,10 @@ const loadBoxClient = async (id: BoxId, url: string, lens: string | undefined): 
 	assertBoxClient(client);
 	if (client.descriptor.id !== id) throw new Error(`Its client module is the ${client.descriptor.id} Box's.`);
 	if (client.descriptor.lens !== lens) throw new Error(`Its client module lifts ${client.descriptor.lens ?? "no tag"}, but the server loaded it lifting ${lens ?? "none"}.`);
-	return client;
+	const { delegate } = client.descriptor;
+	// @approved
+	// The host gives a delegating Box the lens for its tag; assertBoxClient required its Window.
+	return delegate === undefined || client.Window === undefined ? client : { ...client, Window: { ...client.Window, lens: delegateLens(delegate.tag) } };
 };
 
 // @approved

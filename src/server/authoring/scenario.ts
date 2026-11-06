@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { Value } from "@sinclair/typebox/value";
-import type { BoxId } from "../../shared/contract/box";
-import { assertChecked } from "../../shared/contract/box-descriptor";
+import { otherBoxTags, type BoxId } from "../../shared/contract/box";
+import { assertChecked, delegateApplyInput } from "../../shared/contract/box-descriptor";
+import { delegateRequest } from "../../shared/delegate-request";
 import { snapshotQuery } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
@@ -38,13 +39,32 @@ const runnerOf = (id: BoxId, { descriptor, box }: Pick<CheckedSandboxedBox, "des
 };
 type Runner = ReturnType<typeof runnerOf>;
 
+const fail = (message: string): never => { throw new Error(message); };
+
+// @approved
+//  A delegating Box's record for one step: the batch the scenario scripts in
+// place of the agent, checked against the operations of the version running
+// the step and reduced by its `delegate.apply` from the state before the
+// step, exactly as a delegate run's batch is. It is that Variant's record,
+// never a Move. Prose holding the Box's request needs a scripted batch, and
+// a batch needs a request to answer, so no step runs a model.
+const delegate = async (descriptor: CheckedSandboxedBox["descriptor"], box: CheckedSandboxedBox["box"], index: number, prose: string, delegated: readonly BoxValue[] | undefined, input: Omit<Parameters<NonNullable<CheckedSandboxedBox["box"]["delegate"]>["apply"]>[0], "operations">) => {
+	const { tag, operations } = descriptor.delegate!; // @approved Called only for a delegating Box.
+	const request = delegateRequest(prose, tag, otherBoxTags(tag));
+	if (request === undefined) return delegated === undefined ? undefined : fail(`Turn ${index} scripts delegated, but its prose holds no <${tag}> request.`);
+	if (delegated === undefined) return fail(`Turn ${index}'s prose holds a <${tag}> request, so the step needs delegated: the batch the delegate would apply.`);
+	assertChecked(delegateApplyInput(operations), { operations: delegated }, `Turn ${index}'s delegated batch`);
+	return await box.delegate!.apply({ ...input, operations: delegated }); // @approved The loader requires delegate.apply for a delegate.
+};
+
 // @approved
 //  Plays a scenario's turns and swipes on whichever version each step names,
 // keeping one history across them: each turn folds the records selected
 // before it, runs `dependencies` and `advance` with its Moves and its own
 // seed, and digests its passage; a swipe runs its turn again with that
 // turn's seed and Moves and selects the new record without touching later
-// ones. A digest reads what production's reads: each Message's raw prose,
+// ones. A delegating Box's step reduces its scripted batch in place of a
+// delegate run. A digest reads what production's reads: each Message's raw prose,
 // never its rendered Moves, and only a passage that holds some. `decide`
 // answers from the turn's script. `played` keeps every Variant's record per
 // turn, as a Chat stores them.
@@ -60,7 +80,7 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 	const selected: (GenerationJsonValue | undefined)[] = [];
 	const played: { moves: readonly BoxValue[]; records: (GenerationJsonValue | undefined)[] }[] = [];
 	const records = () => selected.flatMap((record) => record === undefined ? [] : [record]);
-	const run = async ({ descriptor, box, setup, fold }: Runner, index: number, moves: readonly BoxValue[], prose: string | undefined, scripted: Readonly<Record<string, DecisionAnswer>> | undefined): Promise<Turn> => {
+	const run = async ({ descriptor, box, setup, fold }: Runner, index: number, moves: readonly BoxValue[], prose: string | undefined, scripted: Readonly<Record<string, DecisionAnswer>> | undefined, delegated: readonly BoxValue[] | undefined): Promise<Turn> => {
 		signal.throwIfAborted();
 		if (moves.length > 0 && descriptor.moves === undefined) throw new Error(`Turn ${index} has Moves, but the ${id} Box declares none.`);
 		if (descriptor.moves !== undefined) {
@@ -82,7 +102,9 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 		// one that fails still leaves the Moves and an empty Variant behind.
 		const variants = (played[index] ??= { moves, records: [] }).records;
 		const at = variants.push(undefined) - 1;
-		const record = digest === undefined ? advanced.record : passage.content.trim() === "" ? undefined : await digest.run({
+		const record = descriptor.delegate !== undefined ? await delegate(descriptor, box, index, passage.content, delegated, { setup, state, cast })
+			: delegated !== undefined ? fail(`Turn ${index} scripts delegated, but the ${id} Box declares no delegate.`)
+			: digest === undefined ? advanced.record : passage.content.trim() === "" ? undefined : await digest.run({
 			passage, preceding: digest.window === 0 ? [] : earlier.slice(-digest.window), seed,
 			cast: cast.map((member) => ({ ...member, removed: false })), data: {},
 		}, { ...context, database, decide: async (_state, questions) => {
@@ -100,13 +122,13 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 		for (const { kind, index } of steps) {
 			if (kind === "turn") {
 				const turn = input.turns[index]!; // @approved Steps index the scenario's own turns.
-				into.turns.push(await run(runner, index, turn.moves ?? [], turn.prose, turn.decisions));
+				into.turns.push(await run(runner, index, turn.moves ?? [], turn.prose, turn.decisions, turn.delegated));
 				continue;
 			}
 			const swipe = input.swipes![index]!; // @approved Steps index the scenario's own swipes.
 			const turn = input.turns[swipe.turn];
 			if (turn === undefined) throw new Error(`A swipe names turn ${swipe.turn}; the scenario has ${input.turns.length}.`);
-			into.swipes.push(await run(runner, swipe.turn, turn.moves ?? [], swipe.prose ?? turn.prose, swipe.decisions ?? turn.decisions));
+			into.swipes.push(await run(runner, swipe.turn, turn.moves ?? [], swipe.prose ?? turn.prose, swipe.decisions ?? turn.decisions, swipe.delegated ?? turn.delegated));
 		}
 	};
 	const close = () => {
