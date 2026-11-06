@@ -73,6 +73,9 @@ test("submit makes a new session without a coding model that list shows, whose l
 	expect(next.code).toBe(0);
 	expect(next.session).not.toBe(submitted.session);
 	expect((await read(authoring, next.session)).meta.box).toBe(meta.box);
+	const out = join(app, "..", "next");
+	expect((await cli(app, "box-export", next.session, out)).code).toBe(0);
+	expect(await Bun.file(join(out, "AGENTS.md")).text()).toContain(`bun run box:submit "${join(out, meta.box)}" --box ${meta.box} "${join(out, "scenarios")}"/*.json`);
 	expect((await install(authoring, plugins, next.session)).outcome).toBe("installed");
 });
 
@@ -89,15 +92,18 @@ test("submit exits 2 and writes no session for a folder holding a link, or a --b
 	const { root, app, box, scenario, authoring, plugins } = fixture();
 	const tipsFile = scenario("tips.json", tips(1));
 	mkdirSync(join(plugins, "authored-0000000a"), { recursive: true });
+	mkdirSync(join(plugins, "authored-0000000b"), { recursive: true });
+	writeFileSync(join(plugins, "authored-0000000b", "latest"), `${"a".repeat(64)}\n`);
 	const linked = join(root, "linked");
 	cpSync(box, linked, { recursive: true });
 	symlinkSync(join(root, "agent", "tips.json"), join(linked, "notes.json"));
 	const refusals = await Promise.all([
 		cli(app, "box-submit", linked, tipsFile),
 		cli(app, "box-submit", box, "--box", "authored-0000000a", tipsFile),
+		cli(app, "box-submit", box, "--box", "authored-0000000b", tipsFile),
 		cli(app, "box-submit", box, "--box", "../boxes", tipsFile),
 	]);
-	expect(refusals.map(({ code }) => code)).toEqual([2, 2, 2]);
+	expect(refusals.map(({ code }) => code)).toEqual([2, 2, 2, 2]);
 	expect(refusals[0]?.stderr).toContain("a link");
 	expect(existsSync(authoring) ? readdirSync(authoring) : []).toEqual([]);
 });
@@ -114,20 +120,21 @@ test("export writes the candidate named for its id, each saved scenario once, an
 	expect(await Bun.file(join(out, "scenarios", "2.json")).json()).toEqual(tips(1, 2));
 	const agents = await Bun.file(join(out, "AGENTS.md")).text();
 	expect(agents.startsWith(await Bun.file(join(import.meta.dir, "contract.md")).text())).toBe(true);
-	expect(agents).toContain(`bun run box:submit ${join(out, meta.box)} ${join(out, "scenarios", "*.json")}`);
+	expect(agents).toContain(`bun run box:submit "${join(out, meta.box)}" "${join(out, "scenarios")}"/*.json`);
 
 	const scenarios = [join(out, "scenarios", "1.json"), join(out, "scenarios", "2.json")];
 	expect((await cli(app, "box-scenario", join(out, meta.box), ...scenarios)).code).toBe(0);
 	expect((await cli(app, "box-submit", join(out, meta.box), ...scenarios)).code).toBe(0);
 });
 
-test("export exits 2 for a session id that isn't a UUID, and for a folder that isn't empty, writing nothing into it", async () => {
-	const { root, app, box, scenario } = fixture();
+test("export exits 2 for a session id that isn't a UUID, a folder that isn't empty, or one inside the app's data folder, writing nothing", async () => {
+	const { root, app, box, scenario, authoring } = fixture();
 	const submitted = await cli(app, "box-submit", box, scenario("tips.json", tips(1)));
 	const out = join(root, "out");
 	mkdirSync(out);
 	writeFileSync(join(out, "notes.txt"), "mine");
-	const refusals = await Promise.all([cli(app, "box-export", "../app", join(root, "fresh")), cli(app, "box-export", submitted.session, out)]);
-	expect(refusals.map(({ code }) => code)).toEqual([2, 2]);
-	expect([existsSync(join(root, "fresh")), readdirSync(out)]).toEqual([false, ["notes.txt"]]);
+	const inside = join(authoring, submitted.session, "export");
+	const refusals = await Promise.all([cli(app, "box-export", "../app", join(root, "fresh")), cli(app, "box-export", submitted.session, out), cli(app, "box-export", submitted.session, inside)]);
+	expect(refusals.map(({ code }) => code)).toEqual([2, 2, 2]);
+	expect([existsSync(join(root, "fresh")), readdirSync(out), existsSync(inside)]).toEqual([false, ["notes.txt"], false]);
 });

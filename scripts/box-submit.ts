@@ -6,7 +6,7 @@ import { AUTHORED_ID, createCandidate, defaultAuthoringFolder, newId, SESSION_LO
 import { checkScenario } from "../src/server/authoring/tools";
 import { pluginFolder } from "../src/server/box/registry";
 import { sandboxedFolder } from "../src/server/box/sandboxed-folder";
-import { readLatest } from "../src/server/box/versions";
+import { installedLatest } from "../src/server/box/versions";
 import { readScenarios, usageError } from "./scenario-files";
 
 // @approved
@@ -31,7 +31,7 @@ if (folder === undefined || files.length === 0 || (flag !== -1 && box === undefi
 const scenarios = await readScenarios(files);
 if (box !== undefined) {
 	const home = join(pluginFolder, box);
-	if (!AUTHORED_ID.test(box) || await readLatest(home).catch(() => undefined) === undefined) usageError(`--box ${box} is not a Box installed from Creator Mode in ${pluginFolder}.`);
+	if (!AUTHORED_ID.test(box) || await installedLatest(home) === undefined) usageError(`--box ${box} is not a Box installed from Creator Mode in ${pluginFolder}.`);
 }
 const source = resolve(folder);
 const sources = await sandboxedFolder(source, basename(source)).catch((error: Error) => usageError(error.message));
