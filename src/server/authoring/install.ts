@@ -47,11 +47,11 @@ const latestRefusals = async (home: string, latest: string, candidate: CheckedSa
 // or renames its tag, once `latest` delegates: the requests written in Chats
 // on earlier versions name that tag, and its delegate setting is listed from
 // the catalog. A tag another loaded Box already takes refuses Install, as it
-// refuses a plugin at load. When
+// refuses a plugin at load. Installs of one Box run one at a time. When
 // the session's saved `scenarios`, replayed on `latest`, leave data the
 // candidate's Update check refuses, `latest` stays and the outcome is
 // `incompatible`, which the panel answers with Install as a new Box.
-export const installCandidate = (candidate: Candidate, plugins: string, scenarios: readonly ScenarioInput[]) => candidate.check(async () => {
+export const installCandidate = (candidate: Candidate, plugins: string, scenarios: readonly ScenarioInput[]) => candidate.check(() => serially(join(plugins, candidate.id), async () => {
 	const { id } = candidate;
 	const refused = (reason: string, diagnostics: readonly string[] = []) => ({ outcome: "refused" as const, reason, diagnostics: [...diagnostics] });
 	const home = join(plugins, id);
@@ -106,7 +106,22 @@ export const installCandidate = (candidate: Candidate, plugins: string, scenario
 		release();
 	}
 	return { outcome: "installed" as const, id, label: checked.descriptor.label };
-});
+}));
+
+// @approved
+//  Installs of one Box run one at a time, from reading `latest` to the
+// catalog listing the new version, whichever sessions they come from: each
+// candidate's own lock holds only its folder, and two sessions may target
+// one Box, so each must check `decision` and `delegate` against the
+// `latest` the other just published.
+const installs = new Map<string, Promise<void>>();
+const serially = <T>(home: string, run: () => Promise<T>): Promise<T> => {
+	const ran = (installs.get(home) ?? Promise.resolve()).then(run);
+	const settled = ran.then(() => undefined, () => undefined);
+	installs.set(home, settled);
+	void settled.then(() => { if (installs.get(home) === settled) installs.delete(home); });
+	return ran;
+};
 
 // @approved
 //  A delegate tag is claimed from an Install's tag check until the catalog

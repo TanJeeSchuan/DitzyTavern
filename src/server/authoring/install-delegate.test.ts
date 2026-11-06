@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { ScenarioInput } from "../../shared/contract/authoring";
 import type { BoxValue } from "../../shared/contract/box-value";
-import { builtInBoxes, loadBoxes } from "../box/registry";
+import { builtInBoxes, loadBoxes, serverBoxes } from "../box/registry";
 import { createCandidate } from "./candidate";
 import { installCandidate } from "./install";
 import { authoringTools, checkScenario } from "./tools";
@@ -30,9 +30,9 @@ const { delegate } = descriptor;
 const quiet: ScenarioInput = { cast: ["Ann", "Bard"], seed: "s", turns: [{ prose: "The hall is quiet." }] };
 
 /** @approved The Scene as a candidate, written through its tools with `fields` over its descriptor, checked, and offered for Install. */
-const candidateOf = async () => {
-	const candidate = await createCandidate(scratch());
-	const plugins = scratch();
+const candidateOf = async (shared?: { readonly plugins: string; readonly id: string }) => {
+	const candidate = await createCandidate(scratch(), shared && { session: crypto.randomUUID(), id: shared.id });
+	const plugins = shared?.plugins ?? scratch();
 	const tools = authoringTools(candidate, plugins, { spend: async () => {}, onScenario: () => {} });
 	const write = async (name: string, content: string) => await tools.find((tool) => tool.name === name)!.execute({ content }, { executionId: "call", signal: new AbortController().signal }); // @approved The tools always include every write.
 	const install = async (fields: Json, logic = file("logic.js")) => {
@@ -42,7 +42,7 @@ const candidateOf = async () => {
 		expect((await candidate.check(() => checkScenario(candidate, plugins, quiet, new AbortController().signal))).ok).toBe(true);
 		return await installCandidate(candidate, plugins, [quiet]);
 	};
-	return { install };
+	return { install, id: candidate.id, plugins };
 };
 
 test("once a version delegates, Install refuses a later one that renames its tag or drops its delegate", async () => {
@@ -64,4 +64,15 @@ test("of two Boxes installing at once with one delegate tag, only one installs",
 	const [first, second] = await Promise.all([candidateOf(), candidateOf()]);
 	const outcomes = await Promise.all([first.install({}), second.install({})]);
 	expect(outcomes.map(({ outcome }) => outcome).sort()).toEqual(["installed", "refused"]);
+});
+
+test("two sessions installing one Box at once each check the latest the other published, so the delegate stays", async () => {
+	for (let round = 0; round < 4; round += 1) {
+		const first = await candidateOf();
+		const second = await candidateOf({ plugins: first.plugins, id: first.id });
+		const [delegating] = await Promise.all([first.install({}), second.install({ delegate: undefined, alwaysRender: undefined }, file("logic.js").replace(/\tdelegate: .*\n/, ""))]);
+		expect(delegating).toMatchObject({ outcome: "installed" });
+		expect(serverBoxes().get(first.id)?.descriptor.delegate?.tag).toBe("scene");
+		await loadBoxes([builtInBoxes]);
+	}
 });

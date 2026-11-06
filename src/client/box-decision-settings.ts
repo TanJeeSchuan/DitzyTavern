@@ -10,36 +10,34 @@ const route = (box: BoxId) => api.api.boxes({ box })["decision-settings"];
 // @approved
 //  One load and save pair per digesting or delegating Box, built once per Box
 // and kept while the catalog lists it, so a settings draft keyed by them
-// never reloads on render, and a Box installed while the app runs joins the
-// list once the catalog is installed again.
-const kept = <Client>(build: (metadata: BoxMetadata) => Client | undefined) => {
-	const clients = new Map<BoxId, Client>();
+// never reloads on render. What the settings show, the label and the copy,
+// is read from the catalog each time it is installed again, so a Box
+// installed while the app runs joins the list and a new version's copy
+// shows.
+const kept = <Shown, Io>(shown: (metadata: BoxMetadata) => Shown | undefined, io: (box: BoxId) => Io) => {
+	const ios = new Map<BoxId, Io>();
 	let catalog: ReturnType<typeof installedBoxes> | undefined;
-	let listed: Client[] = [];
+	let listed: (Shown & Io & { readonly box: BoxId; readonly label: string })[] = [];
 	return () => {
 		if (catalog === installedBoxes()) return listed;
 		catalog = installedBoxes();
 		listed = [...catalog.values()].flatMap(({ metadata }) => {
-			const client = clients.get(metadata.id) ?? build(metadata);
-			if (client !== undefined) clients.set(metadata.id, client);
-			return client === undefined ? [] : [client];
+			const presented = shown(metadata);
+			if (presented === undefined) return [];
+			const functions = ios.get(metadata.id) ?? io(metadata.id);
+			ios.set(metadata.id, functions);
+			return [{ box: metadata.id, label: metadata.label, ...presented, ...functions }];
 		});
 		return listed;
 	};
 };
-export const boxDecisionClients = kept(({ id: box, label, decision }) => decision && {
-	box,
-	label,
-	decision,
+export const boxDecisionClients = kept(({ decision }) => decision && { decision }, (box) => ({
 	load: (): Promise<BoxDecisionSettings> => requestData(route(box).get(), boxDecisionSettings),
 	save: (command: BoxDecisionSettingsCommand) => requestOutcome(route(box).commands.post(command), boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors),
-});
+}));
 
 const delegateRoute = (box: BoxId) => api.api.boxes({ box })["delegate-settings"];
-export const boxDelegateClients = kept(({ id: box, label, delegate }) => delegate && {
-	box,
-	label,
-	delegate,
+export const boxDelegateClients = kept(({ delegate }) => delegate && { delegate }, (box) => ({
 	load: (): Promise<BoxDelegateSettings> => requestData(delegateRoute(box).get(), boxDelegateSettings),
 	save: (command: BoxDelegateSettingsCommand) => requestOutcome(delegateRoute(box).commands.post(command), boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors),
-});
+}));

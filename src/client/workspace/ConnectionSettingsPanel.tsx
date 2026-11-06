@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
-import { DecisionSettingsEditor, useSettingsDraft } from "./DecisionSettingsEditor";
+import { DecisionSettingsEditor, useSettingsDraft, type SettingsDraft } from "./DecisionSettingsEditor";
 import { boxDecisionClients, boxDelegateClients } from "../box-decision-settings";
 import { DelegateSettingsEditor } from "./DelegateSettingsEditor";
-import type { BoxId } from "../../shared/contract/box";
+import { installedBoxes, type BoxDecisionSettings, type BoxDelegateSettings, type BoxId } from "../../shared/contract/box";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -17,20 +17,58 @@ export function ConnectionSettingsPanelHost() {
 
 type PanelProps = { controller: ConnectionSettingsController; activeProfileId: number | null };
 
+type DecisionClient = ReturnType<typeof boxDecisionClients>[number];
+type DelegateClient = ReturnType<typeof boxDelegateClients>[number];
+type Owner = { readonly kind: "decision"; readonly client: DecisionClient } | { readonly kind: "delegate"; readonly client: DelegateClient };
+export type Drafts = {
+	readonly decisions: readonly (DecisionClient & { readonly editor: SettingsDraft<BoxDecisionSettings> })[];
+	readonly delegates: readonly (DelegateClient & { readonly editor: SettingsDraft<BoxDelegateSettings> })[];
+};
+type Chain = { readonly owners: readonly Owner[]; readonly drafts: Drafts; readonly render: (drafts: Drafts) => ReactNode };
+
 // @approved
-//  Each digesting and delegating Box has a settings draft, a hook, so a Box
-// the catalog gains or loses remounts the panel and the hooks keep their
-// order.
-export function ConnectionSettingsPanel(props: PanelProps) {
-	const boxes = [...boxDecisionClients().map(({ box }) => box), ...boxDelegateClients().map(({ box }) => `delegate:${box}`)].join(" ");
-	return <BoxSettingsPanel key={boxes} {...props} />;
+//  Each digesting and delegating Box's settings draft lives in a component of
+// its own, keyed by the Box, one nested in the next in catalog order, which
+// collects the drafts for the panel. A Box installed while the app runs joins
+// at the end, so every draft already open keeps its state and save guard.
+function Drafted({ owners, drafts, render }: Chain) {
+	const [owner, ...rest] = owners;
+	if (owner === undefined) return render(drafts);
+	return owner.kind === "decision"
+		? <DecisionDraft key={`decision:${owner.client.box}`} client={owner.client} owners={rest} drafts={drafts} render={render} />
+		: <DelegateDraft key={`delegate:${owner.client.box}`} client={owner.client} owners={rest} drafts={drafts} render={render} />;
+}
+function DecisionDraft({ client, ...chain }: Chain & { readonly client: DecisionClient }) {
+	const editor = useSettingsDraft(`${client.label} Settings`, client.load, client.save);
+	return <Drafted {...chain} drafts={{ ...chain.drafts, decisions: [...chain.drafts.decisions, { ...client, editor }] }} />;
+}
+function DelegateDraft({ client, ...chain }: Chain & { readonly client: DelegateClient }) {
+	const editor = useSettingsDraft(`${client.label} delegate settings`, client.load, client.save);
+	return <Drafted {...chain} drafts={{ ...chain.drafts, delegates: [...chain.drafts.delegates, { ...client, editor }] }} />;
 }
 
-function BoxSettingsPanel({ controller, activeProfileId }: PanelProps) {
+/** @approved Every digesting and delegating Box's settings draft, in catalog order, each kept by its own component across catalog changes. */
+export function BoxSettingsDrafts({ render }: { readonly render: (drafts: Drafts) => ReactNode }) {
+	const order = [...installedBoxes().keys()];
+	const owners: Owner[] = [...boxDecisionClients().map((client) => ({ kind: "decision" as const, client })), ...boxDelegateClients().map((client) => ({ kind: "delegate" as const, client }))]
+		.sort((left, right) => order.indexOf(left.client.box) - order.indexOf(right.client.box));
+	return <Drafted owners={owners} drafts={{ decisions: [], delegates: [] }} render={render} />;
+}
+
+export function ConnectionSettingsPanel({ controller, activeProfileId }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const boxDecisions = boxDecisionClients().map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
-	const boxDelegates = boxDelegateClients().map(({ box, label, delegate, load, save }) => ({ box, label, delegate, editor: useSettingsDraft(`${label} delegate settings`, load, save) }));
-	const [open, setOpen] = useState<"semantic-triggers" | BoxId | `delegate:${BoxId}` | null>(null);
+	const [open, setOpen] = useState<Open>(null);
+	return <BoxSettingsDrafts render={(drafts) =>
+		<Settings controller={controller} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} open={open} setOpen={setOpen} drafts={drafts} />} />;
+}
+
+type Open = "semantic-triggers" | BoxId | `delegate:${BoxId}` | null;
+function Settings({ controller, activeProfileId, semanticTriggers, open, setOpen, drafts: { decisions: boxDecisions, delegates: boxDelegates } }: PanelProps & {
+	semanticTriggers: ReturnType<typeof useSemanticTriggerSettings>;
+	open: Open;
+	setOpen: (open: Open) => void;
+	drafts: Drafts;
+}) {
 	const openBox = boxDecisions.find(({ box }) => box === open);
 	const openDelegate = boxDelegates.find(({ box }) => `delegate:${box}` === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
