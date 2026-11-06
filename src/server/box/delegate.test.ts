@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptor, boxRecordSchema } from "../../shared/contract/box";
@@ -8,11 +8,12 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { key, profile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { DELEGATE_PROMPT_BYTES, DELEGATE_STEPS } from "./delegate";
-import { applyBoxDelegateSettings, readBoxDelegateSettings } from "./delegate-settings";
+import { DELEGATE_PROMPT_BYTES, DELEGATE_STEPS, runDelegateAgent } from "./delegate";
+import { applyBoxDelegateSettings, readBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
 import { prepareBoxDigests, queueBoxDigest, readBoxCatchUp, readDelegate, startBoxCatchUp, startBoxDigests } from "./digest";
 import { createBoxWindowRoutes } from "../contract/box-window";
-import { readRecordSlots, writeAutomaticRecord } from "./records";
+import { readRecordSlots } from "./records";
+import { sha256 } from "../hash";
 import { builtInBoxes, loadBoxes } from "./registry";
 
 // @approved
@@ -20,7 +21,7 @@ import { builtInBoxes, loadBoxes } from "./registry";
 // request takes the next scripted reply, a call to `apply` with its
 // arguments or plain text, and a reply may be held until the test releases
 // it. Each request's body is kept, so a test reads the prompt it carried.
-type Reply = { readonly apply: unknown } | { readonly text: string } | { readonly held: Promise<void>; readonly then: Reply };
+type Reply = { readonly apply: unknown } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
 const replies: Reply[] = [];
 const bodies: { readonly messages: readonly { readonly role: string; readonly content: unknown }[] }[] = [];
 type Delta = { readonly role?: "assistant"; readonly content?: string; readonly tool_calls?: readonly { readonly index: number; readonly id: string; readonly type: "function"; readonly function: { readonly name: string; readonly arguments: string } }[] };
@@ -31,7 +32,7 @@ const answer = async (reply: Reply | undefined): Promise<Response> => {
 		await reply.held;
 		return await answer(reply.then);
 	}
-	const chunks = "text" in reply ? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, "stop")]
+	const chunks = "text" in reply ? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, reply.finish ?? "stop")]
 		: [chunk({ role: "assistant", tool_calls: [{ index: 0, id: `call_${bodies.length}`, type: "function", function: { name: "apply", arguments: JSON.stringify(reply.apply) } }] }, null), chunk({}, "tool_calls")];
 	return new Response(`${chunks.join("")}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 };
@@ -49,6 +50,17 @@ beforeAll(async () => {
 	mkdirSync(scratch, { recursive: true });
 	plugins = mkdtempSync(join(scratch, "delegate-job-"));
 	cpSync(join(import.meta.dir, "../../../e2e/fixtures/boxes/scene"), join(plugins, "scene"), { recursive: true });
+	mkdirSync(join(plugins, "gate"));
+	const typebox = JSON.stringify(Bun.resolveSync("@sinclair/typebox", import.meta.dir));
+	writeFileSync(join(plugins, "gate", "shared-descriptor.ts"), `import { Type } from ${typebox};
+		export default { id: "gate", sdk: 2, label: "Gate", summary: "Counts what it is asked for.", role: "system", startsEnabled: false, instructions: "", alwaysRender: true,
+			record: Type.Object({ count: Type.Integer() }),
+			delegate: { tag: "gate", summary: "", description: "", off: "", operations: Type.Array(Type.Object({ kind: Type.String(), prop: Type.String() }), { maxItems: 4 }) } };`);
+	writeFileSync(join(plugins, "gate", "server.ts"), `export default {
+		records: { initial: 0, fold: (_, { count }) => count },
+		read: () => null,
+		delegate: { apply: async ({ operations }) => { globalThis.delegateEntered?.(); await globalThis.delegateGate; return { count: operations.length }; } },
+	};`);
 	await loadBoxes([builtInBoxes, plugins]);
 });
 afterAll(async () => {
@@ -73,19 +85,25 @@ afterEach(async () => {
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 /** @approved A Chat holding the Scene, with the delegate set to the fake model at `requestUrl`, and the queue running. */
-const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`) => {
+const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "scene") => {
 	const chat = createConversationWithHistory(database, {
 		name: "Stage", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }], control: { human: 0, model: 1 },
 	});
 	setBoxState(database, chat.id, "memory", "absent");
-	const instance = insertBox(database, chat.id, "scene");
+	const instance = insertBox(database, chat.id, box);
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	const profileId = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...profile, displayName: "Stage", requestUrl }, credential: "stage-secret" })
 		.profiles.find(({ displayName }) => displayName === "Stage")!.id; // @approved The profile was just created.
-	applyBoxDelegateSettings(database, "scene", { type: "apply", expectedRevision: readBoxDelegateSettings(database, "scene").revision, profileId, model: "stage-1" });
+	applyBoxDelegateSettings(database, box, { type: "apply", expectedRevision: readBoxDelegateSettings(database, box).revision, profileId, model: "stage-1" });
 	stop = startBoxDigests(database);
-	const slot = (variantId: number) => readRecordSlots(drizzle(database), "scene", boxRecordSchema(boxDescriptor("scene")), instance, [variantId]).get(variantId);
+	const slot = (variantId: number) => readRecordSlots(drizzle(database), box, boxRecordSchema(boxDescriptor(box)), instance, [variantId]).get(variantId);
 	return { chat, instance, slot };
+};
+
+const resolveReady = () => {
+	const setting = resolveBoxDelegate(database, "scene");
+	if (setting.kind !== "ready") throw new Error("The Scene's delegate setting did not resolve.");
+	return setting;
 };
 
 const addPassage = (conversationId: number, position: number, content: string): number => {
@@ -142,7 +160,7 @@ test("an edit runs the passage again on the state before it, never its own recor
 	edit(first, "<scene>light the lantern again</scene>");
 	replies.push(...applies({ kind: "place", prop: "lantern" }));
 	touch(chat.id, first);
-	await settled(() => bodies.length === 6 && slot(first)?.error === undefined && slot(first)?.automatic !== undefined && slot(first)?.source !== slot(second)?.source);
+	await settled(() => slot(first)?.source === sha256("<scene>light the lantern again</scene>"));
 	await Bun.sleep(30);
 	expect(promptOf(4)).toContain("State before the passage, as JSON:\\n[]");
 	expect(slot(first)?.automatic).toEqual({ props: ["lantern"] });
@@ -188,14 +206,11 @@ test(`model requests and tool calls past ${DELEGATE_STEPS} steps fail the run`, 
 });
 
 test("state over the prompt limit fails the run before any request, rather than cut short", async () => {
-	const { chat, instance, slot } = sceneChat();
-	const before = addPassage(chat.id, 1, "The props arrive.");
-	const props = Array.from({ length: 20 }, (_, index) => `${"prop".repeat(9)}${index}`);
-	writeAutomaticRecord(drizzle(database), boxDescriptor("scene"), instance, before, { props }, "source");
-	const passage = addPassage(chat.id, 2, `<scene>${"move them all. ".repeat(DELEGATE_PROMPT_BYTES / 15)}</scene>`);
-	touch(chat.id, passage);
-	await settled(() => slot(passage)?.error !== undefined);
-	expect(slot(passage)?.error?.message).toBe("The delegate's prompt is over its 64 KiB limit, and its state is not cut short to fit.");
+	sceneChat();
+	const { options } = resolveReady();
+	const state = Array.from({ length: DELEGATE_PROMPT_BYTES / 4 }, (_, index) => `prop ${index}`);
+	const run = runDelegateAgent({ options, label: "Scene", summary: "", operations: boxDescriptor("scene").delegate!.operations, passage: "<scene>tidy up</scene>", request: "tidy up", state, signal: new AbortController().signal }); // @approved The Scene delegates.
+	await expect(run).rejects.toThrow("The delegate's prompt is over its 64 KiB limit, and its state is not cut short to fit.");
 	expect(bodies).toHaveLength(0);
 });
 
@@ -253,4 +268,46 @@ test("catch-up queues only tagged passages without a record, and the retry route
 	expect(await retried.json()).toEqual({ setting: { kind: "ready" }, failed: null });
 	await Bun.sleep(30);
 	expect(bodies).toHaveLength(4);
+});
+
+test("a turn that applies a batch but is cut off before it ends commits nothing", async () => {
+	expect(await failure([{ apply: { operations: [{ kind: "place", prop: "lantern" }] } }, { text: "And then", finish: "length" }])).toBe("The delegate's model request failed: OutputTruncated");
+});
+
+test("a dropped job keeps its Chat and Box's lane until it settles, so its replacement never runs beside it", async () => {
+	const gate = Promise.withResolvers<void>();
+	const entered = Promise.withResolvers<void>();
+	Object.assign(globalThis, { delegateGate: gate.promise, delegateEntered: entered.resolve });
+	try {
+		const { chat, slot } = sceneChat(undefined, "gate");
+		const passage = addPassage(chat.id, 1, "<gate>count one</gate>");
+		replies.push(...applies({ kind: "place", prop: "a" }), ...applies({ kind: "place", prop: "a" }, { kind: "place", prop: "b" }));
+		touch(chat.id, passage);
+		await entered.promise;
+		edit(passage, "<gate>count two</gate>");
+		touch(chat.id, passage);
+		await Bun.sleep(50);
+		expect(bodies).toHaveLength(2);
+		gate.resolve();
+		await settled(() => slot(passage)?.automatic !== undefined);
+		expect(slot(passage)?.automatic).toEqual({ count: 2 });
+	} finally {
+		gate.resolve();
+		Object.assign(globalThis, { delegateGate: undefined, delegateEntered: undefined });
+	}
+});
+
+test("editing a running passage's tag away drops its run, so a later passage runs without waiting for it", async () => {
+	const { chat, slot } = sceneChat();
+	const first = addPassage(chat.id, 1, "<scene>light the lantern</scene>");
+	const second = addPassage(chat.id, 2, "<scene>set the table</scene>");
+	replies.push({ held: new Promise<void>(() => {}), then: { text: "Never." } });
+	touch(chat.id, first, second);
+	await settled(() => bodies.length === 1);
+	replies.push(...applies({ kind: "place", prop: "table" }));
+	edit(first, "Maren lights it herself.");
+	touch(chat.id, first);
+	await settled(() => slot(second)?.automatic !== undefined);
+	expect(slot(second)?.automatic).toEqual({ props: ["table"] });
+	expect(slot(first)).toBeUndefined();
 });

@@ -209,10 +209,12 @@ const runJob = async (database: Database, queue: DigestQueue, job: DigestJob): P
 
 // @approved
 //  A Chat and Box's delegate jobs run one at a time, in passage order: one
-// waits while another of its lane runs, or while an earlier passage's is
-// current, live or catch-up. Digests and other lanes go on around it.
-const waits = (queue: DigestQueue, job: DigestJob): boolean => job.kind === "delegate" && [...queue.current.values()].some((other) =>
-	other !== job && other.kind === "delegate" && other.conversationId === job.conversationId && other.box === job.box && (queue.running.has(other) || other.position < job.position));
+// waits while another of its lane runs, a dropped one included until it
+// settles, or while an earlier passage's is current, live or catch-up.
+// Digests and other lanes go on around it.
+const sameLane = (job: DigestJob) => (other: DigestJob) => other !== job && other.kind === "delegate" && other.conversationId === job.conversationId && other.box === job.box;
+const waits = (queue: DigestQueue, job: DigestJob): boolean => job.kind === "delegate"
+	&& ([...queue.running].some(sameLane(job)) || [...queue.current.values()].some((other) => sameLane(job)(other) && other.position < job.position));
 
 const nextJob = (queue: DigestQueue): DigestJob | undefined => {
 	for (const pending of [queue.live, queue.catchUp]) {
@@ -322,10 +324,18 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 	if (queue === undefined) return () => {};
 	const jobs: DigestJob[] = [];
 	const removedKeys: string[] = [];
-	const variants = change.touchedVariantIds.length === 0 ? [] : readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true }).filter(digestible);
+	const touched = change.touchedVariantIds.length === 0 ? [] : readChatVariants(database, change.conversationId, { variantIds: change.touchedVariantIds, includeActive: true });
+	const variants = touched.filter(digestible);
+	// @approved
+	//  A job whose passage no longer holds the text it was queued for can never
+	// land, so it is dropped as soon as the change commits, even when the new
+	// text queues nothing, such as a delegate's tag edited away: it stops its
+	// request and no longer holds its Chat and Box's lane.
+	const changed: (readonly [string, string])[] = [];
 	for (const [box, { descriptor }] of chatBoxes(drizzle(database), change.conversationId)) {
 		if (descriptor.decision === undefined && descriptor.delegate === undefined) continue;
 		for (const variantId of change.removedVariantIds) removedKeys.push(keyOf(variantId, box));
+		for (const variant of touched) changed.push([keyOf(variant.variantId, box), sha256(variant.content)]);
 		const target = change.touchedVariantIds.length === 0 ? undefined : jobTarget(database, change.conversationId, box);
 		if (target === undefined) continue;
 		jobs.push(...prepareLive(database, queue, change.conversationId, box, target, variants, false));
@@ -334,6 +344,7 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 	return () => {
 		if (stoppedBox !== undefined) abandon(queue, conversationId, stoppedBox);
 		for (const key of removedKeys) dropKey(queue, key);
+		for (const [key, source] of changed) if (queue.current.get(key)?.source !== source) dropKey(queue, key);
 		for (const job of jobs) enqueue(queue, job);
 		queueMicrotask(() => pump(database, queue));
 	};

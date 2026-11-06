@@ -88,6 +88,7 @@ export const runDelegateAgent = async ({ options, label, summary, operations, pa
 		signal.throwIfAborted();
 		if (failure !== undefined) throw new Error(failure);
 		if (result.stopReason === "error") throw new Error(`The delegate's model request failed: ${result.error?.message ?? "no reason given"}`);
+		if (result.stopReason !== "end_turn") throw new Error(`The delegate's turn ended without finishing (${result.stopReason}).`);
 		if (batch === undefined) throw new Error(refusal ?? "The delegate ended without calling apply.");
 		return batch;
 	} finally {
