@@ -63,6 +63,9 @@ interface DigestJob {
 
 interface DigestQueue {
 	readonly fetch: ModelFetch | undefined;
+	/** @approved How long a delegate's `delegate.apply` may take before its run fails, and an abort that ends that wait when the queue stops. */
+	readonly applyMs: number;
+	readonly stopping: AbortController;
 	/** @approved Tells open windows a catch-up run moved: no row records its start, progress or end. */
 	readonly announce: () => void;
 	/** @approved The current job of each Variant and Box; a job whose result may land is the one held here. */
@@ -145,7 +148,7 @@ const digestRecord = async (database: Database, queue: DigestQueue, job: DigestJ
 // selected records strictly before the passage, never its own earlier
 // record or a later one, so a retry cannot apply its request twice. A broken
 // delegate setting fails the run with its reason.
-const delegateRecord = async (database: Database, job: DigestJob, loaded: LoadedBox) => {
+const delegateRecord = async (database: Database, queue: DigestQueue, job: DigestJob, loaded: LoadedBox) => {
 	const { delegate } = loaded.descriptor;
 	const apply = loaded.box.delegate;
 	if (delegate === undefined || apply === undefined) throw new Error(`The ${job.box} Box does not delegate.`);
@@ -164,8 +167,26 @@ const delegateRecord = async (database: Database, job: DigestJob, loaded: Loaded
 	const { label, summary } = loaded.descriptor;
 	const operations = await runDelegateAgent({ options: setting.options, label, summary, operations: delegate.operations, passage: variant.content, request, state, signal: job.controller.signal });
 	const cast = readParticipants(database, job.conversationId).flatMap(({ id, name, removed }) => removed ? [] : [{ id, name }]);
-	return await apply.apply({ setup, state, operations, cast });
+	return await settledWithin(Promise.resolve().then(() => apply.apply({ setup, state, operations, cast })), queue, `The ${job.box} Box's delegate.apply did not settle within ${queue.applyMs / 1000} s.`);
 };
+
+// @approved
+//  A Box's reducer may never settle, so its run fails once the deadline
+// passes. Until then the job stays running and holds its Chat and Box's
+// lane, aborted or not, so no later passage reads state it could still
+// change; a stopping queue stops waiting at once, since no later job runs.
+const settledWithin = <T>(work: Promise<T>, queue: DigestQueue, reason: string): Promise<T> => new Promise((resolve, reject) => {
+	const fail = () => reject(new Error(reason));
+	const timer = setTimeout(fail, queue.applyMs);
+	queue.stopping.signal.addEventListener("abort", fail, { once: true });
+	work.then(resolve, reject).finally(() => {
+		clearTimeout(timer);
+		queue.stopping.signal.removeEventListener("abort", fail);
+	});
+});
+
+/** @approved The default deadline for a delegate's `delegate.apply`, well past what a reducer of one batch takes. */
+export const DELEGATE_APPLY_MS = 10_000;
 
 const runJob = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
 	const { signal } = job.controller;
@@ -187,7 +208,7 @@ const runJob = async (database: Database, queue: DigestQueue, job: DigestJob): P
 	try {
 		if (!runs()) return;
 		if (loaded === undefined) throw new Error(`The ${job.box} Box's version ${job.version} is not loaded.`);
-		const record = job.kind === "digest" ? await digestRecord(database, queue, job, loaded) : await delegateRecord(database, job, loaded);
+		const record = job.kind === "digest" ? await digestRecord(database, queue, job, loaded) : await delegateRecord(database, queue, job, loaded);
 		if (record !== undefined && lands()) writeAutomaticRecord(drizzle(database), loaded.descriptor, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (signal.aborted) return;
@@ -242,11 +263,12 @@ const pump = (database: Database, queue: DigestQueue): void => {
 	}
 };
 
-export function startBoxDigests(database: Database, options: { fetch?: ModelFetch | undefined } = {}): () => Promise<void> {
-	const queue: DigestQueue = { fetch: options.fetch, announce: () => announceChange(database), current: new Map(), live: [], catchUp: [], catchUps: new Map(), workers: new Set(), running: new Set(), stopped: false };
+export function startBoxDigests(database: Database, options: { fetch?: ModelFetch | undefined; applyMs?: number } = {}): () => Promise<void> {
+	const queue: DigestQueue = { fetch: options.fetch, applyMs: options.applyMs ?? DELEGATE_APPLY_MS, stopping: new AbortController(), announce: () => announceChange(database), current: new Map(), live: [], catchUp: [], catchUps: new Map(), workers: new Set(), running: new Set(), stopped: false };
 	queues.set(database, queue);
 	return async () => {
 		queue.stopped = true;
+		queue.stopping.abort();
 		for (const job of queue.current.values()) job.controller.abort();
 		queue.current.clear();
 		queue.live.length = 0;

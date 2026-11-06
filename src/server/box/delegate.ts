@@ -49,22 +49,25 @@ export const runDelegateAgent = async ({ options, label, summary, operations, pa
 	let refusal: string | undefined;
 	let batch: readonly BoxValue[] | undefined;
 	let steps = 0;
-	const fail = (reason: string): never => {
+	const stop = (reason: string) => {
 		failure ??= reason;
 		turn.abort();
+	};
+	const fail = (reason: string): never => {
+		stop(reason);
 		throw new Error(reason);
 	};
-	const step = () => {
+	const over = () => {
 		steps += 1;
-		if (steps > DELEGATE_STEPS) fail(`The delegate passed its ${DELEGATE_STEPS}-step limit.`);
+		return steps > DELEGATE_STEPS;
 	};
+	const limit = `The delegate passed its ${DELEGATE_STEPS}-step limit.`;
 	const agent = createFxAgent({
 		backend: "wasm", durability: memory(), name: "delegate", instructions: instructions(label, summary),
 		tools: [{
 			name: "apply", description: "Applies one batch of the Box's operations. Call it once.", idempotent: true, writes: true,
 			inputSchema: JSON.parse(JSON.stringify(input)),
 			execute: (proposed: unknown) => {
-				step();
 				if (batch !== undefined) fail("The delegate called apply a second time.");
 				// @approved
 				// libfx parsed the arguments from JSON, so a batch that passes the operations schema is JSON.
@@ -77,9 +80,14 @@ export const runDelegateAgent = async ({ options, label, summary, operations, pa
 				return { type: "libfx.tool-result", text: refusal, images: [], isError: true };
 			},
 		}],
+		// @approved
+		//  Every tool call the model makes is a step, a call to a tool the agent
+		// does not have included, which libfx refuses before any tool runs, so
+		// the steps are counted where libfx reports each call starting.
+		hooks: { onEvent: (event) => { if (event.type === "tool.start" && !event.data.rerun && over()) stop(limit); } },
 		...options,
 		fetch: async (input: string, init: RequestInit) => {
-			step();
+			if (over()) fail(limit);
 			return await options.fetch(input, { ...init, signal: init.signal === undefined || init.signal === null ? aborted : AbortSignal.any([init.signal, aborted]) });
 		},
 	});

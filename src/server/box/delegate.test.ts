@@ -21,7 +21,7 @@ import { builtInBoxes, loadBoxes } from "./registry";
 // request takes the next scripted reply, a call to `apply` with its
 // arguments or plain text, and a reply may be held until the test releases
 // it. Each request's body is kept, so a test reads the prompt it carried.
-type Reply = { readonly apply: unknown } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
+type Reply = { readonly apply: unknown } | { readonly calls: readonly string[] } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
 const replies: Reply[] = [];
 const bodies: { readonly messages: readonly { readonly role: string; readonly content: unknown }[] }[] = [];
 type Delta = { readonly role?: "assistant"; readonly content?: string; readonly tool_calls?: readonly { readonly index: number; readonly id: string; readonly type: "function"; readonly function: { readonly name: string; readonly arguments: string } }[] };
@@ -33,6 +33,7 @@ const answer = async (reply: Reply | undefined): Promise<Response> => {
 		return await answer(reply.then);
 	}
 	const chunks = "text" in reply ? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, reply.finish ?? "stop")]
+		: "calls" in reply ? [chunk({ role: "assistant", tool_calls: reply.calls.map((name, index) => ({ index, id: `call_${bodies.length}_${index}`, type: "function" as const, function: { name, arguments: "{}" } })) }, null), chunk({}, "tool_calls")]
 		: [chunk({ role: "assistant", tool_calls: [{ index: 0, id: `call_${bodies.length}`, type: "function", function: { name: "apply", arguments: JSON.stringify(reply.apply) } }] }, null), chunk({}, "tool_calls")];
 	return new Response(`${chunks.join("")}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 };
@@ -59,7 +60,11 @@ beforeAll(async () => {
 	writeFileSync(join(plugins, "gate", "server.ts"), `export default {
 		records: { initial: 0, fold: (_, { count }) => count },
 		read: () => null,
-		delegate: { apply: async ({ operations }) => { globalThis.delegateEntered?.(); await globalThis.delegateGate; return { count: operations.length }; } },
+		delegate: { apply: async ({ operations }) => {
+			globalThis.delegateEntered?.();
+			if (operations.length === 1) await globalThis.delegateGate;
+			return { count: operations.length };
+		} },
 	};`);
 	await loadBoxes([builtInBoxes, plugins]);
 });
@@ -85,7 +90,7 @@ afterEach(async () => {
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 /** @approved A Chat holding the Scene, with the delegate set to the fake model at `requestUrl`, and the queue running. */
-const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "scene") => {
+const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "scene", applyMs?: number) => {
 	const chat = createConversationWithHistory(database, {
 		name: "Stage", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }], control: { human: 0, model: 1 },
 	});
@@ -95,7 +100,7 @@ const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "sc
 	const profileId = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...profile, displayName: "Stage", requestUrl }, credential: "stage-secret" })
 		.profiles.find(({ displayName }) => displayName === "Stage")!.id; // @approved The profile was just created.
 	applyBoxDelegateSettings(database, box, { type: "apply", expectedRevision: readBoxDelegateSettings(database, box).revision, profileId, model: "stage-1" });
-	stop = startBoxDigests(database);
+	stop = startBoxDigests(database, { applyMs });
 	const slot = (variantId: number) => readRecordSlots(drizzle(database), box, boxRecordSchema(boxDescriptor(box)), instance, [variantId]).get(variantId);
 	return { chat, instance, slot };
 };
@@ -310,4 +315,45 @@ test("editing a running passage's tag away drops its run, so a later passage run
 	await settled(() => slot(second)?.automatic !== undefined);
 	expect(slot(second)?.automatic).toEqual({ props: ["table"] });
 	expect(slot(first)).toBeUndefined();
+});
+
+test("a reducer that never settles fails its run at the deadline, holding the lane until then, and the next passage runs after it", async () => {
+	Object.assign(globalThis, { delegateGate: new Promise<void>(() => {}) });
+	try {
+		const { chat, slot } = sceneChat(undefined, "gate", 200);
+		const first = addPassage(chat.id, 1, "<gate>count one</gate>");
+		const second = addPassage(chat.id, 2, "<gate>count two</gate>");
+		replies.push(...applies({ kind: "place", prop: "a" }), ...applies({ kind: "place", prop: "a" }, { kind: "place", prop: "b" }));
+		touch(chat.id, first, second);
+		await settled(() => bodies.length === 2);
+		await Bun.sleep(100);
+		expect(bodies).toHaveLength(2);
+		await settled(() => slot(second)?.automatic !== undefined);
+		expect(slot(first)?.error?.message).toBe("The gate Box's delegate.apply did not settle within 0.2 s.");
+		expect(slot(second)?.automatic).toEqual({ count: 2 });
+	} finally {
+		Object.assign(globalThis, { delegateGate: undefined });
+	}
+});
+
+test("stopping the queue does not wait for a reducer that never settles", async () => {
+	const entered = Promise.withResolvers<void>();
+	Object.assign(globalThis, { delegateGate: new Promise<void>(() => {}), delegateEntered: entered.resolve });
+	try {
+		const { chat } = sceneChat(undefined, "gate");
+		const passage = addPassage(chat.id, 1, "<gate>count one</gate>");
+		replies.push(...applies({ kind: "place", prop: "a" }));
+		touch(chat.id, passage);
+		await entered.promise;
+		const started = performance.now();
+		await stop?.();
+		stop = undefined;
+		expect(performance.now() - started).toBeLessThan(1_000);
+	} finally {
+		Object.assign(globalThis, { delegateGate: undefined, delegateEntered: undefined });
+	}
+});
+
+test("calls to tools the agent does not have count against the step cap too", async () => {
+	expect(await failure([{ calls: Array.from({ length: 11 }, () => "look_around") }, ...applies({ kind: "place", prop: "lantern" })])).toBe(`The delegate passed its ${DELEGATE_STEPS}-step limit.`);
 });
