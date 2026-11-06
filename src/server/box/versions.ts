@@ -1,6 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxId } from "../../shared/contract/box";
@@ -55,10 +55,10 @@ export const readLatest = async (home: string): Promise<string | undefined> => {
 	if (!VERSION_PATTERN.test(version)) throw new Error("Its latest file names no version.");
 	return version;
 };
-/** @approved The version `latest` names when its folder is there, so the Box is installed, else undefined; a folder that isn't a versioned Box's is undefined too. */
+/** @approved The version `latest` names when its folder is there as a plain folder, so the Box is installed, else undefined; a folder that isn't a versioned Box's is undefined too. */
 export const installedLatest = async (home: string): Promise<string | undefined> => {
 	const latest = await readLatest(home).catch(() => undefined);
-	return latest !== undefined && existsSync(versionFolder(home, latest)) ? latest : undefined;
+	return latest !== undefined && lstatSync(versionFolder(home, latest), { throwIfNoEntry: false })?.isDirectory() === true ? latest : undefined;
 };
 export const writeLatest = async (home: string, version: string): Promise<void> => {
 	await assertPlainHome(home);

@@ -12,6 +12,7 @@ import { ProfileModelPicker, type ProfileModelChoice } from "../ProfileModelPick
 import { Console, withEvent, type Entry, type ToolEntry } from "./CreateBoxConsole";
 import { Scenario } from "./CreateBoxScenario";
 import { errorMessage } from "./registry";
+import { shellQuote } from "../../shared/shell-quote";
 
 type Session = { readonly session: string; readonly candidate: string };
 type Saved = Static<typeof authoringSessions>["sessions"][number];
@@ -248,7 +249,8 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 			return add("note", `Steps per message: ${argument === "none" ? "no limit" : argument}.`);
 		}
 		if (name === "/export") {
-			const dir = line.slice(name.length).trim() || "<dir>";
+			const given = line.slice(name.length).trim();
+			const dir = given === "" ? "<dir>" : shellQuote(given);
 			return add("note", `Run this in the app's folder, with a new or empty folder for the agent:\nbun run box:export ${current.session} ${dir}`);
 		}
 		if (name === "/files") {
