@@ -1,5 +1,6 @@
 // @approved
-//  One shell word for a POSIX shell, single-quoted so nothing in it expands:
-// `$`, backticks, spaces and globs are literal, and a `'` is closed, escaped
-// and reopened. Used for commands the app prints for the writer to copy.
-export const shellQuote = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
+//  One word a POSIX shell and PowerShell both read literally, for commands
+// the app prints for the writer or an agent to copy: single-quoted, so `$`,
+// backticks, spaces and globs are plain text in both. A `'` can't be quoted
+// the same way in both shells, so a word holding one has no such form.
+export const shellWord = (word: string): string | undefined => word.includes("'") ? undefined : `'${word}'`;

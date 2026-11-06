@@ -2,7 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { mkdir, readdir, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { authoringMeta, authoringSessionParams } from "../src/shared/contract/authoring";
-import { shellQuote } from "../src/shared/shell-quote";
+import { shellWord } from "../src/shared/shell-quote";
 import { AUTHORED_ID, defaultAuthoringFolder, loggedScenarios, SESSION_LOG, SESSION_META } from "../src/server/authoring/candidate";
 import { pluginFolder } from "../src/server/box/registry";
 import { sandboxedFolder } from "../src/server/box/sandboxed-folder";
@@ -32,6 +32,8 @@ const scenarios = [...new Map(loggedScenarios(await Bun.file(join(folder, SESSIO
 /** @approved A path with every link in the part of it that exists followed, so a folder reached through a link is judged where it really is. */
 const canonical = async (path: string): Promise<string> => await realpath(path).catch(async () => dirname(path) === path ? path : join(await canonical(dirname(path)), basename(path)));
 const target = resolve(dir);
+// The printed commands quote the folder for both POSIX shells and PowerShell, which can't share a quoted `'`.
+if (shellWord(target) === undefined) usageError(`${target} holds an apostrophe, which the printed commands can't quote for every shell; pick another folder.`);
 const data = relative(await canonical(join(process.cwd(), "data")), await canonical(target));
 // A path is outside `data/` only when its relative path climbs out, by a whole `..` part; `..draft` is a child.
 const outside = data === ".." || data.startsWith(`..${sep}`) || isAbsolute(data);
@@ -46,8 +48,8 @@ const write = async (path: string, text: string) => {
 for (const [path, text] of files) await write(join(box, path), text);
 for (const [index, input] of scenarios.entries()) await write(join(target, "scenarios", `${index + 1}.json`), `${JSON.stringify(input, null, 2)}\n`);
 const installed = await installedLatest(join(pluginFolder, meta.box)) !== undefined;
-const quoted = shellQuote(box);
-const scenarioFiles = `${shellQuote(join(target, "scenarios"))}/*.json`;
+const quoted = shellWord(box);
+const scenarioFiles = shellWord(join(target, "scenarios"));
 const submit = `bun run box:submit ${quoted}${installed ? ` --box ${meta.box}` : ""} ${scenarioFiles}`;
 await write(join(target, "AGENTS.md"), `${await Bun.file(join(import.meta.dir, "../src/server/authoring/contract.md")).text()}
 ## Working outside the app

@@ -75,7 +75,7 @@ test("submit makes a new session without a coding model that list shows, whose l
 	expect((await read(authoring, next.session)).meta.box).toBe(meta.box);
 	const out = join(app, "..", "next");
 	expect((await cli(app, "box-export", next.session, out)).code).toBe(0);
-	expect(await Bun.file(join(out, "AGENTS.md")).text()).toContain(`bun run box:submit '${join(out, meta.box)}' --box ${meta.box} '${join(out, "scenarios")}'/*.json`);
+	expect(await Bun.file(join(out, "AGENTS.md")).text()).toContain(`bun run box:submit '${join(out, meta.box)}' --box ${meta.box} '${join(out, "scenarios")}'`);
 	expect((await install(authoring, plugins, next.session)).outcome).toBe("installed");
 });
 
@@ -124,7 +124,7 @@ test("export writes the candidate named for its id, each saved scenario once, an
 	expect(await Bun.file(join(out, "scenarios", "2.json")).json()).toEqual(tips(1, 2));
 	const agents = await Bun.file(join(out, "AGENTS.md")).text();
 	expect(agents.startsWith(await Bun.file(join(import.meta.dir, "contract.md")).text())).toBe(true);
-	expect(agents).toContain(`bun run box:submit '${join(out, meta.box)}' '${join(out, "scenarios")}'/*.json`);
+	expect(agents).toContain(`bun run box:submit '${join(out, meta.box)}' '${join(out, "scenarios")}'`);
 
 	const scenarios = [join(out, "scenarios", "1.json"), join(out, "scenarios", "2.json")];
 	expect((await cli(app, "box-scenario", join(out, meta.box), ...scenarios)).code).toBe(0);
@@ -150,14 +150,31 @@ test("export exits 2 for a session id that isn't a UUID, a folder that isn't emp
 // @approved
 //  The printed commands are copied into a shell; a folder named with `$`, a
 // backtick or a space must reach the scripts as it is, not expand or split.
-test("export prints commands that a shell passes the export folder to unchanged, whatever its name holds", async () => {
+test("export prints commands with no glob that a shell passes the export folder to unchanged, and refuses a folder holding an apostrophe", async () => {
 	const { root, app, box, scenario } = fixture();
 	const submitted = await cli(app, "box-submit", box, scenario("tips.json", tips(1)));
-	const out = join(root, "out $HOME `x` it's");
+	const apostrophe = join(root, "it's");
+	expect([(await cli(app, "box-export", submitted.session, apostrophe)).code, existsSync(apostrophe)]).toEqual([2, false]);
+	const out = join(root, "out $HOME `x` *");
 	expect((await cli(app, "box-export", submitted.session, out)).code).toBe(0);
 	// The command spans to ". It runs each scenario", since the folder name itself holds a backtick.
 	const check = (await Bun.file(join(out, "AGENTS.md")).text()).match(/`(bun run box:scenario .+?)`\. It runs/)?.[1] ?? "";
 	const echoed = Bun.spawnSync(["sh", "-c", check.replace("bun run box:scenario", "printf '%s\\n'")], { cwd: app }).stdout.toString().trim().split("\n");
 	const exported = readdirSync(out).filter((name) => name.startsWith("authored-")).map((name) => join(out, name));
-	expect(echoed).toEqual([...exported, join(out, "scenarios", "1.json")]);
+	expect(echoed).toEqual([...exported, join(out, "scenarios")]);
+	expect((await cli(app, "box-scenario", ...echoed)).code).toBe(0);
+});
+
+test("box:scenario takes a folder of scenarios as its .json files in natural order", async () => {
+	const { root, box } = fixture();
+	const folder = join(root, "agent", "scenarios");
+	mkdirSync(folder);
+	for (const [name, coins] of [["2.json", 2], ["10.json", 10], ["1.json", 1]] as const) writeFileSync(join(folder, name), JSON.stringify(tips(coins)));
+	writeFileSync(join(folder, "notes.txt"), "not a scenario");
+	// box:scenario takes the folder's name as the Box id, so the copy is named for the fixture's id.
+	const named = join(root, "tip-jar-sandboxed");
+	cpSync(box, named, { recursive: true });
+	const { stdout, code } = await cli(root, "box-scenario", named, folder);
+	const ran: { readonly scenario: string }[] = JSON.parse(stdout);
+	expect([code, ran.map(({ scenario }) => scenario)]).toEqual([0, ["1.json", "2.json", "10.json"].map((name) => join(folder, name))]);
 });

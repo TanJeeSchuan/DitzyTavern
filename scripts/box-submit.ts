@@ -7,7 +7,7 @@ import { checkScenario } from "../src/server/authoring/tools";
 import { pluginFolder } from "../src/server/box/registry";
 import { sandboxedFolder } from "../src/server/box/sandboxed-folder";
 import { installedLatest } from "../src/server/box/versions";
-import { readScenarios, usageError } from "./scenario-files";
+import { readScenarios, scenarioFiles, usageError } from "./scenario-files";
 
 // @approved
 //  Takes a Box an outside coding agent wrote back into Creator Mode: it makes
@@ -22,11 +22,12 @@ import { readScenarios, usageError } from "./scenario-files";
 // has no coding model until the writer opens it. It never installs. Exits 0
 // when every scenario passed, 1 when one failed (the session is written all
 // the same), and 2 on wrong arguments, before anything is written.
-const usage = "Usage: bun run box:submit <box folder> [--box <id>] <scenario.json>...";
+const usage = "Usage: bun run box:submit <box folder> [--box <id>] <scenario.json or folder of them>...";
 const args = process.argv.slice(2);
 const flag = args.indexOf("--box");
 const [box] = flag === -1 ? [undefined] : args.splice(flag, 2).slice(1);
-const [folder, ...files] = args;
+const [folder, ...named] = args;
+const files = await scenarioFiles(named);
 if (folder === undefined || files.length === 0 || (flag !== -1 && box === undefined)) usageError(usage);
 const scenarios = await readScenarios(files);
 if (box !== undefined) {
