@@ -80,3 +80,14 @@ export const digestRead = <Record extends TSchema>(record: Record) => Type.Objec
 	})),
 });
 export type DigestRead<Record extends TSchema> = Static<ReturnType<typeof digestRead<Record>>>;
+
+// @approved
+//  What a delegating Box's window notice reads: whether its delegate setting
+// is off, ready or broken with the reason, and the first passage on the
+// Selected path whose delegate run failed on its current text, numbered by
+// its place on the path, with the reason. A Writer override settles it.
+export const delegateRead = Type.Object({
+	setting: Type.Union([Type.Object({ kind: Type.Literal("off") }), Type.Object({ kind: Type.Literal("ready") }), Type.Object({ kind: Type.Literal("broken"), reason: Type.String() })]),
+	failed: Type.Union([Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), number: Type.Integer(), error: Type.String() }), Type.Null()]),
+});
+export type DelegateRead = Static<typeof delegateRead>;

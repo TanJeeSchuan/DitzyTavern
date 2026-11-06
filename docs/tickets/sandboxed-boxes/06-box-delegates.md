@@ -66,7 +66,7 @@ The story model sees the result on its next turn, through the Box's prompt items
 - [x] Contract: `delegate` in the descriptor (sandboxed and trusted); the tag pattern and collision check; the rules (requires `record`, `read`, `alwaysRender`; refuses `decision` and an `advance` that returns a record); `delegate.apply` in the server contract and the sandboxed adapter.
 - [x] The shared tag parser, with unit tests on nested, unclosed, several-tag and escaped input.
 - [x] Shared profile resolution (moved from Creator Mode), the `box-delegate` setting, its routes and its editor.
-- [ ] The delegate job kind: ordering per Chat and Box, passage-relative state, the agent with `apply` and the one-step-budget cap, abort and close, landing rules, catch-up and retry; the digest-only gates listed above become kind-aware.
+- [x] The delegate job kind: ordering per Chat and Box, passage-relative state, the agent with `apply` and the one-step-budget cap, abort and close, landing rules, catch-up and retry; the digest-only gates listed above become kind-aware.
 - [ ] The host lens on host-built clients, `LensedProse` on pinned clients, the window notice with Retry, and refresh on landing.
 - [x] Install's version rule for `delegate` and `tag`.
 - [ ] `run_scenario`: `delegated` on turns and swipes; `contract.md` documents `delegate`, `operations`, `delegate.apply`, the agent's reach, the rules and `delegated`.
