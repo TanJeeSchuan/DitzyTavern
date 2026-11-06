@@ -3,7 +3,8 @@ import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfile
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
 import { DecisionSettingsEditor, useSettingsDraft } from "./DecisionSettingsEditor";
-import { boxDecisionClients } from "../box-decision-settings";
+import { boxDecisionClients, boxDelegateClients } from "../box-decision-settings";
+import { DelegateSettingsEditor } from "./DelegateSettingsEditor";
 import type { BoxId } from "../../shared/contract/box";
 import {
 	useConnectionSettingsController,
@@ -23,12 +24,15 @@ export function ConnectionSettingsPanel({
 }) {
 	const semanticTriggers = useSemanticTriggerSettings();
 	// @approved
-	//  boxDecisionClients never changes, so these drafts keep their hook order.
+	//  boxDecisionClients and boxDelegateClients never change, so these drafts keep their hook order.
 	const boxDecisions = boxDecisionClients().map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
-	const [open, setOpen] = useState<"semantic-triggers" | BoxId | null>(null);
+	const boxDelegates = boxDelegateClients().map(({ box, label, delegate, load, save }) => ({ box, label, delegate, editor: useSettingsDraft(`${label} delegate settings`, load, save) }));
+	const [open, setOpen] = useState<"semantic-triggers" | BoxId | `delegate:${BoxId}` | null>(null);
 	const openBox = boxDecisions.find(({ box }) => box === open);
+	const openDelegate = boxDelegates.find(({ box }) => `delegate:${box}` === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
+	if (openDelegate !== undefined) return <DelegateSettingsEditor editor={openDelegate.editor} box={openDelegate.box} label={openDelegate.label} delegate={openDelegate.delegate} onBack={() => setOpen(null)} />;
 	if (openBox !== undefined) {
 		const { label, decision } = openBox;
 		return <DecisionSettingsEditor
@@ -55,6 +59,8 @@ export function ConnectionSettingsPanel({
 						onOpenSemanticTrigger={() => setOpen("semantic-triggers")}
 						boxDecisions={boxDecisions}
 						onOpenBoxDecision={setOpen}
+						boxDelegates={boxDelegates}
+						onOpenBoxDelegate={(box) => setOpen(`delegate:${box}`)}
 					/>
 				)}
 		</div>

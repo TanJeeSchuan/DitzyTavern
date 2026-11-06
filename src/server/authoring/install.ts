@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ScenarioInput } from "../../shared/contract/authoring";
-import { boxAt, builtInBoxes, checkSandboxedFolder, installVersion, unversionedBoxIds, type CheckedSandboxedBox } from "../box/registry";
+import { assertFreeTags, boxAt, builtInBoxes, checkSandboxedFolder, installVersion, serverBoxes, unversionedBoxIds, type CheckedSandboxedBox } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
 import { createVersion, isVersioned, passedCheck, readLatest, versionFolder, versionHash, writeLatest } from "../box/versions";
 import { refusedUpgrade } from "../conversation";
@@ -43,7 +43,11 @@ const latestRefusals = async (home: string, latest: string, candidate: CheckedSa
 // Chats pinned to a digesting version keep needing its Decision Model
 // settings, which the catalog lists only while `latest` digests, so once a
 // Box digests every later `latest` must; dropping it means a new Box, so
-// that outcome is `incompatible` too. When
+// that outcome is `incompatible` too. So is a version that drops `delegate`,
+// or renames its tag, once `latest` delegates: the requests written in Chats
+// on earlier versions name that tag, and its delegate setting is listed from
+// the catalog. A tag another loaded Box already takes refuses Install, as it
+// refuses a plugin at load. When
 // the session's saved `scenarios`, replayed on `latest`, leave data the
 // candidate's Update check refuses, `latest` stays and the outcome is
 // `incompatible`, which the panel answers with Install as a new Box.
@@ -66,6 +70,17 @@ export const installCandidate = (candidate: Candidate, plugins: string, scenario
 		if (created.version !== version) {
 			checked.dispose();
 			return refused("The Box changed while it was built. Run a scenario on it again, then install it.");
+		}
+		try {
+			assertFreeTags(checked.descriptor, [...serverBoxes().values()].map(({ descriptor }) => descriptor));
+		} catch (error) {
+			checked.dispose();
+			return refused("The Box did not pass the loader's check.", [error instanceof Error ? error.message : String(error)]);
+		}
+		const delegated = boxAt(id, undefined)?.descriptor.delegate;
+		if (delegated !== undefined && checked.descriptor.delegate?.tag !== delegated.tag) {
+			checked.dispose();
+			return { outcome: "incompatible" as const, reason: `Chats on this Box's earlier versions hold requests written as <${delegated.tag}>, so a later version must keep its delegate and that tag. Install it as a new Box to drop or rename it, or ask the agent to keep \`delegate\` with the tag ${delegated.tag}.`, diagnostics: [] };
 		}
 		if (boxAt(id, undefined)?.descriptor.decision !== undefined && checked.descriptor.decision === undefined) {
 			checked.dispose();

@@ -5,7 +5,7 @@ import { boxValue, type BoxValue } from "./box-value";
 import { commitBoxAction } from "./box-actions";
 import { imageHash } from "./image";
 import { assertBoxDescriptor, boxDescriptorSchema, type BoxDescriptor } from "./box-descriptor";
-import { boxMetadataSchema } from "./box-metadata";
+import { boxDelegateCopy, boxMetadataSchema } from "./box-metadata";
 import { ParticipantKey } from "./box-row-reference";
 
 /** @approved The icons a sandboxed Box may name for its window, its launcher and its dock button. */
@@ -32,11 +32,12 @@ const json = boxValue;
 export const sandboxedPackageName = Type.String({ pattern: "^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$", maxLength: 214 });
 export const sandboxedPackageVersion = Type.String({ pattern: "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" });
 export const sandboxedDescriptorFile = Type.Object({
-	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves"]).properties,
+	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves", "lens", "delegate"]).properties,
 	setup: Type.Optional(Type.Object({ schema: json, initial: boxValue }, { additionalProperties: false })),
 	values: Type.Optional(Type.Object({ chat: Type.Optional(Type.Record(Type.String(), json)), participant: Type.Optional(Type.Record(Type.String(), json)) }, { additionalProperties: false })),
 	record: Type.Optional(json),
 	moves: Type.Optional(Type.Object({ schema: json, max: Type.Integer({ minimum: 1 }), label: Type.String(), seatBound: Type.Optional(Type.Literal(true)) }, { additionalProperties: false })),
+	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: json }, { additionalProperties: false })),
 	window: Type.Object({
 		kind: Type.Optional(Type.Literal("digest")),
 		icon: sandboxedBoxIcon,
@@ -146,7 +147,7 @@ const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type
 // server and the client both build it, so a Move label and a schema read the
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
-	const { setup, values, record, moves, window: { kind }, dependencies: _packages, ...fields } = file;
+	const { setup, values, record, moves, delegate, window: { kind }, dependencies: _packages, ...fields } = file;
 	if ((kind === "digest") !== (fields.decision !== undefined)) throw new Error("Its window is the passage timeline exactly when it declares a decision.");
 	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>
@@ -156,6 +157,7 @@ export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescripto
 		...setup && { setup: { schema: sandboxedSchema(setup.schema, "/setup/schema"), initial: setup.initial } },
 		...values && { values: { ...values.chat && { chat: schemas(values.chat, "/values/chat") }, ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
 		...record !== undefined && { record: sandboxedSchema(record, "/record") },
+		...delegate && { delegate: { ...delegate, operations: sandboxedSchema(delegate.operations, "/delegate/operations") } },
 		...moves && moveSchema && { moves: { schema: moveSchema, max: moves.max, label: templateLabel(moves.label, moveSchema), ...moves.seatBound && { seatBound: true as const } } },
 	};
 	assertBoxDescriptor(descriptor);

@@ -1,0 +1,32 @@
+{
+	"id": "scene",
+	"sdk": 2,
+	"label": "Scene",
+	"summary": "Keeps the props on stage, which the story changes by asking in a <scene> tag.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "To change the props on stage, write the change in plain words as <scene>put the lantern on the table</scene>.",
+	"alwaysRender": true,
+	"record": {
+		"type": "object",
+		"properties": { "props": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 40 }, "maxItems": 20 } },
+		"required": ["props"]
+	},
+	"delegate": {
+		"tag": "scene",
+		"summary": "Turns <scene> requests in the prose into changes to the props on stage.",
+		"description": "The model that reads each <scene> request and places or removes props.",
+		"off": "Scene requests are left as written",
+		"operations": {
+			"type": "array",
+			"maxItems": 4,
+			"items": {
+				"anyOf": [
+					{ "type": "object", "properties": { "kind": { "const": "place" }, "prop": { "type": "string", "minLength": 1, "maxLength": 40 } }, "required": ["kind", "prop"], "additionalProperties": false },
+					{ "type": "object", "properties": { "kind": { "const": "remove" }, "prop": { "type": "string", "minLength": 1, "maxLength": 40 } }, "required": ["kind", "prop"], "additionalProperties": false }
+				]
+			}
+		}
+	},
+	"window": { "icon": "map", "size": { "width": 18, "height": 12 } }
+}

@@ -28,9 +28,12 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 // @approved
 //  Once each hook has the shape the host calls, the descriptor decides which
 // hooks a Box must declare: records for a `record` schema, a digest for a
-// `decision`, and a render for `moves`. A digesting Box's window read is the
-// host's passage timeline, so it declares no `read`; only that read calls
-// `status`, so no other Box declares one. Ids are known only at runtime, so
+// `decision`, a reducer for a `delegate`, and a render for `moves`. A
+// digesting Box's window read is the host's passage timeline, so it declares
+// no `read`; only that read calls `status`, so no other Box declares one. A
+// delegating Box keeps records its delegate writes, shows them in its own
+// window, and always renders the block whose instructions teach its tag, and
+// it does not also digest. Ids are known only at runtime, so
 // the registry checks this when it is built. The Box the host holds checks
 // each hook's output against `boxHookOutputs` where the hook returns it, and
 // names the Box, the hook and the failing path when it does not pass.
@@ -44,6 +47,11 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		[(descriptor.moves === undefined) === (box.moves === undefined), "a Move render exactly when it declares Moves"],
 		[descriptor.decision === undefined || box.read === undefined, "no read, since it digests"],
 		[descriptor.decision !== undefined || box.status === undefined, "no status, since it does not digest"],
+		[(descriptor.delegate === undefined) === (box.delegate === undefined), "delegate.apply exactly when it declares a delegate"],
+		[descriptor.delegate === undefined || descriptor.record !== undefined, "a record, since it delegates"],
+		[descriptor.delegate === undefined || box.read !== undefined, "a read, since it delegates"],
+		[descriptor.delegate === undefined || descriptor.alwaysRender === true, "alwaysRender, since it delegates"],
+		[descriptor.delegate === undefined || descriptor.decision === undefined, "no decision, since it delegates"],
 	] as const).flatMap(([holds, rule]) => holds ? [] : [rule]);
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
 	// @approved
@@ -56,7 +64,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	const dependencies = host.dependencies?.bind(host);
 	const status = host.status?.bind(host);
 	const importSillyTavernNote = host.importSillyTavernNote?.bind(host);
-	const { moves, records, advance } = host;
+	const { moves, records, advance, delegate } = host;
 	const checked = <Output>(hook: keyof typeof outputs, output: Output): Output => {
 		assertChecked(outputs[hook], output, `The ${id} Box's ${hook} result`);
 		return output;
@@ -83,7 +91,18 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		read: host.read?.bind(host),
 		routes: host.routes?.bind(host),
 		upgrade: host.upgrade?.bind(host),
+		delegate: delegate && { apply: async (input) => checked("delegate.apply", await delegate.apply(input)) },
 	};
+};
+
+/** @approved The tags a Box's markup takes in prose: its client lens's and its delegate's. */
+const tagsOf = (descriptor: BoxDescriptor) => [descriptor.lens, descriptor.delegate?.tag].filter((tag) => tag !== undefined);
+/** @approved Refuses a Box whose lens or delegate tag another Box in `others` already takes, since the story could not tell whose markup it is. */
+export const assertFreeTags = (descriptor: BoxDescriptor, others: Iterable<BoxDescriptor>): void => {
+	for (const other of others) {
+		const taken = tagsOf(descriptor).find((tag) => other.id !== descriptor.id && tagsOf(other).includes(tag));
+		if (taken !== undefined) throw new Error(`Its tag ${taken} is already the ${other.id} Box's.`);
+	}
 };
 
 // @approved
@@ -217,6 +236,7 @@ export const discoverBoxes = async (folders: readonly string[], database?: Datab
 				if (found === undefined) continue;
 				const { descriptor, box, client, version, home } = found;
 				dispose = found.dispose;
+				assertFreeTags(descriptor, [...boxes.values()].map((loaded) => loaded.descriptor));
 				boxes.set(descriptor.id, { descriptor, box, client, dispose, version, home, routes: database === undefined ? undefined : mountedRoutes(descriptor.id, box, database) });
 			} catch (error) {
 				dispose?.();

@@ -55,9 +55,19 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 	read?(read: BoxWindowRead<Setup, State>): GenerationJsonValue;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
 	routes?(database: Database): AnyElysia;
+	/** @approved A delegating Box's reducer: one batch of its declared operations, applied to the state folded from the records before the passage, becomes that passage's record. It enforces legality itself; a throw fails the delegate run with its message. */
+	readonly delegate?: { apply(input: DelegateInput<Setup, State>): Rec | Promise<Rec> };
 	/** @approved Rewrites a stored value that fails the Box's current schema, when the Box's schemas changed since it was written. Only failing values reach it; the host keeps the result only if it passes. */
 	upgrade?(stored: StoredBoxValue): GenerationJsonValue;
 }
+
+/** @approved What `delegate.apply` gets: the Box's setup, the state folded from the selected records strictly before the passage, the batch the delegate proposed, and the Chat's Cast. */
+export type DelegateInput<Setup, State> = {
+	readonly setup: Setup;
+	readonly state: State;
+	readonly operations: readonly GenerationJsonValue[];
+	readonly cast: readonly { readonly id: number; readonly name: string }[];
+};
 
 /** @approved A loaded Box as the host checks its stored values: its id, descriptor and hooks. */
 export type CheckedBox = { readonly id: string; readonly descriptor: BoxDescriptor; readonly box: HostBox };
