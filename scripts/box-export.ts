@@ -46,6 +46,8 @@ const write = async (path: string, text: string) => {
 	await writeFile(path, text, { flag: "wx" });
 };
 for (const [path, text] of files) await write(join(box, path), text);
+// The printed commands name `scenarios/`, so it exists even when the agent never ran a scenario.
+await mkdir(join(target, "scenarios"), { recursive: true });
 for (const [index, input] of scenarios.entries()) await write(join(target, "scenarios", `${index + 1}.json`), `${JSON.stringify(input, null, 2)}\n`);
 const installed = await installedLatest(join(pluginFolder, meta.box)) !== undefined;
 const quoted = shellWord(box);
@@ -56,7 +58,7 @@ await write(join(target, "AGENTS.md"), `${await Bun.file(join(import.meta.dir, "
 
 You work on files with your own tools; the tools named above are the app's, and these commands stand in for them. The Box is the folder \`${meta.box}/\` beside this file, named for its id; keep \`descriptor.json\`'s id as it is. Run both commands in the app's folder, \`${process.cwd()}\`.
 
-- **Check** with \`bun run box:scenario ${quoted} ${scenarioFiles}\`. It runs each scenario as \`run_scenario\` does and prints the results as JSON, exiting 0 when all pass, 1 when one fails. Add a scenario as a new file in \`scenarios/\`. A \`from\` scenario fails here, since this folder has no installed versions; submitting runs it against the installed Box.
+- **Check** with \`bun run box:scenario ${quoted} ${scenarioFiles}\`. It runs each scenario as \`run_scenario\` does and prints the results as JSON, exiting 0 when all pass, 1 when one fails. Add a scenario as a new file in \`scenarios/\`${scenarios.length === 0 ? "; it is empty, since this session never ran one, so write one before you check" : ""}. A \`from\` scenario fails here, since this folder has no installed versions; submitting runs it against the installed Box.
 - **Submit** with \`${submit}\` once every scenario passes. It copies the folder into a new Creator Mode session and runs the scenarios there${installed ? `; \`--box ${meta.box}\` makes it the next version of the installed Box, which Install checks against \`latest\`` : ", as a new Box"}. It never installs: tell the writer the session id it prints, which they open in Create a Box to install.
 `);
 console.log(`Exported session ${session} to ${target}.`);

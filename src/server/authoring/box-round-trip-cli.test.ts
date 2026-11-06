@@ -178,3 +178,19 @@ test("box:scenario takes a folder of scenarios as its .json files in natural ord
 	const ran: { readonly scenario: string }[] = JSON.parse(stdout);
 	expect([code, ran.map(({ scenario }) => scenario)]).toEqual([0, ["1.json", "2.json", "10.json"].map((name) => join(folder, name))]);
 });
+
+// @approved
+//  A session can hold the Box's files before its agent ran any scenario;
+// the printed commands still name scenarios/, so it must exist, and AGENTS.md
+// says to write one first.
+test("export of a session that never ran a scenario still makes scenarios/, and says to write one before checking", async () => {
+	const { root, app, box, authoring } = fixture();
+	const session = crypto.randomUUID();
+	const id = "authored-0000000e";
+	cpSync(box, join(authoring, session, id), { recursive: true });
+	writeFileSync(join(authoring, session, "meta.json"), JSON.stringify({ box: id, steps: 40, installed: false, updated: "2026-11-06T00:00:00.000Z" }));
+	const out = join(root, "out");
+	expect((await cli(app, "box-export", session, out)).code).toBe(0);
+	expect(readdirSync(join(out, "scenarios"))).toEqual([]);
+	expect(await Bun.file(join(out, "AGENTS.md")).text()).toContain("it is empty, since this session never ran one, so write one before you check");
+});
