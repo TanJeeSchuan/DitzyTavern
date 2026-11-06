@@ -32,11 +32,12 @@ const json = boxValue;
 export const sandboxedPackageName = Type.String({ pattern: "^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$", maxLength: 214 });
 export const sandboxedPackageVersion = Type.String({ pattern: "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" });
 export const sandboxedDescriptorFile = Type.Object({
-	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves", "lens", "delegate"]).properties,
+	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves", "delegate"]).properties,
 	setup: Type.Optional(Type.Object({ schema: json, initial: boxValue }, { additionalProperties: false })),
 	values: Type.Optional(Type.Object({ chat: Type.Optional(Type.Record(Type.String(), json)), participant: Type.Optional(Type.Record(Type.String(), json)) }, { additionalProperties: false })),
 	record: Type.Optional(json),
 	moves: Type.Optional(Type.Object({ schema: json, max: Type.Integer({ minimum: 1 }), label: Type.String(), seatBound: Type.Optional(Type.Literal(true)) }, { additionalProperties: false })),
+	lens: Type.Optional(Type.Never()),
 	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: json }, { additionalProperties: false })),
 	window: Type.Object({
 		kind: Type.Optional(Type.Literal("digest")),

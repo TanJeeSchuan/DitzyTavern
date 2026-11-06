@@ -151,13 +151,14 @@ export const loadBoxVersions = async ({ boxVersions }: Pinned): Promise<void> =>
 	}));
 };
 
-const loadBoxClient = async (id: BoxId, url: string): Promise<BoxClientDefinition> => {
+const loadBoxClient = async (id: BoxId, url: string, lens: string | undefined): Promise<BoxClientDefinition> => {
 	// @approved
 	// SAFETY: assertBoxClient checks the descriptor and that each surface is a component; each Box types its own with `satisfies BoxClientDefinition`.
 	const { default: client }: { default: BoxClientDefinition | undefined } = await import(/* @vite-ignore */ url);
 	if (client === undefined) throw new Error("Its client module has no default export.");
 	assertBoxClient(client);
 	if (client.descriptor.id !== id) throw new Error(`Its client module is the ${client.descriptor.id} Box's.`);
+	if (client.descriptor.lens !== lens) throw new Error(`Its client module lifts ${client.descriptor.lens ?? "no tag"}, but the server loaded it lifting ${lens ?? "none"}.`);
 	return client;
 };
 
@@ -193,7 +194,7 @@ export const loadBoxClients = async (): Promise<void> => {
 
 type ListedBox = Static<typeof boxList>[number];
 const listedVersion = (listed: ListedBox) => "sandboxed" in listed ? listed.version : undefined;
-const clientOf = async (listed: ListedBox) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client)) : sandboxedClient(listed.id, listed.sandboxed, listed.version);
+const clientOf = async (listed: ListedBox) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client, listed.lens)) : sandboxedClient(listed.id, listed.sandboxed, listed.version);
 // @approved
 //  A listed Box with its client or failure. A version this client already
 // built keeps that client, so its open windows stay mounted, but takes its

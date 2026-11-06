@@ -66,17 +66,23 @@ export const installCandidate = (candidate: Candidate, plugins: string, scenario
 		return refused("The Box did not pass the loader's check.", [error instanceof Error ? error.message : String(error)]);
 	}
 	const { checked } = created;
+	let release = () => {};
 	try {
 		if (created.version !== version) {
 			checked.dispose();
 			return refused("The Box changed while it was built. Run a scenario on it again, then install it.");
 		}
+		const tag = checked.descriptor.delegate?.tag;
+		const claimant = tag === undefined ? undefined : claiming.get(tag);
 		try {
 			assertFreeTags(checked.descriptor, [...serverBoxes().values()].map(({ descriptor }) => descriptor));
+			if (claimant !== undefined && claimant !== id) throw new Error(`Its tag ${tag} is being installed for the ${claimant} Box.`);
 		} catch (error) {
 			checked.dispose();
 			return refused("The Box did not pass the loader's check.", [error instanceof Error ? error.message : String(error)]);
 		}
+		if (tag !== undefined && claimant === undefined) claiming.set(tag, id);
+		release = () => { if (tag !== undefined && claimant === undefined) claiming.delete(tag); };
 		const delegated = boxAt(id, undefined)?.descriptor.delegate;
 		if (delegated !== undefined && checked.descriptor.delegate?.tag !== delegated.tag) {
 			checked.dispose();
@@ -96,6 +102,14 @@ export const installCandidate = (candidate: Candidate, plugins: string, scenario
 	} catch (error) {
 		checked.dispose();
 		throw error;
+	} finally {
+		release();
 	}
 	return { outcome: "installed" as const, id, label: checked.descriptor.label };
 });
+
+// @approved
+//  A delegate tag is claimed from an Install's tag check until the catalog
+// lists its version, since another Install's check reads the catalog while
+// this one still awaits its replay and its `latest` write.
+const claiming = new Map<string, string>();

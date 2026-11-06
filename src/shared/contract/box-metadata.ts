@@ -12,6 +12,7 @@ export const boxMetadataSchema = Type.Object({
 	instructions: Type.String(),
 	block: Type.Optional(Type.Object({ description: Type.String(), source: Type.String() })),
 	decision: Type.Optional(Type.Object({ summary: Type.String(), description: Type.String(), off: Type.String(), context: Type.String() })),
+	lens: Type.Optional(boxTag),
 	delegate: Type.Optional(boxDelegateCopy),
 });
 export type BoxMetadata = Static<typeof boxMetadataSchema>;

@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { builtInBoxes, loadBoxes } from "./registry";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -37,10 +36,12 @@ test("a delegate setting is off until chosen, ready on a usable profile, and bro
 	}
 });
 
-const plugins = mkdtempSync(join(tmpdir(), "ditzy-delegate-settings-"));
 afterEach(async () => await loadBoxes([builtInBoxes]));
 
 test("only a delegating Box has delegate settings routes", async () => {
+	const scratch = join(import.meta.dir, "../../../.scratch");
+	mkdirSync(scratch, { recursive: true });
+	const plugins = mkdtempSync(join(scratch, "delegate-settings-"));
 	cpSync(join(import.meta.dir, "../../../e2e/fixtures/boxes/scene"), join(plugins, "scene"), { recursive: true });
 	await loadBoxes([builtInBoxes, plugins]);
 	const database = openObservedDatabase();

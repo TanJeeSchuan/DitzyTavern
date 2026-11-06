@@ -1,7 +1,7 @@
 import { Kind, Type, TypeGuard, TypeRegistry, type Static, type TObject, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { boxValue, type BoxValue } from "./box-value";
-import { boxDelegateCopy, boxMetadataSchema, boxTag } from "./box-metadata";
+import { boxDelegateCopy, boxMetadataSchema } from "./box-metadata";
 import { promptOutgoingRole } from "./prompt-preset";
 
 /** @approved The Box SDK's major version. The host refuses a Box whose descriptor declares another. */
@@ -55,7 +55,6 @@ export const boxDescriptorSchema = Type.Object({
 		label: Type.Unsafe<(move: never) => string>(Type.Function([], Type.String())),
 		seatBound: Type.Optional(Type.Literal(true)),
 	})),
-	lens: Type.Optional(boxTag),
 	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: schema })),
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
@@ -171,6 +170,7 @@ export function assertBoxClient(client: unknown): asserts client is Static<typeo
 	if (client.header === true && (client.Status === undefined || client.Window === undefined)) throw new Error("Its header item needs both a Status and a Window.");
 	assertBoxDescriptor(client.descriptor);
 	if (client.Window?.lens?.tag !== client.descriptor.lens) throw new Error(`Its lens must lift the tag its descriptor's lens names, ${client.descriptor.lens ?? "none"}.`);
+	if (client.descriptor.delegate !== undefined && client.Window === undefined) throw new Error("It delegates, so it needs a Window for its read.");
 }
 
 /** @approved A Box's server module as the host checked it: each hook it declares has the shape the host calls. */

@@ -15,16 +15,19 @@ export function ConnectionSettingsPanelHost() {
 	return <ConnectionSettingsPanel controller={useConnectionSettingsController()} activeProfileId={null} />;
 }
 
-export function ConnectionSettingsPanel({
-	controller,
-	activeProfileId,
-}: {
-	controller: ConnectionSettingsController;
-	activeProfileId: number | null;
-}) {
+type PanelProps = { controller: ConnectionSettingsController; activeProfileId: number | null };
+
+// @approved
+//  Each digesting and delegating Box has a settings draft, a hook, so a Box
+// the catalog gains or loses remounts the panel and the hooks keep their
+// order.
+export function ConnectionSettingsPanel(props: PanelProps) {
+	const boxes = [...boxDecisionClients().map(({ box }) => box), ...boxDelegateClients().map(({ box }) => `delegate:${box}`)].join(" ");
+	return <BoxSettingsPanel key={boxes} {...props} />;
+}
+
+function BoxSettingsPanel({ controller, activeProfileId }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	// @approved
-	//  boxDecisionClients and boxDelegateClients never change, so these drafts keep their hook order.
 	const boxDecisions = boxDecisionClients().map(({ box, label, decision, load, save }) => ({ box, label, decision, editor: useSettingsDraft(`${label} Settings`, load, save) }));
 	const boxDelegates = boxDelegateClients().map(({ box, label, delegate, load, save }) => ({ box, label, delegate, editor: useSettingsDraft(`${label} delegate settings`, load, save) }));
 	const [open, setOpen] = useState<"semantic-triggers" | BoxId | `delegate:${BoxId}` | null>(null);

@@ -59,3 +59,9 @@ test("Install refuses a delegate tag another loaded Box takes", async () => {
 	const { install } = await candidateOf();
 	expect(await install({ delegate: { ...delegate, tag: "sms" } })).toEqual({ outcome: "refused", reason: "The Box did not pass the loader's check.", diagnostics: ["Its tag sms is already the phone Box's."] });
 });
+
+test("of two Boxes installing at once with one delegate tag, only one installs", async () => {
+	const [first, second] = await Promise.all([candidateOf(), candidateOf()]);
+	const outcomes = await Promise.all([first.install({}), second.install({})]);
+	expect(outcomes.map(({ outcome }) => outcome).sort()).toEqual(["installed", "refused"]);
+});

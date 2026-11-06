@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { builtInBoxes, discoverBoxes } from "./registry";
@@ -13,6 +12,7 @@ const descriptor: Json & { readonly delegate: Delegate } = JSON.parse(readFileSy
 const logic = readFileSync(join(scene, "logic.js"), "utf8");
 const { delegate } = descriptor;
 const { operations } = delegate;
+const scratch = join(import.meta.dir, "../../../.scratch");
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -20,7 +20,8 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 //  Each folder is the Scene fixture under its own id and tag, with `fields`
 // written over its descriptor and `rewrite` applied to its logic.
 const delegatingBoxes = (boxes: Record<string, { readonly fields?: Json; readonly rewrite?: (logic: string) => string }>) => {
-	const root = mkdtempSync(join(tmpdir(), "ditzy-delegates-"));
+	mkdirSync(scratch, { recursive: true });
+	const root = mkdtempSync(join(scratch, "delegates-"));
 	roots.push(root);
 	for (const [id, { fields = {}, rewrite = (text: string) => text }] of Object.entries(boxes)) {
 		mkdirSync(join(root, id));

@@ -44,8 +44,8 @@ export const installBoxes = (boxes: readonly InstalledBox[]): void => {
 	installed = new Map(boxes.map((box) => [box.metadata.id, box]));
 };
 /** @approved The metadata the server lists for a Box, projected from its descriptor or from the list itself. */
-export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision, delegate }: BoxMetadata): BoxMetadata =>
-	({ id, label, summary, instructions, block, decision, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
+export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
+	({ id, label, summary, instructions, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
 
 const installedBox = (id: BoxId): InstalledBox => {
 	const box = installed.get(id);
@@ -80,6 +80,9 @@ export const isBoxReference = (reference: string): reference is PromptBoxReferen
 export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.metadata.decision !== undefined;
+/** @approved Every tag a loaded Box's markup takes in prose but `tag`: each lens's and each delegate's, which a delegate request may not nest in or hold. */
+export const otherBoxTags = (tag: string): string[] =>
+	[...installed.values()].flatMap(({ metadata: { lens, delegate } }) => [lens, delegate?.tag].flatMap((other) => other === undefined || other === tag ? [] : [other]));
 /** @approved Whether `id` is a registered delegating Box, the only kind with a delegate setting. */
 export const isDelegateBox = (id: BoxId): boolean => installed.get(id)?.metadata.delegate !== undefined;
 /** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
