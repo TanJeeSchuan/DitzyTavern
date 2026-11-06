@@ -24,6 +24,7 @@ const commands = [
 	{ name: "/install", hint: "Install the Box for every Chat" },
 	{ name: "/steps", hint: "Steps per message: 40, 100 or none" },
 	{ name: "/files", hint: "Show the Box's files as they stand" },
+	{ name: "/export", hint: "The command that hands this session to a coding agent outside the app" },
 	{ name: "/stop", hint: "Stop the running message" },
 	{ name: "/discard", hint: "Delete this session and its draft" },
 ] as const;
@@ -99,7 +100,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 	const choose = (row: Saved | null) => {
 		setChosen(row);
 		if (row === null) return;
-		setModel({ connectionProfileId: row.profileId, modelId: row.model });
+		setModel(row.profileId === undefined || row.model === undefined ? null : { connectionProfileId: row.profileId, modelId: row.model });
 		setSteps(stepChoiceOf(row.steps));
 	};
 	useEffect(() => {
@@ -246,6 +247,10 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 			await api.api.authoring.sessions({ session: current.session }).steps.put({ steps: stepChoices[argument] });
 			return add("note", `Steps per message: ${argument === "none" ? "no limit" : argument}.`);
 		}
+		if (name === "/export") {
+			const dir = line.slice(name.length).trim() || "<dir>";
+			return add("note", `Run this in the app's folder, with a new or empty folder for the agent:\nbun run box:export ${current.session} ${dir}`);
+		}
 		if (name === "/files") {
 			const { files } = await requestData(api.api.authoring.sessions({ session: current.session }).files.get(), authoringFiles);
 			return setEntries((entries) => [...entries, { kind: "files", id: String(sequence.current++), files }]);
@@ -296,6 +301,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 						<ProfileModelPicker label="Coding model" selected={model} emptyLabel="Add a Chat Completions connection in Connections."
 							onSelect={(profile, modelId) => setModel({ connectionProfileId: profile.id, modelId })} />
 					</Field>
+					{chosen !== null && chosen.profileId === undefined && <p className="composer-control-note">This session came from a coding agent outside the app. Pick a coding model to open it.</p>}
 					{startError !== null && <p className="composer-control-note is-error" role="alert">{startError}</p>}
 					<DialogFooter><Button type="button" disabled={pending || model === null} onClick={() => void start()}>{chosen === null ? "Start" : "Open"}</Button></DialogFooter>
 				</>

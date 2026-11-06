@@ -153,10 +153,12 @@ export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
 // @approved
 //  What a session keeps in its folder's meta.json beside its checkpoint, log
 // and candidate: the Box id its candidate has, the coding model and steps it
-// last ran with, whether it installed its Box, and when it last changed.
+// last ran with, whether it installed its Box, and when it last changed. A
+// session `box:submit` made has no coding model until the writer opens it.
 export const authoringMeta = Type.Object({
 	box: Type.String(),
-	...codingModel.properties,
+	profileId: Type.Optional(codingModel.properties.profileId),
+	model: Type.Optional(codingModel.properties.model),
 	steps: authoringSteps,
 	installed: Type.Boolean(),
 	updated: Type.String(),
