@@ -83,7 +83,7 @@ function ToolLine({ start, end }: { start: ToolStart; end: ToolEnd | undefined }
 	const scenario = inputAs(start, scenarioInput);
 	const read = inputAs(start, readContractInput);
 	const detail = file !== undefined ? `${file} ${content === undefined ? "large" : size(content)}`
-		: scenario !== undefined ? `${scenario.turns.length} ${scenario.turns.length === 1 ? "turn" : "turns"}${scenario.swipes?.length ? `, ${scenario.swipes.length} swipes` : ""}`
+		: scenario !== undefined ? `${scenario.turns.length} ${scenario.turns.length === 1 ? "turn" : "turns"}${scenario.swipes?.length ? `, ${scenario.swipes.length} ${scenario.swipes.length === 1 ? "swipe" : "swipes"}` : ""}`
 		: read !== undefined ? [read.example ?? "contract", read.file].filter((part) => part !== undefined).join(" ") : "";
 	const status = end === undefined ? "running" : end.isError ? "failed" : "ok";
 	return <>
