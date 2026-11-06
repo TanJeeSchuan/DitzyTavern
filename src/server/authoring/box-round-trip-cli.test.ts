@@ -158,5 +158,6 @@ test("export prints commands that a shell passes the export folder to unchanged,
 	// The command spans to ". It runs each scenario", since the folder name itself holds a backtick.
 	const check = (await Bun.file(join(out, "AGENTS.md")).text()).match(/`(bun run box:scenario .+?)`\. It runs/)?.[1] ?? "";
 	const echoed = Bun.spawnSync(["sh", "-c", check.replace("bun run box:scenario", "printf '%s\\n'")], { cwd: app }).stdout.toString().trim().split("\n");
-	expect(echoed).toEqual([readdirSync(out).filter((name) => name.startsWith("authored-")).map((name) => join(out, name))[0], join(out, "scenarios", "1.json")]);
+	const exported = readdirSync(out).filter((name) => name.startsWith("authored-")).map((name) => join(out, name));
+	expect(echoed).toEqual([...exported, join(out, "scenarios", "1.json")]);
 });
