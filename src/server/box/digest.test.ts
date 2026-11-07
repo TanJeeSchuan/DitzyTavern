@@ -463,6 +463,10 @@ test("a reducer starts only for a live job in a running queue, and its deadline 
 	await expect(settledWithin(() => ran.push("dropped"), { aborted: AbortSignal.abort(), stopping: live(), ms: 1_000 }, "late")).rejects.toThrow();
 	await expect(settledWithin(() => ran.push("stopping"), { aborted: live(), stopping: AbortSignal.abort(), ms: 1_000 }, "late")).rejects.toThrow("late");
 	expect(ran).toEqual([]);
+	const dropping = new AbortController();
+	queueMicrotask(() => dropping.abort());
+	await settledWithin(() => ran.push(dropping.signal.aborted ? "after its drop" : "while live"), { aborted: dropping.signal, stopping: live(), ms: 1_000 }, "late");
+	expect(ran).toEqual(["while live"]);
 
 	const stopping = live();
 	const added = spyOn(stopping, "addEventListener");

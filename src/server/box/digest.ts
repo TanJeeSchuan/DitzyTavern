@@ -177,7 +177,8 @@ const delegateRecord = async (database: Database, queue: DigestQueue, job: Diges
 // stopping, starts none. Once started, the job stays running and holds its
 // Chat and Box's lane, aborted or not, so no later passage reads state it
 // could still change; a stopping queue stops waiting at once, since no later
-// job runs. The wait removes its listener when it ends, either way.
+// job runs. The reducer starts in the same turn as the checks, so no abort
+// lands between them. The wait removes its listener when it ends, either way.
 export const settledWithin = <T>(run: () => T | Promise<T>, { aborted, stopping, ms }: { readonly aborted: AbortSignal; readonly stopping: AbortSignal; readonly ms: number }, reason: string): Promise<T> => new Promise((resolve, reject) => {
 	if (aborted.aborted) return reject(aborted.reason);
 	if (stopping.aborted) return reject(new Error(reason));
@@ -191,7 +192,7 @@ export const settledWithin = <T>(run: () => T | Promise<T>, { aborted, stopping,
 	};
 	const timer = setTimeout(fail, ms);
 	stopping.addEventListener("abort", fail, { once: true });
-	Promise.resolve().then(run).then(resolve, reject).finally(end);
+	new Promise<T>((settle) => settle(run())).then(resolve, reject).finally(end);
 });
 
 /** @approved The default deadline for a delegate's `delegate.apply`, well past what a reducer of one batch takes. */
