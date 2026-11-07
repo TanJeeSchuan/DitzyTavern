@@ -31,3 +31,21 @@ test("a Box joining the catalog while the settings are open keeps every draft al
 	expect(seen.decisions[0]?.editor.draft?.decisionModel).toBe("mine");
 	expect(seen.decisions[0]?.editor.dirty).toBe(true);
 });
+
+test("a Box already in the catalog that starts delegating keeps the drafts of the Boxes after it", async () => {
+	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => Response.json(String(input).includes("delegate-settings")
+		? { profileId: null, model: "", revision: 0 }
+		: { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 4_000, revision: 0 }), { preconnect: realFetch.preconnect });
+	const { delegate: _, ...plainScene } = scene;
+	installBoxes([{ metadata: plainScene, descriptor: undefined }, { metadata: clock, descriptor: undefined }]);
+	let seen: Drafts = { decisions: [], delegates: [] };
+	const view = await renderTree(() => createElement(BoxSettingsDrafts, { render: (drafts) => { seen = drafts; return null; } }), new QueryClient());
+	await flushHook();
+	await view.act(async () => { seen.decisions[0]?.editor.update({ decisionModel: "mine" }); });
+
+	installBoxes([{ metadata: scene, descriptor: undefined }, { metadata: clock, descriptor: undefined }]);
+	await view.rerender();
+	await flushHook();
+	expect(seen.delegates.map(({ box }) => box)).toEqual(["scene"]);
+	expect(seen.decisions[0]?.editor.draft?.decisionModel).toBe("mine");
+});

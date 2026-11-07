@@ -28,9 +28,11 @@ type Chain = { readonly owners: readonly Owner[]; readonly drafts: Drafts; reado
 
 // @approved
 //  Each digesting and delegating Box's settings draft lives in a component of
-// its own, keyed by the Box, one nested in the next in catalog order, which
-// collects the drafts for the panel. A Box installed while the app runs joins
-// at the end, so every draft already open keeps its state and save guard.
+// its own, keyed by the Box, one nested in the next in the order the drafts
+// first appeared, which collects the drafts for the panel. A draft that
+// appears while the app runs, for a new Box or one whose new version digests
+// or delegates, joins at the end, so every draft already open keeps its state
+// and save guard. The panel lists them in catalog order.
 function Drafted({ owners, drafts, render }: Chain) {
 	const [owner, ...rest] = owners;
 	if (owner === undefined) return render(drafts);
@@ -49,10 +51,13 @@ function DelegateDraft({ client, ...chain }: Chain & { readonly client: Delegate
 
 /** @approved Every digesting and delegating Box's settings draft, in catalog order, each kept by its own component across catalog changes. */
 export function BoxSettingsDrafts({ render }: { readonly render: (drafts: Drafts) => ReactNode }) {
+	const [appeared] = useState<string[]>(() => []);
+	const owners: Owner[] = [...boxDecisionClients().map((client) => ({ kind: "decision" as const, client })), ...boxDelegateClients().map((client) => ({ kind: "delegate" as const, client }))];
+	for (const { kind, client } of owners) if (!appeared.includes(`${kind}:${client.box}`)) appeared.push(`${kind}:${client.box}`);
+	owners.sort((left, right) => appeared.indexOf(`${left.kind}:${left.client.box}`) - appeared.indexOf(`${right.kind}:${right.client.box}`));
 	const order = [...installedBoxes().keys()];
-	const owners: Owner[] = [...boxDecisionClients().map((client) => ({ kind: "decision" as const, client })), ...boxDelegateClients().map((client) => ({ kind: "delegate" as const, client }))]
-		.sort((left, right) => order.indexOf(left.client.box) - order.indexOf(right.client.box));
-	return <Drafted owners={owners} drafts={{ decisions: [], delegates: [] }} render={render} />;
+	const listed = <Draft extends { readonly box: BoxId }>(drafts: readonly Draft[]) => drafts.toSorted((left, right) => order.indexOf(left.box) - order.indexOf(right.box));
+	return <Drafted owners={owners} drafts={{ decisions: [], delegates: [] }} render={({ decisions, delegates }) => render({ decisions: listed(decisions), delegates: listed(delegates) })} />;
 }
 
 export function ConnectionSettingsPanel({ controller, activeProfileId }: PanelProps) {
