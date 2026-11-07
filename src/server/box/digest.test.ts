@@ -5,7 +5,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
+import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, settledWithin, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
 import { executeConversationCommand, observeConversationWrites, readConversationSummary, readSelectedPassages } from "../conversation";
 import memoryBox from "../../boxes/memory/server";
@@ -450,3 +450,28 @@ for (const moved of [false, true]) {
 		}
 	});
 }
+
+// @approved
+//  A delegate's reducer runs only for a job still current in a running
+// queue, and its deadline must not outlive itself: a dropped job once still
+// started its stale reducer, a queue already stopping waited out the whole
+// deadline, and each timed-out reducer left a listener on the queue.
+test("a reducer starts only for a live job in a running queue, and its deadline leaves no listener behind", async () => {
+	const never = () => new Promise<never>(() => {});
+	const ran: string[] = [];
+	const live = () => new AbortController().signal;
+	await expect(settledWithin(() => ran.push("dropped"), { aborted: AbortSignal.abort(), stopping: live(), ms: 1_000 }, "late")).rejects.toThrow();
+	await expect(settledWithin(() => ran.push("stopping"), { aborted: live(), stopping: AbortSignal.abort(), ms: 1_000 }, "late")).rejects.toThrow("late");
+	expect(ran).toEqual([]);
+	const dropping = new AbortController();
+	queueMicrotask(() => dropping.abort());
+	await settledWithin(() => ran.push(dropping.signal.aborted ? "after its drop" : "while live"), { aborted: dropping.signal, stopping: live(), ms: 1_000 }, "late");
+	expect(ran).toEqual(["while live"]);
+
+	const stopping = live();
+	const added = spyOn(stopping, "addEventListener");
+	const removed = spyOn(stopping, "removeEventListener");
+	await expect(settledWithin(never, { aborted: live(), stopping, ms: 5 }, "late")).rejects.toThrow("late");
+	expect([added.mock.calls.length, removed.mock.calls.length]).toEqual([1, 1]);
+	expect(await settledWithin(() => "done", { aborted: live(), stopping: live(), ms: 1_000 }, "late")).toBe("done");
+});

@@ -4,9 +4,9 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationBoxParams as params, type BoxId } from "../../shared/contract/box";
 import { boxValue } from "../../shared/contract/box-value";
 import { boxFrameOpen, boxFrameOpened } from "../../shared/contract/box-sandboxed";
-import { digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
+import { delegateRead, digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
-import { cancelBoxCatchUp, digestView, queueBoxDigest, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
+import { cancelBoxCatchUp, digestView, queueBoxDigest, readDelegate, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
 import { chatBox } from "../box/registry";
 import { openBoxFrame } from "../box/frame";
 import { readBoxLifecycles } from "../box/setup";
@@ -14,6 +14,8 @@ import { readBoxWindow } from "../box/window";
 import { notFoundResponse } from "./responses";
 
 const readResponse = { 200: boxValue, 404: notFoundOutcome };
+/** @approved What the queue routes answer with: a digesting Box's passage timeline, or a delegating Box's notice read. */
+const queueRead = (database: Database, conversationId: number, id: BoxId) => readDigest(database, conversationId, id) ?? readDelegate(database, conversationId, id) ?? notFoundResponse();
 /** @approved A digesting Box's window read is the host's passage timeline; any other Box serves its own `read` over the host's window read, each at the version the Chat runs; an unknown id has none. */
 const readBox = (database: Database, conversationId: number, id: BoxId) => readBoxWindow(database, conversationId, id, (window, loaded) => {
 	if (loaded.descriptor.decision !== undefined) return digestView(database, window, id, loaded);
@@ -38,6 +40,8 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 	}, { params, body: boxFrameOpen, response: { 200: boxFrameOpened, 404: notFoundOutcome } })
 	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => readDigestStatus(database, params.id, params.box) ?? notFoundResponse(),
 		{ params, response: { 200: digestStatusRead, 404: notFoundOutcome } })
+	.get("/api/conversations/:id/boxes/:box/delegate", ({ params }) => readDelegate(database, params.id, params.box) ?? notFoundResponse(),
+		{ params, response: { 200: delegateRead, 404: notFoundOutcome } })
 	// @approved
 	//  Catch-up, cancellation and digesting one passage are in-memory queue
 	//  work, not Conversation state, so they are their own routes: the polled
@@ -48,7 +52,7 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		"/api/conversations/:id/boxes/:box/digest",
 		({ params, body }) => {
 			queueBoxDigest(database, params.id, params.box, body);
-			return readDigest(database, params.id, params.box) ?? notFoundResponse();
+			return queueRead(database, params.id, params.box);
 		},
 		{ params, body: digestPassageCommand, response: readResponse },
 	)
@@ -56,7 +60,7 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
 			startBoxCatchUp(database, params.id, params.box);
-			return readDigest(database, params.id, params.box) ?? notFoundResponse();
+			return queueRead(database, params.id, params.box);
 		},
 		{ params, response: readResponse },
 	)
@@ -64,7 +68,7 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		"/api/conversations/:id/boxes/:box/catch-up",
 		({ params }) => {
 			cancelBoxCatchUp(database, params.id, params.box);
-			return readDigest(database, params.id, params.box) ?? notFoundResponse();
+			return queueRead(database, params.id, params.box);
 		},
 		{ params, response: readResponse },
 	);

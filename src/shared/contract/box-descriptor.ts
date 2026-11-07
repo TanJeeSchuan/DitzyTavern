@@ -184,3 +184,6 @@ export function assertBoxServer(server: unknown): asserts server is BoxServerMod
 export const describeSetup = <Schema extends TSchema>(schema: Schema, initial: Static<Schema> & BoxValue) => ({ schema, initial });
 /** @approved A descriptor's `moves`, its chip label typed by the Move schema. */
 export const describeMoves = <Schema extends TSchema>(schema: Schema, max: number, label: (move: Static<Schema>) => string) => ({ schema, max, label });
+
+/** @approved What a delegate's `apply` tool takes: one batch of the Box's declared operations, which the host checks before anything is applied. */
+export const delegateApplyInput = (operations: TSchema) => Type.Object({ operations: Type.Unsafe<readonly BoxValue[]>(operations) }, { additionalProperties: false });
