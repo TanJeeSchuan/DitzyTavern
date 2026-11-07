@@ -1030,3 +1030,15 @@
 .create-box-code .tok-propertyName {
 	color: var(--text-muted);
 }
+
+.create-box-changes {
+	display: grid;
+	gap: 0.2rem;
+	margin: 0;
+	padding: 0;
+	color: var(--text-muted);
+	font-family: var(--create-box-mono);
+	font-size: 0.72rem;
+	list-style: none;
+	overflow-wrap: anywhere;
+}

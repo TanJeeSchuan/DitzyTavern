@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs/promises";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { authoringSessions, authoringStart, type AuthoringMeta } from "../../shared/contract/authoring";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -20,7 +21,8 @@ type Delta = { readonly role?: string; readonly content?: string; readonly tool_
 // @approved
 //  Runs `act` against an authoring server whose fake model answers each
 // request with "Answer <n>.", except "Write CSS.", which it answers by
-// calling write_css, and records the messages each request sent.
+// calling write_css, and "Hold.", which it answers once `release` is
+// called, and records the messages each request sent.
 // `restart` stops the server's sessions and builds a new one on the same
 // folder, sweeping it as the app does at startup.
 const withAuthoring = async (act: (server: {
@@ -31,14 +33,17 @@ const withAuthoring = async (act: (server: {
 	readonly prompt: (session: string, text: string) => Promise<string>;
 	readonly restart: () => Promise<void>;
 	readonly profileId: number;
+	readonly release: () => void;
 }) => Promise<void>) => {
 	const sent: (readonly Message[])[] = [];
+	const hold = Promise.withResolvers<void>();
 	const model = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		async fetch(request) {
 			const body: { readonly messages: readonly Message[] } = await request.json();
 			sent.push(body.messages);
 			const asked = body.messages.at(-1)?.content;
+			if (asked === "Hold.") await hold.promise;
 			const css = asked === "Write CSS.";
 			const scenario = asked === "Run a long scenario.";
 			const chunk = (delta: Delta, finish: string | null) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "coder-1", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -66,7 +71,7 @@ const withAuthoring = async (act: (server: {
 			return answer.session;
 		};
 		await act({
-			root: folders.root, sent, request, profileId,
+			root: folders.root, sent, request, profileId, release: () => hold.resolve(),
 			start: async () => await started(await request("POST", "/api/authoring/sessions", choice)),
 			prompt: async (session, text) => await (await request("POST", `/api/authoring/sessions/${session}/prompts`, { text })).text(),
 			restart: async () => {
@@ -159,4 +164,94 @@ test("a scenario's whole input is logged, though the tool event the panel sees i
 	const lines: { readonly type: string; readonly truncated?: boolean; readonly input?: unknown }[] = (await (await request("GET", `/api/authoring/sessions/${session}/log`)).text())
 		.split("\n").filter((line) => line !== "").map((line) => JSON.parse(line));
 	expect([lines.find(({ type }) => type === "tool")?.truncated, lines.find(({ type }) => type === "scenario-input")?.input]).toEqual([true, longScenario]);
+}));
+
+// @approved
+//  A scenario the running turn has not logged yet would be missing from the
+// saved scenarios Install replays, and a new id would move the folder under
+// the turn's writes, so both wait for the turn to end.
+test("Install and Install as a new Box are refused while a turn runs, and leave the candidate's id alone", () => withAuthoring(async ({ root, request, start, release }) => {
+	const session = await start();
+	const ids = () => readdirSync(join(root, session)).filter((name) => name.startsWith("authored-"));
+	const before = ids();
+	const turn = await request("POST", `/api/authoring/sessions/${session}/prompts`, { text: "Hold." });
+	for (const route of ["install", "new-box"]) expect(await (await request("POST", `/api/authoring/sessions/${session}/${route}`)).json()).toEqual({ outcome: "refused", reason: "Wait for the message to finish.", diagnostics: [] });
+	expect(ids()).toEqual(before);
+	release();
+	await turn.text();
+}));
+
+// @approved
+//  Install as a new Box renews the candidate's id and replays the session's
+// saved scenarios; a message that started meanwhile could log a scenario the
+// replay misses, or write under the id being moved.
+test("a message sent while Install as a new Box runs is refused", () => withAuthoring(async ({ request, start, prompt }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+	const sent = await request("POST", `/api/authoring/sessions/${session}/prompts`, { text: "Second." });
+	await renewing;
+	expect(sent.status).toBe(409);
+}));
+
+// @approved
+//  Closing the panel releases the session; if that didn't wait for an
+// Install as a new Box still renewing the id, a reopen would start from the
+// old id while the folder moved to the new one.
+test("reopening a session waits for its Install as a new Box, and reopens on the id it gave the candidate", () => withAuthoring(async ({ root, request, start, prompt, profileId }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const gate = Promise.withResolvers<void>();
+	const move = fs.rename;
+	// Only the candidate folder's own move waits; the atomic writes' renames of their temporary files go through.
+	const spy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+		if (basename(String(to)).startsWith("authored-")) await gate.promise;
+		return await move(from, to);
+	});
+	let reopened: { readonly candidate: string };
+	try {
+		const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+		await Bun.sleep(20);
+		const reopening = request("POST", `/api/authoring/sessions/${session}/open`, { profileId, model: "coder-1", steps: 40 });
+		await Bun.sleep(20);
+		gate.resolve();
+		const [, answer] = await Promise.all([renewing, reopening]);
+		reopened = await answer.json();
+	} finally {
+		spy.mockRestore();
+	}
+	const meta: { readonly box: string } = await Bun.file(join(root, session, "meta.json")).json();
+	expect([reopened.candidate, existsSync(join(root, session, reopened.candidate))]).toEqual([meta.box, true]);
+}));
+
+// @approved
+//  Closing removes the session from the open ones before its release ends,
+// so a reopen after a close must find and wait for that release, not start
+// from the old Box id while Install as a new Box is still moving the folder.
+test("closing then reopening a session waits for its Install as a new Box, and reopens on the id it gave the candidate", () => withAuthoring(async ({ root, request, start, prompt, profileId }) => {
+	const session = await start();
+	await prompt(session, "First.");
+	const gate = Promise.withResolvers<void>();
+	const move = fs.rename;
+	// Only the candidate folder's own move waits; the atomic writes' renames of their temporary files go through.
+	const spy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+		if (basename(String(to)).startsWith("authored-")) await gate.promise;
+		return await move(from, to);
+	});
+	let reopened: { readonly candidate: string };
+	try {
+		const renewing = request("POST", `/api/authoring/sessions/${session}/new-box`);
+		await Bun.sleep(20);
+		const closing = request("POST", `/api/authoring/sessions/${session}/close`);
+		await Bun.sleep(20);
+		const reopening = request("POST", `/api/authoring/sessions/${session}/open`, { profileId, model: "coder-1", steps: 40 });
+		await Bun.sleep(20);
+		gate.resolve();
+		const [, , answer] = await Promise.all([renewing, closing, reopening]);
+		reopened = await answer.json();
+	} finally {
+		spy.mockRestore();
+	}
+	const meta: { readonly box: string } = await Bun.file(join(root, session, "meta.json")).json();
+	expect([reopened.candidate, existsSync(join(root, session, reopened.candidate))]).toEqual([meta.box, true]);
 }));
