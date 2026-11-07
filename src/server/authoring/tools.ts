@@ -2,7 +2,7 @@
 import type { Static, TSchema } from "@sinclair/typebox";
 import { join } from "node:path";
 import { assertChecked } from "../../shared/contract/box-descriptor";
-import { authoredContent, readContractInput, scenarioInput, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
+import { authoredContent, readContractInput, readFileInput, scenarioInput, type ScenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
 import { builtInBoxes, unversionedBoxIds } from "../box/registry";
 import { sandboxedFolder } from "../box/sandboxed-folder";
 import { recordCheck, versionHash } from "../box/versions";
@@ -39,7 +39,21 @@ export const fitted = (result: unknown) => {
 	return Buffer.from(text).subarray(0, TOOL_RESULT_BYTES - Buffer.byteLength(note)).toString("utf8").replace(/\uFFFD+$/, "") + note;
 };
 
-const content = (file: AuthoredFile) => authoredContent(`The whole of ${file}, at most ${AUTHORED_FILES[file] / 1024} KiB.`);
+// @approved
+//  One of the candidate's files as it is on disk, which the agent may not
+// have written in this conversation: a session `box:submit` made starts with
+// none. A file past libfx's limit comes a piece at a time, each ending with
+// the offset of the next.
+const readFile = async (folder: string, { file, offset = 0 }: Static<typeof readFileInput>) => {
+	const source = Bun.file(join(folder, file));
+	if (!await source.exists()) return `${file} is not written yet.`;
+	const bytes = Buffer.from(await source.arrayBuffer());
+	const piece = bytes.subarray(offset, offset + TOOL_RESULT_BYTES - 256).toString("utf8").replace(/�+$/, "");
+	const next = offset + Buffer.byteLength(piece);
+	return next < bytes.length ? `${piece}\n[${file} continues: call read_file with offset ${next}.]` : piece;
+};
+
+const content = (file: AuthoredFile) =>authoredContent(`The whole of ${file}, at most ${AUTHORED_FILES[file] / 1024} KiB.`);
 const writes = {
 	write_descriptor: ["descriptor.json", "Replaces descriptor.json. The host sets its id."],
 	write_logic: ["logic.js", "Replaces logic.js, the ES module default-exporting the Box's hooks."],
@@ -85,6 +99,8 @@ export const authoringTools = (candidate: Candidate, plugins: string, { spend, o
 	return [
 		tool("read_contract", "Returns the sandboxed Box contract. Read it before writing any file. With `example`, returns that built-in Box's descriptor and the list of its files; add `file` to read one of them.",
 			readContractInput, readContract),
+		tool("read_file", "Returns one of your Box's files as it is now. Read a file before changing one you did not write in this conversation.",
+			readFileInput, (input) => readFile(candidate.folder, input)),
 		...Object.entries(writes).map(([name, [file, description]]) => tool(name, description, content(file), ({ content: text }, _, signal) => candidate.write(file, text, signal))),
 		tool("run_scenario", "Loads the Box from its files as the app would and plays the scenario against it, returning its diagnostics, prompt items, records, state and read or status.",
 			scenarioInput, async (input, call, signal) => {

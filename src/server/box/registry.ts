@@ -229,7 +229,8 @@ export const discoverBoxes = async (folders: readonly string[], database?: Datab
 
 export const builtInBoxes = join(import.meta.dir, "../../boxes");
 /** @approved The built-in Boxes, then the plugins installed in the data folder. */
-export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
+export const pluginFolder = join(process.cwd(), "data", "boxes");
+export const boxFolders = [builtInBoxes, pluginFolder];
 
 // @approved
 //  A loaded Box version as the server holds it: its descriptor, its checked

@@ -112,6 +112,13 @@ export const readContractInput = Type.Object({
 	example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])),
 	file: Type.Optional(Type.String({ description: "One of the example's files, as its listing names them." })),
 }, { additionalProperties: false });
+/** @approved The files a candidate holds that its agent reads and writes. */
+export const authoredFileName = Type.Union([Type.Literal("descriptor.json"), Type.Literal("logic.js"), Type.Literal("ui.js"), Type.Literal("ui.css")]);
+/** @approved `read_file`'s arguments: one file, from the byte a cut read names. */
+export const readFileInput = Type.Object({
+	file: authoredFileName,
+	offset: Type.Optional(Type.Integer({ minimum: 0, description: "The byte to start from, which a cut read names." })),
+}, { additionalProperties: false });
 /** @approved A write tool's arguments: the whole of its one file, and nothing else. */
 export const authoredContent = (description: string) => Type.Object({ content: Type.String({ description }) }, { additionalProperties: false });
 /** @approved The JSON a `descriptor.json` write must hold: one object, whose id the host sets. */
@@ -153,10 +160,12 @@ export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
 // @approved
 //  What a session keeps in its folder's meta.json beside its checkpoint, log
 // and candidate: the Box id its candidate has, the coding model and steps it
-// last ran with, whether it installed its Box, and when it last changed.
+// last ran with, whether it installed its Box, and when it last changed. A
+// session `box:submit` made has no coding model until the writer opens it.
 export const authoringMeta = Type.Object({
 	box: Type.String(),
-	...codingModel.properties,
+	profileId: Type.Optional(codingModel.properties.profileId),
+	model: Type.Optional(codingModel.properties.model),
 	steps: authoringSteps,
 	installed: Type.Boolean(),
 	updated: Type.String(),
