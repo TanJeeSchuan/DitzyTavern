@@ -77,7 +77,7 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	const { calls } = await llm.log();
 	const authored = calls.filter(isAuthoringModelCall);
 	expect(authored.map(({ body }) => body.model)).toEqual(["e2e-coder", "e2e-coder"]);
-	expect(authored[0]?.body.tools?.map(({ function: { name } }) => name)).toEqual(["read_contract", "write_descriptor", "write_logic", "write_ui", "write_css", "run_scenario"]);
+	expect(authored[0]?.body.tools?.map(({ function: { name } }) => name)).toEqual(["read_contract", "read_file", "write_descriptor", "write_logic", "write_ui", "write_css", "run_scenario"]);
 	expect(authored[1]?.body.messages.filter(({ role }) => role === "tool").at(-1)?.content).toContain("The pack holds: rope, lantern.");
 	expect(calls.filter(isChatModelCall)).toEqual([]);
 

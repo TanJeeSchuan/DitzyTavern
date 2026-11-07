@@ -1,12 +1,13 @@
+import type { Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { authoredDescriptor, authoringLogEntry, type ScenarioInput } from "../../shared/contract/authoring";
+import { authoredDescriptor, authoredFileName, authoringLogEntry, type ScenarioInput } from "../../shared/contract/authoring";
 import { replaceFile } from "../box/sandboxed-folder";
 
 /** @approved The files a candidate's write tools set, each with the most bytes one write may hold. Packages, the lock and bundles are only written by the host's build. */
-export const AUTHORED_FILES = { "descriptor.json": 64 * 1024, "logic.js": 512 * 1024, "ui.js": 512 * 1024, "ui.css": 64 * 1024 } as const;
+export const AUTHORED_FILES = { "descriptor.json": 64 * 1024, "logic.js": 512 * 1024, "ui.js": 512 * 1024, "ui.css": 64 * 1024 } as const satisfies Record<Static<typeof authoredFileName>, number>;
 export type AuthoredFile = keyof typeof AUTHORED_FILES;
 
 /** @approved Where candidates live, outside the plugin folder, so no candidate is ever discovered as a plugin. */

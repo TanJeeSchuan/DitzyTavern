@@ -112,6 +112,13 @@ export const readContractInput = Type.Object({
 	example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])),
 	file: Type.Optional(Type.String({ description: "One of the example's files, as its listing names them." })),
 }, { additionalProperties: false });
+/** @approved The files a candidate holds that its agent reads and writes. */
+export const authoredFileName = Type.Union([Type.Literal("descriptor.json"), Type.Literal("logic.js"), Type.Literal("ui.js"), Type.Literal("ui.css")]);
+/** @approved `read_file`'s arguments: one file, from the byte a cut read names. */
+export const readFileInput = Type.Object({
+	file: authoredFileName,
+	offset: Type.Optional(Type.Integer({ minimum: 0, description: "The byte to start from, which a cut read names." })),
+}, { additionalProperties: false });
 /** @approved A write tool's arguments: the whole of its one file, and nothing else. */
 export const authoredContent = (description: string) => Type.Object({ content: Type.String({ description }) }, { additionalProperties: false });
 /** @approved The JSON a `descriptor.json` write must hold: one object, whose id the host sets. */
