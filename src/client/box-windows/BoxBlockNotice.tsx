@@ -7,9 +7,9 @@ import { boxMetadata, boxReference, type BoxId, type BoxState } from "../../shar
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
-import { loadBoxDelegate, retryBoxDelegate } from "../box-digest";
-import { followsChanges } from "../server-changes";
+import { retryBoxDelegate } from "../box-digest";
 import { chatBoxDescriptor } from "./registry";
+import { delegateReadKey, useDelegateRead } from "./useBoxRead";
 
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
@@ -104,11 +104,10 @@ export function BoxOffNotice({ conversation, box, disabled, onConversationChange
 export function DelegateNotice({ conversation, box, disabled, className }: { conversation: ConversationSummary; box: BoxId; disabled: boolean; className?: string }) {
 	const client = useQueryClient();
 	const delegates = chatBoxDescriptor(conversation, box)?.delegate !== undefined;
-	const queryKey = ["box-delegate", conversation.id, box];
-	const read = useQuery({ queryKey, queryFn: ({ signal }) => loadBoxDelegate(conversation.id, box, signal), meta: followsChanges, enabled: delegates });
+	const read = useDelegateRead(conversation, box);
 	const retry = useMutation({
 		mutationFn: (variantId: number) => retryBoxDelegate(conversation.id, box, { variantId }),
-		onSuccess: (current) => client.setQueryData(queryKey, current),
+		onSuccess: (current) => client.setQueryData(delegateReadKey(conversation.id, box), current),
 	});
 	const notice = read.data ?? null;
 	if (!delegates || notice === null) return null;
@@ -116,7 +115,8 @@ export function DelegateNotice({ conversation, box, disabled, className }: { con
 	if (failed === null) return setting.kind === "broken" ? <Alert variant="destructive" className={className}><AlertDescription>The delegate cannot run: {setting.reason}</AlertDescription></Alert> : null;
 	return <Alert variant="destructive" className={cn(oneLine, className)}>
 		<AlertDescription>The delegate failed on Message {failed.number}: {failed.error}</AlertDescription>
-		<Button type="button" size="xs" variant="outline" disabled={disabled || retry.isPending || conversation.boxes[box] !== "enabled"} onClick={() => retry.mutate(failed.variantId)}>Retry</Button>
+		<Button type="button" size="xs" variant="outline" disabled={disabled || retry.isPending || conversation.boxes[box] !== "enabled" || setting.kind === "off"} onClick={() => retry.mutate(failed.variantId)}>Retry</Button>
+		{setting.kind === "off" && <AlertDescription className="basis-full">Choose a delegate model in Connection Settings to retry.</AlertDescription>}
 		{retry.isError && <AlertDescription className="basis-full">{retry.error.message}</AlertDescription>}
 	</Alert>;
 }

@@ -128,7 +128,7 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 			const swipe = input.swipes![index]!; // @approved Steps index the scenario's own swipes.
 			const turn = input.turns[swipe.turn];
 			if (turn === undefined) throw new Error(`A swipe names turn ${swipe.turn}; the scenario has ${input.turns.length}.`);
-			into.swipes.push(await run(runner, swipe.turn, turn.moves ?? [], swipe.prose ?? turn.prose, swipe.decisions ?? turn.decisions, swipe.delegated ?? turn.delegated));
+			into.swipes.push(await run(runner, swipe.turn, turn.moves ?? [], swipe.prose ?? turn.prose, swipe.decisions ?? turn.decisions, swipe.prose === undefined ? swipe.delegated ?? turn.delegated : swipe.delegated));
 		}
 	};
 	const close = () => {

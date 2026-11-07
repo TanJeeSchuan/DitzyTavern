@@ -33,3 +33,10 @@ test("prose holding a request without a scripted batch, a batch without a reques
 	expect((await run({ turns: [{ prose: "<scene>burn it</scene>", delegated: [{ kind: "burn", prop: "lantern" }] }] })).diagnostics[0]).toStartWith("Turn 0's delegated batch is invalid at /operations/0");
 	expect((await run({ turns: [{ prose: "<scene>take the lantern</scene>", delegated: [{ kind: "remove", prop: "lantern" }] }] })).diagnostics).toEqual(["The scene Box's delegate.apply threw Error: There is no lantern on stage."]);
 });
+
+test("a swipe with prose of its own scripts its own batch: none for prose without a request, and one for a request of its own", async () => {
+	const lantern = { prose: "<scene>light the lantern</scene>", delegated: [{ kind: "place", prop: "lantern" }] };
+	const quiet = await run({ turns: [lantern], swipes: [{ turn: 0, prose: "A quiet hall." }] });
+	expect([quiet.diagnostics, quiet.swipes.map(({ record }) => record)]).toEqual([[], [undefined]]);
+	expect((await run({ turns: [lantern], swipes: [{ turn: 0, prose: "<scene>set the table</scene>" }] })).diagnostics).toEqual(["Turn 0's prose holds a <scene> request, so the step needs delegated: the batch the delegate would apply."]);
+});

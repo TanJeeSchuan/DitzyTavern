@@ -161,8 +161,8 @@ const loadBoxClient = async (id: BoxId, url: string, lens: string | undefined): 
 	if (client.descriptor.lens !== lens) throw new Error(`Its client module lifts ${client.descriptor.lens ?? "no tag"}, but the server loaded it lifting ${lens ?? "none"}.`);
 	const { delegate } = client.descriptor;
 	// @approved
-	// The host gives a delegating Box the lens for its tag; assertBoxClient required its Window.
-	return delegate === undefined || client.Window === undefined ? client : { ...client, Window: { ...client.Window, lens: delegateLens(delegate.tag) } };
+	// The host gives a delegating Box the lens for its tag.
+	return delegate === undefined ? client : { ...client, Window: { ...client.Window!, lens: delegateLens(delegate.tag) } }; // @approved assertBoxClient requires a delegating Box's Window.
 };
 
 // @approved
