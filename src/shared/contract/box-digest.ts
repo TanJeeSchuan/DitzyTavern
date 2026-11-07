@@ -86,7 +86,10 @@ export type DigestRead<Record extends TSchema> = Static<ReturnType<typeof digest
 // is off, ready or broken with the reason, and the first passage on the
 // Selected path whose delegate run failed on its current text, numbered by
 // its place on the path, with the reason. A Writer override settles it.
+// `landed` counts the passages whose record is the delegate's run on their
+// current text, so a window refetches its read when one lands.
 export const delegateRead = Type.Object({
+	landed: Type.Integer({ minimum: 0 }),
 	setting: Type.Union([Type.Object({ kind: Type.Literal("off") }), Type.Object({ kind: Type.Literal("ready") }), Type.Object({ kind: Type.Literal("broken"), reason: Type.String() })]),
 	failed: Type.Union([Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), number: Type.Integer(), error: Type.String() }), Type.Null()]),
 });

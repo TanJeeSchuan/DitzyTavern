@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ConversationSummary } from "../conversation";
-import { createBoxLens } from "./lens";
+import { installBoxes } from "../../shared/contract/box";
+import { createBoxLens, delegateLens } from "./lens";
 
 type Segment = { readonly kind: "prose"; readonly text: string } | { readonly kind: "aside"; readonly text: string };
 
@@ -34,6 +35,20 @@ describe("createBoxLens", () => {
 			{ kind: "lifted", line: "a" },
 			{ kind: "prose", text: " and " },
 			{ kind: "lifted", line: "b" },
+		]);
+	});
+});
+
+describe("delegateLens", () => {
+	test("it lifts exactly the requests the server runs, leaving one nested in another Box's markup raw", () => {
+		installBoxes([
+			{ metadata: { id: "thought", label: "Thoughts", summary: "", instructions: "", lens: "thought" }, descriptor: undefined },
+			{ metadata: { id: "scene", label: "Scene", summary: "", instructions: "", delegate: { tag: "scene", summary: "", description: "", off: "" } }, descriptor: undefined },
+		]);
+		const nested = " She waits. <thought><scene>open the door</scene></thought>";
+		expect(delegateLens("scene").gate(conversation)!(`<scene>light the lantern</scene>${nested}`)).toEqual([
+			{ kind: "lifted", line: "light the lantern" },
+			{ kind: "prose", text: nested },
 		]);
 	});
 });

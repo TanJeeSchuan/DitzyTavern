@@ -5,7 +5,7 @@ import { boxMetadata, type BoxId, type BoxWindowLayout } from "../../shared/cont
 import type { ConversationSummary } from "../conversation";
 import { useNarrow } from "../lib/use-media";
 import { useNavigationRequest } from "../SaveGuard";
-import { BoxBlockNotice, BoxOffNotice } from "./BoxBlockNotice";
+import { BoxBlockNotice, BoxOffNotice, DelegateNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { boxPresent, chatBoxClients, chatBoxVersion, type MoveStaging } from "./registry";
 import type { BoxWindowsController } from "./useBoxWindows";
@@ -198,6 +198,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			>
 				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
+				<DelegateNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
 				{/* @approved
 				  The window's content is keyed by the version its Chat runs, so an
 				  upgrade remounts it, frame and Worker included, on the new version. */}

@@ -500,10 +500,8 @@ export const readDelegate = (database: Database, conversationId: number, box: Bo
 	readBoxWindow(database, conversationId, box, ({ history, slots }, loaded) => {
 		if (loaded.descriptor.delegate === undefined) return undefined;
 		const setting = resolveBoxDelegate(database, box);
-		const failed = history.messages.flatMap(({ id: messageId, variant }, index) => {
-			if (variant === null) return [];
-			const status = slotStatus(slots.get(variant.id), variant.content);
-			return status.kind === "failed" ? [{ messageId, variantId: variant.id, number: index + 1, error: status.error }] : [];
-		});
-		return { setting: setting.kind === "ready" ? { kind: "ready" } : setting, failed: failed[0] ?? null };
+		const statuses = history.messages.flatMap(({ id: messageId, variant }, index) => variant === null ? [] : [{ messageId, variantId: variant.id, number: index + 1, status: slotStatus(slots.get(variant.id), variant.content) }]);
+		const failed = statuses.flatMap(({ status, ...passage }) => status.kind === "failed" ? [{ ...passage, error: status.error }] : []);
+		const landed = statuses.filter(({ status }) => status.kind === "fresh").length;
+		return { setting: setting.kind === "ready" ? { kind: "ready" } : setting, landed, failed: failed[0] ?? null };
 	});

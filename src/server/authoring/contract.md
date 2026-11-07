@@ -44,6 +44,7 @@ Check your work with `run_scenario`. It loads the Box exactly as the app would a
 | `record` | optional object schema: one Variant's record, folded into state |
 | `moves` | optional `{ "schema", "max", "label", "seatBound"? }`: actions on a Human Message. `label` is a template: each `{key}` reads that field of the Move, shown as its literal's `title` when the schema gives one |
 | `decision` | optional `{ "summary", "description", "off", "context" }`: the Box digests settled prose through a Decision Model, and these four strings word its setting |
+| `delegate` | optional `{ "tag", "operations", "summary", "description", "off" }`: the story changes the Box by writing a request as `<tag>…</tag>` in a passage, which a small agent turns into one batch of `operations`; see [Delegate](#delegate) |
 | `window` | `{ "kind"?, "icon", "size" }`. `kind: "digest"` makes the window the host's passage timeline, with no `ui.js`; declare it exactly when you declare `decision`. `icon` is one of `box`, `coins`, `dice`, `drama`, `flag`, `gauge`, `heart`, `map`, `scroll`, `sparkles`, `star`. `size` is `{ "width", "height" }` in rem |
 | `dependencies` | optional `{ "name": "x.y.z" }`: npm packages `logic.js` or `ui.js` import by bare name |
 
@@ -56,7 +57,8 @@ An ES module whose default export is an object of hooks. Every hook is optional,
 - a `record` needs `records`; `records.initial` and `records.fold` come together;
 - a `decision` needs `records.digest`, may declare `status`, and must not declare `read`;
 - `moves` needs `moves.render`;
-- `status` only with a `decision`.
+- `status` only with a `decision`;
+- a `delegate` needs `delegate.apply`, a `record` (with `records`), `read` and a window of its own, and `"alwaysRender": true`, and may not declare a `decision`.
 
 Any other hook refuses the Box.
 
@@ -72,10 +74,11 @@ Any other hook refuses the Box.
 | `advance.run({ setup, dependencies, state, moves })` | the Moves on the triggering Human Message | `{ items, allowance?, record? }`; may be async |
 | `read({ setup, state, cast, human }, { snapshot })` | the Cast as `{ id, name, portrait, character }`, the human's Participant id | `{ view, status? }` |
 | `status(setup, state)` | | a digesting Box's one-line status, or `null` |
+| `delegate.apply({ setup, state, operations, cast })` | the state before the passage, one batch its `operations` schema accepts, the Cast as `{ id, name }` | the passage's record; may be async |
 
 `advance.run` returns `items`, each `{ text, priority, pinned?, literal? }` with a finite `priority`; they follow the block's instructions. An empty list leaves the whole block out unless `alwaysRender`. `allowance`, a whole number of tokens, caps the unpinned items. `record` must pass the descriptor's `record` schema; it is stored on the new Variant.
 
-Every other hook returns its value; only `advance.run` and `records.digest.run` may be async.
+Every other hook returns its value; only `advance.run`, `records.digest.run` and `delegate.apply` may be async.
 
 ### Records
 
@@ -100,6 +103,16 @@ const answer = answers.get("mood"); // { type: "choice", choice: "tense", probab
 ```
 
 Throw on an answer outside your options. For a passage the Box should not digest, return a record that changes nothing.
+
+### Delegate
+
+A delegating Box is changed by whoever writes the story: the story model in its reply, or the writer in a Message, writes a plain-text request in the Box's tag, `<scene>put the lantern on the table</scene>`. Teach the tag in `instructions`; `alwaysRender` keeps them in every prompt. Once the passage settles, the host's agent reads it and calls one tool, `apply`, with one batch your `operations` schema accepts, and the host passes that batch to `delegate.apply`. Its return is the passage's record, and the model sees the result on its next turn through `advance`'s items.
+
+- `tag` is lowercase words joined by `-`, and no other Box may use it. Several requests in one passage are joined in order into one. A nested, unclosed or empty tag, or one inside another Box's markup, stays prose and runs nothing.
+- `operations` is a `"type": "array"` schema of your operation shapes with its own `maxItems`: one batch. Describe each shape with `title` and `description`; the agent reads only them.
+- `state` is folded from the selected records strictly before the passage, never the passage's own earlier record or a later one, so a request run again never applies twice. Return the whole resulting state as the record, as the Race does, unless facts about the passage fold well.
+- `delegate.apply` is the only place operations become state. It must refuse anything illegal by throwing, with a message the writer reads: the agent reads prose anyone can write, so a request injected into a passage can propose any batch the schema accepts. The agent sees the passage, the request and that state as JSON, and nothing else: not `read`'s view, your stored values, the Library, Characters or the database.
+- `advance` may return items but never a record, and the window reads the records through `read`.
 
 ### Read and snapshot
 
@@ -153,8 +166,9 @@ Markup loses scripts, frames, forms, links, `meta`, `base`, inline event handler
 - `cast`: names; the first is the human, the second speaks each passage.
 - `seed`: any string; each turn draws its own seed from it.
 - `setup`: the Box's setup, when it has one; `setup.initial` otherwise.
-- `turns`: each `{ moves?, prose?, decisions? }`: the human's Moves, the passage that answers them, and the digest's `decide` answers keyed by question id. As in the app, a digest reads each Message's prose and never its rendered Moves, and a turn without prose is not digested, each a full answer such as `{ "type": "choice", "choice": "tense", "probabilities": { "calm": 0.1, "tense": 0.9 } }`.
-- `swipes`: each `{ turn, prose?, decisions? }`: a new Variant for that turn, with its seed and Moves.
+- `turns`: each `{ moves?, prose?, decisions?, delegated? }`: the human's Moves, the passage that answers them, and the digest's `decide` answers keyed by question id. As in the app, a digest reads each Message's prose and never its rendered Moves, and a turn without prose is not digested, each a full answer such as `{ "type": "choice", "choice": "tense", "probabilities": { "calm": 0.1, "tense": 0.9 } }`.
+- `swipes`: each `{ turn, prose?, decisions?, delegated? }`: a new Variant for that turn, with its seed and Moves.
+- `delegated` on a turn or swipe: for a delegating Box, the batch the agent would apply for that step's request, checked against `operations` and reduced by `delegate.apply` into that Variant's record. A step whose prose holds the tag needs one, and a step without the tag takes none, so a scenario never calls a model. A swipe with prose of its own takes only its own `delegated`.
 - `snapshot`: each `{ query, answer }` that `read` may ask for, as the table above answers it.
 - `from`: optional `{ version, turns? }`, once the writer has installed the Box. The first `turns` turns run on the installed `version` (`"latest"`, or a version's hash); then the host checks the records, Moves and setup they left exactly as a writer's **Update** would, and the remaining turns and every swipe run on your files, folding the earlier records. Without `turns`, every turn and swipe runs on the installed version and your files only take over its data.
 
@@ -175,6 +189,7 @@ Each Install of your Box is a new version. Chats that already hold the Box keep 
 
   A digesting Box cannot follow that pattern: the writer edits its records in a passage timeline built from the record schema, which refuses optional fields. Such a Box may only widen the fields it already has, such as more literals in a choice or a wider number range, and never add one.
 - keep `decision` once a version declared it. Chats still on that version digest with the writer's Decision Model setting, so Install refuses a later version without it. To stop digesting, make a new Box.
+- keep `delegate` and its `tag` once a version declared it. Chats hold requests written in that tag, so Install refuses a later version that drops the delegate or renames the tag. To do either, make a new Box.
 
 ## Working with the writer
 

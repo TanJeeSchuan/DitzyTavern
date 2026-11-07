@@ -1,4 +1,6 @@
 import type { ConversationSummary } from "../conversation";
+import { otherBoxTags } from "../../shared/contract/box";
+import { delegateSegments } from "../../shared/delegate-request";
 
 // @approved
 //  The story view replaces each `<tag>` a lens lifts with a mark that opens
@@ -44,3 +46,15 @@ export const createBoxLens = <Context, Kind extends string, Text>(
 		},
 	};
 };
+
+const REQUEST_LINE = 80;
+// @approved
+//  The lens the host gives every delegating Box for its tag: it lifts exactly
+// the requests the server runs, read by the one shared parser, and shows the
+// request itself as the mark's line, cut short.
+export const delegateLens = (tag: string): BoxLens => createBoxLens(tag, () => otherBoxTags(tag),
+	(text, others) => delegateSegments(text, tag, others).map((segment) => segment.kind === "request" ? { kind: tag, text: segment.text } : segment),
+	(run) => {
+		const line = run.join("; ");
+		return line.length > REQUEST_LINE ? `${line.slice(0, REQUEST_LINE - 1)}…` : line;
+	});

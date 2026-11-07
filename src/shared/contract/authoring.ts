@@ -20,6 +20,7 @@ const [participantQuery, libraryKeyQuery, libraryPrefixQuery, characterQuery] = 
 // plays its first turns on an installed version, then moves to the candidate
 // through the writer's Update check. Every list is bounded, since the
 // arguments come from a model.
+const delegated = Type.Array(boxValue, { maxItems: 64, description: "The batch the Box's delegate would apply for this step's <tag> request; required when the prose holds one." });
 export const scenarioInput = Type.Object({
 	from: Type.Optional(Type.Object({
 		version: Type.Union([Type.Literal("latest"), Type.String({ pattern: "^[0-9a-f]{64}$" })], { description: "The installed version the first turns run on: latest, or a version's hash." }),
@@ -32,11 +33,13 @@ export const scenarioInput = Type.Object({
 		moves: Type.Optional(Type.Array(boxValue, { maxItems: 32 })),
 		prose: Type.Optional(passage),
 		decisions: Type.Optional(decisions),
+		delegated: Type.Optional(delegated),
 	}, { additionalProperties: false }), { minItems: 1, maxItems: 40 }),
 	swipes: Type.Optional(Type.Array(Type.Object({
 		turn: Type.Integer({ minimum: 0, description: "The index of the turn whose Variant this swipe replaces." }),
 		prose: Type.Optional(passage),
 		decisions: Type.Optional(decisions),
+		delegated: Type.Optional(delegated),
 	}, { additionalProperties: false }), { maxItems: 20 })),
 	snapshot: Type.Optional(Type.Array(Type.Union([
 		Type.Object({ query: participantQuery, answer: participantRows }, { additionalProperties: false }),
