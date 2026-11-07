@@ -166,6 +166,7 @@ const delegateRecord = async (database: Database, queue: DigestQueue, job: Diges
 	if (setting.kind !== "ready") throw new Error(setting.kind === "broken" ? setting.reason : "The delegate is off.");
 	const { label, summary } = loaded.descriptor;
 	const operations = await runDelegateAgent({ options: setting.options, label, summary, operations: delegate.operations, passage: variant.content, request, state, signal: job.controller.signal });
+	job.controller.signal.throwIfAborted();
 	const cast = readParticipants(database, job.conversationId).flatMap(({ id, name, removed }) => removed ? [] : [{ id, name }]);
 	return await settledWithin(Promise.resolve().then(() => apply.apply({ setup, state, operations, cast })), queue, `The ${job.box} Box's delegate.apply did not settle within ${queue.applyMs / 1000} s.`);
 };
