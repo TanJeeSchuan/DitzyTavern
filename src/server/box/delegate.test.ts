@@ -302,6 +302,23 @@ test("a dropped job keeps its Chat and Box's lane until it settles, so its repla
 	}
 });
 
+test("editing a landed request away removes its record, so later passages no longer fold it", async () => {
+	const { chat, slot } = sceneChat();
+	const first = addPassage(chat.id, 1, "<scene>light the lantern</scene>");
+	replies.push(...applies({ kind: "place", prop: "lantern" }));
+	touch(chat.id, first);
+	await settled(() => slot(first)?.automatic !== undefined);
+	edit(first, "Maren lights it herself.");
+	touch(chat.id, first);
+	expect(slot(first)).toBeUndefined();
+	const second = addPassage(chat.id, 2, "<scene>set the table</scene>");
+	replies.push(...applies({ kind: "place", prop: "table" }));
+	touch(chat.id, second);
+	await settled(() => slot(second)?.automatic !== undefined);
+	expect(promptOf(2)).toContain("State before the passage, as JSON:\\n[]");
+	expect(slot(second)?.automatic).toEqual({ props: ["table"] });
+});
+
 test("editing a running passage's tag away drops its run, so a later passage runs without waiting for it", async () => {
 	const { chat, slot } = sceneChat();
 	const first = addPassage(chat.id, 1, "<scene>light the lantern</scene>");

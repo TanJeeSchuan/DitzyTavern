@@ -10,7 +10,7 @@ import {
 import { sha256 } from "../hash";
 import type { ModelFetch } from "../model-client/types";
 import { resolveBoxDecision } from "./decision-settings";
-import { effectiveRecord, readBoxFold, readRecordSlots, readVariantSeeds, slotStatus, writeAutomaticRecord, writeDigestError } from "./records";
+import { clearAutomaticRecord, effectiveRecord, readBoxFold, readRecordSlots, readVariantSeeds, slotStatus, writeAutomaticRecord, writeDigestError } from "./records";
 import { otherBoxTags } from "../../shared/contract/box";
 import { delegateRequest } from "../../shared/delegate-request";
 import { runDelegateAgent } from "./delegate";
@@ -166,7 +166,6 @@ const delegateRecord = async (database: Database, queue: DigestQueue, job: Diges
 	if (setting.kind !== "ready") throw new Error(setting.kind === "broken" ? setting.reason : "The delegate is off.");
 	const { label, summary } = loaded.descriptor;
 	const operations = await runDelegateAgent({ options: setting.options, label, summary, operations: delegate.operations, passage: variant.content, request, state, signal: job.controller.signal });
-	job.controller.signal.throwIfAborted();
 	const cast = readParticipants(database, job.conversationId).flatMap(({ id, name, removed }) => removed ? [] : [{ id, name }]);
 	return await settledWithin(Promise.resolve().then(() => apply.apply({ setup, state, operations, cast })), queue, `The ${job.box} Box's delegate.apply did not settle within ${queue.applyMs / 1000} s.`);
 };
@@ -355,10 +354,21 @@ export function prepareBoxDigests(database: Database, change: ConversationWriteC
 	// text queues nothing, such as a delegate's tag edited away: it stops its
 	// request and no longer holds its Chat and Box's lane.
 	const changed: (readonly [string, string])[] = [];
-	for (const [box, { descriptor }] of chatBoxes(drizzle(database), change.conversationId)) {
+	const db = drizzle(database);
+	const lifecycles = readBoxLifecycles(db, change.conversationId);
+	for (const [box, { descriptor }] of chatBoxes(db, change.conversationId)) {
 		if (descriptor.decision === undefined && descriptor.delegate === undefined) continue;
 		for (const variantId of change.removedVariantIds) removedKeys.push(keyOf(variantId, box));
 		for (const variant of touched) changed.push([keyOf(variant.variantId, box), sha256(variant.content)]);
+		// @approved
+		//  A digest's stale record folds until its passage is digested again,
+		// but a passage edited to hold no request has no delegate run coming,
+		// so its record goes in the same write.
+		const { delegate } = descriptor;
+		const instance = lifecycles[box]?.instance;
+		if (delegate !== undefined && instance !== undefined) {
+			for (const variant of touched) if (delegateRequest(variant.content, delegate.tag, otherBoxTags(delegate.tag)) === undefined) clearAutomaticRecord(db, descriptor, instance, variant.variantId);
+		}
 		const target = change.touchedVariantIds.length === 0 ? undefined : jobTarget(database, change.conversationId, box);
 		if (target === undefined) continue;
 		jobs.push(...prepareLive(database, queue, change.conversationId, box, target, variants, false));

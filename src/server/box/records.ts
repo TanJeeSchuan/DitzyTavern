@@ -100,6 +100,10 @@ const updateSlot = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: 
 export const writeAutomaticRecord = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, record: BoxValue, source: string): void =>
 	updateSlot(db, descriptor, instance, variantId, (slot) => ({ writer: slot?.writer, automatic: record, source }));
 
+/** @approved A delegate's passage that no longer holds a request has no automatic record; a Writer override stays. */
+export const clearAutomaticRecord = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number): void =>
+	updateSlot(db, descriptor, instance, variantId, (slot) => slot === undefined || (slot.automatic === undefined && slot.error === undefined) ? slot : { writer: slot.writer });
+
 /** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
 export const writeDigestError = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, source: string, message: string): void =>
 	updateSlot(db, descriptor, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
