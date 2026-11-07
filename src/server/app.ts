@@ -12,6 +12,7 @@ import { prepareBoxDigests, startBoxDigests } from "./box/digest";
 import { bootIndex } from "./boot-index";
 import { revalidatedText } from "./contract/content-validators";
 import { watchDatabaseChanges } from "./database/changes";
+import { appPagePolicy } from "../shared/box-frame";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -36,7 +37,10 @@ export async function createApp(options: AppOptions) {
 	reportRecovery("Startup", recoverActiveGenerations(database));
 	sweepOrphanedImages(database);
 
-	const serveIndex = async (request: Request) => revalidatedText(request, await bootIndex(database), { "content-type": "text/html;charset=utf-8" });
+	const serveIndex = async (request: Request) => revalidatedText(request, await bootIndex(database), {
+		"content-type": "text/html;charset=utf-8",
+		"content-security-policy": appPagePolicy(request.headers.get("host") ?? new URL(request.url).host),
+	});
 	const updates = createUpdateChecker(database, options.updates);
 	// @approved
 	//  Hashed assets are cached for a day. The host chunks keep their names

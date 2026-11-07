@@ -70,7 +70,11 @@ export type StoredBoxValue =
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it. A Box without a setup gets undefined.
-export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown>;
+// A sandboxed Box also folds a whole Selected path in one call, `foldAll`,
+// since each call into its runtime copies its input across.
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown> & {
+	readonly records?: { foldAll?(state: GenerationJsonValue | undefined, records: readonly GenerationJsonValue[], setup: BoxValue | undefined): GenerationJsonValue | undefined };
+};
 
 /** @approved What a Box's window `read` gets, read in one host transaction: `db` for further reads, the Chat's summary and Selected path, the Box's setup, and its fold over the Selected path's effective records, as Generation capture folds it. */
 export type BoxWindowRead<Setup, State> = {

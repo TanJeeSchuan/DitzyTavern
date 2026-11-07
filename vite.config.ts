@@ -72,6 +72,8 @@ export default defineConfig({
 		port: 5173,
 		proxy: {
 			"/api": `http://127.0.0.1:${process.env.PORT ?? 3000}`,
+			// @approved A sandboxed Box's frame code is served by the server, as in production.
+			"^/boxes/[^/]+/ui\\.(?:js|css)$": `http://127.0.0.1:${process.env.PORT ?? 3000}`,
 		},
 	},
 	build: {

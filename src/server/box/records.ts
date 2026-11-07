@@ -58,14 +58,15 @@ export const slotStatus = (slot: RecordSlot | undefined, content: string): SlotS
 // @approved
 //  One Box's record slots on the given Variants, for its instance, and its
 // state: the fold over their effective records, in Message order, from
-// `initial`, or undefined for a Box without a fold. Generation capture, the
-// window reads and the digest status all fold this way.
+// `initial`, or undefined for a Box without a fold. A Box with `foldAll`
+// gets every effective record in one call. Generation capture, the window
+// reads and the digest status all fold this way.
 export const readBoxFold = (db: BunSQLiteDatabase, id: BoxId, { records }: HostBox, instance: string | undefined, setup: BoxValue | undefined, variantIds: readonly number[]) => {
 	const slots = records === undefined ? new Map<number, RecordSlot<BoxValue>>() : readRecordSlots(db, id, boxRecordSchema(id), instance, variantIds);
-	const state = records?.fold === undefined ? undefined : variantIds.reduce((folded, variantId) => {
-		const record = effectiveRecord(slots.get(variantId));
-		return record === undefined ? folded : records.fold(folded, record, setup);
-	}, records.initial);
+	const effective = variantIds.flatMap((variantId) => effectiveRecord(slots.get(variantId)) ?? []);
+	const state = records?.fold === undefined ? undefined
+		: records.foldAll === undefined ? effective.reduce((folded, record) => records.fold(folded, record, setup), records.initial)
+		: records.foldAll(records.initial, effective, setup);
 	return { slots, state };
 };
 

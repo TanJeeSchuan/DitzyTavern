@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, type AnyElysia } from "elysia";
+import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
@@ -14,6 +15,8 @@ import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
+import { sandboxedBox } from "./sandboxed";
+import { sandboxedDescriptor, sandboxedDescriptorFile, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
 
 // @approved
 //  Once each hook has the shape the host calls, the descriptor decides which
@@ -60,6 +63,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		records: records && (records.fold === undefined ? { digest: checkedDigest } : {
 			initial: records.initial,
 			fold: (state, record, setup) => checked("records.fold", records.fold(state, record, setup)),
+			foldAll: records.foldAll && ((state, list, setup) => checked("records.fold", records.foldAll!(state, list, setup))), // @approved Checked just before.
 			digest: checkedDigest,
 		}),
 		advance: advance && {
@@ -86,34 +90,71 @@ const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia |
 	return new Elysia({ prefix: `/api/boxes/${id}` }).use(routes);
 };
 
+/** @approved Where a Box's client comes from: a trusted Box's built module, or a sandboxed Box's `descriptor.json` and the folder holding its `ui.js`. */
+export type BoxClientSource = { readonly kind: "module"; readonly folder: string } | { readonly kind: "sandboxed"; readonly folder: string; readonly file: SandboxedDescriptorFile };
+
+/** @approved A sandboxed Box's source is one file with no imports; ticket 02c adds dependencies. */
+const assertNoImports = (name: string, source: string) => {
+	const [first] = new Bun.Transpiler({ loader: "js" }).scanImports(source);
+	if (first !== undefined) throw new Error(`Its ${name} imports ${first.path}; a sandboxed Box's ${name} is one file with no imports.`);
+	return source;
+};
+
 // @approved
-//  A Box folder holds its descriptor in `shared-descriptor.ts` and its server
-// module in `server.ts`, each as its default export, and is named for the
-// Box's id. Folders load in order, each folder's Boxes by name, so a plugin
-// folder listed after the built-in one cannot replace a built-in Box. An
-// absent folder holds no Boxes, as before any plugin is installed. A Box
-// that fails to load is refused with its reason; the rest still load. The
-// server passes the database it serves, and each Box's routes are built and
-// mounted for it once, here, so a Box whose routes fail is refused instead of
-// stopping the server, and the contract serves the routes mounted.
+//  A trusted Box folder holds its descriptor in `shared-descriptor.ts` and
+// its server module in `server.ts`, each as its default export; a sandboxed
+// one holds `descriptor.json`, `logic.js` and `ui.js`. A folder holding both
+// `server.ts` and `logic.js` is refused, so a folder the app writes sandboxed
+// files into never runs as trusted. Either kind is named for the Box's id.
+const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>) => {
+	const sandboxed = existsSync(join(folder, "logic.js"));
+	if (sandboxed && existsSync(join(folder, "server.ts"))) throw new Error("It holds both server.ts and logic.js; a Box folder is trusted or sandboxed, not both.");
+	const named = (descriptor: BoxDescriptor) => {
+		if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
+		if (seen.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
+		return descriptor;
+	};
+	if (!sandboxed) {
+		const { default: imported }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
+		assertBoxDescriptor(imported);
+		const descriptor = named(imported);
+		const { default: box }: { default: unknown } = await import(join(folder, "server.ts"));
+		if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
+		const client = { kind: "module", folder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist") } as const;
+		return { descriptor, box, client, dispose: undefined };
+	}
+	const file: unknown = await Bun.file(join(folder, "descriptor.json")).json();
+	assertChecked(sandboxedDescriptorFile, file, "Its descriptor.json");
+	const descriptor = named(sandboxedDescriptor(file));
+	assertNoImports("ui.js", await Bun.file(join(folder, "ui.js")).text());
+	const { box, dispose } = await sandboxedBox(descriptor.id, assertNoImports("logic.js", await Bun.file(join(folder, "logic.js")).text()));
+	return { descriptor, box, client: { kind: "sandboxed", folder, file } as const, dispose };
+};
+
+// @approved
+//  Folders load in order, each folder's Boxes by name, so a plugin folder
+// listed after the built-in one cannot replace a built-in Box. An absent
+// folder holds no Boxes, as before any plugin is installed. A Box that fails
+// to load is refused with its reason; the rest still load. The server passes
+// the database it serves, and each Box's routes are built and mounted for it
+// once, here, so a Box whose routes fail is refused instead of stopping the
+// server, and the contract serves the routes mounted.
 export const discoverBoxes = async (folders: readonly string[], database?: Database) => {
-	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox; readonly folder: string; readonly routes: AnyElysia | undefined }>();
+	const boxes = new Map<BoxId, { readonly descriptor: BoxDescriptor; readonly box: HostBox; readonly client: BoxClientSource; readonly routes: AnyElysia | undefined; readonly dispose: (() => void) | undefined }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];
 	for (const parent of folders) {
 		const entries = await readdir(parent, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? [] : Promise.reject(error));
 		for (const name of entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort()) {
 			const folder = join(parent, name);
+			let dispose: (() => void) | undefined;
 			try {
-				const { default: descriptor }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
-				assertBoxDescriptor(descriptor);
-				if (descriptor.id !== name) throw new Error(`Its folder must be named for its id, ${descriptor.id}.`);
-				if (boxes.has(descriptor.id)) throw new Error(`A Box with the id ${descriptor.id} is already loaded.`);
-				const { default: box }: { default: unknown } = await import(join(folder, "server.ts"));
-				if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
-				assertBoxServer(box);
-				const checked = checkedHooks(descriptor.id, descriptor, box);
-				boxes.set(descriptor.id, { descriptor, box: checked, folder, routes: database === undefined ? undefined : mountedRoutes(descriptor.id, checked, database) });
+				const loaded = await loadFolder(folder, name, new Set(boxes.keys()));
+				dispose = loaded.dispose;
+				assertBoxServer(loaded.box);
+				const checked = checkedHooks(loaded.descriptor.id, loaded.descriptor, loaded.box);
+				boxes.set(loaded.descriptor.id, { descriptor: loaded.descriptor, box: checked, client: loaded.client, dispose, routes: database === undefined ? undefined : mountedRoutes(loaded.descriptor.id, checked, database) });
 			} catch (error) {
+				dispose?.();
 				refused.push({ folder, reason: error instanceof Error ? error.message : String(error) });
 			}
 		}
@@ -125,8 +166,8 @@ export const builtInBoxes = join(import.meta.dir, "../../boxes");
 /** @approved The built-in Boxes, then the plugins installed in the data folder. */
 export const boxFolders = [builtInBoxes, join(process.cwd(), "data", "boxes")];
 
-/** @approved A loaded Box as the server holds it beside its descriptor: its checked hooks, its mounted routes and the folder its built client module is served from. */
-type LoadedBox = { readonly box: HostBox; readonly routes: AnyElysia | undefined; readonly clientFolder: string };
+/** @approved A loaded Box as the server holds it beside its descriptor: its checked hooks, its mounted routes, where its client comes from, and how to free a sandboxed Box's runtime. */
+type LoadedBox = { readonly box: HostBox; readonly routes: AnyElysia | undefined; readonly client: BoxClientSource; readonly dispose: (() => void) | undefined };
 let loaded: ReadonlyMap<BoxId, LoadedBox> = new Map();
 let held = new Map<BoxId, readonly string[]>();
 // @approved
@@ -136,14 +177,13 @@ let held = new Map<BoxId, readonly string[]>();
 // a caller that mounts no routes passes none. The client build writes a
 // built-in's client module into `dist/boxes/<id>`, and `box:build` a plugin's
 // into its own `dist`. With a database, each Box's stored values are checked
-// against its schemas before anything reads them.
+// against its schemas before anything reads them. Loading again frees the
+// sandboxed runtimes the previous load held.
 export const loadBoxes = async (folders: readonly string[] = boxFolders, database?: Database): Promise<void> => {
 	const { boxes, refused } = await discoverBoxes(folders, database);
 	for (const { folder, reason } of refused) console.error(`[boxes] Refused the Box in ${folder}: ${reason}`);
-	loaded = new Map(boxes.map(({ descriptor, box, folder, routes }) => [descriptor.id, {
-		box, routes,
-		clientFolder: dirname(folder) === builtInBoxes ? join("dist", "boxes", descriptor.id) : join(folder, "dist"),
-	}]));
+	for (const { dispose } of loaded.values()) dispose?.();
+	loaded = new Map(boxes.map(({ descriptor, box, client, routes, dispose }) => [descriptor.id, { box, routes, client, dispose }]));
 	installBoxes(boxes.map(({ descriptor }) => ({ metadata: boxMetadataFrom(descriptor), descriptor })));
 	held = database === undefined ? new Map() : new Map(checkStoredBoxValues(database, boxes.map(({ descriptor, box }) => ({ id: descriptor.id, descriptor, box }))));
 	for (const [id, places] of held) console.error(`[boxes] The ${id} Box holds ${places.length} stored values its schemas no longer accept, first at ${places[0]}.`);
@@ -161,8 +201,8 @@ export const clearHeldValues = (database: Database, id: BoxId): readonly number[
 	return setupsCleared;
 };
 
-/** @approved Where a loaded Box's built client module is served from. */
-export const boxClientFolder = (id: BoxId): string | undefined => loaded.get(id)?.clientFolder;
+/** @approved Where a loaded Box's client comes from. */
+export const boxClientSource = (id: BoxId): BoxClientSource | undefined => loaded.get(id)?.client;
 
 // @approved
 //  Every loaded Box, by id, in registry order. Each Box types its own hooks

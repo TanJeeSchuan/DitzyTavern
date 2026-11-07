@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -9,10 +9,11 @@ import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } 
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** @approved Builds the app, then each fixture plugin's client, as its author would with `box:build`. */
+/** @approved Builds the app, then each trusted fixture plugin's client, as its author would with `box:build`; a sandboxed fixture needs no build. */
 export const buildClient = async () => {
 	const fixtures = join(ROOT, "e2e", "fixtures", "boxes");
-	for (const args of [["build"], ...readdirSync(fixtures).map((id) => ["box:build", join(fixtures, id)])]) {
+	const trusted = readdirSync(fixtures).filter((id) => existsSync(join(fixtures, id, "client.tsx")));
+	for (const args of [["build"], ...trusted.map((id) => ["box:build", join(fixtures, id)])]) {
 		const build = spawn("bun", ["run", ...args], { cwd: ROOT, stdio: "inherit" });
 		const [code] = await once(build, "exit");
 		if (code !== 0) throw new Error(`${args.join(" ")} exited ${code}`);
@@ -93,7 +94,7 @@ export const startE2eServer = async () => {
 		release: () => call("release"),
 		corruptSecrets: () => call("corrupt-secrets"),
 		installBox: (id: string) => call("install-box", id),
-		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
+		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; probes: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (mode: "crash" | "graceful") => {
 			const directory: string = await call("directory");
