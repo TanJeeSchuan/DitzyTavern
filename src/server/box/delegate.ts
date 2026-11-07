@@ -91,21 +91,15 @@ export const runDelegateAgent = async ({ options, label, summary, operations, pa
 			return await options.fetch(input, { ...init, signal: init.signal === undefined || init.signal === null ? aborted : AbortSignal.any([init.signal, aborted]) });
 		},
 	});
-	// @approved
-	// The agent closes before the job's abort is checked, so a job aborted
-	// while it closes, a stopping queue's included, returns no batch.
-	const run = async () => {
-		try {
-			return await agent.session().prompt(prompt, { signal: aborted }).result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
-		} finally {
-			await agent.close().catch(() => undefined);
-		}
-	};
-	const result = await run();
-	signal.throwIfAborted();
-	if (failure !== undefined) throw new Error(failure);
-	if (result.stopReason === "error") throw new Error(`The delegate's model request failed: ${result.error?.message ?? "no reason given"}`);
-	if (result.stopReason !== "end_turn") throw new Error(`The delegate's turn ended without finishing (${result.stopReason}).`);
-	if (batch === undefined) throw new Error(refusal ?? "The delegate ended without calling apply.");
-	return batch;
+	try {
+		const result = await agent.session().prompt(prompt, { signal: aborted }).result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
+		signal.throwIfAborted();
+		if (failure !== undefined) throw new Error(failure);
+		if (result.stopReason === "error") throw new Error(`The delegate's model request failed: ${result.error?.message ?? "no reason given"}`);
+		if (result.stopReason !== "end_turn") throw new Error(`The delegate's turn ended without finishing (${result.stopReason}).`);
+		if (batch === undefined) throw new Error(refusal ?? "The delegate ended without calling apply.");
+		return batch;
+	} finally {
+		await agent.close().catch(() => undefined);
+	}
 };
