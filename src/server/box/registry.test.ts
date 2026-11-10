@@ -140,7 +140,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 	jar?.dispose?.();
 	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
 		["backtracking", "Its string at /setup/schema/anyOf/0 has a pattern; a sandboxed Box may only use ParticipantKey's."],
-		["both", "It holds both server.ts and logic.js; a Box folder is trusted or sandboxed, not both."],
+		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
 		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
 		["fetching", "Its ui.js imports https://example.com/tip.js; a sandboxed Box's ui.js is one file with no imports."],
 		["importing", "Its logic.js imports ./tip.js; a sandboxed Box's logic.js is one file with no imports."],

@@ -1,6 +1,9 @@
 /* eslint-disable anti-slop/no-runtime-typeof -- The rebuild walks JSON a Box wrote, before any schema types it. */
 import { Type, type SchemaOptions, type Static, type TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { boxValue, type BoxValue } from "./box-value";
+import { commitBoxAction } from "./box-actions";
+import { imageHash } from "./image";
 import { assertBoxDescriptor, boxDescriptorSchema, type BoxDescriptor } from "./box-descriptor";
 import { boxMetadataSchema } from "./box-metadata";
 import { ParticipantKey } from "./box-row-reference";
@@ -103,9 +106,18 @@ export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSc
 	throw new Error(`Its schema at ${path} is not a form a sandboxed Box can use.`);
 };
 
-/** @approved A Move chip label from its template: each `{key}` reads that field of the Move. */
-const templateLabel = (template: string) => (move: BoxValue) =>
-	template.replaceAll(/\{(\w+)\}/g, (_, key: string) => String(isObject(move) && Object.hasOwn(move, key) ? move[key] : ""));
+// @approved
+//  A Move chip label from its template: each `{key}` reads that field of the
+// Move, shown as its literal's `title` when the Move schema gives the field's
+// value one, as the passage timeline shows an option.
+const templateLabel = (template: string, schema: TSchema) => (move: BoxValue) =>
+	template.replaceAll(/\{(\w+)\}/g, (_, key: string) => {
+		const value = isObject(move) && Object.hasOwn(move, key) ? move[key] : "";
+		const field: unknown = schema.properties?.[key];
+		const titled = Value.Check(titledLiterals, field) ? field.anyOf.find((member) => member.const === value)?.title : undefined;
+		return titled ?? String(value);
+	});
+const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type.Unknown(), title: Type.Optional(Type.String()) })) });
 
 // @approved
 //  The descriptor a sandboxed Box's `descriptor.json` describes, once the
@@ -114,6 +126,7 @@ const templateLabel = (template: string) => (move: BoxValue) =>
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
 	const { setup, values, record, moves, window: _, ...fields } = file;
+	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>
 		entries && Object.fromEntries(Object.entries(entries).map(([key, schema]) => [key, sandboxedSchema(schema, `${path}/${key}`)]));
 	const descriptor = {
@@ -121,7 +134,7 @@ export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescripto
 		...setup && { setup: { schema: sandboxedSchema(setup.schema, "/setup/schema"), initial: setup.initial } },
 		...values && { values: { ...values.chat && { chat: schemas(values.chat, "/values/chat") }, ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
 		...record !== undefined && { record: sandboxedSchema(record, "/record") },
-		...moves && { moves: { schema: sandboxedSchema(moves.schema, "/moves/schema"), max: moves.max, label: templateLabel(moves.label), ...moves.seatBound && { seatBound: true as const } } },
+		...moves && moveSchema && { moves: { schema: moveSchema, max: moves.max, label: templateLabel(moves.label, moveSchema), ...moves.seatBound && { seatBound: true as const } } },
 	};
 	assertBoxDescriptor(descriptor);
 	return descriptor;
@@ -138,3 +151,36 @@ export const sandboxedOutcome = Type.Union([
 	Type.Object({ kind: Type.Literal("ok"), value: Type.Optional(Type.Unknown()) }),
 	Type.Composite([Type.Object({ kind: Type.Literal("error") }), sandboxedFailure]),
 ]);
+
+/** @approved What a sandboxed Box's `read` returns: the view its window renders and, optionally, its one-line Status, which the host renders. */
+export const sandboxedReadOutput = Type.Object({ view: Type.Unknown(), status: Type.Optional(Type.Union([Type.String(), Type.Null()])) }, { additionalProperties: false });
+
+// @approved
+//  A sandboxed Box's window read as the host serves it: the guest's view and
+// Status, and `snapshot`, the Chat revision the read was taken at, which a
+// commit names so it lands only on the Chat its view showed.
+export const sandboxedRead = Type.Object({ snapshot: Type.Integer({ minimum: 0 }), status: Type.Union([Type.String(), Type.Null()]), view: boxValue });
+
+const snapshotKey = Type.String({ minLength: 1, maxLength: 100 });
+// @approved
+//  The closed set of reads a sandboxed Box's `read` makes through `snapshot`:
+// its own Participant values for one key across this Chat's Cast, its own
+// Library values by key or by key prefix, and the revisions of one key's
+// values on the Characters this Chat's Cast was seeded from. Every value is
+// the stored string, which the Box decodes.
+export const snapshotQuery = Type.Union([
+	Type.Object({ scope: Type.Literal("participant"), key: snapshotKey }, { additionalProperties: false }),
+	Type.Object({ scope: Type.Literal("library"), key: snapshotKey }, { additionalProperties: false }),
+	Type.Object({ scope: Type.Literal("library"), prefix: Type.String({ maxLength: 100 }) }, { additionalProperties: false }),
+	Type.Object({ scope: Type.Literal("character"), key: snapshotKey }, { additionalProperties: false }),
+]);
+
+/** @approved A Box frame's token, which binds the frame's document, images and uploads to one Box and Chat on the server. */
+const boxFrameToken = Type.String({ pattern: "^[A-Za-z0-9_-]{24}$" });
+export const boxFrameOpened = Type.Object({ token: boxFrameToken });
+export const boxFrameParams = boxFrameOpened;
+export const boxFrameImageParams = Type.Object({ token: boxFrameToken, hash: imageHash });
+
+/** @approved One commit from a sandboxed Box's window: what the host turns into `commit-box` for that Box at `snapshot`. */
+export const sandboxedCommit = Type.Object({ snapshot: Type.Integer({ minimum: 0 }), ...Type.Omit(commitBoxAction, ["type", "box"]).properties }, { additionalProperties: false });
+export type SandboxedCommit = Static<typeof sandboxedCommit>;

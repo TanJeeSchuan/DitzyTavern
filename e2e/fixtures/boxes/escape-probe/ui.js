@@ -44,22 +44,49 @@ const markup = (base) => `
 	<link rel="stylesheet" href="${base}-link">
 	<base href="${base}-base/">`;
 
+// @approved
+// Every image surface, for each Image the probe's Library names: the one it uploaded, which it owns, and any hash written there for it.
+// Each surface asks for its own URL, so the browser fetches every one of them.
+const images = (rows) => rows.map(({ key, value }) => `
+	<img src="${host.image(value)}?img" alt="${key} img">
+	<img srcset="${host.image(value)}?srcset 1x" alt="${key} srcset">
+	<div style="background: url(${host.image(value)}?background); width: 1rem; height: 1rem">${key} background</div>
+	<video poster="${host.image(value)}?poster" width="16" height="16"></video>
+	<img src="/api/images/${value}" alt="${key} app route">`).join("");
+
 let started = false;
 let pings = 0;
 let setup = { app: "", other: "", round: 0 };
+let stored = [];
+let cast = [];
+let snapshot = 0;
+let uploaded = "none";
 const draw = () => host.render(`<div class="probe-sheet">
 	<output aria-label="Round">${setup.round}</output>
 	<output aria-label="Pings">${pings}</output>
 	<button type="button" data-on="ping">Ping</button>
+	<input type="file" aria-label="Upload image" data-on="upload">
+	<output aria-label="Upload">${uploaded}</output>
+	${images(stored)}
+	${cast.flatMap(({ name, portrait }) => portrait === null ? [] : [`<img src="${host.image(portrait.hash)}" alt="portrait ${name}">`]).join("")}
 	<output aria-label="Escapes">${started ? JSON.stringify(tried) : "waiting"}</output>
 	${setup.app === "" ? "" : [`${setup.other}/sandbox-escape`, `${setup.app}/api/images/sandbox-escape`].map(markup).join("")}
 </div>`);
-host.onEvent(({ type, name }) => {
+const upload = async (file) => {
+	const result = await host.uploadImage(file);
+	if (result.outcome !== "uploaded") return result.reason;
+	const owner = { type: "library" };
+	const committed = await host.commit({ snapshot, writes: [{ owner, key: "image:owned", value: result.hash }], expected: [{ owner, key: "image:owned", revision: 0 }] });
+	return committed.outcome === "applied" ? result.hash : committed.reason;
+};
+host.onEvent(({ type, name, files }) => {
 	if (type === "click" && name === "ping") pings += 1;
+	if (type === "change" && name === "upload" && files?.[0] !== undefined) void upload(files[0]).then((outcome) => { uploaded = outcome; draw(); });
 	draw();
 });
-host.onRead(async (read) => {
-	setup = read;
+host.onRead(async (read, view) => {
+	({ setup, images: stored, cast } = read);
+	snapshot = view.snapshot;
 	if (setup.app !== "" && !started) {
 		started = true;
 		for (const base of [`${setup.other}/sandbox-escape`, `${setup.app}/api/images/sandbox-escape`]) await escapes(base);

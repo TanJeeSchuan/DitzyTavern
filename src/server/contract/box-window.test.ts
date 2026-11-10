@@ -10,7 +10,7 @@ import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/
 import { sha256 } from "../hash";
 import { createContract } from ".";
 import { acceptConversationTailGeneration } from "../conversation";
-import { advanceRace } from "../../boxes/race/server-engine";
+import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -206,7 +206,7 @@ test("an unknown Box id is not found by the Box routes and fails each Box comman
 	for (const action of [
 		{ type: "set-box-state", box: "nope", state: "enabled" },
 		{ type: "set-box-setup", box: "nope", setup: "" },
-		{ type: "put-box-data", box: "nope", owner: { type: "library", revision: 0 }, key: "note", value: "{}" },
+		{ type: "commit-box", box: "nope", writes: [{ owner: { type: "library" }, key: "note", value: "{}" }], expected: [{ owner: { type: "library" }, key: "note", revision: 0 }] },
 	] satisfies ConversationAction[]) {
 		const response = await command(app, chat.id, chat.revision, action);
 		expect(response.status).toBe(422);
@@ -254,7 +254,7 @@ test("Box data cannot reach the host's Decision Model settings for that Box", as
 	const chat = createClockChat();
 	const app = createContract(database);
 	insertBox(database, chat.id, "world-clock");
-	const written = await command(app, chat.id, chat.revision, { type: "put-box-data", box: "world-clock", owner: { type: "library", revision: 0 }, key: "decision", value: "{}" });
+	const written = await command(app, chat.id, chat.revision, { type: "commit-box", box: "world-clock", writes: [{ owner: { type: "library" }, key: "decision", value: "{}" }], expected: [{ owner: { type: "library" }, key: "decision", revision: 0 }] });
 	expect(written.status).toBe(200);
 	const settings = await app.handle(new Request("http://localhost/api/boxes/world-clock/decision-settings"));
 	expect(settings.status).toBe(200);

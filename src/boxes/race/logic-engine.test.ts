@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
-import type { RaceInput, RaceMove, RaceState } from "./contract";
+import type { RaceInput, RaceMove, RaceRecord, RaceState } from "./shared";
 import { fillRaceField, initialRaceSetup } from "./shared-data";
-import { advanceRace as advanceRaceTurn, foldRace } from "./server-engine";
+import { advanceRace as advanceRaceTurn, foldRace } from "./logic-engine";
 
+/** @approved One turn, its record and the state it folds to from the input's state. */
 const advanceRace = (input: RaceInput) => {
 	const turn = advanceRaceTurn(input);
-	return turn?.record && { outcome: turn.narrative, after: turn.record };
+	return turn?.record && { outcome: turn.narrative, record: turn.record, after: foldRace(input.state, turn.record, input.setup)! };
 };
 
-const foldRaceRecords = (turns: readonly { after: RaceState }[], raceId: string) => turns.reduce<RaceState | null>((state, { after }) => foldRace(state, after, { raceId }), null);
+const foldRaceRecords = (turns: readonly { record: RaceRecord }[], raceId: string) => turns.reduce<RaceState | null>((state, { record }) => foldRace(state, record, { raceId }), null);
 const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 
 test("equal Race state and seed produce the same Stretch without mutating inputs", () => {
@@ -132,10 +133,10 @@ test("Moves resolve in order against projected energy and per-Runner limits, the
 const runRace = (fields: { setup: typeof setup; moves?: (state: RaceState | null) => RaceMove[] }) => {
 	let state: RaceState | null = null;
 	const outcomes: string[] = [];
-	const ordered: RaceMove[][] = [];
+	const ordered: (readonly RaceMove[])[] = [];
 	for (let i = 0; i < 30 && state?.finished !== true; i++) {
-		const input = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
-		const record: { outcome: string; after: RaceState } = advanceRace(input)!;
+		const input: RaceInput = { setup: fields.setup, state, seed: `${fields.setup.raceId}-${i}`, intent: "respond" as const, moves: fields.moves?.(state) ?? [] };
+		const record = advanceRace(input)!;
 		state = record.after;
 		outcomes.push(record.outcome);
 		ordered.push(input.moves);
