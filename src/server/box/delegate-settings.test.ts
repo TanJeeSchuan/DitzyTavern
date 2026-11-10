@@ -8,6 +8,7 @@ import { configureDecisionModels } from "../contract/decision-model-test-fixture
 import { key, profile } from "../contract/prompt-preset-test-fixtures";
 import { createBoxDecisionSettingsRoutes } from "../contract/box-decision-settings";
 import { openObservedDatabase } from "../test-fixtures/conversation";
+import { DEFAULT_BOX_DELEGATE } from "../../shared/contract/box";
 import { applyBoxDelegateSettings, readBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
 
 const chatProfile = (database: ReturnType<typeof openObservedDatabase>, displayName: string, requestUrl: string) => {
@@ -31,6 +32,50 @@ test("a delegate setting is off until chosen, ready on a usable profile, and bro
 		expect(() => apply(decision, "jev")).toThrow("Choose a Chat Completions connection for the delegate.");
 		expect(apply(null, "")).toMatchObject({ profileId: null, model: "" });
 		expect(resolveBoxDelegate(database, "scene")).toEqual({ kind: "off" });
+	} finally {
+		database.close();
+	}
+});
+
+test("an unset Box inherits the default, its own selection wins, and a broken default keeps its reason", () => {
+	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+	const database = openObservedDatabase();
+	try {
+		const local = chatProfile(database, "Local", "http://127.0.0.1:43131/v1/");
+		const apply = (box: string, profileId: number | null, model: string) => applyBoxDelegateSettings(database, box, { type: "apply", expectedRevision: readBoxDelegateSettings(database, box).revision, profileId, model });
+		apply(DEFAULT_BOX_DELEGATE, local, "default-model");
+		expect(resolveBoxDelegate(database, "scene")).toMatchObject({ kind: "ready", options: { model: "default-model" } });
+		expect(readBoxDelegateSettings(database, "scene")).toEqual({ profileId: null, model: "", revision: 0 });
+		apply("scene", local, "own-model");
+		expect(resolveBoxDelegate(database, "scene")).toMatchObject({ kind: "ready", options: { model: "own-model" } });
+		apply(DEFAULT_BOX_DELEGATE, chatProfile(database, "Remote default", "http://192.168.1.4:8080/v1/"), "broken-model");
+		expect(resolveBoxDelegate(database, "scene")).toMatchObject({ kind: "ready", options: { model: "own-model" } });
+		apply("scene", null, "");
+		expect(resolveBoxDelegate(database, "scene")).toEqual({ kind: "broken", reason: "Remote default uses HTTP; an agent sends HTTP only to localhost, so use HTTPS." });
+		apply(DEFAULT_BOX_DELEGATE, null, "");
+		expect(resolveBoxDelegate(database, "scene")).toEqual({ kind: "off" });
+	} finally {
+		database.close();
+	}
+});
+
+test("the host default uses the settings route's apply and conflict flow without a delegating Box installed", async () => {
+	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+	const database = openObservedDatabase();
+	try {
+		const profileId = chatProfile(database, "Local", "http://127.0.0.1:43131/v1/");
+		const routes = createBoxDecisionSettingsRoutes(database);
+		const url = `http://localhost/api/boxes/${DEFAULT_BOX_DELEGATE}/delegate-settings`;
+		const body = { type: "apply", expectedRevision: 0, profileId, model: "default-model" };
+		const apply = () => routes.handle(new Request(`${url}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+		const applied = await apply();
+		expect(applied.status).toBe(200);
+		const saved = await applied.json();
+		expect(saved).toMatchObject({ outcome: "applied", settings: { profileId, model: "default-model" } });
+		expect(await (await routes.handle(new Request(url))).json()).toEqual(saved.settings);
+		const conflict = await apply();
+		expect(conflict.status).toBe(409);
+		expect(await conflict.json()).toMatchObject({ outcome: "conflict", currentSettings: saved.settings });
 	} finally {
 		database.close();
 	}

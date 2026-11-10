@@ -128,12 +128,13 @@ function FloatingWindow({ title, icon, size, layout, cascade, zIndex, narrow, mi
 	</section>;
 }
 
-export function BoxWindowLayer({ conversation, controller, disabled, staging, onConversationChange }: {
+export function BoxWindowLayer({ conversation, controller, disabled, staging, onConversationChange, onOpenConnections }: {
 	conversation: ConversationSummary | null;
 	controller: BoxWindowsController;
 	disabled: boolean;
 	staging: MoveStaging;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onOpenConnections: (box: BoxId) => void;
 }): ReactNode {
 	const requestNavigation = useNavigationRequest();
 	const [order, setOrder] = useState<BoxId[]>([]);
@@ -198,7 +199,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 			>
 				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
-				<DelegateNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
+				<DelegateNotice conversation={conversation} box={id} disabled={disabled} onOpenConnections={() => onOpenConnections(id)} className="mb-3" />
 				{/* @approved
 				  The window's content is keyed by the version its Chat runs, so an
 				  upgrade remounts it, frame and Worker included, on the new version. */}

@@ -41,6 +41,11 @@ export async function loadBoxDelegate(conversationId: number, box: BoxId, signal
 	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).delegate.get({ fetch: { signal } }), delegateRead, notFoundOutcome));
 }
 
+/** @approved A delegate catch-up uses the same queue route as digests, which answers with the delegate notice read. */
+export async function startDelegateCatchUp(conversationId: number, box: BoxId): Promise<DelegateRead | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].post(), delegateRead, notFoundOutcome));
+}
+
 /** @approved Retrying one passage's delegate run resolves with the notice read as it stands; the record lands later. */
 export async function retryBoxDelegate(conversationId: number, box: BoxId, passage: { variantId: number }): Promise<DelegateRead | null> {
 	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).digest.post(passage), delegateRead, notFoundOutcome));

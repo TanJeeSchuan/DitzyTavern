@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxDelegateSelection, type BoxDelegateSettings, type BoxDelegateSettingsCommand, type BoxId } from "../../shared/contract/box";
+import { DEFAULT_BOX_DELEGATE, boxDelegateSelection, type BoxDelegateSettings, type BoxDelegateSettingsCommand, type BoxId } from "../../shared/contract/box";
 import { resolveLibfxProvider } from "../authoring/provider";
 import { readProfileApiFormat } from "../connection-settings/persistence";
 import { InvalidSettingsError } from "../revisioned-settings";
@@ -10,12 +10,18 @@ import { putNamespacedLibraryValue, readNamespacedLibraryValue } from "./stored-
 // @approved
 //  A delegating Box's global delegate setting, kept in library_data under the
 // host's own namespace and keyed by Box id, beside the Decision Model
-// selections and as far from the Box's own `box:<id>` data. No profile means
-// the delegate is off.
+// selections and apart from the Box's own `box:<id>` data. A Box without
+// its own profile inherits the host default, whose key cannot be a Box id.
 const NAMESPACE = "box-delegate";
 
 export const readBoxDelegateSettings = (database: Database, id: BoxId): BoxDelegateSettings =>
 	readNamespacedLibraryValue(drizzle(database), NAMESPACE, id, boxDelegateSelection, { profileId: null, model: "" });
+
+/** @approved Execution uses the Box's own selection when present, otherwise the host default. Editing reads only the stored selection. */
+export const readEffectiveBoxDelegateSettings = (database: Database, id: BoxId): BoxDelegateSettings => {
+	const own = readBoxDelegateSettings(database, id);
+	return own.profileId === null ? readBoxDelegateSettings(database, DEFAULT_BOX_DELEGATE) : own;
+};
 
 export const applyBoxDelegateSettings = (database: Database, id: BoxId, { expectedRevision, profileId, model }: BoxDelegateSettingsCommand): BoxDelegateSettings =>
 	database.transaction(() => {
@@ -33,7 +39,7 @@ export const applyBoxDelegateSettings = (database: Database, id: BoxId, { expect
 // options for it, or broken with the reason, through the same resolution
 // Creator Mode's coding agent takes.
 export const resolveBoxDelegate = (database: Database, id: BoxId) => {
-	const { profileId, model } = readBoxDelegateSettings(database, id);
+	const { profileId, model } = readEffectiveBoxDelegateSettings(database, id);
 	if (profileId === null) return { kind: "off" } as const;
 	const mapped = resolveLibfxProvider(database, { profileId, model });
 	return mapped.outcome === "refused" ? { kind: "broken", reason: mapped.reason } as const : { kind: "ready", options: mapped.options } as const;

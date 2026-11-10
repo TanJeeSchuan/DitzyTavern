@@ -61,6 +61,7 @@ export function PrimaryPanelView({
 	conversation,
 	onConversationChange,
 	connectionSettings,
+	delegateTarget,
 	generationSettings,
 	onOpenInspector,
 	onOpenPanel,
@@ -84,6 +85,7 @@ export function PrimaryPanelView({
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 	connectionSettings: ConnectionSettingsController;
+	delegateTarget?: { box: BoxId; request: number };
 	generationSettings: GenerationPanelDraft;
 	onOpenInspector: (inspector: SplitInspector) => void;
 	onOpenPanel: (panel: PrimaryPanelName) => void;
@@ -171,7 +173,7 @@ export function PrimaryPanelView({
 					)}
 					{panel === "connections" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-							<ConnectionSettingsPanel controller={connectionSettings} activeProfileId={generationSettings.settings?.connectionProfileId ?? null} />
+							<ConnectionSettingsPanel key={delegateTarget?.request} delegateBox={delegateTarget?.box} controller={connectionSettings} activeProfileId={generationSettings.settings?.connectionProfileId ?? null} />
 						</div>
 					)}
 					{panel === "prompts" && (

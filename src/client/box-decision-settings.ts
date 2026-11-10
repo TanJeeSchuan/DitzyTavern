@@ -1,7 +1,7 @@
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
 import {
-	boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors, installedBoxes,
+	DEFAULT_BOX_DELEGATE, boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors, installedBoxes,
 	type BoxDecisionSettings, type BoxDecisionSettingsCommand, type BoxDelegateSettings, type BoxDelegateSettingsCommand, type BoxId, type BoxMetadata,
 } from "../shared/contract/box";
 
@@ -37,7 +37,9 @@ export const boxDecisionClients = kept(({ decision }) => decision && { decision 
 }));
 
 const delegateRoute = (box: BoxId) => api.api.boxes({ box })["delegate-settings"];
-export const boxDelegateClients = kept(({ delegate }) => delegate && { delegate }, (box) => ({
+const delegateClient = (box: BoxId) => ({
 	load: (): Promise<BoxDelegateSettings> => requestData(delegateRoute(box).get(), boxDelegateSettings),
 	save: (command: BoxDelegateSettingsCommand) => requestOutcome(delegateRoute(box).commands.post(command), boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors),
-}));
+});
+export const defaultDelegateClient = delegateClient(DEFAULT_BOX_DELEGATE);
+export const boxDelegateClients = kept(({ delegate }) => delegate && { delegate }, delegateClient);

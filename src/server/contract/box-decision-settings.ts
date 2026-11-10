@@ -5,7 +5,7 @@ import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decisi
 import { applyBoxDelegateSettings, readBoxDelegateSettings } from "../box/delegate-settings";
 import {
 	boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandBody, boxDecisionSettingsConflict, boxDecisionSettingsInvalid,
-	boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandBody, boxDelegateSettingsConflict, boxParams as params, isDelegateBox, isDigestBox,
+	DEFAULT_BOX_DELEGATE, boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandBody, boxDelegateSettingsConflict, boxParams as params, isDelegateBox, isDigestBox,
 } from "../../shared/contract/box";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { notFoundResponse } from "./responses";
@@ -21,10 +21,10 @@ export const createBoxDecisionSettingsRoutes = (database: Database) => new Elysi
 		try { return { outcome: "applied" as const, settings: applyBoxDecisionSettings(database, params.box, body) }; }
 		catch (error) { return presentDomainError(error, commandResponse); }
 	}, { params, body: boxDecisionSettingsCommandBody, response: commandResponse })
-	.get("/api/boxes/:box/delegate-settings", ({ params }) => isDelegateBox(params.box) ? readBoxDelegateSettings(database, params.box) : notFoundResponse(),
+	.get("/api/boxes/:box/delegate-settings", ({ params }) => (params.box === DEFAULT_BOX_DELEGATE || isDelegateBox(params.box)) ? readBoxDelegateSettings(database, params.box) : notFoundResponse(),
 		{ params, response: { 200: boxDelegateSettings, 404: notFoundOutcome } })
 	.post("/api/boxes/:box/delegate-settings/commands", ({ params, body }) => {
-		if (!isDelegateBox(params.box)) return notFoundResponse();
+		if (params.box !== DEFAULT_BOX_DELEGATE && !isDelegateBox(params.box)) return notFoundResponse();
 		try { return { outcome: "applied" as const, settings: applyBoxDelegateSettings(database, params.box, body) }; }
 		catch (error) { return presentDomainError(error, delegateResponse); }
 	}, { params, body: boxDelegateSettingsCommandBody, response: delegateResponse });
