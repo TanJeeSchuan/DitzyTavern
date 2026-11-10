@@ -1,3 +1,13 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { boxDescriptor } from "../../shared/contract/box";
+import { builtInBoxes, loadBoxes } from "./registry";
+import { writeAutomaticRecord } from "./records";
+import { sha256 } from "../hash";
+import { createConversationRoutes } from "../contract/conversation";
+import { captureModelFetch, completeGeneration, createChat, key, withProfile } from "../contract/prompt-preset-test-fixtures";
+import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
@@ -234,4 +244,68 @@ test("one operation shares its module across Moves and fold chunks, then the nex
 		expect(await guest.box.advance?.run(input)).toEqual({ items: [{ text: "204", priority: 1 }] });
 	});
 	expect(await guest.operation(() => guest.box.advance?.run(input))).toEqual({ items: [{ text: "1", priority: 1 }] });
+});
+
+const installedProbe = async () => {
+	const scratch = join(import.meta.dir, "../../../.scratch");
+	mkdirSync(scratch, { recursive: true });
+	const folder = mkdtempSync(join(scratch, "sandbox-operations-"));
+	mkdirSync(join(folder, "probe"));
+	await Bun.write(join(folder, "probe/descriptor.json"), JSON.stringify({
+		id: "probe", sdk: 2, label: "Probe", summary: "Tests operation boundaries.", role: "system", startsEnabled: false, instructions: "", alwaysRender: true,
+		setup: { schema: { type: "string" }, initial: "" }, record: { type: "object", properties: { n: { type: "integer" } }, required: ["n"], additionalProperties: false }, window: { icon: "box", size: { width: 12, height: 12 } },
+	}));
+	await Bun.write(join(folder, "probe/ui.js"), "");
+	await Bun.write(join(folder, "probe/logic.js"), `let calls = 0; const kept = []; export default {
+		setupError: (setup) => { if (setup === "leak") while (true) kept.push(new ArrayBuffer(1 << 20)); },
+		records: { initial: 0, fold: (state, record) => { calls++; return state + record.n; } },
+		dependencies: () => calls,
+		advance: { run: ({ dependencies }) => ({ items: [{ text: String(dependencies), priority: 1 }] }) },
+		read: () => ({ view: null }),
+	};`);
+	await loadBoxes([builtInBoxes, folder]);
+	return async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); };
+};
+
+test("a setup command that exhausts the heap does not poison later setup saves", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		insertBox(database, chat.id, "probe");
+		const app = createConversationRoutes(database);
+		const save = async (setup: string) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision, action: { type: "set-box-setup", box: "probe", setup } }), // @approved This test created the Chat.
+		}));
+		expect(await (await save("leak")).text()).toContain("The probe Box's setupError ran out of its 64 MiB heap.");
+		expect((await save("x".repeat(1024 * 1024))).status).toBe(200);
+		expect((await save("ok")).status).toBe(200);
+	} finally { database.close(); await restore(); }
+});
+
+test("sending an unchanged preview uses the same fold and dependency context as creating it", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		const instance = insertBox(database, chat.id, "probe");
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(chat.id)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'A record.', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		writeAutomaticRecord(drizzle(database), boxDescriptor("probe"), instance, variant.id, { n: 1 }, sha256("A record."));
+		withProfile(database);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const post = (path: string, body: { kind: "send"; content: string; expectedRevision?: number; previewId?: string; promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+		}));
+		const preview = await post("/preview", { kind: "send", content: "Continue." });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
+		const expectedRevision = readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision; // @approved This test created the Chat.
+		const sent = await post("", { kind: "send", content: "Continue.", expectedRevision, previewId, promptPlan });
+		const accepted = await sent.json();
+		expect(accepted).toMatchObject({ outcome: "accepted" });
+		const { generationId } = accepted;
+		await completeGeneration(app, chat.id, generationId);
+	} finally { database.close(); await restore(); }
 });

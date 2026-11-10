@@ -1,5 +1,6 @@
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { forkConversation } from "../conversation";
-import { loadBoxVersion } from "../box/registry";
+import { chatBoxes, loadBoxVersion, withBoxOperations } from "../box/registry";
 import { presentDomainError, type ResponseSchemas } from "./domain-error";
 import {
 	readConversationSummary,
@@ -569,12 +570,13 @@ export const createConversationRoutes = (
 					const action = body.action as ConversationAction;
 					// @approved
 					// An upgrade checks the Chat against a version that may not be loaded yet.
-					if (action.type === "upgrade-box") await loadBoxVersion(action.box, action.version).catch(() => undefined);
-					const conversation = executeConversationCommand(database, {
+					const candidate = action.type === "upgrade-box" ? await loadBoxVersion(action.box, action.version).catch(() => undefined) : undefined;
+					const boxes = [...chatBoxes(drizzle(database), params.id).values(), ...candidate === undefined ? [] : [candidate]];
+					const conversation = await withBoxOperations(boxes, () => executeConversationCommand(database, {
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
-						});
+						}));
 					return {
 						outcome: "applied" as const,
 						conversation: toConversationSummary(conversation),

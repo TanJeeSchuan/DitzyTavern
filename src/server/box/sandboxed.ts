@@ -414,32 +414,32 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			});
 			const cancel = () => reject(new Error(`The ${id} Box's digest was cancelled.`));
 			ctx.signal.addEventListener("abort", cancel);
-			const decide = fresh.capability("decide", (json) => {
-				if (asked) throw new Error("decide may be called once per digest.");
-				asked = true;
-				const input: unknown = JSON.parse(json);
-				assertChecked(sandboxedDecideInput, input, `The ${id} Box's decide input`);
-				const pending = fresh.vm.newPromise();
-				const handle = pending.handle.dup();
-				deferred = pending;
-				wake = new Promise((resolve) => { woken = resolve; });
-				void (async () => {
-					try {
-						// @approved
-						// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
-						const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
-						const json = JSON.stringify([...answers]);
-						if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
-						answer((settling) => {
-							const text = fresh.vm.newString(json);
-							settling.resolve(text);
-							text.dispose();
-						});
-					} catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
-				})();
-				return handle;
-			});
 			try {
+				const decide = fresh.capability("decide", (json) => {
+					if (asked) throw new Error("decide may be called once per digest.");
+					asked = true;
+					const input: unknown = JSON.parse(json);
+					assertChecked(sandboxedDecideInput, input, `The ${id} Box's decide input`);
+					const pending = fresh.vm.newPromise();
+					const handle = pending.handle.dup();
+					deferred = pending;
+					wake = new Promise((resolve) => { woken = resolve; });
+					void (async () => {
+						try {
+							// @approved
+							// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
+							const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
+							const json = JSON.stringify([...answers]);
+							if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
+							answer((settling) => {
+								const text = fresh.vm.newString(json);
+								settling.resolve(text);
+								text.dispose();
+							});
+						} catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+					})();
+					return handle;
+				});
 				const run = fresh.call("records.digest.run", JSON.stringify(window), decide);
 				const settledRun = await fresh.settledAsync("records.digest.run", run, () => {
 					if (settlementError !== undefined) throw settlementError;

@@ -1,3 +1,5 @@
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { chatBoxes, withBoxOperations } from "../box/registry";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import {
 	readConversationRevision,
@@ -46,9 +48,10 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	if (input.expectedRevision !== undefined && revision !== input.expectedRevision) {
 		throw new StaleRevisionError("generation", input.expectedRevision, revision);
 	}
-	const capture = input.preview === undefined
+	const { preview } = input;
+	const capture = preview === undefined
 		? await captureGeneration(database, input.target, input)
-		: captureGenerationPreview({ database, ...input }, input.preview, input.target);
+		: await withBoxOperations(chatBoxes(drizzle(database), input.conversationId).values(), () => captureGenerationPreview({ database, ...input }, preview, input.target));
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();

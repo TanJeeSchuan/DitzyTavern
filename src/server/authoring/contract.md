@@ -134,7 +134,7 @@ A Box with a window and no `decision` declares `read`. It returns `{ view, statu
 | `logic.js` built | 1 MiB |
 | `ui.js` built | 4 MiB |
 
-Each Generation capture, window read, digest, delegate run and status read uses a fresh context, shared by its hooks and fold chunks. Scenario steps reset at the same boundaries. No module global survives into the next operation. The host folds at most 100 records per entry, also bounded by the JSON cap including state and setup, and carries the returned state between chunks. A single record that cannot fit fails. A failed operation discards its runtime, so the next operation can run after heap exhaustion or a Wasm trap. A guest throw fails the hook with `… threw <name>: <message>`.
+Each Generation capture (including preview validation), window read, digest, delegate run, status read and Chat command uses a fresh context, shared by its hooks and fold chunks. Scenario steps reset at the same boundaries. No module global survives into the next operation. The host folds at most 100 records per entry, also bounded by the JSON cap including state and setup, and carries the returned state between chunks. A single record that cannot fit fails. A failed operation discards its runtime, so the next operation can run after heap exhaustion or a Wasm trap. A guest throw fails the hook with `… threw <name>: <message>`.
 
 ## ui.js
 
