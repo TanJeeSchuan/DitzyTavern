@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxDescriptor, boxRecordSchema } from "../../shared/contract/box";
+import { DEFAULT_BOX_DELEGATE, boxDescriptor, boxRecordSchema } from "../../shared/contract/box";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { key, profile } from "../contract/prompt-preset-test-fixtures";
@@ -12,7 +12,7 @@ import { DELEGATE_PROMPT_BYTES, DELEGATE_STEPS, runDelegateAgent } from "./deleg
 import { applyBoxDelegateSettings, readBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
 import { prepareBoxDigests, queueBoxDigest, readBoxCatchUp, readDelegate, startBoxCatchUp, startBoxDigests } from "./digest";
 import { createBoxWindowRoutes } from "../contract/box-window";
-import { readRecordSlots } from "./records";
+import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "./records";
 import { sha256 } from "../hash";
 import { builtInBoxes, loadBoxes } from "./registry";
 
@@ -139,6 +139,45 @@ test("a tagged passage runs its delegate once and lands its record; an untagged 
 	expect(bodies).toHaveLength(2);
 });
 
+test("only a host default queues a tagged passage and lands its delegate record", async () => {
+	const { chat, slot } = sceneChat();
+	const { profileId, model } = readBoxDelegateSettings(database, "scene");
+	applyBoxDelegateSettings(database, DEFAULT_BOX_DELEGATE, { type: "apply", expectedRevision: 0, profileId, model });
+	applyBoxDelegateSettings(database, "scene", { type: "apply", expectedRevision: readBoxDelegateSettings(database, "scene").revision, profileId: null, model: "" });
+	const passage = addPassage(chat.id, 1, "<scene>place the lantern</scene>");
+	replies.push(...applies({ kind: "place", prop: "lantern" }));
+	touch(chat.id, passage);
+	await settled(() => slot(passage)?.automatic !== undefined);
+	expect(slot(passage)?.automatic).toEqual({ props: ["lantern"] });
+	expect(bodies).toHaveLength(2);
+});
+
+test("the notice counts only tagged passages without a current record or failure, and exposes catch-up progress", async () => {
+	const { chat, instance } = sceneChat();
+	const missing = addPassage(chat.id, 1, "<scene>place a lantern</scene>");
+	const fresh = addPassage(chat.id, 2, "<scene>place a table</scene>");
+	const failed = addPassage(chat.id, 3, "<scene>place a chair</scene>");
+	addPassage(chat.id, 4, "The hall is quiet.");
+	addPassage(chat.id, 5, "<scene> </scene> <scene><scene>nested</scene></scene>");
+	const stale = addPassage(chat.id, 6, "<scene>place a lamp</scene>");
+	const descriptor = boxDescriptor("scene");
+	writeAutomaticRecord(drizzle(database), descriptor, instance, fresh, { props: ["table"] }, sha256("<scene>place a table</scene>"));
+	writeDigestError(drizzle(database), descriptor, instance, failed, sha256("<scene>place a chair</scene>"), "Cannot place chair.");
+	writeAutomaticRecord(drizzle(database), descriptor, instance, stale, { props: ["old lamp"] }, sha256("<scene>place an old lamp</scene>"));
+	expect(readDelegate(database, chat.id, "scene")).toMatchObject({ pending: 2, landed: 1, catchUp: null, failed: { variantId: failed } });
+	const held = Promise.withResolvers<void>();
+	replies.push({ held: held.promise, then: { apply: { operations: [{ kind: "place", prop: "lantern" }] } } }, { text: "Done." }, ...applies({ kind: "place", prop: "chair" }), ...applies({ kind: "place", prop: "lamp" }));
+	try {
+		startBoxCatchUp(database, chat.id, "scene");
+		expect(readDelegate(database, chat.id, "scene")?.catchUp).toEqual({ total: 3, remaining: 3, failed: 0 });
+	} finally {
+		held.resolve();
+	}
+	await settled(() => readDelegate(database, chat.id, "scene")?.landed === 4);
+	expect(readDelegate(database, chat.id, "scene")).toMatchObject({ pending: 0, catchUp: null, failed: null });
+	expect(readRecordSlots(drizzle(database), "scene", boxRecordSchema(descriptor), instance, [missing]).get(missing)?.automatic).toEqual({ props: ["lantern"] });
+});
+
 test("two tagged passages run in order, the second seeing the first's record", async () => {
 	const { chat, slot } = sceneChat();
 	const first = addPassage(chat.id, 1, "<scene>light the lantern</scene>");
@@ -246,7 +285,7 @@ test("without a delegate setting nothing runs; a broken one fails each run with 
 	touch(chat.id, passage);
 	await settled(() => slot(passage)?.error !== undefined);
 	const reason = "Stage uses HTTP; an agent sends HTTP only to localhost, so use HTTPS.";
-	expect(readDelegate(database, chat.id, "scene")).toEqual({ setting: { kind: "broken", reason }, landed: 0, failed: { messageId: expect.any(Number), variantId: passage, number: 1, error: reason } });
+	expect(readDelegate(database, chat.id, "scene")).toEqual({ setting: { kind: "broken", reason }, landed: 0, pending: 0, catchUp: null, failed: { messageId: expect.any(Number), variantId: passage, number: 1, error: reason } });
 
 	applyBoxDelegateSettings(database, "scene", { type: "apply", expectedRevision: readBoxDelegateSettings(database, "scene").revision, profileId: null, model: "" });
 	const later = addPassage(chat.id, 2, "<scene>set the table</scene>");
@@ -271,7 +310,7 @@ test("catch-up queues only tagged passages without a record, and the retry route
 	const retried = await createBoxWindowRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/scene/digest`, {
 		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variantId: first }),
 	}));
-	expect(await retried.json()).toEqual({ setting: { kind: "ready" }, landed: 2, failed: null });
+	expect(await retried.json()).toEqual({ setting: { kind: "ready" }, landed: 2, pending: 0, catchUp: null, failed: null });
 	await Bun.sleep(30);
 	expect(bodies).toHaveLength(4);
 });

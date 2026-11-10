@@ -14,7 +14,7 @@ import { clearAutomaticRecord, effectiveRecord, readBoxFold, readRecordSlots, re
 import { otherBoxTags } from "../../shared/contract/box";
 import { delegateRequest } from "../../shared/delegate-request";
 import { runDelegateAgent } from "./delegate";
-import { readBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
+import { readEffectiveBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
 import { withBoxOperations, boxAt, chatBox, chatBoxes, type LoadedBox } from "./registry";
 import { boxServices } from "./services";
 import { isHostChatKey, readBoxLifecycles, readBoxSetups } from "./setup";
@@ -302,7 +302,7 @@ const jobTarget = (database: Database, conversationId: number, box: BoxId): { re
 	const loaded = lifecycle?.state === "enabled" ? chatBox(db, conversationId, box) : undefined;
 	if (lifecycle === undefined || loaded === undefined) return undefined;
 	if (loaded.descriptor.decision !== undefined) return resolveBoxDecision(database, box).kind === "ready" ? { kind: "digest", instance: lifecycle.instance, loaded } : undefined;
-	if (loaded.descriptor.delegate !== undefined) return readBoxDelegateSettings(database, box).profileId !== null ? { kind: "delegate", instance: lifecycle.instance, loaded } : undefined;
+	if (loaded.descriptor.delegate !== undefined) return readEffectiveBoxDelegateSettings(database, box).profileId !== null ? { kind: "delegate", instance: lifecycle.instance, loaded } : undefined;
 	return undefined;
 };
 type JobTarget = NonNullable<ReturnType<typeof jobTarget>>;
@@ -500,8 +500,10 @@ export const readDelegate = (database: Database, conversationId: number, box: Bo
 	readBoxWindow(database, conversationId, box, ({ history, slots }, loaded) => {
 		if (loaded.descriptor.delegate === undefined) return undefined;
 		const setting = resolveBoxDelegate(database, box);
-		const statuses = history.messages.flatMap(({ id: messageId, variant }, index) => variant === null ? [] : [{ messageId, variantId: variant.id, number: index + 1, status: slotStatus(slots.get(variant.id), variant.content) }]);
-		const failed = statuses.flatMap(({ status, ...passage }) => status.kind === "failed" ? [{ ...passage, error: status.error }] : []);
+		const statuses = history.messages.flatMap(({ id: messageId, variant }, index) => variant === null ? [] : [{ messageId, variantId: variant.id, number: index + 1, content: variant.content, status: slotStatus(slots.get(variant.id), variant.content) }]);
+		const failed = statuses.flatMap(({ status, content: _content, ...passage }) => status.kind === "failed" ? [{ ...passage, error: status.error }] : []);
 		const landed = statuses.filter(({ status }) => status.kind === "fresh").length;
-		return { setting: setting.kind === "ready" ? { kind: "ready" } : setting, landed, failed: failed[0] ?? null };
+		const { tag } = loaded.descriptor.delegate;
+		const pending = statuses.filter(({ content, status }) => (status.kind === "missing" || status.kind === "stale") && delegateRequest(content, tag, otherBoxTags(tag)) !== undefined).length;
+		return { setting: setting.kind === "ready" ? { kind: "ready" } : setting, landed, pending, catchUp: readBoxCatchUp(database, conversationId, box), failed: failed[0] ?? null };
 	});

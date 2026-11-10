@@ -129,15 +129,18 @@ export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsC
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDecisionSettingsCommand = Static<typeof boxDecisionSettingsCommandBody>;
 
+/** @approved Reserved host key: Box ids contain only lowercase words joined by hyphens. */
+export const DEFAULT_BOX_DELEGATE = "$default";
+
 // @approved
 //  A delegating Box's delegate setting: the chat Connection Profile and model
-// its agent runs on. No profile means the delegate is off.
+// its agent runs on. No profile inherits the host default; neither means off.
 export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
 export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
 export const boxDelegateSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings });
 export const boxDelegateSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDelegateSettings });
-/** @approved Only a delegating Box has a delegate setting, so its routes find no other id. */
+/** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
 export const boxDelegateSettingsCommandErrors = Type.Union([boxDelegateSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
 export const boxDelegateSettingsCommandBody = Type.Composite([boxDelegateSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDelegateSettingsCommand = Static<typeof boxDelegateSettingsCommandBody>;

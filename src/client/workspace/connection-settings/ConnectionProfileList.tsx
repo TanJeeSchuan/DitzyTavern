@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { SemanticTriggerSettings } from "../../semantic-trigger-settings";
-import type { BoxDecisionSettings, BoxDelegateSettings, BoxId, BoxMetadata } from "../../../shared/contract/box";
+import { DEFAULT_BOX_DELEGATE, type BoxDecisionSettings, type BoxDelegateSettings, type BoxId, type BoxMetadata } from "../../../shared/contract/box";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 /** @approved The Decision Model settings the Connections list previews. */
@@ -15,7 +15,7 @@ const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
 const listOf = (items: readonly string[], conjunction: "and" | "or") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;
 
-export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, onOpenBoxDelegate }: {
+export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, defaultDelegate, onOpenBoxDelegate }: {
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
@@ -24,6 +24,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 	boxDecisions: readonly { box: BoxId; label: string; decision: NonNullable<BoxMetadata["decision"]>; editor: SettingsPreview<BoxDecisionSettings> }[];
 	onOpenBoxDecision: (box: BoxId) => void;
 	boxDelegates: readonly { box: BoxId; label: string; delegate: NonNullable<BoxMetadata["delegate"]>; editor: SettingsPreview<BoxDelegateSettings> }[];
+	defaultDelegate: SettingsPreview<BoxDelegateSettings>;
 	onOpenBoxDelegate: (box: BoxId) => void;
 }) {
 	const boxes = boxDecisions.map(({ label }) => label);
@@ -91,11 +92,17 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				<DecisionSummary preview={editor} name={label} onOpen={() => onOpenBoxDecision(box)} model={(settings) => settings.decisionModel}
 					describe={(settings) => settings.decisionProfileId === null ? decision.off : "Decision Model"} />
 			</section>)}
+			<section aria-labelledby="default-delegate-title">
+				<h3 id="default-delegate-title">Default delegate</h3>
+				<p>Used by Boxes without their own delegate model.</p>
+				<DecisionSummary preview={defaultDelegate} name="Default delegate" onOpen={() => onOpenBoxDelegate(DEFAULT_BOX_DELEGATE)} model={(settings) => settings.model}
+					describe={(settings) => settings.profileId === null ? "Delegates without their own model are off" : "Default delegate model"} />
+			</section>
 			{boxDelegates.map(({ box, label, delegate, editor }) => <section key={`delegate:${box}`} aria-labelledby={`${box}-delegate-title`}>
 				<h3 id={`${box}-delegate-title`}>{label} delegate</h3>
 				<p>{delegate.summary}</p>
-				<DecisionSummary preview={editor} name={`${label} delegate`} onOpen={() => onOpenBoxDelegate(box)} model={(settings) => settings.model}
-					describe={(settings) => settings.profileId === null ? delegate.off : "Delegate model"} />
+				<DecisionSummary preview={editor} name={`${label} delegate`} onOpen={() => onOpenBoxDelegate(box)} model={(settings) => settings.profileId === null ? defaultDelegate.settings?.model ?? "" : settings.model}
+					describe={(settings) => settings.profileId !== null ? "Delegate model" : defaultDelegate.settings?.profileId != null ? "Uses the default delegate model" : "Off: no default delegate model"} />
 			</section>)}
 
 			<Dialog open={pending !== undefined} onOpenChange={(open) => { if (!open) controller.setPendingDeletionProfileId(null); }}>

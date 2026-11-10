@@ -1,4 +1,4 @@
-import { boxIdOf } from "../../shared/contract/box";
+import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
 import { X } from "lucide-react";
 import { useEffect, useReducer, useRef, useState } from "react";
@@ -82,6 +82,7 @@ export function ActiveWritingWorkspace({
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
+	const [delegateTarget, setDelegateTarget] = useState<{ box: BoxId; request: number }>();
 	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
@@ -142,8 +143,15 @@ export function ActiveWritingWorkspace({
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
 	const togglePanel = (panel: PrimaryPanelName) => {
 		if (assemblyActive && panel !== "settings") return;
+		setDelegateTarget(undefined);
 		dispatchPanel({ type: "primary-toggled", panel });
 	};
+
+	const openConnections = (box?: BoxId) => saveNavigation.requestNavigation(() => {
+		if (box !== undefined) connectionSettings.closeEditor();
+		setDelegateTarget((previous) => box === undefined ? undefined : { box, request: (previous?.request ?? 0) + 1 });
+		dispatchPanel({ type: "primary-opened", panel: "connections" });
+	});
 
 	const openChat = (chatId: string, messageId: number | null = null) => {
 		dispatchStory({ type: "preview-cancelled" });
@@ -268,6 +276,7 @@ export function ActiveWritingWorkspace({
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
 				connectionSettings={connectionSettings}
+				delegateTarget={delegateTarget}
 				generationSettings={generationSettings}
 				onOpenInspector={(inspector: SplitInspector) => {
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
@@ -299,6 +308,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
+				onOpenConnections={openConnections}
 				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
@@ -353,7 +363,7 @@ export function ActiveWritingWorkspace({
 							onClose={() => dispatchPanel({ type: "details-closed" })}
 							onNavigateSource={session.navigateToSourceMessage}
 							onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
-							onOpenConnections={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: "connections" }))}
+							onOpenConnections={() => openConnections()}
 						/>
 					</BoxBoundary>
 					<BoxOffNotice conversation={session.conversation} box={inspectorBox} disabled={story.preview !== null} onConversationChange={session.setConversation} className="m-4 w-auto" />

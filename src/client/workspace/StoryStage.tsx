@@ -54,6 +54,7 @@ export function StoryStage({
 	onEnterPreview,
 	onOpenNavigation,
 	onOpenCast,
+	onOpenConnections,
 	onOpenPanel,
 	onOpenInfo,
 	onOpenVariables,
@@ -76,6 +77,7 @@ export function StoryStage({
 	onEnterPreview: () => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
+	onOpenConnections: (box: BoxId) => void;
 	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
@@ -286,6 +288,7 @@ export function StoryStage({
 					disabled={previewMode || assemblyActive}
 					staging={{ moves: generation.moves, onChange: generation.setMoves }}
 					onConversationChange={session.setConversation}
+					onOpenConnections={onOpenConnections}
 				/>
 				<Composer
 					draft={generation.draft}

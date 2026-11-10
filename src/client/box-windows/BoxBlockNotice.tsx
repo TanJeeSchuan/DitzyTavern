@@ -7,7 +7,7 @@ import { boxMetadata, boxReference, type BoxId, type BoxState } from "../../shar
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
-import { retryBoxDelegate } from "../box-digest";
+import { retryBoxDelegate, startDelegateCatchUp } from "../box-digest";
 import { chatBoxDescriptor } from "./registry";
 import { delegateReadKey, useDelegateRead } from "./useBoxRead";
 
@@ -97,11 +97,11 @@ export function BoxOffNotice({ conversation, box, disabled, onConversationChange
 
 // @approved
 //  A delegating Box's window says when its delegate failed on a passage, with
-// the reason, and offers Retry, which queues that passage again; with no
-// failure yet, a delegate setting that does not resolve says why. A result
+// the reason, and offers Retry. It also exposes an off delegate, missed
+// requests and catch-up progress. A result
 // or failure landing in the background is a database change, which
 // revalidates the read, as the passage timeline's does.
-export function DelegateNotice({ conversation, box, disabled, className }: { conversation: ConversationSummary; box: BoxId; disabled: boolean; className?: string }) {
+export function DelegateNotice({ conversation, box, disabled, onOpenConnections, className }: { conversation: ConversationSummary; box: BoxId; disabled: boolean; onOpenConnections: () => void; className?: string }) {
 	const client = useQueryClient();
 	const delegates = chatBoxDescriptor(conversation, box)?.delegate !== undefined;
 	const read = useDelegateRead(conversation, box);
@@ -109,14 +109,31 @@ export function DelegateNotice({ conversation, box, disabled, className }: { con
 		mutationFn: (variantId: number) => retryBoxDelegate(conversation.id, box, { variantId }),
 		onSuccess: (current) => client.setQueryData(delegateReadKey(conversation.id, box), current),
 	});
+	const catchUp = useMutation({
+		mutationFn: () => startDelegateCatchUp(conversation.id, box),
+		onSuccess: (current) => client.setQueryData(delegateReadKey(conversation.id, box), current),
+	});
 	const notice = read.data ?? null;
 	if (!delegates || notice === null) return null;
-	const { failed, setting } = notice;
-	if (failed === null) return setting.kind === "broken" ? <Alert variant="destructive" className={className}><AlertDescription>The delegate cannot run: {setting.reason}</AlertDescription></Alert> : null;
-	return <Alert variant="destructive" className={cn(oneLine, className)}>
-		<AlertDescription>The delegate failed on Message {failed.number}: {failed.error}</AlertDescription>
-		<Button type="button" size="xs" variant="outline" disabled={disabled || retry.isPending || conversation.boxes[box] !== "enabled" || setting.kind === "off"} onClick={() => retry.mutate(failed.variantId)}>Retry</Button>
-		{setting.kind === "off" && <AlertDescription className="basis-full">Choose a delegate model in Connection Settings to retry.</AlertDescription>}
-		{retry.isError && <AlertDescription className="basis-full">{retry.error.message}</AlertDescription>}
-	</Alert>;
+	const { failed, setting, pending, catchUp: progress } = notice;
+	const enabled = conversation.boxes[box] === "enabled";
+	return <>
+		{enabled && setting.kind === "off" && <Alert className={cn(oneLine, className)}>
+			<AlertDescription>{boxMetadata(box).label}'s delegate is off.</AlertDescription>
+			<Button type="button" size="xs" variant="outline" disabled={disabled} onClick={onOpenConnections}>Choose delegate model</Button>
+		</Alert>}
+		{failed === null && setting.kind === "broken" && <Alert variant="destructive" className={className}><AlertDescription>The delegate cannot run: {setting.reason}</AlertDescription></Alert>}
+		{progress !== null ? <Alert className={className}>
+			<AlertDescription role="status">Running requests: {progress.total - progress.remaining} of {progress.total} complete{progress.failed > 0 ? `, ${progress.failed} failed` : ""}.</AlertDescription>
+		</Alert> : enabled && setting.kind === "ready" && pending > 0 && <Alert className={cn(oneLine, className)}>
+			<AlertDescription>{pending} {pending === 1 ? "request has" : "requests have"} not run.</AlertDescription>
+			<Button type="button" size="xs" variant="outline" disabled={disabled || catchUp.isPending} onClick={() => catchUp.mutate()}>Run missed requests</Button>
+			{catchUp.isError && <AlertDescription className="basis-full text-destructive">{catchUp.error.message}</AlertDescription>}
+		</Alert>}
+		{failed !== null && <Alert variant="destructive" className={cn(oneLine, className)}>
+			<AlertDescription>The delegate failed on Message {failed.number}: {failed.error}</AlertDescription>
+			<Button type="button" size="xs" variant="outline" disabled={disabled || retry.isPending || !enabled || setting.kind === "off"} onClick={() => retry.mutate(failed.variantId)}>Retry</Button>
+			{retry.isError && <AlertDescription className="basis-full">{retry.error.message}</AlertDescription>}
+		</Alert>}
+	</>;
 }

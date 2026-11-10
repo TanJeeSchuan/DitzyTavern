@@ -3,9 +3,9 @@ import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfile
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
 import { DecisionSettingsEditor, useSettingsDraft, type SettingsDraft } from "./DecisionSettingsEditor";
-import { boxDecisionClients, boxDelegateClients } from "../box-decision-settings";
+import { boxDecisionClients, boxDelegateClients, defaultDelegateClient } from "../box-decision-settings";
 import { DelegateSettingsEditor } from "./DelegateSettingsEditor";
-import { installedBoxes, type BoxDecisionSettings, type BoxDelegateSettings, type BoxId } from "../../shared/contract/box";
+import { DEFAULT_BOX_DELEGATE, installedBoxes, type BoxDecisionSettings, type BoxDelegateSettings, type BoxId } from "../../shared/contract/box";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -15,7 +15,7 @@ export function ConnectionSettingsPanelHost() {
 	return <ConnectionSettingsPanel controller={useConnectionSettingsController()} activeProfileId={null} />;
 }
 
-type PanelProps = { controller: ConnectionSettingsController; activeProfileId: number | null };
+type PanelProps = { controller: ConnectionSettingsController; activeProfileId: number | null; delegateBox?: BoxId };
 
 type DecisionClient = ReturnType<typeof boxDecisionClients>[number];
 type DelegateClient = ReturnType<typeof boxDelegateClients>[number];
@@ -60,16 +60,18 @@ export function BoxSettingsDrafts({ render }: { readonly render: (drafts: Drafts
 	return <Drafted owners={owners} drafts={{ decisions: [], delegates: [] }} render={({ decisions, delegates }) => render({ decisions: listed(decisions), delegates: listed(delegates) })} />;
 }
 
-export function ConnectionSettingsPanel({ controller, activeProfileId }: PanelProps) {
+export function ConnectionSettingsPanel({ controller, activeProfileId, delegateBox }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const [open, setOpen] = useState<Open>(null);
+	const [open, setOpen] = useState<Open>(delegateBox === undefined ? null : `delegate:${delegateBox}`);
+	const defaultDelegate = useSettingsDraft("Default delegate settings", defaultDelegateClient.load, defaultDelegateClient.save);
 	return <BoxSettingsDrafts render={(drafts) =>
-		<Settings controller={controller} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} open={open} setOpen={setOpen} drafts={drafts} />} />;
+		<Settings controller={controller} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} defaultDelegate={defaultDelegate} open={open} setOpen={setOpen} drafts={drafts} />} />;
 }
 
 type Open = "semantic-triggers" | BoxId | `delegate:${BoxId}` | null;
-function Settings({ controller, activeProfileId, semanticTriggers, open, setOpen, drafts: { decisions: boxDecisions, delegates: boxDelegates } }: PanelProps & {
+function Settings({ controller, activeProfileId, semanticTriggers, defaultDelegate, open, setOpen, drafts: { decisions: boxDecisions, delegates: boxDelegates } }: PanelProps & {
 	semanticTriggers: ReturnType<typeof useSemanticTriggerSettings>;
+	defaultDelegate: SettingsDraft<BoxDelegateSettings>;
 	open: Open;
 	setOpen: (open: Open) => void;
 	drafts: Drafts;
@@ -78,7 +80,10 @@ function Settings({ controller, activeProfileId, semanticTriggers, open, setOpen
 	const openDelegate = boxDelegates.find(({ box }) => `delegate:${box}` === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
-	if (openDelegate !== undefined) return <DelegateSettingsEditor editor={openDelegate.editor} box={openDelegate.box} label={openDelegate.label} delegate={openDelegate.delegate} onBack={() => setOpen(null)} />;
+	const inherited = defaultDelegate.settings?.profileId != null;
+	const defaultDescription = inherited ? `Uses the default delegate model (${defaultDelegate.settings?.model}).` : "Off: no default delegate model is selected.";
+	if (open === `delegate:${DEFAULT_BOX_DELEGATE}`) return <DelegateSettingsEditor editor={defaultDelegate} box={DEFAULT_BOX_DELEGATE} label="Default" description="Used by every delegating Box without its own model." off="Delegates without their own model are off." inherited={false} onBack={() => setOpen(null)} />;
+	if (openDelegate !== undefined) return <DelegateSettingsEditor editor={openDelegate.editor} box={openDelegate.box} label={openDelegate.label} description={openDelegate.delegate.description} off={defaultDescription} inherited onBack={() => setOpen(null)} />;
 	if (openBox !== undefined) {
 		const { label, decision } = openBox;
 		return <DecisionSettingsEditor
@@ -106,6 +111,7 @@ function Settings({ controller, activeProfileId, semanticTriggers, open, setOpen
 						boxDecisions={boxDecisions}
 						onOpenBoxDecision={setOpen}
 						boxDelegates={boxDelegates}
+						defaultDelegate={defaultDelegate}
 						onOpenBoxDelegate={(box) => setOpen(`delegate:${box}`)}
 					/>
 				)}
