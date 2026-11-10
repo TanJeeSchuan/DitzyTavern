@@ -597,6 +597,7 @@
 
 .create-box-log {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 0.15rem;
 	margin: 0;
 	padding: 0;
@@ -642,6 +643,7 @@
 }
 
 .create-box-reasoning summary {
+	display: block;
 	overflow: hidden;
 	color: var(--text-faint);
 	font-style: italic;

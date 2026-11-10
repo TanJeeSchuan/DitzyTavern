@@ -1,12 +1,13 @@
+import type { Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { authoredDescriptor } from "../../shared/contract/authoring";
+import { authoredDescriptor, authoredFileName, authoringLogEntry, type ScenarioInput } from "../../shared/contract/authoring";
 import { replaceFile } from "../box/sandboxed-folder";
 
 /** @approved The files a candidate's write tools set, each with the most bytes one write may hold. Packages, the lock and bundles are only written by the host's build. */
-export const AUTHORED_FILES = { "descriptor.json": 64 * 1024, "logic.js": 512 * 1024, "ui.js": 512 * 1024, "ui.css": 64 * 1024 } as const;
+export const AUTHORED_FILES = { "descriptor.json": 64 * 1024, "logic.js": 512 * 1024, "ui.js": 512 * 1024, "ui.css": 64 * 1024 } as const satisfies Record<Static<typeof authoredFileName>, number>;
 export type AuthoredFile = keyof typeof AUTHORED_FILES;
 
 /** @approved Where candidates live, outside the plugin folder, so no candidate is ever discovered as a plugin. */
@@ -67,11 +68,13 @@ export const createCandidate = async (root: string, saved?: { readonly session: 
 	});
 	return { session, get id() { return id; }, get folder() { return folder; }, write, files, check: exclusive, renew };
 };
-const newId = () => `authored-${crypto.randomUUID().slice(0, 8)}`;
+export const newId = () => `authored-${crypto.randomUUID().slice(0, 8)}`;
+/** @approved Every id a candidate takes, and so every versioned Box's id, since only Install makes one. */
+export const AUTHORED_ID = /^authored-[0-9a-f]{8}$/;
 export type Candidate = Awaited<ReturnType<typeof createCandidate>>;
 
 /** @approved A descriptor's JSON with the candidate's id in place of any the agent wrote. */
-const withId = (content: string, id: string) => {
+export const withId = (content: string, id: string) => {
 	let parsed: unknown;
 	try { parsed = JSON.parse(content); } catch (error) { throw new Error(`descriptor.json is not JSON: ${error instanceof Error ? error.message : String(error)}`); }
 	if (!Value.Check(authoredDescriptor, parsed)) throw new Error("descriptor.json must be one JSON object.");
@@ -80,6 +83,13 @@ const withId = (content: string, id: string) => {
 
 /** @approved The file whose presence makes a session folder a saved session. */
 export const SESSION_META = "meta.json";
+export const SESSION_LOG = "log.ndjson";
+/** @approved Every scenario a session's log saved whole, oldest first. */
+export const loggedScenarios = (log: string): ScenarioInput[] => log.split("\n").flatMap((line) => {
+	let entry: unknown;
+	try { entry = JSON.parse(line); } catch { return []; }
+	return Value.Check(authoringLogEntry, entry) && entry.type === "scenario-input" ? [entry.input] : [];
+});
 /** @approved Removes every session folder a stopped server left without its meta.json, a session that never finished starting; saved sessions stay. */
 export const sweepCandidates = async (root: string) => {
 	const folders = await readdir(root).catch(() => []);

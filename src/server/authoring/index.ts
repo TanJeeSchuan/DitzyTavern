@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { Value } from "@sinclair/typebox/value";
 import { Elysia } from "elysia";
 import { createFxAgent, memory, type FxAgent, type FxSession } from "libfx/node";
-import { authoredLabel, authoringFiles, authoringInstall, authoringLogEntry, authoringMeta, authoringPromptBody, authoringSessions, CONTINUE_STEPS } from "../../shared/contract/authoring";
+import { authoredLabel, authoringFiles, authoringInstall, authoringMeta, authoringPromptBody, authoringSessions, CONTINUE_STEPS } from "../../shared/contract/authoring";
 import { authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
 import type { AuthoringEvent, AuthoringLogEntry, AuthoringMeta, AuthoringSteps, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { boxFolders, serverBoxes } from "../box/registry";
+import { pluginFolder, serverBoxes } from "../box/registry";
 import { replaceFile } from "../box/sandboxed-folder";
 import { notFoundResponse } from "../contract/responses";
-import { createCandidate, defaultAuthoringFolder, SESSION_META, sweepCandidates, type Candidate } from "./candidate";
+import { createCandidate, defaultAuthoringFolder, loggedScenarios, SESSION_LOG, SESSION_META, sweepCandidates, type Candidate } from "./candidate";
 import { reasoningEntry, shown, toolInput } from "./activity";
 import { installCandidate } from "./install";
 import { libfxProvider } from "./provider";
@@ -20,11 +20,12 @@ import { authoringTools, checkScenario } from "./tools";
 
 /** @approved Where candidates are made, and the plugin folder Install publishes into. */
 export type AuthoringFolders = { readonly root: string; readonly plugins: string };
-export const defaultAuthoringFolders = (): AuthoringFolders => ({ root: defaultAuthoringFolder(), plugins: boxFolders[1]! }); // @approved boxFolders lists the built-in folder, then the plugin folder.
+export const defaultAuthoringFolders = (): AuthoringFolders => ({ root: defaultAuthoringFolder(), plugins: pluginFolder });
 
 const instructions = (id: string) => [
 	"You write sandboxed Boxes for DitzyTavern, an app for writing stories with a model, by calling your tools. You have no other tools, files or network.",
 	`Your Box's id is ${id}; the host sets it in descriptor.json. Read the contract with read_contract before you write anything.`,
+	"Your Box may already have files you did not write in this conversation, such as one a coding agent submitted: read each with read_file before changing it.",
 	"Write descriptor.json, logic.js and, unless the Box's window is the passage timeline, ui.js, then run a scenario with run_scenario after every change and fix every diagnostic.",
 	"When something about the mechanic is unclear, ask the writer in your reply. When a scenario passes, say what the Box does and that the writer can install it. Installing is the writer's action, never yours.",
 ];
@@ -53,7 +54,6 @@ type Session = {
 	readonly budget: Budget; readonly scenarios: Map<string, ScenarioResult>; meta: AuthoringMeta; saving: Promise<void>;
 };
 const CHECKPOINT = "checkpoint.bin";
-const LOG = "log.ndjson";
 
 /** @approved Settles with `promise`, or rejects once `signal` aborts first, so a cancelled turn never waits on a pause. */
 const unlessAborted = (promise: Promise<void>, signal: AbortSignal | null | undefined) => new Promise<void>((resolve, reject) => {
@@ -90,7 +90,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	const save = (session: Session, write: () => Promise<void>) => {
 		session.saving = session.saving.then(write).then(() => undefined, (error: Error) => console.error(`Authoring session ${session.candidate.session} was not saved: ${error.message}`));
 	};
-	const record = (session: Session, entry: AuthoringLogEntry) => save(session, () => appendFile(join(folderOf(session.candidate.session), LOG), `${JSON.stringify(entry)}\n`));
+	const record = (session: Session, entry: AuthoringLogEntry) => save(session, () => appendFile(join(folderOf(session.candidate.session), SESSION_LOG), `${JSON.stringify(entry)}\n`));
 	// @approved
 	//  Releasing a session cancels its turn, waits for it to end and for its
 	// checkpoint and log to be written, then closes its agent. Its folder
@@ -111,7 +111,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 			await session.turn;
 			await session.saving;
 			await session.agent.close().catch(() => undefined);
-			if (!await Bun.file(join(folderOf(id), LOG)).exists()) await rm(folderOf(id), { recursive: true, force: true });
+			if (!await Bun.file(join(folderOf(id), SESSION_LOG)).exists()) await rm(folderOf(id), { recursive: true, force: true });
 		})().finally(() => releasing.delete(id));
 		releasing.set(id, released);
 		return released;
@@ -304,12 +304,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	/** @approved Every scenario the session's agent ran, whole, from its log, oldest first. */
 	const savedScenarios = async (session: Session) => {
 		await session.saving;
-		const log = await Bun.file(join(folderOf(session.candidate.session), LOG)).text().catch(() => "");
-		return log.split("\n").flatMap((line) => {
-			let entry: unknown;
-			try { entry = JSON.parse(line); } catch { return []; }
-			return Value.Check(authoringLogEntry, entry) && entry.type === "scenario-input" ? [entry.input] : [];
-		});
+		return loggedScenarios(await Bun.file(join(folderOf(session.candidate.session), SESSION_LOG)).text().catch(() => ""));
 	};
 	// @approved
 	//  Install, and Install as a new Box, run with the session to themselves:
@@ -344,7 +339,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		.post("/api/authoring/sessions/:session/open", ({ params, body }) => open(params.session, body), { params: authoringSessionParams, body: authoringStartBody, response: authoringStart })
 		.get("/api/authoring/sessions/:session/log", async ({ params }) => {
 			await sessions.get(params.session)?.saving;
-			const log = Bun.file(join(folderOf(params.session), LOG));
+			const log = Bun.file(join(folderOf(params.session), SESSION_LOG));
 			return new Response(await log.exists() ? log : "", { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
 		}, { params: authoringSessionParams })
 		.post("/api/authoring/sessions/:session/close", async ({ params }) => {

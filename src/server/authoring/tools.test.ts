@@ -50,6 +50,29 @@ test("an example's unknown file is refused naming the files it has", async () =>
 	await expect(read.execute({ example: "race", file: "../server.ts" }, { executionId: "1", signal: new AbortController().signal })).rejects.toThrow("The race example has no file ../server.ts");
 });
 
+// @approved
+//  A session `box:submit` made starts with no history, so the agent once had
+// no way to see the files it was asked to change. A file past libfx's limit
+// comes in pieces whose offsets the agent follows.
+test("read_file returns a file the agent never wrote, in pieces past libfx's limit", async () => {
+	const candidate = await createCandidate(join(root, "authoring"));
+	const logic = `// ${"é".repeat(TOOL_RESULT_BYTES)}\nexport default {};\n`;
+	await Bun.write(join(candidate.folder, "logic.js"), logic);
+	const read = authoringTools(candidate, join(root, "plugins"), { spend: async () => undefined, onScenario: () => undefined }).find(({ name }) => name === "read_file")!;
+	const call = (input: { readonly file: string; readonly offset?: number }) => read.execute(input, { executionId: "1", signal: new AbortController().signal }).then(String);
+	let joined = "";
+	for (let offset: number | undefined = 0; offset !== undefined;) {
+		const piece: string = await call({ file: "logic.js", offset });
+		expect(Buffer.byteLength(piece)).toBeLessThanOrEqual(TOOL_RESULT_BYTES);
+		const next = /\n\[logic\.js continues: call read_file with offset (\d+)\.\]$/.exec(piece);
+		joined += next === null ? piece : piece.slice(0, next.index);
+		offset = next === null ? undefined : Number(next[1]);
+	}
+	expect(joined).toBe(logic);
+	expect(await call({ file: "ui.js" })).toBe("ui.js is not written yet.");
+	await expect(call({ file: "../server.ts" })).rejects.toThrow();
+});
+
 test("a result past libfx's limit is cut to fit with a note, and one within it passes untouched", () => {
 	const scenario = { records: "é".repeat(TOOL_RESULT_BYTES) };
 	const cut = String(fitted(scenario));
