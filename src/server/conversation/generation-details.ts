@@ -70,7 +70,9 @@ export function readActiveGenerationDetailsFromConnection(
 	if (row === undefined) return undefined;
 	if (findConversation(db, conversationId) === undefined) return undefined;
 	const captured = db.select({ capture: generationCaptureTable.capture }).from(generationCaptureTable)
-		.where(eq(generationCaptureTable.generation_id, row.id)).get()!;
+		.where(eq(generationCaptureTable.generation_id, row.id)).get();
+	// @approved Migration 0035 clears captures while retaining their active/replay rows.
+	if (captured === undefined) return undefined;
 	const capture = decodeGenerationCapture(captured.capture);
 	const loreActivation = variantDataCodecs.loreActivation.decode(row.lore_activation_json);
 	return {
