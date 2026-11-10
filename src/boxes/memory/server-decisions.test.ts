@@ -10,6 +10,7 @@ import { createChat } from "../../server/contract/prompt-preset-test-fixtures";
 import { digestNow } from "../../server/test-fixtures/digest";
 import type { ModelFetch } from "../../server/model-client";
 import { boxServices } from "../../server/box/services";
+import { resolveBoxDecision } from "../../server/box/decision-settings";
 import { tokenxEstimator } from "../../server/prompt-compiler";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../../server/box/decision-settings";
 import { createMemorySettingsModule } from "./server-settings";
@@ -98,7 +99,7 @@ test("recall accepts score answers without confidence or legend and reports the 
 		const body = JSON.parse(String(init?.body));
 		expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(2000);
 		return Response.json({ answers: { "candidate_1:1:0:ab_relevance": { type: "score", score: 2, probabilities: { 0: 0.01, 1: 0.02, 2: 0.9, 3: 0.02 }, provider: "Clef" } }, usage: { cost: 0.01 } });
-	}, new AbortController().signal)("memory");
+	}, new AbortController().signal)("memory", resolveBoxDecision(database, "memory"));
 	const result = await judgeMemoryRecallCandidates({ candidates: [candidate], scene: snapshot.activation.scene, relevanceMinimum: 1.5, selection: { model: settings.decisionModel, stateTokenLimit: settings.decisionStateTokenLimit }, decide });
 	expect(result).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
 });

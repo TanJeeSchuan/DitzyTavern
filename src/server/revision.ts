@@ -16,7 +16,7 @@ import type { ConversationSummary } from "../shared/contract/conversation-schema
 import type { Lorebook, LorebookOwnerAttachmentState } from "../shared/contract/lorebook";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
-import type { BoxDecisionSettings } from "../shared/contract/box";
+import type { BoxDecisionSettings, BoxDelegateSettings } from "../shared/contract/box";
 
 // @approved
 //  The aggregate → payload map: each state-bearing aggregate declares exactly
@@ -24,7 +24,7 @@ import type { BoxDecisionSettings } from "../shared/contract/box";
 //  through the shared wire contracts the 409 schemas declare. Only the prose
 //  "generation" envelope carries no state (`undefined`).
 export type CurrentByAggregate = {
-	settings: ConnectionSettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings;
+	settings: ConnectionSettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings | BoxDelegateSettings;
 	preset: PromptPresetSummary;
 	lorebook: Lorebook;
 	"lore-attachment": LorebookOwnerAttachmentState;

@@ -264,8 +264,22 @@
     {
       "idx": 37,
       "version": "6",
-      "when": 1794280438127,
-      "tag": "0037_clear_lore_activation_records",
+      "when": 1793709618893,
+      "tag": "0037_box_image_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1793715395983,
+      "tag": "0038_clear_race_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794296061866,
+      "tag": "0039_clear_lore_activation_records",
       "breakpoints": true
     }
   ]

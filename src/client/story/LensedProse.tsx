@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { BoxId } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { BoxFailure, BoxIcon } from "../box-windows/BoxBoundary";
-import { boxClients, boxPresent, errorMessage } from "../box-windows/registry";
+import { boxPresent, chatBoxClients, errorMessage } from "../box-windows/registry";
 import { assertLensPieces } from "../../shared/contract/box-descriptor";
 import { Prose } from "./prose";
 
@@ -14,13 +14,14 @@ type StoryPiece =
 	| { readonly kind: "lifted"; readonly box: BoxId; readonly icon: LucideIcon; readonly line: string }
 	| { readonly kind: "failed"; readonly box: BoxId; readonly message: string };
 
-//  Lenses apply in registry order, each to the prose the earlier ones left.
+//  Lenses apply in registry order, each Box's as the Chat runs it, to the
+//  prose the earlier ones left.
 //  A lifted piece is never lensed again. A lens that throws, or returns
 //  pieces that fail their schema, leaves its prose unlifted behind its
 //  failure, and the host draws each lifted mark.
 export function LensedProse({ text, streaming, lens }: { text: string; streaming: boolean; lens: StoryLens | undefined }) {
 	if (lens === undefined) return <Prose text={text} streaming={streaming} />;
-	const lenses = boxClients().flatMap(([id, { Window, icon }]) => {
+	const lenses = chatBoxClients(lens.conversation).flatMap(([id, { Window, icon }]) => {
 		const boxLens = Window?.lens;
 		if (boxLens === undefined || !boxPresent(lens.conversation, id)) return [];
 		const failed = (message: string, prose: string): StoryPiece[] => [{ kind: "failed", box: id, message }, { kind: "prose", text: prose }];

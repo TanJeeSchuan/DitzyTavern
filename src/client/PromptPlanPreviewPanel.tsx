@@ -80,7 +80,7 @@ export function PromptPlanPreviewPanel({
 						<ul>
 							{preview.promptPlan.warnings.map((warning, index) => <li key={`${warning.block}-${index}`}>{warning.block}: {warning.reason === "uncached"
 								? `${warning.macro} can change on every request and comes before history, so the provider's prompt cache misses from this block onward. Move it after history to keep the cache.`
-								: warning.macro}</li>)}
+								: warning.reason === "ungranted-image" ? `Image "${warning.macro}" was not uploaded by this Box and sends only its name.` : warning.macro}</li>)}
 						</ul>
 					</section>
 				)}

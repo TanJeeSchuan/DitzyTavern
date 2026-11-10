@@ -24,8 +24,8 @@ export type BoxCompletion = {
 export interface BoxContext {
 	/** @approved The chat Connection Profile `profileId`, or undefined once it is gone. */
 	readonly llm: (profileId: number) => { complete(request: BoxCompletion): Promise<{ readonly content: string; readonly finishReason: "stop" | "length" | "other" }> } | undefined;
-	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. */
-	readonly decide: (state: DecisionJson, questions: DecisionQuestions) => ReturnType<typeof requestDecisions>;
+	/** @approved Asks the Box's own Decision Model selection; throws without one, or when `state` exceeds its token limit. `signal` cancels it before the Box's own signal does. */
+	readonly decide: (state: DecisionJson, questions: DecisionQuestions, options?: { readonly signal?: AbortSignal }) => ReturnType<typeof requestDecisions>;
 	/** @approved One vector per text, in one request. With `cache`, texts embedded before under the same model are read back instead. `signal` cancels it before the Box's own signal does. */
 	readonly embed: (texts: readonly string[], configuration: EmbeddingConfiguration, options?: { readonly cache?: boolean; readonly signal?: AbortSignal }) => Promise<readonly Float32Array[]>;
 	readonly signal: AbortSignal;
@@ -55,9 +55,19 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 	read?(read: BoxWindowRead<Setup, State>): GenerationJsonValue;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
 	routes?(database: Database): AnyElysia;
+	/** @approved A delegating Box's reducer: one batch of its declared operations, applied to the state folded from the records before the passage, becomes that passage's record. It enforces legality itself; a throw fails the delegate run with its message. */
+	readonly delegate?: { apply(input: DelegateInput<Setup, State>): Rec | Promise<Rec> };
 	/** @approved Rewrites a stored value that fails the Box's current schema, when the Box's schemas changed since it was written. Only failing values reach it; the host keeps the result only if it passes. */
 	upgrade?(stored: StoredBoxValue): GenerationJsonValue;
 }
+
+/** @approved What `delegate.apply` gets: the Box's setup, the state folded from the selected records strictly before the passage, the batch the delegate proposed, and the Chat's Cast. */
+export type DelegateInput<Setup, State> = {
+	readonly setup: Setup;
+	readonly state: State;
+	readonly operations: readonly GenerationJsonValue[];
+	readonly cast: readonly { readonly id: number; readonly name: string }[];
+};
 
 /** @approved A loaded Box as the host checks its stored values: its id, descriptor and hooks. */
 export type CheckedBox = { readonly id: string; readonly descriptor: BoxDescriptor; readonly box: HostBox };
@@ -70,7 +80,11 @@ export type StoredBoxValue =
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it. A Box without a setup gets undefined.
-export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown>;
+// A sandboxed Box also folds a whole Selected path in one call, `foldAll`,
+// since each call into its runtime copies its input across.
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown> & {
+	readonly records?: { foldAll?(state: GenerationJsonValue | undefined, records: readonly GenerationJsonValue[], setup: BoxValue | undefined): GenerationJsonValue | undefined };
+};
 
 /** @approved What a Box's window `read` gets, read in one host transaction: `db` for further reads, the Chat's summary and Selected path, the Box's setup, and its fold over the Selected path's effective records, as Generation capture folds it. */
 export type BoxWindowRead<Setup, State> = {

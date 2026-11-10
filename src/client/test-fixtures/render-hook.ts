@@ -1,5 +1,5 @@
 import { afterEach } from "bun:test";
-import { act, createElement, StrictMode } from "react";
+import { act, createElement, StrictMode, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 
 const documentStub = { nodeType: 9, addEventListener() {}, removeEventListener() {}, activeElement: null };
@@ -22,7 +22,13 @@ afterEach(async () => {
 
 export const flushHook = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-export async function renderHook<Value>(hook: () => Value, client: QueryClient, strict = false) {
+/** @approved Renders a tree of components that render no host elements, such as one whose leaf reports what it was given and returns null. */
+export async function renderTree(tree: () => ReactNode, client: QueryClient) {
+	const hook = await renderHook(() => undefined, client, false, tree);
+	return { rerender: hook.rerender, act: hook.act };
+}
+
+export async function renderHook<Value>(hook: () => Value, client: QueryClient, strict = false, tree: () => ReactNode = () => null) {
 	Object.defineProperty(globalThis, "window", { configurable: true, value: windowStub });
 	const container: Partial<HTMLElement> = { nodeType: 1, addEventListener() {}, removeEventListener() {}, textContent: "" };
 	Object.defineProperties(container, {
@@ -34,7 +40,7 @@ export async function renderHook<Value>(hook: () => Value, client: QueryClient, 
 	const root = createRoot(container as HTMLElement);
 	let value: Value;
 	let mounted = true;
-	const Probe = () => { value = hook(); return null; };
+	const Probe = () => { value = hook(); return tree(); };
 	const rerender = () => act(async () => {
 		const probe = createElement(QueryClientProvider, { client }, createElement(Probe));
 		root.render(strict ? createElement(StrictMode, null, probe) : probe);

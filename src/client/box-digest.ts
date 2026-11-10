@@ -1,5 +1,5 @@
-import { boxRecordSchema, type BoxId } from "../shared/contract/box";
-import { digestRead, digestStatusRead, type DigestRead } from "../shared/contract/box-digest";
+import { boxRecordSchema, type BoxDescriptor, type BoxId } from "../shared/contract/box";
+import { delegateRead, digestRead, digestStatusRead, type DelegateRead, type DigestRead } from "../shared/contract/box-digest";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import { api } from "./lib/eden";
 import { foundOrNull, requestOutcome } from "./lib/request-outcome";
@@ -9,12 +9,12 @@ export type BoxDigestPassage = BoxDigest["passages"][number];
 
 // @approved
 //  A digesting Box's passage timeline read and catch-up, decoded with the
-// digest read of the Box's own record schema.
+// digest read of the record schema of the version the Chat runs.
 const boxRoute = (conversationId: number, box: BoxId) => api.api.conversations({ id: conversationId }).boxes({ box });
-const readOf = (box: BoxId) => digestRead(boxRecordSchema(box));
+const readOf = (descriptor: BoxDescriptor) => digestRead(boxRecordSchema(descriptor));
 
-export async function loadBoxDigest(conversationId: number, box: BoxId, signal?: AbortSignal): Promise<BoxDigest | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).get({ fetch: { signal } }), readOf(box), notFoundOutcome));
+export async function loadBoxDigest(conversationId: number, descriptor: BoxDescriptor, signal?: AbortSignal): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, descriptor.id).get({ fetch: { signal } }), readOf(descriptor), notFoundOutcome));
 }
 
 export async function loadBoxDigestStatus(conversationId: number, box: BoxId, signal?: AbortSignal): Promise<string | null | undefined> {
@@ -22,16 +22,26 @@ export async function loadBoxDigestStatus(conversationId: number, box: BoxId, si
 }
 
 /** @approved Starting resolves with the read that already carries the new run's progress. */
-export async function startBoxCatchUp(conversationId: number, box: BoxId): Promise<BoxDigest | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].post(), readOf(box), notFoundOutcome));
+export async function startBoxCatchUp(conversationId: number, descriptor: BoxDescriptor): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, descriptor.id)["catch-up"].post(), readOf(descriptor), notFoundOutcome));
 }
 
 /** @approved Cancelling resolves with the read that no longer carries a run. */
-export async function cancelBoxCatchUp(conversationId: number, box: BoxId): Promise<BoxDigest | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box)["catch-up"].delete(), readOf(box), notFoundOutcome));
+export async function cancelBoxCatchUp(conversationId: number, descriptor: BoxDescriptor): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, descriptor.id)["catch-up"].delete(), readOf(descriptor), notFoundOutcome));
 }
 
 /** @approved Digesting one passage resolves with the read as it stands; the passage's record lands later. */
-export async function digestBoxPassage(conversationId: number, box: BoxId, passage: { variantId: number }): Promise<BoxDigest | null> {
-	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).digest.post(passage), readOf(box), notFoundOutcome));
+export async function digestBoxPassage(conversationId: number, descriptor: BoxDescriptor, passage: { variantId: number }): Promise<BoxDigest | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, descriptor.id).digest.post(passage), readOf(descriptor), notFoundOutcome));
+}
+
+/** @approved A delegating Box's notice read: its delegate setting and the first passage whose run failed. */
+export async function loadBoxDelegate(conversationId: number, box: BoxId, signal?: AbortSignal): Promise<DelegateRead | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).delegate.get({ fetch: { signal } }), delegateRead, notFoundOutcome));
+}
+
+/** @approved Retrying one passage's delegate run resolves with the notice read as it stands; the record lands later. */
+export async function retryBoxDelegate(conversationId: number, box: BoxId, passage: { variantId: number }): Promise<DelegateRead | null> {
+	return foundOrNull(await requestOutcome(boxRoute(conversationId, box).digest.post(passage), delegateRead, notFoundOutcome));
 }

@@ -13,16 +13,15 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 	await page.goto("/");
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
-	const window = page.getByRole("dialog", { name: "Race", exact: true });
-	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
-	await window.getByRole("button", { name: "Fill field" }).click();
-	await window.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "Off" }).click();
-	await window.getByRole("button", { name: "Start race" }).click();
-	const moves = window.getByRole("region", { name: "Race Moves" });
-	await window.getByRole("combobox", { name: "Order Runner" }).click();
-	const option = page.getByRole("option").nth(1);
-	const runner = await option.innerText();
-	await option.click();
+	const ui = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
+	await ui.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
+	await ui.getByRole("button", { name: "Fill field" }).click();
+	await ui.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "Off" }).click();
+	await ui.getByRole("button", { name: "Start race" }).click();
+	const moves = ui.getByRole("region", { name: "Race Moves" });
+	const order = ui.getByRole("combobox", { name: "Order Runner" });
+	const runner = (await order.locator("option").nth(1).textContent())!; // @approved The field has eight gates, so the second option exists.
+	await order.selectOption({ index: 1 });
 	let passage = 0;
 	const accept = async () => {
 		const number = ++passage;
@@ -74,8 +73,8 @@ test("Moves resolve in the next Stretch, alone or with text, replay on a swipe, 
 
 	// @approved A Move staged before Auto took over is still sent and fizzles, narrated in the Stretch.
 	await moves.getByRole("button", { name: /Conserve/ }).click();
-	await window.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "On" }).click();
-	await window.getByRole("button", { name: "Save setup" }).click();
+	await ui.getByRole("radiogroup", { name: "Auto mode" }).getByRole("radio", { name: "On" }).click();
+	await ui.getByRole("button", { name: "Save setup" }).click();
 	await expect(moves.getByText("Moves are off while Auto mode runs.")).toBeVisible();
 	await page.getByRole("textbox", { name: "Message draft" }).fill("Hold steady.");
 	await page.getByRole("button", { name: "Generate Variant" }).click();

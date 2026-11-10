@@ -1,4 +1,4 @@
-import { test, expect, insertBox, openBoxes as manager } from "./fixtures";
+import { test, expect, insertBox, openBoxes as manager, send, story, closeBoxes } from "./fixtures";
 
 test.describe("a Box lifecycle change from a stale read", () => {
 	// The deliberate 409 conflict response logs one browser console error.
@@ -82,4 +82,42 @@ for (const width of [1440, 390]) test(`minimizing a Box preserves its unsaved se
 	await window.getByRole("button", { name: "Close World Clock" }).click();
 	await page.getByRole("button", { name: "World Clock", exact: true }).click();
 	await expect(window.getByRole("textbox", { name: "Era" })).toHaveValue("BE");
+});
+
+test("removing a Box with history deletes its Move chip without a reload and reinsertion starts empty", async ({ page, llm }) => {
+	await llm.installBox("tip-jar");
+	await llm.restart("graceful");
+	await llm.chat({ chunks: ["The bard bows."] });
+	await page.goto("/");
+	await insertBox(page, "Tip Jar");
+	await page.getByRole("button", { name: "Tip Jar", exact: true }).click();
+	const jar = page.getByRole("dialog", { name: "Tip Jar", exact: true });
+	await jar.getByRole("button", { name: "Drop a coin" }).click();
+	await send(page, "");
+	await expect(story(page).getByText("The bard bows.")).toBeVisible();
+	await expect(jar.getByRole("status", { name: "Coins in the jar" })).toHaveText("1");
+	await jar.getByRole("button", { name: "Close Tip Jar" }).click();
+	const human = story(page).locator("article[data-message-id]").filter({ has: page.getByRole("list", { name: "Tip Jar Moves" }) });
+	await expect(human.getByRole("listitem")).toHaveText(["Tip 1"]);
+	const messageId = await human.getAttribute("data-message-id");
+	const boxes = await manager(page);
+	await boxes.getByRole("button", { name: "Tip Jar actions" }).click();
+	await page.getByRole("menuitem", { name: "Remove from Chat…" }).click();
+	const dialog = page.getByRole("dialog", { name: "Remove Tip Jar?" });
+	await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+	await dialog.getByRole("checkbox").check();
+	await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+	await expect(boxes.getByRole("button", { name: "Add Tip Jar", exact: true })).toBeVisible();
+	await expect(story(page).getByRole("list", { name: "Tip Jar Moves" })).toHaveCount(0);
+	const empty = story(page).locator(`article[data-message-id="${messageId}"]`);
+	await expect(empty).toBeVisible();
+	await expect(empty.locator(".prose")).toHaveAttribute("data-empty-variant", "true");
+	await closeBoxes(page);
+	await insertBox(page, "Tip Jar");
+	await page.getByRole("button", { name: "Tip Jar", exact: true }).click();
+	await expect(jar.getByRole("status", { name: "Coins in the jar" })).toHaveText("0");
+	await jar.getByRole("button", { name: "Close Tip Jar" }).click();
+	await llm.chat({ chunks: ["The empty jar waits."] });
+	await send(page, "Continue.");
+	await expect(story(page).getByText("The empty jar waits.")).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { RaceRunner } from "./contract";
+import type { RaceRunner } from "./shared";
 import { addRaceRunner, rollRaceStats } from "./shared-data";
 
 const draw = (...values: number[]) => {

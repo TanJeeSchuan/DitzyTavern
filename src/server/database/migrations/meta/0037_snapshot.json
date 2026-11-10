@@ -1,8 +1,8 @@
 {
-  "id": "afc70674-07da-48c4-baa9-e4447553f041",
-  "prevId": "001e3c47-b87a-4280-8312-92edba729eb5",
   "version": "6",
   "dialect": "sqlite",
+  "id": "931c20a3-1139-4720-b4f8-8e839ebdb417",
+  "prevId": "001e3c47-b87a-4280-8312-92edba729eb5",
   "tables": {
     "active_generation": {
       "name": "active_generation",
@@ -159,93 +159,93 @@
         "active_generation_conversation_id_conversation_id_fk": {
           "name": "active_generation_conversation_id_conversation_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "active_generation_human_message_id_messages_id_fk": {
           "name": "active_generation_human_message_id_messages_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "messages",
           "columnsFrom": [
             "human_message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "active_generation_message_id_messages_id_fk": {
           "name": "active_generation_message_id_messages_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "messages",
           "columnsFrom": [
             "message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "active_generation_variant_id_message_variant_id_fk": {
           "name": "active_generation_variant_id_message_variant_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "message_variant",
           "columnsFrom": [
             "variant_id"
           ],
-          "tableTo": "message_variant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "active_generation_prior_variant_id_message_variant_id_fk": {
           "name": "active_generation_prior_variant_id_message_variant_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "message_variant",
           "columnsFrom": [
             "prior_variant_id"
           ],
-          "tableTo": "message_variant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "active_generation_human_participant_id_participant_id_fk": {
           "name": "active_generation_human_participant_id_participant_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "participant",
           "columnsFrom": [
             "human_participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "active_generation_model_participant_id_participant_id_fk": {
           "name": "active_generation_model_participant_id_participant_id_fk",
           "tableFrom": "active_generation",
+          "tableTo": "participant",
           "columnsFrom": [
             "model_participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -334,18 +334,64 @@
         "artifact_conversation_id_conversation_id_fk": {
           "name": "artifact_conversation_id_conversation_id_fk",
           "tableFrom": "artifact",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "box_image_grant": {
+      "name": "box_image_grant",
+      "columns": {
+        "box_id": {
+          "name": "box_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hash": {
+          "name": "hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "box_image_grant_hash_image_hash_fk": {
+          "name": "box_image_grant_hash_image_hash_fk",
+          "tableFrom": "box_image_grant",
+          "tableTo": "image",
+          "columnsFrom": [
+            "hash"
+          ],
+          "columnsTo": [
+            "hash"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "box_image_grant_box_id_hash_pk": {
+          "columns": [
+            "box_id",
+            "hash"
+          ],
+          "name": "box_image_grant_box_id_hash_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -435,15 +481,15 @@
         "character_data_character_id_character_id_fk": {
           "name": "character_data_character_id_character_id_fk",
           "tableFrom": "character_data",
+          "tableTo": "character",
           "columnsFrom": [
             "character_id"
           ],
-          "tableTo": "character",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -506,28 +552,28 @@
         "character_lorebook_attachment_character_id_character_id_fk": {
           "name": "character_lorebook_attachment_character_id_character_id_fk",
           "tableFrom": "character_lorebook_attachment",
+          "tableTo": "character",
           "columnsFrom": [
             "character_id"
           ],
-          "tableTo": "character",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "character_lorebook_attachment_lorebook_id_lorebook_id_fk": {
           "name": "character_lorebook_attachment_lorebook_id_lorebook_id_fk",
           "tableFrom": "character_lorebook_attachment",
+          "tableTo": "lorebook",
           "columnsFrom": [
             "lorebook_id"
           ],
-          "tableTo": "lorebook",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -585,15 +631,15 @@
         "character_opening_character_id_character_id_fk": {
           "name": "character_opening_character_id_character_id_fk",
           "tableFrom": "character_opening",
+          "tableTo": "character",
           "columnsFrom": [
             "character_id"
           ],
-          "tableTo": "character",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -672,15 +718,15 @@
         "character_prompt_character_id_character_id_fk": {
           "name": "character_prompt_character_id_character_id_fk",
           "tableFrom": "character_prompt",
+          "tableTo": "character",
           "columnsFrom": [
             "character_id"
           ],
-          "tableTo": "character",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -762,15 +808,15 @@
         "connection_profile_discovery_model_profile_id_connection_profile_id_fk": {
           "name": "connection_profile_discovery_model_profile_id_connection_profile_id_fk",
           "tableFrom": "connection_profile_discovery_model",
+          "tableTo": "connection_profile",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "connection_profile",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -824,15 +870,15 @@
         "connection_profile_pinned_model_profile_id_connection_profile_id_fk": {
           "name": "connection_profile_pinned_model_profile_id_connection_profile_id_fk",
           "tableFrom": "connection_profile_pinned_model",
+          "tableTo": "connection_profile",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "connection_profile",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -967,15 +1013,15 @@
         "connection_profile_text_only_model_profile_id_connection_profile_id_fk": {
           "name": "connection_profile_text_only_model_profile_id_connection_profile_id_fk",
           "tableFrom": "connection_profile_text_only_model",
+          "tableTo": "connection_profile",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "connection_profile",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1041,15 +1087,15 @@
         "connection_secret_profile_id_connection_profile_id_fk": {
           "name": "connection_secret_profile_id_connection_profile_id_fk",
           "tableFrom": "connection_secret",
+          "tableTo": "connection_profile",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "connection_profile",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1119,28 +1165,28 @@
         "conversation_control_conversation_id_conversation_id_fk": {
           "name": "conversation_control_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_control",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "conversation_control_participant_id_participant_id_fk": {
           "name": "conversation_control_participant_id_participant_id_fk",
           "tableFrom": "conversation_control",
+          "tableTo": "participant",
           "columnsFrom": [
             "participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1222,15 +1268,15 @@
         "conversation_data_conversation_id_conversation_id_fk": {
           "name": "conversation_data_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_data",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1367,28 +1413,28 @@
         "conversation_generation_settings_conversation_id_conversation_id_fk": {
           "name": "conversation_generation_settings_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_generation_settings",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "conversation_generation_settings_connection_profile_id_connection_profile_id_fk": {
           "name": "conversation_generation_settings_connection_profile_id_connection_profile_id_fk",
           "tableFrom": "conversation_generation_settings",
+          "tableTo": "connection_profile",
           "columnsFrom": [
             "connection_profile_id"
           ],
-          "tableTo": "connection_profile",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1427,15 +1473,15 @@
         "conversation_lore_settings_conversation_id_conversation_id_fk": {
           "name": "conversation_lore_settings_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_lore_settings",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1489,28 +1535,28 @@
         "conversation_lorebook_attachment_conversation_id_conversation_id_fk": {
           "name": "conversation_lorebook_attachment_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_lorebook_attachment",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "conversation_lorebook_attachment_lorebook_id_lorebook_id_fk": {
           "name": "conversation_lorebook_attachment_lorebook_id_lorebook_id_fk",
           "tableFrom": "conversation_lorebook_attachment",
+          "tableTo": "lorebook",
           "columnsFrom": [
             "lorebook_id"
           ],
-          "tableTo": "lorebook",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1548,28 +1594,28 @@
         "conversation_prompt_preset_conversation_id_conversation_id_fk": {
           "name": "conversation_prompt_preset_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_prompt_preset",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "conversation_prompt_preset_prompt_preset_id_prompt_preset_id_fk": {
           "name": "conversation_prompt_preset_prompt_preset_id_prompt_preset_id_fk",
           "tableFrom": "conversation_prompt_preset",
+          "tableTo": "prompt_preset",
           "columnsFrom": [
             "prompt_preset_id"
           ],
-          "tableTo": "prompt_preset",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1642,28 +1688,28 @@
         "conversation_forked_from_conversation_id_conversation_id_fk": {
           "name": "conversation_forked_from_conversation_id_conversation_id_fk",
           "tableFrom": "conversation",
+          "tableTo": "conversation",
           "columnsFrom": [
             "forked_from_conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "conversation_forked_from_message_id_messages_id_fk": {
           "name": "conversation_forked_from_message_id_messages_id_fk",
           "tableFrom": "conversation",
+          "tableTo": "messages",
           "columnsFrom": [
             "forked_from_message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1803,15 +1849,15 @@
         "generation_checkpoint_generation_id_active_generation_id_fk": {
           "name": "generation_checkpoint_generation_id_active_generation_id_fk",
           "tableFrom": "generation_checkpoint",
+          "tableTo": "active_generation",
           "columnsFrom": [
             "generation_id"
           ],
-          "tableTo": "active_generation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1970,41 +2016,41 @@
         "generation_replay_conversation_id_conversation_id_fk": {
           "name": "generation_replay_conversation_id_conversation_id_fk",
           "tableFrom": "generation_replay",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "generation_replay_message_id_messages_id_fk": {
           "name": "generation_replay_message_id_messages_id_fk",
           "tableFrom": "generation_replay",
+          "tableTo": "messages",
           "columnsFrom": [
             "message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "generation_replay_variant_id_message_variant_id_fk": {
           "name": "generation_replay_variant_id_message_variant_id_fk",
           "tableFrom": "generation_replay",
+          "tableTo": "message_variant",
           "columnsFrom": [
             "variant_id"
           ],
-          "tableTo": "message_variant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2282,15 +2328,15 @@
         "lorebook_entry_lorebook_id_lorebook_id_fk": {
           "name": "lorebook_entry_lorebook_id_lorebook_id_fk",
           "tableFrom": "lorebook_entry",
+          "tableTo": "lorebook",
           "columnsFrom": [
             "lorebook_id"
           ],
-          "tableTo": "lorebook",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2391,15 +2437,15 @@
         "messages_data_message_id_messages_id_fk": {
           "name": "messages_data_message_id_messages_id_fk",
           "tableFrom": "messages_data",
+          "tableTo": "messages",
           "columnsFrom": [
             "message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2480,54 +2526,54 @@
         "messages_conversation_id_conversation_id_fk": {
           "name": "messages_conversation_id_conversation_id_fk",
           "tableFrom": "messages",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "messages_author_participant_id_participant_id_fk": {
           "name": "messages_author_participant_id_participant_id_fk",
           "tableFrom": "messages",
+          "tableTo": "participant",
           "columnsFrom": [
             "author_participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "messages_context_human_participant_id_participant_id_fk": {
           "name": "messages_context_human_participant_id_participant_id_fk",
           "tableFrom": "messages",
+          "tableTo": "participant",
           "columnsFrom": [
             "context_human_participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "messages_context_model_participant_id_participant_id_fk": {
           "name": "messages_context_model_participant_id_participant_id_fk",
           "tableFrom": "messages",
+          "tableTo": "participant",
           "columnsFrom": [
             "context_model_participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2593,15 +2639,15 @@
         "message_variant_data_message_variant_id_message_variant_id_fk": {
           "name": "message_variant_data_message_variant_id_message_variant_id_fk",
           "tableFrom": "message_variant_data",
+          "tableTo": "message_variant",
           "columnsFrom": [
             "message_variant_id"
           ],
-          "tableTo": "message_variant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2669,23 +2715,23 @@
           "columns": [
             "message_id"
           ],
-          "where": "\"message_variant\".\"selected\" = 1",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"message_variant\".\"selected\" = 1"
         }
       },
       "foreignKeys": {
         "message_variant_message_id_messages_id_fk": {
           "name": "message_variant_message_id_messages_id_fk",
           "tableFrom": "message_variant",
+          "tableTo": "messages",
           "columnsFrom": [
             "message_id"
           ],
-          "tableTo": "messages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2746,15 +2792,15 @@
         "participant_data_participant_id_participant_id_fk": {
           "name": "participant_data_participant_id_participant_id_fk",
           "tableFrom": "participant_data",
+          "tableTo": "participant",
           "columnsFrom": [
             "participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2817,28 +2863,28 @@
         "participant_lorebook_attachment_participant_id_participant_id_fk": {
           "name": "participant_lorebook_attachment_participant_id_participant_id_fk",
           "tableFrom": "participant_lorebook_attachment",
+          "tableTo": "participant",
           "columnsFrom": [
             "participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "participant_lorebook_attachment_lorebook_id_lorebook_id_fk": {
           "name": "participant_lorebook_attachment_lorebook_id_lorebook_id_fk",
           "tableFrom": "participant_lorebook_attachment",
+          "tableTo": "lorebook",
           "columnsFrom": [
             "lorebook_id"
           ],
-          "tableTo": "lorebook",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2896,15 +2942,15 @@
         "participant_opening_participant_id_participant_id_fk": {
           "name": "participant_opening_participant_id_participant_id_fk",
           "tableFrom": "participant_opening",
+          "tableTo": "participant",
           "columnsFrom": [
             "participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2983,15 +3029,15 @@
         "participant_prompt_participant_id_participant_id_fk": {
           "name": "participant_prompt_participant_id_participant_id_fk",
           "tableFrom": "participant_prompt",
+          "tableTo": "participant",
           "columnsFrom": [
             "participant_id"
           ],
-          "tableTo": "participant",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3056,36 +3102,36 @@
             "conversation_id",
             "position"
           ],
-          "where": "\"participant\".\"deleted_at\" IS NULL",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"participant\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {
         "participant_conversation_id_conversation_id_fk": {
           "name": "participant_conversation_id_conversation_id_fk",
           "tableFrom": "participant",
+          "tableTo": "conversation",
           "columnsFrom": [
             "conversation_id"
           ],
-          "tableTo": "conversation",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "participant_source_character_id_character_id_fk": {
           "name": "participant_source_character_id_character_id_fk",
           "tableFrom": "participant",
+          "tableTo": "character",
           "columnsFrom": [
             "source_character_id"
           ],
-          "tableTo": "character",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3167,8 +3213,8 @@
           "columns": [
             "preset_id"
           ],
-          "where": "\"prompt_preset_block\".\"reference\" = 'lore'",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"prompt_preset_block\".\"reference\" = 'lore'"
         },
         "prompt_preset_single_box_block": {
           "name": "prompt_preset_single_box_block",
@@ -3176,23 +3222,23 @@
             "preset_id",
             "reference"
           ],
-          "where": "\"prompt_preset_block\".\"reference\" LIKE 'box:%'",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"prompt_preset_block\".\"reference\" LIKE 'box:%'"
         }
       },
       "foreignKeys": {
         "prompt_preset_block_preset_id_prompt_preset_id_fk": {
           "name": "prompt_preset_block_preset_id_prompt_preset_id_fk",
           "tableFrom": "prompt_preset_block",
+          "tableTo": "prompt_preset",
           "columnsFrom": [
             "preset_id"
           ],
-          "tableTo": "prompt_preset",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3244,8 +3290,8 @@
           "columns": [
             "is_default"
           ],
-          "where": "\"prompt_preset\".\"is_default\" = 1",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"prompt_preset\".\"is_default\" = 1"
         }
       },
       "foreignKeys": {},
@@ -3344,9 +3390,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {

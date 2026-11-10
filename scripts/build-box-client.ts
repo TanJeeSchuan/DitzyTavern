@@ -41,8 +41,10 @@ const strays = (rules: readonly Rule[], id: string): string[] => rules.flatMap((
 // `client.css`, and the module links it and waits for it before it resolves,
 // so the host renders no surface of a Box without its styles. Tailwind runs on
 // it, so `@reference "@/index.css"` lets it `@apply` the host's utilities and
-// theme; every selector in it must name one of the Box's own classes.
+// theme; every selector in it must name one of the Box's own classes. A
+// sandboxed Box has no `client.tsx` and nothing to build.
 export const buildBoxClient = async (folder: string, outDir: string): Promise<void> => {
+	if (!existsSync(join(folder, "client.tsx"))) return;
 	await build({
 		configFile: false,
 		root: folder,

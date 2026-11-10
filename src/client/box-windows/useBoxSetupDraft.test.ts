@@ -11,7 +11,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 const chat = (revision: number, note: string): ConversationSummary => ({
-	id: 1, name: "Chat", revision, boxSetups: { ...boxSetups, "author-note": note }, boxes, forkedFrom: null, background: null, cast: [],
+	id: 1, name: "Chat", revision, boxSetups: { ...boxSetups, "author-note": note }, boxes, boxVersions: {}, forkedFrom: null, background: null, cast: [],
 	control: { humanParticipantId: null, modelParticipantId: null },
 	controlValidity: { valid: false, reason: "missing-seat" },
 	playable: false,

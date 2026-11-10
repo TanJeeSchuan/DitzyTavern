@@ -1,7 +1,6 @@
-import type { NonEmpty } from "@/box-sdk/shared";
-import type { RaceCourse, RaceRunner, RaceSetup, RaceStats, RunningStyle } from "./contract";
+import type { RaceCourse, RaceRunner, RaceSetup, RaceStats, RunningStyle } from "./shared";
 
-export const raceCourses: Readonly<NonEmpty<RaceCourse>> = [
+export const raceCourses: readonly [RaceCourse, ...RaceCourse[]] = [
 	{ name: "Japan Cup · Tokyo", distance: 2400, surface: "turf", direction: "left" },
 	{ name: "Arima Kinen · Nakayama", distance: 2500, surface: "turf", direction: "right" },
 	{ name: "Tokyo Yushun · Tokyo", distance: 2400, surface: "turf", direction: "left" },

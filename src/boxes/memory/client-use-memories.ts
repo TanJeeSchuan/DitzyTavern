@@ -1,3 +1,4 @@
+import descriptor from "./shared-descriptor";
 import { type ConversationSummary, CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, cancelBoxCatchUp, digestBoxPassage, followsChanges, startBoxCatchUp, type BoxDigest } from "@/box-sdk/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -91,7 +92,7 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 	};
 	return {
 		notice, busy, catchupBusy, editing, resetTarget,
-		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, "memory", { variantId: source.variantId }))),
+		remember: (source: Source) => void act(source, () => queued(digestBoxPassage(conversationId, descriptor, { variantId: source.variantId }))),
 		edit: (source: Source, index: number | null) => {
 			const claims = storedClaims(source);
 			setEditing(index === null || claims[index] === undefined ? null : { variantId: source.variantId, index, claims });
@@ -112,7 +113,7 @@ export function useMemoryActions({ conversationId, conversation, onConversationC
 		},
 		cancelReset: () => setResetTarget(null),
 		announce: setNotice,
-		startCatchup: () => catchUp(() => startBoxCatchUp(conversationId, "memory")),
-		cancelCatchup: () => catchUp(() => cancelBoxCatchUp(conversationId, "memory")),
+		startCatchup: () => catchUp(() => startBoxCatchUp(conversationId, descriptor)),
+		cancelCatchup: () => catchUp(() => cancelBoxCatchUp(conversationId, descriptor)),
 	};
 }

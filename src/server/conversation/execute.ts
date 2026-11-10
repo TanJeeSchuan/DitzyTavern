@@ -17,11 +17,12 @@ import {
 	replaceParticipantPrompt,
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
-import { putBoxData } from "./commands/put-box-data";
+import { commitBox } from "./commands/commit-box";
 import { removeParticipant } from "./commands/remove-participant";
 import { resetBoxRecord, setBoxRecord } from "./commands/box-record";
 import { setBoxSetup } from "./commands/set-box-setup";
 import { setBoxState } from "./commands/set-box-state";
+import { upgradeBox } from "./commands/upgrade-box";
 import { setMessageMoves } from "./commands/set-message-moves";
 import { renameConversation } from "./commands/rename-conversation";
 import { setBackground } from "./commands/set-background";
@@ -82,13 +83,14 @@ const handlers = {
 	"assign-control": assignControl,
 	"remove-participant": removeParticipant,
 	"put-data": putData,
-	"put-box-data": putBoxData,
+	"commit-box": commitBox,
 	"delete-data": deleteData,
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
 	"set-box-setup": setBoxSetup,
 	"set-box-state": setBoxState,
+	"upgrade-box": upgradeBox,
 	"set-box-record": setBoxRecord,
 	"reset-box-record": resetBoxRecord,
 	"rename-conversation": renameConversation,

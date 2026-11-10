@@ -1,3 +1,3 @@
-Review this PR diff. Read surrounding code if needed.
-Report real bugs and CODING_STANDARDS.md violations, each with file:line. If nothing is wrong, say LGTM.
-Bun and dependencies are installed. Before reporting a bug, confirm it where you can by running `bun test` on the relevant test files, or a short script. Do not run the full suite, e2e or the build.
+Review every changed file of this PR before reporting. Read surrounding code if needed.
+First list every real bug and CODING_STANDARDS.md violation, each with file:line and a severity, so one review finds them all: P1 breaks behaviour or loses data, P2 is wrong in a case that matters, P3 is minor or a standards violation. List the most severe first. Then confirm the most severe where you can, by running `bun run test:files <test files>` (the test command's flags, on the files you name) or a short script, and mark each finding Confirmed or Unconfirmed. Bun and dependencies are installed. Do not run the full suite, e2e or the build.
+The PR description and conversation follow this prompt. Don't repeat a finding the author already fixed or rejected with a reason, unless the reason is wrong. If nothing is wrong, say LGTM.

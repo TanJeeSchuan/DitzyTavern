@@ -7,6 +7,9 @@ import { boxMetadata, boxReference, type BoxId, type BoxState } from "../../shar
 import { loadConversationPromptPreset, type ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand, type ConversationCommandSurface } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
+import { retryBoxDelegate } from "../box-digest";
+import { chatBoxDescriptor } from "./registry";
+import { delegateReadKey, useDelegateRead } from "./useBoxRead";
 
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
@@ -18,8 +21,8 @@ export const refreshPresetReads = (client: QueryClient) => Promise.all([
 
 const oneLine = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
 
-export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState) =>
-	runConversationCommand(surface, { type: "set-box-state", box, state }, {
+export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState, deleteHistory = false) =>
+	runConversationCommand(surface, { type: "set-box-state", box, state, deleteHistory }, {
 		onApplied: () => { if (state === "enabled") void refreshPresetReads(client); },
 		notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 	});
@@ -89,5 +92,31 @@ export function BoxOffNotice({ conversation, box, disabled, onConversationChange
 		<AlertDescription>{boxMetadata(box).label} is off in this Chat.</AlertDescription>
 		<Button type="button" size="xs" variant="outline" disabled={disabled || pending} onClick={turnOn}>Turn on</Button>
 		{failure !== null && <AlertDescription className="basis-full text-destructive">{failure}</AlertDescription>}
+	</Alert>;
+}
+
+// @approved
+//  A delegating Box's window says when its delegate failed on a passage, with
+// the reason, and offers Retry, which queues that passage again; with no
+// failure yet, a delegate setting that does not resolve says why. A result
+// or failure landing in the background is a database change, which
+// revalidates the read, as the passage timeline's does.
+export function DelegateNotice({ conversation, box, disabled, className }: { conversation: ConversationSummary; box: BoxId; disabled: boolean; className?: string }) {
+	const client = useQueryClient();
+	const delegates = chatBoxDescriptor(conversation, box)?.delegate !== undefined;
+	const read = useDelegateRead(conversation, box);
+	const retry = useMutation({
+		mutationFn: (variantId: number) => retryBoxDelegate(conversation.id, box, { variantId }),
+		onSuccess: (current) => client.setQueryData(delegateReadKey(conversation.id, box), current),
+	});
+	const notice = read.data ?? null;
+	if (!delegates || notice === null) return null;
+	const { failed, setting } = notice;
+	if (failed === null) return setting.kind === "broken" ? <Alert variant="destructive" className={className}><AlertDescription>The delegate cannot run: {setting.reason}</AlertDescription></Alert> : null;
+	return <Alert variant="destructive" className={cn(oneLine, className)}>
+		<AlertDescription>The delegate failed on Message {failed.number}: {failed.error}</AlertDescription>
+		<Button type="button" size="xs" variant="outline" disabled={disabled || retry.isPending || conversation.boxes[box] !== "enabled" || setting.kind === "off"} onClick={() => retry.mutate(failed.variantId)}>Retry</Button>
+		{setting.kind === "off" && <AlertDescription className="basis-full">Choose a delegate model in Connection Settings to retry.</AlertDescription>}
+		{retry.isError && <AlertDescription className="basis-full">{retry.error.message}</AlertDescription>}
 	</Alert>;
 }

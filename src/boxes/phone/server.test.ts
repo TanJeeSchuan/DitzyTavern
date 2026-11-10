@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { captureBoxes, fingerprintBoxes, participatingBoxes } from "../../server/box/registry";
+import { captureBoxes, fingerprintBoxes, participatingBoxes, serverBoxes } from "../../server/box/registry";
 import { openObservedDatabase } from "../../server/test-fixtures/conversation";
 
 test("a Phone contact added after inspection makes the plan stale", () => {
@@ -7,7 +7,7 @@ test("a Phone contact added after inspection makes the plan stale", () => {
 	try {
 		const human = { id: 1, name: "Ann" };
 		const capture = (cast: readonly { id: number; name: string }[]) => fingerprintBoxes(captureBoxes(
-			participatingBoxes([{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: { state: "enabled", instance: "instance" } }),
+			participatingBoxes(serverBoxes(), [{ reference: "box:phone", enabled: true, role: "system", content: "" }], { phone: { state: "enabled", instance: "instance" } }),
 			{},
 			{},
 			{},

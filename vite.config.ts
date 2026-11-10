@@ -37,7 +37,7 @@ const importMap: Plugin = {
 	transformIndexHtml: () => [{ tag: "script", attrs: { type: "importmap" }, children: JSON.stringify({ imports: hostModules }), injectTo: "head" }],
 };
 
-/** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host. */
+/** @approved Every built-in Box's client builds into `dist/boxes/<id>` after the host; a sandboxed one has none. */
 const builtInBoxClients: Plugin = {
 	name: "built-in-box-clients",
 	apply: "build",
@@ -72,6 +72,8 @@ export default defineConfig({
 		port: 5173,
 		proxy: {
 			"/api": `http://127.0.0.1:${process.env.PORT ?? 3000}`,
+			// @approved A sandboxed Box's frame code is served by the server, as in production.
+			"^/boxes/[^/]+/ui\\.(?:js|css)$": `http://127.0.0.1:${process.env.PORT ?? 3000}`,
 		},
 	},
 	build: {

@@ -1,3 +1,4 @@
+import { boxDescriptor } from "../../shared/contract/box";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -52,7 +53,7 @@ test("a passage whose prose was cleared leaves the timeline but keeps its record
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: null }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, { minutes: 60, weather: null }, sha256("The lamp turns."));
 	database.run("UPDATE message_variant SET content = '' WHERE id = ?", [variantId]);
 	const read = await readClock(app, chat.id);
 	expect(read.passages).toEqual([]);

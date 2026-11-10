@@ -20,6 +20,10 @@ import { createUpdateChecker, type UpdateChecker } from "../updates";
 import { createUpdateRoutes } from "./updates";
 import { contentValidators } from "./content-validators";
 import { createChangeRoutes } from "./changes";
+import { createAuthoring } from "../authoring";
+import { loadChatVersions } from "../box/registry";
+
+const chatPath = /^\/api\/conversations\/(\d+)(?:\/|$)/;
 
 export { createChatImportRoutes } from "./chat-import";
 export { createCharacterLibraryRoutes } from "./character-library";
@@ -31,7 +35,15 @@ export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 
-export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
+export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database), authoring = createAuthoring(database)) => new Elysia()
+	// @approved
+	//  Every Chat route resolves the Chat's Boxes at the versions it pins, so
+	// those versions load before the route runs. A version that fails to load
+	// is logged, and the Chat's lookups of that Box fail where they happen.
+	.onRequest(async ({ request }) => {
+		const chat = chatPath.exec(new URL(request.url).pathname)?.[1];
+		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: Error) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
+	})
 	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
@@ -47,6 +59,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createBoxDecisionSettingsRoutes(database))
 	.use(createBoxWindowRoutes(database))
 	.use(createBoxRoutes(database))
+	.use(authoring.routes)
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));
 

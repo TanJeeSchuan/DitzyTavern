@@ -1,0 +1,12 @@
+{
+	"id": "tip-jar-sandboxed",
+	"sdk": 2,
+	"label": "Tip Jar",
+	"summary": "Collects the coins the writer drops, one per Move.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "",
+	"record": { "type": "object", "properties": { "coins": { "type": "integer", "minimum": 0 } }, "required": ["coins"] },
+	"moves": { "schema": { "type": "object", "properties": { "coins": { "type": "integer", "minimum": 1 } }, "required": ["coins"] }, "max": 1, "label": "Tip {coins}" },
+	"window": { "icon": "coins", "size": { "width": 18, "height": 12 } }
+}

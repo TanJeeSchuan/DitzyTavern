@@ -1,0 +1,182 @@
+import { Type, type Static } from "@sinclair/typebox";
+import { boxValue } from "./box-value";
+import { decisionAnswer } from "./decision-model";
+import { snapshotQuery } from "./box-sandboxed";
+
+const passage = Type.String({ maxLength: 16 * 1024 });
+const decisions = Type.Record(Type.String(), decisionAnswer, { description: "The digest's decide answers, keyed by question id, each as the Decision Model answers it." });
+const participantRows = Type.Array(Type.Object({ participantId: Type.Integer({ minimum: 1 }), value: Type.String() }, { additionalProperties: false }));
+const libraryRows = Type.Array(Type.Object({ key: Type.String(), value: Type.String(), revision: Type.Integer({ minimum: 1 }) }, { additionalProperties: false }));
+const characterRows = Type.Array(Type.Object({ characterId: Type.Integer({ minimum: 1 }), revision: Type.Integer({ minimum: 1 }) }, { additionalProperties: false }));
+const [participantQuery, libraryKeyQuery, libraryPrefixQuery, characterQuery] = snapshotQuery.anyOf;
+
+// @approved
+//  One `run_scenario` call: a setup when the Box has one, a Cast by name (the
+// first is the human seat, the second speaks each passage), a seed, and
+// turns, each a Human Message's Moves, the passage that answers it and the
+// digest's scripted `decide` answers. Each swipe replaces an earlier turn's
+// Variant, keeping that turn's seed and Moves. `snapshot` scripts each
+// answer `read` may ask for, so a scenario never reads the database. `from`
+// plays its first turns on an installed version, then moves to the candidate
+// through the writer's Update check. Every list is bounded, since the
+// arguments come from a model.
+const delegated = Type.Array(boxValue, { maxItems: 64, description: "The batch the Box's delegate would apply for this step's <tag> request; required when the prose holds one." });
+export const scenarioInput = Type.Object({
+	from: Type.Optional(Type.Object({
+		version: Type.Union([Type.Literal("latest"), Type.String({ pattern: "^[0-9a-f]{64}$" })], { description: "The installed version the first turns run on: latest, or a version's hash." }),
+		turns: Type.Optional(Type.Integer({ minimum: 0, description: "How many turns run on that version; the rest, and every swipe, run on the candidate. Without it, every turn and swipe runs on that version." })),
+	}, { additionalProperties: false })),
+	setup: Type.Optional(boxValue),
+	cast: Type.Array(Type.String({ minLength: 1, maxLength: 100 }), { minItems: 1, maxItems: 8 }),
+	seed: Type.String({ maxLength: 200 }),
+	turns: Type.Array(Type.Object({
+		moves: Type.Optional(Type.Array(boxValue, { maxItems: 32 })),
+		prose: Type.Optional(passage),
+		decisions: Type.Optional(decisions),
+		delegated: Type.Optional(delegated),
+	}, { additionalProperties: false }), { minItems: 1, maxItems: 40 }),
+	swipes: Type.Optional(Type.Array(Type.Object({
+		turn: Type.Integer({ minimum: 0, description: "The index of the turn whose Variant this swipe replaces." }),
+		prose: Type.Optional(passage),
+		decisions: Type.Optional(decisions),
+		delegated: Type.Optional(delegated),
+	}, { additionalProperties: false }), { maxItems: 20 })),
+	snapshot: Type.Optional(Type.Array(Type.Union([
+		Type.Object({ query: participantQuery, answer: participantRows }, { additionalProperties: false }),
+		Type.Object({ query: Type.Union([libraryKeyQuery, libraryPrefixQuery]), answer: libraryRows }, { additionalProperties: false }),
+		Type.Object({ query: characterQuery, answer: characterRows }, { additionalProperties: false }),
+	]), { maxItems: 64 })),
+}, { additionalProperties: false });
+export type ScenarioInput = Static<typeof scenarioInput>;
+
+const promptItem = Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) });
+/** @approved One turn or swipe as the scenario ran it: its Moves as history renders them, the prompt items `advance` returned, and the record its Variant holds. */
+const scenarioTurn = Type.Object({ moves: Type.Array(Type.String()), items: Type.Array(promptItem), record: Type.Optional(Type.Unknown()) });
+// @approved
+//  What a scenario returns. `diagnostics` holds every refusal and failure the
+// loader or a hook raised; a scenario stops at the first, keeping what ran.
+// `records` are the selected Variants' records in order, folded into `state`,
+// and `recordBytes` their JSON size. A Box with a window reports its `read`,
+// and a digesting Box its `status`. A run `from` an installed version says
+// which version, how many turns and swipes ran on it, and, once the Update
+// check passed, each place where the candidate's fold of those records
+// differs from that version's.
+export const scenarioResult = Type.Object({
+	ok: Type.Boolean(),
+	diagnostics: Type.Array(Type.String()),
+	turns: Type.Array(scenarioTurn),
+	swipes: Type.Array(scenarioTurn),
+	state: Type.Optional(Type.Unknown()),
+	records: Type.Array(Type.Unknown()),
+	recordBytes: Type.Integer({ minimum: 0 }),
+	read: Type.Optional(Type.Object({ view: Type.Unknown(), status: Type.Optional(Type.Union([Type.String(), Type.Null()])) })),
+	status: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+	upgrade: Type.Optional(Type.Object({
+		version: Type.String(),
+		turns: Type.Integer({ minimum: 0 }),
+		swipes: Type.Integer({ minimum: 0 }),
+		changes: Type.Optional(Type.Array(Type.Object({ path: Type.String(), earlier: Type.Optional(boxValue), candidate: Type.Optional(boxValue) }))),
+	})),
+});
+export type ScenarioResult = Static<typeof scenarioResult>;
+/** @approved A `run_scenario` result as Install's gate caches it, beside the input it ran. */
+export const cachedScenarioCheck = Type.Object({ input: scenarioInput, result: scenarioResult });
+
+/** @approved The coding model for one authoring session: a chat Connection Profile and its model. No limits are declared, so libfx sends no output limit and the provider's own default applies. */
+export const codingModel = Type.Object({
+	profileId: Type.Integer(),
+	model: Type.String({ minLength: 1 }),
+}, { additionalProperties: false });
+export type CodingModel = Static<typeof codingModel>;
+
+/** @approved Steps per writer message: model requests and tool calls each count against it, and `null` sets no limit. */
+export const authoringSteps = Type.Union([Type.Literal(40), Type.Literal(100), Type.Null()]);
+export type AuthoringSteps = Static<typeof authoringSteps>;
+/** @approved How many more steps Continue gives a paused message. */
+export const CONTINUE_STEPS = 20;
+export const authoringStartBody = Type.Object({ ...codingModel.properties, steps: authoringSteps }, { additionalProperties: false });
+export const authoringStepsBody = Type.Object({ steps: authoringSteps }, { additionalProperties: false });
+
+export const authoringRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String() });
+/** @approved A session id names its folder, so it is only ever the UUID the host made. */
+export const authoringSessionParams = Type.Object({ session: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }) });
+export const authoringPromptBody = Type.Object({ text: Type.String({ minLength: 1, maxLength: 32 * 1024 }) });
+const authoringInstalled = Type.Object({ outcome: Type.Literal("installed"), id: Type.String(), label: Type.String() });
+const authoringInstallRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
+/** @approved Install found that Chats on `latest` could not Update to the candidate, from the data the session's saved scenarios leave; the panel offers Install as a new Box. */
+const authoringInstallIncompatible = Type.Object({ outcome: Type.Literal("incompatible"), reason: Type.String(), diagnostics: Type.Array(Type.String()) });
+export const authoringInstall = Type.Union([authoringInstalled, authoringInstallRefused, authoringInstallIncompatible]);
+
+/** @approved A candidate's fixed files as they stand, for the panel to show; a file the agent has not written is absent. */
+export const authoringFiles = Type.Object({ files: Type.Array(Type.Object({ name: Type.String(), content: Type.String() })) });
+
+/** @approved `read_contract`'s arguments: nothing for the contract, or the built-in Box whose sources it returns. */
+export const readContractInput = Type.Object({
+	example: Type.Optional(Type.Union([Type.Literal("mood"), Type.Literal("race")])),
+	file: Type.Optional(Type.String({ description: "One of the example's files, as its listing names them." })),
+}, { additionalProperties: false });
+/** @approved The files a candidate holds that its agent reads and writes. */
+export const authoredFileName = Type.Union([Type.Literal("descriptor.json"), Type.Literal("logic.js"), Type.Literal("ui.js"), Type.Literal("ui.css")]);
+/** @approved `read_file`'s arguments: one file, from the byte a cut read names. */
+export const readFileInput = Type.Object({
+	file: authoredFileName,
+	offset: Type.Optional(Type.Integer({ minimum: 0, description: "The byte to start from, which a cut read names." })),
+}, { additionalProperties: false });
+/** @approved A write tool's arguments: the whole of its one file, and nothing else. */
+export const authoredContent = (description: string) => Type.Object({ content: Type.String({ description }) }, { additionalProperties: false });
+/** @approved The JSON a `descriptor.json` write must hold: one object, whose id the host sets. */
+export const authoredDescriptor = Type.Record(Type.String(), Type.Unknown());
+/** @approved The part of a written descriptor a saved session is listed by. */
+export const authoredLabel = Type.Object({ label: Type.String() });
+
+// @approved
+//  What one authoring turn streams, as NDJSON: the agent's reply text and its
+// reasoning, each tool call as it starts, with its input as JSON text, and as
+// it ends, with the text the agent read, each scenario's result beside its
+// tool call, a pause once the message has taken its steps, and how the turn
+// ended. An input or result over the host's cap arrives cut short, marked
+// `truncated`.
+export const authoringEvent = Type.Union([
+	Type.Object({ type: Type.Literal("text"), delta: Type.String() }),
+	Type.Object({ type: Type.Literal("reasoning"), delta: Type.String(), truncated: Type.Boolean() }),
+	Type.Object({ type: Type.Literal("tool"), id: Type.String(), name: Type.String(), input: Type.String(), truncated: Type.Boolean() }),
+	Type.Object({ type: Type.Literal("tool-end"), id: Type.String(), name: Type.String(), isError: Type.Boolean(), content: Type.String(), truncated: Type.Boolean() }),
+	Type.Object({ type: Type.Literal("scenario"), id: Type.String(), result: scenarioResult }),
+	Type.Object({ type: Type.Literal("paused"), steps: Type.Integer({ minimum: 1 }) }),
+	Type.Object({ type: Type.Literal("end"), stopReason: Type.String(), error: Type.Optional(Type.String()) }),
+]);
+export type AuthoringEvent = Static<typeof authoringEvent>;
+
+// @approved
+//  One line of a session's saved log: the writer's message, an event the
+// panel was streamed, or a scenario's whole input, saved because the tool
+// event the panel sees cuts a large input short.
+export const authoringLogEntry = Type.Union([
+	Type.Object({ type: Type.Literal("prompt"), text: Type.String() }),
+	Type.Object({ type: Type.Literal("scenario-input"), id: Type.String(), input: scenarioInput }),
+	authoringEvent,
+]);
+export type AuthoringLogEntry = Static<typeof authoringLogEntry>;
+export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
+export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
+
+// @approved
+//  What a session keeps in its folder's meta.json beside its checkpoint, log
+// and candidate: the Box id its candidate has, the coding model and steps it
+// last ran with, whether it installed its Box, and when it last changed. A
+// session `box:submit` made has no coding model until the writer opens it.
+export const authoringMeta = Type.Object({
+	box: Type.String(),
+	profileId: Type.Optional(codingModel.properties.profileId),
+	model: Type.Optional(codingModel.properties.model),
+	steps: authoringSteps,
+	installed: Type.Boolean(),
+	updated: Type.String(),
+}, { additionalProperties: false });
+export type AuthoringMeta = Static<typeof authoringMeta>;
+/** @approved A saved session as the panel lists it: its label once descriptor.json has one, and `installed` only while the Box it installed is still loaded. */
+export const authoringSessions = Type.Object({ sessions: Type.Array(Type.Object({
+	session: Type.String(),
+	...authoringMeta.properties,
+	label: Type.Union([Type.String(), Type.Null()]),
+})) });

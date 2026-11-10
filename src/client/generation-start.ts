@@ -2,7 +2,7 @@ import type { GenerationPreviewBody } from "./conversation";
 
 // @approved
 //  `seat` is the human seat the request was made from, which its seat-bound Moves belong to.
-export type StartRequest = { conversationId: number; seat: number | null; request: GenerationPreviewBody };
+export type StartRequest = { conversationId: number; seat: number | null; versions: Readonly<Record<string, string>>; request: GenerationPreviewBody };
 
 /** @approved
  * One Generation start, from the request to the server's answer. Once accepted, the pending starts hold the start until its session is observed.

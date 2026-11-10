@@ -170,3 +170,37 @@ test("a Generation capture stored before inspection kept its model is cleared ra
 		await rm(folder, { recursive: true, force: true });
 	}
 });
+
+// @approved
+//  The Race's old records, Writer overrides included, fail its new record
+// schema, and a held Writer override would make every Race read throw; the
+// upgrade clears them, and only them.
+test("the sandboxed Race upgrade clears the Race's old records, Writer overrides and pending ones included, and no other Box's", async () => {
+	const database = new Database(":memory:");
+	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 37) }));
+		initializeDatabase(database, folder);
+		const oldRecord = JSON.stringify({ raceId: "r", stretch: 1, metres: 400, finished: false, standings: [], intents: [], replay: [] });
+		database.exec(`
+			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Upgrade', '2026-11-03', '2026-11-03');
+			INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
+			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 0, '2026-11-03');
+			INSERT INTO message_variant (id, message_id, position, content, timestamp, selected) VALUES (1, 1, 0, '', '2026-11-03', 1);
+			INSERT INTO active_generation (id, conversation_id, message_id, variant_id, human_participant_id, model_participant_id, captured_model_name, started_at,
+				box_records_json)
+			VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-11-03', '{"race":{"instance":"a","record":${oldRecord}},"world-clock":{"instance":"b","record":{"minutes":5,"weather":null}}}');
+		`);
+		const slot = (namespace: string, key: string, value: string) => database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, ?, ?, ?)").run(namespace, key, value);
+		slot("box:race", "record:a", JSON.stringify({ automatic: JSON.parse(oldRecord), writer: JSON.parse(oldRecord) }));
+		slot("box:race", "notes", "kept");
+		slot("box:world-clock", "record:b", JSON.stringify({ writer: { minutes: 5, weather: null } }));
+		initializeDatabase(database);
+		expect(database.query("SELECT namespace, key FROM message_variant_data ORDER BY namespace").all()).toEqual([{ namespace: "box:race", key: "notes" }, { namespace: "box:world-clock", key: "record:b" }]);
+		expect(JSON.parse(database.query<{ records: string }, []>("SELECT box_records_json AS records FROM active_generation").get()!.records)).toEqual({ "world-clock": { instance: "b", record: { minutes: 5, weather: null } } });
+	} finally {
+		database.close();
+		await rm(folder, { recursive: true, force: true });
+	}
+});

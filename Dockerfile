@@ -28,6 +28,8 @@ COPY src/server ./src/server
 COPY src/shared ./src/shared
 COPY src/boxes ./src/boxes
 COPY src/box-sdk ./src/box-sdk
+COPY src/client/box-windows/frame.ts src/client/box-windows/frame.css ./src/client/box-windows/
+COPY src/styles/theme.css ./src/styles/
 COPY --from=build /app/src/server/build-metadata.json ./src/server/build-metadata.json
 RUN mkdir data && chown bun:bun data
 USER bun

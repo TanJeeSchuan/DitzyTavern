@@ -5,14 +5,18 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
+import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, settledWithin, startBoxCatchUp, startBoxDigests } from "./digest";
 import { readRecordSlots } from "./records";
 import { executeConversationCommand, observeConversationWrites, readConversationSummary, readSelectedPassages } from "../conversation";
 import memoryBox from "../../boxes/memory/server";
 import worldClockBox from "../../boxes/world-clock/server";
 import { worldClockRecord } from "../../boxes/world-clock/contract";
 import type { DigestWindow } from "./contract";
+import { boxRecordSchema, boxDescriptor } from "../../shared/contract/box";
 import { subscribeDatabaseChanges, watchDatabaseChanges } from "../database/changes";
+import { writeVersionedBox } from "../test-fixtures/versioned-box";
+import { builtInBoxes, loadBoxes, loadBoxVersion } from "./registry";
+import { pinBoxVersion } from "./version-pin";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
@@ -23,7 +27,7 @@ interface StubDecisionRequest { readonly questions: Readonly<Record<string, Stub
 const decisionResponse = (request: StubDecisionRequest): Response => {
 	const answers = Object.fromEntries(Object.entries(request.questions).map(([id, question]) => {
 		const options = Object.keys(question.criteria ?? {});
-		const choice = id === "elapsed" ? "overnight" : "storm";
+		const choice = id === "elapsed" ? "overnight" : id === "mood" ? "tense" : "storm";
 		return [id, { type: "choice", choice, probabilities: Object.fromEntries(options.map((option) => [option, option === choice ? 0.9 : 0.1 / (options.length - 1)])) }];
 	}));
 	return Response.json({ answers });
@@ -36,15 +40,18 @@ const decisionResponse = (request: StubDecisionRequest): Response => {
 const heldDecisionFetch = () => {
 	const releases: ((fail: boolean) => void)[] = [];
 	const contents: string[] = [];
+	const signals: (AbortSignal | null | undefined)[] = [];
 	return {
 		fetch: ((_input, init) => new Promise<Response>((resolve) => {
 			const request: StubDecisionRequest = JSON.parse(String(init?.body));
 			contents.push(String(init?.body));
+			signals.push(init?.signal);
 			releases.push((fail) => resolve(fail ? new Response("", { status: 500 }) : decisionResponse(request)));
 		})) satisfies ModelFetch,
 		release: (fail = false) => { releases.shift()?.(fail); },
 		pending: () => releases.length,
 		contents: () => contents,
+		signals: () => signals,
 	};
 };
 
@@ -178,6 +185,31 @@ test("a clock that stops running abandons its in-flight digest, even when it is 
 	stopDigests = undefined;
 	expect(readRecordSlots(drizzle(database), "world-clock", worldClockRecord, clock, [passage]).size).toBe(0);
 });
+
+// @approved
+//  The same valid Mood answer lands when its job runs to the end, and is
+// dropped when the job is dropped while its request is pending.
+for (const dropped of [false, true]) {
+	test(`a sandboxed Box's pending decide ${dropped ? "aborts and writes nothing once its job is dropped" : "lands its answer when its job is not dropped"}`, async () => {
+		const chat = createChat();
+		const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+		const mood = insertBox(database, chat.id, "mood");
+		enableDecision();
+		const stub = heldDecisionFetch();
+		stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+		const record = () => readRecordSlots(drizzle(database), "mood", boxRecordSchema(boxDescriptor("mood")), mood, [passage]).get(passage)?.automatic;
+
+		prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
+		await waitFor(() => stub.pending() === 1);
+		if (dropped) prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [], removedVariantIds: [], stoppedBox: "mood" })();
+		expect(stub.signals()[0]?.aborted).toBe(dropped);
+		stub.release();
+		if (!dropped) await waitFor(() => record() !== undefined);
+		await stopDigests();
+		stopDigests = undefined;
+		expect(record()).toEqual(dropped ? undefined : { mood: "tense" });
+	});
+}
 
 test("a cancelled run can be restarted for the same Variants before the aborted job settles", async () => {
 	const chat = createChat();
@@ -375,4 +407,71 @@ test("a rejected edit leaves the running Memory catch-up intact", async () => {
 		stopDigests = undefined;
 		run.mockRestore();
 	}
+});
+
+const omen = (marker: string) => ({
+	"descriptor.json": JSON.stringify({ id: "omen", sdk: 2, label: "Omen", summary: "Reads the scene's mood.", role: "system", startsEnabled: false, instructions: "",
+		decision: { summary: "s", description: "d", off: "o", context: "c" },
+		record: { type: "object", properties: { mood: { type: "string" } }, required: ["mood"], additionalProperties: false },
+		window: { kind: "digest", icon: "drama", size: { width: 10, height: 10 } } }),
+	"logic.js": `export default { records: { initial: null, fold: (_, { mood }) => mood, digest: { window: 0, run: async ({ passage }, { decide }) =>
+		({ mood: new Map(await decide({ passage }, { mood: { type: "choice", criteria: { calm: "", tense: "" } } })).get("mood").choice }) } } }; /* ${marker} */`,
+});
+
+// @approved
+//  Only the pin moves, as no command does, so the queue's own abandon on an
+// upgrade cannot drop the job: what drops it is the version comparison. The
+// control run lands the same answer.
+for (const moved of [false, true]) {
+	test(`a digest started under v1 ${moved ? "writes nothing once the Chat moved to v2 before it ended" : "lands while the Chat stays on v1"}`, async () => {
+		const box = await writeVersionedBox("omen", [omen("v1"), omen("v2")]);
+		try {
+			await loadBoxes([builtInBoxes, box.plugins]);
+			await loadBoxVersion("omen", box.versions[1]!); // @approved Two versions were written.
+			const chat = createChat();
+			const passage = addPassage(chat.id, 1, "The storm breaks over the tower.");
+			setBoxState(database, chat.id, "omen", "enabled");
+			enableDecision();
+			const stub = heldDecisionFetch();
+			stopDigests = startBoxDigests(database, { fetch: stub.fetch });
+			const lifecycle = database.query<{ value: string }, [number]>("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:omen' AND key = 'instance'").get(chat.id)!.value;
+			const record = () => readRecordSlots(drizzle(database), "omen", boxRecordSchema(boxDescriptor("omen")), lifecycle, [passage]).get(passage)?.automatic;
+			prepareBoxDigests(database, { conversationId: chat.id, touchedVariantIds: [passage], removedVariantIds: [] })();
+			await waitFor(() => stub.pending() === 1);
+			if (moved) pinBoxVersion(drizzle(database), chat.id, "omen", box.versions[1]!); // @approved Two versions were written.
+			stub.release();
+			if (!moved) await waitFor(() => record() !== undefined);
+			await stopDigests();
+			stopDigests = undefined;
+			expect(record()).toEqual(moved ? undefined : { mood: "tense" });
+		} finally {
+			await loadBoxes([builtInBoxes]);
+			box.remove();
+		}
+	});
+}
+
+// @approved
+//  A delegate's reducer runs only for a job still current in a running
+// queue, and its deadline must not outlive itself: a dropped job once still
+// started its stale reducer, a queue already stopping waited out the whole
+// deadline, and each timed-out reducer left a listener on the queue.
+test("a reducer starts only for a live job in a running queue, and its deadline leaves no listener behind", async () => {
+	const never = () => new Promise<never>(() => {});
+	const ran: string[] = [];
+	const live = () => new AbortController().signal;
+	await expect(settledWithin(() => ran.push("dropped"), { aborted: AbortSignal.abort(), stopping: live(), ms: 1_000 }, "late")).rejects.toThrow();
+	await expect(settledWithin(() => ran.push("stopping"), { aborted: live(), stopping: AbortSignal.abort(), ms: 1_000 }, "late")).rejects.toThrow("late");
+	expect(ran).toEqual([]);
+	const dropping = new AbortController();
+	queueMicrotask(() => dropping.abort());
+	await settledWithin(() => ran.push(dropping.signal.aborted ? "after its drop" : "while live"), { aborted: dropping.signal, stopping: live(), ms: 1_000 }, "late");
+	expect(ran).toEqual(["while live"]);
+
+	const stopping = live();
+	const added = spyOn(stopping, "addEventListener");
+	const removed = spyOn(stopping, "removeEventListener");
+	await expect(settledWithin(never, { aborted: live(), stopping, ms: 5 }, "late")).rejects.toThrow("late");
+	expect([added.mock.calls.length, removed.mock.calls.length]).toEqual([1, 1]);
+	expect(await settledWithin(() => "done", { aborted: live(), stopping: live(), ms: 1_000 }, "late")).toBe("done");
 });
