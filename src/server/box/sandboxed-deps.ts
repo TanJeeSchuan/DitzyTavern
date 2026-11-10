@@ -52,13 +52,14 @@ const cappedText = async (response: Response, cap: number, over: () => Error) =>
 //  Fetches `<name>@<version>` as one module: the `?bundle` URL, then each
 // same-origin stub it re-exports, until a module with no imports is left.
 // Anything else is refused, since the sandbox resolves no imports.
-const fetchPackage = async (origin: string, key: string, cap: number, over: () => Error, refuse: (reason: string) => Error) => {
+const fetchPackage = async (origin: string, key: string, cap: number, over: () => Error, refuse: (reason: string) => Error, signal: AbortSignal | undefined) => {
 	let url = new URL(`/${key}?bundle&target=es2022`, origin);
 	for (let hop = 0; hop <= INDIRECTIONS; hop++) {
 		let response: Response;
 		try {
-			response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(FETCH_MS) });
+			response = await fetch(url, { redirect: "error", signal: signal === undefined ? AbortSignal.timeout(FETCH_MS) : AbortSignal.any([signal, AbortSignal.timeout(FETCH_MS)]) });
 		} catch (error) {
+			signal?.throwIfAborted();
 			throw refuse(`could not be fetched from ${url.href}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 		if (!response.ok) {
@@ -87,7 +88,7 @@ const fetchPackage = async (origin: string, key: string, cap: number, over: () =
 // each response arrives. Files are read from the folder's snapshot and
 // written by replacement; the lock is rewritten to the declared packages
 // when it changes. Nothing fetched runs on the host.
-export const pinnedPackages = async (folder: string, id: BoxId, files: SandboxedFiles, dependencies: Readonly<Record<string, string>>, origin = esmOrigin) => {
+export const pinnedPackages = async (folder: string, id: BoxId, files: SandboxedFiles, dependencies: Readonly<Record<string, string>>, origin = esmOrigin, signal?: AbortSignal) => {
 	const declared = Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b));
 	if (declared.length > BOX_PACKAGES) throw new Error(`The ${id} Box declares ${declared.length} dependencies; a sandboxed Box may declare at most ${BOX_PACKAGES}.`);
 	const held = files.get("deps.lock.json") ?? "{}";
@@ -104,7 +105,7 @@ export const pinnedPackages = async (folder: string, id: BoxId, files: Sandboxed
 		const over = () => refuse(cap === PACKAGE_BYTES ? `is over ${mebibytes(PACKAGE_BYTES)}` : `takes the Box's packages over ${mebibytes(BOX_PACKAGE_BYTES)}`);
 		const stored = files.get(`deps/${key}.js`);
 		const expected = lock[key];
-		const source = stored !== undefined && expected !== undefined ? stored : await fetchPackage(origin, key, cap, over, refuse);
+		const source = stored !== undefined && expected !== undefined ? stored : await fetchPackage(origin, key, cap, over, refuse, signal);
 		if (Buffer.byteLength(source) > cap) throw over();
 		total += Buffer.byteLength(source);
 		const hash = sha256(source);
@@ -112,12 +113,14 @@ export const pinnedPackages = async (folder: string, id: BoxId, files: Sandboxed
 		if (source !== stored) {
 			const path = join(folder, "deps", `${key}.js`);
 			await mkdir(dirname(path), { recursive: true });
+			signal?.throwIfAborted();
 			await replaceFile(path, source);
 		}
 		pinned.set(name, source);
 		hashes[key] = hash;
 	}
 	const written = `${JSON.stringify(hashes, null, "\t")}\n`;
+	signal?.throwIfAborted();
 	if (written !== held && (declared.length > 0 || held !== "{}")) await replaceFile(join(folder, "deps.lock.json"), written);
 	return pinned;
 };

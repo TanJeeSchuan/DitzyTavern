@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { DecisionAnswer } from "../src/shared/contract/decision-model";
+import type { GenerationJsonValue } from "../src/shared/generation-json";
 import type { BuildMetadata } from "../src/server/build-metadata";
 
 export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
@@ -47,14 +48,38 @@ export const embeddingsCallBody = Type.Object({
 });
 export type EmbeddingsCallBody = Static<typeof embeddingsCallBody>;
 
+// @approved
+//  One scripted reply to the coding agent's next authoring request: tool
+// calls, which end the reply with `finish_reason: "tool_calls"`, or text.
+export type AuthoringReply = { tools: { name: string; arguments: Readonly<Record<string, GenerationJsonValue>> }[] } | { text: string };
+
+// @approved
+//  An authoring request libfx sends: Chat Completions with function tools,
+// whose history carries the assistant's tool calls (content null) and each
+// tool's result as a `tool` message.
+export const authoringCallBody = Type.Object({
+	model: Type.String(),
+	max_tokens: Type.Optional(Type.Integer()),
+	messages: Type.Array(Type.Object({
+		role: Type.String(),
+		content: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		tool_call_id: Type.Optional(Type.String()),
+		tool_calls: Type.Optional(Type.Array(Type.Object({ id: Type.String(), function: Type.Object({ name: Type.String(), arguments: Type.String() }) }))),
+	})),
+	tools: Type.Optional(Type.Array(Type.Object({ function: Type.Object({ name: Type.String() }) }))),
+});
+export type AuthoringCallBody = Static<typeof authoringCallBody>;
+
 export type ChatModelCall = { kind: "chat" | "extraction"; url: string; headers: Record<string, string>; body: ChatCompletionCallBody };
 export type DecisionModelCall = { kind: "decision"; url: string; headers: Record<string, string>; body: DecisionCallBody };
 export type EmbeddingsModelCall = { kind: "embeddings"; url: string; headers: Record<string, string>; body: EmbeddingsCallBody };
 export type UncategorizedModelCall = { kind: "models" | "unknown"; url: string; headers: Record<string, string>; body: unknown };
-export type ModelCall = ChatModelCall | DecisionModelCall | EmbeddingsModelCall | UncategorizedModelCall;
+export type AuthoringModelCall = { kind: "authoring"; url: string; headers: Record<string, string>; body: AuthoringCallBody };
+export type ModelCall = ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
 
 /** @approved Narrow logged calls by their decoded kind; the raw `kind` string on an old log entry is untyped. */
 export const isChatModelCall = (call: ModelCall): call is ChatModelCall => call.kind === "chat";
+export const isAuthoringModelCall = (call: ModelCall): call is AuthoringModelCall => call.kind === "authoring";
 export const isDecisionModelCall = (call: ModelCall): call is DecisionModelCall => call.kind === "decision";
 /** @approved The first logged call `accepts` picks; it throws when the fake received none, so a test reading it fails at the cause. */
 export const firstCall = <Call extends ModelCall>(calls: readonly ModelCall[], accepts: (call: ModelCall) => call is Call): Call => {

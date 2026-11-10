@@ -97,9 +97,9 @@ const inputsHash = (files: SandboxedFiles, packages: ReadonlyMap<string, string>
 // hash of the inputs it was built from; the loader reuses a bundle whose hash
 // still matches and rebuilds it otherwise. A reused bundle passes the same
 // checks as a fresh one.
-export const sandboxedSources = async (folder: string, id: BoxId, withUi: boolean, files: SandboxedFiles, dependencies: Readonly<Record<string, string>> = {}, origin = esmOrigin) => {
+export const sandboxedSources = async (folder: string, id: BoxId, withUi: boolean, files: SandboxedFiles, dependencies: Readonly<Record<string, string>> = {}, origin = esmOrigin, signal?: AbortSignal) => {
 	let prepared: Promise<{ readonly packages: ReadonlyMap<string, string>; readonly hash: string }> | undefined;
-	const prepare = () => prepared ??= pinnedPackages(folder, id, files, dependencies, origin).then((packages) => ({ packages, hash: inputsHash(files, packages) }));
+	const prepare = () => prepared ??= pinnedPackages(folder, id, files, dependencies, origin, signal).then((packages) => ({ packages, hash: inputsHash(files, packages) }));
 	const source = async (part: Part) => {
 		const written = files.get(`${part}.js`);
 		if (written === undefined) throw new Error(`The ${id} Box has no ${part}.js.`);
@@ -109,6 +109,7 @@ export const sandboxedSources = async (folder: string, id: BoxId, withUi: boolea
 		const cached = files.get(`${part}.bundle.js`);
 		if (cached?.startsWith(stamp)) return script(part, checkedBundle(id, part, cached.slice(stamp.length)));
 		const code = checkedBundle(id, part, await build(files, id, part, packages));
+		signal?.throwIfAborted();
 		await replaceFile(join(folder, `${part}.bundle.js`), stamp + code);
 		return script(part, code);
 	};

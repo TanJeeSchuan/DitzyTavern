@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { Static } from "@sinclair/typebox";
 import type { ComponentType } from "react";
 import type { BoxLens } from "./lens";
 import { sandboxedClient } from "./BoxFrame";
@@ -120,13 +121,31 @@ const withinDeadline = async <T>(load: Promise<T>): Promise<T> => {
 // its client loads.
 export const loadBoxClients = async (): Promise<void> => {
 	const boxes = await requestData(api.api.boxes.get(), boxList);
-	const settled = await Promise.allSettled(boxes.map(async (listed) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client)) : sandboxedClient(listed.id, listed.sandboxed)));
-	loaded = new Map(boxes.map((listed, index) => {
-		const result = settled[index]!; // @approved allSettled answers each Box, in order.
-		const metadata = boxMetadataFrom(listed);
-		return [listed.id, result.status === "fulfilled" ? { metadata, client: result.value } : { metadata, failure: errorMessage(result.reason) }];
-	}));
-	installBoxes([...loaded.values()].map((box) => ({ metadata: box.metadata, descriptor: "client" in box ? box.client.descriptor : undefined })));
+	const settled = await Promise.allSettled(boxes.map(clientOf));
+	loaded = new Map(boxes.map((listed, index) => [listed.id, loadedFrom(listed, settled[index]!)])); // @approved allSettled answers each Box, in order.
+	installLoaded();
+};
+
+type ListedBox = Static<typeof boxList>[number];
+const clientOf = async (listed: ListedBox) => "client" in listed ? await withinDeadline(loadBoxClient(listed.id, listed.client)) : sandboxedClient(listed.id, listed.sandboxed);
+const loadedFrom = (listed: ListedBox, result: PromiseSettledResult<BoxClientDefinition>): LoadedBox => {
+	const metadata = boxMetadataFrom(listed);
+	return result.status === "fulfilled" ? { metadata, client: result.value } : { metadata, failure: errorMessage(result.reason) };
+};
+const installLoaded = () => installBoxes([...loaded.values()].map((box) => ({ metadata: box.metadata, descriptor: "client" in box ? box.client.descriptor : undefined })));
+
+// @approved
+//  Boxes the server installed while the app ran join the registry after the
+// rest: every one it lists that this client has not loaded, so a Box another
+// writer installed meanwhile joins too. Every Box already loaded keeps its
+// client definition as it is: a rebuilt sandboxed client's window would be a
+// new component, and React would replace each open frame, its Worker and its
+// unsaved guest state.
+export const addBoxClients = async (): Promise<void> => {
+	const added = (await requestData(api.api.boxes.get(), boxList)).filter(({ id }) => !loaded.has(id));
+	const settled = await Promise.allSettled(added.map(clientOf));
+	loaded = new Map([...loaded, ...added.map((listed, index) => [listed.id, loadedFrom(listed, settled[index]!)] as const)]); // @approved allSettled answers each Box, in order.
+	installLoaded();
 };
 
 /** How a Box opens, or undefined when it has no client surface to open: its primary panel when it has one, otherwise its window. */

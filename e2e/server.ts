@@ -11,8 +11,9 @@ import { builtInBoxes, loadBoxes } from "../src/server/box/registry";
 import type { ModelFetch } from "../src/server/model-client";
 import { toMessages } from "../src/server/model-client/chat-messages";
 import { Value } from "@sinclair/typebox/value";
-import type { ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
+import type { AuthoringReply, ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
 import {
+	authoringCallBody,
 	chatCompletionCallBody,
 	decisionCallBody,
 	embeddingsCallBody,
@@ -33,6 +34,7 @@ initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.fro
 registerWireFormats();
 
 let chatReplies: ChatReply[] = [];
+let authoringReplies: AuthoringReply[] = [];
 let decisionRules: DecisionRule[] = [];
 let memoryClaims: MemoryClaim[] | undefined;
 let modelCatalogs: string[][] = [];
@@ -122,6 +124,35 @@ const decisions = async (call: DecisionModelCall) => {
 	return Response.json({ answers: Object.fromEntries(rules.map(([id, rule]) => [id, rule && "answer" in rule && rule.answer])) });
 };
 
+// @approved
+//  The coding agent's provider: libfx sends real HTTP to this server, never
+// through the app's fetch, so its requests arrive here, separate from story
+// requests. Each answers with the next scripted reply as Chat Completions
+// SSE; a tool call's arguments arrive split across two deltas, as providers
+// stream them. An unscripted or malformed request fails the test.
+const authoring = async (request: Request) => {
+	const raw: unknown = await request.json();
+	const body = Value.Check(authoringCallBody, raw) ? raw : undefined;
+	const call: ModelCall = body === undefined ? { kind: "unknown", url: request.url, headers: Object.fromEntries(request.headers), body: raw } : { kind: "authoring", url: request.url, headers: Object.fromEntries(request.headers), body };
+	calls.push(call);
+	writeFileSync(join(current!.directory, "calls.json"), JSON.stringify(calls));
+	const reply = authoringReplies.shift();
+	if (body === undefined || reply === undefined) return refuse(call);
+	type Delta = { role?: "assistant"; content?: string; tool_calls?: { index: number; id?: string; type?: "function"; function: { name?: string; arguments: string } }[] };
+	const chunk = (delta: Delta, finish: string | null) => `data: ${JSON.stringify({ id: "e2e", object: "chat.completion.chunk", created: 0, model: body.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+	const chunks = "text" in reply
+		? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, "stop")]
+		: [...reply.tools.flatMap(({ name, arguments: input }, index) => {
+			const text = JSON.stringify(input);
+			const half = Math.floor(text.length / 2);
+			return [
+				chunk({ role: "assistant", tool_calls: [{ index, id: `call_${calls.length}_${index}`, type: "function", function: { name, arguments: text.slice(0, half) } }] }, null),
+				chunk({ tool_calls: [{ index, function: { arguments: text.slice(half) } }] }, null),
+			];
+		}), chunk({}, "tool_calls")];
+	return new Response(`${chunks.join("")}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+};
+
 const embed = (text: string) => {
 	const buckets = (text.toLowerCase().match(/[a-z']+/g) ?? []).map((word) => [...word].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7) % 64);
 	const vector = Array.from({ length: 64 }, (_, slot) => buckets.filter((bucket) => bucket === slot).length);
@@ -199,6 +230,7 @@ const reset = async () => {
 		current = undefined;
 	}
 	chatReplies = [];
+	authoringReplies = [];
 	decisionRules = [];
 	memoryClaims = undefined;
 	modelCatalogs = [];
@@ -223,7 +255,7 @@ const reset = async () => {
 
 const open = async (directory: string, database: Database) => {
 	updateDirectory = directory;
-	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: checkpointNow }, artifactDirectory: join(directory, "artifacts") }) };
+	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, authoring: { root: join(directory, "authoring"), plugins: pluginFolder }, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: checkpointNow }, artifactDirectory: join(directory, "artifacts") }) };
 };
 
 const resumed = process.env.E2E_RESUME;
@@ -254,6 +286,8 @@ const server = Bun.serve({
 		switch (new URL(request.url).pathname) {
 			case "/__e2e/reset": await reset(); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
+			case "/__e2e/authoring": authoringReplies.push(...await request.json()); break;
+			case "/__e2e/authoring/chat/completions": return authoring(request);
 			case "/__e2e/decisions": decisionRules.push(...await request.json()); break;
 			case "/__e2e/memories": memoryClaims = [...memoryClaims ?? [], ...await request.json()]; break;
 			case "/__e2e/models": modelCatalogs.push(...await request.json()); break;

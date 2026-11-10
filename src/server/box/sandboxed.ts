@@ -5,6 +5,7 @@ import type { BoxId } from "../../shared/contract/box";
 import { assertChecked } from "../../shared/contract/box-descriptor";
 import { sandboxedDeclaration, sandboxedDecideInput, sandboxedFailure, sandboxedOutcome, sandboxedReadOutput, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
+import type { Portrait } from "../../shared/contract/image";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { DecisionJson, DecisionQuestions } from "../decision-model";
 import type { AdvanceInput, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "./contract";
@@ -109,6 +110,14 @@ const guestError = (id: BoxId, hook: string, { name, message }: SandboxedFailure
 	new Error(name === "InternalError" && message === "interrupted" ? `The ${id} Box's ${hook} ran past its ${SANDBOX_ENTRY_MS} ms limit.`
 		: name === "InternalError" && message === "out of memory" ? `The ${id} Box's ${hook} ran out of its ${mebibytes(SANDBOX_HEAP_BYTES)} heap.`
 		: `The ${id} Box's ${hook} threw ${name}: ${message}`);
+
+/** @approved What a sandboxed Box's `read` gets: its setup and folded state, the Cast with each Portrait and source Character, and the human seat. */
+export type SandboxedReadInput = {
+	readonly setup: BoxValue | undefined;
+	readonly state: GenerationJsonValue | undefined;
+	readonly human: number | null;
+	readonly cast: readonly { readonly id: number; readonly name: string; readonly portrait: Portrait | null; readonly character: { readonly id: number; readonly name: string | null } | null }[];
+};
 
 const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => new Error(`The ${id} Box's ${hook} ${direction} is over the ${mebibytes(SANDBOX_JSON_BYTES)} limit.`);
 
@@ -284,24 +293,29 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		type Setup = BoxValue | undefined;
 		const foldAll = (state: State, records: readonly GenerationJsonValue[], setup: Setup) => sync("records.fold", JSON.stringify({ state, records, setup }));
 		// @approved
-		//  The window read: the guest's view and Status line, which it builds from
-		// its setup, state and Cast, and its own stored values through
-		// `snapshot`, and the Chat revision it read them at, which its commits
-		// name as their snapshot.
+		//  The guest's `read`: its view and Status line, which it builds from its
+		// setup, state and Cast, and its own stored values through `snapshot`,
+		// which answers each query as JSON. A Chat's window read hands it the
+		// production `boxSnapshot`; a scenario hands it scripted answers.
+		const guestRead = (input: SandboxedReadInput, snapshot: (query: string) => string) => {
+			const fresh = open(long);
+			try {
+				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), fresh.capability("snapshot", (query) => fresh.reply("snapshot", snapshot(query))))));
+				assertChecked(sandboxedReadOutput, output, `The ${id} Box's read result`);
+				return output;
+			} finally { fresh.dispose(); }
+		};
+		// @approved
+		//  The window read: the guest's read over this Chat, and the Chat revision
+		// it read at, which its commits name as their snapshot.
 		const read = ({ db, conversationId, summary, setup, state }: BoxWindowRead<Setup, State>) => {
-			const input = {
+			const output = guestRead({
 				setup, state, human: summary.control.humanParticipantId,
 				cast: summary.cast.map(({ id: participantId, name, portrait, sourceCharacterId, sourceCharacterName }) => ({
 					id: participantId, name, portrait: portrait ?? null, character: sourceCharacterId === null ? null : { id: sourceCharacterId, name: sourceCharacterName },
 				})),
-			};
-			const fresh = open(long);
-			const snapshot = boxSnapshot(db, id, conversationId);
-			try {
-				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), fresh.capability("snapshot", (query) => fresh.reply("snapshot", snapshot(query))))));
-				assertChecked(sandboxedReadOutput, output, `The ${id} Box's read result`);
-				return { snapshot: summary.revision, status: output.status ?? null, view: output.view };
-			} finally { fresh.dispose(); }
+			}, boxSnapshot(db, id, conversationId));
+			return { snapshot: summary.revision, status: output.status ?? null, view: output.view };
 		};
 		// @approved
 		//  A digest runs in a runtime of its own, created for this call with
@@ -402,7 +416,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			} },
 			...declared.has("read") && { read },
 		};
-		return { box, dispose };
+		return { box, guestRead: declared.has("read") ? guestRead : undefined, dispose };
 	} catch (error) {
 		dispose();
 		throw error;

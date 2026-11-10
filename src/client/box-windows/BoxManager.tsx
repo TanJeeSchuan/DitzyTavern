@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Ellipsis } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -10,7 +10,20 @@ import type { ConversationSummary } from "../conversation";
 import { useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, sendBoxState } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
-import { boxOpening, loadedBoxes, type LoadedBox } from "./registry";
+import type { CreateBox as Panel } from "./CreateBox";
+import { addBoxClients, boxOpening, errorMessage, loadedBoxes, type LoadedBox } from "./registry";
+
+// @approved
+//  Creator Mode loads when it is first opened, with its code highlighting. A
+// load that fails, such as an old tab asking for a chunk a deploy removed,
+// shows why in place of the panel and dismisses like it; the rest of the Box
+// manager keeps working.
+const CreateBox = lazy(() => import("./CreateBox").then(({ CreateBox: panel }) => ({ default: panel }), (cause) => ({
+	default: ({ onOpenChange }: ComponentProps<typeof Panel>) => <p className="composer-control-note is-error mx-3" role="alert">
+		Create a Box did not load: {errorMessage(cause)} Reload the page to try again.{" "}
+		<Button type="button" variant="ghost" size="xs" onClick={() => onOpenChange(false)}>Dismiss</Button>
+	</p>,
+})));
 
 /** The workspace's Box manager: the Boxes in this Chat, then the ones to add. */
 export function BoxManager({ conversation, disabled, onConversationChange, onOpenPanel, onOpenWindow }: {
@@ -24,6 +37,8 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 	const [notice, setNotice] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
 	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | null>(null);
+	const [creating, setCreating] = useState(false);
+	const [, setRegistry] = useState(0);
 	const requestNavigation = useNavigationRequest();
 	const client = useQueryClient();
 	// @approved
@@ -40,6 +55,20 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		void sendBoxState(surface, client, requested.box, requested.state).finally(() => setPending(false));
 	}, [requested]);
 	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
+	// @approved
+	//  An installed Box joins every Chat as absent: every cached Chat is read
+	// again first, inactive ones included, so no Chat renders a summary that
+	// predates the Box once its client definition is added and the manager
+	// lists it to add. A Chat that fails to refresh stops it there, before the
+	// definition is added, since that Chat would render without the Box; the
+	// Box is installed all the same, and a reload shows it.
+	const addInstalled = async () => {
+		await client.invalidateQueries({ queryKey: ["conversation"], refetchType: "all" }, { throwOnError: true }).catch((cause: Error) => {
+			throw new Error(`The Box is installed, but the Chats did not refresh (${cause.message}). Reload the page to add it.`);
+		});
+		await addBoxClients();
+		setRegistry((count) => count + 1);
+	};
 
 	const stateOf = (box: BoxId) => {
 		const state = conversation.boxes[box];
@@ -94,7 +123,9 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 				<ul>{toAdd.map(row)}</ul>
 			</section>}
 			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
+			<Button type="button" variant="outline" size="sm" className="box-manager-create" onClick={() => setCreating(true)}>Create a Box</Button>
 		</div>
+		{creating && <Suspense fallback={null}><CreateBox open onOpenChange={setCreating} onInstalled={addInstalled} /></Suspense>}
 		<Dialog open={removing !== null} onOpenChange={(open) => { if (!open && !pending) setRemoving(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

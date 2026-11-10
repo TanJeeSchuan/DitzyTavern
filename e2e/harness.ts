@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
+import type { AuthoringReply, ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -76,7 +76,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number[] | string | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: AuthoringReply[] | ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number[] | string | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -85,6 +85,7 @@ export const startE2eServer = async () => {
 		url,
 		reset: () => call("reset"),
 		chat: (...replies: ChatReply[]) => call("chat", replies),
+		authoring: (...replies: AuthoringReply[]) => call("authoring", replies),
 		decisions: (...rules: DecisionRule[]) => call("decisions", rules),
 		memories: (...claims: MemoryClaim[]) => call("memories", claims),
 		models: (...catalogs: string[][]) => call("models", catalogs),
@@ -94,6 +95,7 @@ export const startE2eServer = async () => {
 		release: () => call("release"),
 		corruptSecrets: () => call("corrupt-secrets"),
 		installBox: (id: string) => call("install-box", id),
+		directory: (): Promise<string> => call("directory"),
 		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; probes: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (mode: "crash" | "graceful") => {

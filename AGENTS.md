@@ -17,6 +17,7 @@ When the user asks for rapid UI iteration, keep the playwright-cli session runni
 - `bun run test:e2e` runs Playwright (`e2e/*.spec.ts` for core flows; `src/boxes/<id>/*.spec.ts` for Box flows) against `e2e/server.ts`: one Bun server per worker, a fresh seeded SQLite database per test, Memory models unconfigured by default.
 - Every provider call (chat, Decision Models over /systemone, embeddings, models, memory extraction) hits a scripted fake through the `llm` fixture; an unscripted call fails the test.
 - After each test the fixture also fails if any captured Prompt Plan (from generation inspection) doesn't match a request the fake actually received. `llm.restart("crash" | "graceful")` relaunches the server on the same database; graceful shutdown uses an HTTP command because Windows signals force-kill the process.
+- `llm.authoring(...replies)` scripts Creator Mode's coding agent: libfx sends real HTTP to the worker's `/__e2e/authoring/chat/completions`, which answers each request with the next reply's tool calls or text and logs it as an `authoring` call; story calls never reach it. Point a Chat Completions profile's request URL at `${llm.url}/__e2e/authoring/`.
 - `llm.installBox(id)` copies `e2e/fixtures/boxes/<id>/`, built by the global setup with `box:build`, into the worker's plugin folder; a `llm.restart` loads it, and the next test's reset empties the folder.
 
 ## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
