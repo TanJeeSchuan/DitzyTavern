@@ -162,6 +162,7 @@ describe("Generation Plan Compiler", () => {
 			loreActivation: {
 				version: 1,
 				mode: "keyword-fallback",
+				scan: [],
 				evidence: [],
 				automaticLoreText: "",
 				finalLoreText: "",

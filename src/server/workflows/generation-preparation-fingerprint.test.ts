@@ -61,6 +61,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			activation: {
 				version: 1,
 				mode: "semantic",
+				scan: [],
 				evidence: [],
 				automaticLoreText: "",
 				finalLoreText: "",

@@ -22,6 +22,7 @@ const prompt = {
 const evidence = {
 	version: 1 as const,
 	mode: "keyword-fallback" as const,
+	scan: [],
 	evidence: {
 		books: [{ bookId: 7, name: "Setting", eligible: true }],
 		entries: [{ entryId: 9, content: "The old tower." , admitted: true }],

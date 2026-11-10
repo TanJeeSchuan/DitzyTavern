@@ -274,6 +274,13 @@
       "when": 1793715395983,
       "tag": "0038_clear_race_records",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794296061866,
+      "tag": "0039_clear_lore_activation_records",
+      "breakpoints": true
     }
   ]
 }
