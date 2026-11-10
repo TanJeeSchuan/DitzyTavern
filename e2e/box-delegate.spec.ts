@@ -62,7 +62,7 @@ test("an off delegate explains how to configure it, and the default offers misse
 	await page.getByRole("button", { name: "Scene", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Scene" });
 	const frame = window.frameLocator("iframe");
-	await expect(window.getByText("Scene's delegate is off.")).toBeVisible();
+	await expect(window.getByText("Scene's delegate is off. Scene requests are left as written.")).toBeVisible();
 	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections", exact: true }).click();
 	await page.locator(".primary-panel").getByRole("button", { name: /^Stagehand/ }).click();
 	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Stagehand");

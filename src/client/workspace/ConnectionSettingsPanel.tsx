@@ -81,9 +81,8 @@ function Settings({ controller, activeProfileId, semanticTriggers, defaultDelega
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
 	const inherited = defaultDelegate.settings?.profileId != null;
-	const defaultDescription = inherited ? `Uses the default delegate model (${defaultDelegate.settings?.model}).` : "Off: no default delegate model is selected.";
 	if (open === `delegate:${DEFAULT_BOX_DELEGATE}`) return <DelegateSettingsEditor editor={defaultDelegate} box={DEFAULT_BOX_DELEGATE} label="Default" description="Used by every delegating Box without its own model." off="Delegates without their own model are off." inherited={false} onBack={() => setOpen(null)} />;
-	if (openDelegate !== undefined) return <DelegateSettingsEditor editor={openDelegate.editor} box={openDelegate.box} label={openDelegate.label} description={openDelegate.delegate.description} off={defaultDescription} inherited onBack={() => setOpen(null)} />;
+	if (openDelegate !== undefined) return <DelegateSettingsEditor editor={openDelegate.editor} box={openDelegate.box} label={openDelegate.label} description={openDelegate.delegate.description} off={inherited ? `Uses the default delegate model (${defaultDelegate.settings?.model}).` : `${openDelegate.delegate.off}. No default delegate model is selected.`} inherited onBack={() => setOpen(null)} />;
 	if (openBox !== undefined) {
 		const { label, decision } = openBox;
 		return <DecisionSettingsEditor

@@ -102,7 +102,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 				<h3 id={`${box}-delegate-title`}>{label} delegate</h3>
 				<p>{delegate.summary}</p>
 				<DecisionSummary preview={editor} name={`${label} delegate`} onOpen={() => onOpenBoxDelegate(box)} model={(settings) => settings.profileId === null ? defaultDelegate.settings?.model ?? "" : settings.model}
-					describe={(settings) => settings.profileId !== null ? "Delegate model" : defaultDelegate.settings?.profileId != null ? "Uses the default delegate model" : "Off: no default delegate model"} />
+					describe={(settings) => settings.profileId !== null ? "Delegate model" : defaultDelegate.settings?.profileId != null ? "Uses the default delegate model" : delegate.off} />
 			</section>)}
 
 			<Dialog open={pending !== undefined} onOpenChange={(open) => { if (!open) controller.setPendingDeletionProfileId(null); }}>
