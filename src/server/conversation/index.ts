@@ -48,6 +48,10 @@ export { observeConversationWrites } from "./commands/transaction";
 // keeping a parallel write transaction.
 export { executeConversationCommand } from "./execute";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
+// @approved
+//  The writer's Update check, for Creator Mode to run on a scenario's data
+// in a database of its own, and the refusal an Update reads.
+export { playedRefusals, refusedUpgrade } from "./box-upgrade";
 export { readConversationRevision } from "./snapshot";
 // @approved
 //  The Workspace Chat list read model: the workspace route reads Chat

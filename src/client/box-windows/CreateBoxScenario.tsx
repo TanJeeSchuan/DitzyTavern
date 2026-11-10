@@ -1,20 +1,23 @@
 import { scenarioInput, type ScenarioResult } from "../../shared/contract/authoring";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { inputAs, type ToolEntry } from "./CreateBoxConsole";
 
 type Turn = ScenarioResult["turns"][number];
 
 /** @approved One turn or swipe: its Moves as history renders them, its prose, the prompt items, and the record it stored. */
-function TurnRow({ label, name, turn, prose, removed, differs }: {
+function TurnRow({ label, name, turn, prose, removed, differs, earlier }: {
 	label: string;
 	name: string;
 	turn: Turn | undefined;
 	prose: string | undefined;
 	removed: readonly string[];
 	differs?: string;
+	earlier: boolean;
 }) {
 	return <li className="create-box-turn" data-ran={turn !== undefined}>
 		<span className="create-box-turn-label">{label}</span>
 		<div className="create-box-turn-body">
+			{earlier && <p className="create-box-quiet">On the installed version</p>}
 			{turn !== undefined && turn.moves.length > 0 && <ul className="create-box-moves" aria-label={`${name} Moves`}>{turn.moves.map((move, index) => <li key={index}>{move}</li>)}</ul>}
 			{prose !== undefined && <p className="create-box-prose">{prose}</p>}
 			{turn === undefined ? <p className="create-box-quiet">Not run</p> : <ul className="create-box-items" aria-label={`${name} prompt items`}>
@@ -31,6 +34,7 @@ const texts = (turn: Turn | undefined) => new Set(turn?.items.map(({ text }) => 
 /** @approved The prompt items an earlier run of the same scenario gave at this turn that this run no longer gives. */
 const removedFrom = (turn: Turn | undefined, before: Turn | undefined) => [...texts(before)].filter((text) => !texts(turn).has(text));
 const sameOutcome = (a: Turn, b: Turn | undefined) => b !== undefined && JSON.stringify([a.items, a.record]) === JSON.stringify([b.items, b.record]);
+const shownValue = (value: BoxValue | undefined) => value === undefined ? "absent" : JSON.stringify(value);
 
 // @approved
 //  One `run_scenario` call, turn by turn, as the Box ran it: what each turn's
@@ -39,6 +43,8 @@ const sameOutcome = (a: Turn, b: Turn | undefined) => b !== undefined && JSON.st
 // earlier run of the identical scenario gave and this one does not are
 // struck out, so a rerun after a fix shows what the fix changed. A swipe
 // says so only when it gave a different outcome from the turn it replaced.
+// A run from an installed version marks the turns that ran on it, and lists
+// where this draft's fold of their records differs from that version's.
 export function Scenario({ run, before }: { run: ToolEntry | undefined; before: ScenarioResult | undefined }) {
 	const result = run?.scenario;
 	if (run === undefined || result === undefined) return <section className="create-box-scenario" aria-label="Scenario">
@@ -47,19 +53,25 @@ export function Scenario({ run, before }: { run: ToolEntry | undefined; before: 
 	</section>;
 	const script = inputAs(run.start, scenarioInput);
 	const turns = script?.turns ?? result.turns.map(() => ({ prose: undefined }));
+	const { upgrade } = result;
 	return <section className="create-box-scenario" aria-label="Scenario">
 		<header><h3>Scenario</h3><span className="create-box-verdict" data-ok={result.ok}>{result.ok ? "Passed" : "Failed"}</span></header>
 		{result.diagnostics.length > 0 && <ul className="create-box-diagnostics" aria-label="Diagnostics">{result.diagnostics.map((line) => <li key={line}>{line}</li>)}</ul>}
 		<ol className="create-box-turns">
 			{turns.map(({ prose }, index) => <TurnRow key={`t${index}`} label={`t${index + 1}`} name={`Turn ${index + 1}`} turn={result.turns[index]} prose={prose}
-				removed={removedFrom(result.turns[index], before?.turns[index])} />)}
+				removed={removedFrom(result.turns[index], before?.turns[index])} earlier={index < (upgrade?.turns ?? 0)} />)}
 			{result.swipes.map((swipe, index) => {
 				const replaced = script?.swipes?.[index]?.turn;
 				return <TurnRow key={`s${index}`} label={replaced === undefined ? `s${index + 1}` : `t${replaced + 1}′`} name={`Swipe ${index + 1}`} turn={swipe} prose={script?.swipes?.[index]?.prose}
-					removed={removedFrom(swipe, before?.swipes[index])} differs={replaced === undefined || sameOutcome(swipe, result.turns[replaced]) ? undefined : `t${replaced + 1}`} />;
+					removed={removedFrom(swipe, before?.swipes[index])} differs={replaced === undefined || sameOutcome(swipe, result.turns[replaced]) ? undefined : `t${replaced + 1}`}
+					earlier={index < (upgrade?.swipes ?? 0)} />;
 			})}
 		</ol>
-		{(result.state !== undefined || result.read !== undefined) && <div className="create-box-outcome">
+		{(result.state !== undefined || result.read !== undefined || upgrade?.changes !== undefined) && <div className="create-box-outcome">
+			{upgrade?.changes !== undefined && <div><h4>State after Update</h4>{upgrade.changes.length === 0 ? <p className="create-box-quiet">Same as on version {upgrade.version.slice(0, 8)}</p>
+				: <ul className="create-box-changes" aria-label="State changes">{upgrade.changes.map(({ path, earlier, candidate }) => <li key={path}>
+					<code>{path === "" ? "state" : path}</code> {shownValue(earlier)} → {shownValue(candidate)}
+				</li>)}</ul>}</div>}
 			{result.state !== undefined && <div><h4>State</h4><pre aria-label="Folded state">{JSON.stringify(result.state, null, 2)}</pre></div>}
 			{result.read !== undefined && <div><h4>Window</h4><pre aria-label="Window view">{JSON.stringify(result.read.view, null, 2)}</pre>{result.read.status ? <p>{result.read.status}</p> : null}</div>}
 			{result.status ? <p>{result.status}</p> : null}

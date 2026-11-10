@@ -77,6 +77,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 	const [steps, setSteps] = useState<StepChoice>("40");
 	const [paused, setPaused] = useState<number | null>(null);
 	const [resuming, setResuming] = useState(false);
+	const [offer, setOffer] = useState(false);
 	const sequence = useRef(0);
 	const input = useRef<HTMLTextAreaElement>(null);
 	const log = useRef<HTMLDivElement>(null);
@@ -112,7 +113,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 	// once they scroll back.
 	useLayoutEffect(() => {
 		if (following.current && log.current !== null) log.current.scrollTop = log.current.scrollHeight;
-	}, [entries, paused]);
+	}, [entries, paused, offer]);
 	const add = (kind: "writer" | "agent" | "note" | "error", text: string) => setEntries((current) => [...current, { kind, id: String(sequence.current++), text }]);
 
 	const runs = entries.filter((entry): entry is ToolEntry => entry.kind === "tool" && entry.scenario !== undefined);
@@ -158,6 +159,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 
 	const send = async (current: Session, text: string) => {
 		setDraft("");
+		setOffer(false);
 		add("writer", text);
 		setRunning(true);
 		try {
@@ -196,13 +198,22 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 		}
 	};
 
-	const install = async (current: Session) => {
+	// @approved
+	//  Install, or Install as a new Box once Install found that Chats on the
+	// installed version could not Update to this one: the session's candidate
+	// takes a new id, so those Chats keep the old Box.
+	const install = async (current: Session, asNewBox = false) => {
 		setPending(true);
+		setOffer(false);
 		try {
-			const result = await requestData(api.api.authoring.sessions({ session: current.session }).install.post(), authoringInstall);
-			if (result.outcome === "refused") add("error", [result.reason, ...result.diagnostics].join(" "));
-			else {
+			const routes = api.api.authoring.sessions({ session: current.session });
+			const result = await requestData(asNewBox ? routes["new-box"].post() : routes.install.post(), authoringInstall);
+			if (result.outcome !== "installed") {
+				add("error", [result.reason, ...result.diagnostics].join("\n"));
+				setOffer(result.outcome === "incompatible");
+			} else {
 				await onInstalled(result.id);
+				setSession({ ...current, candidate: result.id });
 				setInstalled({ label: result.label, run: runs.at(-1)?.start.id });
 				add("note", `${result.label} is installed. Add it to a Chat from the Box manager.`);
 			}
@@ -296,6 +307,11 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 								<span>Paused after {paused} steps.</span>
 								<Button type="button" size="xs" disabled={resuming} onClick={() => void resume(session, "continue", paused)}>Continue for {CONTINUE_STEPS} more</Button>
 								<Button type="button" size="xs" variant="outline" disabled={resuming} onClick={() => void resume(session, "cancel", paused)}>Stop</Button>
+							</div>}
+							{offer && <div className="create-box-paused" role="group" aria-label="Install refused">
+								<span>Chats on the installed version cannot Update to this one.</span>
+								<Button type="button" size="xs" disabled={pending} onClick={() => void install(session, true)}>Install as a new Box</Button>
+								<Button type="button" size="xs" variant="outline" onClick={() => { setOffer(false); input.current?.focus(); }}>Back to the agent</Button>
 							</div>}
 						</div>
 						<div className="create-box-prompt">

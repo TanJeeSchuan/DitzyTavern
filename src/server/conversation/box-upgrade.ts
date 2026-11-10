@@ -2,11 +2,13 @@
 import { KindGuard, Type, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray, like } from "drizzle-orm";
-import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxReference, type BoxDescriptor } from "../../shared/contract/box";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { boxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
-import { conversationDataTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
+import type { GenerationJsonValue } from "../../shared/generation-json";
+import { openInitializedDatabase } from "../database/database";
+import { conversationDataTable, conversationTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
 import type { LoadedBox } from "../box/registry";
 import { holdsRowReferences } from "../box/row-references";
 import { isHostChatKey } from "../box/setup";
@@ -62,8 +64,9 @@ export const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescripto
 // the stored setup against the setup schema and `setupError`; each Chat and
 // Participant value against its declared schema; and every place Fork
 // remaps an id, which must be identical in both versions. It checks each
-// stored item, not each fold a later selection could produce.
-export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, from: LoadedBox, to: LoadedBox): string[] => {
+// stored item, not each fold a later selection could produce. Creator Mode
+// runs it on a scenario's data in a database of its own.
+export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, from: Pick<LoadedBox, "descriptor">, to: Pick<LoadedBox, "descriptor" | "box">): string[] => {
 	const { descriptor, box } = to;
 	const namespace = boxReference(descriptor.id);
 	const refusals: string[] = [];
@@ -114,4 +117,46 @@ export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, f
 	for (const place of before) if (!after.has(place)) refusals.push(`Row reference at ${place}: this version no longer has it, so Fork would stop remapping it`);
 	for (const place of after) if (!before.has(place)) refusals.push(`Row reference at ${place}: this version adds it, so Fork would remap values that hold no id`);
 	return refusals;
+};
+
+/** @approved The refusal a writer's Update reads, and a scenario `from` an earlier version reads alike. */
+export const refusedUpgrade = (label: string, refusals: readonly string[]) => `The ${label} Box cannot move to that version. These no longer fit:\n${refusals.join("\n")}`;
+
+/** @approved One scenario turn as a Chat would store it: the human's Moves, and the record of each Variant its passage got, in the order they ran; the last is selected. */
+export type PlayedTurn = { readonly moves: readonly BoxValue[]; readonly records: readonly (GenerationJsonValue | undefined)[] };
+
+// @approved
+//  Writes what a scenario's turns left into a fresh in-memory database laid
+// out as the app's, one Chat with the scenario's Cast, then runs the
+// writer's Update check on it, so the refusals read exactly as an Update of
+// that Chat would. The app's own database is never opened. The setup is
+// stored only when the scenario names one, as a Chat stores it only once the
+// writer saves one.
+export const playedRefusals = (id: BoxId, cast: readonly { readonly id: number; readonly name: string }[], setup: BoxValue | undefined, played: readonly PlayedTurn[], from: Pick<LoadedBox, "descriptor">, to: Pick<LoadedBox, "descriptor" | "box">): string[] => {
+	const database = openInitializedDatabase({ path: ":memory:" });
+	try {
+		const db = drizzle(database);
+		const namespace = boxReference(id);
+		const time = new Date(0).toISOString();
+		const { id: chat } = db.insert(conversationTable).values({ name: "Scenario", creation_time: time, last_message_time: time }).returning({ id: conversationTable.id }).get();
+		db.insert(participantTable).values(cast.map((member, index) => ({ id: member.id, conversation_id: chat, name: member.name, position: index + 1 }))).run();
+		const human = cast[0]!.id; // @approved The input schema requires at least one Cast member.
+		const speaker = cast[1]?.id ?? human;
+		if (setup !== undefined) db.insert(conversationDataTable).values({ conversation_id: chat, namespace, key: "setup", value: JSON.stringify(setup) }).run();
+		for (const [index, { moves, records }] of played.entries()) {
+			const [asked, passage] = [index * 2 + 1, index * 2 + 2];
+			db.insert(messageTable).values([
+				{ id: asked, conversation_id: chat, position: index * 2, timestamp: time, author_participant_id: human },
+				{ id: passage, conversation_id: chat, position: index * 2 + 1, timestamp: time, author_participant_id: speaker },
+			]).run();
+			if (moves.length > 0) db.insert(messageDataTable).values({ message_id: asked, namespace, key: "moves", value: JSON.stringify(moves) }).run();
+			for (const [position, record] of records.entries()) {
+				const { id: variant } = db.insert(messageVariantTable).values({ message_id: passage, position, content: "", timestamp: time, selected: position === records.length - 1 }).returning({ id: messageVariantTable.id }).get();
+				if (record !== undefined) db.insert(messageVariantDataTable).values({ message_variant_id: variant, namespace, key: "record:scenario", value: JSON.stringify({ automatic: record }) }).run();
+			}
+		}
+		return upgradeRefusals(db, chat, from, to);
+	} finally {
+		database.close();
+	}
 };

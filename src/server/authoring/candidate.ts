@@ -1,6 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { authoredDescriptor } from "../../shared/contract/authoring";
 import { replaceFile } from "../box/sandboxed-folder";
@@ -21,10 +21,13 @@ export const defaultAuthoringFolder = (): string => join(process.cwd(), "data", 
 // written compactly with the candidate's id. Writes and checks take turns:
 // a check (a scenario or Install) holds the candidate until it ends, so it
 // reads, builds and publishes bytes no write can change under it. Work whose
-// signal aborted while it waited is dropped when its turn comes.
+// signal aborted while it waited is dropped when its turn comes. `renew`
+// gives the candidate a new id, for Install as a new Box: its folder moves
+// to the new name and its descriptor takes the new id, in its turn.
 export const createCandidate = async (root: string, saved?: { readonly session: string; readonly id: string }) => {
-	const { session, id } = saved ?? { session: crypto.randomUUID(), id: `authored-${crypto.randomUUID().slice(0, 8)}` };
-	const folder = join(root, session, id);
+	const session = saved?.session ?? crypto.randomUUID();
+	let id = saved?.id ?? newId();
+	let folder = join(root, session, id);
 	await mkdir(folder, { recursive: true });
 	let queue: Promise<unknown> = Promise.resolve();
 	const exclusive = <T>(run: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
@@ -42,9 +45,9 @@ export const createCandidate = async (root: string, saved?: { readonly session: 
 	};
 	const write = (file: AuthoredFile, content: string, signal?: AbortSignal) => {
 		capped(file, content);
-		const text = file === "descriptor.json" ? withId(content, id) : content;
-		const bytes = capped(file, text);
 		return exclusive(async () => {
+			const text = file === "descriptor.json" ? withId(content, id) : content;
+			const bytes = capped(file, text);
 			await replaceFile(join(folder, file), text);
 			return { written: file, bytes };
 		}, signal);
@@ -53,8 +56,18 @@ export const createCandidate = async (root: string, saved?: { readonly session: 
 		const file = Bun.file(join(folder, name));
 		return await file.exists() ? [{ name, content: await file.text() }] : [];
 	}))).flat();
-	return { session, id, folder, write, files, check: exclusive };
+	const renew = () => exclusive(async () => {
+		const next = newId();
+		const target = join(root, session, next);
+		await rename(folder, target);
+		[id, folder] = [next, target];
+		const descriptor = Bun.file(join(folder, "descriptor.json"));
+		if (await descriptor.exists()) await replaceFile(join(folder, "descriptor.json"), withId(await descriptor.text(), id));
+		return id;
+	});
+	return { session, get id() { return id; }, get folder() { return folder; }, write, files, check: exclusive, renew };
 };
+const newId = () => `authored-${crypto.randomUUID().slice(0, 8)}`;
 export type Candidate = Awaited<ReturnType<typeof createCandidate>>;
 
 /** @approved A descriptor's JSON with the candidate's id in place of any the agent wrote. */
