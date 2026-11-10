@@ -205,11 +205,29 @@ export function ProseEditor({
 			}),
 		});
 		view.current = editor;
+		const selectImageChips = () => {
+			const selection = document.getSelection();
+			if (!editor.hasFocus || selection === null || selection.isCollapsed || selection.rangeCount === 0) return;
+			const range = selection.getRangeAt(0).cloneRange();
+			const chipAt = (node: Node) => (node instanceof Element ? node : node.parentElement)?.closest(".image-chip") ?? null;
+			const start = chipAt(range.startContainer);
+			const end = chipAt(range.endContainer);
+			if (start === null && end === null || !editor.contentDOM.contains(range.commonAncestorContainer)) return;
+			const backwards = selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset;
+			if (start !== null) range.setStartBefore(start.parentNode!);
+			if (end !== null) range.setEndAfter(end.parentNode!);
+			selection.setBaseAndExtent(
+				backwards ? range.endContainer : range.startContainer, backwards ? range.endOffset : range.startOffset,
+				backwards ? range.startContainer : range.endContainer, backwards ? range.startOffset : range.endOffset,
+			);
+		};
+		document.addEventListener("selectionchange", selectImageChips, true);
 		if (autoFocus) {
 			editor.dispatch({ selection: EditorSelection.cursor(editor.state.doc.length) });
 			editor.focus();
 		}
 		return () => {
+			document.removeEventListener("selectionchange", selectImageChips, true);
 			editor.destroy();
 			view.current = null;
 		};
