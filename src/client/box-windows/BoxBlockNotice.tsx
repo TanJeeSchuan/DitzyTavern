@@ -119,7 +119,7 @@ export function DelegateNotice({ conversation, box, disabled, onOpenConnections,
 	const enabled = conversation.boxes[box] === "enabled";
 	return <>
 		{enabled && setting.kind === "off" && <Alert className={cn(oneLine, className)}>
-			<AlertDescription>{boxMetadata(box).label}'s delegate is off.</AlertDescription>
+			<AlertDescription>{boxMetadata(box).label}'s delegate is off. {boxMetadata(box).delegate?.off}.</AlertDescription>
 			<Button type="button" size="xs" variant="outline" disabled={disabled} onClick={onOpenConnections}>Choose delegate model</Button>
 		</Alert>}
 		{failed === null && setting.kind === "broken" && <Alert variant="destructive" className={className}><AlertDescription>The delegate cannot run: {setting.reason}</AlertDescription></Alert>}
