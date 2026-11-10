@@ -1,3 +1,4 @@
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { generationGate } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
@@ -67,7 +68,7 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
 import { boxServices } from "../box/services";
-import { advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { withBoxOperations, advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
@@ -425,9 +426,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
-export async function prepareGenerationInputsAsync(
-	input: PrepareGenerationInputs,
-): Promise<Preparation> {
+export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
+	withBoxOperations(chatBoxes(drizzle(input.database), input.conversationId).values(), async () => {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();
 	// @approved
@@ -459,7 +459,7 @@ export async function prepareGenerationInputsAsync(
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
 	return ready;
-}
+});
 
 const captureConfigurationFromPreparation = (
 	preparation: Preparation,

@@ -175,3 +175,63 @@ test("a digest that keeps decide in a global while it is pending leaves it undef
 	keeper.abort();
 	await expect(kept).rejects.toThrow("The probe Box's digest was cancelled.");
 });
+
+test("identical advances in separate operations cannot see an earlier call or another Chat's setup", async () => {
+	const guest = await sandboxedBox("probe", `let calls = 0, previous; export default { advance: { run: ({ setup }) => {
+		const text = JSON.stringify([++calls, previous ?? null]); previous = setup; return { items: [{ text, priority: 1 }] };
+	} } };`);
+	loaded.push(guest.dispose);
+	const run = (setup: string) => guest.operation(() => guest.box.advance?.run({ setup, dependencies: undefined, state: undefined, moves: [] }));
+	const first = await run("first Chat");
+	expect(await run("first Chat")).toEqual(first);
+	expect(await run("other Chat")).toEqual(first);
+});
+
+test("a module that retains its exhausted heap cannot poison the next operation", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { records: { initial: 0, fold: (state, record) => {
+		if (record.leak) while (true) kept.push(new ArrayBuffer(1 << 20)); return state + record.text.length;
+	} } };`);
+	loaded.push(guest.dispose);
+	await expect(guest.operation(() => guest.box.records?.foldAll?.(0, [{ leak: true }], undefined))).rejects.toThrow("The probe Box's records.fold ran out of its 64 MiB heap.");
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "x".repeat(1024 * 1024) }], undefined))).toBe(1024 * 1024);
+});
+
+test("a history larger than the call cap folds in bounded entries, but one oversized record fails", async () => {
+	const guest = await sandboxedBox("probe", `export default { records: { initial: 0, fold: (state, record, setup) => state + record.text.length + setup } };`);
+	loaded.push(guest.dispose);
+	const records = Array.from({ length: 32 }, () => ({ text: "界".repeat(48 * 1024) }));
+	expect(Buffer.byteLength(JSON.stringify(records))).toBeGreaterThan(SANDBOX_JSON_BYTES);
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, records, 7))).toBe(records.reduce((state, record) => state + record.text.length + 7, 0));
+	await expect(guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "界".repeat(SANDBOX_JSON_BYTES / 2) }], 7))).rejects.toThrow("The probe Box's records.fold input is over the 4 MiB limit.");
+});
+
+
+test("a host allocation trap names the hook, disposal is safe, and the next operation recovers", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { records: { initial: 0, fold: (state, record) => {
+		if (record.leak) while (true) kept.push(new ArrayBuffer(1 << 20)); return state + record.text.length;
+	} } };`);
+	loaded.push(guest.dispose);
+	await guest.operation(() => {
+		expect(() => guest.box.records?.foldAll?.(0, [{ leak: true }], undefined)).toThrow("The probe Box's records.fold ran out of its 64 MiB heap.");
+		expect(() => guest.box.records?.foldAll?.(0, [{ text: "x".repeat(1024 * 1024) }], undefined)).toThrow("The probe Box's records.fold threw RuntimeError:");
+	});
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "ok" }], undefined))).toBe(2);
+	expect(() => guest.dispose()).not.toThrow();
+});
+
+
+test("one operation shares its module across Moves and fold chunks, then the next operation resets it", async () => {
+	const guest = await sandboxedBox("probe", `let calls = 0; export default {
+		moves: { render: () => String(++calls) },
+		records: { initial: 0, fold: () => ++calls },
+		advance: { run: () => ({ items: [{ text: String(++calls), priority: 1 }] }) },
+	};`);
+	loaded.push(guest.dispose);
+	const input = { setup: undefined, dependencies: undefined, state: undefined, moves: [] };
+	await guest.operation(async () => {
+		expect([guest.box.moves?.render({}, "Ann"), guest.box.moves?.render({}, "Ann")]).toEqual(["1", "2"]);
+		expect(guest.box.records?.foldAll?.(0, Array.from({ length: 201 }, () => 0), undefined)).toBe(203);
+		expect(await guest.box.advance?.run(input)).toEqual({ items: [{ text: "204", priority: 1 }] });
+	});
+	expect(await guest.operation(() => guest.box.advance?.run(input))).toEqual({ items: [{ text: "1", priority: 1 }] });
+});

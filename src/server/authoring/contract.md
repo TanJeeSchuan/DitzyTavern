@@ -128,13 +128,13 @@ A Box with a window and no `decision` declares `read`. It returns `{ view, statu
 
 | Limit | Value |
 |---|---|
-| heap | 64 MiB per Box, and per running digest |
+| heap | 64 MiB per operation runtime |
 | guest time | 100 ms per entry: evaluating `logic.js`, each hook call, each job pump |
 | JSON | 4 MiB per call, each way |
 | `logic.js` built | 1 MiB |
 | `ui.js` built | 4 MiB |
 
-`read` and each digest run in a fresh context, so a global that keeps `snapshot` or `decide` has nothing in the next call. A guest throw fails the hook with `… threw <name>: <message>`.
+Each Generation capture, window read, digest, delegate run and status read uses a fresh context, shared by its hooks and fold chunks. Scenario steps reset at the same boundaries. No module global survives into the next operation. The host folds at most 100 records per entry, also bounded by the JSON cap including state and setup, and carries the returned state between chunks. A single record that cannot fit fails. A failed operation discards its runtime, so the next operation can run after heap exhaustion or a Wasm trap. A guest throw fails the hook with `… threw <name>: <message>`.
 
 ## ui.js
 
