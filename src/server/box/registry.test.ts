@@ -179,7 +179,7 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptConversationTailGeneration(database, {
 			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
-			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
+			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { lantern: { instance, record: { lit: true } } },
 		});

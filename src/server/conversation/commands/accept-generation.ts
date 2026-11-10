@@ -344,7 +344,6 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 			humanMessageId: validation.humanMessageId,
 			messageId: provisional.modelMessageId,
 			variantId: provisional.provisionalVariantId,
-			capturedHumanName: input.capturedHumanName ?? human.name,
 			capturedModelName: model.name,
 		});
 		advanceConversationRevisionGuarded(
@@ -537,7 +536,7 @@ export function acceptConversationSiblingGeneration(
 				"A Sibling Generation requires distinct historical Participants.",
 			);
 		}
-		const human = requireParticipant(db, input.conversationId, input.humanParticipantId);
+		requireParticipant(db, input.conversationId, input.humanParticipantId);
 
 		const control = readControlAssignment(db, input.conversationId);
 		const message = requireMessage(db, input.conversationId, input.messageId);
@@ -588,7 +587,6 @@ export function acceptConversationSiblingGeneration(
 			messageId: input.messageId,
 			variantId: provisional.provisionalVariantId,
 			priorVariantId: provisional.priorVariantId,
-			capturedHumanName: input.capturedHumanName ?? human.name,
 			generationIntent: input.generationIntent ?? { type: "sibling" },
 		});
 		const snapshot = advanceConversationRevision(db, input.conversationId, input.timestamp);

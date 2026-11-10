@@ -168,7 +168,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 	const accepted = acceptConversationTailGeneration(database, {
 		seed: "override-seed", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-08-27T00:00:00.000Z",
-		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedModelName: model.name,
+		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
 		promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 	});
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
