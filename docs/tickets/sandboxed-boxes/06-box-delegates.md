@@ -1,6 +1,6 @@
 # Box delegates
 
-Status: In Progress
+Status: Done
 
 Blocked By: 05 (the stack through PR #211)
 
@@ -67,10 +67,10 @@ The story model sees the result on its next turn, through the Box's prompt items
 - [x] The shared tag parser, with unit tests on nested, unclosed, several-tag and escaped input.
 - [x] Shared profile resolution (moved from Creator Mode), the `box-delegate` setting, its routes and its editor.
 - [x] The delegate job kind: ordering per Chat and Box, passage-relative state, the agent with `apply` and the one-step-budget cap, abort and close, landing rules, catch-up and retry; the digest-only gates listed above become kind-aware.
-- [ ] The host lens on host-built clients, `LensedProse` on pinned clients, the window notice with Retry, and refresh on landing.
+- [x] The host lens on host-built clients, `LensedProse` on pinned clients, the window notice with Retry, and refresh on landing.
 - [x] Install's version rule for `delegate` and `tag`.
-- [ ] `run_scenario`: `delegated` on turns and swipes; `contract.md` documents `delegate`, `operations`, `delegate.apply`, the agent's reach, the rules and `delegated`.
-- [ ] Tests, each failing before its code:
+- [x] `run_scenario`: `delegated` on turns and swipes; `contract.md` documents `delegate`, `operations`, `delegate.apply`, the agent's reach, the rules and `delegated`.
+- [x] Tests, each failing before its code:
   - a tagged passage runs once and lands its record; an untagged one gets no job;
   - two tagged passages run in order, the second seeing the first's record; a retry of the first doesn't re-run the second or see its own previous record;
   - a batch outside `operations`, a second `apply`, no `apply`, more than 10 steps, and state over 64 KiB each fail with their reason;
@@ -81,9 +81,9 @@ The story model sees the result on its next turn, through the Box's prompt items
   - a swipe's `delegated` lands on the swipe's Variant.
 
   The delegate's model is a localhost fake, as in the authoring tests.
-- [ ] e2e: a sandboxed Box with `delegate` and a window. The story model's scripted reply holds the tag; the story view shows the lifted mark; the scripted delegate calls `apply`; the open window shows the new state without a reload; the next Prompt Plan has the Box's item for it.
-- [ ] README: a delegate section, linked from the contract, `decision`, the digest queue and the lens sections.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e. If the change passes about 30 files, split it into stacked PRs (for example: contract, parser and settings; the job; client and scenarios).
+- [x] e2e: a sandboxed Box with `delegate` and a window. The story model's scripted reply holds the tag; the story view shows the lifted mark; the scripted delegate calls `apply`; the open window shows the new state without a reload; the next Prompt Plan has the Box's item for it.
+- [x] README: a delegate section, linked from the contract, `decision`, the digest queue and the lens sections.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e. If the change passes about 30 files, split it into stacked PRs (for example: contract, parser and settings; the job; client and scenarios).
 
 ## Acceptance
 

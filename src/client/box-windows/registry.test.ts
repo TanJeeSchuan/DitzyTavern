@@ -34,3 +34,20 @@ test("an earlier version made latest again lists its own label, keeping the clie
 		globalThis.fetch = original;
 	}
 });
+
+// @approved
+//  The server parses a delegating Box's requests by the tag it loaded, and
+// the client lifts them by the tag its module declares; a module that
+// disagrees would leave every request as raw markup in the story.
+test("a client module whose delegate differs from the server's listing is refused", async () => {
+	const client = new URL("../../../e2e/fixtures/boxes/tip-jar/client.tsx", import.meta.url).href;
+	const listing = [{ id: "tip-jar", label: "Tip Jar", summary: "", instructions: "", client, delegate: { tag: "jar", summary: "", description: "", off: "" } }];
+	const original = globalThis.fetch;
+	globalThis.fetch = Object.assign(async () => Response.json(listing), { preconnect() {} });
+	try {
+		await addBoxClients();
+		expect(loadedBoxes().get("tip-jar")).toMatchObject({ failure: "Its client module delegates no tag, but the server loaded it delegating jar." });
+	} finally {
+		globalThis.fetch = original;
+	}
+});

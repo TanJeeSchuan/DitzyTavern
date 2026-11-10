@@ -131,6 +131,7 @@ test("a tagged passage runs its delegate once and lands its record; an untagged 
 	await settled(() => slot(tagged)?.automatic !== undefined);
 	expect(slot(tagged)?.automatic).toEqual({ props: ["lantern"] });
 	expect(slot(quiet)).toBeUndefined();
+	expect(readDelegate(database, chat.id, "scene")?.landed).toBe(1);
 	expect(bodies).toHaveLength(2);
 	expect(promptOf(0)).toContain("put the lantern on the table");
 	touch(chat.id, tagged);
@@ -245,7 +246,7 @@ test("without a delegate setting nothing runs; a broken one fails each run with 
 	touch(chat.id, passage);
 	await settled(() => slot(passage)?.error !== undefined);
 	const reason = "Stage uses HTTP; an agent sends HTTP only to localhost, so use HTTPS.";
-	expect(readDelegate(database, chat.id, "scene")).toEqual({ setting: { kind: "broken", reason }, failed: { messageId: expect.any(Number), variantId: passage, number: 1, error: reason } });
+	expect(readDelegate(database, chat.id, "scene")).toEqual({ setting: { kind: "broken", reason }, landed: 0, failed: { messageId: expect.any(Number), variantId: passage, number: 1, error: reason } });
 
 	applyBoxDelegateSettings(database, "scene", { type: "apply", expectedRevision: readBoxDelegateSettings(database, "scene").revision, profileId: null, model: "" });
 	const later = addPassage(chat.id, 2, "<scene>set the table</scene>");
@@ -270,7 +271,7 @@ test("catch-up queues only tagged passages without a record, and the retry route
 	const retried = await createBoxWindowRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/boxes/scene/digest`, {
 		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variantId: first }),
 	}));
-	expect(await retried.json()).toEqual({ setting: { kind: "ready" }, failed: null });
+	expect(await retried.json()).toEqual({ setting: { kind: "ready" }, landed: 2, failed: null });
 	await Bun.sleep(30);
 	expect(bodies).toHaveLength(4);
 });

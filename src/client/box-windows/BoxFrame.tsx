@@ -17,6 +17,7 @@ import { encodeImage } from "../lib/image";
 import { useSaveGuard } from "../SaveGuard";
 import { BoxFailure } from "./BoxBoundary";
 import type { AppToFrame, FrameToApp } from "./frame-protocol";
+import { delegateLens } from "./lens";
 import { digestWindow } from "./PassageTimeline";
 import type { BoxClientDefinition, MoveStaging } from "./registry";
 import { useBoxRead } from "./useBoxRead";
@@ -201,7 +202,7 @@ function SandboxedStatus({ box, conversation }: { box: BoxId; conversation: Conv
 	return <span>{read.isError ? "Unavailable" : read.data?.status ?? boxMetadata(box).label}</span>;
 }
 
-/** @approved A sandboxed Box's client surfaces, built in host code from its descriptor file: its icon, its Status and a window that mounts its frame, or, for a digesting Box, the host's passage timeline. */
+/** @approved A sandboxed Box's client surfaces, built in host code from its descriptor file: its icon, its Status and a window that mounts its frame, with the host's lens for a delegating Box's tag, or, for a digesting Box, the host's passage timeline. */
 export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile, version?: string): BoxClientDefinition => {
 	const descriptor = sandboxedDescriptor(file);
 	if (descriptor.id !== box) throw new Error(`Its descriptor is the ${descriptor.id} Box's.`);
@@ -210,7 +211,7 @@ export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile, versi
 		descriptor,
 		icon: icons[file.window.icon],
 		Status: ({ conversation }) => <SandboxedStatus box={box} conversation={conversation} />,
-		Window: { size: file.window.size, Panel: ({ conversation, disabled, staging, onConversationChange }) =>
+		Window: { size: file.window.size, ...descriptor.delegate !== undefined && { lens: delegateLens(descriptor.delegate.tag) }, Panel: ({ conversation, disabled, staging, onConversationChange }) =>
 			<BoxFrame box={box} version={version} descriptor={descriptor} conversation={conversation} disabled={disabled} staging={staging} onConversationChange={onConversationChange} /> },
 	};
 };
