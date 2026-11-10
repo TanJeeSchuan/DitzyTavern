@@ -1,3 +1,4 @@
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { generationGate } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
@@ -67,7 +68,7 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
 import { boxServices } from "../box/services";
-import { advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { withBoxOperations, advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
@@ -280,6 +281,17 @@ export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 	readonly seed?: string | undefined;
 }
 
+// @approved
+// A Generation's capture and a preview's acceptance call hooks only of Boxes
+// enabled in the Chat. A Box left out still runs correctly, each hook in a
+// fresh context of its own, so a selection that changes while runtimes are
+// created fails nothing.
+export const withGenerationBoxOperations = <T>({ database, conversationId }: Pick<PrepareGenerationInputs, "database" | "conversationId">, run: () => T): Promise<Awaited<T>> => {
+	const db = drizzle(database);
+	const lifecycles = readBoxLifecycles(db, conversationId);
+	return withBoxOperations([...chatBoxes(db, conversationId)].flatMap(([id, loaded]) => lifecycles[id]?.state === "enabled" ? [loaded] : []), run);
+};
+
 /** @approved
  * Read the deterministic inputs for one attempt through the focused Conversation seams, in one
  * read transaction that also covers each Box's capture. The returned snapshot is safe to retain
@@ -425,9 +437,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
-export async function prepareGenerationInputsAsync(
-	input: PrepareGenerationInputs,
-): Promise<Preparation> {
+export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
+	withGenerationBoxOperations(input, async () => {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();
 	// @approved
@@ -459,7 +470,7 @@ export async function prepareGenerationInputsAsync(
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};
 	return ready;
-}
+});
 
 const captureConfigurationFromPreparation = (
 	preparation: Preparation,

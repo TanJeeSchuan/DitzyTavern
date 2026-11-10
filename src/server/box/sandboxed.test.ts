@@ -1,7 +1,18 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { boxDescriptor } from "../../shared/contract/box";
+import { builtInBoxes, loadBoxes } from "./registry";
+import { writeAutomaticRecord } from "./records";
+import { sha256 } from "../hash";
+import { createConversationRoutes } from "../contract/conversation";
+import { captureModelFetch, completeGeneration, createChat, key, withProfile } from "../contract/prompt-preset-test-fixtures";
+import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
+import type { ConversationAction } from "../conversation";
 import type { DigestContext } from "./contract";
 import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
 import type { BoxWindowRead } from "./contract";
@@ -174,4 +185,178 @@ test("a digest that keeps decide in a global while it is pending leaves it undef
 	expect(await box.records?.digest?.run(digestWindow, digestContext(async () => new Map()))).toEqual({ saw: "undefined" });
 	keeper.abort();
 	await expect(kept).rejects.toThrow("The probe Box's digest was cancelled.");
+});
+
+test("identical advances in separate operations cannot see an earlier call or another Chat's setup", async () => {
+	const guest = await sandboxedBox("probe", `let calls = 0, previous; export default { advance: { run: ({ setup }) => {
+		const text = JSON.stringify([++calls, previous ?? null]); previous = setup; return { items: [{ text, priority: 1 }] };
+	} } };`);
+	loaded.push(guest.dispose);
+	const run = (setup: string) => guest.operation(() => guest.box.advance?.run({ setup, dependencies: undefined, state: undefined, moves: [] }));
+	const first = await run("first Chat");
+	expect(await run("first Chat")).toEqual(first);
+	expect(await run("other Chat")).toEqual(first);
+});
+
+test("a module that retains its exhausted heap cannot poison the next operation", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { records: { initial: 0, fold: (state, record) => {
+		if (record.leak) while (true) kept.push(new ArrayBuffer(1 << 20)); return state + record.text.length;
+	} } };`);
+	loaded.push(guest.dispose);
+	await expect(guest.operation(() => guest.box.records?.foldAll?.(0, [{ leak: true }], undefined))).rejects.toThrow("The probe Box's records.fold ran out of its 64 MiB heap.");
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "x".repeat(1024 * 1024) }], undefined))).toBe(1024 * 1024);
+});
+
+test("a history larger than the call cap folds in bounded entries, but one oversized record fails", async () => {
+	const guest = await sandboxedBox("probe", `export default { records: { initial: 0, fold: (state, record, setup) => state + record.text.length + setup } };`);
+	loaded.push(guest.dispose);
+	const records = Array.from({ length: 32 }, () => ({ text: "界".repeat(48 * 1024) }));
+	expect(Buffer.byteLength(JSON.stringify(records))).toBeGreaterThan(SANDBOX_JSON_BYTES);
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, records, 7))).toBe(records.reduce((state, record) => state + record.text.length + 7, 0));
+	await expect(guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "界".repeat(SANDBOX_JSON_BYTES / 2) }], 7))).rejects.toThrow("The probe Box's records.fold input is over the 4 MiB limit.");
+});
+
+
+test("a host allocation trap names the hook, disposal is safe, and the next operation recovers", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { records: { initial: 0, fold: (state, record) => {
+		if (record.leak) while (true) kept.push(new ArrayBuffer(1 << 20)); return state + record.text.length;
+	} } };`);
+	loaded.push(guest.dispose);
+	await guest.operation(() => {
+		expect(() => guest.box.records?.foldAll?.(0, [{ leak: true }], undefined)).toThrow("The probe Box's records.fold ran out of its 64 MiB heap.");
+		expect(() => guest.box.records?.foldAll?.(0, [{ text: "x".repeat(1024 * 1024) }], undefined)).toThrow("The probe Box's records.fold threw RuntimeError:");
+	});
+	expect(await guest.operation(() => guest.box.records?.foldAll?.(0, [{ text: "ok" }], undefined))).toBe(2);
+	expect(() => guest.dispose()).not.toThrow();
+});
+
+
+test("one operation shares its module across Moves and fold chunks, then the next operation resets it", async () => {
+	const guest = await sandboxedBox("probe", `let calls = 0; export default {
+		moves: { render: () => String(++calls) },
+		records: { initial: 0, fold: () => ++calls },
+		advance: { run: () => ({ items: [{ text: String(++calls), priority: 1 }] }) },
+	};`);
+	loaded.push(guest.dispose);
+	const input = { setup: undefined, dependencies: undefined, state: undefined, moves: [] };
+	await guest.operation(async () => {
+		expect([guest.box.moves?.render({}, "Ann"), guest.box.moves?.render({}, "Ann")]).toEqual(["1", "2"]);
+		expect(guest.box.records?.foldAll?.(0, Array.from({ length: 201 }, () => 0), undefined)).toBe(203);
+		expect(await guest.box.advance?.run(input)).toEqual({ items: [{ text: "204", priority: 1 }] });
+	});
+	expect(await guest.operation(() => guest.box.advance?.run(input))).toEqual({ items: [{ text: "1", priority: 1 }] });
+});
+
+const installedProbe = async () => {
+	const scratch = join(import.meta.dir, "../../../.scratch");
+	mkdirSync(scratch, { recursive: true });
+	const folder = mkdtempSync(join(scratch, "sandbox-operations-"));
+	mkdirSync(join(folder, "probe"));
+	await Bun.write(join(folder, "probe/descriptor.json"), JSON.stringify({
+		id: "probe", sdk: 2, label: "Probe", summary: "Tests operation boundaries.", role: "system", startsEnabled: false, instructions: "", alwaysRender: true,
+		setup: { schema: { type: "string" }, initial: "" }, record: { type: "object", properties: { n: { type: "integer" } }, required: ["n"], additionalProperties: false }, window: { icon: "box", size: { width: 12, height: 12 } },
+	}));
+	await Bun.write(join(folder, "probe/ui.js"), "");
+	await Bun.write(join(folder, "probe/logic.js"), `let calls = 0; const kept = []; export default {
+		setupError: (setup) => { if (setup === "leak") while (true) kept.push(new ArrayBuffer(1 << 20)); },
+		records: { initial: 0, fold: (state, record) => { calls++; return state + record.n; } },
+		dependencies: () => calls,
+		advance: { run: ({ dependencies }) => ({ items: [{ text: String(dependencies), priority: 1 }] }) },
+		read: () => ({ view: null }),
+	};`);
+	mkdirSync(join(folder, "unused"));
+	await Bun.write(join(folder, "unused/descriptor.json"), (await Bun.file(join(folder, "probe/descriptor.json")).text()).replaceAll('"probe"', '"unused"'));
+	await Bun.write(join(folder, "unused/ui.js"), "");
+	await Bun.write(join(folder, "unused/logic.js"), await Bun.file(join(folder, "probe/logic.js")).text());
+	await loadBoxes([builtInBoxes, folder]);
+	return async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); };
+};
+
+test("a setup command that exhausts the heap does not poison later setup saves", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		insertBox(database, chat.id, "probe");
+		const app = createConversationRoutes(database);
+		const save = async (setup: string) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision, action: { type: "set-box-setup", box: "probe", setup } }), // @approved This test created the Chat.
+		}));
+		expect(await (await save("leak")).text()).toContain("The probe Box's setupError ran out of its 64 MiB heap.");
+		expect((await save("x".repeat(1024 * 1024))).status).toBe(200);
+		expect((await save("ok")).status).toBe(200);
+	} finally { database.close(); await restore(); }
+});
+
+test("sending an unchanged preview uses the same fold and dependency context as creating it", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		const instance = insertBox(database, chat.id, "probe");
+		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(chat.id)!;
+		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'A record.', '2026-01-01', 1) RETURNING id").get(message.id)!;
+		writeAutomaticRecord(drizzle(database), boxDescriptor("probe"), instance, variant.id, { n: 1 }, sha256("A record."));
+		withProfile(database);
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const post = (path: string, body: { kind: "send"; content: string; expectedRevision?: number; previewId?: string; promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+		}));
+		const preview = await post("/preview", { kind: "send", content: "Continue." });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
+		const expectedRevision = readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision; // @approved This test created the Chat.
+		const sent = await post("", { kind: "send", content: "Continue.", expectedRevision, previewId, promptPlan });
+		const accepted = await sent.json();
+		expect(accepted).toMatchObject({ outcome: "accepted" });
+		const { generationId } = accepted;
+		await completeGeneration(app, chat.id, generationId);
+	} finally { database.close(); await restore(); }
+});
+
+
+test("a setup command allocates only for its target Box, and a rename allocates no sandbox", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		insertBox(database, chat.id, "probe");
+		insertBox(database, chat.id, "unused");
+		const app = createConversationRoutes(database);
+		const Memory = WebAssembly.Memory;
+		let allocations = 0;
+		WebAssembly.Memory = class extends Memory {
+			constructor(descriptor: WebAssembly.MemoryDescriptor) { super(descriptor); allocations++; }
+		};
+		try {
+			const command = (action: ConversationAction) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
+				method: "POST", headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision, action }), // @approved This test created the Chat.
+			}));
+			expect((await command({ type: "set-box-setup", box: "probe", setup: "ok" })).status).toBe(200);
+			expect(allocations).toBe(1);
+			allocations = 0;
+			expect((await command({ type: "rename-conversation", name: "Renamed" })).status).toBe(200);
+			expect(allocations).toBe(0);
+		} finally { WebAssembly.Memory = Memory; }
+	} finally { database.close(); await restore(); }
+});
+
+test("a standalone read recovers after its snapshot allocation traps", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { read: ({ setup }, { snapshot }) => {
+		if (setup) { try { while (true) kept.push(new ArrayBuffer(1 << 20)); } catch {} snapshot({}); }
+		return { view: "ok" };
+	} };`);
+	loaded.push(guest.dispose);
+	const read = (setup: boolean) => guest.guestRead?.({ setup, state: undefined, human: null, cast: [] }, () => JSON.stringify("x".repeat(1 << 20)));
+	expect(() => read(true)).toThrow("The probe Box's read threw RuntimeError:");
+	expect(() => read(false)).toThrow("The probe Box's read is waiting for its sandbox runtime to recover.");
+	let recovered;
+	for (let attempt = 0; attempt < 100 && recovered === undefined; attempt++) {
+		await Bun.sleep(10);
+		try { recovered = read(false); }
+		catch (error) { expect(String(error)).toContain("The probe Box's read is waiting for its sandbox runtime to recover."); }
+	}
+	expect(recovered).toEqual({ view: "ok" });
 });

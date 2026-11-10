@@ -40,3 +40,27 @@ test("a swipe with prose of its own scripts its own batch: none for prose withou
 	expect([quiet.diagnostics, quiet.swipes.map(({ record }) => record)]).toEqual([[], [undefined]]);
 	expect((await run({ turns: [lantern], swipes: [{ turn: 0, prose: "<scene>set the table</scene>" }] })).diagnostics).toEqual(["Turn 0's prose holds a <scene> request, so the step needs delegated: the batch the delegate would apply."]);
 });
+
+test("each scenario step starts with the same guest state as a live capture, and its delegate starts separately", async () => {
+	const folder = join(root, "counter");
+	mkdirSync(folder);
+	const descriptor = JSON.parse(await Bun.file(join(root, "scene/descriptor.json")).text());
+	await Bun.write(join(folder, "descriptor.json"), JSON.stringify({ ...descriptor, id: "counter" }));
+	await Bun.write(join(folder, "ui.js"), "");
+	await Bun.write(join(folder, "logic.js"), `let calls = 0; export default {
+		records: { initial: { props: [] }, fold: (_, record) => record },
+		advance: { run: () => ({ items: [{ text: String(++calls), priority: 1 }] }) },
+		delegate: { apply: () => ({ props: [String(++calls)] }) },
+		read: () => ({ view: { calls } }),
+	};`);
+	const result = await runScenario(folder, "counter", unversionedBoxIds(), {
+		cast: ["Ann", "Bard"], seed: "s", turns: [
+			{ prose: "<scene>first</scene>", delegated: [] },
+			{ prose: "<scene>second</scene>", delegated: [] },
+		],
+	}, new AbortController().signal);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.turns.map(({ items }) => items.map(({ text }) => text))).toEqual([["1"], ["1"]]);
+	expect(result.records).toEqual([{ props: ["1"] }, { props: ["1"] }]);
+	expect(result.read).toEqual({ view: { calls: 0 } });
+});
