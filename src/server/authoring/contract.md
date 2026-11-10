@@ -80,6 +80,14 @@ Any other hook refuses the Box.
 
 Every other hook returns its value; only `advance.run`, `records.digest.run` and `delegate.apply` may be async.
 
+### Images in prompt items
+
+An item's `text` may hold `![name](image:<hash>)` for an image this Box uploaded through `host.uploadImage`. References resolve in `literal` items too. An ungranted reference in an item or rendered Move becomes `[Image: name]` with a warning naming the Box. A Cast Portrait alone grants no permission to send it.
+
+`host.uploadImage` accepts a `Blob` or `File`, including the `Blob` returned by a Worker's `OffscreenCanvas.convertToBlob({ type: "image/png" })`. It accepts PNG, JPEG, WebP and GIF up to 20 MiB. The server cannot render: `logic.js` has no canvas. Render and upload in the window. `advance` cannot read the Box's stored values, so the window commits the returned hash into setup, or stages it in a Move, for `advance` to place in an item.
+
+Images are only as fresh as the window's last render and upload. Keep a text fallback. Each sent image costs about width×height/750 tokens after fitting its long edge to at most 1568 px. A Text-only Model receives the anchor `[Image: name]` instead of pixels.
+
 ### Records
 
 State is never stored: the host folds it from the records of the Selected path's Variants, in Message order, from `records.initial`, whenever it needs it. So:
@@ -128,13 +136,13 @@ A Box with a window and no `decision` declares `read`. It returns `{ view, statu
 
 | Limit | Value |
 |---|---|
-| heap | 64 MiB per Box, and per running digest |
+| heap | 64 MiB per operation runtime |
 | guest time | 100 ms per entry: evaluating `logic.js`, each hook call, each job pump |
 | JSON | 4 MiB per call, each way |
 | `logic.js` built | 1 MiB |
 | `ui.js` built | 4 MiB |
 
-`read` and each digest run in a fresh context, so a global that keeps `snapshot` or `decide` has nothing in the next call. A guest throw fails the hook with `… threw <name>: <message>`.
+Each Generation capture (including preview validation), window read, digest, delegate run, status read and Chat command uses a fresh context, shared by its hooks and fold chunks. Scenario steps reset at the same boundaries. No module global survives into the next operation. The host folds at most 100 records per entry, also bounded by the JSON cap including state and setup, and carries the returned state between chunks. A single record that cannot fit fails. A failed operation discards its runtime, so the next operation can run after heap exhaustion or a Wasm trap. A guest throw fails the hook with `… threw <name>: <message>`.
 
 ## ui.js
 

@@ -148,12 +148,26 @@ const sandboxedDescriptorOf = (text: string | undefined, name: string, seen: Rea
 	return { file, descriptor: named(sandboxedDescriptor(file), name, seen) };
 };
 
+const operations = new WeakMap<HostBox, <T>(run: () => T) => Promise<Awaited<T>>>();
+
+/** @approved One fresh sandbox per Box for a host operation; trusted Boxes keep their existing hooks. */
+export const withBoxOperations = async <T>(boxes: Iterable<Pick<LoadedBox, "box">>, run: () => T): Promise<Awaited<T>> => {
+	const pending = [...new Set([...boxes].flatMap(({ box }) => operations.get(box) ?? []))];
+	const next = async (): Promise<Awaited<T>> => {
+		const operation = pending.pop();
+		return operation === undefined ? await run() : await operation(next);
+	};
+	return await next();
+};
+
 /** @approved A sandboxed Box's logic evaluated in its runtime behind checked hooks; a check that fails frees the runtime. */
 const sandboxedLoaded = async (descriptor: BoxDescriptor, file: SandboxedDescriptorFile, logic: string, ui: string | undefined, css: string | undefined) => {
-	const { box, guestRead, dispose } = await sandboxedBox(descriptor.id, logic);
+	const { box, guestRead, dispose, operation } = await sandboxedBox(descriptor.id, logic);
 	try {
 		assertBoxServer(box);
-		return { descriptor, box: checkedHooks(descriptor.id, descriptor, box), guestRead, client: { kind: "sandboxed", file, ui, css } as const, dispose };
+		const checked = checkedHooks(descriptor.id, descriptor, box);
+		operations.set(checked, operation);
+		return { descriptor, box: checked, guestRead, client: { kind: "sandboxed", file, ui, css } as const, dispose };
 	} catch (error) {
 		dispose();
 		throw error;

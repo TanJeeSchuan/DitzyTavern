@@ -1,3 +1,4 @@
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { generationGate } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
@@ -67,11 +68,13 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
 import { boxServices } from "../box/services";
-import { advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { withBoxOperations, advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { readBoxLifecycles } from "../box/setup";
+import { captureBoxPromptImages } from "../box/prompt-images";
+import type { PromptWarning } from "../prompt-compiler";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -110,6 +113,7 @@ const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
 		boxes: BoxResults;
+		boxWarnings: readonly PromptWarning[];
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
@@ -141,6 +145,7 @@ const compilePlanFrom = (
 		estimator: options.estimator,
 		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),
 	});
+	compiled.promptPlan.warnings.push(...configuration.boxWarnings);
 	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
 	return {
 		...compiled,
@@ -165,6 +170,7 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 
 interface AttemptConfiguration {
 	boxes: BoxResults;
+	boxWarnings: readonly PromptWarning[];
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
@@ -197,6 +203,7 @@ export const generationIntentOf = (target: CapturedTarget): GenerationIntent | u
 	target.kind === "continuation" ? target.intent : target.kind === "sibling" ? { type: "sibling" } : undefined;
 
 interface PreparationFields extends GenerationPreparationBase {
+	readonly boxWarnings: readonly PromptWarning[];
 	readonly seed: string;
 	readonly target: CapturedTarget;
 	readonly pendingHumanText: string | undefined;
@@ -280,6 +287,17 @@ export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 	readonly seed?: string | undefined;
 }
 
+// @approved
+// A Generation's capture and a preview's acceptance call hooks only of Boxes
+// enabled in the Chat. A Box left out still runs correctly, each hook in a
+// fresh context of its own, so a selection that changes while runtimes are
+// created fails nothing.
+export const withGenerationBoxOperations = <T>({ database, conversationId }: Pick<PrepareGenerationInputs, "database" | "conversationId">, run: () => T): Promise<Awaited<T>> => {
+	const db = drizzle(database);
+	const lifecycles = readBoxLifecycles(db, conversationId);
+	return withBoxOperations([...chatBoxes(db, conversationId)].flatMap(([id, loaded]) => lifecycles[id]?.state === "enabled" ? [loaded] : []), run);
+};
+
 /** @approved
  * Read the deterministic inputs for one attempt through the focused Conversation seams, in one
  * read transaction that also covers each Box's capture. The returned snapshot is safe to retain
@@ -306,7 +324,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 	const siblingId = selected.target?.variant?.id;
-	const chat = chatBoxes(db, input.conversationId);
+	const boxWarnings: PromptWarning[] = [];
+	const chat = captureBoxPromptImages(db, chatBoxes(db, input.conversationId), boxWarnings);
 	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
@@ -395,6 +414,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
 	const preparation = {
 		seed,
+		boxWarnings,
 		conversationId: input.conversationId,
 		boxes: captureBoxes(boxes, summary.boxSetups, folds, moves, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
@@ -425,9 +445,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
-export async function prepareGenerationInputsAsync(
-	input: PrepareGenerationInputs,
-): Promise<Preparation> {
+export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
+	withGenerationBoxOperations(input, async () => {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();
 	// @approved
@@ -435,6 +454,7 @@ export async function prepareGenerationInputsAsync(
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
+	const fingerprint = generationPreparationFingerprint(snapshot);
 	const { boxes: boxInputs, ...preparation } = snapshot;
 	// @approved
 	//  The semantic pass reads the sources the synchronous pass captured: the
@@ -456,10 +476,10 @@ export async function prepareGenerationInputsAsync(
 			const record = boxes[reference]?.record;
 			return record === undefined ? [] : [[id, { instance, ...version !== undefined && { version }, record }]];
 		})),
-		fingerprint: generationPreparationFingerprint(snapshot),
+		fingerprint,
 	};
 	return ready;
-}
+});
 
 const captureConfigurationFromPreparation = (
 	preparation: Preparation,
@@ -476,6 +496,7 @@ const captureConfigurationFromPreparation = (
 	});
 	return {
 		boxes: preparation.boxes,
+		boxWarnings: preparation.boxWarnings,
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,

@@ -11,7 +11,7 @@ import type { ScenarioInput, ScenarioResult } from "../../shared/contract/author
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { checkedDecisionAnswers } from "../decision-model";
 import type { BoxContext, DigestPassage } from "../box/contract";
-import { checkSandboxedFolder, type CheckedSandboxedBox, type LoadedBox } from "../box/registry";
+import { withBoxOperations, checkSandboxedFolder, type CheckedSandboxedBox, type LoadedBox } from "../box/registry";
 import { boxSeed } from "../box/seed";
 import { assertPlainHome, readLatest, VERSION_PATTERN, versionFolder } from "../box/versions";
 import { playedRefusals, refusedUpgrade } from "../conversation";
@@ -87,11 +87,15 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 			if (moves.length > descriptor.moves.max) throw new Error(`Turn ${index} has ${moves.length} Moves; the ${id} Box allows ${descriptor.moves.max}.`);
 			moves.forEach((move, at) => assertChecked(descriptor.moves!.schema, move, `Turn ${index}'s Move ${at}`)); // @approved Checked just above.
 		}
-		const rendered = moves.map((move) => box.moves!.render(move, human.name)); // @approved The loader requires a render for Moves.
-		const seed = boxSeed(`${input.seed}:${index}`, id);
-		const state = fold(selected.slice(0, index).flatMap((record) => record === undefined ? [] : [record]));
-		const dependencies = box.dependencies?.({ database, conversationId: 0, seed, intent: "respond", human, cast, messages: [], pending: undefined }, setup);
-		const advanced = await box.advance?.run({ setup, dependencies, state, moves }, context) ?? { items: [] };
+		const before = selected.slice(0, index).flatMap((record) => record === undefined ? [] : [record]);
+		const { rendered, seed, advanced } = await withBoxOperations([{ box }], async () => {
+			const seed = boxSeed(`${input.seed}:${index}`, id);
+			const state = fold(before);
+			const rendered = moves.map((move) => box.moves!.render(move, human.name)); // @approved The loader requires a render for Moves.
+			const dependencies = box.dependencies?.({ database, conversationId: 0, seed, intent: "respond", human, cast, messages: [], pending: undefined }, setup);
+			const advanced = await box.advance?.run({ setup, dependencies, state, moves }, context) ?? { items: [] };
+			return { rendered, seed, advanced };
+		});
 		const digest = box.records?.digest;
 		const asked = { messageId: index * 2 + 1, speaker: human.name, authorId: human.id, content: "" };
 		const passage = { messageId: index * 2 + 2, speaker: speaker.name, authorId: speaker.id, content: prose ?? "" };
@@ -102,7 +106,7 @@ const scenarioPlayer = (id: BoxId, input: ScenarioInput, signal: AbortSignal) =>
 		// one that fails still leaves the Moves and an empty Variant behind.
 		const variants = (played[index] ??= { moves, records: [] }).records;
 		const at = variants.push(undefined) - 1;
-		const record = descriptor.delegate !== undefined ? await delegate(descriptor, box, index, passage.content, delegated, { setup, state, cast })
+		const record = descriptor.delegate !== undefined ? await withBoxOperations([{ box }], () => delegate(descriptor, box, index, passage.content, delegated, { setup, state: fold(before), cast }))
 			: delegated !== undefined ? fail(`Turn ${index} scripts delegated, but the ${id} Box declares no delegate.`)
 			: digest === undefined ? advanced.record : passage.content.trim() === "" ? undefined : await digest.run({
 			passage, preceding: digest.window === 0 ? [] : earlier.slice(-digest.window), seed,
@@ -213,18 +217,18 @@ export const runScenario = async (folder: string, id: BoxId, seen: ReadonlySet<B
 		const candidate = runnerOf(id, checked, input, input.from !== undefined);
 		await player.play(candidate, steps, result);
 		const records = player.records();
-		const state = candidate.fold(records);
+		const state = await withBoxOperations([checked], () => candidate.fold(records));
 		Object.assign(result, { records, recordBytes: Buffer.byteLength(JSON.stringify(records)), state });
-		if (checked.box.status !== undefined) result.status = checked.box.status(candidate.setup, state);
+		if (checked.box.status !== undefined) result.status = await withBoxOperations([checked], () => checked.box.status?.(candidate.setup, candidate.fold(records)));
 		if (checked.guestRead !== undefined) {
 			const scripted = input.snapshot ?? [];
-			result.read = checked.guestRead({ setup: candidate.setup, state, human: player.human.id, cast: player.cast.map((member) => ({ ...member, portrait: null, character: null })) }, (json) => {
+			result.read = await withBoxOperations([checked], () => checked.guestRead!({ setup: candidate.setup, state: candidate.fold(records), human: player.human.id, cast: player.cast.map((member) => ({ ...member, portrait: null, character: null })) }, (json) => {
 				const query: unknown = JSON.parse(json);
 				assertChecked(snapshotQuery, query, `The ${id} Box's snapshot query`);
 				const answer = scripted.find((entry) => Value.Equal(entry.query, query))?.answer;
 				if (answer === undefined) throw new Error(`The scenario scripts no snapshot answer for ${json}.`);
 				return JSON.stringify(answer);
-			});
+			})); // @approved guestRead was checked above.
 		}
 		return { ...result, ok: true };
 	} catch (error) {

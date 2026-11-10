@@ -98,10 +98,11 @@ export const promptPlan = Type.Object({
 	// Without a reason, the macro is unknown and stayed literal. `uncached` marks
 	// a macro whose text can change on the next request in a block before
 	// history, so the provider's prompt cache misses from that block onward.
+	// @approved An ungranted-image warning names the Box in block and the Image in macro.
 	warnings: Type.Array(Type.Object({
 		block: Type.String(),
 		macro: Type.String(),
-		reason: Type.Optional(Type.Literal("uncached")),
+		reason: Type.Optional(Type.Union([Type.Literal("uncached"), Type.Literal("ungranted-image")])),
 	})),
 	images: Type.Array(promptImage),
 	intent: Type.Optional(generationIntent),

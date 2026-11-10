@@ -15,7 +15,7 @@ import { otherBoxTags } from "../../shared/contract/box";
 import { delegateRequest } from "../../shared/delegate-request";
 import { runDelegateAgent } from "./delegate";
 import { readEffectiveBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
-import { boxAt, chatBox, chatBoxes, type LoadedBox } from "./registry";
+import { withBoxOperations, boxAt, chatBox, chatBoxes, type LoadedBox } from "./registry";
 import { boxServices } from "./services";
 import { isHostChatKey, readBoxLifecycles, readBoxSetups } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
@@ -218,7 +218,7 @@ const runJob = async (database: Database, queue: DigestQueue, job: DigestJob): P
 	try {
 		if (!runs()) return;
 		if (loaded === undefined) throw new Error(`The ${job.box} Box's version ${job.version} is not loaded.`);
-		const record = job.kind === "digest" ? await digestRecord(database, queue, job, loaded) : await delegateRecord(database, queue, job, loaded);
+		const record = await withBoxOperations([loaded], () => job.kind === "digest" ? digestRecord(database, queue, job, loaded) : delegateRecord(database, queue, job, loaded));
 		if (record !== undefined && lands()) writeAutomaticRecord(drizzle(database), loaded.descriptor, job.instance, job.variantId, record, job.source);
 	} catch (error) {
 		if (signal.aborted) return;

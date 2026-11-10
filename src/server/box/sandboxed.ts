@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Value } from "@sinclair/typebox/value";
 import variant from "@jitl/quickjs-wasmfile-release-sync";
 import { newQuickJSWASMModuleFromVariant, newVariant, type QuickJSDeferredPromise, type QuickJSHandle } from "quickjs-emscripten-core";
@@ -123,20 +124,16 @@ export type SandboxedReadInput = {
 const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => new Error(`The ${id} Box's ${hook} ${direction} is over the ${mebibytes(SANDBOX_JSON_BYTES)} limit.`);
 
 // @approved
-//  A sandboxed Box: its `logic.js`, an ES module with no imports, evaluated in
-// its own QuickJS runtime, behind the hooks the host calls on any Box. Hooks
-// that receive no capability share one long-lived context. `read` receives
-// `snapshot`, bound to the Chat it reads, so each read evaluates `logic.js`
-// in a fresh context that is disposed when it returns, and a digest receives
-// `decide`, bound to its job, so each digest evaluates it in a runtime of its
-// own, thrown away whole once the digest settles: no global keeps the
-// capability for a later or concurrent call, and a digest that fails halfway
-// leaves nothing behind for the next. Each entry into the guest arms the
-// interrupt deadline, and the byte limit refuses a call's JSON before the
-// guest sees it and its reply before the host copies it. `dispose` frees the
-// runtime once the registry drops it.
+// A host operation shares one module instance across its hooks and fold chunks.
+// Each operation owns its runtime, so a failed operation can drop the entire
+// runtime, including a trapped allocator. Standalone synchronous hooks use
+// fresh contexts in the loader runtime.
 export const sandboxedBox = async (id: BoxId, source: string) => {
-	const long = await guestRuntime();
+	let standalone: GuestRuntime | undefined = await guestRuntime();
+	let disposed = false;
+	let recoveryError: string | undefined;
+	type Operation = { runtime: GuestRuntime; guest?: ReturnType<typeof open>; discard: boolean };
+	const current = new AsyncLocalStorage<Operation>();
 
 	/** @approved One guest context on `runtime` with `logic.js` evaluated in it, and the calls into its dispatcher. */
 	const open = ({ runtime, enter }: GuestRuntime) => {
@@ -261,19 +258,60 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			};
 			return { vm, declaration, call, capability, reply, text, settled, settledAsync, dispose };
 		} catch (error) {
-			dispose();
-			throw error;
+			throw error instanceof Error ? worded("logic.js", error) : error;
 		}
 	};
 
-	let shared: ReturnType<typeof open> | undefined;
 	const dispose = () => {
-		shared?.dispose();
-		long.runtime.dispose();
+		disposed = true;
+		try { standalone?.runtime.dispose(); } catch { /* @approved A trapped heap is reclaimed whole by the host GC. */ }
 	};
+	const finish = (scope: Operation, whole: boolean) => {
+		if (scope.discard) return;
+		try {
+			scope.guest?.dispose();
+			if (whole) scope.runtime.runtime.dispose();
+		} catch { scope.discard = true; /* @approved Pending guest jobs or a trapped allocator require dropping the runtime whole. */ }
+	};
+	const operation = async <T>(run: () => T): Promise<Awaited<T>> => {
+		const scope: Operation = { runtime: await guestRuntime(), discard: false };
+		// @approved
+		// On failure, leave the entire runtime to host GC: native cleanup can trap on an exhausted heap or unfinished promise chain.
+		const value = await current.run(scope, run);
+		finish(scope, true);
+		return value;
+	};
+	const worded = (hook: string, error: Error) => {
+		if (!(error instanceof WebAssembly.RuntimeError)) return error;
+		const scope = current.getStore();
+		if (scope !== undefined) scope.discard = true;
+		return guestError(id, hook, { name: error.name, message: error.message });
+	};
+	const synchronous = <T>(hook: string, run: () => T): T => {
+		if (current.getStore() !== undefined) return run();
+		if (standalone === undefined) throw new Error(`The ${id} Box's ${hook} ${recoveryError ?? "is waiting for its sandbox runtime to recover."}`);
+		const scope: Operation = { runtime: standalone, discard: false };
+		try { return current.run(scope, run); }
+		catch (error) { if (error instanceof WebAssembly.RuntimeError) scope.discard = true; throw error instanceof Error ? worded(hook, error) : error; }
+		finally {
+			finish(scope, false);
+			if (scope.discard) {
+				standalone = undefined;
+				void guestRuntime().then((fresh) => {
+					if (disposed) fresh.runtime.dispose();
+					else standalone = fresh;
+				}, (error: Error) => { recoveryError = `could not recover its sandbox runtime: ${String(error)}`; });
+			}
+		}
+	};
+	const guest = () => {
+		const scope = current.getStore();
+		if (scope === undefined) throw new Error(`The ${id} Box's hooks need a host operation.`);
+		return scope.guest ??= open(scope.runtime);
+	};
+
 	try {
-		shared = open(long);
-		const { declaration, call, text, settled } = shared;
+		const declaration = synchronous("logic.js", () => guest().declaration);
 		if (declaration.declared.length === 0) throw new Error(`The ${id} Box's logic.js must default-export an object of hooks.`);
 		const declared = new Map(declaration.declared.map(([key, kind]) => [key, kind] as const));
 		const unsupported = [...declared.keys()].filter((key) => !supportedHooks.includes(key));
@@ -289,23 +327,54 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			// SAFETY: JSON.parse returns only JSON values, and the registry checks this one against the hook's output schema.
 			return parsed.value as GenerationJsonValue | undefined;
 		};
-		const sync = (hook: string, json: string) => outcome(hook, text(hook, call(hook, json)));
+		const sync = (hook: string, json: string) => synchronous(hook, () => {
+			try { const fresh = guest(); return outcome(hook, fresh.text(hook, fresh.call(hook, json))); }
+			catch (error) { throw error instanceof Error ? worded(hook, error) : error; }
+		});
+		const asyncHook = async (hook: string, json: string) => {
+			const run = () => {
+				try { const fresh = guest(); return outcome(hook, fresh.text(hook, fresh.settled(hook, fresh.call(hook, json)))); }
+				catch (error) { throw error instanceof Error ? worded(hook, error) : error; }
+			};
+			return current.getStore() === undefined ? await operation(run) : run();
+		};
 		type State = GenerationJsonValue | undefined;
 		type Setup = BoxValue | undefined;
-		const foldAll = (state: State, records: readonly GenerationJsonValue[], setup: Setup) => sync("records.fold", JSON.stringify({ state, records, setup }));
+		const foldAll = (state: State, records: readonly GenerationJsonValue[], setup: Setup) => synchronous("records.fold", () => {
+			for (let at = 0; at < records.length;) {
+				const start = JSON.stringify({ state, setup, records: [] }).slice(0, -2);
+				let bytes = Buffer.byteLength(start) + 2;
+				const chunk: string[] = [];
+				// @approved
+				// Bound record count as well as bytes: the Race takes about 34 ms for 200 records.
+				while (at < records.length && chunk.length < 100) {
+					const record = JSON.stringify(records[at]);
+					const size = Buffer.byteLength(record) + (chunk.length === 0 ? 0 : 1);
+					if (bytes + size > SANDBOX_JSON_BYTES) {
+						if (chunk.length === 0) throw overLimit(id, "records.fold", "input");
+						break;
+					}
+					chunk.push(record);
+					bytes += size;
+					at += 1;
+				}
+				state = sync("records.fold", `${start}${chunk.join(",")}]}`);
+			}
+			return state;
+		});
 		// @approved
 		//  The guest's `read`: its view and Status line, which it builds from its
 		// setup, state and Cast, and its own stored values through `snapshot`,
 		// which answers each query as JSON. A Chat's window read hands it the
 		// production `boxSnapshot`; a scenario hands it scripted answers.
-		const guestRead = (input: SandboxedReadInput, snapshot: (query: string) => string) => {
-			const fresh = open(long);
+		const guestRead = (input: SandboxedReadInput, snapshot: (query: string) => string) => synchronous("read", () => {
+			const fresh = guest();
 			try {
 				const output = outcome("read", fresh.text("read", fresh.call("read", JSON.stringify(input), fresh.capability("snapshot", (query) => fresh.reply("snapshot", snapshot(query))))));
 				assertChecked(sandboxedReadOutput, output, `The ${id} Box's read result`);
 				return output;
-			} finally { fresh.dispose(); }
-		};
+			} catch (error) { throw error instanceof Error ? worded("read", error) : error; }
+		});
 		// @approved
 		//  The window read: the guest's read over this Chat, and the Chat revision
 		// it read at, which its commits name as their snapshot.
@@ -331,22 +400,27 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		// call ends, its request is aborted with it, so no request outlives
 		// the digest that made it.
 		const digest = async (window: DigestWindow, ctx: DigestContext) => {
-			const fresh = open(await guestRuntime());
+			const fresh = guest();
+			current.getStore()!.discard = true; // @approved guest() requires this operation.
 			// @approved
-			// A job dropped while its runtime was created never runs: from here to the listener below nothing yields, so no abort goes unseen.
+			// A job dropped while its operation was prepared never runs: nothing yields before the listener below.
 			ctx.signal.throwIfAborted();
 			const invocation = new AbortController();
 			let asked = false;
 			let deferred: QuickJSDeferredPromise | undefined;
 			let wake: Promise<void> | undefined;
 			let woken = () => {};
+			let settlementError: Error | undefined;
 			const answer = (settle: (pending: QuickJSDeferredPromise) => void) => {
 				const pending = deferred;
 				deferred = undefined;
 				if (pending === undefined) return;
-				settle(pending);
-				pending.dispose();
-				woken();
+				try {
+					settle(pending);
+					pending.dispose();
+				} catch (error) {
+					settlementError = error instanceof Error ? error : new Error(String(error));
+				} finally { woken(); }
 			};
 			const reject = ({ name, message }: Error) => answer((pending) => {
 				const handle = fresh.vm.newError({ name, message });
@@ -355,34 +429,35 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			});
 			const cancel = () => reject(new Error(`The ${id} Box's digest was cancelled.`));
 			ctx.signal.addEventListener("abort", cancel);
-			const decide = fresh.capability("decide", (json) => {
-				if (asked) throw new Error("decide may be called once per digest.");
-				asked = true;
-				const input: unknown = JSON.parse(json);
-				assertChecked(sandboxedDecideInput, input, `The ${id} Box's decide input`);
-				const pending = fresh.vm.newPromise();
-				const handle = pending.handle.dup();
-				deferred = pending;
-				wake = new Promise((resolve) => { woken = resolve; });
-				void (async () => {
-					try {
-						// @approved
-						// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
-						const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
-						const json = JSON.stringify([...answers]);
-						if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
-						answer((settling) => {
-							const text = fresh.vm.newString(json);
-							settling.resolve(text);
-							text.dispose();
-						});
-					} catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
-				})();
-				return handle;
-			});
 			try {
+				const decide = fresh.capability("decide", (json) => {
+					if (asked) throw new Error("decide may be called once per digest.");
+					asked = true;
+					const input: unknown = JSON.parse(json);
+					assertChecked(sandboxedDecideInput, input, `The ${id} Box's decide input`);
+					const pending = fresh.vm.newPromise();
+					const handle = pending.handle.dup();
+					deferred = pending;
+					wake = new Promise((resolve) => { woken = resolve; });
+					void (async () => {
+						try {
+							// @approved
+							// SAFETY: the input is parsed JSON, so its state is JSON, and its questions passed their schema.
+							const answers = await ctx.decide(input[0] as DecisionJson, input[1] as DecisionQuestions, { signal: invocation.signal });
+							const json = JSON.stringify([...answers]);
+							if (Buffer.byteLength(json) > SANDBOX_JSON_BYTES) throw overLimit(id, "decide", "result");
+							answer((settling) => {
+								const text = fresh.vm.newString(json);
+								settling.resolve(text);
+								text.dispose();
+							});
+						} catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+					})();
+					return handle;
+				});
 				const run = fresh.call("records.digest.run", JSON.stringify(window), decide);
 				const settledRun = await fresh.settledAsync("records.digest.run", run, () => {
+					if (settlementError !== undefined) throw settlementError;
 					const next = wake;
 					wake = undefined;
 					return next;
@@ -390,6 +465,8 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 				const value = outcome("records.digest.run", fresh.text("records.digest.run", settledRun));
 				ctx.signal.throwIfAborted();
 				return value;
+			} catch (error) {
+				throw error instanceof Error ? worded("records.digest.run", error) : error;
 			} finally {
 				ctx.signal.removeEventListener("abort", cancel);
 				invocation.abort();
@@ -409,19 +486,19 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			...(declared.has("records.initial") || declared.has("records.fold") || declared.has("records.digest.run")) && { records: {
 				...declared.has("records.initial") && { initial: declaration.initial },
 				...declared.has("records.fold") && { fold: (state: State, record: GenerationJsonValue, setup: Setup) => foldAll(state, [record], setup), foldAll },
-				...declared.has("records.digest.run") && { digest: { window: declaration.window, run: digest } },
+				...declared.has("records.digest.run") && { digest: { window: declaration.window, run: (window: DigestWindow, ctx: DigestContext) => current.getStore() === undefined ? operation(() => digest(window, ctx)) : digest(window, ctx) } },
 			} },
 			...declared.has("advance.run") && { advance: {
 				run: async ({ setup, dependencies, state, moves }: AdvanceInput<Setup, unknown, State, BoxValue>) =>
-					outcome("advance.run", text("advance.run", settled("advance.run", call("advance.run", JSON.stringify({ setup, dependencies, state, moves }))))),
+					asyncHook("advance.run", JSON.stringify({ setup, dependencies, state, moves })),
 			} },
 			...declared.has("read") && { read },
 			...declared.has("delegate.apply") && { delegate: {
 				apply: async ({ setup, state, operations, cast }: DelegateInput<Setup, State>) =>
-					outcome("delegate.apply", text("delegate.apply", settled("delegate.apply", call("delegate.apply", JSON.stringify({ setup, state, operations, cast }))))),
+					asyncHook("delegate.apply", JSON.stringify({ setup, state, operations, cast })),
 			} },
 		};
-		return { box, guestRead: declared.has("read") ? guestRead : undefined, dispose };
+		return { box, guestRead: declared.has("read") ? guestRead : undefined, dispose, operation };
 	} catch (error) {
 		dispose();
 		throw error;
