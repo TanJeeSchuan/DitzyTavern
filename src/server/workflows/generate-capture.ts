@@ -282,28 +282,14 @@ export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 }
 
 // @approved
-// Only participating Boxes and enabled Boxes rendering selected or submitted
-// Moves can run hooks during capture or preview acceptance.
-const generationOperationBoxes = ({ database, conversationId, target }: Pick<PrepareGenerationInputs, "database" | "conversationId" | "target">) => {
+// A Generation's capture and a preview's acceptance call hooks only of Boxes
+// enabled in the Chat. A Box left out still runs correctly, each hook in a
+// fresh context of its own, so a selection that changes while runtimes are
+// created fails nothing.
+export const withGenerationBoxOperations = <T>({ database, conversationId }: Pick<PrepareGenerationInputs, "database" | "conversationId">, run: () => T): Promise<Awaited<T>> => {
 	const db = drizzle(database);
-	const chat = chatBoxes(db, conversationId);
 	const lifecycles = readBoxLifecycles(db, conversationId);
-	const slots = readConversationPromptPresetRecipeFromConnection(db, conversationId)?.slots ?? [];
-	const participating = participatingBoxes(chat, slots, lifecycles);
-	const selected = readSelectedHistoryFromConnection(db, conversationId, { targetMessageId: target.kind === "sibling" ? target.messageId : undefined });
-	const moves = [...readMessageMoves(db, conversationId, selected?.messages.filter(({ variant }) => variant !== null).map(({ id }) => id) ?? []).values(), target.kind === "send" ? target.moves ?? {} : {}];
-	return [...chat].flatMap(([id, loaded]) => participating.has(id) || (lifecycles[id]?.state === "enabled" && moves.some((list) => (list[id]?.length ?? 0) > 0)) ? [loaded] : []);
-};
-
-// @approved
-// Runtime creation yields; a changed selection must not run an unscoped Box
-// when the synchronous capture begins.
-export const withGenerationBoxOperations = <T>(input: Pick<PrepareGenerationInputs, "database" | "conversationId" | "target">, run: () => T): Promise<Awaited<T>> => {
-	const boxes = generationOperationBoxes(input);
-	return withBoxOperations(boxes, () => {
-		if (generationOperationBoxes(input).some((loaded) => !boxes.includes(loaded))) throw new InvalidConversationCommandError("The Chat's Boxes changed while preparing generation. Try again.");
-		return run();
-	});
+	return withBoxOperations([...chatBoxes(db, conversationId)].flatMap(([id, loaded]) => lifecycles[id]?.state === "enabled" ? [loaded] : []), run);
 };
 
 /** @approved
