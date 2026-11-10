@@ -8,7 +8,7 @@ import type { BoxValue } from "../../shared/contract/box-value";
 import type { Portrait } from "../../shared/contract/image";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { DecisionJson, DecisionQuestions } from "../decision-model";
-import type { AdvanceInput, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "./contract";
+import type { AdvanceInput, BoxWindowRead, CaptureRead, DelegateInput, DigestContext, DigestWindow } from "./contract";
 import { boxSnapshot } from "./snapshot";
 
 /** @approved The JSON a hook call may carry in each direction, checked before the host allocates a guest string. */
@@ -20,7 +20,7 @@ const WASM_PAGE_BYTES = 64 * 1024;
 export const SANDBOX_ENTRY_MS = 100;
 
 /** @approved The hooks a sandboxed Box may declare in this SDK; any other key its `logic.js` exports is refused. */
-const supportedHooks = ["setupError", "dependencies", "moves.render", "records.initial", "records.fold", "records.digest.window", "records.digest.run", "advance.run", "read", "status"];
+const supportedHooks = ["setupError", "dependencies", "moves.render", "records.initial", "records.fold", "records.digest.window", "records.digest.run", "advance.run", "read", "status", "delegate.apply"];
 
 // @approved
 //  Runs in the guest context before `logic.js`: logic has no clock and no
@@ -49,8 +49,8 @@ const determinism = `(() => {
 // strings cross the boundary. `read` also receives the host's `snapshot`,
 // which takes and returns JSON strings too, and a digest the host's
 // `decide`, which takes a JSON string and returns a Promise of one.
-// `advance.run` and a digest may be async; every other hook must return its
-// value.
+// `advance.run`, a digest and `delegate.apply` may be async; every other hook
+// must return its value.
 const bridge = `(box) => {
 	const walk = (path, value) => path !== "records.initial" && value !== null && typeof value === "object" && !Array.isArray(value)
 		? Object.entries(value).flatMap(([key, inner]) => walk(path === "" ? key : path + "." + key, inner)) : [[path, typeof value]];
@@ -66,17 +66,18 @@ const bridge = `(box) => {
 		"moves.render": ([move, author]) => box.moves.render(move, author),
 		"records.fold": ({ state, records, setup }) => records.reduce((folded, record) => box.records.fold(folded, record, setup), state),
 		"advance.run": (input) => box.advance.run(input),
+		"delegate.apply": (input) => box.delegate.apply(input),
 		"records.digest.run": (window, decide) => box.records.digest.run(window, { decide: (state, questions) => decide(JSON.stringify([state, questions])).then(JSON.parse) }),
 		read: (read, snapshot) => box.read(read, { snapshot: (query) => JSON.parse(snapshot(JSON.stringify(query))) }),
 		status: ([setup, state]) => box.status(setup, state),
 	};
 	const dispatch = (hook, json, capability) => {
-		if (hook === "advance.run" || hook === "records.digest.run") {
+		if (hook === "advance.run" || hook === "records.digest.run" || hook === "delegate.apply") {
 			try { return Promise.resolve(hooks[hook](JSON.parse(json), capability)).then(ok, fail); } catch (error) { return Promise.resolve(fail(error)); }
 		}
 		try {
 			const value = hooks[hook](JSON.parse(json), capability);
-			if (typeof value?.then === "function") throw new TypeError(hook + " returned a Promise; only advance.run and records.digest.run may be async.");
+			if (typeof value?.then === "function") throw new TypeError(hook + " returned a Promise; only advance.run, records.digest.run and delegate.apply may be async.");
 			return ok(value);
 		} catch (error) { return fail(error); }
 	};
@@ -415,6 +416,10 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 					outcome("advance.run", text("advance.run", settled("advance.run", call("advance.run", JSON.stringify({ setup, dependencies, state, moves }))))),
 			} },
 			...declared.has("read") && { read },
+			...declared.has("delegate.apply") && { delegate: {
+				apply: async ({ setup, state, operations, cast }: DelegateInput<Setup, State>) =>
+					outcome("delegate.apply", text("delegate.apply", settled("delegate.apply", call("delegate.apply", JSON.stringify({ setup, state, operations, cast }))))),
+			} },
 		};
 		return { box, guestRead: declared.has("read") ? guestRead : undefined, dispose };
 	} catch (error) {

@@ -1,6 +1,7 @@
+import type { Database } from "bun:sqlite";
 import type { CodingModel } from "../../shared/contract/authoring";
 import { resolveRequestUrl } from "../../shared/connection-url";
-import type { ConnectionProfile, ConnectionProfileSecretSnapshot } from "../connection-settings";
+import { createConnectionSettingsModule, type ConnectionProfile, type ConnectionProfileSecretSnapshot } from "../connection-settings";
 import { authenticatedHeaders } from "../model-client/authenticated-headers";
 
 const requestPath = "/chat/completions";
@@ -45,13 +46,13 @@ const inactive = async (input: string, init: RequestInit, ms: number) => {
 export const libfxProvider = (profile: ConnectionProfile, secrets: ConnectionProfileSecretSnapshot | null, choice: CodingModel) => {
 	const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 	const name = profile.displayName;
-	if (profile.apiFormat !== "chat-completions") return refused(`${name} is not a Chat Completions connection; the coding agent needs one.`);
+	if (profile.apiFormat !== "chat-completions") return refused(`${name} is not a Chat Completions connection; an agent needs one.`);
 	if (profile.credentialState === "unreadable") return refused(`${name}'s saved API key cannot be read. Save it again in Connections.`);
 	let url: URL;
 	try { url = new URL(resolveRequestUrl(profile.requestUrl, "chat-completions")); } catch (error) { return refused(`${name}'s request URL is not usable: ${error instanceof Error ? error.message : String(error)}`); }
-	if (!url.pathname.endsWith(requestPath)) return refused(`${name}'s request URL must end in ${requestPath} for the coding agent.`);
-	if (url.search !== "") return refused(`${name}'s request URL carries a query, which the coding agent cannot send.`);
-	if (url.protocol === "http:" && !loopback.has(url.hostname)) return refused(`${name} uses HTTP; the coding agent sends HTTP only to localhost, so use HTTPS.`);
+	if (!url.pathname.endsWith(requestPath)) return refused(`${name}'s request URL must end in ${requestPath} for an agent.`);
+	if (url.search !== "") return refused(`${name}'s request URL carries a query, which an agent cannot send.`);
+	if (url.protocol === "http:" && !loopback.has(url.hostname)) return refused(`${name} uses HTTP; an agent sends HTTP only to localhost, so use HTTPS.`);
 	const credential = secrets?.credential ?? null;
 	const headers = secrets?.headers ?? {};
 	const timeout = profile.timeoutMs;
@@ -66,4 +67,21 @@ export const libfxProvider = (profile: ConnectionProfile, secrets: ConnectionPro
 			},
 		},
 	} as const;
+};
+/** @approved The libfx agent options a mapped profile gives: its model, provider and fetch. */
+export type LibfxOptions = Extract<ReturnType<typeof libfxProvider>, { outcome: "mapped" }>["options"];
+
+// @approved
+//  A chosen profile and model as libfx's provider, or why not: the profile
+// is gone, its credentials cannot be read, or `libfxProvider` refuses it.
+// Creator Mode's coding agent and every Box delegate resolve their choice
+// here.
+export const resolveLibfxProvider = (database: Database, choice: CodingModel) => {
+	const refused = (reason: string) => ({ outcome: "refused", reason } as const);
+	const connections = createConnectionSettingsModule(database);
+	const profile = connections.get().profiles.find(({ id }) => id === choice.profileId);
+	if (profile === undefined) return refused("That connection no longer exists.");
+	let secrets: ReturnType<typeof connections.getProfileSecrets>;
+	try { secrets = connections.getProfileSecrets(profile.id); } catch (error) { return refused(`${profile.displayName}'s saved credentials cannot be read: ${error instanceof Error ? error.message : String(error)}`); }
+	return libfxProvider(profile, secrets, choice);
 };

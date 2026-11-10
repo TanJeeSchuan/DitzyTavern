@@ -1,7 +1,7 @@
 import { Kind, Type, TypeGuard, TypeRegistry, type Static, type TObject, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { boxValue, type BoxValue } from "./box-value";
-import { boxMetadataSchema } from "./box-metadata";
+import { boxDelegateCopy, boxMetadataSchema } from "./box-metadata";
 import { promptOutgoingRole } from "./prompt-preset";
 
 /** @approved The Box SDK's major version. The host refuses a Box whose descriptor declares another. */
@@ -34,7 +34,12 @@ const schema = Type.Unsafe<TSchema>({ [Kind]: "BoxSchema" });
 // the composer when the human seat changes. A record is an object, so an
 // absent record is never confused with a record's value. `decision` gives
 // the Box a global Decision Model selection, which its digests ask, and the
-// settings copy that selection shows.
+// settings copy that selection shows. `lens` is the tag the Box's client lens
+// lifts, declared here so the loader can refuse a delegate tag that collides
+// with it. `delegate` makes the Box a delegating Box: a request written in
+// prose as `<tag>…</tag>` is turned by an agent into one batch of its
+// `operations`, a `Type.Array` with its own `maxItems`, and its three strings
+// word the delegate setting.
 export const boxDescriptorSchema = Type.Object({
 	...boxMetadataSchema.properties,
 	sdk: Type.Integer(),
@@ -50,6 +55,7 @@ export const boxDescriptorSchema = Type.Object({
 		label: Type.Unsafe<(move: never) => string>(Type.Function([], Type.String())),
 		seatBound: Type.Optional(Type.Literal(true)),
 	})),
+	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: schema })),
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 
@@ -66,6 +72,9 @@ export function assertBoxDescriptor(descriptor: unknown): asserts descriptor is 
 	if (Object.hasOwn(Object.prototype, descriptor.id)) throw new Error(`Its id, ${descriptor.id}, names an Object.prototype property.`);
 	if (descriptor.setup !== undefined && !Value.Check(descriptor.setup.schema, descriptor.setup.initial)) throw new Error("Its initial setup does not match its setup schema.");
 	if (descriptor.sdk !== boxSdkVersion) throw new Error(`It was built for Box SDK ${descriptor.sdk}; this host runs ${boxSdkVersion}.`);
+	const operations = descriptor.delegate?.operations;
+	if (operations !== undefined && !(TypeGuard.IsArray(operations) && operations.maxItems !== undefined)) throw new Error("Its delegate's operations must be an array schema with maxItems.");
+	if (descriptor.delegate !== undefined && descriptor.lens !== undefined) throw new Error("It declares a lens and a delegate; the host gives a delegating Box the lens for its tag.");
 }
 
 //  What the host reads from a Box's client module beside its descriptor,
@@ -112,12 +121,15 @@ export const boxServerSchema = Type.Object({
 	read: Type.Optional(hook),
 	routes: Type.Optional(hook),
 	upgrade: Type.Optional(hook),
+	delegate: Type.Optional(Type.Object({ apply: hook })),
 });
 
 // @approved
 //  What the host checks each server hook's output against, by hook. State and
 // dependencies are JSON, or undefined at the root. A record is JSON that
-// passes the Box's record schema, and a Box without one returns none.
+// passes the Box's record schema, and a Box without one returns none;
+// `delegate.apply` returns one, and a delegating Box's `advance.run` never
+// does, so its delegate is the only producer of its automatic record.
 // `advance.run` returns items the compiler can place, a whole-token
 // allowance, and a JSON trace that passes the Box's trace schema.
 export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undefined) => {
@@ -134,8 +146,9 @@ export const boxHookOutputs = (descriptor: BoxDescriptor, trace: TSchema | undef
 			items: Type.Array(Type.Object({ text: Type.String(), priority: Type.Number(), pinned: Type.Optional(Type.Boolean()), literal: Type.Optional(Type.Boolean()) })),
 			allowance: Type.Optional(Type.Integer({ minimum: 0 })),
 			trace: Type.Optional(trace === undefined ? Type.Undefined() : Type.Intersect([boxValue, trace])),
-			record: Type.Optional(record),
+			record: Type.Optional(descriptor.delegate === undefined ? record : Type.Never()),
 		}),
+		"delegate.apply": record,
 		status: Type.Union([Type.String(), Type.Null()]),
 		importSillyTavernNote: descriptor.setup?.schema ?? Type.Never(),
 	};
@@ -156,6 +169,8 @@ export function assertBoxClient(client: unknown): asserts client is Static<typeo
 	assertChecked(boxClientSchema, client, "Its client module");
 	if (client.header === true && (client.Status === undefined || client.Window === undefined)) throw new Error("Its header item needs both a Status and a Window.");
 	assertBoxDescriptor(client.descriptor);
+	if (client.Window?.lens?.tag !== client.descriptor.lens) throw new Error(`Its lens must lift the tag its descriptor's lens names, ${client.descriptor.lens ?? "none"}.`);
+	if (client.descriptor.delegate !== undefined && client.Window === undefined) throw new Error("It delegates, so it needs a Window for its read.");
 }
 
 /** @approved A Box's server module as the host checked it: each hook it declares has the shape the host calls. */

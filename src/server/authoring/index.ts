@@ -8,14 +8,13 @@ import { authoredLabel, authoringFiles, authoringInstall, authoringMeta, authori
 import { authoringSessionParams, authoringStart, authoringStartBody, authoringStepsBody } from "../../shared/contract/authoring";
 import type { AuthoringEvent, AuthoringLogEntry, AuthoringMeta, AuthoringSteps, CodingModel, ScenarioResult } from "../../shared/contract/authoring";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
-import { createConnectionSettingsModule } from "../connection-settings";
 import { pluginFolder, serverBoxes } from "../box/registry";
 import { replaceFile } from "../box/sandboxed-folder";
 import { notFoundResponse } from "../contract/responses";
 import { createCandidate, defaultAuthoringFolder, loggedScenarios, SESSION_LOG, SESSION_META, sweepCandidates, type Candidate } from "./candidate";
 import { reasoningEntry, shown, toolInput } from "./activity";
 import { installCandidate } from "./install";
-import { libfxProvider } from "./provider";
+import { resolveLibfxProvider, type LibfxOptions } from "./provider";
 import { authoringTools, checkScenario } from "./tools";
 
 /** @approved Where candidates are made, and the plugin folder Install publishes into. */
@@ -151,15 +150,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		budget.pause = null;
 	};
 	const refused = (reason: string) => ({ outcome: "refused", reason } as const);
-	const connect = (choice: CodingModel) => {
-		const connections = createConnectionSettingsModule(database);
-		const profile = connections.get().profiles.find(({ id }) => id === choice.profileId);
-		if (profile === undefined) return refused("That connection no longer exists.");
-		let secrets: ReturnType<typeof connections.getProfileSecrets>;
-		try { secrets = connections.getProfileSecrets(profile.id); } catch (error) { return refused(`${profile.displayName}'s saved credentials cannot be read: ${error instanceof Error ? error.message : String(error)}`); }
-		return libfxProvider(profile, secrets, choice);
-	};
-	const boot = (candidate: Candidate, meta: AuthoringMeta, options: Extract<ReturnType<typeof libfxProvider>, { outcome: "mapped" }>["options"], checkpoint?: Uint8Array) => {
+	const boot = (candidate: Candidate, meta: AuthoringMeta, options: LibfxOptions, checkpoint?: Uint8Array) => {
 		const { steps } = meta;
 		const scenarios = new Map<string, ScenarioResult>();
 		let session: Session | undefined;
@@ -202,7 +193,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		sessions.set(candidate.session, session);
 	};
 	const start = async ({ steps, ...choice }: CodingModel & { readonly steps: AuthoringSteps }) => {
-		const mapped = connect(choice);
+		const mapped = resolveLibfxProvider(database, choice);
 		if (mapped.outcome === "refused") return mapped;
 		const candidate = await createCandidate(folders.root);
 		const meta = { box: candidate.id, ...choice, steps, installed: false, updated: now() };
@@ -217,7 +208,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 	// read only after, since an Install as a new Box it was running may have
 	// changed the Box id.
 	const open = async (id: string, { steps, ...choice }: CodingModel & { readonly steps: AuthoringSteps }) => {
-		const mapped = connect(choice);
+		const mapped = resolveLibfxProvider(database, choice);
 		if (mapped.outcome === "refused") return mapped;
 		await release(id);
 		const saved = await readMeta(id);

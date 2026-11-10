@@ -38,10 +38,10 @@ test("a profile setting libfx cannot carry is refused with the reason the writer
 		return mapped.outcome === "refused" ? mapped.reason : "mapped";
 	};
 	expect(reason({})).toBe("mapped");
-	expect(reason({ apiFormat: "responses" })).toBe("Coder is not a Chat Completions connection; the coding agent needs one.");
-	expect(reason({ requestUrl: "http://192.168.1.4:8080/v1/" })).toBe("Coder uses HTTP; the coding agent sends HTTP only to localhost, so use HTTPS.");
-	expect(reason({ requestUrl: "https://coder.invalid/v1/generate" })).toBe("Coder's request URL must end in /chat/completions for the coding agent.");
-	expect(reason({ requestUrl: "https://coder.invalid/v1/chat/completions?key=1" })).toBe("Coder's request URL carries a query, which the coding agent cannot send.");
+	expect(reason({ apiFormat: "responses" })).toBe("Coder is not a Chat Completions connection; an agent needs one.");
+	expect(reason({ requestUrl: "http://192.168.1.4:8080/v1/" })).toBe("Coder uses HTTP; an agent sends HTTP only to localhost, so use HTTPS.");
+	expect(reason({ requestUrl: "https://coder.invalid/v1/generate" })).toBe("Coder's request URL must end in /chat/completions for an agent.");
+	expect(reason({ requestUrl: "https://coder.invalid/v1/chat/completions?key=1" })).toBe("Coder's request URL carries a query, which an agent cannot send.");
 	expect(reason({ outputTokenRepresentation: "max_completion_tokens" })).toBe("mapped");
 	expect(reason({ credentialState: "unreadable" })).toBe("Coder's saved API key cannot be read. Save it again in Connections.");
 });
