@@ -64,9 +64,9 @@ const instanceOf = (conversationId: number) => readBoxLifecycles(drizzle(databas
 const rows = (conversationId: number) => ({
 	revision: readConversationSummary(database, conversationId)?.revision,
 	chat: database.query<{ namespace: string; key: string; value: string; revision: number }, [number]>("SELECT namespace, key, value, revision FROM conversation_data WHERE conversation_id = ? ORDER BY id").all(conversationId),
-	messages: database.query("SELECT message_id, namespace, key, value FROM messages_data ORDER BY id").all(),
-	variants: database.query("SELECT message_variant_id, namespace, key, value FROM message_variant_data ORDER BY id").all(),
-	participants: database.query("SELECT participant_id, namespace, key, value FROM participant_data ORDER BY id").all(),
+	messages: database.query<{ message_id: number; namespace: string; key: string; value: string }, []>("SELECT message_id, namespace, key, value FROM messages_data ORDER BY id").all(),
+	variants: database.query<{ message_variant_id: number; namespace: string; key: string; value: string }, []>("SELECT message_variant_id, namespace, key, value FROM message_variant_data ORDER BY id").all(),
+	participants: database.query<{ participant_id: number; namespace: string; key: string; value: string }, []>("SELECT participant_id, namespace, key, value FROM participant_data ORDER BY id").all(),
 });
 /** @approved A Chat holding the Tally at v1, with a selected record on its opening, and a second, unselected Variant there. */
 const tippedChat = () => {
