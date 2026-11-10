@@ -24,9 +24,12 @@ import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
-import { boxDescriptors, boxIdOf, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { boxIdOf, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { chatBox, chatBoxes, type LoadedBox } from "../box/registry";
+import { BOX_VERSION_NAMESPACE } from "../box/version-pin";
 import { readBoxLifecycles } from "../box/setup";
 import { SEED_NAMESPACE } from "../box/seed";
+import { parseStoredBoxJson } from "../box/stored-json";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -389,7 +392,7 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
-	if (namespace === SEED_NAMESPACE || boxIdOf(namespace) !== undefined) {
+	if (namespace === SEED_NAMESPACE || namespace === BOX_VERSION_NAMESPACE || boxIdOf(namespace) !== undefined) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is Box-owned; generic data commands cannot address it.`,
 		);
@@ -426,16 +429,26 @@ export const requireMessage = (
 	return message;
 };
 
-/** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
-/** @approved A registered Box's descriptor; an unknown id fails the command. */
-export const requireBox = (box: BoxId): BoxDescriptor => {
-	const descriptor = boxDescriptors().get(box);
-	if (descriptor === undefined) throw new InvalidConversationCommandError(`There is no ${box} Box.`);
-	return descriptor;
+/** @approved A registered Box as this Chat runs it; an unknown id fails the command. */
+/** @approved Whether a Box at one version declares a Participant value under `key` and its schema accepts the stored `value`. */
+export const participantValueAccepted = (descriptor: BoxDescriptor, key: string, value: string): boolean => {
+	const participant = descriptor.values?.participant ?? {};
+	if (!Object.hasOwn(participant, key)) return false;
+	try {
+		parseStoredBoxJson(value, participant[key]!, `participant/${key}`); // @approved hasOwn checked the key.
+		return true;
+	} catch { return false; }
 };
 
+export const requireBox = (db: ConversationDatabase, conversationId: number, box: BoxId): LoadedBox => {
+	const loaded = chatBox(db, conversationId, box);
+	if (loaded === undefined) throw new InvalidConversationCommandError(`There is no ${box} Box.`);
+	return loaded;
+};
+
+/** @approved The instance of a Box present in this Chat, enabled or not; an absent Box takes no setup or records. */
 export const requireBoxInstance = (db: ConversationDatabase, conversationId: number, box: BoxId): string => {
-	requireBox(box);
+	requireBox(db, conversationId, box);
 	const instance = readBoxLifecycles(db, conversationId)[box]?.instance;
 	if (instance === undefined) throw new InvalidConversationCommandError(`The ${box} Box is not in this Chat.`);
 	return instance;
@@ -534,14 +547,18 @@ export const insertParticipant = (
 		}))).run();
 		// @approved
 		//  The seed copy: every Character Box-data row becomes the new
-		//  Participant's own row at this moment, except keys a loaded Box does
-		//  not declare for Participants. The two are independent afterwards,
-		//  so a later Character edit never reaches this Participant.
+		//  Participant's own row at this moment, except keys a loaded Box, at
+		//  the version this Chat runs, does not declare for Participants, and
+		//  values that version's schema refuses: Character data is shared by
+		//  every version of a Box, so a newer one may have written a shape an
+		//  older pinned one can't read. The two are independent afterwards, so
+		//  a later Character edit never reaches this Participant.
+		const boxes = chatBoxes(db, conversationId);
 		const data = db.select().from(characterDataTable)
-			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key }) => {
+			.where(eq(characterDataTable.character_id, sourceCharacterId)).all().filter(({ namespace, key, value }) => {
 				const box = boxIdOf(namespace);
-				const descriptor = box === undefined ? undefined : boxDescriptors().get(box);
-				return descriptor === undefined || Object.hasOwn(descriptor.values?.participant ?? {}, key);
+				const descriptor = box === undefined ? undefined : boxes.get(box)?.descriptor;
+				return descriptor === undefined || participantValueAccepted(descriptor, key, value);
 			});
 		if (data.length > 0) db.insert(participantDataTable).values(data.map((row) => ({
 			participant_id: inserted.id,

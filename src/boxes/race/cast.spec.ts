@@ -24,7 +24,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	await page.goto("/");
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
-	const window = page.getByRole("dialog", { name: "Race", exact: true });
+	const window = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
 	await window.getByRole("button", { name: runner.name, exact: true }).click();
 	const sheet = window.getByRole("region", { name: `Stats for ${runner.name}` });
 	const setStat = (label: string, value: number) => sheet.getByRole("spinbutton", { name: label }).fill(String(value));
@@ -66,7 +66,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	expect((await (await request.get("/api/workspace")).json()).activeChatId).toBe(created.conversation.id);
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
-	const second = page.getByRole("dialog", { name: "Race", exact: true });
+	const second = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
 	await second.getByRole("button", { name: runner.name, exact: true }).click();
 	const copied = second.getByRole("region", { name: `Stats for ${runner.name}` });
 	await expect(copied.getByRole("spinbutton", { name: "Speed" })).toHaveValue("777");
@@ -77,7 +77,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	await copied.getByRole("button", { name: "Add to field" }).click();
 	await expect(copied).toHaveCount(0);
 	const firstRead = await (await request.get(`/api/conversations/${chatId}/boxes/race`)).json();
-	expect(firstRead.castStats.find((entry: { participantId: number }) => entry.participantId === runner.id).stats.speed).toBe(777);
+	expect(firstRead.view.castStats.find((entry: { participantId: number }) => entry.participantId === runner.id).stats.speed).toBe(777);
 });
 
 test.describe("a Character stats save from a stale read", () => {
@@ -95,7 +95,7 @@ test.describe("a Character stats save from a stale read", () => {
 		await page.goto("/");
 		await insertBox(page, "Race");
 		await page.getByRole("button", { name: "Race", exact: true }).click();
-		const window = page.getByRole("dialog", { name: "Race", exact: true });
+		const window = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
 		await window.getByRole("button", { name: runner.name, exact: true }).click();
 		const sheet = window.getByRole("region", { name: `Stats for ${runner.name}` });
 		await sheet.getByRole("spinbutton", { name: "Speed" }).fill("777");
@@ -112,7 +112,8 @@ test.describe("a Character stats save from a stale read", () => {
 		const command = async (expectedRevision: number, action: ConversationAction) =>
 			(await (await request.post(`/api/conversations/${elsewhere.id}/commands`, { data: { expectedRevision, action } })).json()).conversation.revision;
 		const enabled = await command(elsewhere.revision, { type: "set-box-state", box: "race", state: "enabled" });
-		await command(enabled, { type: "put-box-data", box: "race", owner: { type: "character", characterId: character.id, revision: 0 }, key: "stats", value: "{\"speed\":111}" });
+		const owner = { type: "character", characterId: character.id } as const;
+		await command(enabled, { type: "commit-box", box: "race", writes: [{ owner, key: "stats", value: "{\"speed\":111}" }], expected: [{ owner, key: "stats", revision: 0 }] });
 
 		await sheet.getByRole("button", { name: "Add to field" }).click();
 		await expect(window.getByRole("alert")).toBeVisible();
@@ -121,6 +122,6 @@ test.describe("a Character stats save from a stale read", () => {
 		await expect(sheet).toHaveCount(0);
 		await expect(window.getByRole("list", { name: "Race field" })).toContainText(runner.name);
 		const read = await (await request.get(`/api/conversations/${elsewhere.id}/boxes/race`)).json();
-		expect(read.characterStatsRevisions[character.id]).toBe(2);
+		expect(read.view.characterStatsRevisions[character.id]).toBe(2);
 	});
 });

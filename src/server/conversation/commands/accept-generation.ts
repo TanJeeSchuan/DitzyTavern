@@ -413,7 +413,7 @@ export function acceptConversationTailGeneration(
 					reused.author_participant_id !== human.id ||
 					reused.author_name !== human.name ||
 					selected?.content !== input.humanContent ||
-					!sameMoves(readMessageMoves(db, [reused.id]).get(reused.id), input.humanMoves)
+					!sameMoves(readMessageMoves(db, input.conversationId, [reused.id]).get(reused.id), input.humanMoves)
 				) {
 					throw new InvalidConversationCommandError(
 						"The unanswered human Message cannot be reused for this Send.",

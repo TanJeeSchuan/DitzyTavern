@@ -9,7 +9,7 @@ import {
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
-import { putBoxDataAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction } from "./box-actions";
+import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction, upgradeBoxAction } from "./box-actions";
 import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
 import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -98,10 +98,11 @@ export const promptPlan = Type.Object({
 	// Without a reason, the macro is unknown and stayed literal. `uncached` marks
 	// a macro whose text can change on the next request in a block before
 	// history, so the provider's prompt cache misses from that block onward.
+	// @approved An ungranted-image warning names the Box in block and the Image in macro.
 	warnings: Type.Array(Type.Object({
 		block: Type.String(),
 		macro: Type.String(),
-		reason: Type.Optional(Type.Literal("uncached")),
+		reason: Type.Optional(Type.Union([Type.Literal("uncached"), Type.Literal("ungranted-image")])),
 	})),
 	images: Type.Array(promptImage),
 	intent: Type.Optional(generationIntent),
@@ -199,6 +200,8 @@ const activeGenerations = Type.Array(Type.Object({
 export const conversationSummary = Type.Object({
 	boxSetups,
 	boxes: boxStates,
+	/** @approved The version of each versioned Box this Chat ever held, by Box id. */
+	boxVersions: Type.Record(Type.String(), Type.String()),
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -627,7 +630,8 @@ const conversationCommandAction = Type.Union([
 	setBoxStateAction,
 	setBoxRecordAction,
 	resetBoxRecordAction,
-	putBoxDataAction,
+	commitBoxAction,
+	upgradeBoxAction,
 	Type.Object({ type: Type.Literal("unlink-fork") }),
 ]);
 

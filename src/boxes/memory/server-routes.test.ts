@@ -1,3 +1,4 @@
+import { boxDescriptor } from "../../shared/contract/box";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -49,20 +50,20 @@ test("trace sources resolve effective records, detect corrections and reset, and
 		evidence: [{ messageId: evidence.messageId, excerpt: "The key was in Maren's pocket." }],
 		judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} },
 	}] };
-	writeAutomaticRecord(db, "memory", instance, source.variantId, automatic, "source");
-	writeWriterRecord(db, "memory", instance, foreign.variantId, automatic);
+	writeAutomaticRecord(db, boxDescriptor("memory"), instance, source.variantId, automatic, "source");
+	writeWriterRecord(db, boxDescriptor("memory"), instance, foreign.variantId, automatic);
 	const read = async () => Value.Parse(memorySources, await (await memoryRoutes(database).handle(new Request(`http://localhost/conversations/${chat.id}/memories/sources?messageIds=${source.messageId}&variantIds=${source.variantId},${foreign.variantId}`))).json());
 	const original = await read();
 	expect(original.records).toMatchObject([{ variantId: source.variantId, claims: [{ claim: "Maren kept the key.", evidence: automatic.claims[0]!.evidence }] }]);
 	expect(original.messageIds).toContain(evidence.messageId);
-	writeWriterRecord(db, "memory", instance, source.variantId, { claims: automatic.claims.map((claim) => ({ ...claim, claim: "Maren lost the key." })) });
+	writeWriterRecord(db, boxDescriptor("memory"), instance, source.variantId, { claims: automatic.claims.map((claim) => ({ ...claim, claim: "Maren lost the key." })) });
 	const corrected = await read();
 	expect(corrected.records[0]?.claims[0]?.claim).toBe("Maren lost the key.");
 	expect(corrected.records[0]?.fingerprint).not.toBe(original.records[0]?.fingerprint);
-	resetWriterRecord(db, "memory", instance, source.variantId);
+	resetWriterRecord(db, boxDescriptor("memory"), instance, source.variantId);
 	expect((await read()).records).toEqual(original.records);
 	const forked = passage(chat.id, 3);
-	writeAutomaticRecord(db, "memory", instance, forked.variantId, { claims: automatic.claims.map((claim) => ({ ...claim, evidence: [{ ...claim.evidence[0]!, messageId: forked.messageId }] })) }, "source");
+	writeAutomaticRecord(db, boxDescriptor("memory"), instance, forked.variantId, { claims: automatic.claims.map((claim) => ({ ...claim, evidence: [{ ...claim.evidence[0]!, messageId: forked.messageId }] })) }, "source");
 	const forkRead = await memoryRoutes(database).handle(new Request(`http://localhost/conversations/${chat.id}/memories/sources?messageIds=&variantIds=${forked.variantId}`));
 	expect(Value.Parse(memorySources, await forkRead.json()).records[0]?.fingerprint).toBe(original.records[0]?.fingerprint);
 	database.run("DELETE FROM message_variant WHERE id = ?", [source.variantId]);

@@ -9,8 +9,10 @@ import { InvalidImageError } from "./errors";
 
 type ImageDatabase = BunSQLiteDatabase<Record<string, never>>;
 
-export const uploadImage = async (database: Database, bytes: Uint8Array) => {
-	const image = await ingestImage(bytes);
+export const uploadImage = async (database: Database, bytes: Uint8Array) => storeImage(database, await ingestImage(bytes));
+
+/** @approved Stores an ingested Image synchronously, so a caller can do it inside its own transaction. */
+export const storeImage = (database: Database, image: Awaited<ReturnType<typeof ingestImage>>) => {
 	drizzle(database).insert(imageTable).values({
 		hash: image.hash, bytes: image.bytes, media_type: image.mediaType,
 		byte_size: image.bytes.byteLength, width: image.width, height: image.height, orphaned_at: Date.now(),
@@ -22,13 +24,14 @@ export const sweepOrphanedImages = (database: Database, now = Date.now()) => dat
 	// @approved
 	// Every persisted TEXT value is a potential owner: References are found by
 	// their `image:` scheme, and bare hash columns such as Portraits by holding
-	// exactly one hash. Over-matching only keeps an Image longer.
+	// exactly one hash. Over-matching only keeps an Image longer. A sandboxed
+	// Box's upload grant lets it display an Image but owns nothing.
 	const referenced = new Set<string>();
 	const reference = /image:([0-9a-f]{64})/g;
 	const bareHash = `GLOB '${"[0-9a-f]".repeat(64)}'`;
 	const textColumns = database.query<{ table: string; column: string }, []>(`
 		SELECT m.name AS "table", c.name AS "column" FROM sqlite_schema m, pragma_table_info(m.name) c
-		WHERE m.type = 'table' AND m.name <> 'image' AND m.name NOT LIKE 'sqlite_%' AND upper(c.type) = 'TEXT'`).all();
+		WHERE m.type = 'table' AND m.name NOT IN ('image', 'box_image_grant') AND m.name NOT LIKE 'sqlite_%' AND upper(c.type) = 'TEXT'`).all();
 	for (const { table, column } of textColumns) {
 		for (const { value } of database.query<{ value: string }, []>(`SELECT "${column}" AS value FROM "${table}" WHERE "${column}" LIKE '%image:%' OR "${column}" ${bareHash}`).all()) {
 			if (value.length === 64) referenced.add(value);

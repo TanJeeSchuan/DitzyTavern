@@ -1,6 +1,6 @@
 # Sandboxed Box loader
 
-Status: TODO
+Status: DONE
 
 Blocked By: 00
 
@@ -39,28 +39,37 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.js` (plus op
 
 ## Work
 
-- [ ] Descriptor: `descriptor.json` declares the same fields as `BoxDescriptor`, with schemas in the supported forms above. Executable fields are refused (Move labels become templates).
-- [ ] Adapter: `sandboxedBox(id, descriptor, source)` returns a `Box` whose hooks call into one QuickJS runtime per Box. Hooks that receive no capability share one long-lived context. A hook that receives a capability (`decide` in ticket 02b) runs in a fresh context created for that call and disposed when it settles, so a guest cannot keep a capability in a global for later use.
-- [ ] Batched fold: `readBoxFold` (`src/server/box/records.ts:63`) calls `fold` once per record today, so an adapter alone never sees the batch. Give `readBoxFold` a path where a sandboxed Box receives its effective records in Message order in one call, with writer overrides already applied, and returns the folded state once.
-- [ ] Limits, starting values: 4 MiB of JSON per hook call in each direction, refused before allocating guest strings; 64 MiB heap per Box runtime; 100 ms of guest execution per entry into the guest, enforced by a clock-based interrupt handler armed at every entry (evaluating `logic.js`, each hook call, each `executePendingJobs` pump), so `async advance() { while (true) {} }` is stopped too. The handler is cooperative and doesn't cover host-side serialization, which the byte cap bounds. Each failure names the Box and hook. Ticket 02 checks them against a compact Race. A Box whose records grow without limit fails loudly instead of slowing capture. In the browser, a runaway `ui.js` only blocks its own Worker; the frame terminates the Worker when the window closes.
-- [ ] Determinism: the guest gets no `Date.now` or `Math.random` in `logic.js`; randomness comes only from the host seed. (`ui.js` may use both; it holds no story state.)
-- [ ] Errors: guest throws and outcomes cross as a typed JSON envelope that the host maps to its native errors. A Worker error shows in the Box window.
-- [ ] Registry: discover a folder holding `logic.js` and load it through the adapter. A folder with both `server.ts` and `logic.js` is refused.
-- [ ] Client registration: today `/api/boxes` returns a client module URL and the client imports it for the descriptor and surfaces (`src/server/contract/boxes.ts:20`, `src/client/box-windows/registry.ts:124`). For a sandboxed Box, `/api/boxes` returns its descriptor instead, and the client builds its definition in host code: a window that mounts the frame, and a complete descriptor (TypeBox schemas rebuilt, `moves.label` as a callable built from its template, `moves.max` and `seatBound`, icon and window size), registered through the existing `installBoxes` path. Move chips, validation, seat changes, preset defaults and windows all read these fields.
-- [ ] Frame: the host route serves the frame document (host script by nonce, DOMPurify, the token stylesheet carrying DESIGN.md variables). The app sends `ui.js`, `ui.css`, `read` output and change notifications over the port; the frame relays `render` (sanitized, then rendered), events, and `stageMoves(moves)`, which replaces only this Box's composer Moves under the existing schema, count and enabled rules.
-- [ ] Add `e2e/fixtures/boxes/tip-jar-sandboxed/`: Tip Jar's behavior as `descriptor.json` + `logic.js` + `ui.js`, with no `box:build`. The trusted `e2e/fixtures/boxes/tip-jar/` stays, so both plugin kinds keep e2e coverage.
-- [ ] Run the `e2e/box-plugin.spec.ts` flow against both fixtures, with frame locators for the sandboxed one. Prompt Plan and model request assertions are identical for both.
-- [ ] Contract tests (server): an infinite loop in `fold`, a runaway allocation and an oversized payload fail the hook with an error naming the Box; an `async` hook that loops forever before returning is stopped.
-- [ ] Isolation e2e: a fixture `ui.js` attempts every escape in the research note's table (fetch, WebSocket, EventSource, importScripts, nested Workers, FontFace, WebTransport, `RTCPeerConnection`) and renders markup that tries `<a href>`, `<img src>` and `srcset`, a CSS background and a `<video poster>` (on another origin and on the app's own image route), `<form action>`, inline handlers, `javascript:` URLs, `<meta http-equiv="refresh">` and CSS `url()`. The test server records zero requests from it, and clicking every rendered element navigates nothing. A message posted to the frame on another port is ignored.
-- [ ] Document sandboxed Boxes in `docs/box-system/README.md` and `docs/docker.md` (both kinds on the volume; a sandboxed Box needs no build), and record the decision as an ADR.
-- [ ] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
-- [ ] Set this ticket to DONE and commit.
+- [x] Descriptor: `descriptor.json` declares the same fields as `BoxDescriptor`, with schemas in the supported forms above. Executable fields are refused (Move labels become templates).
+- [x] Adapter: `sandboxedBox(id, descriptor, source)` returns a `Box` whose hooks call into one QuickJS runtime per Box. Hooks that receive no capability share one long-lived context. A hook that receives a capability (`decide` in ticket 02b) runs in a fresh context created for that call and disposed when it settles, so a guest cannot keep a capability in a global for later use.
+- [x] Batched fold: `readBoxFold` (`src/server/box/records.ts:63`) calls `fold` once per record today, so an adapter alone never sees the batch. Give `readBoxFold` a path where a sandboxed Box receives its effective records in Message order in one call, with writer overrides already applied, and returns the folded state once.
+- [x] Limits, starting values: 4 MiB of JSON per hook call in each direction, refused before allocating guest strings; 64 MiB heap per Box runtime; 100 ms of guest execution per entry into the guest, enforced by a clock-based interrupt handler armed at every entry (evaluating `logic.js`, each hook call, each `executePendingJobs` pump), so `async advance() { while (true) {} }` is stopped too. The handler is cooperative and doesn't cover host-side serialization, which the byte cap bounds. Each failure names the Box and hook. Ticket 02 checks them against a compact Race. A Box whose records grow without limit fails loudly instead of slowing capture. In the browser, a runaway `ui.js` only blocks its own Worker; the frame terminates the Worker when the window closes.
+- [x] Determinism: the guest gets no `Date.now` or `Math.random` in `logic.js`; randomness comes only from the host seed. (`ui.js` may use both; it holds no story state.)
+- [x] Errors: guest throws and outcomes cross as a typed JSON envelope that the host maps to its native errors. A Worker error shows in the Box window.
+- [x] Registry: discover a folder holding `logic.js` and load it through the adapter. A folder with both `server.ts` and `logic.js` is refused.
+- [x] Client registration: today `/api/boxes` returns a client module URL and the client imports it for the descriptor and surfaces (`src/server/contract/boxes.ts:20`, `src/client/box-windows/registry.ts:124`). For a sandboxed Box, `/api/boxes` returns its descriptor instead, and the client builds its definition in host code: a window that mounts the frame, and a complete descriptor (TypeBox schemas rebuilt, `moves.label` as a callable built from its template, `moves.max` and `seatBound`, icon and window size), registered through the existing `installBoxes` path. Move chips, validation, seat changes, preset defaults and windows all read these fields.
+- [x] Frame: the host route serves the frame document (host script by nonce, DOMPurify, the token stylesheet carrying DESIGN.md variables). The app sends `ui.js`, `ui.css`, `read` output and change notifications over the port; the frame relays `render` (sanitized, then rendered), events, and `stageMoves(moves)`, which replaces only this Box's composer Moves under the existing schema, count and enabled rules.
+- [x] Add `e2e/fixtures/boxes/tip-jar-sandboxed/`: Tip Jar's behavior as `descriptor.json` + `logic.js` + `ui.js`, with no `box:build`. The trusted `e2e/fixtures/boxes/tip-jar/` stays, so both plugin kinds keep e2e coverage.
+- [x] Run the `e2e/box-plugin.spec.ts` flow against both fixtures, with frame locators for the sandboxed one. Prompt Plan and model request assertions are identical for both.
+- [x] Contract tests (server): an infinite loop in `fold`, a runaway allocation and an oversized payload fail the hook with an error naming the Box; an `async` hook that loops forever before returning is stopped.
+- [x] Isolation e2e: a fixture `ui.js` attempts every escape in the research note's table (fetch, WebSocket, EventSource, importScripts, nested Workers, FontFace, WebTransport, `RTCPeerConnection`) and renders markup that tries `<a href>`, `<img src>` and `srcset`, a CSS background and a `<video poster>` (on another origin and on the app's own image route), `<form action>`, inline handlers, `javascript:` URLs, `<meta http-equiv="refresh">` and CSS `url()`. The test server records zero requests from it, and clicking every rendered element navigates nothing. A message posted to the frame on another port is ignored.
+- [x] Document sandboxed Boxes in `docs/box-system/README.md` and `docs/docker.md` (both kinds on the volume; a sandboxed Box needs no build), and record the decision as an ADR.
+- [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
 - Installing the sandboxed Tip Jar needs no build, and its stored records, prompt item and model request match the trusted Tip Jar's.
 - A trusted plugin installed by hand, in a checkout or on the Docker volume, loads as it does today.
 - Generated code cannot reach the database, another Box's data, host modules or the network.
+
+## Implementation notes
+
+- The heap limit is a `WebAssembly.Memory` with a 64 MiB `maximum`, one QuickJS module instance per Box. `runtime.setMemoryLimit` did not bound this build's heap: under a 64 MiB limit a guest grew past 2 GiB of strings, arrays or ArrayBuffers (about 23 s of `'x'.repeat(1 << 20)` pushes) before failing. With the capped memory the same guests fail in under 2 s and the Box answers its next call.
+- No hook in this ticket receives a capability, so every hook shares the Box's one long-lived context; ticket 02b adds the fresh per-call context with `decide`.
+- `frame-ancestors` is `'self'`, the frame route's own origin, which is the app's. A value built from the Host header broke under the Vite dev proxy, which rewrites Host.
+- A schema in `descriptor.json` may use no pattern of its own: the host runs patterns outside every guest limit, so only `^(.*)$` and `ParticipantKey`'s pattern are accepted.
+- The interrupt deadline is polled while guest bytecode runs, not inside one built-in call; the heap cap bounds how long such a call can run.
+- `host.onRead(fn)` calls `fn(read, { moves, disabled })`, and `host.onEvent` events carry the DOM event `type` beside `name`, `data` and `value`, so a guest can tell a click from input on the same element.
 
 ## Open risks
 

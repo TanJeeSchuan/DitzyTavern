@@ -1,0 +1,157 @@
+{
+	"id": "race",
+	"sdk": 2,
+	"label": "Race",
+	"summary": "Runs a horse race whose Moves and Stretches the writer plays out.",
+	"role": "system",
+	"startsEnabled": false,
+	"instructions": "",
+	"setup": {
+		"schema": {
+			"type": "object",
+			"properties": {
+				"raceId": { "type": "string" },
+				"course": {
+					"type": "object",
+					"properties": {
+						"name": { "type": "string", "minLength": 1, "maxLength": 100 },
+						"distance": { "type": "integer", "minimum": 400, "maximum": 10000 },
+						"surface": { "anyOf": [{ "const": "turf", "type": "string" }, { "const": "dirt", "type": "string" }] },
+						"direction": { "anyOf": [{ "const": "left", "type": "string" }, { "const": "right", "type": "string" }] }
+					},
+					"required": ["name", "distance", "surface", "direction"],
+					"additionalProperties": false
+				},
+				"metresPerStretch": { "type": "integer", "minimum": 100, "maximum": 2000 },
+				"slots": {
+					"type": "array",
+					"maxItems": 18,
+					"items": {
+						"type": "object",
+						"properties": {
+							"name": { "type": "string", "minLength": 1, "maxLength": 100 },
+							"participantId": { "type": "integer", "rowReference": "participant" },
+							"style": { "anyOf": [{ "const": "Front Runner", "type": "string" }, { "const": "Pace Chaser", "type": "string" }, { "const": "Late Surger", "type": "string" }, { "const": "End Closer", "type": "string" }] },
+							"speed": { "type": "integer", "minimum": 1, "maximum": 1200 },
+							"stamina": { "type": "integer", "minimum": 1, "maximum": 1200 },
+							"power": { "type": "integer", "minimum": 1, "maximum": 1200 },
+							"guts": { "type": "integer", "minimum": 1, "maximum": 1200 },
+							"wit": { "type": "integer", "minimum": 1, "maximum": 1200 }
+						},
+						"required": ["name", "style", "speed", "stamina", "power", "guts", "wit"],
+						"additionalProperties": false
+					}
+				},
+				"auto": {
+					"anyOf": [
+						{ "const": "off", "type": "string" },
+						{ "const": "on", "type": "string" },
+						{ "type": "object", "properties": { "until": { "type": "integer", "minimum": 0, "maximum": 10000 } }, "required": ["until"], "additionalProperties": false }
+					]
+				},
+				"phase": { "anyOf": [{ "const": "setup", "type": "string" }, { "const": "running", "type": "string" }] }
+			},
+			"required": ["raceId", "course", "metresPerStretch", "slots", "auto", "phase"],
+			"additionalProperties": false
+		},
+		"initial": { "raceId": "", "course": { "name": "Japan Cup · Tokyo", "distance": 2400, "surface": "turf", "direction": "left" }, "metresPerStretch": 400, "slots": [], "auto": "on", "phase": "setup" }
+	},
+	"values": {
+		"participant": {
+			"stats": {
+				"type": "object",
+				"properties": {
+					"style": { "anyOf": [{ "const": "Front Runner", "type": "string" }, { "const": "Pace Chaser", "type": "string" }, { "const": "Late Surger", "type": "string" }, { "const": "End Closer", "type": "string" }] },
+					"speed": { "type": "integer", "minimum": 1, "maximum": 1200 },
+					"stamina": { "type": "integer", "minimum": 1, "maximum": 1200 },
+					"power": { "type": "integer", "minimum": 1, "maximum": 1200 },
+					"guts": { "type": "integer", "minimum": 1, "maximum": 1200 },
+					"wit": { "type": "integer", "minimum": 1, "maximum": 1200 }
+				},
+				"required": ["style", "speed", "stamina", "power", "guts", "wit"],
+				"additionalProperties": false
+			}
+		}
+	},
+	"record": {
+		"type": "object",
+		"properties": {
+			"raceId": { "type": "string" },
+			"stretch": { "type": "integer" },
+			"metres": { "type": "number" },
+			"finished": { "type": "boolean" },
+			"standings": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "name": { "type": "string" }, "distance": { "type": "number" }, "energy": { "type": "number" }, "time": { "type": "number" } },
+					"required": ["name", "distance", "energy", "time"],
+					"additionalProperties": false
+				}
+			},
+			"intents": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": { "runner": { "type": "string" }, "formed": { "type": "integer" }, "payoff": { "anyOf": [{ "type": "integer" }, { "type": "null" }] } },
+					"required": ["runner", "formed", "payoff"],
+					"additionalProperties": false
+				}
+			},
+			"entries": {
+				"type": "array",
+				"maxItems": 1,
+				"items": {
+					"type": "object",
+					"properties": {
+						"stretch": { "type": "integer" },
+						"metres": { "type": "number" },
+						"runners": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"name": { "type": "string" },
+									"energy": { "type": "number" },
+									"decisions": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"kind": { "anyOf": [{ "const": "overtake", "type": "string" }, { "const": "conserve", "type": "string" }, { "const": "spurt", "type": "string" }, { "const": "hold", "type": "string" }] },
+												"writer": { "type": "boolean" },
+												"success": { "type": "boolean" }
+											},
+											"required": ["kind", "writer", "success"],
+											"additionalProperties": false
+										}
+									}
+								},
+								"required": ["name", "energy", "decisions"],
+								"additionalProperties": false
+							}
+						}
+					},
+					"required": ["stretch", "metres", "runners"],
+					"additionalProperties": false
+				}
+			}
+		},
+		"required": ["raceId", "stretch", "metres", "finished", "standings", "intents", "entries"],
+		"additionalProperties": false
+	},
+	"moves": {
+		"schema": {
+			"type": "object",
+			"properties": {
+				"kind": { "anyOf": [{ "const": "overtake", "type": "string", "title": "Overtake" }, { "const": "conserve", "type": "string", "title": "Conserve" }, { "const": "spurt", "type": "string", "title": "Spurt" }, { "const": "hold", "type": "string", "title": "Hold" }] },
+				"runner": { "type": "string", "minLength": 1, "maxLength": 100 }
+			},
+			"required": ["kind", "runner"],
+			"additionalProperties": false
+		},
+		"max": 12,
+		"label": "{kind} · {runner}"
+	},
+	"window": { "icon": "flag", "size": { "width": 27, "height": 34 } }
+}

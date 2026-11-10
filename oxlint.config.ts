@@ -15,6 +15,7 @@ export default defineConfig({
 		".windsurf/**",
 		"tools/oxlint/anti-slop/**",
 		"tools/oxlint/ditzy/**",
+		"**/boxes/*/deps/**",
 	],
 	jsPlugins: [
 		{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
