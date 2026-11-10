@@ -42,13 +42,13 @@ export const boxServices = (database: Database, fetch: ModelFetch | undefined, s
 			}, { onEvent: (event) => { if (event.type === "content") onContent?.(event.text); } }),
 		};
 	},
-	decide: (state, questions) => {
+	decide: (state, questions, options) => {
 		const { label } = boxMetadata(id);
 		if (decision.kind === "off") throw new Error(`Choose a ${label} Decision Model in Connection Settings.`);
 		if (decision.kind === "unavailable") throw new Error(`${decision.reason} Check the ${label} Decision Model in Connection Settings.`);
 		const { request, fits } = decisionRequest(decision.decision, state, questions);
 		if (!fits) throw new Error(`The state sent to the ${label} Decision Model exceeds its token limit.`);
-		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal });
+		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]) });
 	},
 	embed: (texts, configuration, options) =>
 		embedTexts(database, texts, configuration, { cache: options?.cache, fetch, signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]) }),

@@ -2,7 +2,7 @@
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Coins, Dices, Flag, Gauge, Heart, Map, Scroll, Sparkles, Star, type LucideIcon } from "lucide-react";
+import { Box, Coins, Dices, Drama, Flag, Gauge, Heart, Map, Scroll, Sparkles, Star, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { boxMetadata, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { sandboxedCommit, sandboxedDescriptor, sandboxedRead, type SandboxedBoxIcon, type SandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
@@ -17,12 +17,13 @@ import { encodeImage } from "../lib/image";
 import { useSaveGuard } from "../SaveGuard";
 import { BoxFailure } from "./BoxBoundary";
 import type { AppToFrame, FrameToApp } from "./frame-protocol";
+import { digestWindow } from "./PassageTimeline";
 import type { BoxClientDefinition, MoveStaging } from "./registry";
 import { useBoxRead } from "./useBoxRead";
 
 /** @approved The icon each name a sandboxed Box may give in its descriptor stands for. */
 const icons = {
-	box: Box, coins: Coins, dice: Dices, flag: Flag, gauge: Gauge, heart: Heart, map: Map, scroll: Scroll, sparkles: Sparkles, star: Star,
+	box: Box, coins: Coins, dice: Dices, drama: Drama, flag: Flag, gauge: Gauge, heart: Heart, map: Map, scroll: Scroll, sparkles: Sparkles, star: Star,
 } satisfies Record<SandboxedBoxIcon, LucideIcon>;
 
 const noMoves: readonly BoxValue[] = [];
@@ -193,10 +194,11 @@ function SandboxedStatus({ box, conversation }: { box: BoxId; conversation: Conv
 	return <span>{read.isError ? "Unavailable" : read.data?.status ?? boxMetadata(box).label}</span>;
 }
 
-/** @approved A sandboxed Box's client surfaces, built in host code from its descriptor file: its icon, its Status and a window that mounts its frame. */
+/** @approved A sandboxed Box's client surfaces, built in host code from its descriptor file: its icon, its Status and a window that mounts its frame, or, for a digesting Box, the host's passage timeline. */
 export const sandboxedClient = (box: BoxId, file: SandboxedDescriptorFile): BoxClientDefinition => {
 	const descriptor = sandboxedDescriptor(file);
 	if (descriptor.id !== box) throw new Error(`Its descriptor is the ${descriptor.id} Box's.`);
+	if (file.window.kind === "digest") return { descriptor, ...digestWindow(descriptor, { icon: icons[file.window.icon], size: file.window.size }) };
 	return {
 		descriptor,
 		icon: icons[file.window.icon],

@@ -10,7 +10,7 @@ import { ParticipantKey } from "./box-row-reference";
 
 /** @approved The icons a sandboxed Box may name for its window, its launcher and its dock button. */
 export const sandboxedBoxIcon = Type.Union([
-	Type.Literal("box"), Type.Literal("coins"), Type.Literal("dice"), Type.Literal("flag"), Type.Literal("gauge"),
+	Type.Literal("box"), Type.Literal("coins"), Type.Literal("dice"), Type.Literal("drama"), Type.Literal("flag"), Type.Literal("gauge"),
 	Type.Literal("heart"), Type.Literal("map"), Type.Literal("scroll"), Type.Literal("sparkles"), Type.Literal("star"),
 ]);
 export type SandboxedBoxIcon = Static<typeof sandboxedBoxIcon>;
@@ -19,8 +19,10 @@ export type SandboxedBoxIcon = Static<typeof sandboxedBoxIcon>;
 //  A sandboxed Box's `descriptor.json`: the fields of a descriptor, with every
 // schema written as the JSON a TypeBox schema serializes to and the Move chip
 // label as a template, where `{key}` reads that field of the Move. `window`
-// gives the frame its size in rem and the Box its icon. JSON holds no code,
-// and an unknown key is refused, so no field can carry one.
+// gives the Box its icon and its window its size in rem; the window is a
+// frame running the Box's `ui.js`, or, with `kind: "digest"`, the host's
+// passage timeline. JSON holds no code, and an unknown key is refused, so no
+// field can carry one.
 const json = boxValue;
 export const sandboxedDescriptorFile = Type.Object({
 	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves"]).properties,
@@ -29,6 +31,7 @@ export const sandboxedDescriptorFile = Type.Object({
 	record: Type.Optional(json),
 	moves: Type.Optional(Type.Object({ schema: json, max: Type.Integer({ minimum: 1 }), label: Type.String(), seatBound: Type.Optional(Type.Literal(true)) }, { additionalProperties: false })),
 	window: Type.Object({
+		kind: Type.Optional(Type.Literal("digest")),
 		icon: sandboxedBoxIcon,
 		size: Type.Object({ width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }) }, { additionalProperties: false }),
 	}, { additionalProperties: false }),
@@ -125,7 +128,8 @@ const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type
 // server and the client both build it, so a Move label and a schema read the
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
-	const { setup, values, record, moves, window: _, ...fields } = file;
+	const { setup, values, record, moves, window: { kind }, ...fields } = file;
+	if ((kind === "digest") !== (fields.decision !== undefined)) throw new Error("Its window is the passage timeline exactly when it declares a decision.");
 	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>
 		entries && Object.fromEntries(Object.entries(entries).map(([key, schema]) => [key, sandboxedSchema(schema, `${path}/${key}`)]));
@@ -142,9 +146,14 @@ export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescripto
 
 // @approved
 //  What crosses out of a sandboxed Box's runtime, all of it as JSON: which
-// hooks its `logic.js` exports, each with its `typeof`, and its initial
-// state; then each hook call's outcome, its value or the error it threw.
-export const sandboxedDeclaration = Type.Object({ declared: Type.Array(Type.Tuple([Type.String(), Type.String()])), initial: Type.Optional(Type.Unknown()) });
+// hooks its `logic.js` exports, each with its `typeof`, its initial state and
+// its digest window; then each hook call's outcome, its value or the error it
+// threw.
+export const sandboxedDeclaration = Type.Object({
+	declared: Type.Array(Type.Tuple([Type.String(), Type.String()])),
+	initial: Type.Optional(Type.Unknown()),
+	window: Type.Optional(Type.Integer({ minimum: 0 })),
+});
 export const sandboxedFailure = Type.Object({ name: Type.String(), message: Type.String() });
 export type SandboxedFailure = Static<typeof sandboxedFailure>;
 export const sandboxedOutcome = Type.Union([
@@ -174,6 +183,9 @@ export const snapshotQuery = Type.Union([
 	Type.Object({ scope: Type.Literal("library"), prefix: Type.String({ maxLength: 100 }) }, { additionalProperties: false }),
 	Type.Object({ scope: Type.Literal("character"), key: snapshotKey }, { additionalProperties: false }),
 ]);
+
+/** @approved What a digest's `decide(state, questions)` sends the host: any JSON state, and questions keyed by id, each naming its type. */
+export const sandboxedDecideInput = Type.Tuple([Type.Unknown(), Type.Record(Type.String(), Type.Object({ type: Type.String() }))]);
 
 /** @approved A Box frame's token, which binds the frame's document, images and uploads to one Box and Chat on the server. */
 const boxFrameToken = Type.String({ pattern: "^[A-Za-z0-9_-]{24}$" });
