@@ -73,6 +73,8 @@ import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { readBoxLifecycles } from "../box/setup";
+import { captureBoxPromptImages } from "../box/prompt-images";
+import type { PromptWarning } from "../prompt-compiler";
 
 // @approved
 //  Generation-start capture: from one authoritative Conversation preparation and
@@ -111,6 +113,7 @@ const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
 		boxes: BoxResults;
+		boxWarnings: readonly PromptWarning[];
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
@@ -142,6 +145,7 @@ const compilePlanFrom = (
 		estimator: options.estimator,
 		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),
 	});
+	compiled.promptPlan.warnings.push(...configuration.boxWarnings);
 	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
 	return {
 		...compiled,
@@ -166,6 +170,7 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 
 interface AttemptConfiguration {
 	boxes: BoxResults;
+	boxWarnings: readonly PromptWarning[];
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
@@ -198,6 +203,7 @@ export const generationIntentOf = (target: CapturedTarget): GenerationIntent | u
 	target.kind === "continuation" ? target.intent : target.kind === "sibling" ? { type: "sibling" } : undefined;
 
 interface PreparationFields extends GenerationPreparationBase {
+	readonly boxWarnings: readonly PromptWarning[];
 	readonly seed: string;
 	readonly target: CapturedTarget;
 	readonly pendingHumanText: string | undefined;
@@ -318,7 +324,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 	const siblingId = selected.target?.variant?.id;
-	const chat = chatBoxes(db, input.conversationId);
+	const boxWarnings: PromptWarning[] = [];
+	const chat = captureBoxPromptImages(db, chatBoxes(db, input.conversationId), boxWarnings);
 	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
@@ -407,6 +414,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
 	const preparation = {
 		seed,
+		boxWarnings,
 		conversationId: input.conversationId,
 		boxes: captureBoxes(boxes, summary.boxSetups, folds, moves, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
@@ -446,6 +454,7 @@ export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Pr
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
+	const fingerprint = generationPreparationFingerprint(snapshot);
 	const { boxes: boxInputs, ...preparation } = snapshot;
 	// @approved
 	//  The semantic pass reads the sources the synchronous pass captured: the
@@ -467,7 +476,7 @@ export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Pr
 			const record = boxes[reference]?.record;
 			return record === undefined ? [] : [[id, { instance, ...version !== undefined && { version }, record }]];
 		})),
-		fingerprint: generationPreparationFingerprint(snapshot),
+		fingerprint,
 	};
 	return ready;
 });
@@ -487,6 +496,7 @@ const captureConfigurationFromPreparation = (
 	});
 	return {
 		boxes: preparation.boxes,
+		boxWarnings: preparation.boxWarnings,
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,
