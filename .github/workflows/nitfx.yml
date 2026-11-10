@@ -18,7 +18,7 @@ jobs:
         echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
         ~/.bun/bin/bun install --frozen-lockfile
       base_url: https://api.tanjs.dev/v1
-      model: kimi-k3.1-pro
+      model: gpt-6.1-sol
       effort: high
     secrets:
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
