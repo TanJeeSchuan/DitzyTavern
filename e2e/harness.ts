@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -31,11 +30,11 @@ const stopChild = async (child: ChildProcess, signal: NodeJS.Signals) => {
 
 export const startE2eServer = async () => {
 	let stderr = "";
-	const directory = mkdtempSync(join(tmpdir(), "ditzy-e2e-"));
+	mkdirSync(join(ROOT, ".scratch"), { recursive: true });
+	const directory = mkdtempSync(join(ROOT, ".scratch", "ditzy-e2e-"));
 	// @approved
 	//  The plugin folder sits under the repository, where a Box's
 	// `@/box-sdk` imports and packages resolve, as they do from `data/boxes`.
-	mkdirSync(join(ROOT, ".scratch"), { recursive: true });
 	const boxes = mkdtempSync(join(ROOT, ".scratch", "e2e-boxes-"));
 	const remove = () => {
 		rmSync(directory, { recursive: true, force: true });
