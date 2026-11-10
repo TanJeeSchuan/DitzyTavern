@@ -1,5 +1,6 @@
 import { Value } from "@sinclair/typebox/value";
-import { mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { authoredDescriptor } from "../../shared/contract/authoring";
 import { replaceFile } from "../box/sandboxed-folder";
@@ -14,17 +15,15 @@ export const defaultAuthoringFolder = (): string => join(process.cwd(), "data", 
 // @approved
 //  One authoring session's candidate: a folder the host creates at
 // `<root>/<session>/<id>/`, named for the Box id the host chose, so the agent
-// names no path and no id. Its writes set one fixed file's content, refused
+// names no path and no id. A saved session reopens its own folder. Its writes set one fixed file's content, refused
 // past that file's cap before anything is written: the cap is checked on the
 // agent's text and again on the exact text written, and `descriptor.json` is
 // written compactly with the candidate's id. Writes and checks take turns:
 // a check (a scenario or Install) holds the candidate until it ends, so it
 // reads, builds and publishes bytes no write can change under it. Work whose
-// signal aborted while it waited is dropped when its turn comes, and
-// `remove` waits behind whatever is in flight.
-export const createCandidate = async (root: string) => {
-	const session = crypto.randomUUID();
-	const id = `authored-${crypto.randomUUID().slice(0, 8)}`;
+// signal aborted while it waited is dropped when its turn comes.
+export const createCandidate = async (root: string, saved?: { readonly session: string; readonly id: string }) => {
+	const { session, id } = saved ?? { session: crypto.randomUUID(), id: `authored-${crypto.randomUUID().slice(0, 8)}` };
 	const folder = join(root, session, id);
 	await mkdir(folder, { recursive: true });
 	let queue: Promise<unknown> = Promise.resolve();
@@ -54,7 +53,7 @@ export const createCandidate = async (root: string) => {
 		const file = Bun.file(join(folder, name));
 		return await file.exists() ? [{ name, content: await file.text() }] : [];
 	}))).flat();
-	return { session, id, folder, write, files, check: exclusive, remove: () => exclusive(() => rm(join(root, session), { recursive: true, force: true })) };
+	return { session, id, folder, write, files, check: exclusive };
 };
 export type Candidate = Awaited<ReturnType<typeof createCandidate>>;
 
@@ -66,5 +65,10 @@ const withId = (content: string, id: string) => {
 	return JSON.stringify({ ...parsed, id });
 };
 
-/** @approved Removes every candidate a stopped server left behind; sessions live in memory, so none survives a restart. */
-export const sweepCandidates = (root: string) => rm(root, { recursive: true, force: true });
+/** @approved The file whose presence makes a session folder a saved session. */
+export const SESSION_META = "meta.json";
+/** @approved Removes every session folder a stopped server left without its meta.json, a session that never finished starting; saved sessions stay. */
+export const sweepCandidates = async (root: string) => {
+	const folders = await readdir(root).catch(() => []);
+	await Promise.all(folders.filter((folder) => !existsSync(join(root, folder, SESSION_META))).map((folder) => rm(join(root, folder), { recursive: true, force: true })));
+};

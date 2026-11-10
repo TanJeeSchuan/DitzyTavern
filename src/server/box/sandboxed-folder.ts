@@ -46,7 +46,7 @@ export type SandboxedFiles = ReadonlyMap<string, string>;
 //  Replaces a file the loader writes into a Box's folder: the text goes to a
 // new file beside it, created exclusively so no existing name is followed,
 // which is then renamed over the old one. Nothing is ever truncated in place.
-export const replaceFile = async (path: string, text: string) => {
+export const replaceFile = async (path: string, text: string | Uint8Array) => {
 	const temporary = join(dirname(path), `.${basename(path)}.${crypto.randomUUID()}.tmp`);
 	try {
 		await writeFile(temporary, text, { flag: "wx" });

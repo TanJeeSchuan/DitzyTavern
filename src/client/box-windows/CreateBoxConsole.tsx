@@ -1,7 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { useState, type ReactNode } from "react";
-import { authoredContent, readContractInput, scenarioInput, type AuthoringEvent, type ScenarioResult } from "../../shared/contract/authoring";
+import { authoredContent, readContractInput, scenarioInput, type AuthoringEvent, type AuthoringLogEntry, type ScenarioResult } from "../../shared/contract/authoring";
 import { CodeView, type CodeLanguage } from "./CodeView";
 
 type ToolStart = Extract<AuthoringEvent, { type: "tool" }>;
@@ -22,9 +22,16 @@ export type Entry =
 const isTool = (entry: Entry | undefined, id: string): entry is ToolEntry => entry?.kind === "tool" && entry.start.id === id;
 const withTool = (entries: readonly Entry[], id: string, change: (entry: ToolEntry) => ToolEntry) => entries.map((entry) => isTool(entry, id) ? change(entry) : entry);
 
-/** @approved The Console after one streamed event: reply text and reasoning each run into the entry of their kind before them, and a tool call's end and scenario join its start. */
-export const withEvent = (entries: readonly Entry[], event: AuthoringEvent, id: string): readonly Entry[] => {
+// @approved
+//  The Console after one log line, streamed now or replayed from the saved
+// log: the writer's message, reply text and reasoning, each running into the
+// entry of their kind before them, a tool call, whose end and scenario join
+// its start, and a turn that ended other than on its own, with why.
+export const withEvent = (entries: readonly Entry[], event: AuthoringLogEntry, id: string): readonly Entry[] => {
 	const last = entries.at(-1);
+	if (event.type === "prompt") return [...entries, { kind: "writer", id, text: event.text }];
+	if (event.type === "end") return event.stopReason === "end_turn" ? entries
+		: [...entries, { kind: "error", id, text: event.error ?? (event.stopReason === "cancelled" ? "Stopped." : `The message ended: ${event.stopReason}`) }];
 	if (event.type === "text") return last?.kind === "agent"
 		? [...entries.slice(0, -1), { ...last, text: last.text + event.delta }]
 		: [...entries, { kind: "agent", id, text: event.delta }];

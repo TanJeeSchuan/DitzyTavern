@@ -86,7 +86,20 @@ test("a Box written and checked by the coding agent installs without a restart, 
 	await page.keyboard.press("Escape");
 	await expect(panel).toBeHidden();
 	const authoring = join(await llm.directory(), "authoring");
-	await expect.poll(() => readdirSync(authoring)).toEqual([]);
+	await expect.poll(() => readdirSync(authoring).flatMap((session) => readdirSync(join(authoring, session))).sort()).toEqual(["checkpoint.bin", "log.ndjson", "meta.json", expect.stringMatching(/^authored-/)].sort());
+
+	// Closing the panel kept the session: it opens again with its conversation and its last scenario, without a model call.
+	await boxes.getByRole("button", { name: "Create a Box" }).click();
+	const saved = panel.getByRole("list", { name: "Saved sessions" }).getByRole("button");
+	await expect(saved).toHaveText(["InventoryInstalled"]);
+	await saved.click();
+	await panel.getByRole("button", { name: "Open" }).click();
+	await expect(panel.getByRole("list", { name: "Authoring conversation" })).toContainText("The scenario passed, so you can install it.");
+	await expect(panel.getByRole("region", { name: "Scenario" }).getByRole("list", { name: "Turn 2 prompt items" })).toHaveText("The pack holds: rope, lantern.0");
+	await expect(panel.getByRole("button", { name: "Install" })).toBeDisabled();
+	await page.keyboard.press("Escape");
+	await expect(panel).toBeHidden();
+	expect((await llm.log()).calls.filter(isAuthoringModelCall)).toHaveLength(2);
 
 	await insertBox(page, "Inventory");
 	await page.getByRole("button", { name: "Inventory", exact: true }).click();

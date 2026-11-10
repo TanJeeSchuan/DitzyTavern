@@ -95,7 +95,7 @@ const withTurn = async (options: { readonly tool?: string; readonly calls?: numb
 			for (let chunk = await read(150); chunk !== null && !chunk.done; chunk = await read(150)) buffered += chunk.value;
 			while (parsed() !== undefined);
 		};
-		await act({ requests: () => requests, heartbeats: () => heartbeats, until, settle, events, post: (action) => request("POST", `${path}/${action}`), setSteps: (steps) => request("PUT", `${path}/steps`, { steps }), close: () => request("DELETE", path) });
+		await act({ requests: () => requests, heartbeats: () => heartbeats, until, settle, events, post: (action) => request("POST", `${path}/${action}`), setSteps: (steps) => request("PUT", `${path}/steps`, { steps }), close: () => request("POST", `${path}/close`) });
 	} finally {
 		await authoring.close();
 		await server.stop(true);
