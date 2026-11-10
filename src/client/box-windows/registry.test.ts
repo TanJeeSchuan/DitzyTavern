@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { addBoxClients, boxVersionsBuilt, chatBoxClient, loadBoxVersions, loadedBoxes } from "./registry";
 import tipJar from "../../../e2e/fixtures/boxes/tip-jar-sandboxed/descriptor.json";
-import { installBoxes, installedBoxes } from "../../shared/contract/box";
 
 // @approved
 //  A Chat refreshed from another tab can pin a Box this client's catalog has
@@ -20,8 +19,6 @@ test("an earlier version made latest again lists its own label, keeping the clie
 	const descriptor = (label: string) => ({ ...tipJar, id: "jar", label });
 	let listing = [{ id: "jar", label: "New", summary: "Counts tips.", instructions: "", sandboxed: descriptor("New"), version: v2 }];
 	const original = globalThis.fetch;
-	// The catalog this test lists replaces the shared registry, which the server tests in this process read; it is put back after.
-	const shared = [...installedBoxes().values()];
 	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
 		const path = new URL(String(input), "http://localhost").pathname;
 		return path === "/api/boxes" ? Response.json(listing) : Response.json({ sandboxed: descriptor("Old") });
@@ -35,6 +32,5 @@ test("an earlier version made latest again lists its own label, keeping the clie
 		expect(chatBoxClient({ boxVersions: { jar: v1 } }, "jar")).toBe(client);
 	} finally {
 		globalThis.fetch = original;
-		installBoxes(shared);
 	}
 });
