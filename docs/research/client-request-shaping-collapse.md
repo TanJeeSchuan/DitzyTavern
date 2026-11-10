@@ -99,4 +99,4 @@ These do not depend on anything above and should go first:
 | 2. Change ticker + `/api/changes` | `total_changes`/`data_version` ticker, epoch, latest-only subscriber slot, client invalidation hook | all polling, focus refetch, Chats refetch; stale tabs | 1 makes its refetches cheap |
 | 3. Payload narrowing | selected-only history, lazy reasoning, content-free digest | ~85% of history and digest bytes | nothing; better after 2 |
 
-Dropped from the first version: the universal Fact, revision ETags, the replica store, the text blob store, and `need(view)`. Boot preload uses a fixed read set, because plugin routes make a host-side `need(view)` incomplete (`docs/box-system/README.md:211`).
+Dropped from the first version: the universal Fact, revision ETags, the replica store, the text blob store, and `need(view)`. Boot preload uses a fixed read set, because plugin routes make a host-side `need(view)` incomplete ([`docs/box-system/authoring.md#routes`](../box-system/authoring.md#routes)).

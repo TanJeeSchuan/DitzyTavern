@@ -36,7 +36,7 @@ The sandbox, not the code inside it, is the boundary. An imported package is mor
 - [x] Canvas bridge in the frame and the Worker prelude (`host.canvas`, `host.onCanvasEvent`).
 - [x] Fixture `e2e/fixtures/boxes/dice-3d`: depends on `three` at an exact version and ships its `deps/` file and lock; `logic.js` records a seeded roll from a Move and adds it to the prompt; `ui.js` draws the die with three.js and stages the Move on a canvas click. CI has no GPU, so the spec checks the bundle, the Worker start, the canvas transfer, a forwarded click staging the Move and the Prompt Plan, and accepts a reported "WebGL unavailable"; the WebGL render itself was checked by hand (research note).
 - [x] Contract tests: a guest macro, a `../` import, an absolute import, an `@/` alias import and a `with { type: "text" }` import of a host file each fail the build and read nothing outside the Box's sources; every refused specifier form fails the version check; a tampered `deps/` file fails its hash.
-- [x] Document dependencies and the canvas bridge in `docs/box-system/README.md`.
+- [x] Document dependencies and the canvas bridge in `docs/box-system/sandboxed.md`.
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 - [x] Set this ticket to DONE and commit.
 

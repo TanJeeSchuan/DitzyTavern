@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/README.md` "Worked example: the Race" (window); DESIGN.md.
+Source: ["Worked example: the Race"](../../box-system/built-in.md#worked-example-the-race) (window); DESIGN.md.
 
 ## Goal
 

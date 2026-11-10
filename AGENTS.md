@@ -3,7 +3,7 @@ Follow YAGNI principles, and prefer one-liner solutions.
 
 Read `CODING_STANDARDS.md` before writing or reviewing code.
 
-Box work (`src/boxes`, `src/box-sdk`, `src/server/box`, `src/client/box-windows`): read `docs/box-system/README.md` first.
+Box work (`src/boxes`, `src/box-sdk`, `src/server/box`, `src/client/box-windows`): start at `docs/box-system/README.md`, then follow its table to the files for your work.
 
 There is `playwright-cli` installed
 

@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 16-generic-box-host
 
-Source: `docs/box-system/README.md` "Generation lifecycle" step 5 and "The rules" (records); the guide's note that digests, record helpers, catch-up and Decision Model settings are written for the World Clock alone.
+Source: ["Generation lifecycle"](../../box-system/host.md#generation-lifecycle) step 5 and ["The rules"](../../box-system/README.md#the-rules) (records); the guide's note that digests, record helpers, catch-up and Decision Model settings are written for the World Clock alone.
 
 ## Goal
 

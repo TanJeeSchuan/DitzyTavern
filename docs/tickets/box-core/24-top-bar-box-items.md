@@ -22,7 +22,7 @@ A Box's client definition may declare a top bar item. The host shows the items o
 
 - [x] Add the top bar item to the Box client definition and render enabled Boxes' items in `StoryHeader`.
 - [x] Add the World Clock item.
-- [x] Document the item in `docs/box-system/README.md`.
+- [x] Document the item in `docs/box-system/authoring.md`.
 - [x] Add an e2e step in the World Clock spec: the item shows the in-story time and opens the window.
 - [x] Run `bun run check` and the World Clock e2e spec.
 - [x] Set this ticket to DONE and commit.

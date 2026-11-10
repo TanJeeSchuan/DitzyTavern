@@ -25,14 +25,14 @@ This is the first slice. Revising an installed Box, a live preview of an uninsta
 - **The tool arguments are untrusted too.** They come from a model reading the writer's prose. So:
   - Candidates live in a host-created folder outside the plugin folder: `data/authoring/<session>/<candidate>/`. The host owns that path and the candidate's id. No tool takes a path.
   - The write tools set content only, for fixed files (`descriptor.json`, `logic.js`, `ui.js`, `ui.css`). Each has a byte cap checked before writing, and writes go through `replaceFile`. Dependency files, the lock and bundles are only written by the host's build.
-  - Scenarios and Install load the candidate exactly as [the loader loads a sandboxed Box](../../box-system/README.md#loading), through one function the registry and the authoring tools both call, so the authoring path cannot skip a step or approve output the loader would refuse. An incomplete candidate never goes through plugin discovery.
+  - Scenarios and Install load the candidate exactly as [the loader loads a sandboxed Box](../../box-system/host.md#loading), through one function the registry and the authoring tools both call, so the authoring path cannot skip a step or approve output the loader would refuse. An incomplete candidate never goes through plugin discovery.
   - While a scenario or Install runs, the candidate's files are locked against writes, so Install publishes exactly the bytes it checked.
 - **`run_scenario` contract.** It takes:
   - `setup` (when the Box has one), a `cast` of names, a `seed`
   - a list of turns, each with `moves`, an optional `prose` passage and scripted `decisions`
   - `swipes` as an index into earlier turns
 
-  A Swipe selects records as [`record` and `records`](../../box-system/README.md#record-and-records) describe for a real one, keeping that turn's seed and Moves.
+  A Swipe selects records as [`record` and `records`](../../box-system/authoring.md#record-and-records) describe for a real one, keeping that turn's seed and Moves.
 
   It runs on one adapter per scenario, disposed afterwards. `fold`, `advance`, `dependencies` and `digest` run as in production, with scripted `decide` answers. `read` runs against **scripted snapshot answers**, never the database: the guest read invocation is separated from the production `boxSnapshot` provider, so a scenario supplies its own answers.
 

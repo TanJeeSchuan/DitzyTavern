@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 03-world-clock-in-the-prompt
 
-Source: `docs/box-system/README.md` "Windows and dock", "Built-in Boxes" (World Clock); DESIGN.md.
+Source: ["Windows and dock"](../../box-system/host.md#windows-and-dock), ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (World Clock); DESIGN.md.
 
 ## Goal
 

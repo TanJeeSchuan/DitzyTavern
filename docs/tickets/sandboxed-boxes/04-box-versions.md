@@ -39,8 +39,8 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
   - **Chat-resolved:** hooks, schemas, Moves, records, read, digest, window. These resolve the Chat's pin first.
 
   The PR lists every call site and which kind it is. Existing preset block text is authored and shared, and never changes with a version.
-- **The pin outlives presence.** Removing a Box clears its lifecycle and keeps its Moves and records ([Lifecycle per Chat](../../box-system/README.md#lifecycle-per-chat), [Storage](../../box-system/README.md#storage)). The pin is stored outside the Box's lifecycle namespace, so it survives removal: it says which version interprets the Chat's history. Inserting the Box again uses the pinned version, or goes through the upgrade check to reach `latest`. Fork copies the pin.
-- **The insertion instance is kept on upgrade.** Only the current instance's records fold ([Storage](../../box-system/README.md#storage)), so a new instance would hide the whole history. Instead, frame tokens bind to the version as well as the instance, which is what remounts an open window.
+- **The pin outlives presence.** Removing a Box clears its lifecycle and keeps its Moves and records ([Lifecycle per Chat](../../box-system/host.md#lifecycle-per-chat), [Storage](../../box-system/host.md#storage)). The pin is stored outside the Box's lifecycle namespace, so it survives removal: it says which version interprets the Chat's history. Inserting the Box again uses the pinned version, or goes through the upgrade check to reach `latest`. Fork copies the pin.
+- **The insertion instance is kept on upgrade.** Only the current instance's records fold ([Storage](../../box-system/host.md#storage)), so a new instance would hide the whole history. Instead, frame tokens bind to the version as well as the instance, which is what remounts an open window.
 - **Upgrade is per Chat, explicit, atomic, and read-only until it passes.**
 
   ```text
@@ -79,7 +79,7 @@ This replaces 03b's "Revising an installed Box" item. 03b's live candidate previ
 - [x] Client: registry, UI URL and frame keyed by version; "Update available" and **Update** in the Box manager, with refusals listing their places.
 - [x] `contract.md`: versions must read shared values another version wrote, and must keep every row reference: `rowReference` annotations and `ParticipantKey` Records.
 - [x] e2e: install v1, add it to a Chat, revise and install v2 from the same Creator Mode session. The Chat stays on v1 with v1's window; a new Chat starts on v2; **Update** moves the first Chat to v2, its window remounts, its v1 records still fold, and the next Generation's Prompt Plan has v2's prompt items.
-- [x] Update `docs/box-system/README.md` (loading, Creator Mode) and ticket 03's "never side by side" line.
+- [x] Update `docs/box-system/host.md` (loading), `docs/box-system/creator-mode.md` (Creator Mode) and ticket 03's "never side by side" line.
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 
 ## Acceptance

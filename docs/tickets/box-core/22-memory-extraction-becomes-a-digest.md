@@ -32,7 +32,7 @@ Memory supplies `digest(window) → claims` and nothing else for extraction. Its
 - [x] Delete `collections.ts`, `work.ts`, `cancellation.ts`, `sync.ts`, the Memory call in `app.ts`, `memory_collection`, `memory_catchup_run` and the pipeline trace.
 - [x] Rewrite the unit tests that query `memory_collection` directly against record slots, keeping only those that pin behavior. Delete tautological ones.
 - [x] `e2e/memory.spec.ts`, `e2e/box-lifecycle.spec.ts` and `e2e/story-jump.spec.ts` pass, apart from the reset change.
-- [x] Update `docs/box-system/README.md`: Memory is the second digest consumer with records and Writer overrides.
+- [x] Update `docs/box-system/built-in.md`: Memory is the second digest consumer with records and Writer overrides.
 - [x] Run `bun run check` and the full `bun run test:e2e`.
 - [x] Set this ticket to DONE and commit.
 
