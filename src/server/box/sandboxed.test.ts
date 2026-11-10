@@ -12,6 +12,7 @@ import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
+import type { ConversationAction } from "../conversation";
 import type { DigestContext } from "./contract";
 import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
 import type { BoxWindowRead } from "./contract";
@@ -263,6 +264,10 @@ const installedProbe = async () => {
 		advance: { run: ({ dependencies }) => ({ items: [{ text: String(dependencies), priority: 1 }] }) },
 		read: () => ({ view: null }),
 	};`);
+	mkdirSync(join(folder, "unused"));
+	await Bun.write(join(folder, "unused/descriptor.json"), (await Bun.file(join(folder, "probe/descriptor.json")).text()).replaceAll('"probe"', '"unused"'));
+	await Bun.write(join(folder, "unused/ui.js"), "");
+	await Bun.write(join(folder, "unused/logic.js"), await Bun.file(join(folder, "probe/logic.js")).text());
 	await loadBoxes([builtInBoxes, folder]);
 	return async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); };
 };
@@ -308,4 +313,50 @@ test("sending an unchanged preview uses the same fold and dependency context as 
 		const { generationId } = accepted;
 		await completeGeneration(app, chat.id, generationId);
 	} finally { database.close(); await restore(); }
+});
+
+
+test("a setup command allocates only for its target Box, and a rename allocates no sandbox", async () => {
+	const restore = await installedProbe();
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		insertBox(database, chat.id, "probe");
+		insertBox(database, chat.id, "unused");
+		const app = createConversationRoutes(database);
+		const Memory = WebAssembly.Memory;
+		let allocations = 0;
+		WebAssembly.Memory = class extends Memory {
+			constructor(descriptor: WebAssembly.MemoryDescriptor) { super(descriptor); allocations++; }
+		};
+		try {
+			const command = (action: ConversationAction) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/commands`, {
+				method: "POST", headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision, action }), // @approved This test created the Chat.
+			}));
+			expect((await command({ type: "set-box-setup", box: "probe", setup: "ok" })).status).toBe(200);
+			expect(allocations).toBe(1);
+			allocations = 0;
+			expect((await command({ type: "rename-conversation", name: "Renamed" })).status).toBe(200);
+			expect(allocations).toBe(0);
+		} finally { WebAssembly.Memory = Memory; }
+	} finally { database.close(); await restore(); }
+});
+
+test("a standalone read recovers after its snapshot allocation traps", async () => {
+	const guest = await sandboxedBox("probe", `const kept = []; export default { read: ({ setup }, { snapshot }) => {
+		if (setup) { try { while (true) kept.push(new ArrayBuffer(1 << 20)); } catch {} snapshot({}); }
+		return { view: "ok" };
+	} };`);
+	loaded.push(guest.dispose);
+	const read = (setup: boolean) => guest.guestRead?.({ setup, state: undefined, human: null, cast: [] }, () => JSON.stringify("x".repeat(1 << 20)));
+	expect(() => read(true)).toThrow("The probe Box's read threw RuntimeError:");
+	expect(() => read(false)).toThrow("The probe Box's read is waiting for its sandbox runtime to recover.");
+	let recovered;
+	for (let attempt = 0; attempt < 100 && recovered === undefined; attempt++) {
+		await Bun.sleep(10);
+		try { recovered = read(false); }
+		catch (error) { expect(String(error)).toContain("The probe Box's read is waiting for its sandbox runtime to recover."); }
+	}
+	expect(recovered).toEqual({ view: "ok" });
 });

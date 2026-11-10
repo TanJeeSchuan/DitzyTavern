@@ -281,6 +281,31 @@ export interface PrepareGenerationInputs extends GenerationCaptureOptions {
 	readonly seed?: string | undefined;
 }
 
+// @approved
+// Only participating Boxes and enabled Boxes rendering selected or submitted
+// Moves can run hooks during capture or preview acceptance.
+const generationOperationBoxes = ({ database, conversationId, target }: Pick<PrepareGenerationInputs, "database" | "conversationId" | "target">) => {
+	const db = drizzle(database);
+	const chat = chatBoxes(db, conversationId);
+	const lifecycles = readBoxLifecycles(db, conversationId);
+	const slots = readConversationPromptPresetRecipeFromConnection(db, conversationId)?.slots ?? [];
+	const participating = participatingBoxes(chat, slots, lifecycles);
+	const selected = readSelectedHistoryFromConnection(db, conversationId, { targetMessageId: target.kind === "sibling" ? target.messageId : undefined });
+	const moves = [...readMessageMoves(db, conversationId, selected?.messages.filter(({ variant }) => variant !== null).map(({ id }) => id) ?? []).values(), target.kind === "send" ? target.moves ?? {} : {}];
+	return [...chat].flatMap(([id, loaded]) => participating.has(id) || (lifecycles[id]?.state === "enabled" && moves.some((list) => (list[id]?.length ?? 0) > 0)) ? [loaded] : []);
+};
+
+// @approved
+// Runtime creation yields; a changed selection must not run an unscoped Box
+// when the synchronous capture begins.
+export const withGenerationBoxOperations = <T>(input: Pick<PrepareGenerationInputs, "database" | "conversationId" | "target">, run: () => T): Promise<Awaited<T>> => {
+	const boxes = generationOperationBoxes(input);
+	return withBoxOperations(boxes, () => {
+		if (generationOperationBoxes(input).some((loaded) => !boxes.includes(loaded))) throw new InvalidConversationCommandError("The Chat's Boxes changed while preparing generation. Try again.");
+		return run();
+	});
+};
+
 /** @approved
  * Read the deterministic inputs for one attempt through the focused Conversation seams, in one
  * read transaction that also covers each Box's capture. The returned snapshot is safe to retain
@@ -427,7 +452,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
 export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
-	withBoxOperations(chatBoxes(drizzle(input.database), input.conversationId).values(), async () => {
+	withGenerationBoxOperations(input, async () => {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();
 	// @approved

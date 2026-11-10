@@ -129,7 +129,9 @@ const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => ne
 // runtime, including a trapped allocator. Standalone synchronous hooks use
 // fresh contexts in the loader runtime.
 export const sandboxedBox = async (id: BoxId, source: string) => {
-	const standalone = await guestRuntime();
+	let standalone: GuestRuntime | undefined = await guestRuntime();
+	let disposed = false;
+	let recoveryError: string | undefined;
 	type Operation = { runtime: GuestRuntime; guest?: ReturnType<typeof open>; discard: boolean };
 	const current = new AsyncLocalStorage<Operation>();
 
@@ -261,17 +263,20 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 	};
 
 	const dispose = () => {
-		try { standalone.runtime.dispose(); } catch { /* @approved A trapped heap is reclaimed whole by the host GC. */ }
+		disposed = true;
+		try { standalone?.runtime.dispose(); } catch { /* @approved A trapped heap is reclaimed whole by the host GC. */ }
 	};
 	const finish = (scope: Operation, whole: boolean) => {
 		if (scope.discard) return;
 		try {
 			scope.guest?.dispose();
 			if (whole) scope.runtime.runtime.dispose();
-		} catch { /* @approved Pending guest jobs or a trapped allocator require dropping the runtime whole. */ }
+		} catch { scope.discard = true; /* @approved Pending guest jobs or a trapped allocator require dropping the runtime whole. */ }
 	};
 	const operation = async <T>(run: () => T): Promise<Awaited<T>> => {
 		const scope: Operation = { runtime: await guestRuntime(), discard: false };
+		// @approved
+		// On failure, leave the entire runtime to host GC: native cleanup can trap on an exhausted heap or unfinished promise chain.
 		const value = await current.run(scope, run);
 		finish(scope, true);
 		return value;
@@ -284,10 +289,20 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 	};
 	const synchronous = <T>(hook: string, run: () => T): T => {
 		if (current.getStore() !== undefined) return run();
+		if (standalone === undefined) throw new Error(`The ${id} Box's ${hook} ${recoveryError ?? "is waiting for its sandbox runtime to recover."}`);
 		const scope: Operation = { runtime: standalone, discard: false };
 		try { return current.run(scope, run); }
-		catch (error) { throw error instanceof Error ? worded(hook, error) : error; }
-		finally { finish(scope, false); }
+		catch (error) { if (error instanceof WebAssembly.RuntimeError) scope.discard = true; throw error instanceof Error ? worded(hook, error) : error; }
+		finally {
+			finish(scope, false);
+			if (scope.discard) {
+				standalone = undefined;
+				void guestRuntime().then((fresh) => {
+					if (disposed) fresh.runtime.dispose();
+					else standalone = fresh;
+				}, (error: Error) => { recoveryError = `could not recover its sandbox runtime: ${String(error)}`; });
+			}
+		}
 	};
 	const guest = () => {
 		const scope = current.getStore();

@@ -1,5 +1,3 @@
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { chatBoxes, withBoxOperations } from "../box/registry";
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import {
 	readConversationRevision,
@@ -26,7 +24,7 @@ import {
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
-import { captureGeneration, capturedAcceptanceFields, modelRequestFor, type CapturedGeneration } from "./generate-capture";
+import { withGenerationBoxOperations, captureGeneration, capturedAcceptanceFields, modelRequestFor, type CapturedGeneration } from "./generate-capture";
 import { consumeGenerationPreview, captureGenerationPreview, type GenerationPreviewAcceptance } from "./generation-preview";
 import { assertGenerationPlan } from "../generation-plan";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
@@ -51,7 +49,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	const { preview } = input;
 	const capture = preview === undefined
 		? await captureGeneration(database, input.target, input)
-		: await withBoxOperations(chatBoxes(drizzle(database), input.conversationId).values(), () => captureGenerationPreview({ database, ...input }, preview, input.target));
+		: await withGenerationBoxOperations({ database, ...input }, () => captureGenerationPreview({ database, ...input }, preview, input.target));
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
