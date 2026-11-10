@@ -118,8 +118,15 @@ export const authoringEvent = Type.Union([
 ]);
 export type AuthoringEvent = Static<typeof authoringEvent>;
 
-/** @approved One line of a session's saved log: the writer's message, or an event the panel was streamed. */
-export const authoringLogEntry = Type.Union([Type.Object({ type: Type.Literal("prompt"), text: Type.String() }), authoringEvent]);
+// @approved
+//  One line of a session's saved log: the writer's message, an event the
+// panel was streamed, or a scenario's whole input, saved because the tool
+// event the panel sees cuts a large input short.
+export const authoringLogEntry = Type.Union([
+	Type.Object({ type: Type.Literal("prompt"), text: Type.String() }),
+	Type.Object({ type: Type.Literal("scenario-input"), id: Type.String(), input: scenarioInput }),
+	authoringEvent,
+]);
 export type AuthoringLogEntry = Static<typeof authoringLogEntry>;
 export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
 export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
