@@ -1,3 +1,5 @@
+import { guardBoxPromptImages, type BoxImageGrants } from "../prompt-compiler/images";
+import type { PromptWarning } from "../prompt-compiler";
 import { Type } from "@sinclair/typebox";
 import { type BoxValue } from "../../shared/contract/box-value";
 import { parseStoredBoxJson } from "./stored-json";
@@ -17,16 +19,16 @@ const MOVES_KEY = "moves";
 //  A Box that is not enabled in the Chat cannot render, so its stored Moves
 //  enter history as their chip labels. Boxes render in registry order, each
 //  as the Chat runs it.
-const renderMoves = (moves: BoxMoves, author: string, boxes: ChatBoxes, states: BoxStates): string[] => [...boxes].flatMap(([id, { descriptor, box }]) => {
+const renderMoves = (moves: BoxMoves, author: string, boxes: ChatBoxes, states: BoxStates, grants: BoxImageGrants, warnings: PromptWarning[]): string[] => [...boxes].flatMap(([id, { descriptor, box }]) => {
 	const rendering = states[id] === "enabled" ? box.moves : undefined;
-	return descriptor.moves === undefined ? [] : (moves[id] ?? []).map((move) => rendering?.render(move, author) ?? moveLabel(descriptor, move));
+	return descriptor.moves === undefined ? [] : (moves[id] ?? []).map((move) => guardBoxPromptImages(rendering?.render(move, author) ?? moveLabel(descriptor, move), grants.get(boxReference(id)), warnings));
 });
 
 /** @approved The text the model reads for a Human-authored Message: each Move's `render`, then the writer's prose. */
-export const humanMessageText = (moves: BoxMoves, content: string, author: string | null, boxes: ChatBoxes, states: BoxStates): string => {
+export const humanMessageText = (moves: BoxMoves, content: string, author: string | null, boxes: ChatBoxes, states: BoxStates, grants: BoxImageGrants, warnings: PromptWarning[]): string => {
 	if (!hasMoves(moves)) return content;
 	if (author === null) throw new Error("A Message with Moves always carries its author's name.");
-	return [...renderMoves(moves, author, boxes, states), content].filter((part) => part.trim() !== "").join("\n");
+	return [...renderMoves(moves, author, boxes, states, grants, warnings), content].filter((part) => part.trim() !== "").join("\n");
 };
 
 /** @approved The Moves on this Chat's Messages, each list decoded by the version the Chat runs. */

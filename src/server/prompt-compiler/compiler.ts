@@ -256,8 +256,12 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			const blockLabel = singleUseReferenceLabel(kind);
 			const context = { self: input.human.name, other: input.model.name };
 			const blockWarnings: PromptWarning[] = [];
+			/** @approved Sandbox writes must not export reference fragments into a trusted block or a later Generation. */
+			const boxState = input.images.boxGrants?.has(kind) === true
+				? { ...createMacroAttemptState(macroAttemptState.variables), expansionCache: macroAttemptState.expansionCache, changingVariables: new Map(macroAttemptState.changingVariables) }
+				: macroAttemptState;
 			const expand = (into: PromptBlock[], text: string, cacheKey: string) =>
-				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState, cacheKey, beforeHistory: slotIndex < historySlot });
+				expandInto({ blocks: into, warnings: blockWarnings, block: { kind }, role, text, context, blockLabel, macroEnvironment, macroAttemptState: boxState, cacheKey, beforeHistory: slotIndex < historySlot });
 			const instructions: PromptBlock[] = [];
 			expand(instructions, slot.content, `slot:${slotIndex}`);
 			const expanded: PromptBlock[] = [];
