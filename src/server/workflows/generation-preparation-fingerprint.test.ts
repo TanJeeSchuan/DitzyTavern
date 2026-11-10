@@ -38,6 +38,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 		scanMessages: [],
 		conversationId: 1,
 		boxes: [],
+		boxWarnings: [],
 		semanticTriggerRevision: 0,
 		formatting: {},
 		derivation: {

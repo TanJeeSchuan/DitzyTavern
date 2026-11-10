@@ -80,6 +80,14 @@ Any other hook refuses the Box.
 
 Every other hook returns its value; only `advance.run`, `records.digest.run` and `delegate.apply` may be async.
 
+### Images in prompt items
+
+An item's `text` may hold `![name](image:<hash>)` for an image this Box uploaded through `host.uploadImage`. References resolve in `literal` items too. An ungranted reference in an item or rendered Move becomes `[Image: name]` with a warning naming the Box. A Cast Portrait alone grants no permission to send it.
+
+`host.uploadImage` accepts a `Blob` or `File`, including the `Blob` returned by a Worker's `OffscreenCanvas.convertToBlob({ type: "image/png" })`. It accepts PNG, JPEG, WebP and GIF up to 20 MiB. The server cannot render: `logic.js` has no canvas. Render and upload in the window. `advance` cannot read the Box's stored values, so the window commits the returned hash into setup, or stages it in a Move, for `advance` to place in an item.
+
+Images are only as fresh as the window's last render and upload. Keep a text fallback. Each sent image costs about width×height/750 tokens after fitting its long edge to at most 1568 px. A Text-only Model receives the anchor `[Image: name]` instead of pixels.
+
 ### Records
 
 State is never stored: the host folds it from the records of the Selected path's Variants, in Message order, from `records.initial`, whenever it needs it. So:
