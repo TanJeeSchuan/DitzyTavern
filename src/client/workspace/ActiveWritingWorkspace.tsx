@@ -148,6 +148,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const openConnections = (box?: BoxId) => saveNavigation.requestNavigation(() => {
+		if (box !== undefined) connectionSettings.closeEditor();
 		setDelegateTarget((previous) => box === undefined ? undefined : { box, request: (previous?.request ?? 0) + 1 });
 		dispatchPanel({ type: "primary-opened", panel: "connections" });
 	});
