@@ -24,6 +24,13 @@ export type SandboxedBoxIcon = Static<typeof sandboxedBoxIcon>;
 // passage timeline. JSON holds no code, and an unknown key is refused, so no
 // field can carry one.
 const json = boxValue;
+// @approved
+//  The npm packages a sandboxed Box imports, each at one exact `x.y.z`
+// version, so a name and version always mean the same esm.sh module. A range,
+// tag, alias, or `file:`, `link:`, `workspace:`, Git or URL specifier fails
+// the pattern. Both patterns are the host's own, fixed here.
+export const sandboxedPackageName = Type.String({ pattern: "^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$", maxLength: 214 });
+export const sandboxedPackageVersion = Type.String({ pattern: "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" });
 export const sandboxedDescriptorFile = Type.Object({
 	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves"]).properties,
 	setup: Type.Optional(Type.Object({ schema: json, initial: boxValue }, { additionalProperties: false })),
@@ -35,6 +42,7 @@ export const sandboxedDescriptorFile = Type.Object({
 		icon: sandboxedBoxIcon,
 		size: Type.Object({ width: Type.Number({ exclusiveMinimum: 0 }), height: Type.Number({ exclusiveMinimum: 0 }) }, { additionalProperties: false }),
 	}, { additionalProperties: false }),
+	dependencies: Type.Optional(Type.Record(sandboxedPackageName, sandboxedPackageVersion, { additionalProperties: false })),
 }, { additionalProperties: false });
 export type SandboxedDescriptorFile = Static<typeof sandboxedDescriptorFile>;
 
@@ -128,7 +136,7 @@ const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type
 // server and the client both build it, so a Move label and a schema read the
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
-	const { setup, values, record, moves, window: { kind }, ...fields } = file;
+	const { setup, values, record, moves, window: { kind }, dependencies: _packages, ...fields } = file;
 	if ((kind === "digest") !== (fields.decision !== undefined)) throw new Error("Its window is the passage timeline exactly when it declares a decision.");
 	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>

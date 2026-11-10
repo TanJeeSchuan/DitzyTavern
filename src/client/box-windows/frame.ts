@@ -16,9 +16,10 @@ function workerPrelude(images: string) {
 	let onEvent: ((event: unknown) => void) | undefined;
 	let onSave: (() => unknown) | undefined;
 	let onDiscard: (() => void) | undefined;
+	let onCanvasEvent: ((event: unknown) => void) | undefined;
 	let next = 0;
 	const pending = new Map<number, (result: unknown) => void>();
-	const request = (type: "commit" | "upload", key: "commit" | "file", value: unknown) => new Promise((resolve) => {
+	const request = (type: "commit" | "upload" | "canvas", key: "commit" | "file" | "name", value: unknown) => new Promise((resolve) => {
 		const id = next++;
 		pending.set(id, resolve);
 		postMessage({ type, id, [key]: value });
@@ -26,6 +27,7 @@ function workerPrelude(images: string) {
 	self.onmessage = ({ data }: MessageEvent<{ type: string; id?: number; read?: unknown; view?: View; event?: unknown; result?: unknown }>) => {
 		if (data.type === "read" && data.view !== undefined) onRead?.(data.read, data.view);
 		if (data.type === "event") onEvent?.(data.event);
+		if (data.type === "canvas-event") onCanvasEvent?.(data.event);
 		if (data.type === "reply" && data.id !== undefined) {
 			pending.get(data.id)?.(data.result);
 			pending.delete(data.id);
@@ -47,6 +49,8 @@ function workerPrelude(images: string) {
 		setDirty: (dirty: unknown) => postMessage({ type: "dirty", dirty: dirty === true }),
 		onSave: (handler: typeof onSave) => { onSave = handler; },
 		onDiscard: (handler: typeof onDiscard) => { onDiscard = handler; },
+		canvas: (name: unknown) => request("canvas", "name", String(name)),
+		onCanvasEvent: (handler: typeof onCanvasEvent) => { onCanvasEvent = handler; },
 	});
 }
 
@@ -84,6 +88,40 @@ const send = (message: FrameToApp) => port?.postMessage(message);
 // morph keeps the value only while a text field has focus, since it also
 // leaves the focused element's children alone: a focused button must still
 // take its new label.
+// @approved
+//  A `<canvas data-canvas="<name>">` the guest asks for with `host.canvas`
+// hands its drawing to the Worker as an OffscreenCanvas, and from then on
+// its pointer, wheel and key events and its size reach `host.onCanvasEvent`
+// as plain objects. The morph matches elements across renders by id, so
+// each named canvas gets one from its name: a re-render keeps a transferred
+// canvas, and its listeners, in place instead of replacing it with a blank.
+const transferred = new WeakSet<HTMLCanvasElement>();
+/** @approved One canvas event as the guest receives it: its type and the plain fields read from the DOM event. */
+type CanvasEvent = { readonly type: string } & Readonly<Record<string, string | number | boolean>>;
+const pointerEvents = ["pointerdown", "pointermove", "pointerup", "pointercancel", "pointerenter", "pointerleave", "click"];
+const transferCanvas = (id: unknown, name: unknown) => {
+	const canvas = [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")].find((element) => element.dataset.canvas === name && !transferred.has(element));
+	if (canvas === undefined) return worker?.postMessage({ type: "reply", id, result: null });
+	transferred.add(canvas);
+	const offscreen = canvas.transferControlToOffscreen();
+	worker?.postMessage({ type: "reply", id, result: offscreen }, [offscreen]);
+	const post = (event: CanvasEvent) => worker?.postMessage({ type: "canvas-event", event: { canvas: name, ...event } });
+	const keys = ({ altKey, ctrlKey, metaKey, shiftKey }: MouseEvent | KeyboardEvent) => ({ altKey, ctrlKey, metaKey, shiftKey });
+	const at = (event: MouseEvent) => ({ x: event.offsetX, y: event.offsetY, button: event.button, buttons: event.buttons, ...keys(event) });
+	for (const type of pointerEvents) canvas.addEventListener(type, (event) => {
+		if (event instanceof MouseEvent) post({ type, ...at(event), ...event instanceof PointerEvent && { pointerId: event.pointerId, pointerType: event.pointerType } });
+	});
+	canvas.addEventListener("wheel", (event) => post({ type: "wheel", ...at(event), deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode }));
+	for (const type of ["keydown", "keyup"] as const) canvas.addEventListener(type, (event) => post({ type, key: event.key, code: event.code, repeat: event.repeat, ...keys(event) }));
+	new ResizeObserver(([entry]) => {
+		if (entry !== undefined) post({ type: "resize", width: entry.contentRect.width, height: entry.contentRect.height, pixelRatio: devicePixelRatio });
+	}).observe(canvas);
+};
+const withCanvasIds = (fragment: DocumentFragment) => {
+	for (const canvas of fragment.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")) canvas.id = `canvas:${canvas.dataset.canvas}`;
+	return fragment;
+};
+
 const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 const start = (ui: string, css: string) => {
 	guestStyle.textContent = css;
@@ -92,13 +130,14 @@ const start = (ui: string, css: string) => {
 	URL.revokeObjectURL(url);
 	worker.onerror = (event) => send({ type: "error", message: event.message || "Its UI script failed." });
 	worker.onmessageerror = () => send({ type: "error", message: "Its UI sent a message the frame could not read." });
-	worker.onmessage = ({ data }: MessageEvent<{ type?: unknown; html?: unknown; moves?: unknown; id?: unknown; commit?: unknown; file?: unknown; dirty?: unknown; saved?: unknown }>) => {
-		if (data.type === "render" && typeof data.html === "string") Idiomorph.morph(document.body, sanitized(data.html), { morphStyle: "innerHTML", ignoreActiveValue: typing() });
+	worker.onmessage = ({ data }: MessageEvent<{ type?: unknown; html?: unknown; moves?: unknown; id?: unknown; commit?: unknown; file?: unknown; dirty?: unknown; saved?: unknown; name?: unknown }>) => {
+		if (data.type === "render" && typeof data.html === "string") Idiomorph.morph(document.body, withCanvasIds(sanitized(data.html)), { morphStyle: "innerHTML", ignoreActiveValue: typing() });
 		if (data.type === "stage") send({ type: "stage", moves: data.moves });
 		if (data.type === "commit") send({ type: "commit", id: data.id, commit: data.commit });
 		if (data.type === "upload") send({ type: "upload", id: data.id, file: data.file });
 		if (data.type === "dirty") send({ type: "dirty", dirty: data.dirty });
 		if (data.type === "saved") send({ type: "saved", id: data.id, saved: data.saved });
+		if (data.type === "canvas") transferCanvas(data.id, data.name);
 	};
 };
 

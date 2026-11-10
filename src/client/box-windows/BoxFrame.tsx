@@ -47,11 +47,11 @@ export const stagedMoves = (descriptor: BoxDescriptor, staged: unknown): { reado
 	return Value.Check(Type.Array(Type.Unsafe<BoxValue>(declared.schema), { maxItems: declared.max }), copy) ? { moves: copy } : { refused: "It staged Moves that do not match its Move schema." };
 };
 
-const uiFile = async (box: BoxId, file: string, required: boolean) => {
+/** @approved A sandboxed Box's `ui.js` or `ui.css`; the server answers an absent `ui.css` with an empty stylesheet. */
+const uiFile = async (box: BoxId, file: string) => {
 	const response = await fetch(`/boxes/${box}/${file}`);
-	if (response.ok) return await response.text();
-	if (required || response.status !== 404) throw new Error(`Its ${file} did not load: ${response.status}.`);
-	return "";
+	if (!response.ok) throw new Error(`Its ${file} did not load: ${response.status}.`);
+	return await response.text();
 };
 
 // @approved
@@ -91,7 +91,7 @@ function BoxFrame(props: FrameProps) {
 	const [port, setPort] = useState<MessagePort>();
 	const [failure, setFailure] = useState<string>();
 	const [dirty, setDirty] = useState(false);
-	const ui = useQuery({ queryKey: [box, "ui"], queryFn: async () => ({ ui: await uiFile(box, "ui.js", true), css: await uiFile(box, "ui.css", false) }), staleTime: Infinity });
+	const ui = useQuery({ queryKey: [box, "ui"], queryFn: async () => ({ ui: await uiFile(box, "ui.js"), css: await uiFile(box, "ui.css") }), staleTime: Infinity });
 	const read = useSandboxedRead(conversation, box);
 	const staged = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
 	const latest = useRef({ props, read, token });
