@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Ellipsis } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ComponentProps } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -39,8 +40,9 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 }) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
+	const [deleteHistory, setDeleteHistory] = useState(false);
 	const [removing, setRemoving] = useState<BoxId | null>(null);
-	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState } | { box: BoxId; version: string } | null>(null);
+	const [requested, setRequested] = useState<{ box: BoxId; state: BoxState; deleteHistory: boolean } | { box: BoxId; version: string } | null>(null);
 	const [creating, setCreating] = useState<{ readonly reopen?: string } | null>(null);
 	const [authored, setAuthored] = useState<ReadonlyMap<string, string>>(new Map());
 	// @approved
@@ -72,13 +74,13 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 		setPending(true);
 		setNotice(null);
 		const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice };
-		const sent = "state" in requested ? sendBoxState(surface, client, requested.box, requested.state)
+		const sent = "state" in requested ? sendBoxState(surface, client, requested.box, requested.state, requested.deleteHistory)
 			: runConversationCommand(surface, { type: "upgrade-box", box: requested.box, version: requested.version }, {
 				notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 			});
 		void sent.finally(() => setPending(false));
 	}, [requested]);
-	const setState = (box: BoxId, state: BoxState) => setRequested({ box, state });
+	const setState = (box: BoxId, state: BoxState, deleteHistory = false) => setRequested({ box, state, deleteHistory });
 	// @approved
 	//  Update moves this Chat to the Box's `latest` through the upgrade check.
 	// It remounts the Box's window on the new version, so it asks the save
@@ -138,7 +140,7 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 						<DropdownMenuContent align="end" className="w-44">
 							{open !== undefined && <DropdownMenuItem onSelect={open}>Open {label}</DropdownMenuItem>}
 							{authored.has(box) && <DropdownMenuItem onSelect={() => setCreating({ reopen: authored.get(box) })}>Open its session</DropdownMenuItem>}
-							<DropdownMenuItem variant="destructive" onSelect={() => setRemoving(box)}>Remove from Chat…</DropdownMenuItem>
+							<DropdownMenuItem variant="destructive" onSelect={() => { setDeleteHistory(false); setRemoving(box); }}>Remove from Chat…</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 					<Switch checked={state === "enabled"} disabled={locked} aria-label={`${label} in this Chat`} onCheckedChange={(on) => setState(box, on ? "enabled" : "disabled")} />
@@ -164,14 +166,18 @@ export function BoxManager({ conversation, disabled, onConversationChange, onOpe
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
 					<DialogTitle>Remove {removing === null ? "" : boxMetadata(removing).label}?</DialogTitle>
-					<DialogDescription>This deletes its setup and data in this Chat. Past passages and their Moves still read the same.</DialogDescription>
+					<DialogDescription>This deletes its setup and data in this Chat. History stays unless you delete it below.</DialogDescription>
 				</DialogHeader>
+				<label className="flex items-start gap-2 text-sm">
+					<Checkbox checked={deleteHistory} disabled={pending} onCheckedChange={(checked) => setDeleteHistory(checked === true)} />
+					Also delete this Box's records, Moves and version pin in this Chat; this cannot be undone.
+				</label>
 				<DialogFooter>
 					<Button type="button" variant="ghost" disabled={pending} onClick={() => setRemoving(null)}>Keep it</Button>
 					<Button type="button" variant="destructive" disabled={pending} onClick={() => {
 						const box = removing;
 						setRemoving(null);
-						if (box !== null) requestNavigation(() => setState(box, "absent"));
+						if (box !== null) requestNavigation(() => setState(box, "absent", deleteHistory));
 					}}>Remove</Button>
 				</DialogFooter>
 			</DialogContent>
