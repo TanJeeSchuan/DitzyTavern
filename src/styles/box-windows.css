@@ -485,3 +485,17 @@
 	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
 	outline-offset: 2px;
 }
+
+/* @approved A sandboxed Box's frame takes the window body's remaining height, below any notice; the frame's document draws on the window's surface. */
+.box-window-body:has(> .box-frame) {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+}
+
+.box-frame {
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	border: 0;
+}

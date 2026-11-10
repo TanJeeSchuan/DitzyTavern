@@ -1,0 +1,3 @@
+@import url("/sandbox-escape-css-import");
+@font-face { font-family: "Probe"; src: url("/api/images/sandbox-escape-css-font"); }
+.probe-sheet { background: url("/api/images/sandbox-escape-css-url"); font-family: "Probe"; }

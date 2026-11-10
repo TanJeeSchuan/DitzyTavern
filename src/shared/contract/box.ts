@@ -108,9 +108,6 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-/** The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and the URL its client module loads from. */
-export const boxList = Type.Array(Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]));
-
 export const boxParams = Type.Object({ box: Type.String() });
 /** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place; a Box with none is absent. */
 export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()));
