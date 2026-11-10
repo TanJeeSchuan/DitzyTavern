@@ -21,8 +21,8 @@ export const refreshPresetReads = (client: QueryClient) => Promise.all([
 
 const oneLine = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
 
-export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState) =>
-	runConversationCommand(surface, { type: "set-box-state", box, state }, {
+export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState, deleteHistory = false) =>
+	runConversationCommand(surface, { type: "set-box-state", box, state, deleteHistory }, {
 		onApplied: () => { if (state === "enabled") void refreshPresetReads(client); },
 		notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 	});

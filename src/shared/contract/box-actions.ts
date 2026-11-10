@@ -39,7 +39,7 @@ export const commitBoxAction = Type.Object({
 
 // @approved
 //  Inserts (`enabled`), disables or removes (`absent`) one Box in this Chat.
-export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: Type.String(), state: boxState });
+export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: Type.String(), state: boxState, deleteHistory: Type.Optional(Type.Boolean()) });
 
 // @approved
 //  Moves this Chat's pin of a versioned Box to `version`, `latest` or an

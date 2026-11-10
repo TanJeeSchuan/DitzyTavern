@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { acceptConversationTailGeneration, executeConversationCommand, forkConversation, readConversationSummary } from "../conversation";
+import { acceptConversationTailGeneration, executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
 import type { ConversationAction } from "../conversation";
 import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { writeVersionedBox, type BoxFiles } from "../test-fixtures/versioned-box";
@@ -277,3 +277,72 @@ for (const upgraded of [false, true]) {
 		if (upgraded) expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
 	});
 }
+
+for (const deleteHistory of [false, true]) test(`removal ${deleteHistory ? "deletes" : "keeps"} all instances of history only for this Chat and Box`, async () => {
+	const box = await versioned(same);
+	const { chat, message, selected, unselected, slot } = tippedChat();
+	slot(unselected, { writer: { coins: 3 } });
+	database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:tally', 'record:earlier-instance', '{}')").run(unselected);
+	const other = tippedChat();
+	const moves = database.query("INSERT INTO messages_data (message_id, namespace, key, value) VALUES (?, ?, 'moves', ?)");
+	moves.run(message.id, "box:tally", '[{"coins":1}]');
+	moves.run(other.message.id, "box:tally", '[{"coins":2}]');
+	moves.run(message.id, "box:phone", '[{"kept":true}]');
+	const data = database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, ?, ?, ?)");
+	data.run(selected, "box:phone", "record:other-box", '{"automatic":{"kept":true}}');
+	data.run(selected, "box:tally", "other-key", 'kept');
+	data.run(selected, "generation-box", "traces", '{"box:tally":{"trace":{"kept":true},"items":[],"automaticText":"","finalText":""}}');
+	database.query("INSERT INTO library_data (namespace, key, value) VALUES ('box:tally', 'shared', 'kept')").run();
+	database.query("INSERT INTO participant_data (participant_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', '{}')").run(chat.cast[0]!.id);
+	const character = createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Shared", prompt, openings: [] } });
+	database.query("INSERT INTO character_data (character_id, namespace, key, value) VALUES (?, 'box:tally', 'shared', 'kept')").run(character.id);
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box-version', 'phone', 'kept')").run(chat.id);
+	const shared = () => ({ library: database.query("SELECT * FROM library_data").all(), character: database.query("SELECT * FROM character_data").all() });
+	const preset = () => database.query("SELECT * FROM prompt_preset_block").all();
+	const before = rows(chat.id);
+	const sharedBefore = shared();
+	const presetBefore = preset();
+	const otherBefore = rows(other.chat.id).chat;
+	const after = command(chat.id, { type: "set-box-state", box: "tally", state: "absent", ...(deleteHistory && { deleteHistory: true }) });
+	const current = rows(chat.id);
+	const targetVariants = new Set([selected, unselected]);
+	const keptVariants = before.variants.filter((row) => !deleteHistory || !(targetVariants.has(row.message_variant_id) && row.namespace === "box:tally" && row.key.startsWith("record:")));
+	expect(current.variants).toEqual(keptVariants);
+	expect(current.messages).toEqual(before.messages.filter((row) => !deleteHistory || !(row.message_id === message.id && row.namespace === "box:tally" && row.key === "moves")));
+	expect(after.boxVersions).toEqual(deleteHistory ? { phone: "kept" } : { phone: "kept", tally: box.v1 });
+	expect(after.boxes.tally).toBe("absent");
+	expect(current.participants).toEqual(before.participants.filter((row) => !(row.participant_id === chat.cast[0]!.id && row.namespace === "box:tally")));
+	expect(rows(other.chat.id).chat).toEqual(otherBefore);
+	expect(shared()).toEqual(sharedBefore);
+	expect(preset()).toEqual(presetBefore);
+	expect(after.revision).toBe(before.revision! + 1);
+	await writeLatest(box.home, box.v2);
+	installVersion("tally", box.home, box.v2, await checkSandboxedFolder(versionFolder(box.home, box.v2), "tally", unversionedBoxIds()));
+	const reinserted = command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });
+	expect(reinserted.boxVersions.tally).toBe(deleteHistory ? box.v2 : box.v1);
+});
+
+for (const deleteHistory of [false, true]) test(`a Generation resolving after removal and reinsertion ${deleteHistory ? "drops" : "keeps"} the removed instance's pending record`, async () => {
+	const box = await versioned(same);
+	const { chat } = tippedChat();
+	const oldInstance = instanceOf(chat.id);
+	const traces = { "box:tally": { trace: { kept: true }, items: [], automaticText: "", finalText: "" } };
+	const accepted = acceptConversationTailGeneration(database, {
+		seed: "remove-history", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision,
+		timestamp: "2026-11-10T00:00:00Z", humanContent: "Tip.", humanParticipantId: chat.cast[0]!.id, modelParticipantId: chat.cast[1]!.id,
+		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		boxTraces: traces, boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
+	});
+	command(chat.id, { type: "set-box-state", box: "tally", state: "absent", deleteHistory });
+	command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });
+	resolveConversationGeneration(database, { conversationId: chat.id, generationId: accepted.generationId, content: "The tip lands.", timestamp: "2026-11-10T00:01:00Z" });
+	const records = database.query("SELECT namespace, key, value FROM message_variant_data WHERE message_variant_id = ? AND key LIKE 'record:%' ORDER BY namespace").all(accepted.provisionalVariantId);
+	expect(records).toEqual([
+		{ namespace: "box:memory", key: "record:other", value: '{"automatic":{"kept":true}}' },
+		...deleteHistory ? [] : [{ namespace: "box:tally", key: `record:${oldInstance}`, value: '{"automatic":{"coins":4}}' }],
+	]);
+	expect(readVariantDetails(database, chat.id, accepted.messageId, accepted.provisionalVariantId)?.boxTraces).toEqual(traces);
+	expect(database.query("SELECT content FROM message_variant WHERE id = ?").get(accepted.provisionalVariantId)).toEqual({ content: "The tip lands." });
+});
