@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 08-play-a-race-with-moves
 
-Source: `docs/box-system/README.md` "Built-in Boxes" (Phone), "Move staging"; GLOSSARY "Phone".
+Source: ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (Phone), ["Move staging"](../../box-system/host.md#move-staging); GLOSSARY "Phone".
 
 ## Goal
 

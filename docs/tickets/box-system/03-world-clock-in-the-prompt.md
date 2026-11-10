@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 02-memory-recall-through-the-box-seam
 
-Source: `docs/box-system/README.md` "Storage", "The rules" (records), "Generation lifecycle" step 5, "Built-in Boxes" (World Clock); ADR-0038, ADR-0047, ADR-0050.
+Source: ["Storage"](../../box-system/host.md#storage), ["The rules"](../../box-system/README.md#the-rules) (records), ["Generation lifecycle"](../../box-system/host.md#generation-lifecycle) step 5, ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (World Clock); ADR-0038, ADR-0047, ADR-0050.
 
 ## Goal
 

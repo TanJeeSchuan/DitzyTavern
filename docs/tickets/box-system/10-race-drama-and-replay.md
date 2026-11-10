@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/README.md` "Worked example: the Race" (advance, data scopes, window); GLOSSARY "Hidden intent".
+Source: ["Worked example: the Race"](../../box-system/built-in.md#worked-example-the-race) (advance, data scopes, window); GLOSSARY "Hidden intent".
 
 ## Goal
 

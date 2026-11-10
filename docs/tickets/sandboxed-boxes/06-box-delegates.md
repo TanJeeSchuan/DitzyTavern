@@ -33,8 +33,8 @@ The story model sees the result on its next turn, through the Box's prompt items
 
 ### When it runs, and on what state
 
-- A delegate run is a job in the existing [digest queue](../../box-system/README.md#digest-queue-and-catch-up), under its landing rules and at the job's [version](../../box-system/README.md#versions). Catch-up queues tagged passages without a record, and retries failed ones.
-- **Jobs of one Chat and Box run one at a time, in passage order.** A passage's run sees the state folded from the selected records **strictly before** that passage, never its own previous record or any later one. Both the agent and `delegate.apply` get that state, so a retry can't apply its request twice. Later records are never re-evaluated, as [`record` and `records`](../../box-system/README.md#record-and-records) says.
+- A delegate run is a job in the existing [digest queue](../../box-system/host.md#digest-queue-and-catch-up), under its landing rules and at the job's [version](../../box-system/sandboxed.md#versions). Catch-up queues tagged passages without a record, and retries failed ones.
+- **Jobs of one Chat and Box run one at a time, in passage order.** A passage's run sees the state folded from the selected records **strictly before** that passage, never its own previous record or any later one. Both the agent and `delegate.apply` get that state, so a retry can't apply its request twice. Later records are never re-evaluated, as [`record` and `records`](../../box-system/authoring.md#record-and-records) says.
 - Only passages holding the tag get a job. A passage without the tag gets no record.
 - The digest queue and its routes, which today assume `digest ⇒ decision ⇒ passage timeline`, get a job kind for delegates. The places that change: `runDigest`, `digestTarget`, `prepareBoxDigests`, `digestView`, `readDigest`, the retry and catch-up handlers in `src/server/contract/box-window.ts`, the settings routes' `isDigestBox` gate, and the hook-shape checks in `registry.ts`. A delegating Box keeps its own `read` and window; it never gets the passage timeline.
 

@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 04-box-windows-and-dock
 
-Source: `docs/box-system/README.md` "Worked example: the Race" (setup, field, records, advance); ADR-0050.
+Source: ["Worked example: the Race"](../../box-system/built-in.md#worked-example-the-race) (setup, field, records, advance); ADR-0050.
 
 ## Goal
 

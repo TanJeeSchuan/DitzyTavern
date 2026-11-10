@@ -8,7 +8,7 @@ Source: GitHub #72. Found by the PR B reviews (ticket 28's Notes record the reve
 
 ## Problem
 
-`docs/box-system/README.md` tells Box authors to style Panels with Tailwind utilities. Built-ins get them only because their sources sit under `src/` when the host stylesheet is built: Tailwind scans them. A plugin installed into `data/boxes/` is built after the host, by `box:build`, which runs no Tailwind. Any utility the host stylesheet doesn't already contain renders unstyled.
+`docs/box-system/host.md` tells Box authors to style Panels with Tailwind utilities. Built-ins get them only because their sources sit under `src/` when the host stylesheet is built: Tailwind scans them. A plugin installed into `data/boxes/` is built after the host, by `box:build`, which runs no Tailwind. Any utility the host stylesheet doesn't already contain renders unstyled.
 
 ## Rejected so far
 
@@ -43,7 +43,7 @@ Every Box styles itself in its own stylesheet, as Memory already did. The built-
 
 - [x] Decide the approach with the user.
 - [x] Implement it in `scripts/build-box-client.ts`, migrate the built-in Boxes and the fixture plugin, and make the fixture use a style the host doesn't contain so `e2e/box-plugin.spec.ts` covers it.
-- [x] Rewrite the styling paragraph of `docs/box-system/README.md` (Windows and dock).
+- [x] Rewrite the styling paragraph of `docs/box-system/host.md` (Windows and dock).
 - [x] Run `bun run check`, `bun run build` and the full `bun run test:e2e`.
 - [x] Set this ticket to DONE and commit.
 

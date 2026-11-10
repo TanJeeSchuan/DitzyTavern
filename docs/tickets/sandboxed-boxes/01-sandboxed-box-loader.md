@@ -17,7 +17,7 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.js` (plus op
 - A host route serving the frame document with its CSP, and the app page's CSP (`frame-src`)
 - `src/client/box-windows` (the frame host, its `MessagePort` bridge and the frame's host script)
 - `e2e/fixtures/boxes/tip-jar-sandboxed`, `e2e/box-plugin.spec.ts`
-- `docs/box-system/README.md`, `docs/docker.md`, a new ADR
+- `docs/box-system/sandboxed.md`, `docs/docker.md`, a new ADR
 
 ## Design decisions already made
 
@@ -52,7 +52,7 @@ The registry loads a Box from `descriptor.json`, `logic.js` and `ui.js` (plus op
 - [x] Run the `e2e/box-plugin.spec.ts` flow against both fixtures, with frame locators for the sandboxed one. Prompt Plan and model request assertions are identical for both.
 - [x] Contract tests (server): an infinite loop in `fold`, a runaway allocation and an oversized payload fail the hook with an error naming the Box; an `async` hook that loops forever before returning is stopped.
 - [x] Isolation e2e: a fixture `ui.js` attempts every escape in the research note's table (fetch, WebSocket, EventSource, importScripts, nested Workers, FontFace, WebTransport, `RTCPeerConnection`) and renders markup that tries `<a href>`, `<img src>` and `srcset`, a CSS background and a `<video poster>` (on another origin and on the app's own image route), `<form action>`, inline handlers, `javascript:` URLs, `<meta http-equiv="refresh">` and CSS `url()`. The test server records zero requests from it, and clicking every rendered element navigates nothing. A message posted to the frame on another port is ignored.
-- [x] Document sandboxed Boxes in `docs/box-system/README.md` and `docs/docker.md` (both kinds on the volume; a sandboxed Box needs no build), and record the decision as an ADR.
+- [x] Document sandboxed Boxes in `docs/box-system/sandboxed.md` and `docs/docker.md` (both kinds on the volume; a sandboxed Box needs no build), and record the decision as an ADR.
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 - [x] Set this ticket to DONE and commit.
 

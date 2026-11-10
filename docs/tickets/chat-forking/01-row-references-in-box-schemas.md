@@ -15,7 +15,7 @@ Every row id a Box stores is declared through a box-sdk id schema, every Chat an
 - `src/box-sdk/shared.ts`, `src/shared/contract/box-descriptor.ts` and the descriptor schema check
 - `src/server/box` (the rewrite walker)
 - Memory and Race contracts and descriptors
-- `docs/box-system/README.md`
+- `docs/box-system/authoring.md`
 
 ## Work
 
@@ -26,7 +26,7 @@ Every row id a Box stores is declared through a box-sdk id schema, every Chat an
 - [x] Memory: evidence `messageId`, labels identities keyed by `ParticipantKey`, trace sources, every other stored id. Declare `settings` and `labels`.
 - [x] Race: slot `participantId`; declare its Participant stats value.
 - [x] Audit the other Boxes (Author Note, Mood, Phone, Thought, World Clock) and the tip-jar e2e fixture for stored ids and undeclared keys.
-- [x] Document Row References and the new descriptor key in `docs/box-system/README.md`.
+- [x] Document Row References and the new descriptor key in `docs/box-system/authoring.md`.
 - [x] Contract tests for the walker: ids under Record keys, nested Arrays and Union branches are rewritten; a missing id throws with its path; `keepMissing` leaves it.
 - [x] Run focused tests, typechecking, and the full test suite.
 - [x] Set this ticket to DONE and commit.

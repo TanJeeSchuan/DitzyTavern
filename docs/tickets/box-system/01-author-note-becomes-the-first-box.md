@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: None
 
-Source: `docs/box-system/README.md` "The contract", "Preset block", "Generation lifecycle" step 3, "Built-in Boxes" (Author Note); ADR-0048, ADR-0050.
+Source: ["The contract"](../../box-system/README.md#the-contract), ["Preset block"](../../box-system/host.md#preset-block), ["Generation lifecycle"](../../box-system/host.md#generation-lifecycle) step 3, ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (Author Note); ADR-0048, ADR-0050.
 
 ## Goal
 

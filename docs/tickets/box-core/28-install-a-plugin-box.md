@@ -14,7 +14,7 @@ A plugin author can build a Box outside this repository, drop it into `data/boxe
 
 - `bun run box:build <folder>` builds a plugin's `client.js` with the host externals from ticket 27. The server and shared files ship as `.ts`.
 - The fixture plugin lives in `e2e/fixtures/boxes/<id>/`. It is a small Box that uses the window, a Move and a record, so the test covers server load, client load and persistence. The e2e server copies it into its per-test `data/boxes/`.
-- The authoring section of `docs/box-system/README.md` covers building and installing a plugin, the SDK version, and the refusal rules from ticket 26.
+- The authoring section of `docs/box-system/authoring.md` covers building and installing a plugin, the SDK version, and the refusal rules from ticket 26.
 
 ## Notes from ticket 26
 

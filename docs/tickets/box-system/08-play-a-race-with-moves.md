@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/README.md` "`moves` and `moves.render`", "Move staging", "Worked example: the Race" (Moves); GLOSSARY "Move"; ADR-0050.
+Source: ["`moves` and `moves.render`"](../../box-system/authoring.md#moves-and-movesrender), ["Move staging"](../../box-system/host.md#move-staging), ["Worked example: the Race"](../../box-system/built-in.md#worked-example-the-race) (Moves); GLOSSARY "Move"; ADR-0050.
 
 ## Goal
 

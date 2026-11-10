@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 01-author-note-becomes-the-first-box
 
-Source: `docs/box-system/README.md` "The contract", "Generation lifecycle" steps 2–4, "Built-in Boxes" (Memory); ADR-0042, ADR-0050; full port deferred to GitHub #68.
+Source: ["The contract"](../../box-system/README.md#the-contract), ["Generation lifecycle"](../../box-system/host.md#generation-lifecycle) steps 2–4, ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (Memory); ADR-0042, ADR-0050; full port deferred to GitHub #68.
 
 ## Goal
 

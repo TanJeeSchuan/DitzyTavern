@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 04-box-windows-and-dock
 
-Source: `docs/box-system/README.md` "The rules" (Writer overrides), "Passage timeline", "Built-in Boxes" (World Clock); ADR-0050.
+Source: ["The rules"](../../box-system/README.md#the-rules) (Writer overrides), ["Passage timeline"](../../box-system/host.md#passage-timeline), ["Built-in Boxes"](../../box-system/built-in.md#built-in-boxes) (World Clock); ADR-0050.
 
 ## Goal
 

@@ -30,7 +30,7 @@ The server builds its Box registry at startup by scanning two folders: the built
 - [x] Remove `boxDescriptors`, the static registries' imports and the lint allowlist.
 - [x] Add `GET /api/boxes`.
 - [x] Unit-test refusal: invalid descriptor, SDK mismatch, duplicate id and failing import.
-- [x] Update `docs/box-system/README.md` (folder layout, descriptor, SDK version) and `docs/docker.md`.
+- [x] Update `docs/box-system/authoring.md` (folder layout), `docs/box-system/README.md` (descriptor), `docs/box-system/authoring.md` (SDK version) and `docs/docker.md`.
 - [x] Run `bun run check` and the full `bun run test:e2e`.
 - [x] Set this ticket to DONE and commit.
 

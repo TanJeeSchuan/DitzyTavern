@@ -16,7 +16,7 @@ This is what lets Creator Mode build Boxes that track prose (mood, relationships
 
 - `src/server/box` (the adapter's digest path and the `decide` bridge)
 - `src/boxes/mood`
-- `docs/box-system/README.md`
+- `docs/box-system/sandboxed.md`
 
 ## Design decisions already made
 
@@ -38,7 +38,7 @@ This is what lets Creator Mode build Boxes that track prose (mood, relationships
 - [x] Rewrite Mood as `descriptor.json` + `logic.js` and delete its trusted files. Stored Mood records stay valid; the record schema does not change.
 - [x] `mood.spec.ts` passes with its story assertions unchanged.
 - [x] Contract tests: a digest whose `decide` is pending when its job is superseded rejects in the guest and writes nothing; a second `decide` in one digest is refused; a digest that assigns `globalThis.saved = decide` and stays pending leaves `saved` undefined in a concurrent `advance` and in a concurrent second digest.
-- [x] Document the sandboxed digest path in `docs/box-system/README.md`.
+- [x] Document the sandboxed digest path in `docs/box-system/sandboxed.md`.
 - [x] Run focused tests and lint on changed files; push and let CI run the full suite and e2e.
 - [x] Set this ticket to DONE and commit.
 

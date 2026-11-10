@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 12-box-authoring-guide, 13-box-lifecycle-per-chat
 
-Source: `docs/box-system/README.md` "Lifecycle per Chat" (a reinserted Box starts from its initial setup); found while writing the authoring guide.
+Source: ["Lifecycle per Chat"](../../box-system/host.md#lifecycle-per-chat) (a reinserted Box starts from its initial setup); found while writing the authoring guide.
 
 ## Goal
 

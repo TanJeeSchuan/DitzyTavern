@@ -9,7 +9,7 @@
 
 ## Box host code
 
-Every call into Box code, and every read of Box-shaped data, survives the Box throwing, returning the wrong shape, never settling, or no longer being loaded. [`docs/box-system/README.md`](docs/box-system/README.md) owns the Box rules: [the contract](docs/box-system/README.md#the-contract), [the rules](docs/box-system/README.md#the-rules) and [loading](docs/box-system/README.md#loading). When a ticket touches a rule that file owns, link its section instead of restating it.
+Every call into Box code, and every read of Box-shaped data, survives the Box throwing, returning the wrong shape, never settling, or no longer being loaded. [`docs/box-system/README.md`](docs/box-system/README.md) owns the Box rules: [the contract](docs/box-system/README.md#the-contract), [the rules](docs/box-system/README.md#the-rules) and [loading](docs/box-system/host.md#loading). When a ticket touches a rule that file owns, link its section instead of restating it.
 
 ## Tests
 

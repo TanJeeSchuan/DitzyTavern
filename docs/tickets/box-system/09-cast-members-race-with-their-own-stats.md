@@ -4,7 +4,7 @@ Status: DONE
 
 Blocked By: 06-race-engine-in-the-prompt
 
-Source: `docs/box-system/README.md` "Storage", "Worked example: the Race" (field, data scopes, withdrawal); GLOSSARY "Definition", "Participant".
+Source: ["Storage"](../../box-system/host.md#storage), ["Worked example: the Race"](../../box-system/built-in.md#worked-example-the-race) (field, data scopes, withdrawal); GLOSSARY "Definition", "Participant".
 
 ## Goal
 

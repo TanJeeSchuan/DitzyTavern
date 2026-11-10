@@ -30,7 +30,7 @@ Memory's UI lives in `src/boxes/memory/` and plugs into generic surfaces that an
 - [x] Move the Memory UI files into `src/boxes/memory/` (`client-*.tsx` layer naming) and register them on those surfaces.
 - [x] Replace the Memory-specific host icon with generic inspector openers, keeping message-focus opening.
 - [x] Remove the registry's Memory re-exports (`export * from "../../boxes/memory/..."`) and every `src/client` import of Memory code.
-- [x] Document the new surfaces in `docs/box-system/README.md`.
+- [x] Document the new surfaces in `docs/box-system/authoring.md`.
 - [x] Run `bun run check` and the full `bun run test:e2e`.
 - [x] Set this ticket to DONE and commit.
 
