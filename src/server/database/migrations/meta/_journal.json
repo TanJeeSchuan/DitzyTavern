@@ -260,6 +260,13 @@
       "when": 1793670081738,
       "tag": "0036_box_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1794280438127,
+      "tag": "0037_clear_lore_activation_records",
+      "breakpoints": true
     }
   ]
 }

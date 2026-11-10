@@ -9,6 +9,7 @@ export const loreActivationRecord = Type.Object({
 		Type.Literal("keyword-fallback"),
 		Type.Literal("none"),
 	]),
+	scan: Type.Array(Type.Object({ id: Type.Union([Type.Number(), Type.Null()]), content: Type.String() })),
 	evidence: generationJsonValue,
 	automaticLoreText: Type.String(),
 	finalLoreText: Type.String(),

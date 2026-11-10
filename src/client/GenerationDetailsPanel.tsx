@@ -196,7 +196,7 @@ export function LoreActivationDetails({ record }: { record: LoreActivationRecord
 			<details>
 				<summary>Automatic activation evidence</summary>
 				<p className="generation-detail-preformatted">{record.automaticLoreText || "No Lore text was selected automatically."}</p>
-				<pre>{JSON.stringify(record.evidence, null, 2)}</pre>
+				<pre>{JSON.stringify({ scan: record.scan, evidence: record.evidence }, null, 2)}</pre>
 			</details>
 			{record.manuallyEdited && <p className="panel-note">The final Lore text was edited after automatic activation.</p>}
 			<details>

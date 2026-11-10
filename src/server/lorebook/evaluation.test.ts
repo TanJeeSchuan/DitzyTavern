@@ -75,4 +75,31 @@ describe("scoped Lore activation", () => {
 			},
 		});
 	});
+	test("stores the scan window once while retaining matched and unmatched entry evidence", () => {
+		const book = importNativeLorebook(database, {
+			name: "World", description: "",
+			entries: ["matched", "unmatched", "also unmatched"].map((title) => ({
+				title, content: "Lore.", keywords: [title === "matched" ? "signal" : "absent"],
+				semanticTriggers: [], matchOperator: "or", always: false,
+				requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
+				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
+				priority: 1, enabled: true,
+			})),
+		});
+		const chat = createConversationWithHistory(database, {
+			name: "Story",
+			participants: ["Keeper", "Writer"].map((name) => ({ definition: { name, prompt, openings: [] } })),
+			control: { human: 1, model: 0 },
+		});
+		executeConversationCommand(database, {
+			conversationId: chat.id, expectedRevision: chat.revision,
+			action: { type: "attach-chat", bookId: book.id },
+		});
+		const window = "distinctive-scan-window signal";
+		const { activation, candidates } = evaluateScopedLore({ database, conversationId: chat.id, messages: [], pendingHumanText: window });
+		expect(candidates).toHaveLength(1);
+		expect(activation.evidence).toHaveLength(4);
+		expect(JSON.stringify(activation).split(window)).toHaveLength(2);
+	});
+
 });

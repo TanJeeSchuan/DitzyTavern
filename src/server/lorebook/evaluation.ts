@@ -76,7 +76,6 @@ const evidenceFor = (input: {
 	match: LoreEntryMatch;
 	attachmentIds: readonly number[];
 	attachmentSelection: LoreBookAttachmentSelectionEvidence;
-	messages: readonly LoreScanMessage[];
 }): GenerationJsonValue => {
 	const { entries: _entries, ...book } = input.book;
 	return {
@@ -84,7 +83,6 @@ const evidenceFor = (input: {
 		entry: { ...input.entry },
 		attachmentIds: input.attachmentIds,
 		attachmentSelection: input.attachmentSelection,
-		messages: input.messages.map((message) => ({ id: message.id ?? null, content: message.content })),
 		match: {
 			...input.match,
 			primary: { ...input.match.primary },
@@ -177,7 +175,7 @@ const assembleEvaluation = (sources: ScopedLoreSources, semantic?: import("./mat
 			hasSemanticTriggers ||= entry.enabled && entry.semanticTriggers.length > 0;
 			const matched = matchLoreEntry(entry, sources.scanMessages, semantic);
 			matches.push({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matched });
-			evidence.push(evidenceFor({ book, entry, match: matched, attachmentIds, attachmentSelection: attachmentSelectionEvidence(source), messages: sources.scanMessages }));
+			evidence.push(evidenceFor({ book, entry, match: matched, attachmentIds, attachmentSelection: attachmentSelectionEvidence(source) }));
 			if (!matched.active) continue;
 			candidates.push({
 				content: entry.content,
@@ -202,6 +200,7 @@ const assembleEvaluation = (sources: ScopedLoreSources, semantic?: import("./mat
 		activation: {
 			version: 1,
 			mode,
+			scan: sources.scanMessages.map((message) => ({ id: message.id ?? null, content: message.content })),
 			evidence,
 			automaticLoreText: "",
 			finalLoreText: "",
@@ -238,6 +237,7 @@ export const noLoreEvaluation = (): ScopedLoreEvaluation => ({
 	activation: {
 		version: 1,
 		mode: "none",
+		scan: [],
 		evidence: [],
 		automaticLoreText: "",
 		finalLoreText: "",
