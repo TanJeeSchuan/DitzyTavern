@@ -73,6 +73,7 @@ import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { readBoxLifecycles } from "../box/setup";
+import type { BoxImageGrants } from "../prompt-compiler/images";
 import { captureBoxPromptImages } from "../box/prompt-images";
 import type { PromptWarning } from "../prompt-compiler";
 
@@ -114,6 +115,7 @@ const compilePlanFrom = (
 	configuration: {
 		boxes: BoxResults;
 		boxWarnings: readonly PromptWarning[];
+		boxImages: BoxImageGrants;
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
@@ -143,7 +145,7 @@ const compilePlanFrom = (
 			systemPlacement: configuration.connection.systemPlacement,
 		},
 		estimator: options.estimator,
-		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),
+		images: { ...promptImageResolutionFor(options.database, configuration.connection, configuration.settings), boxGrants: configuration.boxImages },
 	});
 	compiled.promptPlan.warnings.push(...configuration.boxWarnings);
 	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
@@ -171,6 +173,7 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 interface AttemptConfiguration {
 	boxes: BoxResults;
 	boxWarnings: readonly PromptWarning[];
+	boxImages: BoxImageGrants;
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
@@ -204,6 +207,7 @@ export const generationIntentOf = (target: CapturedTarget): GenerationIntent | u
 
 interface PreparationFields extends GenerationPreparationBase {
 	readonly boxWarnings: readonly PromptWarning[];
+	readonly boxImages: BoxImageGrants;
 	readonly seed: string;
 	readonly target: CapturedTarget;
 	readonly pendingHumanText: string | undefined;
@@ -325,7 +329,8 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 	const siblingId = selected.target?.variant?.id;
 	const boxWarnings: PromptWarning[] = [];
-	const chat = captureBoxPromptImages(db, chatBoxes(db, input.conversationId), boxWarnings);
+	const chat = chatBoxes(db, input.conversationId);
+	const boxImages = captureBoxPromptImages(db, chat);
 	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
@@ -366,7 +371,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		prose: message.variant.content,
 		speakerName: message.author?.capturedName ?? null,
 		role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, chat, summary.boxes),
+		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, chat, summary.boxes, boxImages, boxWarnings),
 	}]);
 	const derivation: GenerationDerivation = {
 		human,
@@ -383,7 +388,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const closed = submitted !== undefined
 		? Object.keys(staged ?? {}).find((id) => summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
-	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, chat, summary.boxes);
+	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, chat, summary.boxes, boxImages, boxWarnings);
 	const scanMessages = rendered.map(({ message, content }) => ({ id: message.id, content }));
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
@@ -414,7 +419,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
 	const preparation = {
 		seed,
-		boxWarnings,
+		boxWarnings, boxImages,
 		conversationId: input.conversationId,
 		boxes: captureBoxes(boxes, summary.boxSetups, folds, moves, {
 			database: input.database, conversationId: input.conversationId, seed, intent: boxIntent, human, cast: summary.cast, pending: pendingHumanText,
@@ -497,6 +502,7 @@ const captureConfigurationFromPreparation = (
 	return {
 		boxes: preparation.boxes,
 		boxWarnings: preparation.boxWarnings,
+		boxImages: preparation.boxImages,
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,
