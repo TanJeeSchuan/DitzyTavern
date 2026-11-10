@@ -1,0 +1,6 @@
+.tip-jar {
+	display: grid;
+	gap: 0.75rem;
+	padding: 0.75rem;
+	border-radius: 7px;
+}

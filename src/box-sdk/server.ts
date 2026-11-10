@@ -10,7 +10,7 @@ export { effectiveRecord, readRecordSlots, slotStatus } from "../server/box/reco
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
-export { putChatValue, putLibraryValue, readCharacterRevisions, readChatValue, readLibraryValue, readLibraryValues, readParticipantValues } from "../server/box/stored-value";
+export { putChatValue, putLibraryValue, readChatValue, readLibraryValue } from "../server/box/stored-value";
 export { readProfileApiFormat } from "../server/connection-settings/persistence";
 export { readEmbeddingConfiguration, type EmbeddingConfiguration } from "../server/box/embedding";
 export { seededFraction } from "../server/box/seed";

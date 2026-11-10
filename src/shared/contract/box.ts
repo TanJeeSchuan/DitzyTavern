@@ -44,7 +44,8 @@ export const installBoxes = (boxes: readonly InstalledBox[]): void => {
 	installed = new Map(boxes.map((box) => [box.metadata.id, box]));
 };
 /** @approved The metadata the server lists for a Box, projected from its descriptor or from the list itself. */
-export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision }: BoxMetadata): BoxMetadata => ({ id, label, summary, instructions, block, decision });
+export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
+	({ id, label, summary, instructions, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
 
 const installedBox = (id: BoxId): InstalledBox => {
 	const box = installed.get(id);
@@ -65,9 +66,8 @@ export const boxDescriptors = (): ReadonlyMap<BoxId, BoxDescriptor> =>
 
 /** @approved A Box record as the host holds it: an object of the Box's own values. */
 export type BoxRecord = { readonly [key: string]: BoxValue };
-/** @approved Box `id`'s record schema, typed as the record the host holds; a Box that keeps no records has none. */
-export const boxRecordSchema = (id: BoxId) => {
-	const { record } = boxDescriptor(id);
+/** @approved A Box version's record schema, typed as the record the host holds; a Box that keeps no records has none. */
+export const boxRecordSchema = ({ id, record }: BoxDescriptor) => {
 	if (record === undefined) throw new Error(`The ${id} Box keeps no records.`);
 	return Type.Unsafe<BoxRecord>(record);
 };
@@ -80,6 +80,11 @@ export const isBoxReference = (reference: string): reference is PromptBoxReferen
 export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.metadata.decision !== undefined;
+/** @approved Every tag a loaded Box's markup takes in prose but `tag`: each lens's and each delegate's, which a delegate request may not nest in or hold. */
+export const otherBoxTags = (tag: string): string[] =>
+	[...installed.values()].flatMap(({ metadata: { lens, delegate } }) => [lens, delegate?.tag].flatMap((other) => other === undefined || other === tag ? [] : [other]));
+/** @approved Whether `id` is a registered delegating Box, the only kind with a delegate setting. */
+export const isDelegateBox = (id: BoxId): boolean => installed.get(id)?.metadata.delegate !== undefined;
 /** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
 export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
 	[...boxDescriptors()].flatMap(([id, descriptor]) => {
@@ -108,9 +113,6 @@ export type BoxWindowLayouts = Static<typeof boxWindowLayouts>;
 export const boxSetups = Type.Record(Type.String(), boxValue);
 export type BoxSetups = Static<typeof boxSetups>;
 
-/** The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and the URL its client module loads from. */
-export const boxList = Type.Array(Type.Composite([boxMetadataSchema, Type.Object({ client: Type.String() })]));
-
 export const boxParams = Type.Object({ box: Type.String() });
 /** @approved Each loaded Box's stored values that fail its schemas and did not upgrade, by place; a Box with none is absent. */
 export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()));
@@ -126,3 +128,16 @@ export const boxDecisionSettingsInvalid = Type.Object({ outcome: Type.Literal("i
 export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDecisionSettingsCommand = Static<typeof boxDecisionSettingsCommandBody>;
+
+// @approved
+//  A delegating Box's delegate setting: the chat Connection Profile and model
+// its agent runs on. No profile means the delegate is off.
+export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
+export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
+export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
+export const boxDelegateSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings });
+export const boxDelegateSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDelegateSettings });
+/** @approved Only a delegating Box has a delegate setting, so its routes find no other id. */
+export const boxDelegateSettingsCommandErrors = Type.Union([boxDelegateSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
+export const boxDelegateSettingsCommandBody = Type.Composite([boxDelegateSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
+export type BoxDelegateSettingsCommand = Static<typeof boxDelegateSettingsCommandBody>;

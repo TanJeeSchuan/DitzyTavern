@@ -30,6 +30,8 @@ import { defaultBoxIds } from "../../shared/contract/box";
 import { macroWritesToData } from "../prompt-macros";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { readConversationSummaryFromConnection } from "./snapshot";
+import { serverBoxes } from "../box/registry";
+import { pinFirstBoxVersion } from "../box/version-pin";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
 	ConversationArtifactSeed,
@@ -452,6 +454,10 @@ export function createConversation(
 		);
 		const defaultRows = defaultBoxIds().flatMap((id) => [boxStateEntry(id, true), boxInstanceEntry(id)].map((entry) => ({ conversation_id: conversation.id, ...entry })));
 		if (defaultRows.length > 0) db.insert(conversationDataTable).values(defaultRows).onConflictDoNothing().run();
+		for (const id of defaultBoxIds()) {
+			const version = serverBoxes().get(id)?.version;
+			if (version !== undefined) pinFirstBoxVersion(db, conversation.id, id, version);
+		}
 		installBoxBlocks(db, conversation.id, defaultBoxIds());
 
 		// @approved

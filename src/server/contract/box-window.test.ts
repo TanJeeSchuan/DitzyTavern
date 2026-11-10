@@ -1,3 +1,4 @@
+import { boxDescriptor } from "../../shared/contract/box";
 import { openObservedDatabase, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
@@ -10,7 +11,7 @@ import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/
 import { sha256 } from "../hash";
 import { createContract } from ".";
 import { acceptConversationTailGeneration } from "../conversation";
-import { advanceRace } from "../../boxes/race/server-engine";
+import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
@@ -93,7 +94,7 @@ test("an edit makes the automatic result stale, and it still folds", async () =>
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual({ kind: "fresh" });
 	database.run("UPDATE message_variant SET content = ? WHERE id = ?", ["The lamp goes dark.", variantId]);
 	const stale = (await readClock(app, chat.id)).passages[0];
@@ -106,7 +107,7 @@ test("a digest failure counts only for the text it failed on, and a Writer overr
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
-	writeDigestError(drizzle(database), "world-clock", clock, variantId, sha256("The lamp turns."), "The model refused.");
+	writeDigestError(drizzle(database), boxDescriptor("world-clock"), clock, variantId, sha256("The lamp turns."), "The model refused.");
 	const failed = { kind: "failed" as const, error: "The model refused.", stale: false };
 	expect((await readClock(app, chat.id)).passages[0]?.status).toEqual(failed);
 	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: { minutes: 5, weather: null }, expected: null });
@@ -121,7 +122,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	const app = createContract(database);
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, { minutes: 60, weather: "rain" }, sha256("The lamp turns."));
 
 	const override = { minutes: 600, weather: "clear" as const };
 	const applied = await command(app, chat.id, chat.revision, { type: "set-box-record", box: "world-clock", messageId, variantId, record: override, expected: { minutes: 60, weather: "rain" } });
@@ -135,7 +136,7 @@ test("a Writer override sets the effective value, survives a later automatic dig
 	// @approved
 	//  A digest still in flight lands after the override and may only fill
 	//  `automatic`; the effective value stays the Writer's.
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
 	expect((await readClock(app, chat.id)).passages[0]).toMatchObject({ record: override, status: { kind: "overridden" } });
 
 	const revision: number = (await applied.json()).conversation.revision;
@@ -150,8 +151,8 @@ test("an override is refused once a digest changed the record it replaces, or wr
 	const clock = insertBox(database, chat.id, "world-clock");
 	const { messageId, variantId } = addPassage(chat.id, "The lamp turns.");
 	const read = { minutes: 60, weather: "rain" as const };
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, read, sha256("The lamp turns."));
-	writeAutomaticRecord(drizzle(database), "world-clock", clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, read, sha256("The lamp turns."));
+	writeAutomaticRecord(drizzle(database), boxDescriptor("world-clock"), clock, variantId, { minutes: 120, weather: "storm" }, sha256("The lamp turns."));
 	const override = { type: "set-box-record" as const, box: "world-clock" as const, messageId, variantId, record: { minutes: 600, weather: "clear" as const } };
 	const refusal = { outcome: "invalid", reason: "This record changed since you read it. Review it before changing it again." };
 	expect(await (await command(app, chat.id, chat.revision, { ...override, expected: read })).json()).toEqual(refusal);
@@ -206,7 +207,7 @@ test("an unknown Box id is not found by the Box routes and fails each Box comman
 	for (const action of [
 		{ type: "set-box-state", box: "nope", state: "enabled" },
 		{ type: "set-box-setup", box: "nope", setup: "" },
-		{ type: "put-box-data", box: "nope", owner: { type: "library", revision: 0 }, key: "note", value: "{}" },
+		{ type: "commit-box", box: "nope", writes: [{ owner: { type: "library" }, key: "note", value: "{}" }], expected: [{ owner: { type: "library" }, key: "note", revision: 0 }] },
 	] satisfies ConversationAction[]) {
 		const response = await command(app, chat.id, chat.revision, action);
 		expect(response.status).toBe(422);
@@ -254,7 +255,7 @@ test("Box data cannot reach the host's Decision Model settings for that Box", as
 	const chat = createClockChat();
 	const app = createContract(database);
 	insertBox(database, chat.id, "world-clock");
-	const written = await command(app, chat.id, chat.revision, { type: "put-box-data", box: "world-clock", owner: { type: "library", revision: 0 }, key: "decision", value: "{}" });
+	const written = await command(app, chat.id, chat.revision, { type: "commit-box", box: "world-clock", writes: [{ owner: { type: "library" }, key: "decision", value: "{}" }], expected: [{ owner: { type: "library" }, key: "decision", revision: 0 }] });
 	expect(written.status).toBe(200);
 	const settings = await app.handle(new Request("http://localhost/api/boxes/world-clock/decision-settings"));
 	expect(settings.status).toBe(200);

@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors } from "../../shared/contract/box";
+import { boxDescriptor, boxDescriptors } from "../../shared/contract/box";
+import type { BoxValue } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { readBoxFolds, writeAutomaticRecord } from "./records";
 import { boxSdkVersion } from "../../shared/contract/box-descriptor";
@@ -20,7 +21,7 @@ import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
-import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes } from "./registry";
+import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes, serverBoxes } from "./registry";
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -29,7 +30,7 @@ test("a Box's Decision Model selection is part of its preview fingerprint, and i
 		const selection = configureDecisionModels(database, key, "model-a");
 		const human = { id: 1, name: "Ann" };
 		const capture = () => fingerprintBoxes(captureBoxes(
-			participatingBoxes([{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
+			participatingBoxes(serverBoxes(), [{ reference: "box:mood", enabled: true, role: "system", content: "" }], { mood: { state: "enabled", instance: "instance" } }),
 			{},
 			{},
 			{},
@@ -105,6 +106,47 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["unmounted", "The hook will not hang."],
 		["unrouted", "The hook is bent."],
 		["unschemed", "Its descriptor is invalid at /setup/schema: Expected kind 'BoxSchema'."],
+	]);
+});
+
+test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a folder that breaks the sandboxed rules is refused", async () => {
+	const root = mkdtempSync(join(tmpdir(), "ditzy-boxes-"));
+	pluginFolders.push(root);
+	const tip = { type: "object", properties: { coins: { type: "integer", minimum: 1 } }, required: ["coins"] };
+	const descriptor = (id: string, fields: { readonly [key: string]: BoxValue } = {}) => JSON.stringify({ id, ...lantern, moves: { schema: tip, max: 1, label: "Tip {coins}" }, window: { icon: "coins", size: { width: 18, height: 12 } }, ...fields });
+	const logic = "export default { moves: { render: ({ coins }, author) => `${author} tips ${coins}.` } };";
+	const sandboxed = (id: string, files: Record<string, string> = {}) => {
+		mkdirSync(join(root, id));
+		for (const [name, text] of Object.entries({ "descriptor.json": descriptor(id), "logic.js": logic, "ui.js": "host.render('');", ...files })) writeFileSync(join(root, id, name), text);
+	};
+	sandboxed("jar");
+	sandboxed("both", { "server.ts": "export default {};" });
+	sandboxed("emailed", { "descriptor.json": descriptor("emailed", { setup: { schema: { type: "string", format: "email" }, initial: "" } }) });
+	// @approved Twenty backtracking alternatives before a plain string, checked against an initial value that makes each backtrack, held startup for longer than five seconds.
+	const backtracking = { anyOf: [...Array.from({ length: 20 }, () => ({ type: "string", pattern: "^(a+)+$" })), { type: "string" }] };
+	sandboxed("backtracking", { "descriptor.json": descriptor("backtracking", { setup: { schema: backtracking, initial: `${"a".repeat(34)}!` } }) });
+	sandboxed("keyed", { "descriptor.json": descriptor("keyed", { record: { type: "object", patternProperties: { "^(a+)+$": { type: "number" } } } }) });
+	sandboxed("labelled", { "descriptor.json": descriptor("labelled", { moves: { schema: tip, max: 1, label: "Tip {coins}", render: "x" } }) });
+	sandboxed("importing", { "logic.js": `import { tip } from "./tip.js"; ${logic}` });
+	sandboxed("fetching", { "ui.js": "import('https://example.com/tip.js').then(({ tip }) => host.render(tip));" });
+	sandboxed("unhooked", { "logic.js": "export default { read: () => 1 };" });
+	const { boxes, refused } = await discoverBoxes([root]);
+	const [jar] = boxes;
+	expect(boxes.map(({ descriptor: { id } }) => id)).toEqual(["jar"]);
+	// SAFETY: the jar's Move schema accepts `{ coins: 2 }`, which its label takes.
+	const label = jar?.descriptor.moves?.label as ((move: BoxValue) => string) | undefined;
+	expect(label?.({ coins: 2 })).toBe("Tip 2");
+	expect(jar?.box.moves?.render({ coins: 2 }, "Ann")).toBe("Ann tips 2.");
+	jar?.dispose?.();
+	expect(refused.map(({ folder, reason }) => [basename(folder), reason])).toEqual([
+		["backtracking", "Its string at /setup/schema/anyOf/0 has a pattern; a sandboxed Box may only use ParticipantKey's."],
+		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
+		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
+		["fetching", "The fetching Box's ui.js did not build: ui.js imports https://example.com/tip.js; a sandboxed Box imports its own files by relative path and the packages its descriptor.json declares."],
+		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file of the Box's own."],
+		["keyed", "Its record at /record keys by ^(a+)+$; a sandboxed Box keys a record by any string or by ParticipantKey."],
+		["labelled", "Its descriptor.json is invalid at /moves/render: Unexpected property."],
+		["unhooked", "The unhooked Box must declare a Move render exactly when it declares Moves."],
 	]);
 });
 
@@ -224,10 +266,10 @@ test("a non-JSON Box state is refused with the Box's id, and a changed JSON stat
 		} })]);
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
-		const boxes = participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
+		const boxes = participatingBoxes(serverBoxes(), [{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance } });
 		const message = database.query<{ id: number }, [number]>("INSERT INTO messages (conversation_id, position, timestamp) VALUES (?, 0, '2026-01-01') RETURNING id").get(conversation.id)!;
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'Lit it.', '2026-01-01', 1) RETURNING id").get(message.id)!;
-		writeAutomaticRecord(drizzle(database), "lantern", instance, variant.id, {}, sha256("Lit it."));
+		writeAutomaticRecord(drizzle(database), boxDescriptor("lantern"), instance, variant.id, {}, sha256("Lit it."));
 		expect(() => readBoxFolds(drizzle(database), [variant.id], {}, boxes)).toThrow("The lantern Box's records.fold result is invalid at /: Expected union value.");
 		const read = { database, conversationId: conversation.id, seed: "seed", intent: "respond" as const, human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined };
 		expect(fingerprintBoxes(captureBoxes(boxes, {}, { lantern: { slots: new Map(), state: { lit: 1 } } }, {}, read)))
@@ -319,7 +361,7 @@ for (const field of ["record", "trace"] as const) for (const value of ["new Date
 			fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { value: { [Symbol.for("TypeBox.Kind")]: "Any" } }, required: ["value"] }',
 			server: `export default { records: { initial: 0, fold: (state) => state }, advance: { ${field === "trace" ? `trace: ${valueObject}, ` : ""}run: async () => ({ items: [], ${field}: { value: ${value} } }) } };`,
 		} })]);
-		const inputs = captureBoxes(participatingBoxes([{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
+		const inputs = captureBoxes(participatingBoxes(serverBoxes(), [{ reference: "box:lantern", enabled: true, role: "system", content: "" }], { lantern: { state: "enabled", instance: "instance" } }), {}, {}, {}, {
 			database, conversationId: 1, seed: "seed", intent: "respond", human: { id: 1, name: "Ann" }, cast: [], messages: [], pending: undefined,
 		});
 		const result = advanceBoxes(inputs, () => ({ signal: new AbortController().signal, llm: () => undefined, decide: async () => { throw new Error("No decisions expected."); }, embed: async () => [] }));

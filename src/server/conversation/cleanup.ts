@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNotNull, like, notInArray } from "drizzle-orm";
-import { boxDescriptors, boxIdOf } from "../../shared/contract/box";
+import { boxIdOf } from "../../shared/contract/box";
+import { chatBoxes } from "../box/registry";
 import { boxValueSchema, holdsRowReferences, participantReferencesOf, type BoxValueScope } from "../box/row-references";
 import { parseStoredBoxJson } from "../box/stored-json";
 import { collectReleasedCharacterTombstones } from "../character-library";
@@ -35,12 +36,12 @@ const boxReferencedParticipants = (db: ConversationDatabase, conversationId: num
 		...messageRows.map((row) => ({ ...row, scope: "message" as const })),
 		...variantRows.map((row) => ({ ...row, scope: "variant" as const })),
 	];
-	const descriptors = boxDescriptors();
+	const boxes = chatBoxes(db, conversationId);
 	const referenced = new Set<number>();
 	for (const { scope, namespace, key, value } of rows) {
 		const id = boxIdOf(namespace);
 		if (id === undefined) continue;
-		const descriptor = descriptors.get(id);
+		const descriptor = boxes.get(id)?.descriptor;
 		if (descriptor === undefined) return null;
 		const schema = boxValueSchema(descriptor, scope, key);
 		if (schema === undefined || !holdsRowReferences(schema)) continue;

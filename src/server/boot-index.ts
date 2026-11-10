@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { boxClientFolder } from "./box/registry";
+import { boxClientSource } from "./box/registry";
 import { activeChatId } from "./conversation";
 import { installedBoxes } from "../shared/contract/box";
 
@@ -10,16 +10,16 @@ const link = (rel: string, href: string, as = "") => `<link rel="${rel}" href="$
 // @approved
 //  The page names what the first render reads, so the browser fetches it
 // while the entry downloads instead of each read waiting on the one before:
-// the Box list, then every Box module and stylesheet, then the workspace, then
-// the active Chat. A preload the client's own request matches by URL is
+// the Box list, then every trusted Box's module and stylesheet, then the
+// workspace, then the active Chat. A preload the client's own request matches by URL is
 // consumed by it; each URL here is the one its reader requests, and only a
 // stylesheet, which a Box links without CORS, is preloaded without it.
 const bootReads = (database: Database) => {
 	const boxes = [...installedBoxes().keys()].flatMap((id) => {
-		const folder = boxClientFolder(id);
-		return [
+		const source = boxClientSource(id);
+		return source?.kind !== "module" ? [] : [
 			link("modulepreload", `/boxes/${id}/client.js`),
-			...folder !== undefined && existsSync(join(folder, "client.css")) ? [link("preload", `/boxes/${id}/client.css`, "style")] : [],
+			...existsSync(join(source.folder, "client.css")) ? [link("preload", `/boxes/${id}/client.css`, "style")] : [],
 		];
 	});
 	const chat = activeChatId(database);

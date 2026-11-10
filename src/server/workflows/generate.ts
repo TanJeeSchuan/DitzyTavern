@@ -24,7 +24,7 @@ import {
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
-import { captureGeneration, capturedAcceptanceFields, modelRequestFor, type CapturedGeneration } from "./generate-capture";
+import { withGenerationBoxOperations, captureGeneration, capturedAcceptanceFields, modelRequestFor, type CapturedGeneration } from "./generate-capture";
 import { consumeGenerationPreview, captureGenerationPreview, type GenerationPreviewAcceptance } from "./generation-preview";
 import { assertGenerationPlan } from "../generation-plan";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
@@ -46,9 +46,10 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	if (input.expectedRevision !== undefined && revision !== input.expectedRevision) {
 		throw new StaleRevisionError("generation", input.expectedRevision, revision);
 	}
-	const capture = input.preview === undefined
+	const { preview } = input;
+	const capture = preview === undefined
 		? await captureGeneration(database, input.target, input)
-		: captureGenerationPreview({ database, ...input }, input.preview, input.target);
+		: await withGenerationBoxOperations({ database, ...input }, () => captureGenerationPreview({ database, ...input }, preview, input.target));
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();

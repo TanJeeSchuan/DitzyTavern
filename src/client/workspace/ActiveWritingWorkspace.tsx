@@ -10,7 +10,7 @@ import {
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
-import { boxClient, boxPresent } from "../box-windows/registry";
+import { boxClient, boxPresent, ChatPins, noPins } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { useBoxWindows } from "../box-windows/useBoxWindows";
 import { PanelHeader } from "../PanelHeader";
@@ -234,6 +234,7 @@ export function ActiveWritingWorkspace({
 	const covered = narrow && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
+		<ChatPins.Provider value={conversation ?? noPins}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
@@ -399,5 +400,6 @@ export function ActiveWritingWorkspace({
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		</Toast.Provider>
+		</ChatPins.Provider>
 	);
 }

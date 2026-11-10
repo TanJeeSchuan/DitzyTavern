@@ -201,8 +201,11 @@ export async function requestDecisions(input: {
 		throw new DecisionModelError("malformed-response", `Decision Model returned an invalid answer at ${schemaError.path || "/"}: ${schemaError.message}.`);
 	}
 	Value.Clean(decisionResponse, decoded);
-	const { answers } = decoded;
-	const { questions } = input;
+	return checkedDecisionAnswers(input.questions, decoded.answers);
+}
+
+/** @approved Answers checked against the questions they answer: one per question, of its type, and a choice among its options with a probability for each. */
+export function checkedDecisionAnswers(questions: DecisionQuestions, answers: Readonly<Record<string, DecisionAnswer>>): ReadonlyMap<string, DecisionAnswer> {
 	const ids = Object.keys(questions);
 	if (Object.keys(answers).length !== ids.length) {
 		throw new DecisionModelError("malformed-response", "Decision Model omitted or added required answers.");

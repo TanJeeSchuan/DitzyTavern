@@ -1,4 +1,75 @@
-import type { RaceMove, RaceMoveKind, RacePhase, RaceRunner, RaceSetup, RaceSpectatorState } from "./contract";
+// @approved
+//  The Race's types, as `descriptor.json` declares its schemas, and the Move
+// rules the logic and the window share. The host checks every value against
+// the descriptor, so a type here that drifts from it fails loudly.
+export const runningStyles = ["Front Runner", "Pace Chaser", "Late Surger", "End Closer"] as const;
+export type RunningStyle = typeof runningStyles[number];
+export type RaceCourse = { name: string; distance: number; surface: "turf" | "dirt"; direction: "left" | "right" };
+/** @approved A Runner's race stats, shared by Character data, Participant data, the stat sheet and the setup slot it produces. */
+export type RaceStats = { style: RunningStyle; speed: number; stamina: number; power: number; guts: number; wit: number };
+/** @approved `participantId` links a Cast Runner's gate back to the Cast for Portrait, stat sheet and withdrawal; roster Runners leave it unset. */
+export type RaceRunner = { name: string; participantId?: number } & RaceStats;
+export type RaceSetup = {
+	raceId: string; course: RaceCourse; metresPerStretch: number; slots: RaceRunner[];
+	auto: "off" | "on" | { until: number }; phase: "setup" | "running";
+};
+export type RaceStanding = { name: string; distance: number; energy: number; time: number };
+export type RaceMoveKind = "overtake" | "conserve" | "spurt" | "hold";
+/** @approved A Race Move acts on one Runner: the human-seat Runner, or the Runner the writer orders when the human seat is not racing. */
+export type RaceMove = { kind: RaceMoveKind; runner: string };
+/** @approved A Hidden intent is formed in one Stretch and pays off in a later one; the Results Stretch settles any still open, so a finished race has none open. */
+export type RaceIntent = { runner: string; formed: number; payoff: number | null };
+export type RaceDecision = { kind: RaceMoveKind; writer: boolean; success: boolean };
+export type RaceReplayStretch = { stretch: number; metres: number; runners: { name: string; energy: number; decisions: RaceDecision[] }[] };
+export type RaceSpectatorState = { raceId: string; stretch: number; metres: number; finished: boolean; standings: RaceStanding[] };
+// @approved
+//  A record is the race after its turn: standings and Hidden intents, and the
+// replay entry the turn added, if any. A Stretch adds one; a withdrawal, a
+// walkover and the Results Stretch add none. The fold appends the entries,
+// so no record repeats an earlier Stretch.
+export type RaceRecord = RaceSpectatorState & { intents: RaceIntent[]; entries: RaceReplayStretch[] };
+export type RaceState = RaceSpectatorState & { intents: RaceIntent[]; replay: RaceReplayStretch[] };
+// @approved
+//  Where a race stands: not started, a Stretch due, the field over the line
+//  with the Results Stretch due, or finished, a walkover included. `auto`
+//  says whether Auto mode advances it on a continue turn, which also turns
+//  the writer's Moves off.
+export type RacePhase<State = RaceSpectatorState> =
+	| { readonly kind: "setup" }
+	| { readonly kind: "running" | "crossed"; readonly state: State; readonly auto: boolean }
+	| { readonly kind: "finished"; readonly state: State };
+export type RaceInput = { setup: RaceSetup; state: RaceState | null; seed: string; intent: "respond" | "continue"; withdrawn?: readonly string[]; moves: readonly RaceMove[] };
+export type RacePortrait = { hash: string; focalX: number; focalY: number };
+export type RaceCastMember = { id: number; name: string; portrait: RacePortrait | null; character: { id: number; name: string | null } | null };
+
+// @approved
+//  What the window shows: the setup, the race as a spectator sees it, the
+// replay and Hidden intents only once it finished, the Cast with Portraits,
+// the human seat, roster avatars and every revision a commit needs.
+export type RaceView = {
+	setup: RaceSetup;
+	phase: RacePhase;
+	replay: { stretches: RaceReplayStretch[]; intents: RaceIntent[] } | null;
+	cast: RaceCastMember[];
+	human: number | null;
+	avatars: Record<string, { hash: string; revision: number }>;
+	castStats: { participantId: number; stats: RaceStats }[];
+	characterStatsRevisions: Record<string, number>;
+};
+
+export const ordinal = (rank: number) => `${rank}${rank === 1 ? "st" : rank === 2 ? "nd" : rank === 3 ? "rd" : "th"}`;
+
+/** @approved The dock follows the human seat's Runner when it is racing, else the first gate. */
+export const raceStatus = (setup: RaceSetup, phase: RacePhase, follows?: string): string | null => {
+	if (phase.kind === "setup") return null;
+	const { standings, metres } = phase.state;
+	if (phase.kind === "finished") return `🏁 1st · ${standings[0]?.name ?? ""}`;
+	const followed = standings.some(({ name }) => name === follows) ? follows : setup.slots[0]?.name;
+	const rank = standings.findIndex(({ name }) => name === followed) + 1;
+	return `🏇 ${metres}m · ${ordinal(Math.max(rank, 1))}`;
+};
+
+export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on" || setup.auto === "off" || setup.auto.until < setup.course.distance;
 
 /** @approved Below this energy a Runner tires and loses pace, so no attack may spend into it. */
 export const FATIGUE_ENERGY = 0.35;
@@ -73,7 +144,7 @@ export function checkRunnerMove(setup: RaceSetup, state: RaceSpectatorState, ear
 			if (energy - cost < FATIGUE_ENERGY) return { legal: false, reason: `${name} is too tired to attack.` };
 			const ahead = state.standings[index - 1];
 			if (ahead === undefined) return { legal: false, reason: `${name} already leads.` };
-			// @approved The odds reach their floor near the ground one surge gains, so a Runner far behind cannot pass.
+			/** @approved The odds reach their floor near the ground one surge gains, so a Runner far behind cannot pass. */
 			const gap = ahead.distance - standing.distance;
 			return { legal: true, cost, odds: clampOdds(0.75 - gap / 15 + (runner.power + runner.wit - 1200) / 4000) };
 		}
@@ -84,3 +155,11 @@ export function checkRunnerMove(setup: RaceSetup, state: RaceSpectatorState, ear
 				: { legal: true, cost, odds: clampOdds(0.4 + runner.guts / 2000 + energy / 4) };
 	}
 }
+
+// @approved
+//  Equality of two values as JSON, independent of key order, as setups are
+//  compared: a stored setup and a draft may list keys differently. Each
+//  object serializes with its keys sorted.
+const canonical = <T>(value: T) => JSON.stringify(value, (_key, inner) => inner instanceof Object && !Array.isArray(inner)
+	? Object.fromEntries(Object.entries(inner).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) : inner);
+export const jsonEqual = <T>(left: T, right: T): boolean => canonical(left) === canonical(right);

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { boxMetadata, isDigestBox, type BoxId } from "../../shared/contract/box";
+import { boxMetadata, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import { connectionSnapshotOf, createConnectionSettingsModule } from "../connection-settings";
 import { decisionRequest, requestDecisions } from "../decision-model";
 import { collectModelClientGeneration, createModelClient } from "../model-client";
@@ -9,8 +9,8 @@ import { resolveBoxDecision } from "./decision-settings";
 import { embedTexts } from "./embedding";
 
 export type BoxDecision = ReturnType<typeof resolveBoxDecision> | { readonly kind: "off" };
-/** @approved The Decision Model selection Box `id`'s `decide` asks, resolved now: only a digesting Box has one. */
-export const resolveDecisionOf = (database: Database, id: BoxId): BoxDecision => isDigestBox(id) ? resolveBoxDecision(database, id) : { kind: "off" };
+/** @approved The Decision Model selection Box `id`'s `decide` asks, resolved now: only a version that digests has one. */
+export const resolveDecisionOf = (database: Database, id: BoxId, { decision }: BoxDescriptor): BoxDecision => decision !== undefined ? resolveBoxDecision(database, id) : { kind: "off" };
 // @approved
 //  A resolved selection as preview freshness compares it: what its `decide`
 // asks, without the credential and headers, which never leave the capture.
@@ -24,7 +24,7 @@ export const decisionIdentity = (decision: BoxDecision) => decision.kind !== "re
 };
 
 /** @approved Every host service for Box `id`, sending its requests through `fetch` and aborting with `signal`. `decide` asks `decision`, resolved once, so a selection changed while the Box runs never splits one Generation or digest across two models. */
-export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId, decision = resolveDecisionOf(database, id)): BoxContext => ({
+export const boxServices = (database: Database, fetch: ModelFetch | undefined, signal: AbortSignal) => (id: BoxId, decision: BoxDecision): BoxContext => ({
 	signal,
 	llm: (profileId) => {
 		const connections = createConnectionSettingsModule(database);
@@ -42,13 +42,13 @@ export const boxServices = (database: Database, fetch: ModelFetch | undefined, s
 			}, { onEvent: (event) => { if (event.type === "content") onContent?.(event.text); } }),
 		};
 	},
-	decide: (state, questions) => {
+	decide: (state, questions, options) => {
 		const { label } = boxMetadata(id);
 		if (decision.kind === "off") throw new Error(`Choose a ${label} Decision Model in Connection Settings.`);
 		if (decision.kind === "unavailable") throw new Error(`${decision.reason} Check the ${label} Decision Model in Connection Settings.`);
 		const { request, fits } = decisionRequest(decision.decision, state, questions);
 		if (!fits) throw new Error(`The state sent to the ${label} Decision Model exceeds its token limit.`);
-		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal });
+		return requestDecisions({ request, questions, selection: decision.decision, fetch, signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]) });
 	},
 	embed: (texts, configuration, options) =>
 		embedTexts(database, texts, configuration, { cache: options?.cache, fetch, signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]) }),

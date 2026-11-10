@@ -1,6 +1,7 @@
 import { skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { loadConversation, type ConversationSummary } from "./conversation";
 import { variantTextKey } from "./story/variant-text";
+import { boxVersionsBuilt, loadBoxVersions } from "./box-windows/registry";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
 
@@ -34,10 +35,19 @@ const adoptConversation = (client: QueryClient, incoming: ConversationSummary | 
 	return incoming !== null && current !== null && current.revision > incoming.revision ? current : incoming;
 };
 
+// @approved
+//  A summary is published once this client has built every Box version the
+// Chat pins, so no surface reads it before its versions resolve; one that
+// needs a version built waits for it, and the revision check keeps a newer
+// summary published meanwhile.
 export const publishConversation = (client: QueryClient, conversation: ConversationSummary) => {
 	const queryKey = conversationKey(conversation.id);
-	void client.cancelQueries({ queryKey });
-	return client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
+	const publish = () => {
+		void client.cancelQueries({ queryKey });
+		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
+	};
+	if (boxVersionsBuilt(conversation)) publish();
+	else void loadBoxVersions(conversation).then(publish);
 };
 
 export const conversationQuery = (client: QueryClient, id: number, owner?: AbortSignal) => ({
@@ -47,6 +57,7 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
 		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
+		if (incoming !== null) await loadBoxVersions(incoming);
 		return adoptConversation(client, incoming, id);
 	},
 });

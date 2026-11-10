@@ -71,6 +71,8 @@ export type PromptContextEntry = {
 export interface CompilePromptInput {
 	/** What each Box with an enabled block contributed, captured before compilation. */
 	boxes: BoxItems;
+	/** The Boxes whose captured version renders its block with no items. */
+	alwaysRender?: ReadonlySet<string>;
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];

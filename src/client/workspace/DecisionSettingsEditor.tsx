@@ -13,29 +13,30 @@ import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
 import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT, type DecisionSelection } from "../../shared/contract/decision-model";
 
-type Settings = DecisionSelection & { revision: number };
+type Revisioned = { revision: number };
+type Settings = DecisionSelection & Revisioned;
 type SaveOutcome<S> = RequestOutcome<{ settings: S }, { outcome: "conflict"; currentSettings: S } | { outcome: "invalid"; reason: string } | { outcome: "not-found" }>;
 type Read<S> = { settings: S | null; loading: boolean; error: string | null };
 
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
-const draftOf = <S extends Settings>({ revision: _revision, ...draft }: S): Omit<S, "revision"> => draft;
-const revisioned = <S extends Settings>(settings: S) => ({ value: draftOf(settings), revision: settings.revision });
+const draftOf = <S extends Revisioned>({ revision: _revision, ...draft }: S): Omit<S, "revision"> => draft;
+const revisioned = <S extends Revisioned>(settings: S) => ({ value: draftOf(settings), revision: settings.revision });
 const same = <T,>(left: T, right: T) => JSON.stringify(left) === JSON.stringify(right);
 
-/** @approved The draft and commands a revisioned Decision Model settings editor reads and writes. */
-export type SettingsDraft<S extends Settings> = Read<S> & {
+/** @approved The draft and commands a revisioned model settings editor reads and writes. */
+export type SettingsDraft<S extends Revisioned> = Read<S> & {
 	draft: Omit<S, "revision"> | null;
 	pending: boolean;
 	dirty: boolean;
 	conflict: boolean;
 	reload: () => void;
-	update: (patch: Partial<DecisionSelection> | Partial<Omit<S, "revision">>) => void;
+	update: (patch: Partial<Omit<S, "revision">>) => void;
 	discard: () => void;
 	keepMine: () => void;
 	save: () => Promise<boolean>;
 };
 
-export function useSettingsDraft<S extends Settings>(
+export function useSettingsDraft<S extends Revisioned>(
 	name: string,
 	load: () => Promise<S>,
 	apply: (command: Omit<S, "revision"> & { type: "apply"; expectedRevision: number }) => Promise<SaveOutcome<S>>,
@@ -70,7 +71,7 @@ export function useSettingsDraft<S extends Settings>(
 		reload: () => { setRead((current) => ({ ...current, loading: true, error: null })); void reload(); },
 		update: (patch) => {
 			// @approved
-			// SAFETY: S extends DecisionSelection, so a patch of S's own fields keeps the draft's shape.
+			// SAFETY: a patch of S's own fields keeps the draft's shape.
 			editor.update((current) => ({ ...current, ...patch }) as Omit<S, "revision">);
 			setRead((current) => ({ ...current, error: null }));
 		},
@@ -95,6 +96,9 @@ export function DecisionSettingsEditor<S extends Settings>({ editor, id, title, 
 	const connections = useConnectionSettingsQuery({ refreshOnOpen: true });
 	useSaveGuard({ dirty: editor.dirty, saving: editor.pending, save: editor.save, discard: editor.discard });
 	const { settings, draft } = editor;
+	// @approved
+	// SAFETY: S extends DecisionSelection, so a patch of its fields is a patch of S's own.
+	const update = editor.update as (patch: Partial<DecisionSelection>) => void;
 	return (
 		<>
 			<div className="panel-body settings-panel-body">
@@ -114,7 +118,7 @@ export function DecisionSettingsEditor<S extends Settings>({ editor, id, title, 
 								<p className="text-xs text-destructive" role="alert">Connection Settings could not be loaded.</p>
 								<Button type="button" size="sm" variant="outline" onClick={() => void connections.refetch()}>Try again</Button>
 							</div> : <Field label="Decision Model" helper={pickerHelper}>
-								<DecisionModelPicker selection={draft} onChange={editor.update} label={pickerLabel} />
+								<DecisionModelPicker selection={draft} onChange={update} label={pickerLabel} />
 							</Field>}
 							<NumberGroup title="Decision Model state" description={stateDescription}>
 								<NumberRow
@@ -123,7 +127,7 @@ export function DecisionSettingsEditor<S extends Settings>({ editor, id, title, 
 									min={MIN_DECISION_STATE_TOKEN_LIMIT}
 									step={1}
 									value={draft.decisionStateTokenLimit}
-									onChange={(decisionStateTokenLimit) => editor.update({ decisionStateTokenLimit })}
+									onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })}
 								/>
 							</NumberGroup>
 							{children?.(draft)}

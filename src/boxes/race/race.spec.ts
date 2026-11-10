@@ -15,11 +15,12 @@ test("an Auto race retains swiped outcomes, re-rolls a Stretch, and ends after R
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
 	const window = page.getByRole("dialog", { name: "Race", exact: true });
-	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
-	await window.getByRole("button", { name: "Fill field" }).click();
-	await expect(window.getByRole("list", { name: "Race field" }).getByRole("listitem")).toHaveCount(8);
-	await window.getByRole("button", { name: "Start race" }).click();
-	await expect(window.getByRole("button", { name: "New race" })).toBeVisible();
+	const ui = window.frameLocator("iframe");
+	await ui.getByRole("spinbutton", { name: "Distance (m)" }).fill("800");
+	await ui.getByRole("button", { name: "Fill field" }).click();
+	await expect(ui.getByRole("list", { name: "Race field" }).getByRole("listitem")).toHaveCount(8);
+	await ui.getByRole("button", { name: "Start race" }).click();
+	await expect(ui.getByRole("button", { name: "New race" })).toBeVisible();
 	await window.getByRole("button", { name: "Minimize Race" }).click();
 	const dock = page.getByRole("button", { name: /^Race: / });
 	let passage = 0;
@@ -84,20 +85,20 @@ test("an Auto race retains swiped outcomes, re-rolls a Stretch, and ends after R
 	await expect(page.getByRole("complementary", { name: "Prompt Plan preview" }).getByText(/^Race ·/)).toHaveCount(0);
 	await accept();
 	await dock.click();
-	await window.getByRole("button", { name: "New race" }).click();
-	await expect(window.getByRole("button", { name: "Fill field" })).toBeEnabled();
-	await expect(window.getByRole("list", { name: "Race field" }).getByRole("listitem")).toHaveCount(0);
+	await ui.getByRole("button", { name: "New race" }).click();
+	await expect(ui.getByRole("button", { name: "Fill field" })).toBeEnabled();
+	await expect(ui.getByRole("list", { name: "Race field" }).getByRole("listitem")).toHaveCount(0);
 });
 
 test("New race replaces a running race whose Auto draft is invalid", async ({ page }) => {
 	await page.goto("/");
 	await insertBox(page, "Race");
 	await page.getByRole("button", { name: "Race", exact: true }).click();
-	const window = page.getByRole("dialog", { name: "Race", exact: true });
-	await window.getByRole("spinbutton", { name: "Distance (m)" }).fill("400");
-	await window.getByRole("button", { name: "Fill field" }).click();
-	await window.getByRole("button", { name: "Start race" }).click();
-	await window.getByRole("radio", { name: "Until…" }).click();
-	await window.getByRole("button", { name: "New race" }).click();
-	await expect(window.getByRole("button", { name: "Start race" })).toBeVisible();
+	const ui = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
+	await ui.getByRole("spinbutton", { name: "Distance (m)" }).fill("400");
+	await ui.getByRole("button", { name: "Fill field" }).click();
+	await ui.getByRole("button", { name: "Start race" }).click();
+	await ui.getByRole("radio", { name: "Until…" }).click();
+	await ui.getByRole("button", { name: "New race" }).click();
+	await expect(ui.getByRole("button", { name: "Start race" })).toBeVisible();
 });

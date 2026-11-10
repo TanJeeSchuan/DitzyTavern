@@ -1,0 +1,38 @@
+/* @approved A Box frame's base styles, after the host's theme tokens: the window's surface shows through, and plain controls look like the host's own, so guest markup needs no stylesheet to fit in. */
+html,
+body {
+	margin: 0;
+	background: transparent;
+	font-size: 0.875rem;
+	line-height: 1.4;
+}
+
+button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	height: 2rem;
+	padding: 0 0.625rem;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	font: inherit;
+	font-weight: 500;
+}
+
+button:not(:disabled):hover {
+	background: var(--primary-hover);
+}
+
+input,
+select,
+textarea {
+	padding: 0.25rem 0.5rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	background: var(--surface);
+	color: var(--foreground);
+	font: inherit;
+}

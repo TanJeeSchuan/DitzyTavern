@@ -1,3 +1,4 @@
+import { boxDescriptor } from "../../shared/contract/box";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -21,7 +22,7 @@ const addSource = (database: Database, conversationId: number, position: number,
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: conversationId, position, timestamp: "2026-09-29T00:00:00Z", author_name: "Alice" }).returning().get();
 	const variant = db.insert(messageVariantTable).values({ message_id: message.id, position: 0, timestamp: message.timestamp, content: "I promised Bob a key.", selected }).returning().get();
-	writeAutomaticRecord(db, "memory", readBoxLifecycles(db, conversationId).memory!.instance, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
+	writeAutomaticRecord(db, boxDescriptor("memory"), readBoxLifecycles(db, conversationId).memory!.instance, variant.id, { claims: [memory(message.id, people)] }, sha256(variant.content));
 	return { messageId: message.id, variantId: variant.id };
 };
 
