@@ -14,7 +14,6 @@ import {
 	generationReplayTable,
 	messageTable,
 	messageVariantTable,
-	participantTable,
 } from "../database/schema";
 import {
 	connectConversationDatabase,
@@ -70,14 +69,10 @@ export function readActiveGenerationDetailsFromConnection(
 	const row = active ?? retained;
 	if (row === undefined) return undefined;
 	if (findConversation(db, conversationId) === undefined) return undefined;
-	const humanName = row.captured_human_name.length > 0
-		? row.captured_human_name
-		: db.select({ name: participantTable.name }).from(participantTable)
-			.where(eq(participantTable.id, row.human_participant_id)).get()?.name ?? "";
 	const captured = db.select({ capture: generationCaptureTable.capture }).from(generationCaptureTable)
 		.where(eq(generationCaptureTable.generation_id, row.id)).get();
 	// @approved
-	//  A Generation accepted before migration 0030 has no capture to inspect.
+	//  Migration 0035 clears captures while retaining their active/replay rows.
 	if (captured === undefined) return undefined;
 	const capture = decodeGenerationCapture(captured.capture);
 	const loreActivation = variantDataCodecs.loreActivation.decode(row.lore_activation_json);
@@ -90,7 +85,7 @@ export function readActiveGenerationDetailsFromConnection(
 		status: "terminal_status" in row ? row.terminal_status : "active",
 		intent: decodeStoredGenerationIntent(row.generation_intent_json),
 		participants: {
-			human: { id: row.human_participant_id, name: humanName },
+			human: { id: row.human_participant_id, name: row.captured_human_name },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
 		modelId: capture.modelId,

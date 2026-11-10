@@ -415,6 +415,7 @@ describe("Resumable generation transport", () => {
 			humanContent: "Keep the recovered scene.",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
+			capturedHumanName: human.name,
 			capturedModelName: model.name,
 		promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },

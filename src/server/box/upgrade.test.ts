@@ -243,7 +243,7 @@ for (const upgraded of [false, true]) {
 		const [human, model] = readConversationSummary(database, chat.id)!.cast; // @approved Created above.
 		const accepted = acceptConversationTailGeneration(database, {
 			seed: "seed", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision, timestamp: "2026-11-05T00:00:00.000Z", // @approved Created above.
-			humanContent: "Tip it.", humanParticipantId: human!.id, modelParticipantId: model!.id, capturedModelName: model!.name, // @approved The Chat has both seats.
+			humanContent: "Tip it.", humanParticipantId: human!.id, modelParticipantId: model!.id, capturedHumanName: human!.name, capturedModelName: model!.name, // @approved The Chat has both seats.
 			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { tally: { instance: instanceOf(chat.id), version: box.v1, record: { coins: 4 } } },
 		});

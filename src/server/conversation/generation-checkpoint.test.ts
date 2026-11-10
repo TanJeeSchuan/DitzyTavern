@@ -29,7 +29,7 @@ describe("Generation checkpoints", () => {
 		});
 		const accepted = acceptConversationTailGeneration(database, {
 			seed: "seed", conversationId: created.id, expectedRevision: created.revision, timestamp: "2026-10-25T00:00:00.000Z",
-			humanContent: "Go on.", humanParticipantId: created.cast[0]!.id, modelParticipantId: created.cast[1]!.id, capturedModelName: "Maren",
+			humanContent: "Go on.", humanParticipantId: created.cast[0]!.id, modelParticipantId: created.cast[1]!.id, capturedHumanName: created.cast[0]!.name, capturedModelName: "Maren",
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
 		});

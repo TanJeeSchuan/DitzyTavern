@@ -514,15 +514,14 @@ const captureConfigurationFromPreparation = (
 // retained.
 /** @approved
  * The shared Generation-start capture every lifecycle builds: the
- * complete compiled Generation Plan, the retained writing context, the Control
- * pair, the model author stamp, and the provenance capture. The lifecycle
+ * complete compiled Generation Plan, the Control pair, the model author stamp,
+ * and the provenance capture. The lifecycle
  * facts of one kind ride on the same Generation Target union.
  */
 export interface CapturedGeneration {
 	readonly target: CapturedTarget;
 	readonly preparation: Preparation;
 	readonly plan: GenerationPlan;
-	readonly context: readonly PromptContextEntry[];
 	readonly humanParticipant: ParticipantPreview;
 	readonly author: {
 		readonly participantId: number;
@@ -539,9 +538,8 @@ export interface CapturedGeneration {
 }
 
 /** @approved
- * Assemble the shared Generation-start capture: the complete compiled
- * Generation Plan, the retained writing context, the Control pair, the model
- * author stamp, and the provenance capture.
+ * Assemble the compiled Generation Plan, Control pair, model author stamp
+ * and provenance into the shared Generation-start capture.
  */
 const toCapturedGeneration = (
 	preparation: Preparation,
@@ -552,7 +550,6 @@ const toCapturedGeneration = (
 	target: preparation.target,
 	preparation,
 	plan,
-	context: plan.budget.retainedContext,
 	humanParticipant: { id: derivation.human.id, name: derivation.human.name },
 	author: {
 		participantId: derivation.model.id,

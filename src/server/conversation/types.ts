@@ -302,7 +302,7 @@ export interface GenerationAcceptanceCapture {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
+	capturedHumanName: string;
 	capturedModelName: string;
 	modelId: string;
 	promptPlan: PromptPlan;

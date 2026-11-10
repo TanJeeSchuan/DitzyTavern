@@ -127,7 +127,7 @@ test("fork is refused during an Active Generation", () => {
 	const { source, message } = createSource();
 	acceptConversationTailGeneration(database, {
 		seed: "seed", conversationId: source.id, expectedRevision: 1, timestamp: "2026-01-01T00:01:00Z",
-		humanContent: "Go on", humanParticipantId: source.cast[0]!.id, modelParticipantId: source.cast[1]!.id, capturedModelName: "Model",
+		humanContent: "Go on", humanParticipantId: source.cast[0]!.id, modelParticipantId: source.cast[1]!.id, capturedHumanName: source.cast[0]!.name, capturedModelName: "Model",
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
 	});

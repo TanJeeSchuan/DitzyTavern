@@ -53,6 +53,7 @@ describe("Generation Stop route mapping", () => {
 			timestamp,
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
+			capturedHumanName: input.human.name,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
