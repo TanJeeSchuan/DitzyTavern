@@ -5,7 +5,8 @@ import { boxMetadata, type BoxId } from "../../shared/contract/box";
 import { type BoxValue } from "../../shared/contract/box-value";
 import { hasMoves, moveLabel, replaceMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { BoxBoundary, BoxIcon } from "../box-windows/BoxBoundary";
-import { boxClients } from "../box-windows/registry";
+import { chatBoxClients, ChatPins } from "../box-windows/registry";
+import { useContext } from "react";
 
 function MoveChip({ id, index, box, icon, label, disabled, onRemove }: {
 	id: string; index: number; box: BoxId; icon: LucideIcon; label: string; disabled: boolean; onRemove?: (() => void) | undefined;
@@ -44,10 +45,11 @@ function MoveList<Move>({ name, box, icon, list, label, onChange, disabled }: {
 
 /** @approved A Message's Moves per Box. With `onChange` they can be dragged into another order or removed. */
 export function MoveChips({ moves, onChange, disabled = false }: { moves: BoxMoves; onChange?: ((moves: BoxMoves) => void) | undefined; disabled?: boolean }) {
+	const pins = useContext(ChatPins);
 	if (!hasMoves(moves)) return null;
 	return <div className="move-chips">
-		{boxClients().map(([id, { icon, descriptor }]) => descriptor.moves === undefined ? null : <BoxBoundary key={id} box={id}>
-			<MoveList<BoxValue> name={`${boxMetadata(id).label} Moves`} box={id} icon={icon} list={moves[id] ?? []} label={(move) => moveLabel(id, move)} disabled={disabled}
+		{chatBoxClients(pins).map(([id, { icon, descriptor }]) => descriptor.moves === undefined ? null : <BoxBoundary key={id} box={id}>
+			<MoveList<BoxValue> name={`${boxMetadata(id).label} Moves`} box={id} icon={icon} list={moves[id] ?? []} label={(move) => moveLabel(descriptor, move)} disabled={disabled}
 				onChange={onChange && ((next) => onChange(replaceMoves(moves, id, next)))} />
 		</BoxBoundary>)}
 	</div>;

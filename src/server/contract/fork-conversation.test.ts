@@ -4,9 +4,9 @@ import { executeConversationCommand, readConversationSummary, readChatHistory, d
 import { forkConversation } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { Type } from "@sinclair/typebox";
-import { installedBoxes, installBoxes } from "../../shared/contract/box";
-import { VariantId } from "../../shared/contract/box-row-reference";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { builtInBoxes, loadBoxes } from "../box/registry";
 import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contract";
 import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
 import { advanceRace } from "../../boxes/race/logic-engine";
@@ -239,20 +239,29 @@ test("a trace without its Box schema fails without creating a fork", () => {
 });
 
 
-test("a record citing a trimmed Variant fails with the Box and path", () => {
+test("a record citing a trimmed Variant fails with the Box and path", async () => {
 	const { source, message } = createSource();
 	const variant = database.query<{ id: number }, [number]>("SELECT id FROM message_variant WHERE message_id = ?").get(message.id)!;
 	database.query("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 2, 'Alternative', '2026-01-01', 0)").run(message.id);
 	const trimmed = database.query<{ id: number }, [number]>("SELECT id FROM message_variant WHERE message_id = ? AND selected = 0").get(message.id)!;
-	const boxes = [...installedBoxes().values()];
-	const memory = boxes.find(({ metadata }) => metadata.id === "memory")!;
-	// eslint-disable-next-line ditzy/no-contract-definition-outside-contract -- This is a test Box record schema.
-	installBoxes(boxes.map((box) => box === memory ? { ...box, descriptor: { ...memory.descriptor!, record: Type.Object({ citation: VariantId }) } } : box));
+	// @approved
+	//  A plugin whose record cites a Variant, loaded beside the built-ins: Fork reads each Box at the version its Chat runs, from the server's registry.
+	const plugins = join(".scratch", `fork-${crypto.randomUUID()}`);
+	mkdirSync(join(plugins, "citer"), { recursive: true });
+	writeFileSync(join(plugins, "citer", "descriptor.json"), JSON.stringify({ id: "citer", sdk: 2, label: "Citer", summary: "Cites.", role: "system", startsEnabled: false, instructions: "",
+		record: { type: "object", properties: { citation: { type: "integer", rowReference: "variant" } }, required: ["citation"], additionalProperties: false },
+		window: { icon: "box", size: { width: 10, height: 10 } } }));
+	writeFileSync(join(plugins, "citer", "logic.js"), "export default { records: { initial: null, fold: (_, record) => record } };");
+	writeFileSync(join(plugins, "citer", "ui.js"), "host.render('');");
+	await loadBoxes([builtInBoxes, plugins]);
 	try {
-		database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:memory', 'record:test', ?)").run(variant.id, JSON.stringify({ writer: { citation: trimmed.id } }));
-		expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: true })).toThrow(/memory.*\/writer\/citation/);
+		database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:citer', 'record:test', ?)").run(variant.id, JSON.stringify({ writer: { citation: trimmed.id } }));
+		expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: true })).toThrow(/citer.*\/writer\/citation/);
 		expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
-	} finally { installBoxes(boxes); }
+	} finally {
+		await loadBoxes([builtInBoxes]);
+		rmSync(plugins, { recursive: true, force: true });
+	}
 });
 
 test("a non-trimmed fork keeps every Variant while selecting the requested one", () => {

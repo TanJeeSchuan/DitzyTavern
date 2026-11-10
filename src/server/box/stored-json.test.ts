@@ -43,7 +43,7 @@ test.each(["{", '{"automatic":{"score":"wrong"}}'])("stored record errors locate
 test.each(["{", '[{"type":"invalid"}]'])("stored Moves errors locate invalid JSON %s", (value) => {
 	database.query("INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (900, ?, 0, 'now')").run(conversationId);
 	database.query("INSERT INTO messages_data (message_id, namespace, key, value) VALUES (900, 'box:race', 'moves', ?)").run(value);
-	expect(() => readMessageMoves(drizzle(database), [900])).toThrow("Message 900 box:race moves");
+	expect(() => readMessageMoves(drizzle(database), conversationId, [900])).toThrow("Message 900 box:race moves");
 });
 
 test.each(["enabled", "instance", "setup"])("a Box keeps no Chat value under the host's %s key", (key) => {

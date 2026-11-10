@@ -51,7 +51,9 @@ const readLines = async (body: NonNullable<Response["body"]>, each: (entry: Auth
 // input and result. Each scenario the agent runs is a line that shows the
 // run, turn by turn, in the Scenario panel beside it; a new run is shown as
 // it arrives. Install publishes the Box app-wide once the latest run passed,
-// after which the Box manager lists it to add to a Chat. Sessions are saved:
+// after which the Box manager lists it to add to a Chat; a revision the agent
+// checks again installs as the Box's next version, which Chats already
+// holding the Box take only through their own Update. Sessions are saved:
 // the start screen lists them to open again, `reopen` picks one, and opening
 // replays its log. Closing the panel releases the session and `/discard`
 // deletes it; Escape stops a running message instead of closing.
@@ -71,7 +73,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 	const [running, setRunning] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [startError, setStartError] = useState<string | null>(null);
-	const [installed, setInstalled] = useState<string | null>(null);
+	const [installed, setInstalled] = useState<{ readonly label: string; readonly run: string | undefined } | null>(null);
 	const [steps, setSteps] = useState<StepChoice>("40");
 	const [paused, setPaused] = useState<number | null>(null);
 	const [resuming, setResuming] = useState(false);
@@ -119,7 +121,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 	const before = shown === undefined || shown.start.truncated ? undefined
 		: runs.slice(0, shownAt).findLast((run) => !run.start.truncated && run.start.input === shown.start.input)?.scenario;
 	const installBlocker = running || pending ? "Wait for the message to finish."
-		: installed !== null ? `${installed} is installed.`
+		: installed !== null && installed.run === runs.at(-1)?.start.id ? `${installed.label} is installed.`
 		: runs.at(-1)?.scenario?.ok !== true ? "Install needs the latest scenario to pass." : undefined;
 
 	// @approved
@@ -145,7 +147,6 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 					if (entry.type === "scenario") setSelected(entry.id);
 				});
 				setEntries(replayed);
-				if (chosen.installed) setInstalled(chosen.label ?? chosen.box);
 			}
 			setSession({ session: started.session, candidate: started.candidate });
 		} catch (error) {
@@ -202,7 +203,7 @@ export function CreateBox({ open, onOpenChange, onInstalled, reopen }: {
 			if (result.outcome === "refused") add("error", [result.reason, ...result.diagnostics].join(" "));
 			else {
 				await onInstalled(result.id);
-				setInstalled(result.label);
+				setInstalled({ label: result.label, run: runs.at(-1)?.start.id });
 				add("note", `${result.label} is installed. Add it to a Chat from the Box manager.`);
 			}
 		} catch (error) {

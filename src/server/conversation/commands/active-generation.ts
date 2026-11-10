@@ -2,6 +2,7 @@ import { durableOutcome, terminalOutcome, type TerminalOutcome } from "../../../
 import { decodeStoredGenerationIntent } from "../generation-state";
 import { Value } from "@sinclair/typebox/value";
 import { boxRecords } from "../../../shared/contract/box-generation";
+import { readBoxVersions } from "../../box/version-pin";
 import { boxReference } from "../../../shared/contract/box";
 import { recordKey } from "../../box/records";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../../shared/variant-data-codecs";
@@ -256,6 +257,7 @@ function commitDurableTerminalGenerationInTransaction(
 	if (variant === undefined) {
 		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
 	}
+	const pins = readBoxVersions(db, active.conversation_id);
 	db.update(messageVariantTable)
 		.set({ content: input.content, timestamp: input.timestamp })
 		.where(eq(messageVariantTable.id, variant.id))
@@ -267,9 +269,12 @@ function commitDurableTerminalGenerationInTransaction(
 		//  Each Box record was checked against its Box's schema when it was
 		// captured, so settling writes it as captured, even for a Box that is
 		// no longer loaded: the record stays stored as the Box's other data
-		// does, and settling never depends on the registry.
-		suppliedData: [...input.suppliedData, ...Object.entries(Value.Parse(boxRecords, JSON.parse(active.box_records_json))).map(([id, { instance, record }]) =>
-			({ namespace: boxReference(id), key: recordKey(instance), value: JSON.stringify({ automatic: record }) }))],
+		// does, and settling never depends on the registry. A record captured
+		// under a version the Chat no longer pins is dropped, while the prose
+		// still lands.
+		suppliedData: [...input.suppliedData, ...Object.entries(Value.Parse(boxRecords, JSON.parse(active.box_records_json)))
+			.filter(([id, { version }]) => version === pins[id])
+			.map(([id, { instance, record }]) => ({ namespace: boxReference(id), key: recordKey(instance), value: JSON.stringify({ automatic: record }) }))],
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
 		boxTracesData: terminalBoxTracesData(active),

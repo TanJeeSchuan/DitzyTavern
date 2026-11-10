@@ -24,7 +24,7 @@ function readPhone({ db, conversationId, summary, history }: BoxWindowRead<undef
 	const human = summary.cast.find(({ id }) => id === summary.control.humanParticipantId);
 	if (human === undefined) return { conversationId, revision: summary.revision, human: null, threads: [] };
 	const names = phoneNames(summary.cast, human);
-	const moves = readMessageMoves(db, history.messages.map(({ id }) => id));
+	const moves = readMessageMoves(db, conversationId, history.messages.map(({ id }) => id));
 	// @approved
 	//  A sent text reads from the Phone's own Moves, rendered as the model
 	//  reads them while the Phone runs, so the window keeps them while it is

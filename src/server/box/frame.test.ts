@@ -13,7 +13,7 @@ const definition = (name: string, hash?: string) => ({
 const frameIn = (database: Database) => {
 	const chat = createConversationWithHistory(database, { name: "Here", participants: [{ definition: definition("Ann") }] });
 	const instance = insertBox(database, chat.id, "race");
-	return { chat, instance, token: openBoxFrame({ box: "race", conversationId: chat.id, instance }) };
+	return { chat, instance, token: openBoxFrame({ box: "race", conversationId: chat.id, instance, version: undefined }) };
 };
 
 // @approved
@@ -26,7 +26,7 @@ test("a frame serves its own Chat's Cast Portraits and its Box's uploads, uncach
 	const [own, elsewhere, stray] = await Promise.all([1, 2, 3].map(async (width) => (await uploadImage(database, pngFixture({ width }))).hash));
 	const chat = createConversationWithHistory(database, { name: "Here", participants: [{ definition: definition("Ann", own) }, { definition: definition("Bo") }] });
 	createConversationWithHistory(database, { name: "There", participants: [{ definition: definition("Cy", elsewhere) }] });
-	const token = openBoxFrame({ box: "race", conversationId: chat.id, instance: insertBox(database, chat.id, "race") });
+	const token = openBoxFrame({ box: "race", conversationId: chat.id, instance: insertBox(database, chat.id, "race"), version: undefined });
 	const served = (hash: string | undefined) => boxFrameImage(database, token, hash!)?.status;
 
 	expect([served(own), served(elsewhere), served(stray)]).toEqual([200, undefined, undefined]);

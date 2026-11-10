@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { serverBox } from "../../server/box/registry";
+import { serverBoxes } from "../../server/box/registry";
 import { advanceRace, foldRace } from "./logic-engine";
 import { fillRaceField, initialRaceSetup } from "./shared-data";
 import type { RaceRecord, RaceState } from "./shared";
@@ -22,7 +22,7 @@ test("200 Stretches of an 18-Runner race fold through the sandbox in one call wi
 		const record = stretches[index % stretches.length]!; // @approved The race ran Stretches, so the list is not empty.
 		return { ...record, stretch: index + 1, entries: record.entries.map((entry) => ({ ...entry, stretch: index + 1 })) };
 	});
-	const folded = serverBox("race")?.records?.foldAll?.(null, records, setup);
+	const folded = serverBoxes().get("race")?.box.records?.foldAll?.(null, records, setup);
 	expect(folded).toMatchObject({ stretch: 200, standings: records[199]!.standings });
 	expect(JSON.stringify(folded)).toBe(JSON.stringify(records.reduce<RaceState | null>((current, record) => foldRace(current, record, setup), null)));
 });

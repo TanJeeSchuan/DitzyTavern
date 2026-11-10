@@ -12,8 +12,10 @@ type Part = keyof typeof SANDBOXED_BUNDLE_BYTES;
 const transpiler = new Bun.Transpiler({ loader: "js" });
 const packagePrefix = "package:";
 const bundles = new Set(["logic.bundle.js", "ui.bundle.js"]);
-/** @approved A module the build may load from the Box's folder: a `.js` or `.mjs` file, not a package kept in `deps/` and not a bundle. */
-const isModule = (path: string) => /\.m?js$/.test(path) && !path.startsWith("deps/") && !bundles.has(path);
+/** @approved A file the build writes from the rest: a package kept in `deps/`, or a bundle. */
+export const isBuildOutput = (path: string) => path.startsWith("deps/") || bundles.has(path);
+/** @approved A module the build may load from the Box's folder: a `.js` or `.mjs` file that is not a build output. */
+const isModule = (path: string) => /\.m?js$/.test(path) && !isBuildOutput(path);
 
 // @approved
 //  Resolves and loads every module of a sandboxed Box's build itself, the

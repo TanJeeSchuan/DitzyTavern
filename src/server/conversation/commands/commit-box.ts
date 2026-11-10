@@ -8,6 +8,7 @@ import { characterTable } from "../../database/schema";
 import { putCharacterValue, putLibraryValue, putParticipantValue, readCharacterRevisions, readLibraryValues } from "../../box/stored-value";
 import { InvalidConversationCommandError } from "../errors";
 import { readActiveCast, requireBox, requireBoxInstance, requireParticipant, type ConversationDatabase } from "../internal";
+import { readBoxVersions } from "../../box/version-pin";
 import { setBoxSetup } from "./set-box-setup";
 
 type Owner = BoxDataWrite["owner"];
@@ -25,10 +26,15 @@ const sameOwner = (guard: BoxDataExpectation["owner"], owner: Owner) =>
 // and the source of someone in this Chat's Cast, and a Participant must
 // belong to this Chat; anything else is a typed invalid command, never a
 // silent orphan row. A Participant value must be JSON its declared schema
-// accepts, and each `expected` revision must still be current.
-export function commitBox(db: ConversationDatabase, input: { conversationId: number; box: BoxId; setup?: BoxValue; writes?: readonly BoxDataWrite[]; expected?: readonly BoxDataExpectation[] }) {
+// accepts, and each `expected` revision must still be current. A window
+// names the version its frame runs, and one that is not the version the Chat
+// pins is refused even at the current revision, so a window left open on an
+// earlier version writes nothing after an upgrade.
+export function commitBox(db: ConversationDatabase, input: { conversationId: number; box: BoxId; version?: string; setup?: BoxValue; writes?: readonly BoxDataWrite[]; expected?: readonly BoxDataExpectation[] }) {
 	const { conversationId, box, setup, writes = [], expected = [] } = input;
 	requireBoxInstance(db, conversationId, box);
+	if (readBoxVersions(db, conversationId)[box] !== input.version) throw new InvalidConversationCommandError(`This ${box} window runs a version this Chat no longer uses. Close it and open it again.`);
+	const { descriptor } = requireBox(db, conversationId, box);
 	const sources = new Set(readActiveCast(db, conversationId).flatMap(({ sourceCharacterId }) => sourceCharacterId ?? []));
 	for (const { owner, key, revision } of expected) {
 		if (owner.type === "character") {
@@ -42,9 +48,9 @@ export function commitBox(db: ConversationDatabase, input: { conversationId: num
 	for (const { owner, key, value } of writes) {
 		if (owner.type === "participant") {
 			requireParticipant(db, conversationId, owner.participantId);
-			const schema = requireBox(box).values?.participant?.[key];
+			const schema = descriptor.values?.participant?.[key];
 			if (schema !== undefined && !Value.Check(schema, parsedJson(value))) throw new InvalidConversationCommandError(`The ${box} Box's ${key} value does not match its schema.`);
-			putParticipantValue(db, box, owner.participantId, { key, value });
+			putParticipantValue(db, descriptor, owner.participantId, { key, value });
 			continue;
 		}
 		if (!expected.some((guard) => guard.key === key && sameOwner(guard.owner, owner))) throw new InvalidConversationCommandError(`A ${owner.type} write needs the revision it was read at in expected.`);

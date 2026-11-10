@@ -26,9 +26,12 @@ export const setBoxSetupAction = Type.Object({ type: Type.Literal("set-box-setup
 // guards the setup and Participant values; Library and Character values are
 // shared across Chats, so `expected` names each one's revision as last read,
 // 0 when it was absent, and every Library or Character write needs its own.
+// A versioned Box's window sends the version its frame runs, and the command
+// refuses one that is not the version the Chat pins.
 export const commitBoxAction = Type.Object({
 	type: Type.Literal("commit-box"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	setup: Type.Optional(boxValue),
 	writes: Type.Optional(Type.Array(boxDataWrite, { maxItems: 100 })),
 	expected: Type.Optional(Type.Array(boxDataExpectation, { maxItems: 100 })),
@@ -39,6 +42,11 @@ export const commitBoxAction = Type.Object({
 export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state"), box: Type.String(), state: boxState });
 
 // @approved
+//  Moves this Chat's pin of a versioned Box to `version`, `latest` or an
+// earlier one, once the upgrade check passes on the Chat's stored data.
+export const upgradeBoxAction = Type.Object({ type: Type.Literal("upgrade-box"), box: Type.String(), version: Type.String({ pattern: "^[0-9a-f]{64}$" }) });
+
+// @approved
 //  Sets one Variant's Writer override for a Box record. The command checks
 //  the record against that Box's schema before anything is written, so
 //  storage only ever holds decodable values. `expected` is the effective
@@ -46,10 +54,12 @@ export const setBoxStateAction = Type.Object({ type: Type.Literal("set-box-state
 //  records without a Conversation revision, so the command refuses an
 //  override once the slot no longer holds it.
 //  Reset removes the override and leaves the automatic record, if any, as the
-//  effective value.
+//  effective value. A versioned Box's timeline names the version it runs, and
+//  the command refuses one the Chat no longer pins.
 export const setBoxRecordAction = Type.Object({
 	type: Type.Literal("set-box-record"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	record: boxValue,
@@ -59,6 +69,7 @@ export const setBoxRecordAction = Type.Object({
 export const resetBoxRecordAction = Type.Object({
 	type: Type.Literal("reset-box-record"),
 	box: Type.String(),
+	version: Type.Optional(Type.String()),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 });

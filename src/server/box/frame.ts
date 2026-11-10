@@ -9,6 +9,7 @@ import { readActiveCast } from "../conversation";
 import { ingestImage, readImage, storeImage } from "../image";
 import { InvalidImageError } from "../image/errors";
 import { readBoxLifecycles } from "./setup";
+import { readBoxVersions } from "./version-pin";
 
 const client = join(import.meta.dir, "../../client");
 
@@ -31,13 +32,15 @@ const frameParts = () => parts ??= (async () => {
 
 // @approved
 //  Each frame instance the app opens gets its own token, bound here to one
-// Box, one Chat and the Box's insertion instance there: its document, its
-// image URLs and its uploads all name the token, so a guest can address no
-// other Box or Chat. The app closes the token when it tears the frame down,
-// and removing the Box ends the instance, so a token never outlives its
-// frame or comes back with a reinserted Box. Tokens live in memory, the
-// oldest dropped past the cap.
-type FrameBinding = { readonly box: BoxId; readonly conversationId: number; readonly instance: string };
+// Box, one Chat, the Box's insertion instance there and the version the
+// frame runs: its document, its image URLs and its uploads all name the
+// token, so a guest can address no other Box or Chat. The app closes the
+// token when it tears the frame down, removing the Box ends the instance,
+// and an upgrade moves the Chat off the version, so a token never outlives
+// its frame, comes back with a reinserted Box, or writes for a version the
+// Chat no longer runs. Tokens live in memory, the oldest dropped past the
+// cap.
+type FrameBinding = { readonly box: BoxId; readonly conversationId: number; readonly instance: string; readonly version: string | undefined };
 const frames = new Map<string, FrameBinding>();
 const MAX_FRAMES = 1000;
 export const openBoxFrame = (binding: FrameBinding) => {
@@ -47,10 +50,11 @@ export const openBoxFrame = (binding: FrameBinding) => {
 	return token;
 };
 export const closeBoxFrame = (token: string) => frames.delete(token);
-/** @approved The binding of a frame whose Box is still the instance it was opened for in its Chat. */
+/** @approved The binding of a frame whose Box is still the instance and the version it was opened for in its Chat. */
 const frameOf = (db: BunSQLiteDatabase, token: string) => {
 	const binding = frames.get(token);
-	return binding !== undefined && readBoxLifecycles(db, binding.conversationId)[binding.box]?.instance === binding.instance ? binding : undefined;
+	return binding !== undefined && readBoxLifecycles(db, binding.conversationId)[binding.box]?.instance === binding.instance
+		&& readBoxVersions(db, binding.conversationId)[binding.box] === binding.version ? binding : undefined;
 };
 const imagePath = (token: string) => `${boxFrameRoute}/${token}/images/`;
 

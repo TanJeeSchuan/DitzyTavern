@@ -2,7 +2,7 @@ import { parseStoredBoxJson } from "./stored-json";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxRecordSchema, boxReference, type BoxId, type BoxSetups } from "../../shared/contract/box";
+import { boxRecordSchema, boxReference, type BoxDescriptor, type BoxId, type BoxSetups } from "../../shared/contract/box";
 import { type BoxValue } from "../../shared/contract/box-value";
 import { boxRecordSlot, type DigestStatus, type SlotStatus } from "../../shared/contract/box-digest";
 import { messageVariantDataTable } from "../database/schema";
@@ -36,8 +36,8 @@ export const readRecordSlots = <Rec extends TSchema>(db: BunSQLiteDatabase, id: 
 			return [row.variantId, slot];
 		}));
 };
-const slotOf = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): RecordSlot<BoxValue> | undefined =>
-	readRecordSlots(db, id, boxRecordSchema(id), instance, [variantId]).get(variantId);
+const slotOf = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number): RecordSlot<BoxValue> | undefined =>
+	readRecordSlots(db, descriptor.id, boxRecordSchema(descriptor), instance, [variantId]).get(variantId);
 
 /** @approved The effective value of one Box record slot: the writer's override, else the automatic result. */
 export const effectiveRecord = <S extends RecordSlot>(slot: S | undefined): S["writer"] | S["automatic"] | undefined => slot?.writer ?? slot?.automatic;
@@ -56,13 +56,13 @@ export const slotStatus = (slot: RecordSlot | undefined, content: string): SlotS
 };
 
 // @approved
-//  One Box's record slots on the given Variants, for its instance, and its
-// state: the fold over their effective records, in Message order, from
-// `initial`, or undefined for a Box without a fold. A Box with `foldAll`
-// gets every effective record in one call. Generation capture, the window
-// reads and the digest status all fold this way.
-export const readBoxFold = (db: BunSQLiteDatabase, id: BoxId, { records }: HostBox, instance: string | undefined, setup: BoxValue | undefined, variantIds: readonly number[]) => {
-	const slots = records === undefined ? new Map<number, RecordSlot<BoxValue>>() : readRecordSlots(db, id, boxRecordSchema(id), instance, variantIds);
+//  One Box version's record slots on the given Variants, for its instance,
+// and its state: the fold over their effective records, in Message order,
+// from `initial`, or undefined for a Box without a fold. A Box with
+// `foldAll` gets every effective record in one call. Generation capture, the
+// window reads and the digest status all fold this way.
+export const readBoxFold = (db: BunSQLiteDatabase, { descriptor, box: { records } }: { readonly descriptor: BoxDescriptor; readonly box: HostBox }, instance: string | undefined, setup: BoxValue | undefined, variantIds: readonly number[]) => {
+	const slots = records === undefined ? new Map<number, RecordSlot<BoxValue>>() : readRecordSlots(db, descriptor.id, boxRecordSchema(descriptor), instance, variantIds);
 	const effective = variantIds.flatMap((variantId) => effectiveRecord(slots.get(variantId)) ?? []);
 	const state = records?.fold === undefined ? undefined
 		: records.foldAll === undefined ? effective.reduce((folded, record) => records.fold(folded, record, setup), records.initial)
@@ -76,10 +76,11 @@ export type BoxFolds = Readonly<Record<BoxId, ReturnType<typeof readBoxFold>>>;
 // @approved
 //  Only participating Boxes read and fold records for this Generation.
 export const readBoxFolds = (db: BunSQLiteDatabase, selectedVariantIds: readonly number[], setups: BoxSetups, boxes: ReturnType<typeof participatingBoxes>): BoxFolds =>
-	Object.fromEntries([...boxes].map(([id, { box, instance }]) => [id, readBoxFold(db, id, box, instance, setups[id], selectedVariantIds)]));
+	Object.fromEntries([...boxes].map(([id, box]) => [id, readBoxFold(db, box, box.instance, setups[id], selectedVariantIds)]));
 
-const updateSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, update: (slot: RecordSlot<BoxValue> | undefined) => RecordSlot<BoxValue> | undefined): void => {
-	const current = slotOf(db, id, instance, variantId);
+const updateSlot = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, update: (slot: RecordSlot<BoxValue> | undefined) => RecordSlot<BoxValue> | undefined): void => {
+	const { id } = descriptor;
+	const current = slotOf(db, descriptor, instance, variantId);
 	const next = update(current);
 	if (next === current) return;
 	if (next === undefined || (next.automatic === undefined && next.writer === undefined && next.error === undefined)) {
@@ -96,20 +97,20 @@ const updateSlot = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantI
 };
 
 /** @approved A successful digest clears the slot's error. */
-export const writeAutomaticRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue, source: string): void =>
-	updateSlot(db, id, instance, variantId, (slot) => ({ writer: slot?.writer, automatic: record, source }));
+export const writeAutomaticRecord = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, record: BoxValue, source: string): void =>
+	updateSlot(db, descriptor, instance, variantId, (slot) => ({ writer: slot?.writer, automatic: record, source }));
 
 /** @approved A failed digest keeps the slot's records, so a stale automatic result still folds. */
-export const writeDigestError = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, source: string, message: string): void =>
-	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
+export const writeDigestError = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, source: string, message: string): void =>
+	updateSlot(db, descriptor, instance, variantId, (slot) => ({ ...slot, error: { source, message } }));
 
 /** @approved A Writer override replaces the effective value without touching the automatic result or the prose. */
-export const writeWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number, record: BoxValue): void =>
-	updateSlot(db, id, instance, variantId, (slot) => ({ ...slot, writer: record }));
+export const writeWriterRecord = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number, record: BoxValue): void =>
+	updateSlot(db, descriptor, instance, variantId, (slot) => ({ ...slot, writer: record }));
 
 /** @approved Reset removes the Writer override; with no automatic result or error left the slot row goes away entirely. */
-export const resetWriterRecord = (db: BunSQLiteDatabase, id: BoxId, instance: string, variantId: number): void =>
-	updateSlot(db, id, instance, variantId, (slot) => slot?.writer === undefined ? slot : { automatic: slot.automatic, source: slot.source, error: slot.error });
+export const resetWriterRecord = (db: BunSQLiteDatabase, descriptor: BoxDescriptor, instance: string, variantId: number): void =>
+	updateSlot(db, descriptor, instance, variantId, (slot) => slot?.writer === undefined ? slot : { automatic: slot.automatic, source: slot.source, error: slot.error });
 
 export const readVariantSeeds = (db: BunSQLiteDatabase, variantIds: readonly number[]): Map<number, string> =>
 	variantIds.length === 0 ? new Map() : new Map(db

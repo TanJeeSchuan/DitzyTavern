@@ -24,7 +24,7 @@ afterEach(() => {
 // story reducer, wired per call exactly like the workspace does per render.
 
 const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes, forkedFrom: null,
+	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
 	background: null,
 	id: 1,
 	name: "Seaside Letters",

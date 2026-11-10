@@ -67,7 +67,7 @@ import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
 import { boxServices } from "../box/services";
-import { advanceBoxes, captureBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
+import { advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
 import { readBoxFolds } from "../box/records";
 import { humanMessageText, readMessageMoves } from "../box/moves";
 import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
@@ -306,12 +306,13 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
 	const siblingId = selected.target?.variant?.id;
-	const boxes = participatingBoxes(recipe.slots, readBoxLifecycles(db, input.conversationId));
+	const chat = chatBoxes(db, input.conversationId);
+	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
 	const hasReasoning = (id: number) => (readVariantData(db, [id], ["reasoning"]).get(id)?.reasoning?.length ?? 0) > 0;
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
-	const messageMoves = readMessageMoves(db, selected.messages.map(({ id }) => id));
+	const messageMoves = readMessageMoves(db, input.conversationId, selected.messages.map(({ id }) => id));
 	if (target.kind === "continuation") generationGate(db, input.conversationId, { type: "accept-continuation" });
 	if (target.kind === "sibling") {
 		const eligibility = deriveMessageSwipeEligibility(summary.playable, selected.target?.historicalContext ?? null, summary.cast.map((participant) => participant.id));
@@ -346,7 +347,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		prose: message.variant.content,
 		speakerName: message.author?.capturedName ?? null,
 		role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
-		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, summary.boxes),
+		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, chat, summary.boxes),
 	}]);
 	const derivation: GenerationDerivation = {
 		human,
@@ -357,13 +358,13 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
 	const staged = target.kind === "send" ? target.moves : undefined;
-	const invalid = staged === undefined ? undefined : boxMovesError(staged);
+	const invalid = staged === undefined ? undefined : boxMovesError(staged, (id) => chat.get(id)?.descriptor);
 	if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
 	const submitted = captured.kind === "send" && captured.reuseHumanMessageId === undefined ? captured : undefined;
 	const closed = submitted !== undefined
 		? Object.keys(staged ?? {}).find((id) => summary.boxes[id] !== "enabled") : undefined;
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
-	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, summary.boxes);
+	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, chat, summary.boxes);
 	const scanMessages = rendered.map(({ message, content }) => ({ id: message.id, content }));
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
@@ -451,9 +452,9 @@ export async function prepareGenerationInputsAsync(
 		...preparation,
 		lore,
 		boxes,
-		boxRecords: Object.fromEntries(boxInputs.flatMap(({ id, instance, reference }) => {
+		boxRecords: Object.fromEntries(boxInputs.flatMap(({ id, instance, version, reference }) => {
 			const record = boxes[reference]?.record;
-			return record === undefined ? [] : [[id, { instance, record }]];
+			return record === undefined ? [] : [[id, { instance, ...version !== undefined && { version }, record }]];
 		})),
 		fingerprint: generationPreparationFingerprint(snapshot),
 	};

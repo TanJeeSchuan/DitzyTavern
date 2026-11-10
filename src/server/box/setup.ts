@@ -2,9 +2,10 @@ import { parseStoredBoxJson } from "./stored-json";
 import { Type } from "@sinclair/typebox";
 import { and, eq, inArray } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { boxDescriptors, boxesWith, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
+import { boxDescriptors, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { conversationDataTable } from "../database/schema";
+import { chatBoxes } from "./registry";
 
 const SETUP_KEY = "setup";
 const ENABLED_KEY = "enabled";
@@ -53,6 +54,7 @@ export const readBoxStates = (db: BunSQLiteDatabase, conversationId: number): Bo
 export const boxSetupEntry = (id: BoxId, setup: BoxValue) =>
 	({ namespace: boxReference(id), key: SETUP_KEY, value: JSON.stringify(setup) });
 
+/** @approved Each Box's setup in this Chat, decoded by the version the Chat runs; a Box with no stored setup reads its `initial`. */
 export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): BoxSetups => {
 	const stored = new Map(db
 		.select({ namespace: conversationDataTable.namespace, value: conversationDataTable.value })
@@ -60,10 +62,10 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		.where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.key, SETUP_KEY)))
 		.all()
 		.map((row) => [row.namespace, row.value]));
-	return Object.fromEntries(boxesWith("setup").map(([id, { schema, initial }]) => {
+	return Object.fromEntries([...chatBoxes(db, conversationId)].flatMap(([id, { descriptor: { setup } }]) => {
+		if (setup === undefined) return [];
+		const { schema, initial } = setup;
 		const value = stored.get(boxReference(id));
-		if (value === undefined) return [id, initial];
-		const decoded = parseStoredBoxJson(value, Type.Unsafe<BoxValue>(schema), `Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY}`);
-		return [id, decoded];
+		return [[id, value === undefined ? initial : parseStoredBoxJson(value, Type.Unsafe<BoxValue>(schema), `Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY}`)]];
 	}));
 };
