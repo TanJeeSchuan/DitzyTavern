@@ -30,10 +30,10 @@ A writer connects an Image Model, opens the Paint panel from a Message, types a 
 - [x] Add the per-Chat Illustrations read: Illustrations, provisional paintings and failures by Variant, following the change feed.
 - [x] Add "Paint" to every Message's actions. It opens the Paint panel with a Brief editor that accepts pictures as Image References, a choice of five shapes stored per Chat, and Paint. Closing the panel does not stop a painting.
 - [x] Show a row after a Message for each Illustration of the Variant on screen: a placeholder whose height is reserved from the shape, then the picture, or the failure with Retry and Dismiss. The row is as wide as the text column and at most about half the viewport tall.
-- [ ] Test the outgoing Image Model request (Testing Decision 5), and that an Illustration lands under a Variant that is no longer selected, without changing the Conversation Revision, and is absent from every Prompt Plan.
+- [x] Test the outgoing Image Model request (Testing Decision 5), and that an Illustration lands under a Variant that is no longer selected, without changing the Conversation Revision, and is absent from every Prompt Plan.
 - [x] e2e: paint from a Message with a typed Brief and see the picture; swipe that Message away and back; a scripted failure shows the provider's message and Retry paints.
-- [ ] Verify manually with playwright-cli. No UI tests.
-- [ ] Run focused tests locally; let CI run typechecking and the full suite.
+- [x] Verify manually with playwright-cli. No UI tests.
+- [x] Run focused tests locally; let CI run typechecking and the full suite.
 - [ ] Run `/code-review` and resolve its findings.
 - [ ] Set this ticket to DONE and commit.
 
