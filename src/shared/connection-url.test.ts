@@ -38,3 +38,8 @@ describe("resolveRequestUrl", () => {
 			.toThrow("must not contain user information or a fragment");
 	});
 });
+
+test("Image Model base URLs resolve by adapter and retain query parameters", () => {
+	expect(resolveRequestUrl("https://example.com/v1/?region=local", "images", { adapter: "openrouter", references: false })).toBe("https://example.com/v1/images?region=local");
+	expect(resolveRequestUrl("https://example.com/v1/", "images", { adapter: "openai-compatible", references: true })).toBe("https://example.com/v1/images/edits");
+});

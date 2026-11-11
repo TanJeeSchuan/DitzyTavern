@@ -28,7 +28,8 @@ test("painting sends anchors, ordered reference Images and the chosen shape to O
 	expect(Buffer.from(result)).toEqual(map);
 });
 
-test.each([false, true])("OpenAI-compatible painting sends aspect_ratio with reference Images: %s", async (reference) => {
+test.each(["without references", "with references"])("OpenAI-compatible painting sends aspect_ratio %s", async (scenario) => {
+	const reference = scenario === "with references";
 	const picture = pngFixture();
 	await paintImage({
 		profile: { ...blankConnectionProfileDraft, apiFormat: "images", requestUrl: "https://example.com/v1/" }, modelId: "painter", secrets: null,
@@ -41,7 +42,6 @@ test.each([false, true])("OpenAI-compatible painting sends aspect_ratio with ref
 				expect(form.get("aspect_ratio")).toBe("16:9");
 				expect(form.get("prompt")).toBe("Paint [Image: map]");
 				const image = form.get("image");
-				expect(image).toBeInstanceOf(Blob);
 				if (!(image instanceof Blob)) throw new Error("Missing reference Image");
 				expect(Buffer.from(await image.arrayBuffer())).toEqual(picture);
 				expect(form.has("size")).toBe(false);

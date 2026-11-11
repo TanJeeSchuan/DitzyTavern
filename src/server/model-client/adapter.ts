@@ -21,21 +21,12 @@ export interface ModelAdapterOptions {
 }
 
 /** @approved
- * The only place where an application adapter becomes an AI SDK provider.
+ * Application adapters become AI SDK providers in this module.
  * Generation and Test Connection both inject their own fetch wrapper while
  * sharing this provider construction and endpoint configuration.
  */
 export function createModelAdapter(options: ModelAdapterOptions) {
-	const providerOptions = {
-		apiKey: options.credential,
-		baseURL: new URL(options.requestUrl).origin,
-		headers: options.headers,
-		// @approved
-		//  SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
-		// SAFETY: ModelFetch has the same RequestInfo/RequestInit/Response contract
-		// as the AI SDK fetch hook; it only makes the fetch implementation injectable.
-		fetch: options.fetch as typeof fetch,
-	};
+	const providerOptions = providerSettings(options);
 
 	switch (options.adapter) {
 		case "deepseek":
@@ -62,4 +53,22 @@ export function createModelAdapter(options: ModelAdapterOptions) {
 
 export function isModelAdapter(value: string): value is ModelAdapter {
 	return MODEL_ADAPTERS.some((adapter) => adapter === value);
+}
+
+const providerSettings = (options: ModelAdapterOptions) => ({
+		apiKey: options.credential,
+		baseURL: new URL(options.requestUrl).origin,
+		headers: options.headers,
+		// @approved
+		//  SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
+		// SAFETY: ModelFetch has the same RequestInfo/RequestInit/Response contract
+		// as the AI SDK fetch hook; it only makes the fetch implementation injectable.
+		fetch: options.fetch as typeof fetch,
+});
+
+export function createImageModelAdapter(options: ModelAdapterOptions & { adapter: Exclude<ModelAdapter, "deepseek"> }) {
+	const settings = providerSettings(options);
+	return options.adapter === "openrouter"
+		? createOpenRouter(settings).imageModel(options.modelId)
+		: createOpenAICompatible({ ...settings, name: "ditzytavern-openai-compatible" }).imageModel(options.modelId);
 }

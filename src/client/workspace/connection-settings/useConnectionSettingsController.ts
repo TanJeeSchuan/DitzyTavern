@@ -270,11 +270,11 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const resolvedRequestUrl = useMemo(() => {
 		if (draft.requestUrl.trim().length === 0) return "";
 		try {
-			return resolveRequestUrl(draft.requestUrl, draft.apiFormat);
+			return resolveRequestUrl(draft.requestUrl, draft.apiFormat, { adapter: draft.adapter, references: false });
 		} catch (error) {
 			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
 		}
-	}, [draft.apiFormat, draft.requestUrl]);
+	}, [draft.apiFormat, draft.adapter, draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
 	const conflict = session?.status === "conflict";
 	const canSave = settings !== null && validationError === null && !conflict;

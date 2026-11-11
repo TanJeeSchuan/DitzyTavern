@@ -164,7 +164,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
 							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
 						</Field>
-						{draft.apiFormat === "images" && <Field htmlFor="image-connection-adapter" label="AI SDK adapter"><AppSelect id="image-connection-adapter" className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "openrouter" ? value : "openai-compatible" })} options={[{ value: "openrouter", label: "OpenRouter" }, { value: "openai-compatible", label: "OpenAI compatible" }]} /></Field>}
+						{draft.apiFormat === "images" && <Field htmlFor="image-connection-adapter" label="AI SDK adapter"><AppSelect id="image-connection-adapter" className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "openrouter" ? value : "openai-compatible" })} options={Object.entries(CONNECTION_ADAPTER_LABELS).filter(([value]) => value !== "deepseek").map(([value, label]) => ({ value, label }))} /></Field>}
 						{!requiresTimeout && <>
 						<Field htmlFor="connection-model-backend" label="Model backend">
 							<AppSelect

@@ -14,17 +14,17 @@ export function ImageModelSettingsEditor({ editor, onBack }: { editor: SettingsD
 	const { draft } = editor;
 	return <>
 		<div className="panel-body settings-panel-body">
-			<Button size="sm" variant="ghost" onClick={() => navigate(onBack)}><ChevronLeft aria-hidden="true" /> Connections</Button>
+			<Button className="-ml-2 mb-3 text-muted-foreground" size="sm" variant="ghost" onClick={() => navigate(onBack)}><ChevronLeft aria-hidden="true" /> Connections</Button>
 			<section className="mt-4" aria-labelledby="image-model-title">
-				<h3 id="image-model-title">Image Model</h3>
+				<h3 id="image-model-title" className="text-base! font-semibold">Image Model</h3>
 				<p>Paints Illustrations in every Chat.</p>
 				{draft === null ? <>
-					<p role="status">{editor.loading ? "Loading Image Model…" : editor.error}</p>
+					{editor.loading ? <p role="status">Loading Image Model…</p> : <p role="alert" className="text-sm text-destructive">{editor.error}</p>}
 					{!editor.loading && <Button variant="outline" onClick={editor.reload}>Try again</Button>}
 				</> : <>
 					{editor.conflict && <ConflictBanner message="The Image Model changed elsewhere. Review your selection before saving again." onKeepMine={editor.keepMine} onLoadSaved={editor.discard} />}
 					<Field label="Image Model" helper="Images connections only.">
-						<ProfileModelPicker apiFormat="images" label="Image Model" emptyLabel="Add an Images connection in Connections." selected={{ connectionProfileId: draft.profileId, modelId: draft.model }} onSelect={(profile, model) => editor.update({ profileId: profile.id, model })} />
+						<ProfileModelPicker apiFormat="images" label="Image Model" emptyLabel="Add an Images connection in Connections." selected={draft.profileId === null ? null : { connectionProfileId: draft.profileId, modelId: draft.model }} onSelect={(profile, model) => editor.update({ profileId: profile.id, model })} />
 					</Field>
 					{draft.profileId !== null && <Button className="mt-3" size="sm" variant="outline" onClick={() => editor.update({ profileId: null, model: "" })}>Turn off</Button>}
 				</>}
