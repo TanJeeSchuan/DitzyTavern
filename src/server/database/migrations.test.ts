@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -16,6 +16,46 @@ import { sha256 } from "../hash";
 import { memoryRecord, type MemoryRecord } from "../../boxes/memory/contract";
 import { createMemorySettingsModule } from "../../boxes/memory/server-settings";
 import { readMemoryChatSettings, readMemoryLabelState } from "../../boxes/memory/server-chat";
+
+test("0041 adds Appearance after each Default Identity with its role when upgrading an existing database", async () => {
+	const database = new Database(":memory:");
+	const scratch = join(process.cwd(), ".scratch");
+	await mkdir(scratch, { recursive: true });
+	const folder = await mkdtemp(join(scratch, "appearance-upgrade-"));
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 40) }));
+		initializeDatabase(database, folder);
+		database.exec(`
+			UPDATE prompt_preset SET revision = 7 WHERE is_default = 1;
+			UPDATE prompt_preset_block SET role = 'assistant' WHERE reference = 'human-identity';
+			UPDATE prompt_preset_block SET role = 'user' WHERE reference = 'model-identity';
+		`);
+
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 41) }));
+		initializeDatabase(database, folder);
+		expect(database.query(`
+			SELECT b.reference, b.role FROM prompt_preset_block b
+			JOIN prompt_preset p ON p.id = b.preset_id WHERE p.is_default = 1 ORDER BY b.position
+		`).all()).toEqual([
+			{ reference: "model-system-instruction", role: "system" },
+			{ reference: "human-identity", role: "assistant" },
+			{ reference: "human-appearance", role: "assistant" },
+			{ reference: "model-identity", role: "user" },
+			{ reference: "model-appearance", role: "user" },
+			{ reference: "model-scenario", role: "system" },
+			{ reference: "model-example-dialogue", role: "user" },
+			{ reference: "lore", role: "system" },
+			{ reference: "box:memory", role: "system" },
+			{ reference: "history", role: null },
+			{ reference: "model-post-history-instruction", role: "system" },
+		]);
+		expect(database.query("SELECT revision FROM prompt_preset WHERE is_default = 1").get()).toEqual({ revision: 8 });
+	} finally {
+		database.close();
+		await rm(folder, { recursive: true, force: true });
+	}
+});
 
 test.each([true, false])("preserves pre-Box chats and Memory when globally enabled=%s", async (enabled) => {
 	const database = new Database(":memory:");
